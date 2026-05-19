@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+.next/
+.npm-cache/
+.env
+.env.*
+!.env.example
+data/social-command-center.json.*.tmp

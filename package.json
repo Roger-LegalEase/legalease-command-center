@@ -1,0 +1,15 @@
+{
+  "name": "legalease-command-center",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "env NODE_DISABLE_COMPILE_CACHE=1 node scripts/preview-server.mjs",
+    "start": "env NODE_DISABLE_COMPILE_CACHE=1 node scripts/preview-server.mjs",
+    "db:check": "node scripts/check-supabase-schema.mjs",
+    "schema:check": "node scripts/check-supabase-schema.mjs"
+  },
+  "dependencies": {
+    "sharp": "^0.34.5"
+  }
+}

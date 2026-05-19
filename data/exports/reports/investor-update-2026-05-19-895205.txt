@@ -1,0 +1,31 @@
+ investor update
+
+Generated: 2026-05-19T19:50:04.050Z
+
+# Milestones needing attention
+- Signed pilots: needs_attention. Next: Move two warm partners from proposal to signed pilot.
+- RecordShield users: at_risk. Next: Launch partner campaigns with tracked RecordShield starts.
+- Active partner campaigns: needs_attention. Next: Generate campaign kits for the next three committed partners.
+- Public institutional proof point: needs_attention. Next: Request testimonial language after first pilot midpoint report.
+- RecordShield-to-Expungement.ai conversion tracking: at_risk. Next: Define manual event fields and tracking slug convention.
+- Compliance memo: needs_attention. Next: Route non-UPL posture memo for attorney review.
+- Data room readiness: needs_attention. Next: Add traction snapshot, compliance memo, and pilot proof artifacts.
+
+# Partner pipeline
+- Second Chance Reentry Coalition: proposal_sent; next follow-up 2026-05-20
+
+# Campaigns
+- RecordShield Community Launch: ready; 38/150 referrals
+
+# RecordShield funnel
+- RecordShield Community Launch: 17 starts, 4 Expungement.ai starts, $0 revenue
+
+# Pilots
+- RecordShield Reentry Pilot: scoped; next Send final pilot agreement and launch checklist.
+
+# Published content
+- Posted items: 1
+- Posts needing metrics: 1
+
+# Risks and next actions
+- Follow up on proposal (2026-05-20)
