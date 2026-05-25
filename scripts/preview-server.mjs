@@ -5976,13 +5976,14 @@ function sendAuthRequired(response, decision = {}) {
         <input id="ownerToken" type="password" autocomplete="current-password" required autofocus>
       </label>
       <div class="helper">Paste your owner token from Render.</div>
-      <button id="unlockButton" type="submit">Unlock Command Center</button>
+      <button id="unlockButton" type="button">Unlock Command Center</button>
       <div id="accessError" class="message error">Token not accepted.</div>
       <div id="accessSuccess" class="message success">Access granted.</div>
     </form>
   </main>
   <script>
-    const tokenKey = "legalease.commandCenter.ownerToken";
+    const tokenKey = "legalease_command_center_owner_token";
+    const legacyTokenKey = "legalease.commandCenter.ownerToken";
     const form = document.getElementById("accessForm");
     const input = document.getElementById("ownerToken");
     const button = document.getElementById("unlockButton");
@@ -5997,6 +5998,21 @@ function sendAuthRequired(response, decision = {}) {
       error.style.display = "none";
       success.textContent = message;
       success.style.display = "block";
+    }
+    function storedToken() {
+      return localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey) || localStorage.getItem(legacyTokenKey) || sessionStorage.getItem(legacyTokenKey) || "";
+    }
+    function clearStoredTokens() {
+      localStorage.removeItem(tokenKey);
+      sessionStorage.removeItem(tokenKey);
+      localStorage.removeItem(legacyTokenKey);
+      sessionStorage.removeItem(legacyTokenKey);
+    }
+    function storeToken(token) {
+      localStorage.setItem(tokenKey, token);
+      sessionStorage.setItem(tokenKey, token);
+      localStorage.removeItem(legacyTokenKey);
+      sessionStorage.removeItem(legacyTokenKey);
     }
     function setTokenCookie(token) {
       document.cookie = "leos_session=" + encodeURIComponent(token) + "; Path=/; SameSite=Lax";
@@ -6016,6 +6032,17 @@ function sendAuthRequired(response, decision = {}) {
       } catch {}
       return { ok:false, diagnostics };
     }
+    async function loadDashboardWithToken(token) {
+      const response = await fetch("/", {
+        headers: { "Authorization":"Bearer " + token },
+        cache: "no-store"
+      });
+      if (!response.ok) throw new Error("dashboard denied");
+      const html = await response.text();
+      document.open();
+      document.write(html);
+      document.close();
+    }
     async function unlock(token) {
       error.style.display = "none";
       success.style.display = "none";
@@ -6031,14 +6058,12 @@ function sendAuthRequired(response, decision = {}) {
           else showError("Token not accepted.");
           return;
         }
-        showSuccess("Access granted.");
-        localStorage.setItem(tokenKey, token);
-        sessionStorage.setItem(tokenKey, token);
+        storeToken(token);
         setTokenCookie(token);
-        setTimeout(() => location.reload(), 200);
+        showSuccess("Access granted.");
+        await loadDashboardWithToken(token);
       } catch {
-        localStorage.removeItem(tokenKey);
-        sessionStorage.removeItem(tokenKey);
+        clearStoredTokens();
         document.cookie = "leos_session=; Path=/; Max-Age=0; SameSite=Lax";
         showError("Token not accepted.");
       } finally {
@@ -6050,7 +6075,17 @@ function sendAuthRequired(response, decision = {}) {
       const token = input.value.trim();
       unlock(token);
     });
-    const saved = localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey);
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      unlock(input.value.trim());
+    });
+    input.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        unlock(input.value.trim());
+      }
+    });
+    const saved = storedToken();
     if (saved) unlock(saved);
   </script>
 </body>
@@ -11732,10 +11767,11 @@ function htmlShell() {
       date.setHours(9 + (offset % 5), 0, 0, 0);
       return date.toISOString().slice(0, 16);
     };
-    const ownerTokenStorageKey = "legalease.commandCenter.ownerToken";
+    const ownerTokenStorageKey = "legalease_command_center_owner_token";
+    const legacyOwnerTokenStorageKey = "legalease.commandCenter.ownerToken";
     function storedOwnerToken() {
       try {
-        return localStorage.getItem(ownerTokenStorageKey) || sessionStorage.getItem(ownerTokenStorageKey) || "";
+        return localStorage.getItem(ownerTokenStorageKey) || sessionStorage.getItem(ownerTokenStorageKey) || localStorage.getItem(legacyOwnerTokenStorageKey) || sessionStorage.getItem(legacyOwnerTokenStorageKey) || "";
       } catch {
         return "";
       }
@@ -11743,6 +11779,8 @@ function htmlShell() {
     function clearOwnerToken() {
       try { localStorage.removeItem(ownerTokenStorageKey); } catch {}
       try { sessionStorage.removeItem(ownerTokenStorageKey); } catch {}
+      try { localStorage.removeItem(legacyOwnerTokenStorageKey); } catch {}
+      try { sessionStorage.removeItem(legacyOwnerTokenStorageKey); } catch {}
       document.cookie = "leos_session=; Path=/; Max-Age=0; SameSite=Lax";
     }
     function lockCommandCenter() {

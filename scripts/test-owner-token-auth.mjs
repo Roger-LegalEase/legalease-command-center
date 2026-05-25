@@ -86,6 +86,11 @@ try {
   assert.match(lockedPage, /Token not accepted\./);
   assert.match(lockedPage, /Server owner token is not configured\./);
   assert.match(lockedPage, /Access granted\./);
+  assert.match(lockedPage, /legalease_command_center_owner_token/, "lock screen should use the app-specific owner token storage key");
+  assert.match(lockedPage, /event\.preventDefault\(\)/, "login submit/click handlers should prevent browser form reloads");
+  assert.match(lockedPage, /document\.write\(html\)/, "successful unlock should render dashboard without a full page reload");
+  assert.doesNotMatch(lockedPage, /location\.reload\(\)/, "unlock flow should not use location.reload");
+  assert.match(lockedPage, /"Authorization":"Bearer " \+ token/, "unlock flow should validate with Authorization header");
   assert.ok(!lockedPage.includes(ownerToken), "owner token must never appear in page HTML");
 } finally {
   child.kill("SIGTERM");
