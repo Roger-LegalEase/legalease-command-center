@@ -15,5 +15,8 @@ pnpm-debug.log*
 *.tmp
 *.temp
 data/social-command-center.json.*.tmp
+data/social-command-center.json
 data/backups/
 data/exports/
+!data/seed/
+!data/seed/**

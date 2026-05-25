@@ -5,8 +5,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
-const dataDir = path.join(rootDir, "data");
-const dataPath = path.join(dataDir, "social-command-center.json");
+const defaultDataDir = path.join(rootDir, "data");
+const defaultDataPath = path.join(defaultDataDir, "social-command-center.json");
+const defaultSeedPath = path.join(defaultDataDir, "seed", "social-command-center.seed.json");
 
 const supabaseRecordsTable = process.env.SUPABASE_CORE_RECORDS_TABLE || "leos_core_records";
 const coreStateCollections = [
@@ -46,6 +47,14 @@ function requestedStorageBackend() {
   if (["json", "supabase"].includes(explicit)) return explicit;
   if (parseBoolean(process.env.USE_SUPABASE_JS_STORE || "false")) return "supabase";
   return "json";
+}
+
+function localDataPath() {
+  return process.env.COMMAND_CENTER_DATA_PATH || defaultDataPath;
+}
+
+function localSeedPath() {
+  return process.env.COMMAND_CENTER_SEED_PATH || defaultSeedPath;
 }
 
 function supabaseDatabaseConfigured() {
@@ -221,12 +230,20 @@ export class JsonStore {
     this.initialState = initialState;
     this.kind = "json";
     this.writeQueue = Promise.resolve();
+    this.dataPath = localDataPath();
+    this.dataDir = path.dirname(this.dataPath);
+    this.seedPath = localSeedPath();
   }
 
   async ensure() {
-    await mkdir(dataDir, { recursive: true });
-    if (!existsSync(dataPath)) {
-      await writeFile(dataPath, JSON.stringify(this.initialState, null, 2));
+    await mkdir(this.dataDir, { recursive: true });
+    if (!existsSync(this.dataPath)) {
+      if (existsSync(this.seedPath)) {
+        const seed = JSON.parse(await readFile(this.seedPath, "utf8"));
+        await writeFile(this.dataPath, JSON.stringify({ ...this.initialState, ...seed }, null, 2));
+      } else {
+        await writeFile(this.dataPath, JSON.stringify(this.initialState, null, 2));
+      }
     }
   }
 
@@ -234,10 +251,10 @@ export class JsonStore {
     await this.ensure();
     let rawState = {};
     try {
-      rawState = JSON.parse(await readFile(dataPath, "utf8"));
+      rawState = JSON.parse(await readFile(this.dataPath, "utf8"));
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 50));
-      rawState = JSON.parse(await readFile(dataPath, "utf8"));
+      rawState = JSON.parse(await readFile(this.dataPath, "utf8"));
     }
     return {
       ...this.initialState,
@@ -264,9 +281,9 @@ export class JsonStore {
     await this.ensure();
     const { persistence, ...persistedState } = state;
     persistedState.postImages = (persistedState.postImages || []).map(compactPostImageForLocal);
-    const tempPath = `${dataPath}.${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
+    const tempPath = `${this.dataPath}.${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
     await writeFile(tempPath, JSON.stringify(persistedState, null, 2));
-    await rename(tempPath, dataPath);
+    await rename(tempPath, this.dataPath);
   }
 
   async generatePosts(posts) {
@@ -358,7 +375,7 @@ export class SupabaseCoreStore extends JsonStore {
   async readState() {
     let fallback = { ...this.initialState };
     try {
-      if (existsSync(dataPath)) fallback = await super.readState();
+      if (existsSync(this.dataPath) || existsSync(this.seedPath)) fallback = await super.readState();
     } catch {
       fallback = { ...this.initialState };
     }

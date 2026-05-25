@@ -228,6 +228,14 @@ The Command Center can now run in two modes:
 - Local/demo mode: `LOCAL_DEMO_MODE=true` and `STORAGE_BACKEND=json`. This keeps using `data/social-command-center.json` and local export folders for development.
 - Hosted mode: `LOCAL_DEMO_MODE=false` and `STORAGE_BACKEND=supabase`. Render runs the Node app and Supabase stores core operating records.
 
+Local state and seed data:
+
+- `data/social-command-center.json` is local working state and is intentionally not committed. It can be large because it may contain generated image metadata, audit history, and local operating data.
+- Fresh clones bootstrap local/demo mode from `data/seed/social-command-center.seed.json`.
+- If `data/social-command-center.json` already exists, local/demo mode uses it and does not overwrite it.
+- Supabase is the production source of truth in hosted mode. Local JSON is a development fallback and migration source only.
+- To test a clean local bootstrap without touching your real data, set `COMMAND_CENTER_DATA_PATH` and `COMMAND_CENTER_SEED_PATH` to temporary files.
+
 Runtime environment variables:
 
 ```bash
