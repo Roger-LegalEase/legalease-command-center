@@ -1,6 +1,17 @@
 const clean = (value = "") => String(value || "").trim();
 const lower = (value = "") => clean(value).toLowerCase();
 
+function normalizeToken(value = "") {
+  let token = clean(value);
+  while (
+    token.length >= 2
+    && ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'")))
+  ) {
+    token = token.slice(1, -1).trim();
+  }
+  return token;
+}
+
 const roleDefinitions = {
   owner: {
     label: "Owner",
@@ -34,6 +45,7 @@ const roleDefinitions = {
 
 const publicPaths = [
   "/api/health",
+  "/api/auth/diagnostics",
   "/api/debug/env",
   "/api/storage/debug",
   "/api/storage/diagnostics"
@@ -60,7 +72,7 @@ export function tokenRegistryFromEnv(env = process.env) {
     ["partner", env.COMMAND_CENTER_PARTNER_TOKEN],
     ["investor_readonly", env.COMMAND_CENTER_INVESTOR_TOKEN],
     ["compliance_reviewer", env.COMMAND_CENTER_COMPLIANCE_TOKEN]
-  ].filter(([, token]) => clean(token).length >= 16);
+  ].map(([role, token]) => [role, normalizeToken(token)]).filter(([, token]) => token.length >= 16);
 }
 
 function bearerFromHeader(value = "") {
@@ -74,7 +86,7 @@ function tokenFromCookie(cookie = "") {
 
 export function tokenFromRequest(request = {}) {
   const headers = request.headers || {};
-  return clean(
+  return normalizeToken(
     headers["x-command-center-token"]
     || headers["x-leos-token"]
     || bearerFromHeader(headers.authorization || "")
@@ -141,3 +153,4 @@ export function publicActor(actor = {}) {
 }
 
 export { roleDefinitions };
+export { normalizeToken };

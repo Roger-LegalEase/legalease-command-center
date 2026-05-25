@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createStore, getSupabaseHealth, storageRuntimeConfig } from "./storage.mjs";
 import { analyzeOperations } from "./priority-engine.mjs";
 import { buildAutonomyGovernance, buildAutonomyReport, runAutonomyCycleOnState } from "./autonomy-engine.mjs";
-import { authorizeRequest, publicActor, roleDefinitions } from "./access-control.mjs";
+import { authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequest, publicActor, roleDefinitions, tokenFromRequest } from "./access-control.mjs";
 import {
   channelSetup,
   channelSetupMessage,
@@ -5919,6 +5919,24 @@ function sendJson(response, payload, status = 200) {
   response.end(JSON.stringify(payload));
 }
 
+function authDiagnosticsForRequest(request = {}) {
+  const headers = request.headers || {};
+  const ownerToken = normalizeToken(process.env.COMMAND_CENTER_OWNER_TOKEN || process.env.COMMAND_CENTER_ACCESS_TOKEN || "");
+  const receivedToken = tokenFromRequest(request);
+  const authHeader = String(headers.authorization || "");
+  const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+  const receivedBearerToken = normalizeToken(bearerMatch?.[1] || "");
+  return {
+    hostedMode: authRequiredForEnv(process.env),
+    ownerTokenConfigured: ownerToken.length >= 16,
+    configuredTokenLength: ownerToken.length,
+    receivedAuthHeaderPresent: Boolean(authHeader),
+    receivedBearerTokenLength: receivedBearerToken.length,
+    tokenMatch: Boolean(ownerToken && receivedToken && receivedToken === ownerToken),
+    requiredPermission: permissionForRequest("GET", "/api/state")
+  };
+}
+
 function sendAuthRequired(response, decision = {}) {
   response.writeHead(decision.status || 401, {
     "content-type": "text/html; charset=utf-8",
@@ -5943,7 +5961,9 @@ function sendAuthRequired(response, decision = {}) {
     button{width:100%;margin-top:16px;border:0;border-radius:12px;padding:13px 16px;background:var(--ink);color:white;font-weight:850;cursor:pointer}
     button:disabled{opacity:.65;cursor:not-allowed}
     .helper{font-size:13px;color:var(--muted);margin-top:8px}
-    .error{display:none;margin-top:14px;color:#B42318;background:#FEF3F2;border:1px solid #FECDCA;border-radius:12px;padding:10px 12px;font-weight:750}
+    .message{display:none;margin-top:14px;border-radius:12px;padding:10px 12px;font-weight:750}
+    .error{color:#B42318;background:#FEF3F2;border:1px solid #FECDCA}
+    .success{color:#027A48;background:#ECFDF3;border:1px solid #ABEFC6}
   </style>
 </head>
 <body>
@@ -5957,7 +5977,8 @@ function sendAuthRequired(response, decision = {}) {
       </label>
       <div class="helper">Paste your owner token from Render.</div>
       <button id="unlockButton" type="submit">Unlock Command Center</button>
-      <div id="accessError" class="error">Access token not accepted.</div>
+      <div id="accessError" class="message error">Token not accepted.</div>
+      <div id="accessSuccess" class="message success">Access granted.</div>
     </form>
   </main>
   <script>
@@ -5966,6 +5987,17 @@ function sendAuthRequired(response, decision = {}) {
     const input = document.getElementById("ownerToken");
     const button = document.getElementById("unlockButton");
     const error = document.getElementById("accessError");
+    const success = document.getElementById("accessSuccess");
+    function showError(message) {
+      success.style.display = "none";
+      error.textContent = message;
+      error.style.display = "block";
+    }
+    function showSuccess(message) {
+      error.style.display = "none";
+      success.textContent = message;
+      success.style.display = "block";
+    }
     function setTokenCookie(token) {
       document.cookie = "leos_session=" + encodeURIComponent(token) + "; Path=/; SameSite=Lax";
     }
@@ -5974,22 +6006,41 @@ function sendAuthRequired(response, decision = {}) {
         headers: { "Authorization":"Bearer " + token, "content-type":"application/json" },
         cache: "no-store"
       });
-      return response.ok;
+      if (response.ok) return { ok:true };
+      let diagnostics = {};
+      try {
+        diagnostics = await fetch("/api/auth/diagnostics", {
+          headers: { "Authorization":"Bearer " + token, "content-type":"application/json" },
+          cache: "no-store"
+        }).then(response => response.json());
+      } catch {}
+      return { ok:false, diagnostics };
     }
     async function unlock(token) {
       error.style.display = "none";
+      success.style.display = "none";
       button.disabled = true;
       try {
-        if (!(await validateToken(token))) throw new Error("denied");
+        if (!token) {
+          showError("No token entered.");
+          return;
+        }
+        const result = await validateToken(token);
+        if (!result.ok) {
+          if (result.diagnostics && result.diagnostics.ownerTokenConfigured === false) showError("Server owner token is not configured.");
+          else showError("Token not accepted.");
+          return;
+        }
+        showSuccess("Access granted.");
         localStorage.setItem(tokenKey, token);
         sessionStorage.setItem(tokenKey, token);
         setTokenCookie(token);
-        location.reload();
+        setTimeout(() => location.reload(), 200);
       } catch {
         localStorage.removeItem(tokenKey);
         sessionStorage.removeItem(tokenKey);
         document.cookie = "leos_session=; Path=/; Max-Age=0; SameSite=Lax";
-        error.style.display = "block";
+        showError("Token not accepted.");
       } finally {
         button.disabled = false;
       }
@@ -5997,7 +6048,7 @@ function sendAuthRequired(response, decision = {}) {
     form.addEventListener("submit", event => {
       event.preventDefault();
       const token = input.value.trim();
-      if (token) unlock(token);
+      unlock(token);
     });
     const saved = localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey);
     if (saved) unlock(saved);
@@ -17264,6 +17315,11 @@ async function handleRequest(request, response) {
     await logAccessDecision(accessDecision, url);
     if (request.method === "GET" && url.pathname === "/") sendAuthRequired(response, accessDecision);
     else sendJson(response, { error: accessDecision.reason, requiredPermission: accessDecision.requiredPermission, actor: publicActor(accessDecision.actor) }, accessDecision.status || 403);
+    return;
+  }
+
+  if (url.pathname === "/api/auth/diagnostics" && request.method === "GET") {
+    sendJson(response, authDiagnosticsForRequest(request));
     return;
   }
 
