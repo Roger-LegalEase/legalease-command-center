@@ -20,7 +20,12 @@ import {
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
 const port = Number(process.env.PORT ?? 3001);
-const host = process.env.HOST || "127.0.0.1";
+function productionBindHost() {
+  if (process.env.HOST) return process.env.HOST;
+  if (process.env.RENDER || process.env.NODE_ENV === "production") return "0.0.0.0";
+  return "127.0.0.1";
+}
+const host = productionBindHost();
 const assetCache = new Map();
 const designSystem = loadDesignSystem();
 

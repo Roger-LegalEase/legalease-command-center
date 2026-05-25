@@ -288,6 +288,7 @@ Render deployment:
 - Build command: `npm install`
 - Start command: `npm run start:production`
 - Health check path: `/api/health`
+- Runtime binding: local development binds to `127.0.0.1`; Render/production binds to `0.0.0.0` and uses `process.env.PORT`.
 
 Production verification:
 

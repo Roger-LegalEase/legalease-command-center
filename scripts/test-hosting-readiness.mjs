@@ -30,7 +30,7 @@ async function waitForServer(child) {
   child.stderr.on("data", chunk => { logs += chunk.toString(); });
   const startedAt = Date.now();
   while (Date.now() - startedAt < 12000) {
-    if (logs.includes("LegalEase preview server ready")) return;
+    if (logs.includes("LegalEase preview server ready")) return logs;
     if (child.exitCode !== null) throw new Error(`Server exited before ready: ${logs}`);
     await new Promise(resolve => setTimeout(resolve, 100));
   }
@@ -45,7 +45,8 @@ async function main() {
     stdio: ["ignore", "pipe", "pipe"]
   });
   try {
-    await waitForServer(child);
+    const logs = await waitForServer(child);
+    assert.match(logs, new RegExp(`http://127\\.0\\.0\\.1:${port}`), "local server should bind to 127.0.0.1 by default");
     const healthResponse = await fetch(`${baseUrl}/api/health`);
     assert.equal(healthResponse.status, 200, "health endpoint should return 200");
     const health = await healthResponse.json();
@@ -70,6 +71,21 @@ async function main() {
     assert.equal(Boolean(state.runtime?.accessControl?.roles?.owner), true);
   } finally {
     child.kill("SIGTERM");
+  }
+
+  const renderPort = port + 1;
+  const renderChild = spawn(process.execPath, ["scripts/preview-server.mjs"], {
+    cwd: rootDir,
+    env: { ...process.env, ...env, PORT:String(renderPort), RENDER:"true", LOCAL_DEMO_MODE:"true", STORAGE_BACKEND:"json", NODE_DISABLE_COMPILE_CACHE:"1" },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  try {
+    const renderLogs = await waitForServer(renderChild);
+    assert.match(renderLogs, new RegExp(`http://0\\.0\\.0\\.0:${renderPort}`), "Render server should bind to 0.0.0.0 when HOST is not explicitly set");
+    const healthResponse = await fetch(`http://127.0.0.1:${renderPort}/api/health`);
+    assert.equal(healthResponse.status, 200, "Render-bound health endpoint should still be reachable locally");
+  } finally {
+    renderChild.kill("SIGTERM");
   }
 }
 
