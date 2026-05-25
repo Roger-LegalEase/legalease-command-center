@@ -5924,7 +5924,86 @@ function sendAuthRequired(response, decision = {}) {
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store, max-age=0"
   });
-  response.end(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LegalEase Access Required</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#E5EBEB;color:#020D66;font-family:ui-sans-serif,system-ui}.panel{width:min(620px,calc(100vw - 32px));background:white;border:1px solid #B8D8D8;border-radius:12px;padding:28px;box-shadow:0 18px 60px rgba(2,13,102,.12)}.eyebrow{color:#F04800;font-weight:800;letter-spacing:.16em;text-transform:uppercase;font-size:12px}h1{margin:8px 0 10px}code{background:#F4F7F6;border:1px solid #B8D8D8;border-radius:6px;padding:2px 6px}</style></head><body><main class="panel"><div class="eyebrow">Access required</div><h1>LegalEase Command Center is protected.</h1><p>${decision.reason || "Authentication is required."}</p><p>Hosted mode requires a server-side role token. Local demo mode remains available for development.</p><p><code>${decision.requiredPermission || "read"}</code> permission required.</p></main></body></html>`);
+  response.end(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LegalEase Command Center</title>
+  <style>
+    :root{--ink:#020D66;--muted:#667085;--line:#B8D8D8;--paper:#fff;--bg:#E5EBEB;--orange:#F04800}
+    *{box-sizing:border-box} body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top left,rgba(240,72,0,.12),transparent 30%),var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .panel{width:min(460px,calc(100vw - 32px));background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:30px;box-shadow:0 24px 80px rgba(2,13,102,.14)}
+    .eyebrow{color:var(--orange);font-weight:850;letter-spacing:.14em;text-transform:uppercase;font-size:12px}
+    h1{margin:8px 0 8px;font-size:32px;line-height:1.05;letter-spacing:-.02em}
+    p{color:var(--muted);line-height:1.5;margin:0 0 18px}
+    label{display:grid;gap:8px;color:var(--ink);font-weight:800;margin-top:18px}
+    input{width:100%;border:1px solid var(--line);border-radius:12px;padding:13px 14px;font:inherit;color:var(--ink);background:#F9FAF7}
+    input:focus{outline:3px solid rgba(240,72,0,.18);border-color:var(--orange)}
+    button{width:100%;margin-top:16px;border:0;border-radius:12px;padding:13px 16px;background:var(--ink);color:white;font-weight:850;cursor:pointer}
+    button:disabled{opacity:.65;cursor:not-allowed}
+    .helper{font-size:13px;color:var(--muted);margin-top:8px}
+    .error{display:none;margin-top:14px;color:#B42318;background:#FEF3F2;border:1px solid #FECDCA;border-radius:12px;padding:10px 12px;font-weight:750}
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <div class="eyebrow">Owner login</div>
+    <h1>LegalEase Command Center</h1>
+    <p>Hosted mode is protected. Unlock with the owner token configured in Render.</p>
+    <form id="accessForm">
+      <label>Owner access token
+        <input id="ownerToken" type="password" autocomplete="current-password" required autofocus>
+      </label>
+      <div class="helper">Paste your owner token from Render.</div>
+      <button id="unlockButton" type="submit">Unlock Command Center</button>
+      <div id="accessError" class="error">Access token not accepted.</div>
+    </form>
+  </main>
+  <script>
+    const tokenKey = "legalease.commandCenter.ownerToken";
+    const form = document.getElementById("accessForm");
+    const input = document.getElementById("ownerToken");
+    const button = document.getElementById("unlockButton");
+    const error = document.getElementById("accessError");
+    function setTokenCookie(token) {
+      document.cookie = "leos_session=" + encodeURIComponent(token) + "; Path=/; SameSite=Lax";
+    }
+    async function validateToken(token) {
+      const response = await fetch("/api/state", {
+        headers: { "Authorization":"Bearer " + token, "content-type":"application/json" },
+        cache: "no-store"
+      });
+      return response.ok;
+    }
+    async function unlock(token) {
+      error.style.display = "none";
+      button.disabled = true;
+      try {
+        if (!(await validateToken(token))) throw new Error("denied");
+        localStorage.setItem(tokenKey, token);
+        sessionStorage.setItem(tokenKey, token);
+        setTokenCookie(token);
+        location.reload();
+      } catch {
+        localStorage.removeItem(tokenKey);
+        sessionStorage.removeItem(tokenKey);
+        document.cookie = "leos_session=; Path=/; Max-Age=0; SameSite=Lax";
+        error.style.display = "block";
+      } finally {
+        button.disabled = false;
+      }
+    }
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      const token = input.value.trim();
+      if (token) unlock(token);
+    });
+    const saved = localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey);
+    if (saved) unlock(saved);
+  </script>
+</body>
+</html>`);
 }
 
 async function logAccessDecision(decision = {}, url = {}) {
@@ -11477,7 +11556,7 @@ function htmlShell() {
     <div>
       <header>
         <div><div class="eyebrow">Narrative infrastructure</div><h2>Social Command Center</h2></div>
-        <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><button onclick="openCommandPalette()">Command</button><button class="primary" onclick="runSystemCheck()">Run System Check</button></div>
+        <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><button onclick="openCommandPalette()">Command</button><button onclick="lockCommandCenter()">Lock</button><button class="primary" onclick="runSystemCheck()">Run System Check</button></div>
       </header>
       <main id="app"><div class="panel loading-panel"><div class="eyebrow">Starting command center</div><h1 class="big-title">Loading LegalEase...</h1><p class="big-copy">If this stays here, the browser could not finish the app render. The server is still serving a visible fallback so you are not staring at a blank screen.</p><div class="loading-line wide"></div><div class="loading-line"></div><div class="loading-card"></div><div class="card-actions"><button class="primary" onclick="location.reload()">Reload app</button><a class="button-link" href="#queue">Open Queue</a></div></div></main>
     </div>
@@ -11602,6 +11681,23 @@ function htmlShell() {
       date.setHours(9 + (offset % 5), 0, 0, 0);
       return date.toISOString().slice(0, 16);
     };
+    const ownerTokenStorageKey = "legalease.commandCenter.ownerToken";
+    function storedOwnerToken() {
+      try {
+        return localStorage.getItem(ownerTokenStorageKey) || sessionStorage.getItem(ownerTokenStorageKey) || "";
+      } catch {
+        return "";
+      }
+    }
+    function clearOwnerToken() {
+      try { localStorage.removeItem(ownerTokenStorageKey); } catch {}
+      try { sessionStorage.removeItem(ownerTokenStorageKey); } catch {}
+      document.cookie = "leos_session=; Path=/; Max-Age=0; SameSite=Lax";
+    }
+    function lockCommandCenter() {
+      clearOwnerToken();
+      location.href = "/";
+    }
     const toast = message => {
       const el = document.querySelector("#toast");
       el.textContent = message;
@@ -11619,7 +11715,11 @@ function htmlShell() {
         const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
         let response;
         try {
-          response = await fetch(path, { headers: { "content-type": "application/json" }, ...requestOptions, signal: controller?.signal });
+          const headers = { "content-type": "application/json", ...(requestOptions.headers || {}) };
+          const token = storedOwnerToken();
+          if (token && !headers.Authorization && !headers.authorization) headers.Authorization = "Bearer " + token;
+          requestOptions.headers = headers;
+          response = await fetch(path, { ...requestOptions, signal: controller?.signal });
         } finally {
           if (timeout) clearTimeout(timeout);
         }
@@ -11631,6 +11731,8 @@ function htmlShell() {
         xhr.open(requestOptions.method || "GET", path, true);
         xhr.timeout = timeoutMs;
         xhr.setRequestHeader("content-type", "application/json");
+        const token = storedOwnerToken();
+        if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
         xhr.onload = () => {
           if (xhr.status < 200 || xhr.status >= 300) {
             reject(new Error(xhr.responseText || "Request failed"));

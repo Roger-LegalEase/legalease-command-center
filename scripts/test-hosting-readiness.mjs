@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -39,9 +41,13 @@ async function waitForServer(child) {
 
 async function main() {
   const env = readLocalEnv();
+  const testDataDir = await mkdtemp(path.join(os.tmpdir(), "legalease-hosting-readiness-"));
+  const testDataPath = path.join(testDataDir, "social-command-center.json");
+  const testSeedPath = path.join(testDataDir, "social-command-center.seed.json");
+  await writeFile(testSeedPath, JSON.stringify({ settings:{}, posts:[], contentBank:[], soc2AuditLogs:[] }, null, 2));
   const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
     cwd: rootDir,
-    env: { ...process.env, ...env, PORT:String(port), LOCAL_DEMO_MODE:"true", STORAGE_BACKEND:"json", NODE_DISABLE_COMPILE_CACHE:"1" },
+    env: { ...process.env, ...env, PORT:String(port), LOCAL_DEMO_MODE:"true", STORAGE_BACKEND:"json", COMMAND_CENTER_DATA_PATH:testDataPath, COMMAND_CENTER_SEED_PATH:testSeedPath, NODE_DISABLE_COMPILE_CACHE:"1" },
     stdio: ["ignore", "pipe", "pipe"]
   });
   try {
@@ -74,9 +80,10 @@ async function main() {
   }
 
   const renderPort = port + 1;
+  const ownerToken = "test-owner-token-1234567890";
   const renderChild = spawn(process.execPath, ["scripts/preview-server.mjs"], {
     cwd: rootDir,
-    env: { ...process.env, ...env, PORT:String(renderPort), RENDER:"true", LOCAL_DEMO_MODE:"true", STORAGE_BACKEND:"json", NODE_DISABLE_COMPILE_CACHE:"1" },
+    env: { ...process.env, ...env, PORT:String(renderPort), RENDER:"true", COMMAND_CENTER_REQUIRE_AUTH:"true", COMMAND_CENTER_OWNER_TOKEN:ownerToken, LOCAL_DEMO_MODE:"true", STORAGE_BACKEND:"json", COMMAND_CENTER_DATA_PATH:path.join(testDataDir, "hosted-social-command-center.json"), COMMAND_CENTER_SEED_PATH:testSeedPath, NODE_DISABLE_COMPILE_CACHE:"1" },
     stdio: ["ignore", "pipe", "pipe"]
   });
   try {
@@ -84,6 +91,29 @@ async function main() {
     assert.match(renderLogs, new RegExp(`http://0\\.0\\.0\\.0:${renderPort}`), "Render server should bind to 0.0.0.0 when HOST is not explicitly set");
     const healthResponse = await fetch(`http://127.0.0.1:${renderPort}/api/health`);
     assert.equal(healthResponse.status, 200, "Render-bound health endpoint should still be reachable locally");
+    const lockedResponse = await fetch(`http://127.0.0.1:${renderPort}/`);
+    assert.equal(lockedResponse.status, 401, "hosted root should remain protected without a token");
+    const lockedHtml = await lockedResponse.text();
+    assert.match(lockedHtml, /Owner access token/, "hosted lock screen should ask for owner token");
+    assert.match(lockedHtml, /Unlock Command Center/, "hosted lock screen should include unlock button");
+    assert.match(lockedHtml, /localStorage\.setItem/, "hosted lock screen should store the token locally after successful validation");
+    assert.match(lockedHtml, /Authorization/, "hosted lock screen should validate access with Authorization header");
+
+    const wrongTokenResponse = await fetch(`http://127.0.0.1:${renderPort}/api/state`, {
+      headers:{ authorization:"Bearer wrong-token" }
+    });
+    assert.equal(wrongTokenResponse.status, 401, "wrong token should stay locked");
+
+    const correctTokenResponse = await fetch(`http://127.0.0.1:${renderPort}/api/state`, {
+      headers:{ authorization:"Bearer " + ownerToken }
+    });
+    assert.equal(correctTokenResponse.status, 200, "correct owner token should unlock protected API state");
+    const unlockedRootResponse = await fetch(`http://127.0.0.1:${renderPort}/`, {
+      headers:{ cookie:"leos_session=" + encodeURIComponent(ownerToken) }
+    });
+    assert.equal(unlockedRootResponse.status, 200, "owner token cookie should unlock dashboard HTML navigation");
+    const unlockedHtml = await unlockedRootResponse.text();
+    assert.match(unlockedHtml, /lockCommandCenter/, "unlocked app should include a lock/sign out action");
   } finally {
     renderChild.kill("SIGTERM");
   }
