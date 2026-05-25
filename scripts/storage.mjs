@@ -8,6 +8,130 @@ const rootDir = path.resolve(__dirname, "..");
 const dataDir = path.join(rootDir, "data");
 const dataPath = path.join(dataDir, "social-command-center.json");
 
+const supabaseRecordsTable = process.env.SUPABASE_CORE_RECORDS_TABLE || "leos_core_records";
+const coreStateCollections = [
+  "contentBank",
+  "approvalQueue",
+  "posts",
+  "priorities",
+  "blockers",
+  "campaigns",
+  "partners",
+  "pilots",
+  "dataRoomItems",
+  "dataRoom",
+  "metrics",
+  "systemHealth",
+  "soc2AuditLogs",
+  "auditHistory",
+  "autonomyActions",
+  "autonomyDecisions",
+  "autonomyRuns",
+  "activityEvents",
+  "reports",
+  "funnelSnapshots"
+];
+const singletonCollections = new Set(["metrics", "systemHealth"]);
+
+function parseBoolean(value = "") {
+  return ["true", "1", "yes", "on"].includes(String(value || "").toLowerCase());
+}
+
+function localDemoMode() {
+  return parseBoolean(process.env.LOCAL_DEMO_MODE || "false");
+}
+
+function requestedStorageBackend() {
+  const explicit = String(process.env.STORAGE_BACKEND || "").toLowerCase();
+  if (["json", "supabase"].includes(explicit)) return explicit;
+  if (parseBoolean(process.env.USE_SUPABASE_JS_STORE || "false")) return "supabase";
+  return "json";
+}
+
+function supabaseDatabaseConfigured() {
+  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+function supabaseRestBaseUrl() {
+  return String(process.env.SUPABASE_URL || "").replace(/\/+$/, "") + "/rest/v1";
+}
+
+function supabaseHeaders(extra = {}) {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
+  return {
+    apikey: key,
+    authorization: "Bearer " + key,
+    ...extra
+  };
+}
+
+async function supabaseRestRequest(pathname, options = {}) {
+  if (!process.env.SUPABASE_URL || !(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
+    throw new Error("Supabase database env vars are missing.");
+  }
+  const response = await fetch(supabaseRestBaseUrl() + "/" + String(pathname || "").replace(/^\/+/, ""), {
+    method: options.method || "GET",
+    headers: supabaseHeaders({
+      ...(options.body ? { "content-type":"application/json" } : {}),
+      ...(options.prefer ? { prefer: options.prefer } : {}),
+      ...(options.headers || {})
+    }),
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  if (!response.ok) {
+    const detail = typeof data === "string" ? data : data?.message || data?.error || response.statusText;
+    throw new Error("Supabase DB " + response.status + ": " + detail);
+  }
+  return data;
+}
+
+function coreRecordId(collection, item, index = 0) {
+  if (singletonCollections.has(collection)) return "singleton";
+  return String(item?.id || item?.postId || item?.title || item?.name || collection + "-" + index);
+}
+
+function coreRecordsFromState(state = {}) {
+  const rows = [];
+  for (const collection of coreStateCollections) {
+    const value = state[collection];
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => rows.push({ collection, item_id: coreRecordId(collection, item, index), payload: item || {}, updated_at: new Date().toISOString() }));
+    } else if (typeof value === "object") {
+      rows.push({ collection, item_id: "singleton", payload: value, updated_at: new Date().toISOString() });
+    }
+  }
+  return rows;
+}
+
+function applyCoreRecordsToState(baseState = {}, rows = []) {
+  const next = { ...baseState };
+  for (const collection of coreStateCollections) {
+    if (singletonCollections.has(collection)) continue;
+    if (next[collection] === undefined) next[collection] = [];
+  }
+  const grouped = new Map();
+  for (const row of rows || []) {
+    const collection = row.collection;
+    if (!coreStateCollections.includes(collection)) continue;
+    if (!grouped.has(collection)) grouped.set(collection, []);
+    grouped.get(collection).push(row);
+  }
+  for (const [collection, records] of grouped.entries()) {
+    if (singletonCollections.has(collection)) {
+      next[collection] = records[0]?.payload || {};
+    } else {
+      next[collection] = records.map((row) => row.payload).filter(Boolean);
+    }
+  }
+  if (!next.dataRoomItems?.length && Array.isArray(next.dataRoom)) next.dataRoomItems = next.dataRoom;
+  if (!next.dataRoom?.length && Array.isArray(next.dataRoomItems)) next.dataRoom = next.dataRoomItems;
+  return next;
+}
+
 function loadLocalEnv() {
   const envPath = path.join(rootDir, ".env.local");
   if (!existsSync(envPath)) return;
@@ -50,11 +174,23 @@ function mergeSocialAccounts(raw = [], seeded = []) {
   return [...raw, ...seeded.filter((item) => !seen.has(item.platform))];
 }
 
+function compactImageReference(value = "") {
+  const text = String(value || "");
+  if (text.startsWith("data:image/")) return "";
+  if (text.length > 10000 && !text.startsWith("http") && !text.startsWith("/")) return "";
+  return text;
+}
+
 function compactPostImageForLocal(image = {}) {
+  const localPlaceholderImageUrl = image.generationMode === "local_branded_placeholder"
+    && String(image.imageUrl || "").startsWith("data:image/svg+xml")
+    ? image.imageUrl
+    : compactImageReference(image.imageUrl);
   return {
     ...image,
-    imageUrl: image.imageUrl || "",
-    finalImageUrl: image.finalImageUrl || "",
+    imageUrl: localPlaceholderImageUrl,
+    finalImageUrl: compactImageReference(image.finalImageUrl),
+    finalPngUrl: compactImageReference(image.finalPngUrl),
     imagePrompt: image.imagePrompt || "",
     generationError: image.generationError || "",
     rateLimited: Boolean(image.rateLimited),
@@ -67,14 +203,17 @@ function compactPostImageForLocal(image = {}) {
 export async function getSupabaseHealth() {
   await readLocalEnv();
   const configured = Boolean(process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY));
-  return {
-    configured,
-    connected: false,
-    mode: "local_json_fallback",
-    error: configured
-      ? "Supabase runtime store is disabled locally. Using local JSON fallback."
-      : "Supabase env vars are missing. Using local JSON fallback."
-  };
+  const requestedBackend = requestedStorageBackend();
+  const mode = localDemoMode() ? "local_demo" : requestedBackend === "supabase" ? "supabase" : "local_json_fallback";
+  if (!configured) {
+    return { configured:false, connected:false, mode, table:supabaseRecordsTable, requestedBackend, error:"Supabase env vars are missing. Using local JSON fallback when needed." };
+  }
+  try {
+    await supabaseRestRequest(supabaseRecordsTable + "?select=collection,item_id&limit=1");
+    return { configured:true, connected:true, mode, table:supabaseRecordsTable, requestedBackend, error:"" };
+  } catch (error) {
+    return { configured:true, connected:false, mode, table:supabaseRecordsTable, requestedBackend, error:String(error.message || error).slice(0, 500) };
+  }
 }
 
 export class JsonStore {
@@ -208,6 +347,65 @@ export class JsonStore {
   }
 }
 
+
+export class SupabaseCoreStore extends JsonStore {
+  constructor(initialState) {
+    super(initialState);
+    this.kind = "supabase";
+    this.lastError = "";
+  }
+
+  async readState() {
+    let fallback = { ...this.initialState };
+    try {
+      if (existsSync(dataPath)) fallback = await super.readState();
+    } catch {
+      fallback = { ...this.initialState };
+    }
+    try {
+      const rows = await supabaseRestRequest(supabaseRecordsTable + "?select=collection,item_id,payload,updated_at");
+      this.lastError = "";
+      return { ...applyCoreRecordsToState(fallback, rows || []), persistence:"supabase" };
+    } catch (error) {
+      this.lastError = String(error.message || error).slice(0, 500);
+      return { ...fallback, persistence:"supabase_unavailable", persistenceError:this.lastError };
+    }
+  }
+
+  async writeState(state) {
+    this.writeQueue = this.writeQueue.then(() => this.writeStateNow(state));
+    return this.writeQueue;
+  }
+
+  async writeStateNow(state) {
+    const rows = coreRecordsFromState(state);
+    if (!rows.length) return;
+    await supabaseRestRequest(supabaseRecordsTable + "?on_conflict=collection,item_id", {
+      method:"POST",
+      body: rows,
+      prefer:"resolution=merge-duplicates,return=minimal"
+    });
+    this.lastError = "";
+  }
+}
+
 export function createStore(initialState) {
+  const backend = requestedStorageBackend();
+  if (!localDemoMode() && backend === "supabase" && supabaseDatabaseConfigured()) {
+    return new SupabaseCoreStore(initialState);
+  }
   return new JsonStore(initialState);
 }
+
+export function storageRuntimeConfig() {
+  return {
+    localDemoMode: localDemoMode(),
+    requestedStorageBackend: requestedStorageBackend(),
+    activeStorageBackend: !localDemoMode() && requestedStorageBackend() === "supabase" && supabaseDatabaseConfigured() ? "supabase" : "json",
+    appBaseUrl: process.env.APP_BASE_URL || process.env.PUBLIC_APP_BASE_URL || "",
+    supabaseDbConfigured: supabaseDatabaseConfigured(),
+    supabaseRecordsTable
+  };
+}
+
+export { coreStateCollections, coreRecordsFromState, supabaseRestRequest };

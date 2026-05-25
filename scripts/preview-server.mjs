@@ -4,7 +4,10 @@ import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createStore, getSupabaseHealth } from "./storage.mjs";
+import { createStore, getSupabaseHealth, storageRuntimeConfig } from "./storage.mjs";
+import { analyzeOperations } from "./priority-engine.mjs";
+import { buildAutonomyGovernance, buildAutonomyReport, runAutonomyCycleOnState } from "./autonomy-engine.mjs";
+import { authorizeRequest, publicActor, roleDefinitions } from "./access-control.mjs";
 import {
   channelSetup,
   channelSetupMessage,
@@ -14,11 +17,12 @@ import {
   publicChannelSetup
 } from "./channel-connectors.mjs";
 
-const port = Number(process.env.PORT ?? 3000);
 const assetRoot = new URL("../", import.meta.url);
+loadLocalEnv();
+const port = Number(process.env.PORT ?? 3001);
+const host = process.env.HOST || "127.0.0.1";
 const assetCache = new Map();
 const designSystem = loadDesignSystem();
-loadLocalEnv();
 
 function assetDataUri(relativePath, mimeType = "image/png") {
   if (assetCache.has(relativePath)) return assetCache.get(relativePath);
@@ -239,6 +243,15 @@ function wilmaPoseAssetsFromDisk() {
 
 function loadDesignSystem() {
   const designUrl = new URL("../DESIGN.md", import.meta.url);
+  const interfaceCssUrl = new URL("../assets/styles/legalese-atlas.css", import.meta.url);
+  const readInterfaceCss = () => {
+    try {
+      return existsSync(interfaceCssUrl) ? readFileSync(interfaceCssUrl, "utf8") : "";
+    } catch (error) {
+      console.warn(`Interface CSS unavailable: ${error.message}`);
+      return "";
+    }
+  };
   const fallback = {
     version: "fallback",
     colors: {
@@ -253,7 +266,8 @@ function loadDesignSystem() {
       softLight: "#E5EBEB",
       white: "#FFFFFF"
     },
-    text: ""
+    text: "",
+    interfaceCss: readInterfaceCss()
   };
   if (!existsSync(designUrl)) {
     return { ...fallback, version: "missing" };
@@ -283,7 +297,8 @@ function loadDesignSystem() {
       softLight: readToken("soft_light", "#E5EBEB"),
       white: readToken("white", "#FFFFFF")
     },
-    text
+    text,
+    interfaceCss: readInterfaceCss()
   };
 }
 
@@ -312,32 +327,77 @@ function approvedLogoAssets(assets) {
     });
 }
 
-function loadLocalEnv() {
-  const envUrl = new URL("../.env.local", import.meta.url);
-  if (!existsSync(envUrl)) return;
+function parseLocalEnvValue(value = "") {
+  const trimmed = String(value || "").trim();
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function loadEnvFile(relativePath) {
+  const envUrl = new URL(`../${relativePath}`, import.meta.url);
+  if (!existsSync(envUrl)) return false;
   let lines = [];
   try {
     lines = readFileSync(envUrl, "utf8").split(/\r?\n/);
   } catch (error) {
-    console.warn(`Local env file unavailable: ${error.message}`);
-    return;
+    console.warn(`Local env file unavailable: ${relativePath}: ${error.message}`);
+    return false;
   }
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
     const index = trimmed.indexOf("=");
     const key = trimmed.slice(0, index).trim();
-    const value = trimmed.slice(index + 1).trim().replace(/^['"]|['"]$/g, "");
-    if (key && !process.env[key]) process.env[key] = value;
+    const value = parseLocalEnvValue(trimmed.slice(index + 1));
+    if (key && process.env[key] === undefined) process.env[key] = value;
   }
+  return true;
 }
 
-const platforms = ["linkedin", "x", "facebook", "instagram", "threads"];
+function loadLocalEnv() {
+  loadEnvFile(".env");
+  loadEnvFile(".env.local");
+}
+
+function booleanEnv(value) {
+  return String(value || "").toLowerCase() === "true";
+}
+
+function openAIImageEnvStatus() {
+  return {
+    openaiKeyPresent: Boolean(process.env.OPENAI_API_KEY),
+    openaiImageModel: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5",
+    openaiImageQuality: process.env.OPENAI_IMAGE_QUALITY || "medium",
+    allowLocalImageFallback: booleanEnv(process.env.ALLOW_LOCAL_IMAGE_FALLBACK)
+  };
+}
+
+function openAIDraftEnvStatus() {
+  return {
+    openaiKeyPresent: Boolean(process.env.OPENAI_API_KEY),
+    openaiDraftModel: process.env.OPENAI_DRAFT_MODEL || process.env.OPENAI_MODEL || "gpt-5.2",
+    aiDraftModeAvailable: Boolean(process.env.OPENAI_API_KEY)
+  };
+}
+
+function logOpenAIImageConfigStatus() {
+  const status = openAIImageEnvStatus();
+  console.log("OpenAI image config:");
+  console.log(`- key present: ${status.openaiKeyPresent}`);
+  console.log(`- model: ${status.openaiImageModel}`);
+  console.log(`- quality: ${status.openaiImageQuality}`);
+  console.log(`- local fallback: ${status.allowLocalImageFallback}`);
+}
+
+const platforms = ["linkedin", "x", "facebook", "instagram", "tiktok", "threads"];
 const platformLabels = {
   linkedin: "LinkedIn",
   x: "X / Twitter",
   facebook: "Facebook Page",
   instagram: "Instagram",
+  tiktok: "TikTok",
   threads: "Threads"
 };
 const channelLabels = platformLabels;
@@ -346,6 +406,7 @@ const channelDescriptions = {
   x: "Short observations, punchy takes, founder voice, sharp LegalEase POV.",
   facebook: "Community trust, local updates, plain-English education, partner posts.",
   instagram: "Image-first Wilma explainers, myth checks, campaign posters, community trust.",
+  tiktok: "Short-form video-ready explainers and campaign clips. Fails closed until connector is implemented.",
   threads: "Plain-English commentary, myth checks, short conversations."
 };
 const channelRequiredEnv = {
@@ -353,6 +414,7 @@ const channelRequiredEnv = {
   x: ["X_CLIENT_ID", "X_CLIENT_SECRET", "X_REDIRECT_URI"],
   facebook: ["META_CLIENT_ID", "META_CLIENT_SECRET", "META_REDIRECT_URI"],
   instagram: ["META_CLIENT_ID", "META_CLIENT_SECRET", "META_REDIRECT_URI"],
+  tiktok: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REDIRECT_URI"],
   threads: ["THREADS_CLIENT_ID", "THREADS_CLIENT_SECRET", "THREADS_REDIRECT_URI"]
 };
 
@@ -361,6 +423,7 @@ const livePostingEnvKeys = {
   x: ["ENABLE_LIVE_X_POSTING", "ENABLE_LIVE_TWITTER_POSTING"],
   facebook: ["ENABLE_LIVE_FACEBOOK_POSTING"],
   instagram: ["ENABLE_LIVE_INSTAGRAM_POSTING"],
+  tiktok: ["ENABLE_LIVE_TIKTOK_POSTING"],
   threads: ["ENABLE_LIVE_THREADS_POSTING"]
 };
 
@@ -393,11 +456,263 @@ function publicAppBaseUrl() {
   return String(process.env.PUBLIC_APP_BASE_URL || process.env.APP_PUBLIC_URL || "").replace(/\/+$/, "");
 }
 
+function localDemoModeEnabled() {
+  return ["true", "1", "yes", "on"].includes(String(process.env.LOCAL_DEMO_MODE || "false").toLowerCase());
+}
+
+function activeStorageBackend() {
+  return storageRuntimeConfig().activeStorageBackend;
+}
+
+function hostedModeEnabled() {
+  return !localDemoModeEnabled() && activeStorageBackend() === "supabase";
+}
+
+function appBaseUrl() {
+  return String(process.env.APP_BASE_URL || process.env.PUBLIC_APP_BASE_URL || process.env.APP_PUBLIC_URL || "").replace(/\/+$/, "");
+}
+
 function finalImagePublicUrl(image = {}) {
-  const value = String(image.finalImageUrl || image.finalPngUrl || image.imageUrl || "").trim();
+  const value = String(
+    image.publicImageUrl ||
+    image.assetBundleUsed?.finalImage?.publicImageUrl ||
+    image.finalExportKit?.publicImageUrl ||
+    image.finalImageUrl ||
+    image.finalPngUrl ||
+    image.imageUrl ||
+    ""
+  ).trim();
   if (/^https:\/\//i.test(value) && !/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(value)) return value;
   if (value.startsWith("/") && publicAppBaseUrl()) return `${publicAppBaseUrl()}${value}`;
   return "";
+}
+
+function explicitPublicImageUrl(post = {}, image = {}) {
+  return String(
+    post.publicImageUrl ||
+    post.finalExportKit?.publicImageUrl ||
+    image.publicImageUrl ||
+    image.assetBundleUsed?.finalImage?.publicImageUrl ||
+    image.finalExportKit?.publicImageUrl ||
+    ""
+  ).trim();
+}
+
+function hostedImagePublicUrl(post = {}, image = {}) {
+  const explicit = explicitPublicImageUrl(post, image);
+  if (publicHttpsUrlIsReady(explicit)) return explicit;
+  return finalImagePublicUrl(image);
+}
+
+function publicHttpsAppBaseUrlIsReady() {
+  const value = publicAppBaseUrl();
+  return /^https:\/\//i.test(value) && !/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(value);
+}
+
+function publicHttpsUrlIsReady(value = "") {
+  return /^https:\/\//i.test(String(value || "")) && !/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(String(value || ""));
+}
+
+function supabaseStorageBucket() {
+  return process.env.SUPABASE_STORAGE_BUCKET || "social-assets";
+}
+
+function supabaseServiceRoleKeyStatus() {
+  const value = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  const jwtParts = value.split(".").length;
+  let jwtRole = "";
+  try {
+    jwtRole = jwtParts === 3
+      ? JSON.parse(Buffer.from(value.split(".")[1] || "", "base64url").toString("utf8")).role || ""
+      : "";
+  } catch {
+    jwtRole = "";
+  }
+  const format = !value
+    ? "missing"
+    : value.startsWith("sb_secret_")
+      ? "secret"
+      : jwtParts === 3
+        ? "legacy_jwt"
+        : "unrecognized";
+  const roleOk = format === "secret" || (format === "legacy_jwt" && jwtRole === "service_role");
+  return {
+    present: Boolean(value),
+    length: value.length,
+    format,
+    jwtRole,
+    looksUsable: roleOk
+  };
+}
+
+function supabaseStorageStatus() {
+  const url = String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+  const serviceRoleKey = supabaseServiceRoleKeyStatus();
+  const bucket = supabaseStorageBucket();
+  return {
+    configured: Boolean(url && serviceRoleKey.present && bucket),
+    urlPresent: Boolean(url),
+    serviceRoleKeyPresent: serviceRoleKey.present,
+    serviceRoleKeyLength: serviceRoleKey.length,
+    serviceRoleKeyFormat: serviceRoleKey.format,
+    serviceRoleKeyRole: serviceRoleKey.jwtRole || "",
+    serviceRoleKeyLooksUsable: serviceRoleKey.looksUsable,
+    bucket,
+    message: url && serviceRoleKey.present
+      ? serviceRoleKey.looksUsable
+        ? `Supabase Storage configured for ${bucket}.`
+        : serviceRoleKey.format === "legacy_jwt" && serviceRoleKey.jwtRole !== "service_role"
+          ? "SUPABASE_SERVICE_ROLE_KEY is a JWT, but it is not the service_role key. It appears to be an anon key."
+          : "SUPABASE_SERVICE_ROLE_KEY is present but does not look like a Supabase service_role JWT or sb_secret key."
+      : "Supabase Storage is not configured. Add SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and SUPABASE_STORAGE_BUCKET to .env.local."
+  };
+}
+
+function supabaseStorageObjectPublicUrl(objectPath = "") {
+  const baseUrl = String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+  if (!baseUrl || !objectPath) return "";
+  const encoded = objectPath.split("/").map((part) => encodeURIComponent(part)).join("/");
+  return `${baseUrl}/storage/v1/object/public/${encodeURIComponent(supabaseStorageBucket())}/${encoded}`;
+}
+
+function safeSupabaseError(error) {
+  const cause = error?.cause;
+  const causeDetail = cause?.code || cause?.message || "";
+  const hostname = (() => {
+    try {
+      return new URL(process.env.SUPABASE_URL || "").hostname;
+    } catch {
+      return "";
+    }
+  })();
+  const base = error?.storageSafeMessage ||
+    (error?.message === "fetch failed" && causeDetail
+      ? `Supabase Storage network request failed: ${causeDetail}${hostname ? ` for ${hostname}` : ""}. Check SUPABASE_URL and network access.`
+      : String(error?.message || error || "Supabase Storage request failed."));
+  return String(base)
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [redacted]")
+    .replace(/apikey['"]?\s*:\s*['"]?[A-Za-z0-9._-]+/gi, "apikey:[redacted]")
+    .slice(0, 600);
+}
+
+async function supabaseStorageFetch(pathname, options = {}) {
+  const status = supabaseStorageStatus();
+  if (!status.configured) throw new Error(status.message);
+  if (!status.serviceRoleKeyLooksUsable) throw new Error(status.message);
+  const baseUrl = String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+  const route = String(pathname || "").replace(/^\/+/, "");
+  const requestUrl = `${baseUrl}/storage/v1/${route}`;
+  let response;
+  try {
+    response = await fetch(requestUrl, {
+      method: options.method || "GET",
+      headers: {
+        authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+        ...(options.upsert ? { "x-upsert": "true" } : {}),
+        ...(options.contentType ? { "content-type": options.contentType } : {})
+      },
+      body: options.body
+    });
+  } catch (error) {
+    const wrapped = new Error(error.message || "fetch failed");
+    wrapped.cause = error.cause;
+    wrapped.storageSafeMessage = safeSupabaseError(error);
+    throw wrapped;
+  }
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+  if (!response.ok) {
+    const detail = typeof data === "string" ? data : data?.message || data?.error || text || response.statusText;
+    const lowered = String(detail || "").toLowerCase();
+    let safeMessage = `Supabase Storage ${response.status}: ${safeSupabaseError(detail)}`;
+    const keyStatus = supabaseServiceRoleKeyStatus();
+    if (lowered.includes("invalid compact jws")) {
+      safeMessage = keyStatus.format === "secret"
+        ? "Supabase Storage rejected the configured sb_secret key because this direct Storage endpoint expects a JWT-style service_role key. Use the Legacy API Keys service_role JWT for this uploader."
+        : "SUPABASE_SERVICE_ROLE_KEY is not a valid Supabase service_role JWT.";
+    }
+    if (response.status === 404 || lowered.includes("not found") || lowered.includes("does not exist")) {
+      safeMessage = `Bucket ${supabaseStorageBucket()} does not exist.`;
+    }
+    const error = new Error(safeMessage);
+    error.status = response.status;
+    error.storageResponse = data;
+    error.storageSafeMessage = safeMessage;
+    throw error;
+  }
+  return { ok: true, status: response.status, data };
+}
+
+async function uploadBytesToSupabaseStorage(objectPath = "", bytes, contentType = "application/octet-stream") {
+  if (!objectPath) throw new Error("Storage object path is required.");
+  await supabaseStorageFetch("object/" + encodeURIComponent(supabaseStorageBucket()) + "/" + objectPath, {
+    method: "PUT",
+    body: Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes),
+    contentType,
+    upsert: true
+  });
+  return {
+    bucket: supabaseStorageBucket(),
+    objectPath,
+    publicUrl: supabaseStorageObjectPublicUrl(objectPath),
+    uploadedAt: new Date().toISOString()
+  };
+}
+
+async function diagnoseSupabaseStorage({ testUpload = false } = {}) {
+  const status = supabaseStorageStatus();
+  const hostname = (() => {
+    try {
+      return new URL(process.env.SUPABASE_URL || "").hostname;
+    } catch {
+      return "";
+    }
+  })();
+  const result = {
+    ...status,
+    hostname,
+    expectedHostname: "chmoamfoqmjuvpdkkati.supabase.co",
+    hostnameLooksValid: hostname === "chmoamfoqmjuvpdkkati.supabase.co",
+    bucketReachable: false,
+    bucketPublic: null,
+    uploadTestPossible: false,
+    uploadPermissionWorks: false,
+    publicUrlGenerated: false,
+    publicUrl: "",
+    checkedAt: new Date().toISOString(),
+    error: ""
+  };
+  if (!status.configured) return result;
+  try {
+    const bucket = await supabaseStorageFetch(`bucket/${encodeURIComponent(status.bucket)}`);
+    result.bucketReachable = true;
+    result.bucketPublic = Boolean(bucket.data?.public);
+    if (result.bucketPublic === false) {
+      result.error = "Bucket exists but public URL may not be available.";
+    }
+    result.uploadTestPossible = true;
+    if (testUpload) {
+      const objectPath = `_diagnostics/storage-check-${Date.now()}.txt`;
+      await supabaseStorageFetch(`object/${encodeURIComponent(status.bucket)}/${objectPath}`, {
+        method: "PUT",
+        body: Buffer.from(`ok ${result.checkedAt}`),
+        contentType: "text/plain",
+        upsert: true
+      });
+      result.uploadPermissionWorks = true;
+      result.publicUrl = supabaseStorageObjectPublicUrl(objectPath);
+      result.publicUrlGenerated = publicHttpsUrlIsReady(result.publicUrl);
+    }
+  } catch (error) {
+    result.error = safeSupabaseError(error);
+  }
+  return result;
 }
 
 function accountEnvAccessToken(platform = "") {
@@ -405,6 +720,7 @@ function accountEnvAccessToken(platform = "") {
   if (platform === "instagram") return process.env.INSTAGRAM_ACCESS_TOKEN || process.env.META_PAGE_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || "";
   if (platform === "threads") return process.env.THREADS_ACCESS_TOKEN || "";
   if (platform === "x") return process.env.X_ACCESS_TOKEN || process.env.TWITTER_ACCESS_TOKEN || "";
+  if (platform === "tiktok") return process.env.TIKTOK_ACCESS_TOKEN || "";
   return "";
 }
 
@@ -413,6 +729,7 @@ function accountEnvId(platform = "") {
   if (platform === "instagram") return process.env.INSTAGRAM_USER_ID || process.env.IG_USER_ID || "";
   if (platform === "threads") return process.env.THREADS_USER_ID || "";
   if (platform === "x") return process.env.X_USER_ID || process.env.TWITTER_USER_ID || "";
+  if (platform === "tiktok") return process.env.TIKTOK_USER_ID || process.env.TIKTOK_OPEN_ID || "";
   return "";
 }
 
@@ -463,6 +780,14 @@ const credentialSpecs = [
     description: "Server-side persistence key. Never expose this in the browser.",
     nextAction: "Add SUPABASE_SERVICE_ROLE_KEY for server-side persistence."
   },
+  {
+    key: "SUPABASE_STORAGE_BUCKET",
+    label: "Supabase Storage bucket",
+    category: "supabase",
+    severity: "required",
+    description: "Public bucket used to host final PNGs for social platforms.",
+    nextAction: "Set SUPABASE_STORAGE_BUCKET=social-assets and make the bucket public."
+  },
   ...channelRequiredEnv.linkedin.map((key) => ({
     key,
     label: `LinkedIn ${key.replace("LINKEDIN_", "").replaceAll("_", " ").toLowerCase()}`,
@@ -511,6 +836,14 @@ const credentialSpecs = [
     description: "Server-side OAuth 2 user token for X live publishing.",
     nextAction: "Add X_ACCESS_TOKEN to .env.local when enabling X / Twitter."
   },
+  ...["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REDIRECT_URI", "TIKTOK_ACCESS_TOKEN", "TIKTOK_OPEN_ID"].map((key) => ({
+    key,
+    label: `TikTok ${key.replace("TIKTOK_", "").replaceAll("_", " ").toLowerCase()}`,
+    category: "tiktok",
+    severity: key === "TIKTOK_ACCESS_TOKEN" || key === "TIKTOK_OPEN_ID" ? "recommended" : "required",
+    description: "Required later for TikTok live publishing. TikTok remains fail-closed until the connector is implemented.",
+    nextAction: `Add ${key} to .env.local only after TikTok app approval and connector implementation.`
+  })),
   ...Object.values(livePostingEnvKeys).flat().map((key) => ({
     key,
     label: key.replace("ENABLE_LIVE_", "").replace("_POSTING", "").replaceAll("_", " ") + " live gate",
@@ -629,6 +962,10 @@ function publicAssetBundleUsed(bundle = {}) {
 	          ready: Boolean(bundle.finalImage.ready),
 	          url: safeImageUrl(bundle.finalImage.url, bundle.finalImage.localPath),
 	          localPath: bundle.finalImage.localPath || "",
+            publicImageUrl: bundle.finalImage.publicImageUrl || "",
+            storageBucket: bundle.finalImage.storageBucket || "",
+            storageObjectPath: bundle.finalImage.storageObjectPath || "",
+            uploadedAt: bundle.finalImage.uploadedAt || "",
 	          fileSize: Number(bundle.finalImage.fileSize || 0),
 	          width: Number(bundle.finalImage.width || 0),
 	          height: Number(bundle.finalImage.height || 0),
@@ -653,6 +990,11 @@ function publicPostImage(image = {}) {
 	    finalImageUrl: finalUrl,
 	    finalPngUrl: finalUrl,
 	    finalPngPath: image.finalPngPath || "",
+      localFinalPngPath: image.localFinalPngPath || image.finalPngPath || image.assetBundleUsed?.finalImage?.localPath || "",
+      publicImageUrl: image.publicImageUrl || image.assetBundleUsed?.finalImage?.publicImageUrl || "",
+      publicImageUploadedAt: image.publicImageUploadedAt || image.assetBundleUsed?.finalImage?.uploadedAt || "",
+      supabaseStorageBucket: image.supabaseStorageBucket || image.assetBundleUsed?.finalImage?.storageBucket || "",
+      supabaseStorageObjectPath: image.supabaseStorageObjectPath || image.assetBundleUsed?.finalImage?.storageObjectPath || "",
 	    finalPngFileSize: Number(image.finalPngFileSize || 0),
 	    finalPngGeneratedAt: image.finalPngGeneratedAt || "",
     generationStatus: image.generationStatus,
@@ -688,8 +1030,23 @@ function publicPostImage(image = {}) {
 }
 
 function withPublicChannelSetup(state) {
+  state = analyzeOperations(state);
+  const hostingConfig = storageRuntimeConfig();
+  const autonomy = buildAutonomyReport(state);
+  const autonomyGovernance = buildAutonomyGovernance(state);
   return {
     ...state,
+    autonomyActions: autonomy.actions,
+    autonomySummary: autonomy.summary,
+    autonomyPolicy: autonomy.policy,
+    autonomyGovernance: {
+      roleMatrix: autonomyGovernance.roleMatrix,
+      runbooks: autonomyGovernance.runbooks,
+      eventIntelligence: autonomyGovernance.eventIntelligence,
+      revenueAwareness: autonomyGovernance.revenueAwareness,
+      ownership: autonomyGovernance.ownership,
+      safetyRails: autonomyGovernance.safetyRails
+    },
     settings: {
       ...(state.settings || {}),
       sourceItems: sourceItemsForState(state)
@@ -698,13 +1055,28 @@ function withPublicChannelSetup(state) {
     runtime: {
       ...(state.runtime || {}),
 	      liveLinkedInPostingEnabled: process.env.ENABLE_LIVE_LINKEDIN_POSTING === "true",
-	      livePostingGates: Object.fromEntries([...platforms, "threads"].map((platform) => [platform, liveGateSummary(platform)])),
+	      livePostingGates: Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)])),
 	      openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
       oauthTokenEncryptionConfigured: Boolean(process.env.OAUTH_TOKEN_ENCRYPTION_KEY),
-      imageModel: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1",
+      accessControl: {
+        roles: Object.fromEntries(Object.entries(roleDefinitions).map(([key, value]) => [key, { label:value.label, permissions:value.can }])),
+        authRequired: storageRuntimeConfig().requestedStorageBackend === "supabase" && !storageRuntimeConfig().localDemoMode,
+        localFallbackOpen: storageRuntimeConfig().activeStorageBackend === "json"
+      },
+      imageModel: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5",
+      draftModel: openAIDraftEnvStatus().openaiDraftModel,
       visualStylePreset: narrativeInfrastructurePreset,
       credentialReadiness: getCredentialReadiness(),
-      manualModeActive: platforms.every((platform) => !livePostingEnabledForChannel(platform))
+      supabaseStorage: supabaseStorageStatus(),
+      manualModeActive: platforms.every((platform) => !livePostingEnabledForChannel(platform)),
+      hosting: {
+        localDemoMode: hostingConfig.localDemoMode,
+        storageBackend: hostingConfig.activeStorageBackend,
+        requestedStorageBackend: hostingConfig.requestedStorageBackend,
+        appBaseUrl: appBaseUrl(),
+        supabaseDbConfigured: hostingConfig.supabaseDbConfigured,
+        supabaseRecordsTable: hostingConfig.supabaseRecordsTable
+      }
     },
     socialAccounts: (state.socialAccounts || []).map((account) => {
       const safe = safeChannelStatus(account);
@@ -835,6 +1207,636 @@ function composePublishText(post, channel = post.platform) {
     .trim();
 }
 
+function normalizePlatformName(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  if (["twitter", "x/twitter", "x-twitter", "x"].includes(text)) return "x";
+  if (text.includes("linkedin")) return "linkedin";
+  if (text.includes("facebook")) return "facebook";
+  if (text.includes("instagram")) return "instagram";
+  if (text.includes("thread")) return "threads";
+  if (text.includes("tiktok")) return "tiktok";
+  return platforms.includes(text) ? text : "";
+}
+
+function splitList(value = "") {
+  return String(value || "")
+    .split(/[,|]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseIdeaBlock(block = {}) {
+  const get = (name) => {
+    const pattern = new RegExp(`^${name}\\s*:\\s*(.+)$`, "im");
+    return String(block || "").match(pattern)?.[1]?.trim() || "";
+  };
+  const title = get("Title");
+  const rawIdea = get("Idea") || get("Raw idea") || get("Description");
+  if (!title && !rawIdea) return null;
+  const platformsValue = get("Platforms") || get("Platform");
+  const parsedPlatforms = splitList(platformsValue).map(normalizePlatformName).filter(Boolean);
+  return {
+    id: `idea-${crypto.randomUUID()}`,
+    title: title || rawIdea.slice(0, 80),
+    rawIdea,
+    bucket: get("Bucket") || get("Content bucket") || "LegalEase Growth",
+    audience: get("Audience") || "partners",
+    platforms: parsedPlatforms.length ? parsedPlatforms : ["linkedin"],
+    campaign: get("Campaign"),
+    cta: get("CTA") || get("Call to action") || "Learn more",
+    creativeDirection: get("Creative") || get("Creative direction") || "Clean editorial LegalEase graphic.",
+    usesWilma: String(get("Wilma") || "optional").toLowerCase().includes("yes") ? "yes" : String(get("Wilma") || "").toLowerCase().includes("no") ? "no" : "optional",
+    complianceRisk: String(get("Risk") || "low").toLowerCase().includes("high") ? "high" : String(get("Risk") || "").toLowerCase().includes("medium") ? "medium" : "low",
+    priority: String(get("Priority") || "medium").toLowerCase().includes("high") ? "high" : String(get("Priority") || "").toLowerCase().includes("low") ? "low" : "medium",
+    status: "ready_to_generate",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    nextBestAction: "Generate draft"
+  };
+}
+
+function parseCsvIdeas(text = "") {
+  const lines = String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length < 2 || !lines[0].includes(",")) return [];
+  const headers = lines[0].split(",").map((header) => header.trim().toLowerCase());
+  return lines.slice(1).map((line) => {
+    const values = line.split(",").map((value) => value.trim());
+    const row = Object.fromEntries(headers.map((header, index) => [header, values[index] || ""]));
+    return {
+      id: `idea-${crypto.randomUUID()}`,
+      title: row.title || row.idea || "Untitled idea",
+      rawIdea: row.idea || row.rawidea || row.description || row.title || "",
+      bucket: row.bucket || "LegalEase Growth",
+      audience: row.audience || "partners",
+      platforms: splitList(row.platforms || row.platform || "linkedin").map(normalizePlatformName).filter(Boolean),
+      campaign: row.campaign || "",
+      cta: row.cta || "Learn more",
+      creativeDirection: row.creative || row.creativedirection || "Clean editorial LegalEase graphic.",
+      usesWilma: row.wilma || "optional",
+      complianceRisk: row.risk || "low",
+      priority: row.priority || "medium",
+      status: "ready_to_generate",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      nextBestAction: "Generate draft"
+    };
+  }).filter((item) => item.title || item.rawIdea);
+}
+
+function parseContentBankIdeas(input = "") {
+  const text = String(input || "").trim();
+  if (!text) throw new Error("Paste at least one content idea.");
+  if (text.startsWith("[") || text.startsWith("{")) {
+    const raw = JSON.parse(text);
+    const rows = Array.isArray(raw) ? raw : [raw];
+    return rows.map((item) => ({
+      id: item.id || `idea-${crypto.randomUUID()}`,
+      title: item.title || item.rawIdea || "Untitled idea",
+      rawIdea: item.rawIdea || item.idea || item.description || "",
+      bucket: item.bucket || item.contentBucket || "LegalEase Growth",
+      audience: item.audience || "partners",
+      platforms: Array.isArray(item.platforms) ? item.platforms.map(normalizePlatformName).filter(Boolean) : splitList(item.platforms || item.platform || "linkedin").map(normalizePlatformName).filter(Boolean),
+      campaign: item.campaign || "",
+      cta: item.cta || "Learn more",
+      creativeDirection: item.creativeDirection || item.creative || "Clean editorial LegalEase graphic.",
+      usesWilma: item.usesWilma || item.wilma || "optional",
+      complianceRisk: item.complianceRisk || item.risk || "low",
+      priority: item.priority || "medium",
+      status: item.status || "ready_to_generate",
+      createdAt: item.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      nextBestAction: item.nextBestAction || "Generate draft"
+    }));
+  }
+  const csvIdeas = parseCsvIdeas(text);
+  if (csvIdeas.length) return csvIdeas;
+  const blocks = text.split(/\n\s*\n(?=Title\s*:)/i);
+  const ideas = blocks.map(parseIdeaBlock).filter(Boolean);
+  if (!ideas.length) throw new Error("Could not parse ideas. Use Title:, Idea:, Bucket:, Platforms:, CTA:, Wilma:, Risk:, Creative:.");
+  return ideas;
+}
+
+function platformHookForIdea(idea = {}, platform = "linkedin") {
+  if (platform === "x") return `${idea.title}: ${String(idea.rawIdea || "").split(".")[0] || "make the next step clearer"}.`;
+  if (platform === "instagram" || platform === "tiktok") return idea.title;
+  return idea.title;
+}
+
+function localComplianceRewriteForIdea(idea = {}) {
+  if (idea.complianceRisk !== "high") return "";
+  return [
+    idea.rawIdea || idea.title || "This topic needs careful review.",
+    "This draft must stay general, avoid legal advice, avoid eligibility promises, and avoid any guarantee about filing, court approval, cleanup, employment, housing, or other outcomes.",
+    "Roger should review before approval."
+  ].join("\n\n");
+}
+
+function draftPostFromIdea(idea = {}, platform = "linkedin") {
+  const safePlatform = normalizePlatformName(platform) || "linkedin";
+  const now = new Date().toISOString();
+  const body = safePlatform === "x"
+    ? String(idea.rawIdea || idea.title || "").slice(0, 180)
+    : idea.rawIdea || `Explain: ${idea.title}`;
+  return {
+    id: `post-${slugify(idea.title)}-${safePlatform}-${crypto.randomUUID().slice(0, 8)}`,
+    title: idea.title,
+    platform: safePlatform,
+    status: idea.complianceRisk === "high" ? "needs_review" : "needs_review",
+    contentType: "content_bank_draft",
+    sourceType: "content_bank",
+    contentBankIdeaId: idea.id,
+    campaign: idea.campaign || "",
+    scheduledFor: "",
+    hook: platformHookForIdea(idea, safePlatform),
+    body,
+    cta: idea.cta || "Learn more",
+    hashtags: ["#LegalEase", ...(idea.bucket ? [`#${slugify(idea.bucket).replace(/-/g, "")}`] : [])],
+    complianceRisk: idea.complianceRisk || "low",
+    complianceNotes: idea.complianceRisk === "high"
+      ? "High-risk idea. Human compliance review required before approval."
+      : "Educational content only. No legal advice or guaranteed outcomes.",
+    complianceRewrite: localComplianceRewriteForIdea(idea),
+    createdAt: now,
+    updatedAt: now,
+    speaker: idea.usesWilma === "yes" ? "wilma" : "legalease",
+    audience: idea.audience || "partners",
+    contentBucket: idea.bucket || "LegalEase Growth",
+    targetChannels: [safePlatform],
+    copyReviewed: false,
+    copyReviewedAt: "",
+    overlayConfirmed: false,
+    imageFinalized: false,
+    finalPreviewConfirmed: false,
+    manualPostingKitReady: false,
+    publishingStatus: "approval_required",
+    publishErrorSummary: "",
+    creativeBrief: idea.creativeDirection || "Clean editorial LegalEase graphic.",
+    imageRiskLevel: idea.complianceRisk || "low",
+    wilmaImageWorkflow: {
+      state: "Needs Copy Review",
+      visualBucket: idea.bucket || "LegalEase Growth",
+      wilmaExpression: idea.usesWilma === "yes" ? "Helpful" : "",
+      wilmaPoseReferenceId: idea.usesWilma === "yes" ? "pose-03" : "",
+      wilmaPoseReferenceName: idea.usesWilma === "yes" ? "Helpful guide" : "",
+      platformFormatSize: wilmaPlatformFormatSize(safePlatform),
+      overlayText: idea.title,
+      imagePrompt: idea.creativeDirection || "",
+      negativePrompt: "No readable text, fake logos, legal guarantees, court victory imagery, mugshots, jail bars, or handcuffs.",
+      brandSafeRules: ["No legal guarantees", "No fake partner logos", "No readable fake text"],
+      overlayRules: ["Readable on mobile", "No outcome promises"]
+    },
+    recommendedPostingWindow: safePlatform === "linkedin" ? "Tue-Thu morning" : "This week",
+    approvalStatus: "needs_review",
+    nextBestAction: "Review copy"
+  };
+}
+
+function contentDraftPrompt(idea = {}, platform = "linkedin") {
+  const platformLabel = platformLabels[platform] || platform;
+  return `Create one approval-ready LegalEase social draft.
+
+Context:
+- Title: ${idea.title || ""}
+- Raw idea: ${idea.rawIdea || ""}
+- Bucket: ${idea.bucket || "LegalEase Growth"}
+- Audience: ${idea.audience || "partners"}
+- Platform: ${platformLabel}
+- Campaign: ${idea.campaign || "none"}
+- CTA: ${idea.cta || "Learn more"}
+- Creative direction: ${idea.creativeDirection || "Clean LegalEase editorial creative."}
+- Wilma usage: ${idea.usesWilma || "optional"}
+- Compliance risk: ${idea.complianceRisk || "low"}
+
+Rules:
+- Plain English, calm, useful, not hype.
+- No legal advice.
+- No eligibility guarantees.
+- No outcome guarantees.
+- No fake partner/government claims.
+- No claims that a court will approve anything.
+- If compliance risk is high, rewrite the draft to be safer and set complianceRewrite.
+- Keep X/Twitter under 260 characters if platform is X / Twitter.
+- Do not include final image text. Creative brief can describe art direction only.`;
+}
+
+function aiDraftResponseSchema() {
+  return {
+    type: "json_schema",
+    name: "legalese_social_draft",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        hook: { type: "string" },
+        body: { type: "string" },
+        cta: { type: "string" },
+        hashtags: { type: "array", items: { type: "string" } },
+        creativeBrief: { type: "string" },
+        complianceNotes: { type: "string" },
+        complianceRewrite: { type: "string" },
+        recommendedPostingWindow: { type: "string" }
+      },
+      required: ["hook", "body", "cta", "hashtags", "creativeBrief", "complianceNotes", "complianceRewrite", "recommendedPostingWindow"]
+    }
+  };
+}
+
+function extractOpenAIText(payload = {}) {
+  if (payload.output_text) return String(payload.output_text);
+  for (const item of payload.output || []) {
+    for (const content of item.content || []) {
+      if (content.text) return String(content.text);
+    }
+  }
+  return "";
+}
+
+function normalizeAIHashtags(values = []) {
+  return (Array.isArray(values) ? values : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .map((value) => value.startsWith("#") ? value : `#${value.replace(/^#+/, "")}`)
+    .slice(0, 6);
+}
+
+function applyAIDraftToPost(post = {}, ai = {}, meta = {}) {
+  const highRisk = post.complianceRisk === "high";
+  const saferBody = highRisk && ai.complianceRewrite ? ai.complianceRewrite : ai.body;
+  return {
+    ...post,
+    hook: String(ai.hook || post.hook || post.title).trim(),
+    body: String(saferBody || post.body || "").trim(),
+    cta: String(ai.cta || post.cta || "Learn more").trim(),
+    hashtags: normalizeAIHashtags(ai.hashtags).length ? normalizeAIHashtags(ai.hashtags) : post.hashtags,
+    creativeBrief: String(ai.creativeBrief || post.creativeBrief || "").trim(),
+    complianceNotes: String(ai.complianceNotes || post.complianceNotes || "").trim(),
+    complianceRewrite: String(ai.complianceRewrite || "").trim(),
+    originalAIDraftBody: highRisk && ai.body ? String(ai.body).trim() : "",
+    recommendedPostingWindow: String(ai.recommendedPostingWindow || post.recommendedPostingWindow || "This week").trim(),
+    generationMode: "ai_draft",
+    aiDraftStatus: "generated",
+    aiDraftModel: meta.model,
+    aiDraftGeneratedAt: meta.generatedAt,
+    aiDraftPromptVersion: "legalese-content-bank-ai-draft-v1",
+    approvalStatus: "needs_review",
+    status: "needs_review",
+    nextBestAction: highRisk ? "Review compliance rewrite" : "Review AI draft"
+  };
+}
+
+async function draftPostFromIdeaWithAI(idea = {}, platform = "linkedin") {
+  const localPost = draftPostFromIdea(idea, platform);
+  const apiKey = process.env.OPENAI_API_KEY;
+  const env = openAIDraftEnvStatus();
+  if (!apiKey) throw new Error("OPENAI_API_KEY is missing. Local fallback used.");
+  let response;
+  try {
+    response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: env.openaiDraftModel,
+        instructions: "You are LegalEase's careful social content drafter. Produce safe, approval-ready drafts only. Never claim legal outcomes or eligibility. Return structured JSON only.",
+        input: [{ role: "user", content: [{ type: "input_text", text: contentDraftPrompt(idea, normalizePlatformName(platform) || "linkedin") }] }],
+        text: { format: aiDraftResponseSchema(), verbosity: "low" },
+        max_output_tokens: 1200
+      })
+    });
+  } catch (error) {
+    throw new Error(`OpenAI draft request failed. ${safeShortError(error.message)}`);
+  }
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = payload?.error?.message || response.statusText || "OpenAI draft request failed.";
+    throw new Error(`OpenAI draft request failed. ${safeShortError(message)}`);
+  }
+  const text = extractOpenAIText(payload);
+  if (!text) throw new Error("OpenAI draft response was empty. Local fallback used.");
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error("OpenAI draft response was not valid JSON. Local fallback used.");
+  }
+  return applyAIDraftToPost(localPost, parsed, { model: env.openaiDraftModel, generatedAt: new Date().toISOString() });
+}
+
+async function importContentBankIdeas(payload = {}) {
+  const state = await store.readState();
+  const imported = parseContentBankIdeas(payload.text || payload.input || JSON.stringify(payload.ideas || []));
+  const existing = state.contentBank || [];
+  const existingKeys = new Set(existing.map((item) => `${String(item.title).toLowerCase()}|${String(item.rawIdea).toLowerCase()}`));
+  const deduped = imported.filter((item) => !existingKeys.has(`${String(item.title).toLowerCase()}|${String(item.rawIdea).toLowerCase()}`));
+  const nextState = analyzeOperations({
+    ...state,
+    contentBank: [...existing, ...deduped],
+    generationBatches: state.generationBatches || []
+  });
+  await store.writeState(nextState);
+  return { state: nextState, imported: deduped.length, total: nextState.contentBank.length, ideas: deduped };
+}
+
+async function generateContentBankDrafts(payload = {}) {
+  const state = await store.readState();
+  const selectedIds = Array.isArray(payload.ids) ? new Set(payload.ids) : null;
+  const limit = Number(payload.limit || 30);
+  const requestedMode = payload.mode === "ai" ? "ai" : "local";
+  const candidates = (state.contentBank || [])
+    .filter((idea) => !selectedIds || selectedIds.has(idea.id))
+    .filter((idea) => ["idea", "ready_to_generate", "generated"].includes(idea.status || "idea"))
+    .slice(0, limit);
+  if (!candidates.length) throw new Error("No Content Bank ideas are ready to generate.");
+  const posts = [];
+  const fallbackEvents = [];
+  const now = new Date().toISOString();
+  for (const idea of candidates) {
+    for (const platform of (idea.platforms || ["linkedin"]).map(normalizePlatformName).filter(Boolean)) {
+      if (requestedMode === "ai") {
+        try {
+          posts.push(await draftPostFromIdeaWithAI(idea, platform));
+        } catch (error) {
+          const fallbackPost = {
+            ...draftPostFromIdea(idea, platform),
+            generationMode: "local_fallback_after_ai_failure",
+            aiDraftStatus: "fallback",
+            aiDraftError: safeShortError(error.message),
+            nextBestAction: idea.complianceRisk === "high" ? "Review local fallback and compliance risk" : "Review local fallback draft"
+          };
+          fallbackEvents.push({ ideaId: idea.id, platform, error: fallbackPost.aiDraftError });
+          posts.push(fallbackPost);
+        }
+      } else {
+        posts.push({ ...draftPostFromIdea(idea, platform), generationMode: "local_demo" });
+      }
+    }
+  }
+  const generatedIdeaIds = new Set(candidates.map((idea) => idea.id));
+  const nextState = analyzeOperations({
+    ...state,
+    posts: [...(state.posts || []), ...posts],
+    contentBank: (state.contentBank || []).map((idea) =>
+      generatedIdeaIds.has(idea.id)
+        ? { ...idea, status: "generated", updatedAt: now, nextBestAction: "Review generated drafts" }
+        : idea
+    ),
+    generationBatches: [
+      {
+        id: `batch-${crypto.randomUUID()}`,
+        source: "content_bank",
+        ideaIds: [...generatedIdeaIds],
+        postIds: posts.map((post) => post.id),
+        createdAt: now,
+        status: "generated",
+        mode: requestedMode,
+        aiFallbackCount: fallbackEvents.length,
+        aiFallbackEvents: fallbackEvents.slice(0, 20),
+        nextBestAction: "Review drafts in Approval Queue"
+      },
+      ...(state.generationBatches || [])
+    ]
+  });
+  await store.writeState(nextState);
+  return { state: nextState, generated: posts.length, posts, mode: requestedMode, fallbackCount: fallbackEvents.length, fallbackEvents };
+}
+
+async function sendContentBankIdeasToQueue(payload = {}) {
+  const state = await store.readState();
+  const selectedIds = new Set(Array.isArray(payload.ids) ? payload.ids : []);
+  if (!selectedIds.size) throw new Error("Select at least one idea.");
+  const posts = (state.contentBank || [])
+    .filter((idea) => selectedIds.has(idea.id))
+    .map((idea) => draftPostFromIdea(idea, (idea.platforms || ["linkedin"])[0]));
+  const now = new Date().toISOString();
+  const nextState = analyzeOperations({
+    ...state,
+    posts: [...(state.posts || []), ...posts],
+    contentBank: (state.contentBank || []).map((idea) =>
+      selectedIds.has(idea.id) ? { ...idea, status: "queued", updatedAt: now, nextBestAction: "Review draft in Queue" } : idea
+    )
+  });
+  await store.writeState(nextState);
+  return { state: nextState, queued: posts.length, posts };
+}
+
+async function archiveContentBankIdeas(payload = {}) {
+  const state = await store.readState();
+  const selectedIds = new Set(Array.isArray(payload.ids) ? payload.ids : []);
+  if (!selectedIds.size) throw new Error("Select at least one idea.");
+  const now = new Date().toISOString();
+  const nextState = analyzeOperations({
+    ...state,
+    contentBank: (state.contentBank || []).map((idea) =>
+      selectedIds.has(idea.id)
+        ? { ...idea, status: "archived", updatedAt: now, nextBestAction: "Archived" }
+        : idea
+    )
+  });
+  await store.writeState(nextState);
+  return { state: nextState, archived: selectedIds.size };
+}
+
+async function rebuildPriorityState() {
+  const state = await store.readState();
+  const nextState = analyzeOperations(state);
+  await store.writeState(nextState);
+  return { state: nextState, message: "COO priorities rebuilt." };
+}
+
+async function updateApprovalItem(id = "", action = "", patch = {}) {
+  const state = await store.readState();
+  const approval = (state.approvalQueue || analyzeOperations(state).approvalQueue || []).find((item) => item.id === id);
+  if (!approval) throw new Error("Approval item not found.");
+  let next = { ...state };
+  if (approval.type === "post") {
+    const currentPost = (state.posts || []).find((post) => post.id === approval.sourceId) || {};
+    const previousApprovalState = {
+      status: currentPost.status || "",
+      approvalStatus: currentPost.approvalStatus || "",
+      copyReviewed: Boolean(currentPost.copyReviewed),
+      publishErrorSummary: currentPost.publishErrorSummary || "",
+      updatedAt: currentPost.updatedAt || ""
+    };
+    const statusPatch = action === "approve"
+      ? { status: "approved", copyReviewed: true, copyReviewedAt: new Date().toISOString(), approvalStatus: "approved" }
+      : action === "block"
+        ? { status: "blocked_channel_not_connected", publishErrorSummary: patch.reason || "Blocked by operator.", approvalStatus: "blocked" }
+      : action === "send-to-queue"
+          ? { status: "needs_review", approvalStatus: "needs_review", nextBestAction: "Review in Queue" }
+          : { ...patch, approvalStatus: "edited" };
+    next.posts = (state.posts || []).map((post) => post.id === approval.sourceId ? {
+      ...post,
+      ...statusPatch,
+      previousApprovalState,
+      approvalHistory: [
+        { action, previousStatus: previousApprovalState.status, at: new Date().toISOString() },
+        ...(post.approvalHistory || [])
+      ].slice(0, 20),
+      updatedAt: new Date().toISOString()
+    } : post);
+  }
+  next = analyzeOperations(next);
+  await store.writeState(next);
+  return { state: next, message: action === "approve" ? "Approved." : action === "block" ? "Blocked." : "Updated." };
+}
+
+async function updateApprovalItems(ids = [], action = "", patch = {}) {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const analyzed = analyzeOperations(state);
+    const selectedIds = new Set(Array.isArray(ids) ? ids : []);
+    if (!selectedIds.size) throw new Error("Select at least one approval item.");
+    const approvals = (analyzed.approvalQueue || []).filter((item) => selectedIds.has(item.id));
+    if (!approvals.length) throw new Error("No matching approval items found.");
+    const now = new Date().toISOString();
+    const postPatches = new Map();
+    const reportPatches = new Map();
+    for (const approval of approvals) {
+      if (approval.type === "post") {
+        const currentPost = (state.posts || []).find((post) => post.id === approval.sourceId) || {};
+        const previousApprovalState = {
+          status: currentPost.status || "",
+          approvalStatus: currentPost.approvalStatus || "",
+          copyReviewed: Boolean(currentPost.copyReviewed),
+          publishErrorSummary: currentPost.publishErrorSummary || "",
+          updatedAt: currentPost.updatedAt || ""
+        };
+        const statusPatch = action === "approve"
+          ? { status: "approved", copyReviewed: true, copyReviewedAt: now, approvalStatus: "approved", nextBestAction: "Check publish setup" }
+          : action === "block"
+            ? { status: "blocked_channel_not_connected", publishErrorSummary: patch.reason || "Blocked by operator.", approvalStatus: "blocked", nextBestAction: "Fix blocker" }
+            : action === "send-to-queue"
+              ? { status: "needs_review", approvalStatus: "needs_review", nextBestAction: "Review in Queue" }
+              : action === "archive"
+            ? { status: "archived", approvalStatus: "archived", nextBestAction: "Archived" }
+            : {};
+        postPatches.set(approval.sourceId, { ...statusPatch, previousApprovalState, updatedAt: now });
+      }
+      if (approval.type === "report") {
+        const statusPatch = action === "approve"
+          ? { status: "approved", approvedAt: now }
+          : action === "archive"
+            ? { status: "archived", archivedAt: now }
+            : action === "block"
+              ? { status: "blocked", blockedReason: patch.reason || "Blocked by operator." }
+              : { status: "needs_review" };
+        reportPatches.set(approval.sourceId, statusPatch);
+      }
+    }
+    const next = analyzeOperations({
+      ...state,
+      posts: (state.posts || []).map((post) => postPatches.has(post.id) ? {
+        ...post,
+        ...postPatches.get(post.id),
+        approvalHistory: [
+          { action, previousStatus: post.status || "", at: now },
+          ...(post.approvalHistory || [])
+        ].slice(0, 20)
+      } : post),
+      reports: (state.reports || []).map((report) => reportPatches.has(report.id) ? { ...report, ...reportPatches.get(report.id) } : report),
+      activityEvents: [
+        {
+          id: `activity-approval-batch-${crypto.randomUUID().slice(0, 8)}`,
+          eventType: "Approval batch updated",
+          title: `${approvals.length} approval item(s) ${action.replaceAll("-", " ")}`,
+          relatedObjectType: "approval_queue",
+          relatedObjectId: "batch",
+          createdAt: now
+        },
+        ...(state.activityEvents || [])
+      ].slice(0, 500)
+    });
+    await store.writeState(next);
+    return { state: next, updated: approvals.length, message: `${approvals.length} approval item(s) updated.` };
+  });
+}
+
+function ideaFromPost(post = {}) {
+  return {
+    id: post.contentBankIdeaId || `idea-from-${post.id}`,
+    title: post.title || post.hook || "Untitled draft",
+    rawIdea: post.body || post.hook || "",
+    bucket: post.contentBucket || "LegalEase Growth",
+    audience: post.audience || "partners",
+    platforms: [post.platform || "linkedin"],
+    campaign: post.campaign || "",
+    cta: post.cta || "Learn more",
+    creativeDirection: post.creativeBrief || post.imageBrief || "Clean LegalEase editorial creative.",
+    usesWilma: post.speaker === "wilma" ? "yes" : "optional",
+    complianceRisk: post.complianceRisk || "low",
+    priority: post.priority || "medium"
+  };
+}
+
+async function regenerateAIDraftForPost(postId = "") {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const post = (state.posts || []).find((item) => item.id === postId);
+    if (!post) throw new Error("Post not found.");
+    const idea = (state.contentBank || []).find((item) => item.id === post.contentBankIdeaId) || ideaFromPost(post);
+    let nextPost;
+    try {
+      nextPost = await draftPostFromIdeaWithAI(idea, post.platform || "linkedin");
+    } catch (error) {
+      nextPost = {
+        ...draftPostFromIdea(idea, post.platform || "linkedin"),
+        generationMode: "local_fallback_after_ai_failure",
+        aiDraftStatus: "fallback",
+        aiDraftError: safeShortError(error.message),
+        nextBestAction: idea.complianceRisk === "high" ? "Review local fallback and compliance risk" : "Review local fallback draft"
+      };
+    }
+    const updatedPost = {
+      ...post,
+      hook: nextPost.hook,
+      body: nextPost.body,
+      cta: nextPost.cta,
+      hashtags: nextPost.hashtags,
+      creativeBrief: nextPost.creativeBrief,
+      complianceNotes: nextPost.complianceNotes,
+      complianceRewrite: nextPost.complianceRewrite || "",
+      originalAIDraftBody: nextPost.originalAIDraftBody || "",
+      recommendedPostingWindow: nextPost.recommendedPostingWindow,
+      generationMode: nextPost.generationMode,
+      aiDraftStatus: nextPost.aiDraftStatus,
+      aiDraftModel: nextPost.aiDraftModel || "",
+      aiDraftGeneratedAt: nextPost.aiDraftGeneratedAt || new Date().toISOString(),
+      aiDraftPromptVersion: nextPost.aiDraftPromptVersion || "legalese-content-bank-ai-draft-v1",
+      aiDraftError: nextPost.aiDraftError || "",
+      copyReviewed: false,
+      approvalStatus: "needs_review",
+      status: "needs_review",
+      nextBestAction: nextPost.nextBestAction || "Review AI draft",
+      updatedAt: new Date().toISOString()
+    };
+    const nextState = analyzeOperations({
+      ...state,
+      posts: (state.posts || []).map((item) => item.id === post.id ? updatedPost : item),
+      activityEvents: [
+        {
+          id: `activity-ai-draft-${crypto.randomUUID().slice(0, 8)}`,
+          eventType: updatedPost.aiDraftStatus === "fallback" ? "AI draft fallback used" : "AI draft regenerated",
+          title: updatedPost.title,
+          relatedObjectType: "post",
+          relatedObjectId: updatedPost.id,
+          createdAt: updatedPost.updatedAt
+        },
+        ...(state.activityEvents || [])
+      ].slice(0, 500)
+    });
+    await store.writeState(nextState);
+    return {
+      state: nextState,
+      post: updatedPost,
+      fallback: updatedPost.aiDraftStatus === "fallback",
+      message: updatedPost.aiDraftStatus === "fallback" ? "AI failed; local fallback draft created." : "AI draft regenerated."
+    };
+  });
+}
+
 function overlayTextForPostServer(post) {
   if (post.overlayMode === "none") {
     return { mode: "none", kicker: "", headline: "", support: "" };
@@ -846,7 +1848,7 @@ function overlayTextForPostServer(post) {
   return {
     mode: "text",
     kicker: post.overlayKicker || post.contentBucket || post.contentFormat || "LegalEase",
-    headline: post.overlayHeadline || post.hook || post.title,
+    headline: post.overlayHeadline || post.wilmaImageWorkflow?.overlayText || post.hook || post.title,
     support: post.overlaySupport || supportLine
   };
 }
@@ -855,6 +1857,19 @@ function imageForPostFromState(state, postId) {
   return (state.postImages || [])
     .filter((image) => image.postId === postId)
     .sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0))[0] || null;
+}
+
+function sourceImageForFinalFromState(state, postId) {
+  const images = (state.postImages || [])
+    .filter((image) => image.postId === postId)
+    .sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0));
+  return images.find((image) =>
+    image.generationStatus === "generated" &&
+    image.imageUrl &&
+    image.generationMode !== "final_composited_image" &&
+    image.imageStatus !== "final_composited" &&
+    !image.finalImageReady
+  ) || images[0] || null;
 }
 
 function finalImageIsReady(image) {
@@ -866,6 +1881,147 @@ function finalImageIsReady(image) {
         image.textRenderingMode === "no_text_overlay" ||
         image.assetBundleUsed?.finalImage?.ready)
   );
+}
+
+function finalPngAbsolutePathForPost(post = {}, image = {}) {
+  const candidates = [
+    post.localFinalPngPath,
+    post.finalPngPath,
+    post.finalExportKit?.localFinalPngPath,
+    post.finalExportKit?.finalPngPath,
+    image.localFinalPngPath,
+    image.finalPngPath,
+    image.assetBundleUsed?.finalImage?.localPath
+  ].filter(Boolean);
+  const root = path.resolve(process.cwd(), "data/exports/final-pngs");
+  for (const candidate of candidates) {
+    const raw = String(candidate || "").trim();
+    const absolute = path.isAbsolute(raw)
+      ? path.resolve(raw)
+      : path.resolve(process.cwd(), raw.replace(/^\/+/, ""));
+    const relative = path.relative(root, absolute);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) continue;
+    if (!/\.(png)$/i.test(absolute)) continue;
+    if (existsSync(absolute)) return absolute;
+  }
+  return "";
+}
+
+function storageObjectPathForFinalPng(localPath = "") {
+  const safeName = safeDownloadFilename(path.basename(localPath || "final.png"));
+  return `final-pngs/${safeName}`;
+}
+
+async function uploadPostFinalPngToStorage(postId = "") {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const post = (state.posts || []).find((item) => item.id === postId);
+    if (!post) throw new Error("Post not found.");
+    const image = imageForPostFromState(state, postId);
+    if (!finalImageIsReady(image)) throw new Error("Create Final PNG before uploading a public image.");
+    const localPath = finalPngAbsolutePathForPost(post, image);
+    if (!localPath) throw new Error("Final PNG file is missing under data/exports/final-pngs/.");
+    const storage = supabaseStorageStatus();
+    if (!storage.configured) throw new Error(storage.message);
+    const body = await readFile(localPath);
+    const objectPath = storageObjectPathForFinalPng(localPath);
+    await supabaseStorageFetch(`object/${encodeURIComponent(storage.bucket)}/${objectPath}`, {
+      method: "PUT",
+      body,
+      contentType: "image/png",
+      upsert: true
+    });
+    const now = new Date().toISOString();
+    const publicImageUrl = supabaseStorageObjectPublicUrl(objectPath);
+    const updatedImage = {
+      ...image,
+      localFinalPngPath: localPath,
+      publicImageUrl,
+      publicImageUploadedAt: now,
+      supabaseStorageBucket: storage.bucket,
+      supabaseStorageObjectPath: objectPath,
+      assetBundleUsed: {
+        ...(image.assetBundleUsed || {}),
+        finalImage: {
+          ...(image.assetBundleUsed?.finalImage || {}),
+          ready: true,
+          localPath,
+          publicImageUrl,
+          storageBucket: storage.bucket,
+          storageObjectPath: objectPath,
+          uploadedAt: now
+        }
+      },
+      updatedAt: now
+    };
+    const updatedPost = {
+      ...post,
+      localFinalPngPath: localPath,
+      publicImageUrl,
+      publicImageUploadedAt: now,
+      supabaseStorageBucket: storage.bucket,
+      supabaseStorageObjectPath: objectPath,
+      finalExportKit: {
+        ...(post.finalExportKit || {}),
+        localFinalPngPath: localPath,
+        publicImageUrl,
+        publicImageUploadedAt: now,
+        storageBucket: storage.bucket,
+        storageObjectPath: objectPath
+      },
+      updatedAt: now
+    };
+    const nextState = analyzeOperations({
+      ...state,
+      posts: (state.posts || []).map((item) => item.id === postId ? updatedPost : item),
+      postImages: (state.postImages || []).map((item) => item.id === image.id ? updatedImage : item),
+      activityEvents: [{
+        id: `activity-public-image-${crypto.randomUUID().slice(0, 8)}`,
+        eventType: "Public image uploaded",
+        title: post.title || post.id,
+        relatedObjectType: "post",
+        relatedObjectId: post.id,
+        createdAt: now
+      }, ...(state.activityEvents || [])].slice(0, 500)
+    });
+    await store.writeState(nextState);
+    return {
+      state: nextState,
+      post: updatedPost,
+      image: updatedImage,
+      publicImageUrl,
+      localFinalPngPath: localPath,
+      message: "Public image uploaded."
+    };
+  });
+}
+
+async function batchUploadPublicImages(ids = []) {
+  const targets = Array.from(new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean)));
+  if (!targets.length) throw new Error("Select at least one post with a final PNG.");
+  const results = [];
+  let latestState = null;
+  for (const id of targets) {
+    try {
+      const result = await uploadPostFinalPngToStorage(id);
+      latestState = result.state;
+      results.push({ postId: id, ok: true, publicImageUrl: result.publicImageUrl });
+    } catch (error) {
+      results.push({ postId: id, ok: false, error: safeSupabaseError(error) });
+    }
+  }
+  latestState ||= await store.readState();
+  const uploaded = results.filter((item) => item.ok).length;
+  const failed = results.length - uploaded;
+  return {
+    state: latestState,
+    results,
+    uploaded,
+    failed,
+    message: failed
+      ? `${uploaded} uploaded, ${failed} blocked.`
+      : `${uploaded} public image${uploaded === 1 ? "" : "s"} uploaded.`
+  };
 }
 
 function wilmaPoseAssets(state = {}) {
@@ -2155,6 +3311,8 @@ function channelDryRun(post, image, channel, safeChannel = {}) {
   const text = channelPublishText(post, channel);
   const charCount = text.length;
   const finalReady = finalImageIsReady(image);
+  const publicImageUrl = hostedImagePublicUrl(post, image);
+  const explicitHostedUrl = explicitPublicImageUrl(post, image);
   const aspectRatio = image?.aspectRatio || image?.assetBundleUsed?.finalImage?.aspectRatio || "";
   const squareImage =
     aspectRatio === "1:1" ||
@@ -2171,8 +3329,31 @@ function channelDryRun(post, image, channel, safeChannel = {}) {
     livePostingEnabled: livePostingEnabledForChannel(channel),
     characterCount: charCount,
     imageAspectRatio: aspectRatio || "unknown",
+    requiresPublicHttpsImage: ["instagram", "threads", "tiktok"].includes(channel),
+    publicHttpsImageReady: !["instagram", "threads", "tiktok"].includes(channel) || publicHttpsUrlIsReady(explicitHostedUrl || publicImageUrl),
+    publicImageUrlPresent: Boolean(explicitHostedUrl || publicImageUrl),
+    publicImageUrl: explicitHostedUrl || publicImageUrl,
+    publicAppBaseUrlReady: publicHttpsAppBaseUrlIsReady(),
+    adapterImplemented: ["linkedin", "facebook", "instagram", "threads", "x"].includes(channel),
     threadCandidate: channel === "x" && charCount > 240 && charCount <= 280
   };
+  const checks = [
+    { key: "adapter", label: "Publisher adapter", ok: result.adapterImplemented, reason: `${result.displayName} publishing connector is not implemented yet.` },
+    { key: "live_gate", label: "Live gate", ok: result.livePostingEnabled, reason: `${result.displayName} live posting is disabled server-side.` },
+    { key: "oauth_setup", label: "OAuth setup", ok: Boolean(safeChannel.configured), reason: `${result.displayName} needs OAuth setup.` },
+    { key: "connected_account", label: "Connected account", ok: Boolean(safeChannel.connected), reason: `${result.displayName} is not connected.` },
+    { key: "caption", label: "Caption", ok: Boolean(text), reason: `${result.displayName} caption is missing.` },
+    { key: "final_png", label: "Final PNG", ok: finalReady, reason: `${result.displayName} needs a final PNG before posting.` },
+    { key: "public_https_image", label: "Public HTTPS image URL", ok: result.publicHttpsImageReady, reason: `${result.displayName} needs a public HTTPS image URL. Upload the final PNG to Supabase Storage first.` },
+    { key: "copy_length", label: "Copy length", ok: channel !== "x" || charCount <= 280, reason: "X / Twitter post text is over 280 characters." },
+    { key: "square_image", label: "Square image", ok: channel !== "instagram" || squareImage, reason: "Instagram requires a square final PNG for MVP." }
+  ];
+  result.checks = checks;
+  result.missing = checks.filter((check) => !check.ok).map((check) => check.reason);
+  const firstMissing = result.missing[0];
+  if (firstMissing) {
+    return { ...result, status: "blocked", message: firstMissing };
+  }
   if (!safeChannel.configured) {
     return { ...result, status: "blocked", message: `${result.displayName} needs OAuth setup.` };
   }
@@ -2211,7 +3392,10 @@ function channelReadinessDetails(state, post) {
 function localImagePathFromUrl(imageUrl = "") {
   if (!imageUrl || imageUrl.startsWith("data:") || /^https?:\/\//i.test(imageUrl)) return "";
   const clean = decodeURIComponent(imageUrl).replace(/^\/+/, "");
-  if ((!clean.startsWith("assets/") && !clean.startsWith("data/exports/final-pngs/") && !clean.startsWith("data/assets/")) || clean.includes("..")) return "";
+  if ((!clean.startsWith("assets/") &&
+    !clean.startsWith("data/assets/") &&
+    !clean.startsWith("data/exports/final-pngs/") &&
+    !clean.startsWith("data/exports/openai-images/")) || clean.includes("..")) return "";
   return path.join(process.cwd(), clean);
 }
 
@@ -2517,7 +3701,7 @@ async function composeFinalPostImage(state, post, image) {
   const brandMarkAsset = localAssetById(state, workflow.brandMarkAssetId || image.assetBundleUsed?.selectedAssets?.brandMarkAssetId || "");
   let sourceBuffer;
   let selectedAssetResult = {};
-  if (workflow.wilmaAssetId || workflow.backgroundAssetId || linkedAssetForPose(state, workflow.wilmaPoseReferenceId)) {
+  if (workflow.wilmaAssetId || workflow.backgroundAssetId) {
     selectedAssetResult = await composeLocalAssetBase({ state, post, image, workflow, width, height });
     sourceBuffer = selectedAssetResult.buffer;
   } else {
@@ -2744,9 +3928,9 @@ async function publishInstagramPost({ state, post }) {
   const accessToken = storedOrEnvAccessToken(state, "instagram");
   const igUserId = accountIdForPublishing(state, "instagram");
   const image = imageForPostFromState(state, post.id);
-  const imageUrl = finalImagePublicUrl(image);
+  const imageUrl = hostedImagePublicUrl(post, image);
   if (!imageUrl) {
-    throw new Error("Instagram requires PUBLIC_APP_BASE_URL with a public HTTPS image URL before live publishing.");
+    throw new Error("Instagram requires a public HTTPS image URL. Upload the final PNG to Supabase Storage first.");
   }
   const caption = composePublishText(post, "instagram");
   if (!caption) throw new Error("Instagram caption is missing.");
@@ -2769,7 +3953,7 @@ async function publishThreadsPost({ state, post }) {
   const image = imageForPostFromState(state, post.id);
   const text = composePublishText(post, "threads") || composePublishText(post, post.platform);
   if (!text) throw new Error("Threads post text is missing.");
-  const imageUrl = finalImagePublicUrl(image);
+  const imageUrl = hostedImagePublicUrl(post, image);
   const createForm = new URLSearchParams({
     access_token: accessToken,
     media_type: imageUrl ? "IMAGE" : "TEXT",
@@ -2846,6 +4030,7 @@ async function publishToChannel({ state, post, channel }) {
   if (channel === "instagram") return publishInstagramPost({ state, post });
   if (channel === "threads") return publishThreadsPost({ state, post });
   if (channel === "x") return publishXPost({ state, post });
+  if (channel === "tiktok") throw new Error("TikTok publishing connector is not implemented yet. This channel fails closed.");
   throw new Error(`${channelLabels[channel] || channel} publishing is not implemented.`);
 }
 
@@ -3037,16 +4222,33 @@ async function publishPostNow(postId) {
   if (!targetChannels.length) throw new Error("Choose a target channel before publishing.");
   if (targetChannels.length !== 1) throw new Error("Publish Now supports one live channel at a time.");
   const channel = targetChannels[0];
-  if (!livePostingEnabledForChannel(channel)) {
-    throw new Error(`${channelLabels[channel] || channel} live posting is disabled. Set ${(livePostingEnvKeys[channel] || []).join(" or ")}=true server-side after connecting.`);
-  }
   const candidate = {
     ...post,
     targetChannels: [channel],
     scheduledFor: new Date().toISOString()
   };
   const readiness = publishReadiness(state, candidate);
-  if (!readiness.ok) throw new Error(readiness.message);
+  if (!readiness.ok) {
+    state = await store.updatePost(post.id, {
+      publishingStatus: readiness.status,
+      publishErrorSummary: readiness.message,
+      lastPublishAttemptAt: new Date().toISOString(),
+      channelReadiness: readiness.channelReadiness || {},
+      channelDryRuns: readiness.channelReadiness || {}
+    });
+    state = await recordPublishEvent({
+      post,
+      channel,
+      eventType: "blocked",
+      statusBefore: post.status,
+      statusAfter: post.status,
+      message: readiness.message,
+      errorCode: readiness.status || "publish_preflight_blocked"
+    });
+    const error = new Error(readiness.message);
+    error.readiness = readiness;
+    throw error;
+  }
   const attemptCount = Number(post.publishAttemptCount || 0) + 1;
   state = await store.updatePost(post.id, {
     status: "publishing",
@@ -3159,8 +4361,10 @@ async function runLinkedInDryTest() {
 
 function oauthSigningSecret(platform) {
   if (platform === "linkedin") return process.env.LINKEDIN_CLIENT_SECRET || "";
+  if (platform === "google_workspace") return process.env.GOOGLE_CLIENT_SECRET || "";
   if (platform === "facebook" || platform === "instagram" || platform === "threads") return process.env.META_CLIENT_SECRET || process.env.THREADS_CLIENT_SECRET || "";
   if (platform === "x") return process.env.X_CLIENT_SECRET || "";
+  if (platform === "tiktok") return process.env.TIKTOK_CLIENT_SECRET || "";
   return "";
 }
 
@@ -3233,6 +4437,123 @@ function storedOrEnvAccessToken(state = {}, platform = "") {
   throw new Error(`${channelLabels[platform] || platform} access token is missing.`);
 }
 
+const googleReadOnlyScopes = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/calendar.readonly"
+];
+
+function googleOAuthRedirectUri() {
+  return process.env.GOOGLE_REDIRECT_URI || process.env.GOOGLE_OAUTH_REDIRECT_URI || "";
+}
+
+function googleOAuthConfigured() {
+  return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && googleOAuthRedirectUri());
+}
+
+function googleOAuthMissingEnv() {
+  return [
+    ["GOOGLE_CLIENT_ID", process.env.GOOGLE_CLIENT_ID],
+    ["GOOGLE_CLIENT_SECRET", process.env.GOOGLE_CLIENT_SECRET],
+    ["GOOGLE_REDIRECT_URI or GOOGLE_OAUTH_REDIRECT_URI", googleOAuthRedirectUri()]
+  ].filter(([, value]) => !value).map(([key]) => key);
+}
+
+function googleAuthorizationUrl({ state }) {
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: process.env.GOOGLE_CLIENT_ID || "",
+    redirect_uri: googleOAuthRedirectUri(),
+    scope: googleReadOnlyScopes.join(" "),
+    access_type: "offline",
+    prompt: "consent",
+    state
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+}
+
+async function exchangeGoogleCode(code = "") {
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    client_id: process.env.GOOGLE_CLIENT_ID || "",
+    client_secret: process.env.GOOGLE_CLIENT_SECRET || "",
+    redirect_uri: googleOAuthRedirectUri()
+  });
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error_description || payload.error || "Google token exchange failed.");
+  return payload;
+}
+
+async function refreshGoogleAccessToken(refreshToken = "") {
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: process.env.GOOGLE_CLIENT_ID || "",
+    client_secret: process.env.GOOGLE_CLIENT_SECRET || ""
+  });
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error_description || payload.error || "Google token refresh failed.");
+  return payload;
+}
+
+async function fetchGoogleUserInfo(accessToken = "") {
+  const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+    headers: { authorization: `Bearer ${accessToken}` }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) return {};
+  return payload;
+}
+
+async function googleStoredOrEnvAccessToken(connector = "") {
+  const envToken = googleAccessToken(connector);
+  if (envToken) return envToken;
+  const state = await store.readState();
+  const account = (state.socialAccounts || []).find((item) => item.platform === "google_workspace") || {};
+  if (!account.accessTokenEncrypted && !account.refreshTokenEncrypted) return "";
+  const expiresAt = account.tokenExpiresAt ? new Date(account.tokenExpiresAt).getTime() : 0;
+  if (account.accessTokenEncrypted && expiresAt && expiresAt - Date.now() > 60 * 1000) return decryptToken(account.accessTokenEncrypted);
+  if (!account.refreshTokenEncrypted) {
+    if (account.accessTokenEncrypted) return decryptToken(account.accessTokenEncrypted);
+    return "";
+  }
+  const refreshToken = decryptToken(account.refreshTokenEncrypted);
+  const payload = await refreshGoogleAccessToken(refreshToken);
+  const tokenExpiresAt = payload.expires_in ? new Date(Date.now() + Number(payload.expires_in) * 1000).toISOString() : "";
+  await store.updateSocialAccount("google_workspace", {
+    status: "connected",
+    displayName: "Google Workspace",
+    accountName: account.accountName || "Google account",
+    accountId: account.accountId || account.externalAccountId || "",
+    externalAccountId: account.externalAccountId || account.accountId || "",
+    accessTokenEncrypted: encryptToken(payload.access_token || ""),
+    refreshTokenEncrypted: account.refreshTokenEncrypted,
+    tokenExpiresAt,
+    connectedAt: account.connectedAt || new Date().toISOString(),
+    lastTestStatus: "connected",
+    lastTestMessage: "Google access token refreshed.",
+    lastErrorSummary: "",
+    lastError: "",
+    lastTestedAt: new Date().toISOString(),
+    oauthConfigured: true,
+    scopes: googleReadOnlyScopes
+  });
+  return payload.access_token || "";
+}
+
 function accountIdForPublishing(state = {}, platform = "") {
   const account = (state.socialAccounts || []).find((item) => item.platform === platform) || {};
   const id = account.externalAccountId || account.accountId || accountEnvId(platform);
@@ -3253,6 +4574,14 @@ function safeLinkedInError(error) {
   const message = String(error?.message || error || "LinkedIn connection failed.");
   if (/token|secret|authorization|bearer|client/i.test(message)) {
     return "LinkedIn connection failed during secure OAuth exchange.";
+  }
+  return message.slice(0, 160);
+}
+
+function safeGoogleError(error) {
+  const message = String(error?.message || error || "Google connection failed.");
+  if (/token|secret|authorization|bearer|client|access_token|refresh_token/i.test(message)) {
+    return "Google connection failed during secure OAuth exchange.";
   }
   return message.slice(0, 160);
 }
@@ -3435,6 +4764,138 @@ const imageVariants = {
     description: "Editorial process-map poster for steps, workflow, clinic mode, intake, and implementation systems."
   }
 };
+
+const imagePromptVersion = "legalese-image-prompt-v3-art-directed";
+
+const imageLanes = {
+  founder_editorial: {
+    id: "founder_editorial",
+    label: "Founder Editorial",
+    mood: "strategic, cinematic, high-output",
+    description: "Premium founder POV, strategic, investor, and build-in-public visuals."
+  },
+  civic_infrastructure: {
+    id: "civic_infrastructure",
+    label: "Civic Infrastructure",
+    mood: "credible, systemic, civic-minded",
+    description: "Systems, county/state implementation, access gaps, and infrastructure visuals."
+  },
+  human_impact: {
+    id: "human_impact",
+    label: "Human Impact",
+    mood: "grounded, dignified, hopeful",
+    description: "Human-centered opportunity, work, housing, family, and dignity visuals."
+  },
+  recordshield: {
+    id: "recordshield",
+    label: "RecordShield",
+    mood: "private, clear, controlled",
+    description: "Privacy, background-check clarity, personal record, and cleanup path visuals."
+  },
+  wilma_guide: {
+    id: "wilma_guide",
+    label: "Wilma Guide",
+    mood: "warm, calm, plain-English",
+    description: "Educational/process visuals with a reserved area for official Wilma compositing."
+  },
+  partner_motion: {
+    id: "partner_motion",
+    label: "Partner Motion",
+    mood: "collaborative, active, coordinated",
+    description: "Partner campaigns, nonprofit/government/community collaboration, and ecosystem-building visuals."
+  },
+  data_proof: {
+    id: "data_proof",
+    label: "Data & Proof",
+    mood: "measured, executive, evidence-led",
+    description: "Traction, dashboards, pilots, investor/acquirer proof, and performance visuals."
+  },
+  campaign_energy: {
+    id: "campaign_energy",
+    label: "Campaign Energy",
+    mood: "bold, kinetic, launch-ready",
+    description: "Launch posts, calls to action, campaign waves, and public announcements."
+  },
+  legalease_product_system: {
+    id: "legalease_product_system",
+    label: "LegalEase Product System",
+    mood: "modular, operational, premium SaaS",
+    description: "Product suite, operating system, workflow automation, and command-center visuals."
+  },
+  minimal_premium: {
+    id: "minimal_premium",
+    label: "Minimal Premium",
+    mood: "focused, expensive, restrained",
+    description: "Short, punchy, quote-like posts with one strong symbolic visual."
+  }
+};
+
+const imageLaneOrder = Object.keys(imageLanes);
+
+const artisticTreatments = {
+  editorial_poster: {
+    id: "editorial_poster",
+    label: "Editorial Poster",
+    compositionSystem: "high-end magazine poster with one strong visual idea, dramatic lighting, restrained color, and confident negative space",
+    textureSystem: "matte paper, controlled ink, subtle grain, crisp shadow"
+  },
+  documentary_graphic: {
+    id: "documentary_graphic",
+    label: "Documentary Graphic",
+    compositionSystem: "grounded documentary scene with stylized graphic shapes embedded into the environment",
+    textureSystem: "natural light, real surfaces, paper ephemera, restrained graphic overlays"
+  },
+  cut_paper_civic_collage: {
+    id: "cut_paper_civic_collage",
+    label: "Cut-Paper Civic Collage",
+    compositionSystem: "layered cut-paper collage with map-like forms, document fragments, and intentional asymmetry",
+    textureSystem: "paper fiber, vellum, cardstock edges, soft cast shadows, ink blocks"
+  },
+  neo_brutalist_legal_tech: {
+    id: "neo_brutalist_legal_tech",
+    label: "Neo-Brutalist Legal Tech",
+    compositionSystem: "sharp asymmetric layout discipline with hard geometry, deep navy blocks, off-white fields, and sparse orange marks",
+    textureSystem: "matte blocks, screenprint texture, ink trapping, minimal glass only where purposeful"
+  },
+  archival_futurism: {
+    id: "archival_futurism",
+    label: "Archival Futurism",
+    compositionSystem: "archival paperwork, folders, blank records, and filing material transformed into a modern abstract object",
+    textureSystem: "paper grain, ink edges, translucent vellum, folder stock, soft scanner light"
+  },
+  museum_campaign_minimal: {
+    id: "museum_campaign_minimal",
+    label: "Museum Campaign Minimal",
+    compositionSystem: "one symbolic object with perfect lighting, quiet scale, and generous museum-poster negative space",
+    textureSystem: "matte object surface, soft shadow, premium paper background, restrained grain"
+  },
+  cinematic_operator_desk: {
+    id: "cinematic_operator_desk",
+    label: "Cinematic Operator Desk",
+    compositionSystem: "operator workspace still life that conveys strategy, pressure, and execution without readable screens",
+    textureSystem: "desk grain, blank notebooks, warm lamp falloff, glass reflection, dark fabric shadow"
+  },
+  human_dignity_editorial: {
+    id: "human_dignity_editorial",
+    label: "Human Dignity Editorial",
+    compositionSystem: "beautifully lit human moment with one quiet design intervention and no exploitative storytelling",
+    textureSystem: "skin-realistic light, cotton, wood, paper, soft window shadow, minimal graphic shapes"
+  },
+  data_as_sculpture: {
+    id: "data_as_sculpture",
+    label: "Data as Sculpture",
+    compositionSystem: "metrics and proof represented as physical sculptural forms instead of charts or fake dashboards",
+    textureSystem: "stacked acrylic, matte cards, paper blocks, precise shadows, no glowing UI"
+  },
+  wilma_stage_guide_environment: {
+    id: "wilma_stage_guide_environment",
+    label: "Wilma Stage/Guide Environment",
+    compositionSystem: "polished guidance environment with reserved stage space for official Wilma compositing",
+    textureSystem: "paper panels, soft glass, matte navy surfaces, controlled orange marks, tactile guide-stage shadow"
+  }
+};
+
+const artisticTreatmentOrder = Object.keys(artisticTreatments);
 
 const audienceLabels = {
   consumers: "Individuals with records",
@@ -4305,6 +5766,13 @@ const initialState = {
     }
   ],
   reports: [],
+  soc2AccessReviews: [{ id: "access-review-supabase-admin", userName: "Roger Roman", role: "Owner", system: "Supabase", accessLevel: "Service role admin", owner: "Roger", dateGranted: "2026-05-22", lastReviewedDate: "2026-05-22", reviewStatus: "Needs Review", notes: "Confirm service role usage remains server-side only." }],
+  soc2AuditLogs: [{ id: "soc2-audit-seed", timestamp: "2026-05-22T00:00:00.000Z", actor: "system", action: "SOC 2 readiness module initialized", resourceType: "soc2", resourceId: "readiness", beforeValue: null, afterValue: { status: "In Progress" }, ip: "", userAgent: "" }],
+  soc2Changes: [{ id: "change-openai-image-generation", title: "OpenAI image generation reliability pass", description: "Server-side env loading, safer error reporting, and final PNG workflow updates.", changeType: "AI workflow", owner: "Engineering", riskLevel: "Medium", approvalStatus: "Approved", deploymentDate: "2026-05-22", rollbackPlan: "Use latest checkpoint and disable AI/image mode with env flags.", evidenceLink: "data/exports/reports/", status: "Deployed" }],
+  soc2Vendors: [{ id: "vendor-supabase", vendorName: "Supabase", serviceProvided: "Database and storage", dataAccessed: "Operational app data and social assets", riskLevel: "High", owner: "Engineering", contractStatus: "Account active", dpaStatus: "Needs Review", securityReviewStatus: "In Progress", renewalDate: "", notes: "RLS enabled; service role key is server-side only." },{ id: "vendor-openai", vendorName: "OpenAI", serviceProvided: "AI drafts and images", dataAccessed: "Post ideas and generation prompts", riskLevel: "High", owner: "Engineering", contractStatus: "Account active", dpaStatus: "Needs Review", securityReviewStatus: "In Progress", renewalDate: "", notes: "Human approval required for AI output." }],
+  soc2Incidents: [{ id: "incident-image-generation-failure", incidentTitle: "Image generation failures surfaced as generic UI errors", severity: "Medium", owner: "Engineering", dateOpened: "2026-05-22", dateResolved: "2026-05-22", affectedSystems: "OpenAI image generation, Queue", summary: "The UI did not show useful safe failure details when OpenAI image generation failed.", rootCause: "Server-side env/debug surface was incomplete.", remediation: "Added env loading, safe debug endpoints, and structured image errors.", customerImpact: "Internal operator friction only.", evidenceLink: "", status: "Resolved" }],
+  soc2Evidence: [{ id: "evidence-rls-security-fix", evidenceTitle: "Supabase RLS security fix", controlArea: "Security", sourceSystem: "Supabase", owner: "Engineering", collectionDate: "2026-05-22", auditPeriod: "2026-05", link: "supabase/migrations/", notes: "RLS enabled on public app tables with no broad anon policies." }],
+  soc2Policies: [{ id: "policy-information-security", policyName: "Information Security Policy", owner: "Roger", version: "0.1", status: "In Progress", lastReviewedDate: "2026-05-22", nextReviewDate: "2026-06-22", approvalStatus: "Needs Review", link: "", summary: "LegalEase protects operational, partner, and sensitive legal workflow data by limiting access, keeping secrets server-side, reviewing vendors, and logging sensitive changes." },{ id: "policy-access-control", policyName: "Access Control Policy", owner: "Engineering", version: "0.1", status: "In Progress", lastReviewedDate: "2026-05-22", nextReviewDate: "2026-06-22", approvalStatus: "Needs Review", link: "", summary: "Access is granted by business need, reviewed regularly, and removed when no longer required. Service keys stay server-side." },{ id: "policy-ai-governance", policyName: "AI Governance Policy", owner: "Product", version: "0.1", status: "In Progress", lastReviewedDate: "2026-05-22", nextReviewDate: "2026-06-22", approvalStatus: "Needs Review", link: "", summary: "AI drafts, prompts, outputs, and automation suggestions require human approval before external use; high-risk legal content routes through compliance review." }],
   campaignKits: [],
   activityEvents: [
     {
@@ -4316,6 +5784,9 @@ const initialState = {
       createdAt: "2026-05-19T00:00:00.000Z"
     }
   ],
+  autonomyActions: [],
+  autonomyDecisions: [],
+  autonomyRuns: [],
   postImages: []
 };
 
@@ -4339,6 +5810,68 @@ async function readBuffer(request) {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   return Buffer.concat(chunks);
+}
+
+async function runAutonomyCycle({ executeAutomatic = true } = {}) {
+  return serializeStateMutation(async () => {
+    const current = await store.readState();
+    const operated = analyzeOperations(current);
+    const result = runAutonomyCycleOnState(operated, { executeAutomatic });
+    const nextState = analyzeOperations(result.state);
+    await store.writeState(nextState);
+    return { ...result, state: nextState };
+  });
+}
+
+async function updateAutonomyAction(id = "", action = "", patch = {}) {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const report = buildAutonomyReport(analyzeOperations(state));
+    const target = report.actions.find((item) => item.id === id);
+    if (!target) throw new Error("Autonomy action not found.");
+    if (target.decisionClass === "forbidden" && action !== "ignore") {
+      throw new Error("Forbidden autonomy actions cannot be approved or executed.");
+    }
+    const now = new Date().toISOString();
+    const status = action === "approve" ? "approved" : action === "ignore" ? "ignored" : action === "block" ? "blocked" : "pending";
+    const updated = {
+      ...target,
+      ...patch,
+      status,
+      reviewedAt: ["approve", "ignore", "block"].includes(action) ? now : target.reviewedAt || "",
+      updatedAt: now
+    };
+    const nextActions = [updated, ...report.actions.filter((item) => item.id !== id)].slice(0, 120);
+    const audit = {
+      id: "soc2-audit-autonomy-" + crypto.randomUUID().slice(0, 10),
+      timestamp: now,
+      actor: "local_operator",
+      action: "autonomy action " + action,
+      resourceType: "autonomy_action",
+      resourceId: id,
+      controlArea: target.category === "compliance" || target.category === "legal" ? "AI Governance" : "Evidence Collection",
+      beforeValue: target,
+      afterValue: updated,
+      ip: "local",
+      userAgent: "preview-server"
+    };
+    const activity = {
+      id: "activity-autonomy-" + crypto.randomUUID().slice(0, 8),
+      eventType: "Autonomy decision",
+      title: `${updated.title} ${status}`,
+      relatedObjectType: "autonomy_action",
+      relatedObjectId: id,
+      createdAt: now
+    };
+    const nextState = {
+      ...state,
+      autonomyActions: nextActions,
+      soc2AuditLogs: [audit, ...(state.soc2AuditLogs || [])].slice(0, 1000),
+      activityEvents: [activity, ...(state.activityEvents || [])].slice(0, 500)
+    };
+    await store.writeState(nextState);
+    return { state: nextState, item: updated, message: `Autonomy action ${status}.` };
+  });
 }
 
 function parseMultipartForm(buffer, contentType = "") {
@@ -4374,8 +5907,83 @@ function parseMultipartForm(buffer, contentType = "") {
 }
 
 function sendJson(response, payload, status = 200) {
-  response.writeHead(status, { "content-type": "application/json" });
+  response.writeHead(status, {
+    "content-type": "application/json",
+    "cache-control": "no-store, max-age=0"
+  });
   response.end(JSON.stringify(payload));
+}
+
+function sendAuthRequired(response, decision = {}) {
+  response.writeHead(decision.status || 401, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store, max-age=0"
+  });
+  response.end(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LegalEase Access Required</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#E5EBEB;color:#020D66;font-family:ui-sans-serif,system-ui}.panel{width:min(620px,calc(100vw - 32px));background:white;border:1px solid #B8D8D8;border-radius:12px;padding:28px;box-shadow:0 18px 60px rgba(2,13,102,.12)}.eyebrow{color:#F04800;font-weight:800;letter-spacing:.16em;text-transform:uppercase;font-size:12px}h1{margin:8px 0 10px}code{background:#F4F7F6;border:1px solid #B8D8D8;border-radius:6px;padding:2px 6px}</style></head><body><main class="panel"><div class="eyebrow">Access required</div><h1>LegalEase Command Center is protected.</h1><p>${decision.reason || "Authentication is required."}</p><p>Hosted mode requires a server-side role token. Local demo mode remains available for development.</p><p><code>${decision.requiredPermission || "read"}</code> permission required.</p></main></body></html>`);
+}
+
+async function logAccessDecision(decision = {}, url = {}) {
+  if (decision.ok) return;
+  try {
+    const state = await store.readState();
+    const now = new Date().toISOString();
+    const audit = {
+      id: "soc2-audit-access-" + crypto.randomUUID().slice(0, 10),
+      timestamp: now,
+      actor: decision.actor?.id || "anonymous",
+      action: "access denied",
+      resourceType: "route",
+      resourceId: url.pathname || "",
+      controlArea: "Access Control",
+      beforeValue: null,
+      afterValue: {
+        role: decision.actor?.role || "anonymous",
+        requiredPermission: decision.requiredPermission,
+        reason: decision.reason
+      },
+      ip: "request",
+      userAgent: "preview-server"
+    };
+    await store.writeState({ ...state, soc2AuditLogs: [audit, ...(state.soc2AuditLogs || [])].slice(0, 1000) });
+  } catch {
+    // Authorization logging should never make the protected route available.
+  }
+}
+
+async function saveDebugOpenAIImage(imageUrl = "") {
+  if (!String(imageUrl || "").startsWith("data:image/png;base64,")) {
+    throw new Error("OpenAI returned a non-inline image URL; debug route expected base64 PNG output.");
+  }
+  const outputDir = path.resolve(process.cwd(), "data/exports/debug-openai-images");
+  await mkdir(outputDir, { recursive: true });
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const filename = `openai-image-test-${timestamp}.png`;
+  const filePath = path.join(outputDir, filename);
+  const buffer = Buffer.from(imageUrl.split(",")[1] || "", "base64");
+  await writeFile(filePath, buffer);
+  return {
+    filePath,
+    filename,
+    size: buffer.length
+  };
+}
+
+async function saveOpenAIGeneratedPostImage(postId = "", imageUrl = "") {
+  if (!String(imageUrl || "").startsWith("data:image/png;base64,")) return null;
+  const outputDir = path.resolve(process.cwd(), "data/exports/openai-images");
+  await mkdir(outputDir, { recursive: true });
+  const safePostId = slugify(postId || "post").slice(0, 80);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const filename = `${safePostId}-${timestamp}.png`;
+  const filePath = path.join(outputDir, filename);
+  const buffer = Buffer.from(imageUrl.split(",")[1] || "", "base64");
+  await writeFile(filePath, buffer);
+  return {
+    filePath,
+    fileUrl: `/data/exports/openai-images/${filename}`,
+    filename,
+    size: buffer.length
+  };
 }
 
 async function serveAsset(pathname, response) {
@@ -4816,6 +6424,210 @@ function wilmaComplianceGate({ body, hook, speaker, contentBucket, platform }) {
   };
 }
 
+function imagePostText(post = {}) {
+  return [
+    post.title,
+    post.hook,
+    post.body,
+    post.cta,
+    post.contentBucket,
+    post.contentFormat,
+    post.campaignName,
+    post.partnerName,
+    post.product,
+    post.speaker
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function normalizeImageLane(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_").replace(/&/g, "and");
+  if (normalized === "surprise" || normalized === "surprise_me") return "surprise";
+  if (imageLanes[normalized]) return normalized;
+  const byLabel = Object.values(imageLanes).find((lane) => lane.label.toLowerCase().replace(/[\s&/-]+/g, "_") === normalized);
+  return byLabel?.id || "";
+}
+
+function normalizeArtisticTreatment(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[\s/-]+/g, "_").replace(/&/g, "and");
+  if (!normalized || normalized === "auto" || normalized === "auto_select") return "";
+  if (artisticTreatments[normalized]) return normalized;
+  const byLabel = Object.values(artisticTreatments).find((treatment) => treatment.label.toLowerCase().replace(/[\s&/-]+/g, "_") === normalized);
+  return byLabel?.id || "";
+}
+
+function productBrandForPost(post = {}) {
+  const text = imagePostText(post);
+  if (/recordshield|record shield|background check|personal record|cleanup path|know what shows up/.test(text)) return "RecordShield";
+  if (/expungement\.ai|expungement ai|packet|petition|filing/.test(text)) return "Expungement.ai";
+  if (/wilma|plain english|ask|explainer|question/.test(text)) return "Wilma";
+  if (/fresh start network|fresh start/.test(text)) return "Fresh Start Network";
+  return "LegalEase";
+}
+
+function audienceForImage(post = {}) {
+  const audience = String(post.audience || "").toLowerCase();
+  const text = imagePostText(post);
+  if (/investor|acquirer|funders|data room|traction|revenue/.test(`${audience} ${text}`)) return "investor";
+  if (/partner|nonprofit|government|county|workforce|community|pilot|campaign/.test(`${audience} ${text}`)) return "partner";
+  if (/internal|operator|command center|workflow/.test(`${audience} ${text}`)) return "internal";
+  if (/family|job|housing|record|second chance|eligib|cleanup|expungement|recordshield/.test(`${audience} ${text}`)) return "consumer";
+  return "community";
+}
+
+function selectVisualLane(post = {}, route = {}, overrides = {}) {
+  const overrideLane = normalizeImageLane(overrides.visualLane || overrides.imageLane);
+  const text = imagePostText(post);
+  const format = String(route.contentFormat || post.contentFormat || "").toLowerCase();
+  const bucket = String(route.contentBucket || post.contentBucket || "").toLowerCase();
+  const candidates = [];
+  const add = (id, reason) => candidates.push({ id, reason });
+
+  if (/wilma|plain english|ask |question|faq|explainer|translate|myth|process|steps|what happens|how it works/.test(text) || /wilma|myth|plain/.test(format)) {
+    add("wilma_guide", "The copy is educational/plain-English guidance, so the image should reserve space for Wilma compositing.");
+  }
+  if (/recordshield|record shield|background check|personal record|know what shows up|cleanup path|record check/.test(text)) {
+    add("recordshield", "The copy is about RecordShield or record clarity, so the image should use the privacy-and-record lane.");
+  }
+  if (/partner|nonprofit|workforce|community organization|government|county|state|pilot|campaign|goodwill|time ?done|we must vote|clean slate|fulton|harris|hope credit/.test(text)) {
+    add("partner_motion", "The copy references partners, campaigns, pilots, or civic distribution.");
+  }
+  if (/metrics|traction|conversion|dashboard|proof|data room|investor|acquirer|report|revenue|pipeline|users|milestone/.test(text)) {
+    add("data_proof", "The copy is about evidence, metrics, traction, or investor proof.");
+  }
+  if (/implementation gap|infrastructure|court|county|state|government|system|systems|access layer|public service/.test(text) || bucket.includes("implementation")) {
+    add("civic_infrastructure", "The copy is about system access, civic implementation, or infrastructure.");
+  }
+  if (/founder|roger|we are building|we're building|building legalease|thesis|strategy|point of view|pov|opinion/.test(text)) {
+    add("founder_editorial", "The copy reads like founder POV or strategic build-in-public content.");
+  }
+  if (/family|housing|job|work|dignity|second chance|opportunity|kitchen table|parent|worker|human|relief/.test(text) || bucket.includes("human")) {
+    add("human_impact", "The copy has a grounded human-impact angle.");
+  }
+  if (/launch|cta|announcement|event|campaign|activate|go live|sign up|start now/.test(text)) {
+    add("campaign_energy", "The copy is an activation or launch-oriented post.");
+  }
+  if (/product suite|workflow|automation|command center|operating system|platform|queue|asset library|posting kit/.test(text) || bucket.includes("operator")) {
+    add("legalease_product_system", "The copy is about the LegalEase product system or operating layer.");
+  }
+
+  if (overrideLane && overrideLane !== "surprise") {
+    return { ...imageLanes[overrideLane], reason: "Selected manually by the operator." };
+  }
+  if (overrideLane === "surprise") {
+    const pool = [...new Set(candidates.map((candidate) => candidate.id))].filter(Boolean);
+    const fallbackPool = pool.length > 1 ? pool.filter((id) => id !== route.visualLane) : pool;
+    const pickPool = fallbackPool.length ? fallbackPool : ["minimal_premium", "civic_infrastructure", "founder_editorial"];
+    const pick = pickPool[Math.floor(Math.random() * pickPool.length)];
+    return { ...imageLanes[pick], reason: "Surprise me selected; chosen from valid on-brand lanes for this post." };
+  }
+  if (candidates.length) {
+    const pick = candidates[0];
+    return { ...imageLanes[pick.id], reason: pick.reason };
+  }
+  const fallback = /[.!?]/.test(String(post.hook || "")) && String(post.hook || "").length < 90 ? "minimal_premium" : "civic_infrastructure";
+  return { ...imageLanes[fallback], reason: "No specific lane dominated, so the system chose the safest premium default for this copy." };
+}
+
+function selectArtisticTreatment(post = {}, lane = {}, overrides = {}) {
+  const overrideTreatment = normalizeArtisticTreatment(overrides.artisticTreatment || overrides.imageTreatment || overrides.treatment);
+  if (overrideTreatment) return { ...artisticTreatments[overrideTreatment], reason: "Selected manually by the operator." };
+  const text = imagePostText(post);
+  const optionsByLane = {
+    founder_editorial: ["editorial_poster", "cinematic_operator_desk", "museum_campaign_minimal"],
+    recordshield: ["archival_futurism", "cut_paper_civic_collage", "museum_campaign_minimal"],
+    wilma_guide: ["wilma_stage_guide_environment", "human_dignity_editorial"],
+    partner_motion: ["documentary_graphic", "cut_paper_civic_collage"],
+    data_proof: ["data_as_sculpture", "neo_brutalist_legal_tech"],
+    human_impact: ["human_dignity_editorial", "documentary_graphic"],
+    civic_infrastructure: ["neo_brutalist_legal_tech", "cut_paper_civic_collage"],
+    legalease_product_system: ["data_as_sculpture", "neo_brutalist_legal_tech", "cinematic_operator_desk"],
+    campaign_energy: ["editorial_poster", "cut_paper_civic_collage"],
+    minimal_premium: ["museum_campaign_minimal", "editorial_poster"]
+  };
+  const pool = optionsByLane[lane.id] || ["editorial_poster", "museum_campaign_minimal"];
+  let pick = pool[0];
+  if (/desk|operator|founder|build|strategy/.test(text) && pool.includes("cinematic_operator_desk")) pick = "cinematic_operator_desk";
+  if (/paper|record|file|form|document|background check/.test(text) && pool.includes("archival_futurism")) pick = "archival_futurism";
+  if (/human|family|job|housing|worker|parent|dignity/.test(text) && pool.includes("human_dignity_editorial")) pick = "human_dignity_editorial";
+  if (/metric|proof|conversion|dashboard|revenue|investor/.test(text) && pool.includes("data_as_sculpture")) pick = "data_as_sculpture";
+  return { ...artisticTreatments[pick], reason: `Auto-selected for ${lane.label}.` };
+}
+
+function wilmaTreatmentForPost(post = {}, lane = {}, route = {}) {
+  const text = imagePostText(post);
+  const avoidWilma = /investor|acquirer|metrics|proof|data room|revenue|founder|enterprise|government proposal|proposal update/.test(text) ||
+    ["founder_editorial", "data_proof"].includes(lane.id);
+  const wantsWilma = lane.id === "wilma_guide" ||
+    (route.usesWilma && /wilma|plain english|ask |question|explainer|faq|myth/.test(text)) ||
+    /wilma|plain english|ask |question|explainer|faq|myth|eligib|consumer-facing guide/.test(text);
+  if (wantsWilma && !avoidWilma) return "reserve compositing area";
+  return "none";
+}
+
+function overlayZoneForPost(post = {}, lane = {}, wilmaTreatment = "none") {
+  const text = imagePostText(post);
+  if (wilmaTreatment !== "none") return "center-left headline area with a calm lower-right Wilma compositing zone";
+  if (lane.id === "data_proof") return "left side headline area, right side abstract data visual";
+  if (lane.id === "human_impact") return "clean space opposite the human subject";
+  if (lane.id === "legalease_product_system") return "top-left headline area with modular panels around it";
+  if (lane.id === "campaign_energy" || /launch|cta|announcement/.test(text)) return "top third or bottom third";
+  if (lane.id === "minimal_premium" || String(post.hook || "").length < 90) return "center-left";
+  return "center-left";
+}
+
+function visualMetaphorForPost(post = {}, context = {}, lane = {}, treatment = {}) {
+  const topic = shortTopicForImage(post);
+  const product = context.productBrand || productBrandForPost(post);
+  if (lane.id === "recordshield") return "A confusing personal record becomes a designed object of clarity and control.";
+  if (lane.id === "wilma_guide") return "A complicated legal next step becomes a calm stage for plain-English guidance.";
+  if (lane.id === "partner_motion") return "Separate organizations become one coordinated pathway for people to act.";
+  if (lane.id === "data_proof") return "Scattered activity becomes physical evidence that can be measured and trusted.";
+  if (lane.id === "founder_editorial") return "A founder's pressure and conviction become a disciplined operating surface.";
+  if (lane.id === "human_impact") return "A practical life barrier becomes a quiet, navigable next step.";
+  if (lane.id === "legalease_product_system") return `${product} becomes an operating table where work moves from raw signal to finished action.`;
+  if (lane.id === "campaign_energy") return "A dormant opportunity becomes a designed launch signal moving through a community.";
+  if (lane.id === "civic_infrastructure") return "A broken public-service maze becomes a designed access system.";
+  return `The idea behind "${topic}" becomes one restrained visual object with room for copy.`;
+}
+
+function artDirectionForTreatment(post = {}, context = {}, lane = {}, treatment = {}) {
+  const topic = shortTopicForImage(post);
+  const treatmentId = treatment.id;
+  const laneNoun = lane.label || "LegalEase";
+  const map = {
+    editorial_poster: `Create an editorial poster composition for "${topic}" with one dominant designed object, hard negative space, restrained color blocking, and dramatic side lighting. The image should feel like a magazine campaign cover, not a software illustration.`,
+    documentary_graphic: `Create a grounded documentary-style scene for "${topic}" with one real-world setting and sparse designed shapes integrated into the scene. Keep people natural and credible, not stock-photo cheerful.`,
+    cut_paper_civic_collage: `Create a tactile cut-paper civic collage for "${topic}" using layered blank forms, map-like shapes, document fragments, and crisp shadows. It should feel hand-built and designed, not generated.`,
+    neo_brutalist_legal_tech: `Create a neo-brutalist ${laneNoun} poster for "${topic}" using hard geometry, asymmetric blocks, sparse orange marks, and disciplined off-white space. Avoid decorative glow.`,
+    archival_futurism: `Create an archival-futurism still life for "${topic}" with blank folders, paper records, vellum sheets, redaction-inspired non-letter bars, and a single designed path through the materials.`,
+    museum_campaign_minimal: `Create a museum-campaign minimal image for "${topic}" with one symbolic object, perfect lighting, and quiet negative space. It should feel expensive, restrained, and memorable.`,
+    cinematic_operator_desk: `Create a cinematic operator-desk still life for "${topic}" with blank notebooks, blank screen glow, marked-up but unreadable paper shapes, warm lamp falloff, and execution pressure.`,
+    human_dignity_editorial: `Create a human dignity editorial scene for "${topic}" with one grounded adult moment, beautiful natural light, blank paperwork, and a restrained design intervention. Do not imply the person has a record or legal issue.`,
+    data_as_sculpture: `Create a data-as-sculpture image for "${topic}" where proof, metrics, and movement are represented by physical stacked forms, acrylic blocks, cards, and shadow, not fake charts or UI.`,
+    wilma_stage_guide_environment: `Create a Wilma guide-stage environment for "${topic}" with a polished reserved compositing area, blank guidance panels, tactile paper/glass surfaces, and no character, mascot, robot, or substitute person.`
+  };
+  return map[treatmentId] || map.editorial_poster;
+}
+
+function textureDirectionForTreatment(treatment = {}) {
+  const map = {
+    editorial_poster: "Use matte poster paper, restrained screenprint grain, crisp ink edges, and clean shadow. Avoid shiny gradients.",
+    documentary_graphic: "Use real-world texture: wood, cotton, paper, window light, matte walls, and subtle printed graphic shapes.",
+    cut_paper_civic_collage: "Use visible paper fiber, vellum translucency, cardstock layers, ink blocks, cut edges, and soft cast shadows.",
+    neo_brutalist_legal_tech: "Use matte color fields, screenprint texture, sharp edges, hard shadows, and minimal glass only if it has a physical feel.",
+    archival_futurism: "Use folder stock, paper grain, ink-like edges, translucent vellum, soft scanner reflection, and worn-but-clean archival material.",
+    museum_campaign_minimal: "Use premium matte surfaces, soft museum shadow, quiet paper grain, controlled highlights, and no decorative effects.",
+    cinematic_operator_desk: "Use desk grain, blank paper, notebook texture, low lamp light, glass reflection, and deep shadows.",
+    human_dignity_editorial: "Use natural skin-safe lighting, cotton/wood/paper textures, soft window shadow, and one restrained printed-shape overlay.",
+    data_as_sculpture: "Use acrylic, matte cards, stacked paper blocks, precise shadows, and physical dimensionality instead of digital glow.",
+    wilma_stage_guide_environment: "Use matte navy surfaces, paper guide panels, soft glass, precise shadow, and controlled orange marks."
+  };
+  return map[treatment.id] || treatment.textureSystem || "Use tactile paper, ink, shadow, and restrained material texture.";
+}
+
 function selectImageVariant(post, route = {}) {
   const contentBucket = route.contentBucket || post.contentBucket || "Trust & Guidance";
   const formatText = String(post.contentFormat || "").toLowerCase();
@@ -4968,6 +6780,17 @@ function inferImageRoute(post, overrides = {}) {
   if (Object.prototype.hasOwnProperty.call(overrides, "usesLogo")) usesLogo = overrides.usesLogo;
 
   const imageRiskLevel = highImageRisk ? "high" : post.complianceRisk === "medium" ? "medium" : "low";
+  const visualLane = selectVisualLane(post, { contentBucket, contentFormat, visualBucket, usesWilma }, overrides);
+  const artisticTreatment = selectArtisticTreatment(post, visualLane, overrides);
+  const forcedNoWilma = Object.prototype.hasOwnProperty.call(overrides, "usesWilma") && overrides.usesWilma === false;
+  const wilmaTreatment = forcedNoWilma ? "none" : overrides.wilmaTreatment || wilmaTreatmentForPost(post, visualLane, { usesWilma });
+  usesWilma = wilmaTreatment !== "none";
+  if (!usesWilma && assetBundleKey === "wilma_default") assetBundleKey = "global_brand";
+  if (usesWilma) assetBundleKey = "wilma_default";
+  const overlayZone = overrides.overlayZone || overlayZoneForPost(post, visualLane, wilmaTreatment);
+  const productBrand = overrides.productBrand || productBrandForPost(post);
+  const imageAudience = overrides.imageAudience || audienceForImage(post);
+  const visualMetaphor = overrides.visualMetaphor || visualMetaphorForPost(post, { productBrand, imageAudience }, visualLane, artisticTreatment);
   const aspectRatio =
     overrides.aspectRatio ||
 	    "1:1";
@@ -4985,6 +6808,20 @@ function inferImageRoute(post, overrides = {}) {
     imageVariant: variant.id,
     imageVariantLabel: variant.label,
     imageVariantReason: variant.reason,
+    visualLane: visualLane.id,
+    visualLaneLabel: visualLane.label,
+    visualLaneReason: visualLane.reason,
+    artisticTreatment: artisticTreatment.id,
+    artisticTreatmentLabel: artisticTreatment.label,
+    artisticTreatmentReason: artisticTreatment.reason,
+    compositionSystem: artisticTreatment.compositionSystem,
+    textureSystem: artisticTreatment.textureSystem,
+    visualMetaphor,
+    overlayZone,
+    wilmaTreatment,
+    productBrand,
+    imageAudience,
+    promptVersion: imagePromptVersion,
     visualBucket,
     usesWilma,
     usesLogo,
@@ -5536,6 +7373,20 @@ function assembleBrandContext(state, post, overrides = {}) {
     imageVariant: imageRoute.imageVariant,
     imageVariantLabel: imageRoute.imageVariantLabel,
     imageVariantReason: imageRoute.imageVariantReason,
+    visualLane: imageRoute.visualLane,
+    visualLaneLabel: imageRoute.visualLaneLabel,
+    visualLaneReason: imageRoute.visualLaneReason,
+    artisticTreatment: imageRoute.artisticTreatment,
+    artisticTreatmentLabel: imageRoute.artisticTreatmentLabel,
+    artisticTreatmentReason: imageRoute.artisticTreatmentReason,
+    compositionSystem: imageRoute.compositionSystem,
+    textureSystem: imageRoute.textureSystem,
+    visualMetaphor: imageRoute.visualMetaphor,
+    overlayZone: imageRoute.overlayZone,
+    wilmaTreatment: imageRoute.wilmaTreatment,
+    productBrand: imageRoute.productBrand,
+    imageAudience: imageRoute.imageAudience,
+    promptVersion: imageRoute.promptVersion || imagePromptVersion,
     usesWilma,
     usesLogo,
     aspectRatio,
@@ -5692,9 +7543,19 @@ function directionForContext(context, seed) {
 
 function legalEaseNegativePrompt(context = {}) {
   const base = [
+    "no generic AI slop",
+    "no generic glossy AI gradients",
+    "no glowing abstract tech mist",
+    "no overused glowing lines",
+    "no meaningless abstract swirls",
+    "no blue-purple tech mist",
     "no flat vector people",
+    "no sterile corporate vector art",
+    "no smiling stock-photo teams",
     "no generic Canva infographics",
     "no random icons floating around people",
+    "no random floating icons",
+    "no fake dashboards",
     "no fake LegalEase logos",
     "no fake marks",
     "no fake government seals",
@@ -5710,6 +7571,7 @@ function legalEaseNegativePrompt(context = {}) {
     "no mugshots",
     "no AI robots",
     "no hologram brains",
+    "no holograms",
     "no startup gradient slop",
     "no glossy SaaS hero graphics",
     "no fake app screenshots",
@@ -5728,17 +7590,17 @@ function modelSafeImagePrompt(prompt = "") {
   const wantsHuman = /human|people|work|family|job|record|paperwork|eligib|community|portrait/i.test(prompt);
   const wantsGuidePanel = /guide character|guide-panel|right-side|lower-right|wilma/i.test(prompt);
   return [
-    "Create a square text-free semi-abstract modern techno Afro-futurist-inspired concept image.",
-    "Style: luminous future-facing civic technology, layered dark navy atmosphere, warm orange signal paths, pale blue data glow, abstract cultural geometry, orbital route lines, blank glass panels, woven circuit-like patterns, dimensional light, and conceptual visual metaphor.",
+    "Create a square, text-free, art-directed LegalEase social image that looks designed by a world-class human graphic designer, not generated from generic AI art language.",
+    "Style: editorial poster discipline, one clear visual metaphor, one focal point, restrained color, tactile material texture, confident negative space, and specific lighting.",
     wantsHuman
-      ? "Include one dignified diverse adult human subject, silhouette, or grounded hands-and-paperwork detail, integrated into the abstract techno geometry. Do not imply the person has any legal status or personal story."
-      : "Use abstract civic process geometry, luminous paths, blank panels, data constellations, threshold forms, and system-map structure.",
+      ? "Include one dignified adult human subject or grounded hands-and-paperwork detail. Do not imply the person has any legal status or personal story."
+      : "Use a designed object, physical materials, paper, glass, ink, shadow, archival forms, or sculptural abstraction as the central metaphor.",
     wantsGuidePanel
       ? "Leave the lower-right area calm and low-detail for an app-composited approved guide-character panel. Do not draw any guide character, assistant, mascot, avatar, headset figure, or substitute person in that area."
       : "Leave at least one calm corner for an optional app-composited watermark.",
     "ABSOLUTE TEXT BAN: zero readable text, zero words, zero letters, zero numbers, zero captions, zero signs, zero badges, zero labels with glyphs, zero UI copy, zero fake metadata, zero pseudo-typography, zero brand names, zero logos, zero wordmarks, zero initials.",
     "If the design needs a label, sign, title, button, document, form, or tag, make it completely blank or use abstract non-letter texture only.",
-    "Avoid generic flat vector art, legal symbols, courthouse imagery, scales, gavels, jail imagery, handcuffs, robots, startup gradients, fake marks, and anything that looks like a Canva infographic.",
+    "Avoid generic AI slop, glowing abstract tech mist, fake dashboards, random floating icons, legal symbols, courthouse imagery, scales, gavels, jail imagery, handcuffs, robots, startup gradients, fake marks, and anything that looks like a Canva infographic.",
     "Keep all important subjects fully inside the canvas with generous safe margins. Do not crop words because there must be no words."
   ].join("\n\n");
 }
@@ -5772,12 +7634,134 @@ function buildLegalEaseImagePrompt({ blocks, context, variant, direction, compos
   };
 }
 
+function shortTopicForImage(post = {}) {
+  return String(post.title || post.hook || "LegalEase social post").replace(/\s+/g, " ").trim().slice(0, 140);
+}
+
+function compositionForLane(post = {}, context = {}, lane = {}) {
+  const overlayZone = context.overlayZone || overlayZoneForPost(post, lane, context.wilmaTreatment);
+  const base = `Use a square 1024x1024 composition with generous safe margins. Overlay zone: ${overlayZone}. Keep that zone clean, low-detail, and not visually busy so the app can add approved text afterward.`;
+  if (lane.id === "wilma_guide") {
+    return `${base} Foreground and midground should frame a calm lower-right or right-side guide area for later Wilma compositing, while the rest of the scene feels complete and premium.`;
+  }
+  if (lane.id === "human_impact") {
+    return `${base} Place the human subject away from the overlay zone; use natural perspective, premium editorial lighting, and blank materials only.`;
+  }
+  if (lane.id === "data_proof") {
+    return `${base} Keep abstract evidence/dashboard forms on the right or background; no numbers, labels, axes, or fake UI text.`;
+  }
+  return `${base} Build depth with foreground object or signal, midground structure, and atmospheric background; avoid clutter and icon clouds.`;
+}
+
+function buildLegalEaseImagePromptV3({ post, context, lane, treatment, visualMetaphor, artDirection, compositionDirection, textureDirection, negativeRules }) {
+  return [
+    "Create a square, text-free, art-directed social image for LegalEase.",
+    "",
+    "This should look like a world-class human graphic designer created it for a serious legal-tech startup. It should not look like generic AI art.",
+    "",
+    "Post context:",
+    `- Topic: ${shortTopicForImage(post)}`,
+    `- Product/brand: ${context.productBrand || productBrandForPost(post)}`,
+    `- Audience: ${context.imageAudience || audienceForImage(post)}`,
+    `- Visual lane: ${lane.label}`,
+    `- Artistic treatment: ${treatment.label}`,
+    `- Composition system: ${context.compositionSystem || treatment.compositionSystem}`,
+    `- Texture/material system: ${context.textureSystem || treatment.textureSystem}`,
+    `- Overlay zone: ${context.overlayZone || "center-left"}`,
+    `- Wilma treatment: ${context.wilmaTreatment || "none"}`,
+    "",
+    "Creative thesis:",
+    visualMetaphor,
+    "",
+    "Art direction:",
+    artDirection,
+    "",
+    "Composition:",
+    compositionDirection,
+    "",
+    "Material and texture:",
+    textureDirection,
+    "",
+    "Color and light:",
+    "Use a restrained LegalEase palette: deep navy, charcoal, warm orange, pale blue, soft off-white, and occasional teal. Use no more than 3 dominant colors in the image. Lighting should feel editorial, cinematic, or museum-like, not glossy generic tech.",
+    "",
+    "Overlay safety:",
+    `Leave the ${context.overlayZone || "center-left"} calm, low-detail, and intentionally designed for app-composited headline/copy. The image must still feel complete without text.`,
+    "",
+    "Text-free requirement:",
+    "No readable text, no letters, no numbers, no logos, no wordmarks, no fake UI labels, no fake document text, no pseudo-typography. Blank forms, blank cards, blank screens, and abstract non-letter textures are allowed.",
+    "",
+    "Compliance:",
+    "Do not imply the subject has a criminal record, legal issue, arrest, conviction, lawsuit, immigration issue, or court outcome. Do not imply eligibility, expungement success, legal victory, or guaranteed result.",
+    "",
+    "Avoid:",
+    `No generic AI slop, no glowing abstract tech mist, no fake dashboards, no random floating icons, no hologram brains, no robots, no generic assistant mascots, no scales of justice, no gavels, no courthouses, no jail bars, no handcuffs, no mugshots, no fake logos, no fake partner marks, no fake government seals, no stock-photo corporate team, no Canva infographic style, no clutter. ${negativeRules}`,
+    "",
+    "Quality bar:",
+    "The image should feel like a designed artifact: a campaign poster, editorial spread, museum wall graphic, or premium startup brand image. Distinctive, restrained, memorable, and visually intelligent."
+  ].join("\n");
+}
+
 function creativePlanForImage(post, context, versionNumber) {
   const seed = crypto
     .createHash("sha256")
     .update(`${post.id}:${versionNumber}:${Date.now()}:${Math.random()}`)
     .digest("hex")
     .slice(0, 12);
+  const lane = imageLanes[context.visualLane] || selectVisualLane(post, context);
+  const treatment = artisticTreatments[context.artisticTreatment] || selectArtisticTreatment(post, lane, context);
+  const visualMetaphor = context.visualMetaphor || visualMetaphorForPost(post, context, lane, treatment);
+  const artDirection = artDirectionForTreatment(post, context, lane, treatment);
+  const compositionDirection = [
+    `Composition system: ${context.compositionSystem || treatment.compositionSystem}.`,
+    compositionForLane(post, context, lane),
+    "Use one focal point. Use intentional asymmetry. Avoid over-decoration and any composition with no clear focal point."
+  ].join(" ");
+  const textureDirection = textureDirectionForTreatment(treatment);
+  const negativeRulesUsed = legalEaseNegativePrompt(context);
+  const prompt = buildLegalEaseImagePromptV3({
+    post,
+    context,
+    lane,
+    treatment,
+    visualMetaphor,
+    artDirection,
+    compositionDirection,
+    textureDirection,
+    negativeRules: negativeRulesUsed
+  });
+  return {
+    seed,
+    promptVersion: imagePromptVersion,
+    stylePresetId: "legalease_premium_social_creative",
+    styleProfile: "Premium LegalEase Social Creative",
+    visualLane: lane.id,
+    visualLaneLabel: lane.label,
+    visualLaneReason: context.visualLaneReason || lane.reason,
+    artisticTreatment: treatment.id,
+    artisticTreatmentLabel: treatment.label,
+    artisticTreatmentReason: context.artisticTreatmentReason || treatment.reason,
+    compositionSystem: context.compositionSystem || treatment.compositionSystem,
+    textureSystem: context.textureSystem || treatment.textureSystem,
+    visualMetaphor,
+    overlayZone: context.overlayZone,
+    wilmaTreatment: context.wilmaTreatment || "none",
+    productBrand: context.productBrand || productBrandForPost(post),
+    imageAudience: context.imageAudience || audienceForImage(post),
+    imageVariant: lane.id,
+    imageVariantLabel: lane.label,
+    imageVariantReason: context.visualLaneReason || lane.reason,
+    negativePrompt: negativeRulesUsed,
+    negativeRulesUsed,
+    directionKey: lane.id,
+    directionLabel: lane.label,
+    representationVariant: lane.id === "human_impact" ? representationVariants[parseInt(seed.slice(8, 10), 16) % representationVariants.length] : "",
+    composition: compositionDirection,
+    creativeDirectionText: artDirection,
+    artDirection,
+    textureDirection,
+    prompt
+  };
   const direction = directionForContext(context, seed);
   const bucketSystem = bucketVisualSystems[context.contentBucket] || bucketVisualSystems["Trust & Guidance"];
   const variant = selectImageVariant(post, context);
@@ -5881,15 +7865,20 @@ function imageSizeForAspectRatio(aspectRatio) {
 
 async function generateOpenAICreativeImage(prompt, aspectRatio, referenceAssets = []) {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return { imageUrl: null, error: "OPENAI_API_KEY is missing." };
+  if (!apiKey) {
+    const details = openAIErrorDetails({ message: "OPENAI_API_KEY is missing.", route: "openai_image_generation" });
+    logOpenAIImageFailure(details);
+    return { imageUrl: null, error: details.safeMessage, errorDetails: details };
+  }
+  const env = openAIImageEnvStatus();
   let response;
   try {
     if (referenceAssets.length) {
       const form = new FormData();
-      form.append("model", process.env.OPENAI_IMAGE_MODEL || "gpt-image-1");
+      form.append("model", env.openaiImageModel);
       form.append("prompt", prompt);
       form.append("size", imageSizeForAspectRatio(aspectRatio));
-      form.append("quality", "medium");
+      form.append("quality", env.openaiImageQuality);
       form.append("n", "1");
       for (const [index, referenceAsset] of referenceAssets.entries()) {
         const referenceUrl = assetFileUrl(referenceAsset);
@@ -5916,35 +7905,42 @@ async function generateOpenAICreativeImage(prompt, aspectRatio, referenceAssets 
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1",
+          model: env.openaiImageModel,
           prompt,
           size: imageSizeForAspectRatio(aspectRatio),
-          quality: "medium",
+          quality: env.openaiImageQuality,
           n: 1
         })
       });
     }
   } catch (error) {
-    return { imageUrl: null, error: safeShortError(error.message || "Image generation request failed.") };
+    const details = openAIErrorDetails({ message: error.message || "Image generation request failed.", route: "openai_image_generation" });
+    logOpenAIImageFailure(details, error);
+    return { imageUrl: null, error: details.safeMessage, errorDetails: details };
   }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const rawMessage = payload?.error?.message || response.statusText || "Image generation failed.";
+    const details = openAIErrorDetails({ status: response.status, payload, message: rawMessage, route: "openai_image_generation" });
+    logOpenAIImageFailure(details);
     const rateLimit = imageRateLimitDetails(rawMessage);
     if (rateLimit.rateLimited) {
       return {
         imageUrl: null,
-        error: rateLimit.message,
+        error: details.safeMessage,
+        errorDetails: details,
         rateLimited: true,
         retryAfterSeconds: rateLimit.retryAfterSeconds
       };
     }
-    return { imageUrl: null, error: safeShortError(rawMessage) };
+    return { imageUrl: null, error: details.safeMessage, errorDetails: details };
   }
   const item = payload.data?.[0];
   if (item?.b64_json) return { imageUrl: `data:image/png;base64,${item.b64_json}`, error: null };
   if (item?.url) return { imageUrl: item.url, error: null };
-  return { imageUrl: null, error: "Image generation returned no image." };
+  const details = openAIErrorDetails({ message: "Image generation returned no image.", route: "openai_image_generation" });
+  logOpenAIImageFailure(details);
+  return { imageUrl: null, error: details.safeMessage, errorDetails: details };
 }
 
 function safeShortError(value) {
@@ -5965,31 +7961,106 @@ function imageRateLimitDetails(value) {
   };
 }
 
+function redactSecretText(value = "") {
+  return String(value || "")
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/g, "Bearer [redacted]")
+    .replace(/sk-[A-Za-z0-9_-]+/g, "[redacted]")
+    .replace(/OPENAI_API_KEY=[^\s]+/g, "OPENAI_API_KEY=[redacted]")
+    .slice(0, 900);
+}
+
+function classifyOpenAIImageError({ status = 0, payload = {}, message = "" } = {}) {
+  const error = payload?.error || {};
+  const raw = redactSecretText(error.message || message || "Image generation failed.");
+  const type = String(error.type || "").toLowerCase();
+  const code = String(error.code || "").toLowerCase();
+  const combined = `${raw} ${type} ${code}`.toLowerCase();
+  if (!process.env.OPENAI_API_KEY) {
+    return { errorCode: "OPENAI_API_KEY_MISSING", safeMessage: "OPENAI_API_KEY is missing." };
+  }
+  if (status === 401 || /invalid api key|incorrect api key|authentication|unauthorized/.test(combined)) {
+    return { errorCode: "OPENAI_AUTHENTICATION_FAILED", safeMessage: "OpenAI authentication failed. Check OPENAI_API_KEY in .env.local." };
+  }
+  if (/model|does not exist|not found|not have access|unsupported|not available/.test(combined)) {
+    return {
+      errorCode: "OPENAI_MODEL_UNAVAILABLE",
+      safeMessage: "OpenAI model not available for this account. Your account may not have access to gpt-image-1.5. Try OPENAI_IMAGE_MODEL=gpt-image-1."
+    };
+  }
+  if (/billing|organization verification|verify your organization|usage limit|hard limit|quota|insufficient_quota/.test(combined)) {
+    return { errorCode: "OPENAI_BILLING_OR_ORG_VERIFICATION", safeMessage: "OpenAI billing or organization verification issue. Check your OpenAI project billing and organization verification." };
+  }
+  if (/rate limit|too many requests|limit reached/.test(combined) || status === 429) {
+    return { errorCode: "OPENAI_RATE_LIMIT_REACHED", safeMessage: imageRateLimitDetails(raw).message };
+  }
+  if (status >= 500) {
+    return { errorCode: "OPENAI_SERVER_ERROR", safeMessage: "OpenAI server error. Try again shortly." };
+  }
+  if (status >= 400) {
+    return { errorCode: "OPENAI_REQUEST_REJECTED", safeMessage: "OpenAI request rejected. Check the model, prompt, size, and project access." };
+  }
+  return { errorCode: "OPENAI_IMAGE_GENERATION_FAILED", safeMessage: "Image generation failed. Check server logs." };
+}
+
+function openAIErrorDetails({ status = 0, payload = {}, message = "", route = "image_generation" } = {}) {
+  const env = openAIImageEnvStatus();
+  const classified = classifyOpenAIImageError({ status, payload, message });
+  const error = payload?.error || {};
+  return {
+    ok: false,
+    errorCode: classified.errorCode,
+    safeMessage: classified.safeMessage,
+    model: env.openaiImageModel,
+    quality: env.openaiImageQuality,
+    apiKeyPresent: env.openaiKeyPresent,
+    fallbackEnabled: env.allowLocalImageFallback,
+    openAIStatus: status || null,
+    openAIType: error.type || "",
+    openAICode: error.code || "",
+    openAIMessage: redactSecretText(error.message || message || ""),
+    route,
+    timestamp: new Date().toISOString()
+  };
+}
+
+function logOpenAIImageFailure(details = {}, error = null) {
+  console.error("OpenAI image generation failed", {
+    timestamp: details.timestamp || new Date().toISOString(),
+    route: details.route || "image_generation",
+    model: details.model || openAIImageEnvStatus().openaiImageModel,
+    quality: details.quality || openAIImageEnvStatus().openaiImageQuality,
+    apiKeyPresent: Boolean(details.apiKeyPresent),
+    fallbackEnabled: Boolean(details.fallbackEnabled),
+    status: details.openAIStatus || null,
+    code: details.openAICode || "",
+    type: details.openAIType || "",
+    message: redactSecretText(details.openAIMessage || details.safeMessage || "")
+  });
+  if (error?.stack) console.error(redactSecretText(error.stack));
+}
+
 function narrativeInfrastructureStyleGate({ prompt, generationMode, usesWilma }) {
   const text = String(prompt || "").toLowerCase();
   const required = [
-    "semi-abstract",
-    "techno",
-    "afro-futurist",
-    "zero readable text",
-    "luminous",
-    "path",
-    "geometry",
-    "deep navy",
-    "orange"
+    { label: "text-free instruction", test: /text-free|no readable text|zero readable text/.test(text) },
+    { label: "art-directed quality bar", test: /art-directed|human graphic designer|designed artifact|editorial spread|museum wall graphic/.test(text) },
+    { label: "LegalEase brand context", test: /legalease|legal-tech|civic-tech/.test(text) },
+    { label: "no fake logos/text", test: /no .*logos|no .*wordmarks|no letters|no numbers/.test(text) },
+    { label: "visual metaphor", test: /creative thesis|visual metaphor|metaphor/.test(text) },
+    { label: "material direction", test: /material and texture|texture\/material|paper|matte|vellum|ink/.test(text) }
   ];
-  const missing = required.filter((term) => !text.includes(term));
+  const missing = required.filter((item) => !item.test).map((item) => item.label);
   const banned = [];
   const generated = /^openai_(image|background)/.test(String(generationMode || ""));
-  const passed = generated && banned.length === 0;
+  const passed = generated && missing.length === 0 && banned.length === 0;
   return {
     passed,
-    label: passed ? "Techno concept style locked" : "Needs regeneration",
+    label: passed ? "Premium prompt locked" : "Needs regeneration",
     missing,
     banned,
     message: passed
-      ? "Techno Afro-Futurist Concept requirements are present."
-      : "Needs regeneration: strengthen techno concept requirements before approval."
+      ? "Premium LegalEase prompt requirements are present."
+      : "Needs regeneration: strengthen premium text-free prompt requirements before approval."
   };
 }
 
@@ -6002,28 +8073,28 @@ function validateGeneratedImageStyle({ prompt, generationMode, context, creative
   const warnings = [];
   const lowerPrompt = String(prompt || "").toLowerCase();
   if (context.usesWilma && !context.wilmaReferenceAssetIds.length) {
-    warnings.push("Wilma requested without approved canonical reference asset.");
+    warnings.push("Wilma asset missing; OpenAI will generate a text-free background only.");
   }
   if (/include (the )?(legalease )?(logo|wordmark)|place (the )?(legalease )?(logo|wordmark)|draw (the )?(legalease )?(logo|wordmark)/.test(lowerPrompt)) {
     warnings.push("Prompt appears to request a generated logo or wordmark.");
   }
-  if (!creativePlan?.stylePresetId || creativePlan.stylePresetId !== narrativeInfrastructurePreset.visualStyleId) {
-    warnings.push("Techno Afro-Futurist style preset metadata missing.");
+  if (!creativePlan?.promptVersion || creativePlan.promptVersion !== imagePromptVersion) {
+    warnings.push("Image prompt v2 metadata missing.");
   }
   if (!openAIResult?.imageUrl) {
     warnings.push("Final generated image missing; use upload or regenerate before launch.");
   }
   const blockingWarnings = warnings.filter((warning) =>
-    /missing|fake logo|wilma requested/i.test(warning)
+    /fake logo/i.test(warning)
   );
   const passed = gate.passed && Boolean(openAIResult?.imageUrl) && blockingWarnings.length === 0;
   return {
     ...gate,
     passed,
-    label: passed ? "Techno concept style locked" : "Needs regeneration",
+    label: passed ? "Premium prompt locked" : "Needs regeneration",
     warnings,
     message: passed
-      ? "Techno Afro-Futurist Concept requirements are present."
+      ? "Premium LegalEase prompt requirements are present."
       : `Needs regeneration: ${warnings[0] || gate.message}`
   };
 }
@@ -6032,12 +8103,12 @@ function stricterPosterPrompt(prompt) {
   return `${prompt}
 
 STRICT REGENERATION INSTRUCTION:
-Make this less like a generic social graphic and more like semi-abstract modern techno Afro-futurist-inspired concept art with luminous pathways, orbital nodes, threshold portals, layered cultural geometry, blank glass panels, deep navy atmosphere, pale blue glow, and bright orange signal energy.
+Make this less like generic AI prompt art and more like an art-directed designed artifact: one metaphor, one focal point, one material system, restrained palette, editorial lighting, and intentional negative space.
 
 TEXT-SAFE REQUIREMENT:
 Do not render actual readable text, letters, words, numbers, logo text, metadata, slogans, captions, or pseudo-words. Leave clean blank areas and label plates for exact app-rendered typography. Reject any generated text, fake logo, blurred letters, misspelled words, or pseudo UI copy.
 
-Reject any generic flat illustration, centered person-plus-icons composition, weak typography, fake logo, fake Wilma, random legal symbols, generic UI icons, random gradients, or Canva-style layout.`;
+Reject any generic flat illustration, centered person-plus-icons composition, weak typography, fake logo, fake Wilma, random legal symbols, generic UI icons, glossy gradients, glowing tech mist, fake dashboards, random floating icons, or Canva-style layout.`;
 }
 
 function wilmaBackgroundOnlyPrompt(prompt) {
@@ -6400,6 +8471,40 @@ function creativePromptPreviewDataUrl(post, context, plan, versionNumber, error)
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
 }
 
+function localBrandedPlaceholderDataUrl(post, context, versionNumber) {
+  const bucket = String(context.visualBucket || post.visualBucket || post.contentBucket || "LegalEase").toLowerCase();
+  const accent = bucket.includes("myth") ? "#F04800" : bucket.includes("wilma") ? "#0F766E" : "#20277F";
+  const soft = bucket.includes("human") ? "#ECE5DA" : "#E7F2F2";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#F8F7F3"/>
+        <stop offset=".55" stop-color="${soft}"/>
+        <stop offset="1" stop-color="#FFFFFF"/>
+      </linearGradient>
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#101722" flood-opacity=".12"/>
+      </filter>
+    </defs>
+    <rect width="1200" height="1200" fill="#101722"/>
+    <rect x="64" y="64" width="1072" height="1072" rx="46" fill="url(#bg)"/>
+    <rect x="64" y="64" width="1072" height="18" rx="9" fill="${accent}"/>
+    <circle cx="938" cy="310" r="180" fill="${accent}" opacity=".11"/>
+    <circle cx="808" cy="694" r="260" fill="#B7D6D7" opacity=".28"/>
+    <rect x="674" y="212" width="354" height="468" rx="40" fill="#101722" opacity=".96" filter="url(#shadow)"/>
+    <path d="M736 328h230M736 398h150M736 468h212" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round" opacity=".86"/>
+    <path d="M736 560c78-58 164-58 258 0" fill="none" stroke="${accent}" stroke-width="24" stroke-linecap="round"/>
+    <rect x="142" y="186" width="398" height="72" rx="18" fill="#FFFFFF" filter="url(#shadow)"/>
+    <rect x="174" y="215" width="178" height="14" rx="7" fill="${accent}"/>
+    <rect x="142" y="762" width="402" height="126" rx="28" fill="#FFFFFF" opacity=".84"/>
+    <path d="M180 810h246M180 852h176" stroke="#20277F" stroke-width="18" stroke-linecap="round" opacity=".46"/>
+    <path d="M184 996h262" stroke="${accent}" stroke-width="20" stroke-linecap="round"/>
+    <path d="M930 805h92M976 759v92" stroke="${accent}" stroke-width="18" stroke-linecap="round"/>
+    <rect x="96" y="96" width="1008" height="1008" rx="32" fill="none" stroke="#FFFFFF" stroke-width="3" opacity=".7"/>
+  </svg>`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+}
+
 function escapeSvg(value = "") {
   return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[char]);
 }
@@ -6425,14 +8530,10 @@ async function generateImageForPost(postId, overrides = {}) {
   const logoBlocked = false;
   const lockedReferenceAssets = [];
   let promptUsed = creativePlan.prompt;
-  if (context.usesWilma) promptUsed = wilmaBackgroundOnlyPrompt(promptUsed);
-  promptUsed = modelSafeImagePrompt(promptUsed);
-  let openAIResult = wilmaBlocked
-    ? { imageUrl: null, error: "Wilma generation blocked: canonical reference asset missing." }
-    : logoBlocked
+  let openAIResult = logoBlocked
       ? { imageUrl: null, error: "Logo generation blocked: approved LegalEase logo asset missing." }
       : await generateOpenAICreativeImage(promptUsed, context.aspectRatio, lockedReferenceAssets);
-  if (openAIResult.imageUrl && context.usesWilma) {
+  if (openAIResult.imageUrl && context.usesWilma && !wilmaBlocked) {
     try {
       openAIResult = {
         imageUrl: await compositeCanonicalWilmaPanel(openAIResult.imageUrl, context),
@@ -6452,9 +8553,9 @@ async function generateImageForPost(postId, overrides = {}) {
     openAIResult
   });
   if (openAIResult.imageUrl && !styleGate.passed) {
-    promptUsed = modelSafeImagePrompt(stricterPosterPrompt(promptUsed));
+    promptUsed = stricterPosterPrompt(promptUsed);
     openAIResult = await generateOpenAICreativeImage(promptUsed, context.aspectRatio, lockedReferenceAssets);
-    if (openAIResult.imageUrl && context.usesWilma) {
+    if (openAIResult.imageUrl && context.usesWilma && !wilmaBlocked) {
       try {
         openAIResult = {
           imageUrl: await compositeCanonicalWilmaPanel(openAIResult.imageUrl, context),
@@ -6474,11 +8575,28 @@ async function generateImageForPost(postId, overrides = {}) {
       openAIResult
     });
   }
-  const fallbackImageUrl = context.usesWilma && !wilmaBlocked
-    ? svgImageDataUrl(post, { ...context, templateKey: designTemplateForPost(post, context) }, versionNumber)
-    : creativePromptPreviewDataUrl(post, context, creativePlan, versionNumber, openAIResult.error);
-  const generatedAndPassed = Boolean(openAIResult.imageUrl && styleGate.passed);
-  const generationError = openAIResult.error || (!generatedAndPassed ? styleGate.message || "Generated image failed the style gate." : null);
+  const fallbackImageUrl = localBrandedPlaceholderDataUrl(post, context, versionNumber);
+  const allowLocalFallback = process.env.ALLOW_LOCAL_IMAGE_FALLBACK === "true";
+  const localFallbackUsed = allowLocalFallback && (!openAIResult.imageUrl || !styleGate.passed);
+  if (localFallbackUsed) {
+    generationMode = "local_branded_placeholder";
+    styleGate = { passed: true, message: "Local branded placeholder used for demo-safe image output.", warnings: [] };
+  }
+  let generatedAndPassed = Boolean(openAIResult.imageUrl && styleGate.passed) || localFallbackUsed;
+  let generationError = generatedAndPassed ? null : openAIResult.error || styleGate.message || "OpenAI image generation failed.";
+  let generatedImageFile = null;
+  if (openAIResult.imageUrl && !localFallbackUsed) {
+    try {
+      generatedImageFile = await saveOpenAIGeneratedPostImage(postId, openAIResult.imageUrl);
+      if (generatedImageFile?.fileUrl) openAIResult.imageUrl = generatedImageFile.fileUrl;
+    } catch (error) {
+      const details = openAIErrorDetails({ message: error.message || "Could not save OpenAI generated image.", route:"openai_image_save" });
+      logOpenAIImageFailure(details, error);
+      openAIResult = { imageUrl: null, error: details.safeMessage, errorDetails: details };
+      generatedAndPassed = false;
+      generationError = details.safeMessage;
+    }
+  }
   const rateLimitRetryAfterSeconds = openAIResult.retryAfterSeconds || 0;
   const rateLimitRetryAt = openAIResult.rateLimited
     ? new Date(Date.now() + rateLimitRetryAfterSeconds * 1000).toISOString()
@@ -6486,22 +8604,32 @@ async function generateImageForPost(postId, overrides = {}) {
   const image = {
     id: crypto.randomUUID(),
     postId,
-    imageUrl: openAIResult.imageUrl || fallbackImageUrl,
+    imageUrl: openAIResult.imageUrl && !localFallbackUsed ? openAIResult.imageUrl : localFallbackUsed ? fallbackImageUrl : "",
     imagePrompt: promptUsed,
     promptSummary: openAIResult.imageUrl
       ? context.usesWilma
         ? `Text-safe poster background generated, then canonical Wilma PNG composited by the app. Exact typography should be app-rendered, not image-generated.`
         : `Text-safe poster art generated with ${creativePlan.directionLabel}. Exact typography should be app-rendered, not image-generated.`
-      : context.usesWilma && !wilmaBlocked
-        ? `Composited preview using canonical Wilma asset. Final reference-anchored generation did not run: ${openAIResult.error}`
-        : `Creative prompt ready, but final image generation did not run: ${openAIResult.error}`,
+      : localFallbackUsed
+        ? `Local branded demo image generated. Add OPENAI_API_KEY and approved Wilma assets for live AI image generation.`
+        : `OpenAI image generation did not run: ${generationError}`,
     assetBundleUsed: {
+      generatedImageFile,
       assets: context.referenceAssets.map((asset) => ({ id: asset.id, name: asset.name, type: asset.assetType })),
       aspectRatio: context.aspectRatio,
       stylePresetId: creativePlan.stylePresetId,
       stylePresetName: creativePlan.styleProfile,
       imageVariant: creativePlan.imageVariant,
       imageVariantLabel: creativePlan.imageVariantLabel,
+      visualLane: creativePlan.visualLane,
+      visualLaneLabel: creativePlan.visualLaneLabel,
+      artisticTreatment: creativePlan.artisticTreatment,
+      artisticTreatmentLabel: creativePlan.artisticTreatmentLabel,
+      compositionSystem: creativePlan.compositionSystem,
+      textureSystem: creativePlan.textureSystem,
+      visualMetaphor: creativePlan.visualMetaphor,
+      overlayZone: creativePlan.overlayZone,
+      wilmaTreatment: creativePlan.wilmaTreatment,
       watermark: {
         position: "none",
         mode: "none",
@@ -6524,7 +8652,9 @@ async function generateImageForPost(postId, overrides = {}) {
     wilmaIdentityLocked: context.wilmaIdentityLocked,
     wilmaReferenceMode: context.usesWilma
       ? openAIResult.imageUrl
-        ? "canonical_png_composited_after_generation"
+        ? wilmaBlocked
+          ? "openai_background_generated_wilma_asset_missing"
+          : "canonical_png_composited_after_generation"
         : wilmaBlocked
           ? "blocked_missing_canonical_reference"
           : "template_composited_from_approved_png"
@@ -6539,12 +8669,29 @@ async function generateImageForPost(postId, overrides = {}) {
     imageVersion: versionNumber,
     generationStatus: generatedAndPassed ? "generated" : "failed",
     imageStatus: generationMode,
+    promptVersion: creativePlan.promptVersion || imagePromptVersion,
+    promptUsed,
+    negativeRulesUsed: creativePlan.negativeRulesUsed || creativePlan.negativePrompt,
+    visualLane: creativePlan.visualLane,
+    visualLaneLabel: creativePlan.visualLaneLabel,
+    visualLaneReason: creativePlan.visualLaneReason,
+    artisticTreatment: creativePlan.artisticTreatment,
+    artisticTreatmentLabel: creativePlan.artisticTreatmentLabel,
+    artisticTreatmentReason: creativePlan.artisticTreatmentReason,
+    compositionSystem: creativePlan.compositionSystem,
+    textureSystem: creativePlan.textureSystem,
+    visualMetaphor: creativePlan.visualMetaphor,
+    overlayZone: creativePlan.overlayZone,
+    wilmaTreatment: creativePlan.wilmaTreatment,
+    sourcePostId: postId,
+    model: openAIImageEnvStatus().openaiImageModel,
+    quality: openAIImageEnvStatus().openaiImageQuality,
     visualBucket: context.visualBucket,
     imageRiskLevel: context.imageRiskLevel,
     imageBrief: context.imageBrief,
     aspectRatio: context.aspectRatio,
     assetBundleKey: context.assetBundleKey,
-    templateKey: openAIResult.imageUrl ? "none_creative_generation" : context.usesWilma && !wilmaBlocked ? designTemplateForPost(post, context) : "none_creative_generation",
+    templateKey: localFallbackUsed ? "local_branded_placeholder" : "none_creative_generation",
     generationMode,
     styleProfile: creativePlan.styleProfile,
     stylePresetId: creativePlan.stylePresetId,
@@ -6553,8 +8700,8 @@ async function generateImageForPost(postId, overrides = {}) {
     imageVariantReason: creativePlan.imageVariantReason,
     negativePrompt: creativePlan.negativePrompt,
     styleGate,
-    styleQualityLabel: styleGate.passed ? "Poster system" : "Needs regeneration",
-    safeAreaStatus: "Needs visual check",
+    styleQualityLabel: localFallbackUsed ? "Demo placeholder" : generatedAndPassed ? "OpenAI generated" : "Needs OpenAI setup",
+    safeAreaStatus: localFallbackUsed || generatedAndPassed ? "Ready for overlay" : "Not ready",
     textRenderingMode: "app_overlay_only",
     logoPolicy: "no_generated_logo_watermark_only",
     diversityProfile: {
@@ -6563,14 +8710,32 @@ async function generateImageForPost(postId, overrides = {}) {
     },
     creativeDirection: { ...creativePlan, prompt: promptUsed, styleGate, negativePrompt: creativePlan.negativePrompt },
     generationError,
+    openAIError: openAIResult.errorDetails || null,
     rateLimited: Boolean(openAIResult.rateLimited),
     rateLimitRetryAfterSeconds,
     rateLimitRetryAt,
+    generatedAt: generatedAndPassed ? new Date().toISOString() : "",
     createdAt: new Date().toISOString()
   };
   await store.updatePost(postId, routedPatch);
   const nextState = await store.savePostImage(image);
-  return { image, state: nextState };
+  return {
+    image,
+    state: nextState,
+    ok: generatedAndPassed,
+    error: generatedAndPassed ? null : (openAIResult.errorDetails || {
+      ok: false,
+      errorCode: "OPENAI_IMAGE_GENERATION_FAILED",
+      safeMessage: generationError,
+      model: openAIImageEnvStatus().openaiImageModel,
+      apiKeyPresent: openAIImageEnvStatus().openaiKeyPresent,
+      fallbackEnabled: openAIImageEnvStatus().allowLocalImageFallback,
+      timestamp: new Date().toISOString()
+    }),
+    message: generatedAndPassed
+      ? (openAIResult.imageUrl && !localFallbackUsed ? "OpenAI image generated." : "Local fallback image generated.")
+      : generationError
+  };
 }
 
 async function setImageWatermark(postId, position = "none") {
@@ -6609,7 +8774,7 @@ async function finalizePostImage(postId) {
   const state = await store.readState();
   const post = state.posts.find((item) => item.id === postId);
   if (!post) throw new Error("Post not found.");
-  const image = imageForPostFromState(state, postId);
+  const image = sourceImageForFinalFromState(state, postId);
   if (!image || image.generationStatus !== "generated") {
     throw new Error("Generate or upload an image before finalizing.");
   }
@@ -6648,6 +8813,7 @@ async function finalizePostImage(postId) {
     },
     finalImageUrl: finalImage.imageUrl,
     finalPngUrl: finalImage.imageUrl,
+    localFinalPngPath: finalImage.localPath,
     finalPngPath: finalImage.localPath,
     finalPngFileSize: finalImage.fileSize,
     finalPngGeneratedAt: finalImage.generatedAt,
@@ -6660,6 +8826,7 @@ async function finalizePostImage(postId) {
 	    finalPngReady: true,
 	    finalPngUrl: finalImage.imageUrl,
 	    finalImageUrl: finalImage.imageUrl,
+      localFinalPngPath: finalImage.localPath,
 	    finalPngPath: finalImage.localPath,
 	    finalPngFileSize: finalImage.fileSize,
 	    finalPngGeneratedAt: finalImage.generatedAt,
@@ -6675,6 +8842,7 @@ async function finalizePostImage(postId) {
     finalPreviewConfirmedAt: "",
     finalPngUrl: finalImage.imageUrl,
 	    finalImageUrl: finalImage.imageUrl,
+      localFinalPngPath: finalImage.localPath,
 	    finalPngPath: finalImage.localPath,
 	    finalPngFileSize: finalImage.fileSize,
 	    finalPngGeneratedAt: finalImage.generatedAt,
@@ -6737,8 +8905,62 @@ const growthCollections = new Set([
   "complianceItems",
   "reports",
   "dataRoomItems",
-  "funnelSnapshots"
+  "funnelSnapshots",
+  "soc2AccessReviews",
+  "soc2AuditLogs",
+  "soc2Changes",
+  "soc2Vendors",
+  "soc2Incidents",
+  "soc2Evidence",
+  "soc2Policies",
+  "soc2ControlOwners",
+  "soc2TypeIChecklist"
 ]);
+
+const proofPointDefinitions = [
+  { id:"signed_pilots", label:"Signed Institutional Pilots", target:3, description:"Sign 2-3 institutional pilots with named partners, defined scope, start date, success metrics, and expansion path." },
+  { id:"recordshield_users", label:"RecordShield Users", target:1000, description:"Reach 1,000+ RecordShield users with source attribution." },
+  { id:"recordshield_to_expungement_conversion", label:"RecordShield → Expungement.ai Conversion", target:20, unit:"%", description:"Prove that RecordShield creates qualified demand for Expungement.ai." },
+  { id:"active_partner_campaigns", label:"Active Partner Campaigns", target:10, description:"Launch 10 active partner campaigns with actual distribution activity and tracked user activity." },
+  { id:"public_institutional_proof", label:"Public Institutional Proof Point", target:1, description:"Secure one public proof point such as a partner announcement, case study, quote, public pilot, or impact report." },
+  { id:"infrastructure_dashboard", label:"Infrastructure Dashboard", target:100, unit:"%", description:"Build partner/infrastructure reporting that shows LegalEase as an operating layer, not just a consumer app." },
+  { id:"compliance_safety", label:"Compliance Safety", target:100, unit:"%", description:"Build compliance gates, review workflows, Wilma guardrails, disclaimers, and approval history." },
+  { id:"acquisition_readiness", label:"Acquisition Readiness", target:100, unit:"%", description:"Build a data room with investor/acquirer-ready evidence, traction, compliance docs, product materials, technical architecture, financials, and acquisition thesis." }
+];
+
+const supportedProductEventTypes = new Set([
+  "landing_page_viewed",
+  "campaign_cta_clicked",
+  "recordshield_user_created",
+  "recordshield_check_started",
+  "recordshield_check_completed",
+  "recordshield_result_viewed",
+  "cleanup_cta_clicked",
+  "expungement_intake_started",
+  "payment_started",
+  "payment_completed",
+  "packet_generated",
+  "packet_completed",
+  "petition_filed",
+  "outcome_known"
+]);
+
+const productEventMetricMap = {
+  landing_page_viewed: "landingPageVisits",
+  campaign_cta_clicked: "actualReferrals",
+  recordshield_user_created: "recordShieldStarts",
+  recordshield_check_started: "recordShieldStarts",
+  recordshield_check_completed: "recordShieldCompletions",
+  recordshield_result_viewed: "resultsViewed",
+  cleanup_cta_clicked: "cleanupCtaClicks",
+  expungement_intake_started: "expungementIntakeStarted",
+  payment_started: "paymentStarted",
+  payment_completed: "paymentCompleted",
+  packet_generated: "packetGenerated",
+  packet_completed: "packetCompleted",
+  petition_filed: "petitionFiled",
+  outcome_known: "outcomeKnown"
+};
 
 function titleForGrowthItem(collection, item = {}) {
   return item.title || item.organizationName || item.campaignName || item.pilotName || item.itemTitle || item.reportTitle || item.id || collection;
@@ -6853,6 +9075,1179 @@ function automaticTasksForGrowthChange(collection, item = {}, previous = {}) {
   return tasks;
 }
 
+function sixMonthSeedData(now = new Date()) {
+  const today = now.toISOString().slice(0, 10);
+  const month = (offset) => {
+    const date = new Date(now);
+    date.setMonth(date.getMonth() + offset);
+    return date.toISOString().slice(0, 10);
+  };
+  const partner = (id, organizationName, partnerType, status, nextAction, notes, extra = {}) => ({
+    id,
+    organizationName,
+    partnerType,
+    regionState: extra.regionState || "TBD",
+    primaryContactName: "",
+    email: "",
+    phone: "",
+    website: extra.website || "",
+    status,
+    lastTouchDate: "",
+    nextFollowUpDate: month(1),
+    owner: extra.owner || "Owner TBD",
+    priority: extra.priority || "High",
+    nextAction,
+    notes,
+    referralCount: 0,
+    screenings: 0,
+    recordShieldStarts: 0,
+    expungementStarts: 0,
+    revenue: 0,
+    createdAt: today
+  });
+  const campaign = (id, campaignName, partnerId, campaignType, status, nextAction, notes, extra = {}) => ({
+    id,
+    campaignName,
+    partnerId,
+    campaignType,
+    stateRegion: extra.stateRegion || "TBD",
+    status,
+    landingPageUrl: "",
+    trackingSlug: extra.trackingSlug || "",
+    sourceChannel: extra.sourceChannel || "partner",
+    startDate: extra.startDate || month(1),
+    endDate: extra.endDate || month(3),
+    targetReferrals: extra.targetReferrals || 100,
+    actualReferrals: 0,
+    recordShieldStarts: 0,
+    expungementStarts: 0,
+    paidConversions: 0,
+    owner: extra.owner || "Owner TBD",
+    nextAction,
+    notes,
+    createdAt: today
+  });
+  const pilot = (id, pilotName, partnerId, status, objective, nextAction, notes, extra = {}) => ({
+    id,
+    pilotName,
+    partnerId,
+    objective,
+    startDate: extra.startDate || month(1),
+    endDate: extra.endDate || month(4),
+    status,
+    targetUsers: extra.targetUsers || 150,
+    actualUsers: 0,
+    successMetrics: extra.successMetrics || "RecordShield starts, Expungement.ai starts, partner reporting cadence, and proof artifact readiness.",
+    internalOwner: extra.internalOwner || "Owner TBD",
+    partnerOwner: "",
+    weeklyReportingStatus: "not started",
+    risks: "Needs partner confirmation, tracking setup, and launch owner.",
+    nextAction,
+    publicProofStatus: "not_requested",
+    notes,
+    checklist: {
+      proposalSent: false,
+      scopeApproved: false,
+      agreementSigned: false,
+      campaignAssetsApproved: false,
+      landingPageLive: false,
+      trackingActive: false,
+      staffTrained: false,
+      campaignLaunched: false,
+      first25Users: false,
+      midpointReport: false,
+      finalReport: false,
+      testimonialRequested: false,
+      caseStudyDrafted: false,
+      expansionConversationScheduled: false
+    },
+    createdAt: today
+  });
+  const dataRoom = (id, title, section, notes, status = "missing") => ({
+    id,
+    title,
+    section,
+    status,
+    filePath: "",
+    lastUpdated: today,
+    owner: "Owner TBD",
+    nextAction: `Create or attach ${title.toLowerCase()}.`,
+    dueDate: month(2),
+    notes,
+    createdAt: today
+  });
+  const report = (id, reportTitle, reportType, notes) => ({
+    id,
+    reportTitle,
+    reportType,
+    status: "template",
+    owner: "Owner TBD",
+    nextAction: `Export ${reportTitle} from Reports when data is current.`,
+    dueDate: month(1),
+    notes,
+    createdAt: today
+  });
+  return {
+    milestones: [
+      { id:"seed-milestone-sign-3-pilots", title:"Sign 3 institutional pilots", target:3, current:0, unit:"pilots", status:"needs_attention", owner:"Owner TBD", nextAction:"Prioritize TimeDone, county/government, and workforce/reentry pilot follow-ups.", dueDate:month(4), relatedPartners:["seed-partner-timedone", "seed-partner-fulton-county", "seed-partner-workforce-reentry"], relatedCampaigns:[], relatedPilots:["seed-pilot-national-nonprofit", "seed-pilot-county-government", "seed-pilot-workforce-reentry"], notes:"Signed pilots are the clearest infrastructure validation for investors, acquirers, and institutional partners.", createdAt:today },
+      { id:"seed-milestone-launch-10-campaigns", title:"Launch 10 partner campaigns", target:10, current:0, unit:"campaigns", status:"needs_attention", owner:"Owner TBD", nextAction:"Turn the highest-priority partners into campaign kits with tracking slugs.", dueDate:month(4), relatedPartners:["seed-partner-we-must-vote", "seed-partner-goodwill-ms", "seed-partner-hope-credit-union"], relatedCampaigns:["seed-campaign-workforce-reentry", "seed-campaign-voter-civic-access"], relatedPilots:[], notes:"Campaign volume proves repeatability across partner categories and referral channels.", createdAt:today },
+      { id:"seed-milestone-1000-recordshield-users", title:"Reach 1,000 RecordShield users", target:1000, current:0, unit:"users", status:"at_risk", owner:"Owner TBD", nextAction:"Connect partner campaigns to tracked RecordShield starts and weekly funnel snapshots.", dueDate:month(6), relatedPartners:["seed-partner-timedone", "seed-partner-goodwill-ms"], relatedCampaigns:["seed-campaign-recordshield-launch"], relatedPilots:["seed-pilot-recordshield-conversion"], notes:"This is the top-of-funnel usage proof that shows RecordShield can create scalable demand.", createdAt:today },
+      { id:"seed-milestone-track-rs-to-expai", title:"Track RecordShield-to-Expungement.ai conversion", target:1, current:0, unit:"tracking system", status:"needs_attention", owner:"Owner TBD", nextAction:"Define conversion events and enter weekly manual snapshots until automated events are live.", dueDate:month(2), relatedPartners:[], relatedCampaigns:["seed-campaign-recordshield-launch"], relatedPilots:["seed-pilot-recordshield-conversion"], notes:"Conversion data validates whether free screening demand turns into paid or higher-intent Expungement.ai action.", createdAt:today },
+      { id:"seed-milestone-public-proof-point", title:"Generate one public institutional proof point", target:1, current:0, unit:"proof point", status:"needs_attention", owner:"Owner TBD", nextAction:"Identify the partner most likely to approve a quote, case study, or public campaign result.", dueDate:month(5), relatedPartners:["seed-partner-timedone", "seed-partner-clean-slate"], relatedCampaigns:["seed-campaign-public-proof"], relatedPilots:[], notes:"One approved public proof point de-risks sales, fundraising, and acquisition conversations.", createdAt:today },
+      { id:"seed-milestone-investor-data-room", title:"Build investor/acquirer-ready data room", target:1, current:0, unit:"data room", status:"needs_attention", owner:"Owner TBD", nextAction:"Move every required data room section from missing to draft, then usable.", dueDate:month(3), relatedPartners:[], relatedCampaigns:[], relatedPilots:[], notes:"The data room is the diligence package for investors, institutional partners, and strategic acquirers.", createdAt:today },
+      { id:"seed-milestone-weekly-reports", title:"Produce weekly operating reports", target:24, current:0, unit:"reports", status:"on_track", owner:"Owner TBD", nextAction:"Export a Weekly Operating Report every Friday and review blockers on Monday.", dueDate:month(1), relatedPartners:[], relatedCampaigns:[], relatedPilots:[], notes:"Weekly reporting creates operating cadence and investor-ready narrative discipline.", createdAt:today },
+      { id:"seed-milestone-partner-dashboard", title:"Launch partner dashboard experience", target:1, current:0, unit:"dashboard", status:"needs_attention", owner:"Owner TBD", nextAction:"Define the minimum partner dashboard view: referrals, starts, conversion, assets, and reporting.", dueDate:month(4), relatedPartners:["seed-partner-timedone"], relatedCampaigns:["seed-campaign-partner-referral"], relatedPilots:[], notes:"Partner dashboard framing supports the infrastructure platform story.", createdAt:today },
+      { id:"seed-milestone-acquisition-funnel", title:"Validate RecordShield as acquisition funnel", target:1, current:0, unit:"validated funnel", status:"at_risk", owner:"Owner TBD", nextAction:"Compare RecordShield starts against Expungement.ai intakes, payments, and packet completions.", dueDate:month(6), relatedPartners:[], relatedCampaigns:["seed-campaign-recordshield-launch"], relatedPilots:["seed-pilot-recordshield-conversion"], notes:"This proves RecordShield is not just a free tool, but a measurable acquisition channel.", createdAt:today },
+      { id:"seed-milestone-traction-narrative", title:"Prepare six-month traction narrative", target:1, current:0, unit:"narrative", status:"needs_attention", owner:"Owner TBD", nextAction:"Turn pilots, campaign data, funnel conversion, and proof artifacts into one investor story.", dueDate:month(6), relatedPartners:[], relatedCampaigns:[], relatedPilots:[], notes:"This becomes the board/investor/acquirer narrative for what LegalEase learned and proved.", createdAt:today }
+    ],
+    partners: [
+      partner("seed-partner-timedone", "TimeDone", "nonprofit", "target_identified", "Confirm the best pilot entry point and licensing conversation owner.", "High-signal nonprofit relationship for RecordShield distribution and institutional validation."),
+      partner("seed-partner-we-must-vote", "We Must Vote", "church/community", "target_identified", "Map voter/civic access campaign angle and compliance guardrails.", "Potential civic campaign partner for reaching people affected by records and reentry barriers."),
+      partner("seed-partner-clean-slate", "Clean Slate Initiative", "legal aid", "target_identified", "Clarify whether collaboration should be policy proof, referral, or education campaign.", "Credibility partner for clean slate policy ecosystem and public proof."),
+      partner("seed-partner-fulton-county", "Fulton County Solicitor-General", "government", "target_identified", "Identify government intake pilot scope and responsible contact.", "County/government pilot target that can validate public-sector intake infrastructure."),
+      partner("seed-partner-goodwill-ms", "Goodwill of Mississippi", "workforce", "target_identified", "Draft workforce/reentry campaign concept and pilot intake use case.", "Workforce partner target for referrals and second-chance employment context."),
+      partner("seed-partner-hope-credit-union", "Hope Credit Union", "foundation", "target_identified", "Explore financial-health and reentry support campaign fit.", "Potential trusted community distribution partner in the Southeast."),
+      partner("seed-partner-jackson-state", "Jackson State University", "other", "target_identified", "Explore research, workforce, or public proof collaboration path.", "Institutional relationship that could support credibility, research, or local campaign reach."),
+      partner("seed-partner-reform-alliance", "REFORM Alliance relationship", "nonprofit", "target_identified", "Clarify warm path and whether the ask is pilot, campaign, or proof support.", "High-leverage justice reform relationship with potential distribution and proof value."),
+      partner("seed-partner-workforce-reentry", "Workforce/reentry partner target", "workforce", "target_identified", "Name the first target organization and create outreach task.", "Generic placeholder for the next high-quality workforce or reentry organization."),
+      partner("seed-partner-employer-second-chance", "Employer second-chance hiring target", "employer", "target_identified", "Identify an employer willing to test candidate support or education flow.", "Employer-side validation can show RecordShield value for hiring and workforce readiness.")
+    ],
+    campaigns: [
+      campaign("seed-campaign-workforce-reentry", "Workforce/reentry campaign", "seed-partner-goodwill-ms", "workforce/reentry", "draft", "Generate campaign kit and tracking slug for workforce referrals.", "Turns workforce partner demand into measurable RecordShield starts.", { targetReferrals:150 }),
+      campaign("seed-campaign-voter-civic-access", "Voter/civic access campaign", "seed-partner-we-must-vote", "voter/civic", "draft", "Define civic access message and compliance-safe disclaimers.", "Tests civic partner distribution without overclaiming legal outcomes.", { targetReferrals:100 }),
+      campaign("seed-campaign-recordshield-launch", "RecordShield launch campaign", "", "RecordShield", "assets_needed", "Create landing-page copy, social posts, and manual funnel snapshot cadence.", "Core growth campaign for RecordShield user acquisition.", { targetReferrals:300, trackingSlug:"recordshield-launch" }),
+      campaign("seed-campaign-partner-referral", "Partner referral campaign", "seed-partner-timedone", "RecordShield", "draft", "Build partner referral kit and dashboard reporting promise.", "Validates repeatable referral motion and partner reporting expectations.", { targetReferrals:200 }),
+      campaign("seed-campaign-public-proof", "Public proof/case study campaign", "seed-partner-clean-slate", "awareness", "draft", "Identify the proof artifact and approval path before launch.", "Creates institutional proof for investor and acquisition conversations.", { targetReferrals:50 }),
+      campaign("seed-campaign-fresh-start-network", "Fresh Start Network campaign", "", "expungement", "draft", "Define partner list and campaign owner for Fresh Start distribution.", "Potential branded campaign for broader second-chance awareness and funnel growth.", { targetReferrals:150 }),
+      campaign("seed-campaign-employer-hiring", "Employer second-chance hiring campaign", "seed-partner-employer-second-chance", "employer", "draft", "Draft employer-facing copy and compliance-safe candidate support flow.", "Tests employer-side demand and second-chance hiring infrastructure value.", { targetReferrals:75 })
+    ],
+    pilots: [
+      pilot("seed-pilot-national-nonprofit", "National nonprofit licensing pilot", "seed-partner-timedone", "proposed", "Validate whether a national nonprofit can license or distribute LegalEase/RecordShield infrastructure.", "Send pilot concept and define licensing economics.", "Could become the cleanest institutional pilot and licensing proof.", { targetUsers:250 }),
+      pilot("seed-pilot-county-government", "County/government intake pilot", "seed-partner-fulton-county", "proposed", "Test whether a county/government office can route residents into RecordShield and follow-up workflows.", "Identify scope, risk review, and intake owner.", "Government pilot supports public-sector infrastructure narrative.", { targetUsers:200 }),
+      pilot("seed-pilot-workforce-reentry", "Workforce/reentry partner pilot", "seed-partner-goodwill-ms", "proposed", "Validate RecordShield as a workforce/reentry support tool.", "Confirm launch staff, referral workflow, and reporting fields.", "Workforce/reentry usage is central to practical growth and impact proof.", { targetUsers:150 }),
+      pilot("seed-pilot-civic-partner", "Civic partner campaign pilot", "seed-partner-we-must-vote", "proposed", "Test civic-partner distribution for records education and RecordShield starts.", "Define campaign guardrails and launch timeline.", "Civic access pilot can create a distinct non-legal aid growth channel.", { targetUsers:100 }),
+      pilot("seed-pilot-recordshield-conversion", "RecordShield conversion pilot", "", "proposed", "Measure RecordShield-to-Expungement.ai conversion across partner campaigns.", "Define manual funnel snapshots and conversion review cadence.", "This is the core acquisition-funnel proof for RecordShield.", { targetUsers:300 })
+    ],
+    dataRoomItems: [
+      dataRoom("seed-dataroom-company-overview", "Company overview", "Company overview", "One-page company narrative, market framing, and operating plan."),
+      dataRoom("seed-dataroom-product-suite", "Product suite", "Product suite", "RecordShield, Expungement.ai, partner dashboard, and growth command center overview."),
+      dataRoom("seed-dataroom-traction-dashboard", "Traction dashboard", "Traction", "Snapshot of users, campaigns, pilots, funnel conversion, and content performance."),
+      dataRoom("seed-dataroom-partner-pipeline", "Partner pipeline", "Partner pipeline", "Current partner pipeline, status, owners, next actions, and proof potential."),
+      dataRoom("seed-dataroom-pilot-proposals", "Pilot proposals", "Pilots", "Pilot scopes, proposals, signed agreements, and reporting templates."),
+      dataRoom("seed-dataroom-recordshield-funnel", "RecordShield funnel", "RecordShield funnel", "Manual or automated funnel snapshots from visits through Expungement.ai conversion."),
+      dataRoom("seed-dataroom-revenue-model", "Revenue model", "Revenue", "Pricing, conversion assumptions, partner licensing, and paid conversion model."),
+      dataRoom("seed-dataroom-compliance-memo", "Compliance memo", "Compliance", "Non-UPL posture, disclaimers, risk review, and consumer-facing claim rules."),
+      dataRoom("seed-dataroom-technical-architecture", "Technical architecture", "Technical architecture", "App architecture, storage model, publishing adapters, and security boundaries."),
+      dataRoom("seed-dataroom-security-posture", "Security posture", "Security", "Supabase RLS, secret handling, local backup, live gate, and fail-closed summary."),
+      dataRoom("seed-dataroom-case-studies", "Case studies", "Case studies", "Partner pilot and campaign case studies as they become approved."),
+      dataRoom("seed-dataroom-public-proof", "Public proof", "Press/public proof", "Approved testimonials, public campaign links, institutional references, and press."),
+      dataRoom("seed-dataroom-financial-model", "Financial model", "Financial model", "Six-month model with funnel assumptions, revenue scenarios, and acquisition logic."),
+      dataRoom("seed-dataroom-acquisition-thesis", "Acquisition thesis", "Acquisition thesis", "Why LegalEase infrastructure and RecordShield funnel matter to strategic buyers.")
+    ],
+    reports: [
+      report("seed-report-weekly-operating", "Weekly Operating Report", "weekly_operating", "Weekly operating cadence across milestones, partner motion, funnel, blockers, and decisions."),
+      report("seed-report-partner-campaign", "Partner Campaign Report", "partner_campaign", "Partner-facing report for campaign referrals, RecordShield starts, and next actions."),
+      report("seed-report-pilot-update", "Pilot Update Report", "pilot_report", "Pilot status, risks, success metrics, and public proof readiness."),
+      report("seed-report-investor-update", "Investor Update", "investor_update", "Concise update for traction, milestones, asks, risks, and proof."),
+      report("seed-report-data-room-readiness", "Data Room Readiness Snapshot", "data_room_traction_snapshot", "Data room score, missing sections, investor-critical proof, and next artifact actions.")
+    ]
+  };
+}
+
+async function seedSixMonthPlan({ force = false } = {}) {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const seeds = sixMonthSeedData();
+    const seededAt = new Date().toISOString();
+    const summary = {};
+    const nextState = { ...state };
+    for (const [collection, records] of Object.entries(seeds)) {
+      const current = Array.isArray(nextState[collection]) ? nextState[collection] : [];
+      const existingIds = new Set(current.map((item) => item.id));
+      const shouldSeed = force || current.length === 0 || records.some((record) => !existingIds.has(record.id));
+      const additions = shouldSeed ? records.filter((record) => !existingIds.has(record.id)).map((record) => ({ ...record, seedSource: "legalease-six-month-plan", seededAt, updatedAt: seededAt })) : [];
+      nextState[collection] = [...additions, ...current];
+      summary[collection] = { existing: current.length, added: additions.length, total: nextState[collection].length };
+    }
+    const totalAdded = Object.values(summary).reduce((sum, item) => sum + item.added, 0);
+    nextState.activityEvents = totalAdded ? [{
+      id: `activity-six-month-seed-${crypto.randomUUID().slice(0, 8)}`,
+      eventType: "Seed data loaded",
+      title: "LegalEase six-month plan seed data",
+      relatedObjectType: "growth_seed",
+      relatedObjectId: "legalease-six-month-plan",
+      createdAt: seededAt
+    }, ...(state.activityEvents || [])].slice(0, 500) : state.activityEvents || [];
+    nextState.settings = {
+      ...(state.settings || {}),
+      sixMonthSeedDataLoadedAt: totalAdded ? seededAt : state.settings?.sixMonthSeedDataLoadedAt || "",
+      sixMonthSeedDataSummary: summary
+    };
+    await store.writeState(nextState);
+    return { state: nextState, summary, totalAdded, message: totalAdded ? `Loaded ${totalAdded} LegalEase six-month seed records.` : "Seed data already present. No records added." };
+  });
+}
+
+const automationSources = ["gmail", "calendar", "stripe", "supabase", "drive", "website", "recordshield", "expungement_ai", "social", "manual_import"];
+const automationCollections = ["automationEvents", "automationSuggestions", "connectorStatus", "syncRuns"];
+
+function defaultConnectorStatus(state = {}) {
+  const existing = new Map((state.connectorStatus || []).map((item) => [item.connector, item]));
+  const googleAccount = (state.socialAccounts || []).find((item) => item.platform === "google_workspace") || {};
+  const googleConnected = Boolean(googleAccount.accessTokenEncrypted || googleAccount.refreshTokenEncrypted || googleAccount.connectedAt);
+  const configured = {
+    gmail: googleConnected || Boolean(process.env.GMAIL_ACCESS_TOKEN || process.env.GOOGLE_GMAIL_ACCESS_TOKEN || process.env.GOOGLE_ACCESS_TOKEN),
+    calendar: googleConnected || Boolean(process.env.GOOGLE_CALENDAR_ACCESS_TOKEN || process.env.CALENDAR_ACCESS_TOKEN || process.env.GOOGLE_ACCESS_TOKEN),
+    stripe: Boolean(process.env.STRIPE_SECRET_KEY || process.env.STRIPE_WEBHOOK_SECRET),
+    supabase: Boolean(process.env.SUPABASE_URL),
+    drive: Boolean(process.env.GOOGLE_DRIVE_FOLDER_ID || process.env.GOOGLE_CLIENT_ID),
+    website: true,
+    recordshield: Boolean(process.env.PRODUCT_EVENT_WEBHOOK_SECRET),
+    expungement_ai: Boolean(process.env.PRODUCT_EVENT_WEBHOOK_SECRET),
+    social: false,
+    manual_import: true
+  };
+  return automationSources.map((connector) => ({
+    connector,
+    enabled: Boolean(configured[connector]) && !["social"].includes(connector),
+    configured: Boolean(configured[connector]),
+    lastSyncAt: "",
+    lastSyncStatus: connector === "website" ? "webhook endpoint available" : connector === "manual_import" ? "manual import available" : "not connected",
+    lastError: "",
+    recordsImported: 0,
+    recordsSuggested: 0,
+    ...(existing.get(connector) || {})
+  }));
+}
+
+const googleSyncTerms = [
+  "LegalEase",
+  "Expungement.ai",
+  "RecordShield",
+  "pilot",
+  "proposal",
+  "partnership",
+  "campaign",
+  "launch",
+  "follow up",
+  "data room",
+  "We Must Vote",
+  "TimeDone",
+  "Clean Slate Initiative",
+  "Fulton County",
+  "Goodwill",
+  "Hope Credit Union"
+];
+
+function googleAccessToken(connector = "") {
+  if (connector === "gmail") return process.env.GMAIL_ACCESS_TOKEN || process.env.GOOGLE_GMAIL_ACCESS_TOKEN || process.env.GOOGLE_ACCESS_TOKEN || "";
+  if (connector === "calendar") return process.env.GOOGLE_CALENDAR_ACCESS_TOKEN || process.env.CALENDAR_ACCESS_TOKEN || process.env.GOOGLE_ACCESS_TOKEN || "";
+  return "";
+}
+
+function gmailHeader(message = {}, name = "") {
+  return (message.payload?.headers || []).find((header) => String(header.name || "").toLowerCase() === name.toLowerCase())?.value || "";
+}
+
+async function googleJson(url, token = "") {
+  const result = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+  const text = await result.text();
+  let body = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { error: text.slice(0, 300) };
+  }
+  if (!result.ok) throw new Error(body.error?.message || body.error || `Google API returned ${result.status}`);
+  return body;
+}
+
+function connectorStatusPatch(state = {}, connector = "", patch = {}) {
+  const found = new Set();
+  const items = defaultConnectorStatus(state).map((item) => {
+    if (item.connector !== connector) return item;
+    found.add(connector);
+    return { ...item, ...patch };
+  });
+  if (!found.has(connector)) items.push({ connector, enabled:false, configured:false, recordsImported:0, recordsSuggested:0, ...patch });
+  return items;
+}
+
+function automationText(event = {}) {
+  return [event.title, event.summary, event.eventType, JSON.stringify(event.rawPayload || {})].filter(Boolean).join(" ").toLowerCase();
+}
+
+function findAutomationPartner(state = {}, text = "") {
+  return (state.partners || []).find((partner) => {
+    const name = String(partner.organizationName || "").toLowerCase();
+    const domain = String(partner.website || partner.email || "").toLowerCase().replace(/^https?:\/\//, "").split(/[/?#@]/).pop();
+    return (name && text.includes(name)) || (domain && domain.length > 4 && text.includes(domain));
+  }) || null;
+}
+
+function findAutomationCampaign(state = {}, text = "") {
+  return (state.campaigns || []).find((campaign) => {
+    const name = String(campaign.campaignName || "").toLowerCase();
+    const slug = String(campaign.trackingSlug || "").toLowerCase();
+    return (name && text.includes(name)) || (slug && text.includes(slug));
+  }) || null;
+}
+
+function normalizeAutomationEvent(input = {}, state = {}) {
+  const now = new Date().toISOString();
+  const source = automationSources.includes(input.source) ? input.source : "manual_import";
+  const event = {
+    id: input.id || `automation-event-${source}-${crypto.randomUUID().slice(0, 8)}`,
+    source,
+    sourceEventId: input.sourceEventId || `${source}-${crypto.randomUUID().slice(0, 8)}`,
+    receivedAt: input.receivedAt || now,
+    eventType: input.eventType || "manual_import",
+    title: String(input.title || "Imported event").trim(),
+    summary: String(input.summary || "").trim(),
+    rawPayload: input.rawPayload || {},
+    relatedEntityType: input.relatedEntityType || "unknown",
+    relatedEntityId: input.relatedEntityId || "",
+    status: input.status || "new",
+    confidence: input.confidence || "medium",
+    createdAt: input.createdAt || now,
+    updatedAt: now
+  };
+  const text = automationText(event);
+  const partner = findAutomationPartner(state, text);
+  const campaign = findAutomationCampaign(state, text);
+  if (!event.relatedEntityId && partner) {
+    event.relatedEntityType = "partner";
+    event.relatedEntityId = partner.id;
+  } else if (!event.relatedEntityId && campaign) {
+    event.relatedEntityType = "campaign";
+    event.relatedEntityId = campaign.id;
+  }
+  return event;
+}
+
+function automationSuggestion(idPrefix, event = {}, patch = {}) {
+  const now = new Date().toISOString();
+  return {
+    id: `${idPrefix}-${crypto.randomUUID().slice(0, 8)}`,
+    eventId: event.id,
+    suggestionType: "add_activity_event",
+    title: event.title,
+    explanation: "Detected an operational signal that should be reviewed.",
+    relatedEntityType: event.relatedEntityType || "unknown",
+    relatedEntityId: event.relatedEntityId || "",
+    proposedChanges: {},
+    status: "pending",
+    confidence: event.confidence || "medium",
+    createdAt: now,
+    appliedAt: "",
+    ...patch
+  };
+}
+
+function classifyAutomationEvent(state = {}, event = {}) {
+  const text = automationText(event);
+  const suggestions = [];
+  const partner = findAutomationPartner(state, text);
+  const campaign = findAutomationCampaign(state, text);
+  const confidence = partner || campaign ? "high" : event.confidence || "medium";
+  const relatedEntityType = partner ? "partner" : campaign ? "campaign" : event.relatedEntityType || "unknown";
+  const relatedEntityId = partner?.id || campaign?.id || event.relatedEntityId || "";
+  const activityTitle = event.title || "Automation event captured";
+  const base = { relatedEntityType, relatedEntityId, confidence };
+  if (event.source === "gmail" && text.includes("proposal")) {
+    suggestions.push(automationSuggestion("automation-suggestion-task", event, {
+      ...base,
+      suggestionType: "create_task",
+      title: `Follow up on proposal: ${partner?.organizationName || event.title}`,
+      explanation: "Proposal language in email usually needs a follow-up task and activity log.",
+      proposedChanges: { title: `Follow up on proposal: ${partner?.organizationName || event.title}`, relatedObjectType: relatedEntityType, relatedObjectId: relatedEntityId, dueDate: appendDaysIso(3), owner: partner?.owner || "Owner TBD", priority: "High", status: "open", suggestedAction: "Confirm whether the proposal is approved, needs edits, or should be paused." }
+    }));
+  }
+  if (event.source === "gmail" && text.includes("partnership") && !partner) {
+    suggestions.push(automationSuggestion("automation-suggestion-partner", event, {
+      suggestionType: "create_partner",
+      title: `Create partner from email: ${event.title}`,
+      explanation: "Partnership language was detected and no existing partner matched.",
+      relatedEntityType: "partner",
+      relatedEntityId: "",
+      confidence: "medium",
+      proposedChanges: { organizationName: event.rawPayload?.organizationName || event.title.replace(/^re:/i, "").slice(0, 80), partnerType: "other", status: "contact_found", owner: "Owner TBD", priority: "Normal", nextFollowUpDate: appendDaysIso(3), nextAction: "Review imported email and decide whether this is a real partner target.", notes: event.summary || "Created from Automation Inbox suggestion." }
+    }));
+  }
+  if (event.source === "gmail" && text.includes("pilot")) {
+    suggestions.push(automationSuggestion("automation-suggestion-pilot", event, {
+      ...base,
+      suggestionType: relatedEntityId ? "create_task" : "create_pilot",
+      title: relatedEntityId ? `Create pilot follow-up: ${activityTitle}` : `Create pilot from signal: ${activityTitle}`,
+      explanation: "Pilot language was detected and should become either a pilot record or follow-up task.",
+      proposedChanges: relatedEntityId
+        ? { title: `Pilot follow-up: ${activityTitle}`, relatedObjectType: relatedEntityType, relatedObjectId: relatedEntityId, dueDate: appendDaysIso(2), owner: partner?.owner || "Owner TBD", priority: "High", status: "open", suggestedAction: "Confirm pilot scope, owner, and next meeting." }
+        : { pilotName: activityTitle, partnerId: "", objective: event.summary || "Pilot signal from Automation Inbox.", status: "proposed", startDate: appendDaysIso(14), endDate: appendDaysIso(90), targetUsers: 100, successMetrics: "RecordShield starts, partner reporting, and proof readiness.", internalOwner: "Owner TBD", nextAction: "Confirm partner, scope, and launch checklist.", publicProofStatus: "not_requested" }
+    }));
+  }
+  if (event.source === "calendar") {
+    const startTime = event.rawPayload?.startTime || event.rawPayload?.startsAt || "";
+    const isFuture = startTime && new Date(startTime).getTime() > Date.now();
+    suggestions.push(automationSuggestion("automation-suggestion-calendar-task", event, {
+      ...base,
+      suggestionType: "create_task",
+      title: `${isFuture ? "Meeting prep" : "Meeting follow-up"}: ${activityTitle}`,
+      explanation: "Calendar meetings should produce prep or follow-up tasks so next steps do not live in memory.",
+      proposedChanges: { title: `${isFuture ? "Meeting prep" : "Meeting follow-up"}: ${activityTitle}`, relatedObjectType: relatedEntityType, relatedObjectId: relatedEntityId, dueDate: isFuture ? String(startTime).slice(0, 10) : appendDaysIso(1), owner: partner?.owner || "Owner TBD", priority: "High", status: "open", suggestedAction: isFuture ? "Prepare agenda, desired decision, and post-meeting follow-up owner." : "Add meeting notes, decision, and next follow-up date." }
+    }));
+  }
+  if (event.source === "stripe" && text.includes("checkout.session.completed")) {
+    suggestions.push(automationSuggestion("automation-suggestion-funnel", event, {
+      ...base,
+      suggestionType: "update_funnel_snapshot",
+      title: "Update funnel revenue from Stripe checkout",
+      explanation: "A completed checkout should update funnel conversion and revenue tracking.",
+      relatedEntityType: campaign ? "campaign" : "funnel",
+      relatedEntityId: campaign?.id || "",
+      confidence: "high",
+      proposedChanges: { campaignId: campaign?.id || "", partnerId: partner?.id || "", dateRange: new Date().toISOString().slice(0, 7), paymentCompleted: 1, revenue: Number(event.rawPayload?.amount_total || event.rawPayload?.amount || 0) / 100, source: "stripe", notes: event.summary || "Imported Stripe checkout completion." }
+    }));
+  }
+  if (event.source === "supabase" && text.includes("recordshield_user_created")) {
+    suggestions.push(automationSuggestion("automation-suggestion-rs-user", event, {
+      ...base,
+      suggestionType: "update_funnel_snapshot",
+      title: "Update RecordShield starts",
+      explanation: "A RecordShield user event should increase the funnel count.",
+      relatedEntityType: campaign ? "campaign" : "funnel",
+      relatedEntityId: campaign?.id || "",
+      confidence: "high",
+      proposedChanges: { campaignId: campaign?.id || "", partnerId: partner?.id || "", dateRange: new Date().toISOString().slice(0, 7), recordShieldStarts: 1, source: "supabase", notes: event.summary || "RecordShield user created." }
+    }));
+  }
+  if (event.source === "drive" && text.includes("data room")) {
+    suggestions.push(automationSuggestion("automation-suggestion-dataroom", event, {
+      suggestionType: "add_data_room_item",
+      title: `Add data room file: ${activityTitle}`,
+      explanation: "A Drive file path mentions Data Room and should be tracked as a proof artifact.",
+      relatedEntityType: "data_room",
+      relatedEntityId: "",
+      confidence: "high",
+      proposedChanges: { title: activityTitle, section: event.rawPayload?.section || "Traction", status: "draft", filePath: event.rawPayload?.filePath || "", owner: "Owner TBD", lastUpdated: new Date().toISOString().slice(0, 10), notes: event.summary || "Imported from Drive event." }
+    }));
+  }
+  if (event.source === "website" && (event.rawPayload?.campaign_slug || text.includes("campaign_slug"))) {
+    suggestions.push(automationSuggestion("automation-suggestion-website-funnel", event, {
+      ...base,
+      suggestionType: "update_funnel_snapshot",
+      title: `Update campaign funnel: ${campaign?.campaignName || event.rawPayload?.campaign_slug || "website event"}`,
+      explanation: "Website campaign events should update referral and funnel snapshots.",
+      relatedEntityType: campaign ? "campaign" : "funnel",
+      relatedEntityId: campaign?.id || "",
+      confidence: campaign ? "high" : "medium",
+      proposedChanges: { campaignId: campaign?.id || "", partnerId: partner?.id || "", dateRange: new Date().toISOString().slice(0, 7), landingPageVisits: Number(event.rawPayload?.visits || 1), actualReferrals: Number(event.rawPayload?.referrals || 0), source: "website", notes: event.summary || "Website campaign signal." }
+    }));
+  }
+  suggestions.push(automationSuggestion("automation-suggestion-activity", event, {
+    ...base,
+    suggestionType: "add_activity_event",
+    title: `Log activity: ${activityTitle}`,
+    explanation: "Keep an activity trail for raw signals even when no structured update is applied.",
+    proposedChanges: { eventType: `Automation: ${event.eventType}`, title: activityTitle, relatedObjectType: relatedEntityType, relatedObjectId: relatedEntityId }
+  }));
+  return suggestions;
+}
+
+function demoAutomationEvents(state = {}) {
+  const partner = (state.partners || [])[0] || {};
+  const campaign = (state.campaigns || [])[0] || {};
+  return [
+    { source:"gmail", sourceEventId:"demo-gmail-proposal", eventType:"email_received", title:`Proposal follow-up from ${partner.organizationName || "TimeDone"}`, summary:"Can we revisit the RecordShield pilot proposal and discuss next steps this week?", rawPayload:{ subject:"RecordShield proposal follow-up", from:"partner@example.org" } },
+    { source:"gmail", sourceEventId:"demo-gmail-partnership", eventType:"email_received", title:"Partnership inquiry from Fresh Start Legal Network", summary:"We are interested in a partnership around RecordShield access for clients and community referrals.", rawPayload:{ subject:"LegalEase partnership inquiry", from:"director@freshstartlegal.example", organizationName:"Fresh Start Legal Network" } },
+    { source:"calendar", sourceEventId:"demo-calendar-partner", eventType:"calendar_event", title:`Meeting with ${partner.organizationName || "Goodwill of Mississippi"}`, summary:"Calendar meeting detected. Suggest prep and follow-up task.", rawPayload:{ startsAt:appendDaysIso(1) } },
+    { source:"supabase", sourceEventId:"demo-supabase-rs-user", eventType:"recordshield_user_created", title:"RecordShield user created", summary:"New RecordShield user event from app database.", rawPayload:{ campaign_slug:campaign.trackingSlug || "recordshield-launch" } },
+    { source:"stripe", sourceEventId:"demo-stripe-checkout", eventType:"checkout.session.completed", title:"Stripe checkout completed", summary:"Payment completed from Expungement.ai flow.", rawPayload:{ amount_total: 19900, campaign_slug:campaign.trackingSlug || "" } },
+    { source:"drive", sourceEventId:"demo-drive-dataroom", eventType:"file_created", title:"Data Room - Pilot proposal draft", summary:"A new data room artifact was found in Drive.", rawPayload:{ filePath:"Drive/LegalEase/Data Room/Pilot proposal draft.md", section:"Pilots" } },
+    { source:"website", sourceEventId:"demo-website-campaign", eventType:"campaign_conversion", title:"Website campaign referral", summary:"Website campaign slug captured a referral event.", rawPayload:{ campaign_slug:campaign.trackingSlug || "", visits:4, referrals:1 } }
+  ];
+}
+
+function upsertAutomationRecords(state = {}, events = []) {
+  const now = new Date().toISOString();
+  const currentEvents = state.automationEvents || [];
+  const currentSuggestions = state.automationSuggestions || [];
+  const existingEventKeys = new Set(currentEvents.map((event) => `${event.source}:${event.sourceEventId}`));
+  const existingSuggestionKeys = new Set(currentSuggestions.map((suggestion) => `${suggestion.eventId}:${suggestion.suggestionType}:${suggestion.title}`));
+  const importedEvents = [];
+  const importedSuggestions = [];
+  for (const input of events) {
+    const event = normalizeAutomationEvent(input, state);
+    const key = `${event.source}:${event.sourceEventId}`;
+    if (existingEventKeys.has(key)) continue;
+    const suggestions = classifyAutomationEvent(state, event).filter((suggestion) => {
+      const suggestionKey = `${suggestion.eventId}:${suggestion.suggestionType}:${suggestion.title}`;
+      if (existingSuggestionKeys.has(suggestionKey)) return false;
+      existingSuggestionKeys.add(suggestionKey);
+      return true;
+    });
+    importedEvents.push({ ...event, status: suggestions.length ? "suggested" : "classified", updatedAt: now });
+    importedSuggestions.push(...suggestions);
+    existingEventKeys.add(key);
+  }
+  return {
+    events: [...importedEvents, ...currentEvents],
+    suggestions: [...importedSuggestions, ...currentSuggestions],
+    importedCount: importedEvents.length,
+    suggestedCount: importedSuggestions.length
+  };
+}
+
+async function importAutomationEvents(inputEvents = [], connector = "manual_import", syncMode = "manual_import") {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const now = new Date().toISOString();
+    const normalizedInput = Array.isArray(inputEvents) ? inputEvents : [];
+    const result = upsertAutomationRecords(state, normalizedInput);
+    const syncRun = {
+      id: `sync-${slugify(connector)}-${crypto.randomUUID().slice(0, 8)}`,
+      connector,
+      startedAt: now,
+      finishedAt: new Date().toISOString(),
+      status: "completed",
+      importedCount: result.importedCount,
+      suggestedCount: result.suggestedCount,
+      errorCount: 0,
+      notes: syncMode === "demo_sync" ? "Demo sync. Real connector credentials were not used." : syncMode === "gmail_sync" ? "Read-only Gmail sync. No emails were sent or modified." : syncMode === "calendar_sync" ? "Read-only Google Calendar sync. No events were created or modified." : "Manual JSON import."
+    };
+    const connectorStatus = defaultConnectorStatus(state).map((item) => item.connector === connector ? {
+      ...item,
+      lastSyncAt: syncRun.finishedAt,
+      lastSyncStatus: syncRun.status,
+      recordsImported: Number(item.recordsImported || 0) + result.importedCount,
+      recordsSuggested: Number(item.recordsSuggested || 0) + result.suggestedCount,
+      lastError: ""
+    } : item);
+    const nextState = {
+      ...state,
+      automationEvents: result.events,
+      automationSuggestions: result.suggestions,
+      connectorStatus,
+      syncRuns: [syncRun, ...(state.syncRuns || [])].slice(0, 100),
+      activityEvents: result.importedCount ? [{ id:`activity-automation-import-${crypto.randomUUID().slice(0, 8)}`, eventType:"Automation import", title:`${result.importedCount} events imported from ${connector}`, relatedObjectType:"automation", relatedObjectId:syncRun.id, createdAt:syncRun.finishedAt }, ...(state.activityEvents || [])].slice(0, 500) : state.activityEvents || []
+    };
+    await store.writeState(nextState);
+    return { state: nextState, syncRun, importedCount: result.importedCount, suggestedCount: result.suggestedCount, message: `${result.importedCount} automation events imported; ${result.suggestedCount} suggestions created.` };
+  });
+}
+
+async function runAutomationDemoSync() {
+  const state = await store.readState();
+  return importAutomationEvents(demoAutomationEvents(state), "manual_import", "demo_sync");
+}
+
+async function syncGmailReadOnly() {
+  const token = await googleStoredOrEnvAccessToken("gmail");
+  if (!token) {
+    return serializeStateMutation(async () => {
+      const state = await store.readState();
+      const now = new Date().toISOString();
+      const nextState = { ...state, connectorStatus: connectorStatusPatch(state, "gmail", { configured:false, enabled:false, lastSyncAt:now, lastSyncStatus:"missing credentials", lastError:"Connect Google with read-only OAuth, or set GMAIL_ACCESS_TOKEN, GOOGLE_GMAIL_ACCESS_TOKEN, or GOOGLE_ACCESS_TOKEN server-side.", recordsImported:0, recordsSuggested:0 }) };
+      await store.writeState(nextState);
+      return { state: nextState, importedCount:0, suggestedCount:0, failedClosed:true, message:"Gmail sync failed closed: connect Google or add a server-side Google access token." };
+    });
+  }
+  const query = `newer_than:14d {${googleSyncTerms.map((term) => term.includes(" ") || term.includes(".") ? `"${term}"` : term).join(" ")}}`;
+  const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+  listUrl.searchParams.set("maxResults", "25");
+  listUrl.searchParams.set("q", query);
+  const list = await googleJson(listUrl, token);
+  const messages = [];
+  for (const item of list.messages || []) {
+    const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(item.id)}`);
+    url.searchParams.set("format", "metadata");
+    ["Subject", "From", "Date", "To"].forEach((header) => url.searchParams.append("metadataHeaders", header));
+    messages.push(await googleJson(url, token));
+  }
+  const events = messages.map((message) => {
+    const subject = gmailHeader(message, "Subject") || "Gmail message";
+    const from = gmailHeader(message, "From");
+    const date = gmailHeader(message, "Date");
+    const dateTime = date ? new Date(date).getTime() : NaN;
+    const snippet = String(message.snippet || "").slice(0, 500);
+    return {
+      source:"gmail",
+      sourceEventId:`gmail:${message.id}`,
+      receivedAt: Number.isFinite(dateTime) ? new Date(dateTime).toISOString() : new Date().toISOString(),
+      eventType:"email_received",
+      title:subject,
+      summary:snippet,
+      rawPayload:{ messageId:message.id, threadId:message.threadId, subject, from, date, snippet },
+      confidence:"medium"
+    };
+  });
+  const result = await importAutomationEvents(events, "gmail", "gmail_sync");
+  return { ...result, message:`Gmail sync complete. ${result.importedCount} new emails imported; ${result.suggestedCount} suggestions created.` };
+}
+
+async function syncCalendarReadOnly() {
+  const token = await googleStoredOrEnvAccessToken("calendar");
+  if (!token) {
+    return serializeStateMutation(async () => {
+      const state = await store.readState();
+      const now = new Date().toISOString();
+      const nextState = { ...state, connectorStatus: connectorStatusPatch(state, "calendar", { configured:false, enabled:false, lastSyncAt:now, lastSyncStatus:"missing credentials", lastError:"Connect Google with read-only OAuth, or set GOOGLE_CALENDAR_ACCESS_TOKEN, CALENDAR_ACCESS_TOKEN, or GOOGLE_ACCESS_TOKEN server-side.", recordsImported:0, recordsSuggested:0 }) };
+      await store.writeState(nextState);
+      return { state: nextState, importedCount:0, suggestedCount:0, failedClosed:true, message:"Calendar sync failed closed: connect Google or add a server-side Google access token." };
+    });
+  }
+  const now = new Date();
+  const timeMin = new Date(now);
+  timeMin.setDate(timeMin.getDate() - 14);
+  const timeMax = new Date(now);
+  timeMax.setDate(timeMax.getDate() + 30);
+  const calendarId = process.env.GOOGLE_CALENDAR_ID || "primary";
+  const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
+  url.searchParams.set("singleEvents", "true");
+  url.searchParams.set("orderBy", "startTime");
+  url.searchParams.set("maxResults", "50");
+  url.searchParams.set("timeMin", timeMin.toISOString());
+  url.searchParams.set("timeMax", timeMax.toISOString());
+  const body = await googleJson(url, token);
+  const terms = googleSyncTerms.map((term) => term.toLowerCase());
+  const events = (body.items || []).filter((item) => {
+    const text = [item.summary, item.description, item.location, (item.attendees || []).map((attendee) => attendee.email).join(" ")].join(" ").toLowerCase();
+    return terms.some((term) => text.includes(term.toLowerCase()));
+  }).map((item) => {
+    const startTime = item.start?.dateTime || item.start?.date || "";
+    const endTime = item.end?.dateTime || item.end?.date || "";
+    return {
+      source:"calendar",
+      sourceEventId:`calendar:${item.id}`,
+      receivedAt:item.updated || new Date().toISOString(),
+      eventType:"calendar_event",
+      title:item.summary || "Calendar meeting",
+      summary:String(item.description || item.location || "Google Calendar meeting matched LegalEase terms.").slice(0, 500),
+      rawPayload:{ eventId:item.id, htmlLink:item.htmlLink || "", startTime, endTime, status:item.status || "", attendeeCount:(item.attendees || []).length },
+      confidence:"medium"
+    };
+  });
+  const result = await importAutomationEvents(events, "calendar", "calendar_sync");
+  return { ...result, message:`Calendar sync complete. ${result.importedCount} new events imported; ${result.suggestedCount} suggestions created.` };
+}
+
+function productWebhookConfigured() {
+  return Boolean(process.env.PRODUCT_EVENT_WEBHOOK_SECRET);
+}
+
+function productWebhookSecretFromRequest(request) {
+  const direct = request.headers["x-product-event-secret"] || request.headers["x-legalease-event-secret"];
+  if (direct) return String(Array.isArray(direct) ? direct[0] : direct);
+  const auth = String(request.headers.authorization || "");
+  const bearer = auth.match(/^Bearer\s+(.+)$/i);
+  return bearer ? bearer[1] : "";
+}
+
+function assertProductEventSignature(request) {
+  const expected = process.env.PRODUCT_EVENT_WEBHOOK_SECRET || "";
+  if (!expected) throw new Error("PRODUCT_EVENT_WEBHOOK_SECRET is not configured. Product events are failing closed.");
+  const provided = productWebhookSecretFromRequest(request);
+  const expectedBuffer = Buffer.from(expected);
+  const providedBuffer = Buffer.from(provided || "");
+  if (expectedBuffer.length !== providedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, providedBuffer)) {
+    throw new Error("Invalid product event signature.");
+  }
+}
+
+function redactProductPayload(input = {}) {
+  const unsafeKeys = /email|phone|name|address|ssn|social|dob|birth|case|charge|criminal|record|legal|note|description|detail|ip|user_agent/i;
+  const walk = (value, depth = 0) => {
+    if (depth > 4) return "[redacted-depth]";
+    if (Array.isArray(value)) return value.slice(0, 20).map((item) => walk(item, depth + 1));
+    if (!value || typeof value !== "object") {
+      const text = String(value ?? "");
+      return text.length > 500 ? `${text.slice(0, 500)}...[truncated]` : value;
+    }
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => {
+      if (unsafeKeys.test(key)) return [key, "[redacted]"];
+      return [key, walk(entry, depth + 1)];
+    }));
+  };
+  return walk(input);
+}
+
+function productSourceFor(product = "") {
+  const normalized = String(product || "").toLowerCase();
+  if (normalized === "recordshield") return "recordshield";
+  if (normalized === "expungement_ai") return "expungement_ai";
+  return "website";
+}
+
+function productEventTitle(payload = {}) {
+  const product = String(payload.product || "product").replaceAll("_", " ");
+  return `${payload.eventType || "product_event"} from ${product}`;
+}
+
+async function receiveProductEvent(payload = {}, request) {
+  assertProductEventSignature(request);
+  if (!supportedProductEventTypes.has(payload.eventType)) throw new Error("Unsupported product event type.");
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const now = new Date().toISOString();
+    const campaign = (state.campaigns || []).find((item) => String(item.trackingSlug || "").toLowerCase() === String(payload.campaignSlug || "").toLowerCase()) || null;
+    const partner = (state.partners || []).find((item) => item.id === payload.partnerId || item.id === campaign?.partnerId) || null;
+    const source = productSourceFor(payload.product);
+    const sourceEventId = `${source}:${payload.eventType}:${payload.userId || payload.anonymousId || "anonymous"}:${payload.timestamp || now}:${payload.campaignSlug || ""}`;
+    const event = normalizeAutomationEvent({
+      source,
+      sourceEventId,
+      receivedAt: now,
+      eventType: payload.eventType,
+      title: productEventTitle(payload),
+      summary: `Product event captured for ${payload.product || "unknown product"}${payload.campaignSlug ? ` / ${payload.campaignSlug}` : ""}.`,
+      rawPayload: {
+        eventType: payload.eventType,
+        userIdPresent: Boolean(payload.userId),
+        anonymousId: payload.anonymousId || "",
+        campaignSlug: payload.campaignSlug || "",
+        partnerId: payload.partnerId || partner?.id || "",
+        product: payload.product || "",
+        state: payload.state || "",
+        source: payload.source || "",
+        timestamp: payload.timestamp || now,
+        metadata: redactProductPayload(payload.metadata || {})
+      },
+      relatedEntityType: campaign ? "campaign" : partner ? "partner" : "funnel",
+      relatedEntityId: campaign?.id || partner?.id || "",
+      confidence: campaign || partner ? "high" : "medium"
+    }, state);
+    const result = upsertAutomationRecords(state, [event]);
+    const metricKey = productEventMetricMap[payload.eventType] || "";
+    const amount = Number(payload.metadata?.amount || payload.metadata?.amount_total || payload.metadata?.revenue || 0);
+    const funnelPatch = metricKey ? {
+      id: `funnel-product-${crypto.randomUUID().slice(0, 8)}`,
+      campaignId: campaign?.id || "",
+      partnerId: partner?.id || payload.partnerId || "",
+      dateRange: now.slice(0, 7),
+      source: payload.source || source,
+      product: payload.product || "",
+      state: payload.state || "",
+      [metricKey]: metricKey === "paymentCompleted" ? 1 : 1,
+      revenue: payload.eventType === "payment_completed" ? amount / (amount > 1000 ? 100 : 1) : 0,
+      notes: `Captured from product event ${payload.eventType}.`
+    } : null;
+    const suggestion = funnelPatch ? automationSuggestion("automation-suggestion-product-funnel", event, {
+      suggestionType: "update_funnel_snapshot",
+      title: `Update funnel: ${payload.eventType}`,
+      explanation: "A signed product event can update RecordShield/Expungement.ai conversion proof after approval.",
+      relatedEntityType: campaign ? "campaign" : "funnel",
+      relatedEntityId: campaign?.id || "",
+      confidence: campaign || partner ? "high" : "medium",
+      proposedChanges: funnelPatch
+    }) : null;
+    const existingSuggestionKeys = new Set(result.suggestions.map((item) => `${item.eventId}:${item.suggestionType}:${item.title}`));
+    if (result.importedCount && suggestion && !existingSuggestionKeys.has(`${suggestion.eventId}:${suggestion.suggestionType}:${suggestion.title}`)) result.suggestions = [suggestion, ...result.suggestions];
+    const nextState = {
+      ...state,
+      automationEvents: result.events,
+      automationSuggestions: result.suggestions,
+      connectorStatus: defaultConnectorStatus(state).map((item) => ["website", "recordshield", "expungement_ai"].includes(item.connector) && item.connector === source ? {
+        ...item,
+        lastSyncAt: now,
+        lastSyncStatus: "event received",
+        recordsImported: Number(item.recordsImported || 0) + result.importedCount,
+        recordsSuggested: Number(item.recordsSuggested || 0) + result.suggestedCount + (result.importedCount && suggestion ? 1 : 0),
+        lastError: ""
+      } : item),
+      activityEvents: [{
+        id:`activity-product-event-${crypto.randomUUID().slice(0, 8)}`,
+        eventType:"Product event received",
+        title:`${payload.eventType} captured${campaign ? ` for ${campaign.campaignName}` : ""}`,
+        relatedObjectType: campaign ? "campaign" : partner ? "partner" : "funnel",
+        relatedObjectId: campaign?.id || partner?.id || "",
+        createdAt:now
+      }, ...(state.activityEvents || [])].slice(0, 500)
+    };
+    await store.writeState(nextState);
+    return { state: nextState, event, importedCount: result.importedCount, suggestedCount: result.suggestedCount + (result.importedCount && suggestion ? 1 : 0), message: result.importedCount ? "Product event accepted." : "Product event already imported." };
+  });
+}
+
+function collectionForRelatedType(type = "") {
+  return {
+    partner: "partners",
+    campaign: "campaigns",
+    pilot: "pilots",
+    funnel: "funnelSnapshots",
+    compliance: "complianceItems",
+    data_room: "dataRoomItems",
+    post: "posts",
+    task: "tasks"
+  }[type] || "";
+}
+
+function applyAutomationSuggestionToState(state = {}, suggestion = {}) {
+  const now = new Date().toISOString();
+  const patch = suggestion.proposedChanges || {};
+  const id = patch.id || `${slugify(suggestion.suggestionType)}-${crypto.randomUUID().slice(0, 8)}`;
+  const next = { ...state };
+  const add = (collection, item) => {
+    next[collection] = [{ ...item, id:item.id || id, createdAt:item.createdAt || now, updatedAt:now }, ...(next[collection] || [])];
+  };
+  const updateById = (collection, itemId, itemPatch) => {
+    next[collection] = (next[collection] || []).map((item) => item.id === itemId ? { ...item, ...itemPatch, updatedAt:now } : item);
+  };
+  if (suggestion.suggestionType === "create_partner") add("partners", { status:"target_identified", owner:"Owner TBD", priority:"Normal", ...patch });
+  if (suggestion.suggestionType === "update_partner_status") updateById("partners", suggestion.relatedEntityId || patch.id, patch);
+  if (suggestion.suggestionType === "create_task" || suggestion.suggestionType === "mark_follow_up_due") add("tasks", { status:"open", priority:"Normal", owner:"Owner TBD", ...patch });
+  if (suggestion.suggestionType === "update_campaign") updateById("campaigns", suggestion.relatedEntityId || patch.id, patch);
+  if (suggestion.suggestionType === "update_funnel_snapshot") add("funnelSnapshots", { dateRange:new Date().toISOString().slice(0, 7), ...patch });
+  if (suggestion.suggestionType === "add_data_room_item") add("dataRoomItems", { status:"draft", owner:"Owner TBD", ...patch });
+  if (suggestion.suggestionType === "create_pilot") add("pilots", { status:"proposed", publicProofStatus:"not_requested", ...patch });
+  if (suggestion.suggestionType === "update_pilot") updateById("pilots", suggestion.relatedEntityId || patch.id, patch);
+  if (suggestion.suggestionType === "create_compliance_item") add("complianceItems", { status:"needs_review", riskLevel:"medium", ...patch });
+  if (suggestion.suggestionType === "generate_report") add("reports", { status:"template", ...patch });
+  if (suggestion.suggestionType === "add_activity_event") {
+    add("activityEvents", { eventType:"Automation", title:suggestion.title, relatedObjectType:suggestion.relatedEntityType, relatedObjectId:suggestion.relatedEntityId, ...patch });
+  }
+  next.activityEvents = [{
+    id:`activity-automation-applied-${crypto.randomUUID().slice(0, 8)}`,
+    eventType:"Automation applied",
+    title:`Automation applied: ${suggestion.title}`,
+    relatedObjectType:suggestion.relatedEntityType || "automation",
+    relatedObjectId:suggestion.relatedEntityId || suggestion.id,
+    createdAt:now
+  }, ...(next.activityEvents || [])].slice(0, 500);
+  return next;
+}
+
+async function approveAutomationSuggestion(id = "", editedPatch = null) {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const suggestion = (state.automationSuggestions || []).find((item) => item.id === id);
+    if (!suggestion) throw new Error("Automation suggestion not found.");
+    if (!["pending", "edited"].includes(suggestion.status)) throw new Error("Only pending suggestions can be approved.");
+    const mergedSuggestion = editedPatch ? { ...suggestion, proposedChanges: { ...(suggestion.proposedChanges || {}), ...editedPatch }, status:"edited" } : suggestion;
+    const now = new Date().toISOString();
+    let nextState = applyAutomationSuggestionToState(state, mergedSuggestion);
+    nextState.automationSuggestions = (nextState.automationSuggestions || state.automationSuggestions || []).map((item) => item.id === id ? { ...mergedSuggestion, status:"applied", appliedAt:now } : item);
+    nextState.automationEvents = (nextState.automationEvents || []).map((event) => event.id === suggestion.eventId ? { ...event, status:"approved", updatedAt:now } : event);
+    await store.writeState(nextState);
+    return { state: nextState, suggestion: { ...mergedSuggestion, status:"applied", appliedAt:now }, message: "Automation suggestion applied." };
+  });
+}
+
+async function ignoreAutomationSuggestion(id = "") {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const now = new Date().toISOString();
+    const nextState = {
+      ...state,
+      automationSuggestions: (state.automationSuggestions || []).map((item) => item.id === id ? { ...item, status:"ignored", updatedAt:now } : item),
+      activityEvents: [{ id:`activity-automation-ignored-${crypto.randomUUID().slice(0, 8)}`, eventType:"Automation ignored", title:`Automation ignored: ${id}`, relatedObjectType:"automation", relatedObjectId:id, createdAt:now }, ...(state.activityEvents || [])].slice(0, 500)
+    };
+    await store.writeState(nextState);
+    return { state: nextState, message: "Automation suggestion ignored." };
+  });
+}
+
+async function editAutomationSuggestion(id = "", proposedChanges = {}) {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const now = new Date().toISOString();
+    const nextState = {
+      ...state,
+      automationSuggestions: (state.automationSuggestions || []).map((item) => item.id === id ? { ...item, proposedChanges: { ...(item.proposedChanges || {}), ...(proposedChanges || {}) }, status:"edited", updatedAt:now } : item)
+    };
+    await store.writeState(nextState);
+    return { state: nextState, message: "Automation suggestion edited." };
+  });
+}
+
+const soc2ControlAreas = [
+  "Access Control",
+  "Change Management",
+  "Vendor Management",
+  "Incident Response",
+  "Data Security",
+  "AI Governance",
+  "Evidence Collection",
+  "Policy Management"
+];
+
+const soc2EvidenceStatuses = ["Draft", "Ready for Review", "Approved", "Rejected", "Archived"];
+const soc2EvidenceQualities = ["Weak", "Acceptable", "Strong"];
+const soc2SourceReliabilities = ["Manual", "System Generated", "Third Party", "Automated Log"];
+const soc2RenewalFrequencies = ["Monthly", "Quarterly", "Annual", "One-Time"];
+
+function normalizeSoc2ControlArea(value = "") {
+  const text = String(value || "").trim();
+  if (/^security$/i.test(text)) return "Data Security";
+  return soc2ControlAreas.includes(text) ? text : "Evidence Collection";
+}
+
+function soc2ReadinessBand(score = 0) {
+  const value = Number(score || 0);
+  if (value >= 85) return "Strong Readiness Posture";
+  if (value >= 70) return "Approaching Type I Readiness";
+  if (value >= 40) return "Building Foundation";
+  return "Not Ready";
+}
+
+function addMonthsIso(dateInput = new Date(), months = 1) {
+  const date = new Date(dateInput || Date.now());
+  if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+  date.setMonth(date.getMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
+
+function defaultSoc2ControlOwners(date = new Date()) {
+  const next = addMonthsIso(date, 1);
+  const defaults = {
+    "Access Control": ["Engineering", "Operations"],
+    "Change Management": ["Engineering", "Product"],
+    "Vendor Management": ["Operations", "Engineering"],
+    "Incident Response": ["Engineering", "Operations"],
+    "Data Security": ["Engineering", "Compliance"],
+    "AI Governance": ["Product", "Compliance"],
+    "Evidence Collection": ["Operations", "Engineering"],
+    "Policy Management": ["Compliance", "Operations"]
+  };
+  return soc2ControlAreas.map((controlArea) => ({
+    id: "control-owner-" + slugify(controlArea),
+    controlArea,
+    owner: defaults[controlArea][0],
+    backupOwner: defaults[controlArea][1],
+    reviewCadence: "Monthly",
+    lastReviewedAt: "",
+    nextReviewDue: next,
+    status: "In Progress",
+    notes: "Default readiness owner mapping. Confirm before auditor review."
+  }));
+}
+
+function soc2ControlOwnersForState(state = {}, date = new Date()) {
+  const existing = state.soc2ControlOwners || [];
+  return defaultSoc2ControlOwners(date).map((fallback) => {
+    const match = existing.find((item) => normalizeSoc2ControlArea(item.controlArea) === fallback.controlArea || item.id === fallback.id) || {};
+    return { ...fallback, ...match, controlArea: fallback.controlArea };
+  });
+}
+
+function evidenceStatusFor(item = {}) {
+  const status = String(item.evidenceStatus || item.status || "").trim();
+  if (/approved|complete/i.test(status)) return "Approved";
+  if (/ready/i.test(status)) return "Ready for Review";
+  if (/reject/i.test(status)) return "Rejected";
+  if (/archive/i.test(status)) return "Archived";
+  return "Draft";
+}
+
+function evidenceQualityFor(item = {}) {
+  const quality = String(item.evidenceQuality || "").trim();
+  return soc2EvidenceQualities.includes(quality) ? quality : "Acceptable";
+}
+
+function evidenceSourceReliabilityFor(item = {}) {
+  const source = String(item.sourceReliability || "").trim();
+  if (soc2SourceReliabilities.includes(source)) return source;
+  if (/snapshot|system|LegalEase Operating System/i.test(String(item.sourceSystem || item.evidenceTitle || ""))) return "System Generated";
+  return "Manual";
+}
+
+function evidenceRenewalFrequencyFor(item = {}) {
+  const frequency = String(item.renewalFrequency || "").trim();
+  return soc2RenewalFrequencies.includes(frequency) ? frequency : "Monthly";
+}
+
+function nextCollectionDueForEvidence(item = {}) {
+  if (item.nextCollectionDue) return item.nextCollectionDue;
+  const base = item.collectionDate || item.generatedAt || item.createdAt || new Date().toISOString();
+  const frequency = evidenceRenewalFrequencyFor(item);
+  if (frequency === "One-Time") return "";
+  if (frequency === "Annual") return addMonthsIso(base, 12);
+  if (frequency === "Quarterly") return addMonthsIso(base, 3);
+  return addMonthsIso(base, 1);
+}
+
+function normalizedSoc2Evidence(item = {}) {
+  return {
+    ...item,
+    controlArea: normalizeSoc2ControlArea(item.controlArea || "Evidence Collection"),
+    evidenceStatus: evidenceStatusFor(item),
+    evidenceQuality: evidenceQualityFor(item),
+    sourceReliability: evidenceSourceReliabilityFor(item),
+    renewalFrequency: evidenceRenewalFrequencyFor(item),
+    evidencePeriod: item.evidencePeriod || item.auditPeriod || "",
+    nextCollectionDue: nextCollectionDueForEvidence(item)
+  };
+}
+
+function soc2StatusBucket(status = "") {
+  const value = String(status || "").toLowerCase();
+  if (/approved|complete|resolved|closed|deployed/.test(value)) return "Complete";
+  if (/draft|progress|submitted|ready/.test(value)) return "In Progress";
+  if (/blocked|reject|needs review|review|investigating|remediating/.test(value)) return "Needs Review";
+  return "Needs Review";
+}
+
+function soc2EvidenceQualityMetricsForState(state = {}, now = new Date()) {
+  const evidence = (state.soc2Evidence || []).map(normalizedSoc2Evidence);
+  const today = now.toISOString().slice(0, 10);
+  const activeEvidence = evidence.filter((item) => item.evidenceStatus !== "Archived");
+  const byControlArea = soc2ControlAreas.map((controlArea) => {
+    const items = activeEvidence.filter((item) => item.controlArea === controlArea);
+    const score = items.length ? Math.round(items.reduce((sum, item) => {
+      const quality = item.evidenceQuality === "Strong" ? 3 : item.evidenceQuality === "Acceptable" ? 2 : 1;
+      const approved = item.evidenceStatus === "Approved" ? 2 : item.evidenceStatus === "Ready for Review" ? 1 : 0;
+      return sum + quality + approved;
+    }, 0) / (items.length * 5) * 100) : 0;
+    return { controlArea, count: items.length, approved: items.filter((item) => item.evidenceStatus === "Approved").length, weak: items.filter((item) => item.evidenceQuality === "Weak").length, score };
+  });
+  const overdue = activeEvidence.filter((item) => item.nextCollectionDue && item.nextCollectionDue < today);
+  const strongest = byControlArea.slice().sort((a, b) => b.score - a.score || b.count - a.count)[0] || null;
+  const weakest = byControlArea.slice().sort((a, b) => a.score - b.score || a.count - b.count)[0] || null;
+  const qualityScore = activeEvidence.length ? Math.round(activeEvidence.reduce((sum, item) => {
+    const statusPoints = item.evidenceStatus === "Approved" ? 35 : item.evidenceStatus === "Ready for Review" ? 20 : item.evidenceStatus === "Rejected" ? 0 : 10;
+    const qualityPoints = item.evidenceQuality === "Strong" ? 35 : item.evidenceQuality === "Acceptable" ? 22 : 8;
+    const freshnessPoints = item.nextCollectionDue && item.nextCollectionDue < today ? 0 : 30;
+    return sum + Math.min(100, statusPoints + qualityPoints + freshnessPoints);
+  }, 0) / activeEvidence.length) : 0;
+  return {
+    total: evidence.length,
+    approved: evidence.filter((item) => item.evidenceStatus === "Approved").length,
+    pendingReview: evidence.filter((item) => item.evidenceStatus === "Ready for Review").length,
+    rejected: evidence.filter((item) => item.evidenceStatus === "Rejected").length,
+    weak: evidence.filter((item) => item.evidenceQuality === "Weak").length,
+    overdueCollection: overdue.length,
+    strongestControlArea: strongest?.controlArea || "None",
+    weakestControlArea: weakest?.controlArea || "None",
+    byControlArea,
+    overdue,
+    qualityScore
+  };
+}
+
+function soc2ControlOwnerMetricsForState(state = {}, now = new Date()) {
+  const today = now.toISOString().slice(0, 10);
+  const controlOwners = soc2ControlOwnersForState(state, now);
+  const missing = controlOwners.filter((item) => !String(item.owner || "").trim());
+  const overdue = controlOwners.filter((item) => item.nextReviewDue && item.nextReviewDue < today && !/complete|approved/i.test(item.status || ""));
+  const ownerScore = controlOwners.length ? Math.round(controlOwners.reduce((sum, item) => {
+    let points = 0;
+    if (item.owner) points += 40;
+    if (item.backupOwner) points += 20;
+    if (item.reviewCadence) points += 20;
+    if (!item.nextReviewDue || item.nextReviewDue >= today || /complete|approved/i.test(item.status || "")) points += 20;
+    return sum + points;
+  }, 0) / controlOwners.length) : 0;
+  return { controlOwners, missing, overdue, ownerScore };
+}
+
+function soc2TypeIChecklistForState(state = {}) {
+  const policies = state.soc2Policies || [];
+  const access = state.soc2AccessReviews || [];
+  const vendors = state.soc2Vendors || [];
+  const incidents = state.soc2Incidents || [];
+  const changes = state.soc2Changes || [];
+  const evidence = state.soc2Evidence || [];
+  const auditLogs = state.soc2AuditLogs || [];
+  const generated = evidence.some((item) => item.artifactFilename || /SOC 2 Readiness Snapshot/i.test(String(item.evidenceTitle || "")));
+  const defaults = [
+    ["access-control-policy", "Access control policy exists and has owner", policies.some((item) => /access control/i.test(item.policyName || "") && item.owner), "Policy Management"],
+    ["user-access-inventory", "User access inventory exists", access.length > 0, "Access Control"],
+    ["access-review-cadence", "Access review cadence established", access.some((item) => item.nextReviewDate || item.lastReviewedDate), "Access Control"],
+    ["change-management-process", "Change management process documented", policies.some((item) => /change management/i.test(item.policyName || "")) || changes.length > 0, "Change Management"],
+    ["high-risk-change-approval", "High-risk changes require approval", !changes.some((item) => /high|critical/i.test(item.riskLevel || "") && !/approved/i.test(item.approvalStatus || "")), "Change Management"],
+    ["vendor-inventory", "Vendor inventory exists", vendors.length > 0, "Vendor Management"],
+    ["high-risk-vendor-review", "High-risk vendors reviewed", vendors.some((item) => /high|critical/i.test(item.riskLevel || "")) && !vendors.some((item) => /high|critical/i.test(item.riskLevel || "") && !/complete|approved/i.test(item.securityReviewStatus || "")), "Vendor Management"],
+    ["incident-response-policy", "Incident response policy exists", policies.some((item) => /incident response/i.test(item.policyName || "")), "Incident Response"],
+    ["incident-register", "Incident register exists", incidents.length > 0, "Incident Response"],
+    ["evidence-collection-process", "Evidence collection process exists", evidence.length > 0, "Evidence Collection"],
+    ["ai-governance-notes", "AI governance notes exist", policies.some((item) => /ai governance/i.test(item.policyName || "")) || changes.some((item) => /ai|prompt|model/i.test(item.changeType || item.title || "")), "AI Governance"],
+    ["human-approval-ai", "Human approval process documented for sensitive AI workflows", /human approval/i.test(JSON.stringify(policies.concat(changes))), "AI Governance"],
+    ["data-retention-policy", "Data retention policy exists", policies.some((item) => /data retention/i.test(item.policyName || "")), "Data Security"],
+    ["security-policy", "Security policy exists", policies.some((item) => /information security|security policy/i.test(item.policyName || "")), "Data Security"],
+    ["monthly-snapshot-export", "Monthly snapshot export exists", generated, "Evidence Collection"],
+    ["audit-log-active", "Audit log is active", auditLogs.length > 0, "Evidence Collection"]
+  ].map(([id, title, complete, controlArea]) => ({
+    id: "type-i-" + id,
+    title,
+    status: complete ? "Complete" : "In Progress",
+    owner: controlArea === "AI Governance" ? "Product" : controlArea === "Data Security" || controlArea === "Access Control" ? "Engineering" : "Operations",
+    evidenceLink: generated && title === "Monthly snapshot export exists" ? "/api/soc2/evidence-snapshot/export" : "",
+    controlArea,
+    notes: complete ? "Evidence exists in the operating system." : "Needs evidence before Type I readiness review."
+  }));
+  const overrides = state.soc2TypeIChecklist || [];
+  return defaults.map((item) => ({ ...item, ...(overrides.find((override) => override.id === item.id || override.title === item.title) || {}) }));
+}
+
+function controlAreaFromCollection(collection = "", item = {}) {
+  if (item.controlArea && soc2ControlAreas.includes(item.controlArea)) return item.controlArea;
+  if (/^security$/i.test(String(item.controlArea || ""))) return "Data Security";
+  if (collection === "soc2AccessReviews") return "Access Control";
+  if (collection === "soc2Changes") {
+    const type = String(item.changeType || item.title || "").toLowerCase();
+    if (/prompt|model|ai|automation/.test(type)) return "AI Governance";
+    return "Change Management";
+  }
+  if (collection === "soc2Vendors") return "Vendor Management";
+  if (collection === "soc2Incidents") {
+    const type = String(item.incidentType || item.summary || item.incidentTitle || "").toLowerCase();
+    if (/ai|prompt|output|automation/.test(type)) return "AI Governance";
+    if (/privacy|confidential|security|data/.test(type)) return "Data Security";
+    return "Incident Response";
+  }
+  if (collection === "soc2Evidence") return normalizeSoc2ControlArea(item.controlArea || "Evidence Collection");
+  if (collection === "soc2Policies") {
+    const name = String(item.policyName || "").toLowerCase();
+    if (/ai/.test(name)) return "AI Governance";
+    if (/access/.test(name)) return "Access Control";
+    if (/vendor/.test(name)) return "Vendor Management";
+    if (/incident/.test(name)) return "Incident Response";
+    if (/data|privacy|security/.test(name)) return "Data Security";
+    if (/change/.test(name)) return "Change Management";
+    return "Policy Management";
+  }
+  if (collection === "complianceItems") {
+    const category = String(item.itemType || item.category || "").toLowerCase();
+    if (/ai|wilma|prompt/.test(category)) return "AI Governance";
+    return "Data Security";
+  }
+  if (collection === "approvalQueue" || collection === "posts") return "AI Governance";
+  return item.controlArea || "Evidence Collection";
+}
+
+function soc2AuditAction(collection = "", item = {}, previous = {}) {
+  const changedKeys = new Set(Object.keys({ ...previous, ...item }).filter(key => JSON.stringify(previous?.[key]) !== JSON.stringify(item?.[key])));
+  if (collection === "soc2AccessReviews") {
+    if (changedKeys.has("accessLevel") && /revoke/i.test(String(item.accessLevel || ""))) return "access revoked";
+    if (changedKeys.has("reviewStatus") && /complete|approved/i.test(String(item.reviewStatus || ""))) return "access review approved";
+  }
+  if (collection === "soc2Vendors" && (changedKeys.has("riskLevel") || changedKeys.has("securityReviewStatus"))) return "vendor risk changed";
+  if (collection === "soc2Incidents" && changedKeys.has("status")) return "incident status changed";
+  if (collection === "soc2Policies" && (changedKeys.has("approvalStatus") || changedKeys.has("status"))) return "policy approval changed";
+  if (collection === "soc2Changes" && changedKeys.has("approvalStatus")) return "change approval updated";
+  if (collection === "soc2Evidence" && /SOC 2 Readiness Snapshot/i.test(String(item.evidenceTitle || ""))) return "evidence snapshot generated";
+  if ((collection === "soc2Changes" || collection === "soc2Policies" || collection === "soc2Incidents" || collection === "approvalQueue" || collection === "posts" || collection === "complianceItems") && (changedKeys.has("promptVersion") || changedKeys.has("model") || changedKeys.has("provider") || changedKeys.has("humanApprovalRequired") || changedKeys.has("prohibitedUseChecks") || changedKeys.has("sensitiveDataHandlingNotes"))) {
+    return "ai governance changed";
+  }
+  return previous && previous.id ? collection + " updated" : collection + " created";
+}
+
+function soc2AuditEntry({ collection, item, previous, now }) {
+  const sensitiveCollections = new Set(["soc2AccessReviews", "soc2Changes", "soc2Vendors", "soc2Incidents", "soc2Evidence", "soc2Policies", "complianceItems", "approvalQueue", "posts"]);
+  if (!sensitiveCollections.has(collection) && !String(collection || "").startsWith("soc2")) return null;
+  return {
+    id: "soc2-audit-" + crypto.randomUUID().slice(0, 10),
+    timestamp: now,
+    actor: "local_operator",
+    action: soc2AuditAction(collection, item, previous),
+    resourceType: collection,
+    resourceId: item.id,
+    controlArea: controlAreaFromCollection(collection, item),
+    beforeValue: previous && previous.id ? previous : null,
+    afterValue: item,
+    ip: "local",
+    userAgent: "preview-server"
+  };
+}
+
 async function upsertGrowthItem(collection, input = {}) {
   return serializeStateMutation(async () => {
     if (!growthCollections.has(collection)) throw new Error("Unsupported growth collection.");
@@ -6862,6 +10257,42 @@ async function upsertGrowthItem(collection, input = {}) {
     const id = input.id || `${slugify(collection)}-${crypto.randomUUID().slice(0, 8)}`;
     const previous = current.find((item) => item.id === id) || {};
     const item = { ...previous, ...input, id, updatedAt: now, createdAt: previous.createdAt || input.createdAt || now };
+    if (String(collection || '').startsWith('soc2') || collection === 'complianceItems' || collection === 'approvalQueue' || collection === 'posts') {
+      item.controlArea = item.controlArea || controlAreaFromCollection(collection, item);
+    }
+    if (collection === "campaigns" && item.status === "live") {
+      const linkedCompliance = (state.complianceItems || []).filter((entry) => entry.relatedCampaign === item.id && ["high", "critical"].includes(entry.riskLevel) && !["approved", "approved_with_notes"].includes(entry.status));
+      const missing = [];
+      if (!item.owner) missing.push("owner");
+      if (!item.startDate) missing.push("start date");
+      if (!item.trackingSlug && !item.trackingUrl) missing.push("tracking");
+      if (!item.landingPageUrl) missing.push("landing page");
+      if (!item.targetAudience) missing.push("target audience");
+      if (!["approved", "approved_with_notes", "not_required"].includes(item.complianceStatus || "")) missing.push("compliance approval");
+      if (!Number(item.targetReferrals || 0)) missing.push("target referrals");
+      if (!item.nextReportDate) missing.push("next report date");
+      if (linkedCompliance.length) missing.push("high-risk compliance item");
+      if (missing.length) {
+        item.status = "blocked";
+        item.blocker = `Launch blocked: missing ${missing.join(", ")}.`;
+      }
+    }
+    if (collection === "pilots" && ["active", "live"].includes(item.status)) {
+      const missing = [];
+      if (!item.checklist?.agreementSigned && !item.signedAgreement) missing.push("signed agreement");
+      if (!item.objective) missing.push("objective");
+      if (!Number(item.targetUsers || 0)) missing.push("target users");
+      if (!item.successMetrics) missing.push("success metrics");
+      if (!item.internalOwner && !item.owner) missing.push("owner");
+      if (!item.startDate) missing.push("start date");
+      if (!item.endDate) missing.push("end date");
+      if (!item.reportingCadence && !item.weeklyReportingStatus) missing.push("reporting cadence");
+      if (!item.expansionPath && !item.renewalExpansionPath) missing.push("expansion/public proof condition");
+      if (missing.length) {
+        item.status = "scoped";
+        item.blocker = `Active pilot blocked: missing ${missing.join(", ")}.`;
+      }
+    }
     const autoTasks = automaticTasksForGrowthChange(collection, item, previous);
     const activity = {
       id: `activity-${slugify(collection)}-${crypto.randomUUID().slice(0, 8)}`,
@@ -6871,14 +10302,472 @@ async function upsertGrowthItem(collection, input = {}) {
       relatedObjectId: id,
       createdAt: now
     };
+    const auditEntry = soc2AuditEntry({ collection, item, previous, now });
     const nextState = {
       ...state,
       [collection]: [item, ...current.filter((entry) => entry.id !== id)],
       tasks: collection === "tasks" ? [item, ...current.filter((entry) => entry.id !== id)] : [...autoTasks, ...(state.tasks || [])],
-      activityEvents: [activity, ...(state.activityEvents || [])].slice(0, 500)
+      activityEvents: [activity, ...(state.activityEvents || [])].slice(0, 500),
+      soc2AuditLogs: auditEntry ? [auditEntry, ...(state.soc2AuditLogs || [])].slice(0, 1000) : (state.soc2AuditLogs || [])
     };
     await store.writeState(nextState);
     return { state: nextState, item, tasks: autoTasks, activity, message: `${titleForGrowthItem(collection, item)} saved.` };
+  });
+}
+
+
+function soc2EvidenceSnapshotForState(state = {}) {
+  const policies = state.soc2Policies || [];
+  const access = state.soc2AccessReviews || [];
+  const vendors = state.soc2Vendors || [];
+  const incidents = state.soc2Incidents || [];
+  const changes = state.soc2Changes || [];
+  const evidence = (state.soc2Evidence || []).map(normalizedSoc2Evidence);
+  const aiGovernanceItems = [
+    ...changes.filter((item) => /prompt|model|ai|automation/i.test(String(item.changeType || item.title || ""))),
+    ...policies.filter((item) => /ai/i.test(String(item.policyName || ""))),
+    ...incidents.filter((item) => /ai|prompt|output|automation/i.test(String(item.incidentType || item.summary || item.incidentTitle || "")))
+  ];
+  const allRecords = [
+    ...access.map((item) => ({ ...item, _collection: "soc2AccessReviews", _status: item.reviewStatus || "Needs Review" })),
+    ...changes.map((item) => ({ ...item, _collection: "soc2Changes", _status: item.approvalStatus || item.status || "Draft" })),
+    ...vendors.map((item) => ({ ...item, _collection: "soc2Vendors", _status: item.securityReviewStatus || "Needs Review" })),
+    ...incidents.map((item) => ({ ...item, _collection: "soc2Incidents", _status: item.status || "Open" })),
+    ...evidence.map((item) => ({ ...item, _collection: "soc2Evidence", _status: item.evidenceStatus || item.status || "Draft" })),
+    ...policies.map((item) => ({ ...item, _collection: "soc2Policies", _status: item.approvalStatus || item.status || "Needs Review" }))
+  ];
+  const now = new Date();
+  const month = now.toISOString().slice(0, 7);
+  const monthLabel = now.toLocaleString("en-US", { month:"long", year:"numeric" });
+  const openControlGaps = [
+    ...policies.filter((item) => !/approved|complete/i.test(item.approvalStatus || item.status || "")),
+    ...vendors.filter((item) => !/complete|approved/i.test(item.securityReviewStatus || "")),
+    ...access.filter((item) => !/complete|approved/i.test(item.reviewStatus || "")),
+    ...evidence.filter((item) => /draft|rejected/i.test(item.evidenceStatus || ""))
+  ];
+  const overdueAccessReviews = access.filter((item) => item.nextReviewDate && new Date(item.nextReviewDate) < now && !/approved|complete/i.test(item.reviewStatus || ""));
+  const policiesDueForReview = policies.filter((item) => item.nextReviewDate && new Date(item.nextReviewDate) < now && !/approved|complete/i.test(item.approvalStatus || item.status || ""));
+  const openIncidents = incidents.filter((item) => !/closed|resolved/i.test(item.status || ""));
+  const unresolvedHighRiskVendors = vendors.filter((item) => /high|critical/i.test(item.riskLevel || "") && !/complete|approved/i.test(item.securityReviewStatus || ""));
+  const highRiskChangesWithoutApproval = changes.filter((item) => /high|critical/i.test(item.riskLevel || "") && !/approved/i.test(item.approvalStatus || ""));
+  const evidenceCollectedThisMonth = evidence.filter((item) => String(item.collectionDate || "").startsWith(month));
+  const evidenceQuality = soc2EvidenceQualityMetricsForState({ ...state, soc2Evidence:evidence }, now);
+  const ownerMetrics = soc2ControlOwnerMetricsForState(state, now);
+  const typeIChecklist = soc2TypeIChecklistForState(state);
+  const readinessByControlArea = soc2ControlAreas.map((controlArea) => {
+    const items = allRecords.filter((item) => controlAreaFromCollection(item._collection, item) === controlArea);
+    const countsByStatus = items.reduce((memo, item) => {
+      const label = soc2StatusBucket(item._status);
+      memo[label] = (memo[label] || 0) + 1;
+      return memo;
+    }, { "Not Started":0, "In Progress":0, "Needs Review":0, "Complete":0 });
+    const complete = countsByStatus.Complete || 0;
+    const total = Math.max(1, items.length);
+    const score = Math.round((complete / total) * 100);
+    return { controlArea, score, countsByStatus, totalItems: items.length };
+  });
+  const weakestControlArea = readinessByControlArea.slice().sort((a, b) => a.score - b.score)[0] || null;
+  const highestRiskOpenItem = [
+    ...unresolvedHighRiskVendors.map((item) => ({ title:item.vendorName, type:"vendor", risk:item.riskLevel || "high", owner:item.owner || "Unassigned", controlArea:"Vendor Management" })),
+    ...highRiskChangesWithoutApproval.map((item) => ({ title:item.title, type:"change", risk:item.riskLevel || "high", owner:item.owner || "Unassigned", controlArea:controlAreaFromCollection("soc2Changes", item) })),
+    ...openIncidents.map((item) => ({ title:item.incidentTitle, type:"incident", risk:item.severity || "medium", owner:item.owner || "Unassigned", controlArea:controlAreaFromCollection("soc2Incidents", item) })),
+    ...evidenceQuality.overdue.map((item) => ({ title:item.evidenceTitle, type:"evidence", risk:"medium", owner:item.owner || "Unassigned", controlArea:item.controlArea }))
+  ].sort((a, b) => {
+    const rank = { critical:4, high:3, medium:2, low:1 };
+    return (rank[String(b.risk || "").toLowerCase()] || 0) - (rank[String(a.risk || "").toLowerCase()] || 0);
+  })[0] || null;
+  const controlCountsByStatus = allRecords.reduce((memo, item) => {
+    const label = soc2StatusBucket(item._status);
+    memo[label] = (memo[label] || 0) + 1;
+    return memo;
+  }, { "Not Started":0, "In Progress":0, "Needs Review":0, "Complete":0 });
+  const missingEvidenceAreas = soc2ControlAreas.filter((controlArea) => !evidenceCollectedThisMonth.some((item) => controlAreaFromCollection("soc2Evidence", item) === controlArea));
+  const controlStatusScore = readinessByControlArea.length ? Math.round(readinessByControlArea.reduce((sum, item) => sum + item.score, 0) / readinessByControlArea.length) : 0;
+  const operationsPenalty = Math.min(100, overdueAccessReviews.length * 15 + openIncidents.length * 20 + unresolvedHighRiskVendors.length * 15 + highRiskChangesWithoutApproval.length * 15 + policiesDueForReview.length * 10 + ownerMetrics.missing.length * 10 + evidenceQuality.overdueCollection * 15);
+  const operationsScore = Math.max(0, 100 - operationsPenalty);
+  const score = Math.round(controlStatusScore * 0.35 + evidenceQuality.qualityScore * 0.25 + ownerMetrics.ownerScore * 0.20 + operationsScore * 0.20);
+  return {
+    month: monthLabel,
+    readinessScore: Math.min(100, score),
+    readinessBand: soc2ReadinessBand(score),
+    readinessStatus: statusForSoc2Score(score),
+    scoringBreakdown: {
+      controlStatusScore,
+      evidenceQualityScore: evidenceQuality.qualityScore,
+      controlOwnerScore: ownerMetrics.ownerScore,
+      operationsScore,
+      operationsPenalty
+    },
+    controlCountsByStatus,
+    overdueAccessReviews: overdueAccessReviews.length,
+    openIncidents: openIncidents.length,
+    unresolvedHighRiskVendors: unresolvedHighRiskVendors.length,
+    highRiskChangesWithoutApproval: highRiskChangesWithoutApproval.length,
+    policiesDueForReview: policiesDueForReview.length,
+    evidenceCollectedThisMonth: evidenceCollectedThisMonth.length,
+    missingEvidenceAreas,
+    overdueEvidenceCollection: evidenceQuality.overdueCollection,
+    missingControlOwners: ownerMetrics.missing.length,
+    readinessByControlArea,
+    weakestControlArea,
+    highestRiskOpenItem,
+    evidenceQuality,
+    controlOwners: ownerMetrics.controlOwners,
+    typeIChecklist,
+    aiGovernance: {
+      totalTracked: aiGovernanceItems.length,
+      promptChanges: changes.filter((item) => /prompt/i.test(String(item.changeType || item.title || ""))).length,
+      modelProviderChanges: changes.filter((item) => /model|provider/i.test(String(item.changeType || item.title || ""))).length,
+      humanApprovalRequirements: policies.filter((item) => /approval/i.test(String(item.policyName || item.summary || ""))).length,
+      aiIncidentsOpen: incidents.filter((item) => /ai|prompt|output|automation/i.test(String(item.incidentType || item.summary || item.incidentTitle || "")) && !/closed|resolved/i.test(item.status || "")).length
+    },
+    generated_at: new Date().toISOString(),
+    disclaimer: "SOC 2 Readiness only. Formal SOC 2 compliance requires review by a qualified auditor."
+  };
+}
+
+function soc2ReadinessForState(state = {}) {
+  const snapshot = soc2EvidenceSnapshotForState(state);
+  const policies = state.soc2Policies || [];
+  const access = state.soc2AccessReviews || [];
+  const vendors = state.soc2Vendors || [];
+  const incidents = state.soc2Incidents || [];
+  const changes = state.soc2Changes || [];
+  const evidence = state.soc2Evidence || [];
+  const openControlGaps = [
+    ...policies.filter((item) => !/approved|complete/i.test(item.approvalStatus || item.status || "")),
+    ...vendors.filter((item) => !/complete|approved/i.test(item.securityReviewStatus || "")),
+    ...access.filter((item) => !/complete|approved/i.test(item.reviewStatus || "")),
+    ...evidence.filter((item) => /draft|rejected/i.test(evidenceStatusFor(item)))
+  ];
+  const overdueReviews = [...access, ...policies].filter((item) => item.nextReviewDate && new Date(item.nextReviewDate) < new Date() && !/approved|complete/i.test(item.reviewStatus || item.approvalStatus || item.status || ""));
+  return {
+    status: snapshot.readinessStatus,
+    score: snapshot.readinessScore,
+    readinessBand: snapshot.readinessBand,
+    scoringBreakdown: snapshot.scoringBreakdown,
+    openControlGaps: openControlGaps.length,
+    overdueReviews: overdueReviews.length,
+    recentIncidents: incidents.filter((item) => !/closed/i.test(item.status || "")).length,
+    recentChanges: changes.slice(0, 5).length,
+    evidenceThisMonth: evidence.filter((item) => String(item.collectionDate || "").startsWith(new Date().toISOString().slice(0, 7))).length,
+    evidenceQuality: snapshot.evidenceQuality,
+    controlOwners: snapshot.controlOwners,
+    typeIChecklist: snapshot.typeIChecklist,
+    overdueEvidenceCollection: snapshot.overdueEvidenceCollection,
+    missingControlOwners: snapshot.missingControlOwners,
+    controlAreas: snapshot.readinessByControlArea,
+    weakestControlArea: snapshot.weakestControlArea,
+    highestRiskOpenItem: snapshot.highestRiskOpenItem,
+    disclaimer: snapshot.disclaimer
+  };
+}
+
+function markdownValue(value = "") {
+  return String(value ?? "").split(/\r?\n/).join(" ").trim() || "None recorded";
+}
+
+function soc2ExportFilename(date = new Date()) {
+  return "legalease-soc2-readiness-snapshot-" + date.toISOString().slice(0, 7) + ".md";
+}
+
+function statusForSoc2Score(score = 0) {
+  if (score >= 80) return "Complete";
+  if (score >= 45) return "In Progress";
+  if (score > 0) return "Needs Review";
+  return "Not Started";
+}
+
+function soc2EnvironmentLabel() {
+  const explicit = process.env.APP_ENV || process.env.LEGALEASE_ENV || process.env.NODE_ENV || "local";
+  const normalized = String(explicit || "local").toLowerCase();
+  if (["production", "prod"].includes(normalized)) return "prod";
+  if (["staging", "stage"].includes(normalized)) return "staging";
+  if (["development", "dev"].includes(normalized)) return "dev";
+  return "local";
+}
+
+function soc2RecordStatus(item = {}, fallback = "Needs Review") {
+  return String(item.reviewStatus || item.approvalStatus || item.securityReviewStatus || item.status || fallback || "Needs Review");
+}
+
+function soc2MarkdownSnapshot(state = {}) {
+  const snapshot = soc2EvidenceSnapshotForState(state);
+  const now = new Date(snapshot.generated_at || Date.now());
+  const month = now.toISOString().slice(0, 7);
+  const access = state.soc2AccessReviews || [];
+  const changes = state.soc2Changes || [];
+  const vendors = state.soc2Vendors || [];
+  const incidents = state.soc2Incidents || [];
+  const evidence = state.soc2Evidence || [];
+  const policies = state.soc2Policies || [];
+  const auditLogs = state.soc2AuditLogs || [];
+  const evidenceThisMonth = evidence.filter((item) => String(item.collectionDate || item.createdAt || "").startsWith(month));
+  const approvedAccess = access.filter((item) => /approved|complete/i.test(soc2RecordStatus(item))).length;
+  const needsReviewAccess = access.filter((item) => /needs review|review/i.test(soc2RecordStatus(item)) && !/approved|complete/i.test(soc2RecordStatus(item))).length;
+  const revokedAccess = access.filter((item) => /revoke|revoked/i.test(String(item.accessLevel || item.reviewStatus || item.status || ""))).length;
+  const overdueAccess = access.filter((item) => item.nextReviewDate && new Date(item.nextReviewDate) < now && !/approved|complete/i.test(soc2RecordStatus(item))).length;
+  const highestPriorityAccess = access.find((item) => !/approved|complete/i.test(soc2RecordStatus(item))) || null;
+  const highRiskChanges = changes.filter((item) => /high|critical/i.test(item.riskLevel || ""));
+  const changesWithRollback = changes.filter((item) => String(item.rollbackPlan || "").trim()).length;
+  const highRiskVendors = vendors.filter((item) => /high/i.test(item.riskLevel || ""));
+  const criticalVendors = vendors.filter((item) => /critical/i.test(item.riskLevel || ""));
+  const pendingVendorReviews = vendors.filter((item) => !/complete|approved/i.test(item.securityReviewStatus || ""));
+  const missingVendorPaperwork = vendors.filter((item) => !/signed|approved|complete|yes/i.test([item.dpaStatus, item.contractStatus].join(" ")));
+  const highestRiskVendor = [...criticalVendors, ...highRiskVendors, ...vendors][0] || null;
+  const openIncidents = incidents.filter((item) => !/closed|resolved/i.test(item.status || ""));
+  const oldestOpenIncident = openIncidents.slice().sort((a, b) => String(a.dateOpened || a.createdAt || "").localeCompare(String(b.dateOpened || b.createdAt || "")))[0] || null;
+  const aiAuditLogs = auditLogs.filter((item) => /ai|approval|automation|prompt|model|output/i.test([item.action, item.resourceType].join(" ")));
+  const prohibitedUseChecks = policies.filter((item) => /ai|acceptable|prohibited/i.test([item.policyName, item.summary, item.notes].join(" "))).length;
+  const sensitiveDataNotes = policies.filter((item) => /privacy|data|confidential|sensitive/i.test([item.policyName, item.summary, item.notes].join(" "))).length + changes.filter((item) => /privacy|data|confidential|sensitive/i.test([item.title, item.description].join(" "))).length;
+  const lines = [
+    "# LegalEase SOC 2 Readiness Snapshot",
+    "",
+    "Generated: " + now.toISOString(),
+    "Period: " + snapshot.month,
+    "Environment: " + soc2EnvironmentLabel(),
+    "Status: SOC 2 Readiness, not SOC 2 compliance",
+    "",
+    "## Executive Summary",
+    "- Readiness score: " + snapshot.readinessScore + "% (" + snapshot.readinessBand + ")",
+    "- Weakest control area: " + markdownValue(snapshot.weakestControlArea?.controlArea || "None recorded"),
+    "- Highest-risk open item: " + markdownValue(snapshot.highestRiskOpenItem ? (snapshot.highestRiskOpenItem.title + " (" + snapshot.highestRiskOpenItem.type + ", " + snapshot.highestRiskOpenItem.risk + ")") : "None recorded"),
+    "- Open incidents: " + snapshot.openIncidents,
+    "- Overdue access reviews: " + snapshot.overdueAccessReviews,
+    "- Unresolved high-risk vendors: " + snapshot.unresolvedHighRiskVendors,
+    "- Evidence collected this month: " + snapshot.evidenceCollectedThisMonth,
+    "",
+    "## Readiness by Control Area",
+    ...snapshot.readinessByControlArea.flatMap((area) => {
+      const evidenceCount = evidenceThisMonth.filter((item) => controlAreaFromCollection("soc2Evidence", item) === area.controlArea).length;
+      const openGaps = (area.countsByStatus?.["Needs Review"] || 0) + (area.countsByStatus?.["Not Started"] || 0);
+      const nextAction = evidenceCount ? "Review current evidence and close remaining gaps." : "Collect current-month evidence for this control area.";
+      return [
+        "### " + area.controlArea,
+        "- Status: " + statusForSoc2Score(area.score),
+        "- Score: " + area.score + "%",
+        "- Open gaps: " + openGaps,
+        "- Evidence count: " + evidenceCount,
+        "- Next recommended action: " + nextAction,
+        ""
+      ];
+    }),
+    "## Access Review Summary",
+    "- Total access records: " + access.length,
+    "- Approved: " + approvedAccess,
+    "- Needs review: " + needsReviewAccess,
+    "- Revoked: " + revokedAccess,
+    "- Overdue: " + overdueAccess,
+    "- Highest priority access issue: " + markdownValue(highestPriorityAccess ? ((highestPriorityAccess.userName || highestPriorityAccess.id) + " needs " + soc2RecordStatus(highestPriorityAccess)) : "No overdue access reviews."),
+    "",
+    "## Change Management Summary",
+    "- Total changes: " + changes.length,
+    "- High-risk changes: " + highRiskChanges.length,
+    "- Approved changes: " + changes.filter((item) => /approved/i.test(item.approvalStatus || "")).length,
+    "- Deployed changes: " + changes.filter((item) => /deployed/i.test(item.status || "")).length,
+    "- High-risk changes missing approval: " + snapshot.highRiskChangesWithoutApproval,
+    "- Rollback-plan coverage: " + changesWithRollback + "/" + changes.length,
+    "",
+    "## Vendor Risk Summary",
+    "- Total vendors: " + vendors.length,
+    "- High-risk vendors: " + highRiskVendors.length,
+    "- Critical vendors: " + criticalVendors.length,
+    "- Pending security reviews: " + pendingVendorReviews.length,
+    "- Missing DPA or contract status: " + missingVendorPaperwork.length,
+    "- Highest-risk vendor: " + markdownValue(highestRiskVendor ? ((highestRiskVendor.vendorName || highestRiskVendor.id) + " (" + (highestRiskVendor.riskLevel || "risk not set") + ")") : "None recorded"),
+    "",
+    "## Incident Register Summary",
+    "- Open incidents: " + openIncidents.length,
+    "- Investigating: " + incidents.filter((item) => /investigating/i.test(item.status || "")).length,
+    "- Remediating: " + incidents.filter((item) => /remediating/i.test(item.status || "")).length,
+    "- Resolved: " + incidents.filter((item) => /resolved|closed/i.test(item.status || "")).length,
+    "- Critical/high incidents: " + incidents.filter((item) => /critical|high/i.test(item.severity || "")).length,
+    "- Oldest open incident: " + markdownValue(oldestOpenIncident ? ((oldestOpenIncident.incidentTitle || oldestOpenIncident.id) + " opened " + (oldestOpenIncident.dateOpened || oldestOpenIncident.createdAt || "date missing")) : "No open incidents."),
+    "",
+    "## AI Governance Summary",
+    "LegalEase uses AI in legal workflow contexts, so readiness evidence should show prompt changes, model/provider changes, human approval, automation review, output approval, prohibited-use checks, and sensitive-data handling.",
+    "- Prompt changes: " + snapshot.aiGovernance.promptChanges,
+    "- Model/provider changes: " + snapshot.aiGovernance.modelProviderChanges,
+    "- Human approval requirements: " + snapshot.aiGovernance.humanApprovalRequirements,
+    "- AI output approval logs: " + aiAuditLogs.filter((item) => /approval/i.test(item.action || "")).length,
+    "- Automation actions: " + auditLogs.filter((item) => /automation/i.test([item.action, item.resourceType].join(" "))).length,
+    "- AI incident records: " + incidents.filter((item) => /ai|prompt|output|automation/i.test([item.incidentTitle, item.summary, item.incidentType].join(" "))).length,
+    "- Prohibited use checks: " + prohibitedUseChecks,
+    "- Sensitive data handling notes: " + sensitiveDataNotes,
+    "",
+    "## Evidence Collected This Month",
+    ...(evidenceThisMonth.length ? evidenceThisMonth.map((item) => "- " + markdownValue(item.evidenceTitle || item.title || item.id) + " | Control area: " + markdownValue(item.controlArea || controlAreaFromCollection("soc2Evidence", item)) + " | Owner: " + markdownValue(item.owner || "Unassigned") + " | Collected: " + markdownValue(item.collectionDate || item.createdAt) + " | Source: " + markdownValue(item.sourceSystem || "LegalEase Operating System") + " | Link: " + markdownValue(item.link || item.filePath || item.artifactPath || "No link")) : ["- No evidence collected this month yet."]),
+    "",
+    "## Evidence Quality",
+    "- Total evidence records: " + snapshot.evidenceQuality.total,
+    "- Approved evidence: " + snapshot.evidenceQuality.approved,
+    "- Evidence pending review: " + snapshot.evidenceQuality.pendingReview,
+    "- Rejected evidence: " + snapshot.evidenceQuality.rejected,
+    "- Weak evidence: " + snapshot.evidenceQuality.weak,
+    "- Overdue evidence collection: " + snapshot.evidenceQuality.overdueCollection,
+    "- Strongest control area by evidence: " + markdownValue(snapshot.evidenceQuality.strongestControlArea),
+    "- Weakest control area by evidence: " + markdownValue(snapshot.evidenceQuality.weakestControlArea),
+    "",
+    "## Evidence Review Summary",
+    ...(evidence.length ? evidence.map((item) => {
+      const normalized = normalizedSoc2Evidence(item);
+      return "- " + markdownValue(normalized.evidenceTitle || normalized.id) + " | Status: " + normalized.evidenceStatus + " | Quality: " + normalized.evidenceQuality + " | Reviewer: " + markdownValue(normalized.reviewer || "Unassigned") + " | Reviewed: " + markdownValue(normalized.reviewedAt || "Not reviewed");
+    }) : ["- No evidence records yet."]),
+    "",
+    "## Overdue Evidence Collection",
+    ...(snapshot.evidenceQuality.overdue.length ? snapshot.evidenceQuality.overdue.map((item) => "- " + markdownValue(item.evidenceTitle || item.id) + " | Control area: " + markdownValue(item.controlArea) + " | Due: " + markdownValue(item.nextCollectionDue) + " | Owner: " + markdownValue(item.owner || "Unassigned")) : ["- No overdue evidence collection." ]),
+    "",
+    "## Control Owners",
+    ...snapshot.controlOwners.map((item) => "- " + item.controlArea + " | Owner: " + markdownValue(item.owner || "Unassigned") + " | Backup: " + markdownValue(item.backupOwner || "Unassigned") + " | Cadence: " + markdownValue(item.reviewCadence) + " | Next review: " + markdownValue(item.nextReviewDue) + " | Status: " + markdownValue(item.status)),
+    "",
+    "## Type I Readiness Checklist",
+    ...snapshot.typeIChecklist.map((item) => "- [" + (item.status === "Complete" ? "x" : " ") + "] " + markdownValue(item.title) + " | Status: " + markdownValue(item.status) + " | Owner: " + markdownValue(item.owner || "Unassigned") + " | Evidence: " + markdownValue(item.evidenceLink || "No link") + " | Notes: " + markdownValue(item.notes)),
+    "",
+    "## Missing Evidence Areas",
+    ...(snapshot.missingEvidenceAreas.length ? snapshot.missingEvidenceAreas.map((area) => "- " + area) : ["- No missing evidence areas for this month." ]),
+    "",
+    "## Audit Log Highlights",
+    ...(auditLogs.slice(0, 10).map((item) => "- " + markdownValue(item.timestamp) + " | Actor: " + markdownValue(item.actor || "local_operator") + " | Action: " + markdownValue(item.action) + " | Resource: " + markdownValue(item.resourceType) + " | ID: " + markdownValue(item.resourceId)) || []),
+    ...(auditLogs.length ? [] : ["- No SOC 2 audit actions recorded yet."]),
+    "",
+    "## Type I Readiness Gaps",
+    "- Finalize control owners and approval responsibilities.",
+    "- Document production access boundaries and privileged access review cadence.",
+    "- Complete policy approvals and collect evidence across every control area.",
+    "- Confirm vendor security reviews, DPAs, and contract statuses for high-risk vendors.",
+    "- Validate change approval and rollback evidence for high-risk product, infrastructure, prompt, AI workflow, database, and deployment changes.",
+    "",
+    "## Type II Readiness Gaps",
+    "- Operate controls consistently across a 3 to 12 month observation period.",
+    "- Preserve monthly evidence snapshots and supporting records without gaps.",
+    "- Show recurring access reviews, vendor reviews, incident handling, and change approvals over time.",
+    "- Keep AI governance evidence current for prompts, model/provider changes, output approvals, automation actions, and sensitive-data handling.",
+    "- Demonstrate that exceptions are reviewed, remediated, and closed with evidence.",
+    "",
+    "## Disclaimer",
+    "This snapshot supports LegalEase's SOC 2 readiness work. It does not represent SOC 2 certification, attestation, or audit completion. Formal SOC 2 compliance requires review by a qualified independent auditor.",
+    ""
+  ];
+  return { markdown: lines.join("\n"), snapshot };
+}
+
+async function exportSoc2MarkdownSnapshot() {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const now = new Date().toISOString();
+    const filename = soc2ExportFilename(new Date(now));
+    const relativeDir = "data/exports/soc2";
+    const outputDir = path.resolve(process.cwd(), relativeDir);
+    if (!outputDir.startsWith(path.resolve(process.cwd(), "data/exports/soc2"))) throw new Error("Unsafe SOC 2 export path.");
+    await mkdir(outputDir, { recursive: true });
+    const { markdown, snapshot } = soc2MarkdownSnapshot(state);
+    const artifactPath = path.join(outputDir, filename);
+    const relativePath = relativeDir + "/" + filename;
+    await writeFile(artifactPath, markdown);
+    const auditEntry = {
+      id: "soc2-audit-" + crypto.randomUUID().slice(0, 10),
+      timestamp: now,
+      actor: "local_operator",
+      action: "soc2 markdown snapshot exported",
+      resourceType: "evidence_snapshot",
+      resourceId: filename,
+      controlArea: "Evidence Collection",
+      beforeValue: null,
+      afterValue: {
+        artifactFilename: filename,
+        artifactPath: relativePath,
+        generatedAt: now,
+        readinessScore: snapshot.readinessScore,
+        period: snapshot.month
+      },
+      ip: "local",
+      userAgent: "preview-server"
+    };
+    const nextState = {
+      ...state,
+      soc2AuditLogs: [auditEntry, ...(state.soc2AuditLogs || [])].slice(0, 1000)
+    };
+    await store.writeState(nextState);
+    return { state: nextState, markdown, snapshot, filename, relativePath, generatedAt: now };
+  });
+}
+
+function soc2EvidenceReviewPatch(action = "", input = {}, now = new Date().toISOString()) {
+  const normalizedAction = String(action || input.action || "").toLowerCase().replaceAll("-", "_");
+  const patch = {};
+  if (normalizedAction === "mark_ready" || normalizedAction === "ready") patch.evidenceStatus = "Ready for Review";
+  if (normalizedAction === "approve" || normalizedAction === "approved") {
+    patch.evidenceStatus = "Approved";
+    patch.reviewedAt = now;
+  }
+  if (normalizedAction === "reject" || normalizedAction === "rejected") {
+    patch.evidenceStatus = "Rejected";
+    patch.reviewedAt = now;
+  }
+  if (normalizedAction === "archive" || normalizedAction === "archived") patch.evidenceStatus = "Archived";
+  if (!patch.evidenceStatus) throw new Error("Unsupported evidence review action.");
+  if (input.reviewer) patch.reviewer = String(input.reviewer).slice(0, 120);
+  if (input.reviewNotes) patch.reviewNotes = String(input.reviewNotes).slice(0, 1200);
+  if (soc2EvidenceQualities.includes(input.evidenceQuality)) patch.evidenceQuality = input.evidenceQuality;
+  if (soc2SourceReliabilities.includes(input.sourceReliability)) patch.sourceReliability = input.sourceReliability;
+  if (soc2RenewalFrequencies.includes(input.renewalFrequency)) patch.renewalFrequency = input.renewalFrequency;
+  if (input.evidencePeriod) patch.evidencePeriod = String(input.evidencePeriod).slice(0, 80);
+  if (input.nextCollectionDue) patch.nextCollectionDue = String(input.nextCollectionDue).slice(0, 20);
+  if (patch.evidenceStatus === "Ready for Review" && !patch.reviewer && input.reviewer !== "") patch.reviewer = input.reviewer || "Operations";
+  return patch;
+}
+
+function soc2EvidenceReviewAuditEntries(previous = {}, item = {}, now = new Date().toISOString()) {
+  const entries = [];
+  const add = (action) => entries.push({
+    id: "soc2-audit-" + crypto.randomUUID().slice(0, 10),
+    timestamp: now,
+    actor: "local_operator",
+    action,
+    resourceType: "evidence",
+    resourceId: item.id,
+    controlArea: controlAreaFromCollection("soc2Evidence", item),
+    beforeValue: previous,
+    afterValue: item,
+    ip: "local",
+    userAgent: "preview-server"
+  });
+  if (previous.evidenceStatus !== item.evidenceStatus) {
+    if (item.evidenceStatus === "Ready for Review") add("evidence marked ready for review");
+    if (item.evidenceStatus === "Approved") add("evidence approved");
+    if (item.evidenceStatus === "Rejected") add("evidence rejected");
+    if (item.evidenceStatus === "Archived") add("evidence archived");
+  }
+  if ((previous.evidenceQuality || "") !== (item.evidenceQuality || "")) add("evidence quality changed");
+  if ((previous.nextCollectionDue || "") !== (item.nextCollectionDue || "")) add("next collection due date changed");
+  return entries;
+}
+
+async function reviewSoc2Evidence(id = "", input = {}) {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const evidence = state.soc2Evidence || [];
+    const previousRaw = evidence.find((item) => item.id === id);
+    if (!previousRaw) throw new Error("Evidence record not found.");
+    const now = new Date().toISOString();
+    const previous = normalizedSoc2Evidence(previousRaw);
+    const patch = soc2EvidenceReviewPatch(input.action, input, now);
+    const item = {
+      ...previousRaw,
+      ...previous,
+      ...patch,
+      controlArea: normalizeSoc2ControlArea(patch.controlArea || previous.controlArea || previousRaw.controlArea || "Evidence Collection"),
+      updatedAt: now
+    };
+    if (item.evidenceStatus === "Approved" && !item.reviewedAt) item.reviewedAt = now;
+    const auditEntries = soc2EvidenceReviewAuditEntries(previous, normalizedSoc2Evidence(item), now);
+    const nextState = {
+      ...state,
+      soc2Evidence: [item, ...evidence.filter((entry) => entry.id !== id)],
+      soc2AuditLogs: [...auditEntries, ...(state.soc2AuditLogs || [])].slice(0, 1000)
+    };
+    await store.writeState(nextState);
+    return { state: nextState, item, auditEntries, message: "Evidence review updated." };
   });
 }
 
@@ -6888,6 +10777,43 @@ function partnerName(state = {}, partnerId = "") {
 
 function campaignName(state = {}, campaignId = "") {
   return (state.campaigns || []).find((item) => item.id === campaignId)?.campaignName || "Unlinked campaign";
+}
+
+const requiredDataRoomSections = ["Company overview", "Product suite", "Traction", "Partner pipeline", "Campaigns", "Pilots", "RecordShield funnel", "Revenue", "Compliance", "Technical architecture", "Security", "Case studies", "Press/public proof", "Financial model", "Acquisition thesis"];
+
+function daysSinceDate(value = "") {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return null;
+  return Math.floor((Date.now() - time) / 86400000);
+}
+
+function olderThanDays(value = "", days = 7) {
+  const age = daysSinceDate(value);
+  return age !== null && age > days;
+}
+
+function normalizedReadinessStatus(status = "") {
+  const value = String(status || "missing").toLowerCase();
+  if (value === "approved" || value === "investor-ready") return "investor-ready";
+  if (value === "uploaded" || value === "usable") return "usable";
+  if (value === "draft") return "draft";
+  return "missing";
+}
+
+function dataRoomReadinessForState(state = {}) {
+  const rank = { missing: 0, draft: 1, usable: 2, "investor-ready": 3 };
+  const sectionMap = new Map(requiredDataRoomSections.map((section) => [section, "missing"]));
+  for (const item of state.dataRoomItems || []) {
+    const section = item.section || "Company overview";
+    const next = normalizedReadinessStatus(item.status);
+    const current = sectionMap.get(section) || "missing";
+    if ((rank[next] || 0) >= (rank[current] || 0)) sectionMap.set(section, next);
+  }
+  const counts = { missing: 0, draft: 0, usable: 0, "investor-ready": 0 };
+  for (const status of sectionMap.values()) counts[status] += 1;
+  const points = [...sectionMap.values()].reduce((sum, status) => sum + (rank[status] || 0), 0);
+  return { counts, sectionMap, score: Math.round((points / (requiredDataRoomSections.length * 3)) * 100) };
 }
 
 function campaignKitMarkdown(state = {}, campaign = {}) {
@@ -6956,7 +10882,57 @@ function reportBody(state = {}, reportType = "weekly_internal") {
   const pilots = state.pilots || [];
   const funnel = state.funnelSnapshots || [];
   const posted = (state.posts || []).filter((post) => post.manuallyPostedAt || post.postedAt || post.publishedAt);
-  return `# ${reportType.replaceAll("_", " ")}\n\nGenerated: ${new Date().toISOString()}\n\n## Milestones needing attention\n${atRisk.map((item) => `- ${item.title}: ${item.status}. Next: ${item.nextAction}`).join("\n") || "- None"}\n\n## Partner pipeline\n${(state.partners || []).map((item) => `- ${item.organizationName}: ${item.status}; next follow-up ${item.nextFollowUpDate || "TBD"}`).join("\n") || "- No partners yet"}\n\n## Campaigns\n${liveCampaigns.map((item) => `- ${item.campaignName}: ${item.status}; ${item.actualReferrals || 0}/${item.targetReferrals || 0} referrals`).join("\n") || "- No active campaigns"}\n\n## RecordShield funnel\n${funnel.map((item) => `- ${campaignName(state, item.campaignId)}: ${item.recordShieldStarts || 0} starts, ${item.expungementIntakeStarted || 0} Expungement.ai starts, $${item.revenue || 0} revenue`).join("\n") || "- No funnel data"}\n\n## Pilots\n${pilots.map((item) => `- ${item.pilotName}: ${item.status}; next ${item.nextAction || "TBD"}`).join("\n") || "- No pilots"}\n\n## Published content\n- Posted items: ${posted.length}\n- Posts needing metrics: ${posted.filter((post) => !post.performanceUpdatedAt).length}\n\n## Risks and next actions\n${openTasks.slice(0, 12).map((task) => `- ${task.title} (${task.dueDate || "no due date"})`).join("\n") || "- No open tasks"}\n`;
+  const partners = state.partners || [];
+  const campaigns = state.campaigns || [];
+  const complianceBlockers = (state.complianceItems || []).filter((item) => item.riskLevel === "high" && item.status !== "approved");
+  const partnerFlags = partners.flatMap((partner) => {
+    const flags = [];
+    if (!partner.nextFollowUpDate) flags.push("Follow-up missing");
+    if (partner.status === "proposal_sent" && olderThanDays(partner.lastTouchDate || partner.updatedAt || partner.createdAt, 7)) flags.push("Stalled proposal");
+    if (partner.status === "verbal_yes" && !partner.relatedCampaign && !partner.relatedPilot) flags.push("Activation needed");
+    return flags.map((flag) => `${partner.organizationName}: ${flag}`);
+  });
+  const campaignFlags = campaigns.flatMap((campaign) => {
+    const flags = [];
+    const tracking = campaign.trackingSlug || campaign.trackingUrl || campaign.landingPageUrl;
+    if (campaign.status === "live" && !tracking) flags.push("Tracking missing");
+    if (campaign.status === "live" && olderThanDays(campaign.lastActivityAt || campaign.updatedAt || campaign.latestCampaignKitAt || campaign.startDate, 7)) flags.push("Stalled campaign");
+    if (campaign.status === "assets_needed") flags.push("Assets missing");
+    return flags.map((flag) => `${campaign.campaignName}: ${flag}`);
+  });
+  const pilotFlags = pilots.flatMap((pilot) => {
+    const flags = [];
+    if (pilot.status === "live" && !pilot.successMetrics) flags.push("Metrics missing");
+    if (pilot.status === "completed" && !(pilot.checklist?.testimonialRequested || pilot.checklist?.caseStudyDrafted || ["requested", "approved", "published"].includes(pilot.publicProofStatus))) flags.push("Proof missing");
+    return flags.map((flag) => `${pilot.pilotName}: ${flag}`);
+  });
+  const readiness = dataRoomReadinessForState(state);
+  const funnelTotals = funnel.reduce((memo, item) => {
+    ["landingPageVisits", "actualReferrals", "recordShieldStarts", "recordShieldCompletions", "cleanupCtaClicks", "expungementIntakeStarted", "paymentCompleted", "revenue"].forEach((key) => memo[key] = (memo[key] || 0) + Number(item[key] || 0));
+    return memo;
+  }, {});
+  const signedPilots = pilots.filter((item) => ["signed", "active", "completed", "expanded"].includes(String(item.status || "").toLowerCase()) || item.checklist?.agreementSigned).length;
+  const activeCampaigns = campaigns.filter((item) => item.status === "live" && (item.distributionActions || []).length && (Number(item.actualReferrals || 0) + Number(item.recordShieldStarts || 0) + Number(item.landingPageVisits || 0)) > 0).length;
+  const rsConversion = (funnelTotals.recordShieldCompletions || funnelTotals.recordShieldStarts) ? Math.round((Number(funnelTotals.expungementIntakeStarted || 0) / Number(funnelTotals.recordShieldCompletions || funnelTotals.recordShieldStarts || 1)) * 100) : 0;
+  const publicProof = (state.dataRoomItems || []).filter((item) => /proof|case|quote|press|public/i.test([item.title, item.section, item.notes].join(" ")) && ["usable", "investor-ready", "approved", "uploaded", "current"].includes(String(item.status || "").toLowerCase())).length;
+  const proofProgress = [
+    `Signed pilots: ${signedPilots}/3`,
+    `RecordShield users: ${funnelTotals.recordShieldStarts || 0}/1000`,
+    `RecordShield → Expungement.ai conversion: ${rsConversion}%/20%`,
+    `Active partner campaigns: ${activeCampaigns}/10`,
+    `Public institutional proof: ${publicProof}/1`,
+    `Data room readiness: ${readiness.score}%`
+  ];
+  const topActions = [
+    ...partnerFlags.map((title) => ({ title, source: "Partner pipeline" })),
+    ...campaignFlags.map((title) => ({ title, source: "Campaign operations" })),
+    ...complianceBlockers.map((item) => ({ title: `${item.itemTitle}: resolve high-risk compliance`, source: "Compliance" })),
+    ...pilotFlags.map((title) => ({ title, source: "Pilots" })),
+    ...[...readiness.sectionMap.entries()].filter(([, status]) => status === "missing").map(([section]) => ({ title: `Add data room item: ${section}`, source: "Data Room" })),
+    ...atRisk.map((item) => ({ title: item.nextAction || `Add next action: ${item.title}`, source: "Milestones" })),
+    ...openTasks.map((task) => ({ title: `${task.title} (${task.dueDate || "no due date"})`, source: "Tasks" }))
+  ].slice(0, 15);
+  return `# ${reportType.replaceAll("_", " ")}\n\nGenerated: ${new Date().toISOString()}\n\n## 9.5 proof progress\n${proofProgress.map((item) => `- ${item}`).join("\n")}\n\n## Milestone progress\n${(state.milestones || []).map((item) => `- ${item.title}: ${item.current || 0}/${item.target || "target"} ${item.unit || ""}; status ${item.status || "not set"}; owner ${item.owner || "Unassigned"}; due ${item.dueDate || "TBD"}; next ${item.nextAction || "Needs next action"}`).join("\n") || "- No milestones configured"}\n\n## Partner pipeline\n${partners.map((item) => `- ${item.organizationName}: ${item.status || "target identified"}; owner ${item.owner || "Unassigned"}; last touch ${item.lastTouchDate || "TBD"}; next follow-up ${item.nextFollowUpDate || "Follow-up missing"}; expected value $${item.expectedValue || 0}; probability ${item.probability || 0}%; next ${item.nextAction || "Follow up and record the next step"}`).join("\n") || "- No partners yet"}\n\n## Revenue and pipeline\n- Direct revenue: $${funnelTotals.revenue || 0}\n- Partner/pilot expected value: $${partners.reduce((sum, item) => sum + Number(item.expectedValue || 0), 0) + pilots.reduce((sum, item) => sum + Number(item.price || 0), 0)}\n- Weighted pipeline: $${partners.reduce((sum, item) => sum + Number(item.expectedValue || 0) * (Number(item.probability || 0) / 100), 0).toFixed(0)}\n\n## Due and stalled follow-ups\n${partnerFlags.map((item) => `- ${item}`).join("\n") || "- No partner follow-up flags"}\n\n## Active campaigns\n${liveCampaigns.map((item) => `- ${item.campaignName}: ${item.status}; tracking ${item.trackingSlug || item.trackingUrl || item.landingPageUrl || "missing"}; referrals ${item.actualReferrals || 0}/${item.targetReferrals || 0}; RS starts ${item.recordShieldStarts || 0}; Expungement.ai starts ${item.expungementStarts || 0}; next ${item.nextAction || "Confirm tracking, assets, and reporting"}`).join("\n") || "- No active campaigns"}\n\n## RecordShield funnel snapshot\n- Landing visits: ${funnelTotals.landingPageVisits || 0}\n- RecordShield starts: ${funnelTotals.recordShieldStarts || 0}\n- RecordShield completions: ${funnelTotals.recordShieldCompletions || 0}\n- Cleanup CTA clicks: ${funnelTotals.cleanupCtaClicks || 0}\n- Expungement.ai starts: ${funnelTotals.expungementIntakeStarted || 0}\n- Payment completed: ${funnelTotals.paymentCompleted || 0}\n- Revenue: $${funnelTotals.revenue || 0}\n${funnel.length ? funnel.map((item) => `- ${campaignName(state, item.campaignId)}: ${item.recordShieldStarts || 0} starts, ${item.expungementIntakeStarted || 0} Expungement.ai starts, $${item.revenue || 0} revenue`).join("\n") : "- No funnel snapshots yet"}\n\n## Pilot status\n${pilots.map((item) => `- ${item.pilotName}: ${item.status}; partner ${partnerName(state, item.partnerId)}; target users ${item.targetUsers || 0}; success metrics ${item.successMetrics || "missing"}; public proof ${item.publicProofStatus || "not requested"}; expansion path ${item.expansionPath || item.renewalExpansionPath || "missing"}; next ${item.nextAction || "Needs next action"}`).join("\n") || "- No pilots"}\n\n## Compliance blockers\n${complianceBlockers.map((item) => `- ${item.itemTitle}: ${item.riskLevel} risk, ${item.status}; reviewer ${item.reviewer || "Unassigned"}`).join("\n") || "- No high-risk blockers"}\n\n## Data room readiness\n- Score: ${readiness.score}%\n- Missing: ${readiness.counts.missing}\n- Draft: ${readiness.counts.draft}\n- Usable: ${readiness.counts.usable}\n- Investor-ready: ${readiness.counts["investor-ready"]}\n${[...readiness.sectionMap.entries()].map(([section, status]) => `- ${section}: ${status}`).join("\n")}\n\n## Published content\n- Posted items: ${posted.length}\n- Posts needing metrics: ${posted.filter((post) => !post.performanceUpdatedAt).length}\n\n## Top next actions\n${topActions.map((item) => `- ${item.title} [${item.source}]`).join("\n") || "- No urgent actions"}\n\n## Risks\n${[...partnerFlags, ...campaignFlags, ...pilotFlags, ...complianceBlockers.map((item) => `${item.itemTitle}: compliance blocker`)].map((item) => `- ${item}`).join("\n") || "- No major risks recorded"}\n\n## Wins\n- Add recent signed pilots, campaign launches, content wins, or proof artifacts here.\n\n## Decisions needed\n- Confirm owners and dates for any item marked missing, stalled, blocked, or at risk.\n`;
 }
 
 async function exportGrowthReport(reportType = "weekly_internal") {
@@ -6990,13 +10966,150 @@ async function exportGrowthReport(reportType = "weekly_internal") {
   });
 }
 
+function weeklyEvidencePackBody(state = {}) {
+  const analyzed = analyzeOperations(state);
+  const brief = analyzed.cooBrief || {};
+  const approvedPosts = (analyzed.posts || []).filter((post) => post.status === "approved").slice(0, 12);
+  const blocked = (analyzed.blockers || []).slice(0, 12);
+  const signals = (analyzed.growthSignals || []).slice(0, 10);
+  const partnerMovement = (analyzed.partners || [])
+    .filter((partner) => ["proposal_sent", "verbal_yes", "signed_pilot", "campaign_live"].includes(partner.status))
+    .slice(0, 10);
+  const campaignMovement = (analyzed.campaigns || [])
+    .filter((campaign) => ["ready", "live", "report_generated"].includes(campaign.status) || Number(campaign.recordShieldStarts || 0) > 0)
+    .slice(0, 10);
+  const funnelTotals = (analyzed.funnelSnapshots || []).reduce((memo, item) => {
+    ["landingPageVisits", "recordShieldStarts", "recordShieldCompletions", "cleanupCtaClicks", "expungementIntakeStarted", "paymentCompleted", "revenue"].forEach((key) => {
+      memo[key] = (memo[key] || 0) + Number(item[key] || 0);
+    });
+    return memo;
+  }, {});
+  const conversionRate = Number(funnelTotals.recordShieldCompletions || funnelTotals.recordShieldStarts || 0)
+    ? Math.round((Number(funnelTotals.expungementIntakeStarted || 0) / Number(funnelTotals.recordShieldCompletions || funnelTotals.recordShieldStarts || 1)) * 100)
+    : 0;
+  const dataRoomRecommendations = (analyzed.dataRoomItems || [])
+    .filter((item) => ["missing", "draft"].includes(String(item.status || "").toLowerCase()) || /proof|traction|compliance|security|funnel/i.test([item.title, item.section].join(" ")))
+    .slice(0, 10);
+  const nextWeek = (analyzed.recommendedActions || analyzed.nextBestActions || []).slice(0, 10);
+  const lines = [
+    "# LegalEase Weekly Evidence Pack",
+    "",
+    `Generated: ${new Date().toISOString()}`,
+    "",
+    "## Executive Takeaway",
+    `LegalEase is operating around ${signals.length || 0} current growth signal(s), ${(analyzed.approvalQueue || []).length} approval item(s), and ${blocked.length} blocker(s). The strongest measurable funnel signal is ${funnelTotals.recordShieldStarts || 0} RecordShield start(s) with ${conversionRate}% RecordShield-to-Expungement.ai conversion on the recorded snapshots. The recommended move is: ${brief.recommendedMove || nextWeek[0]?.title || "review approvals and clear blockers"}.`,
+    "",
+    "## COO Summary",
+    `- Approvals waiting: ${brief.approvals || (analyzed.approvalQueue || []).length}`,
+    `- Blocked items: ${brief.blocked?.count || blocked.length}`,
+    `- Strongest growth signal: ${brief.growth || "No growth signal recorded yet."}`,
+    `- Recommended move: ${brief.recommendedMove || nextWeek[0]?.title || "Review approvals and blockers."}`,
+    "",
+    "## Key Growth Signals",
+    ...(signals.length ? signals.map((item) => `- ${item.title}: ${item.summary || "movement recorded"}`) : ["- No traction signal recorded yet."]),
+    "",
+    "## Campaign Movement",
+    ...(campaignMovement.length ? campaignMovement.map((item) => `- ${item.campaignName}: ${item.status || "not set"}; ${item.recordShieldStarts || 0} RecordShield starts; next ${item.nextAction || "Review campaign next step"}`) : ["- No campaign movement recorded yet."]),
+    "",
+    "## Partner Movement",
+    ...(partnerMovement.length ? partnerMovement.map((item) => `- ${item.organizationName}: ${item.status || "not set"}; next ${item.nextAction || "Set next action"}`) : ["- No partner movement recorded yet."]),
+    "",
+    "## RecordShield Funnel Movement",
+    `- Landing page visits: ${funnelTotals.landingPageVisits || 0}`,
+    `- RecordShield starts: ${funnelTotals.recordShieldStarts || 0}`,
+    `- RecordShield completions: ${funnelTotals.recordShieldCompletions || 0}`,
+    `- Cleanup CTA clicks: ${funnelTotals.cleanupCtaClicks || 0}`,
+    `- Expungement.ai starts: ${funnelTotals.expungementIntakeStarted || 0}`,
+    `- Payments completed: ${funnelTotals.paymentCompleted || 0}`,
+    `- Revenue: $${funnelTotals.revenue || 0}`,
+    `- RS → Expungement.ai conversion: ${conversionRate}%`,
+    "",
+    "## Approved Content",
+    ...(approvedPosts.length ? approvedPosts.map((post) => `- ${post.title} (${platformLabels[post.platform] || post.platform}): ${post.nextBestAction || "Check publish setup"}`) : ["- No approved content ready yet."]),
+    "",
+    "## Blocked Items",
+    ...(blocked.length ? blocked.map((item) => `- ${item.title || item.whatIsBlocked}: ${item.whyBlocked || "Blocked"}; fix ${item.fix || "Review next step"}`) : ["- No blockers recorded."]),
+    "",
+    "## Data Room Recommendations",
+    ...(dataRoomRecommendations.length ? dataRoomRecommendations.map((item) => `- ${item.title}: ${item.status || "missing"}; next ${item.nextAction || "Move toward investor-ready"}`) : ["- No data room gaps surfaced."]),
+    "",
+    "## Next Week Recommendations",
+    ...(nextWeek.length ? nextWeek.map((item) => `- ${item.title || item.description}: ${item.reasonGenerated || item.description || "Recommended action"}`) : ["- Review approvals, blockers, and partner follow-ups."]),
+    "",
+    "## Investor-Ready Proof Notes",
+    "- Use this pack as a weekly source of truth, not a replacement for diligence artifacts.",
+    "- Convert strong partner/campaign/funnel signals into data room artifacts within the same week.",
+    "- Keep claims operational: pilots signed, users started, conversions measured, blockers named."
+  ];
+  const summary = {
+    generatedAt: new Date().toISOString(),
+    executiveTakeaway: `LegalEase is operating around ${signals.length || 0} growth signal(s), ${(analyzed.approvalQueue || []).length} approval item(s), and ${blocked.length} blocker(s). Recommended move: ${brief.recommendedMove || nextWeek[0]?.title || "review approvals and clear blockers"}.`,
+    cooSummary: brief,
+    growthSignals: signals,
+    campaignMovement,
+    partnerMovement,
+    funnelTotals,
+    conversionRate,
+    approvedContent: approvedPosts.map((post) => ({ id: post.id, title: post.title, platform: post.platform, nextBestAction: post.nextBestAction })),
+    blockedItems: blocked,
+    dataRoomRecommendations,
+    nextWeekRecommendations: nextWeek
+  };
+  return { markdown: `${lines.join("\n")}\n`, summary };
+}
+
+async function exportWeeklyEvidencePack() {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const now = new Date().toISOString();
+    const filename = `weekly-evidence-pack-${now.slice(0, 10)}-${crypto.randomUUID().slice(0, 6)}`;
+    const relativeDir = "data/exports/reports";
+    const outputDir = path.resolve(process.cwd(), relativeDir);
+    if (!outputDir.startsWith(path.resolve(process.cwd(), "data/exports/reports"))) throw new Error("Unsafe report path.");
+    await mkdir(outputDir, { recursive: true });
+    const { markdown, summary } = weeklyEvidencePackBody(state);
+    let markdownPath = `${relativeDir}/${filename}.md`;
+    let jsonPath = `${relativeDir}/${filename}.json`;
+    let storage = null;
+    if (hostedModeEnabled()) {
+      const markdownUpload = await uploadBytesToSupabaseStorage(`reports/${filename}.md`, Buffer.from(markdown), "text/markdown");
+      const jsonUpload = await uploadBytesToSupabaseStorage(`reports/${filename}.json`, Buffer.from(JSON.stringify(summary, null, 2)), "application/json");
+      storage = { markdown: markdownUpload, json: jsonUpload };
+      markdownPath = markdownUpload.publicUrl;
+      jsonPath = jsonUpload.publicUrl;
+    } else {
+      await mkdir(outputDir, { recursive: true });
+      await writeFile(path.join(outputDir, `${filename}.md`), markdown);
+      await writeFile(path.join(outputDir, `${filename}.json`), JSON.stringify(summary, null, 2));
+    }
+    const report = {
+      id: `report-${filename}`,
+      reportTitle: "Weekly Evidence Pack",
+      reportType: "weekly_evidence_pack",
+      markdownPath,
+      jsonPath,
+      storageBackend: hostedModeEnabled() ? "supabase_storage" : "local_json",
+      storage,
+      generatedAt: now,
+      status: "exported"
+    };
+    const nextState = analyzeOperations({
+      ...state,
+      reports: [report, ...(state.reports || [])],
+      activityEvents: [{ id: `activity-report-${crypto.randomUUID().slice(0, 8)}`, eventType: "Weekly evidence pack exported", title: "Weekly Evidence Pack", relatedObjectType: "report", relatedObjectId: report.id, createdAt: now }, ...(state.activityEvents || [])].slice(0, 500)
+    });
+    await store.writeState(nextState);
+    return { state: nextState, report, message: "Weekly evidence pack exported." };
+  });
+}
+
 function htmlShell() {
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LegalEase Social Command Center</title>
+  <title>LegalEase Command Center</title>
   <style>
     :root { --ink:#020D66; --paper:#E5EBEB; --line:#B8D8D8; --moss:#536b4e; --steel:#3040BF; --rust:#F04800; --gold:#F98C30; }
     * { box-sizing:border-box; }
@@ -7341,16 +11454,19 @@ function htmlShell() {
     .funnel-stage strong { color:var(--ink); font-size:20px; }
     @media (max-width:1100px) { .layout,.command,.post-grid,.three,.two,.calendar,.queue-card,.operator-review,.wilma-grid,.export-grid,.archive-grid,.executive-grid,.ops-row { grid-template-columns:1fr; } aside { position:static; min-height:auto; align-items:flex-start; flex-direction:column; padding:14px 18px; } nav { width:100%; overflow:auto; align-items:flex-start; } .nav-group { flex:0 0 auto; } header,main { padding-left:18px; padding-right:18px; } .image-stage { position:static; order:-1; } .operator-preview .image-preview { min-height:300px; } }
     @media (max-width:1100px) { .mission-grid,.readiness-strip,.pipeline-board,.health-grid,.metric-table,.asset-library-grid,.modal-grid { grid-template-columns:1fr; } .readiness-strip,.pipeline-board { overflow:visible; } }
+
+    ${designSystem.interfaceCss}
+
   </style>
 </head>
 <body>
   <div class="shell">
     <aside>
-      <div class="brand"><small>LegalEase</small><h1>Social Command Center</h1></div>
+      <div class="brand"><small>LegalEase</small><h1>Command Center</h1></div>
       <nav>
         <div class="nav-group"><span class="nav-label">Growth</span><a href="#overview" class="active">Overview</a><a href="#milestones">Milestones</a><a href="#partners">Partners</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a></div>
-        <div class="nav-group"><span class="nav-label">Production</span><a href="#sources">Sources</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div>
-        <div class="nav-group"><span class="nav-label">Operations</span><a href="#pilots">Pilots</a><a href="#compliance">Compliance</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#metrics">Metrics</a><a href="#settings">Settings</a></div>
+        <div class="nav-group"><span class="nav-label">Production</span><a href="#content-bank">Content Bank</a><a href="#sources">Sources</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div>
+        <div class="nav-group"><span class="nav-label">Operations</span><a href="#autonomy">Autonomy</a><a href="#automation">Automation Inbox</a><a href="#pilots">Pilots</a><a href="#compliance">Compliance</a><a href="#soc2">SOC 2</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#metrics">Metrics</a><a href="#settings">Settings</a></div><div class="nav-group"><span class="nav-label">SOC 2</span><a href="#soc2-access">Access</a><a href="#soc2-audit">Audit Logs</a><a href="#soc2-changes">Changes</a><a href="#soc2-vendors">Vendors</a><a href="#soc2-incidents">Incidents</a><a href="#soc2-evidence">Evidence</a><a href="#soc2-policies">Policies</a></div>
       </nav>
     </aside>
     <div>
@@ -7358,12 +11474,34 @@ function htmlShell() {
         <div><div class="eyebrow">Narrative infrastructure</div><h2>Social Command Center</h2></div>
         <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><button onclick="openCommandPalette()">Command</button><button class="primary" onclick="runSystemCheck()">Run System Check</button></div>
       </header>
-      <main id="app"><div class="panel loading-panel"><div class="loading-line wide"></div><div class="loading-line"></div><div class="loading-card"></div></div></main>
+      <main id="app"><div class="panel loading-panel"><div class="eyebrow">Starting command center</div><h1 class="big-title">Loading LegalEase...</h1><p class="big-copy">If this stays here, the browser could not finish the app render. The server is still serving a visible fallback so you are not staring at a blank screen.</p><div class="loading-line wide"></div><div class="loading-line"></div><div class="loading-card"></div><div class="card-actions"><button class="primary" onclick="location.reload()">Reload app</button><a class="button-link" href="#queue">Open Queue</a></div></div></main>
     </div>
   </div>
   <div id="toast" class="toast"></div>
   <div id="modalRoot"></div>
   <div id="commandPaletteRoot"></div>
+  <script>
+    window.__LE_BOOT = { ready:false, stage:"shell", startedAt:new Date().toISOString() };
+    window.__LE_FAIL_BOOT = function(module, message) {
+      const app = document.querySelector("#app");
+      if (!app) return;
+      const escapeHtml = value => String(value || "Unknown error").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[char]));
+      window.__LE_BOOT.stage = String(module || "boot-error");
+      app.innerHTML = '<div class="panel empty"><div class="eyebrow">Render issue</div><h1 class="big-title">LegalEase did not finish rendering.</h1><p class="big-copy">' + escapeHtml(message || 'Refresh the app and try again.') + '</p><div class="metric-table" style="margin-top:14px"><div class="metric-row"><span>Failed module</span><strong>' + escapeHtml(module || 'unknown') + '</strong></div><div class="metric-row"><span>Suggested next step</span><strong>Reload the app or open Queue</strong></div><div class="metric-row"><span>Timestamp</span><strong>' + escapeHtml(new Date().toISOString()) + '</strong></div></div><div class="card-actions" style="justify-content:center;margin-top:14px"><button class="primary" onclick="location.reload()">Reload app</button><button onclick="window.load && window.load()">Retry data load</button><a class="button-link" href="#queue">Open Queue</a></div></div>';
+    };
+    window.addEventListener("error", event => {
+      const target = event.target;
+      const tag = String(target?.tagName || "").toLowerCase();
+      if (target && target !== window && ["img", "link", "script", "video", "source"].includes(tag)) return;
+      window.__LE_FAIL_BOOT("client-error", event.message || "Browser script error.");
+    });
+    window.addEventListener("unhandledrejection", event => {
+      window.__LE_FAIL_BOOT("async-state", event.reason?.message || event.reason || "Browser request failed.");
+    });
+    window.__LE_BOOT.timeout = setTimeout(() => {
+      if (!window.__LE_BOOT.ready) window.__LE_FAIL_BOOT(window.__LE_BOOT.stage || "boot-timeout", "The client did not finish booting. Check the browser console and server logs, then retry.");
+    }, 4500);
+  </script>
   <script>
     let state = null;
     let supabaseHealth = null;
@@ -7378,7 +11516,27 @@ function htmlShell() {
     let systemCheckRanAt = "";
     let currentPageId = "overview";
     let sourceFilter = "All";
+    let automationFilter = "review";
+    let selectedSuggestions = new Set();
+    let contentBankFilters = { status:"all", campaign:"all", bucket:"all", platform:"all", wilma:"all", risk:"all", thisWeek:false };
+    let contentBankDraftMode = "local";
     const generatingImages = new Set();
+    const imagePromptVersion = ${JSON.stringify(imagePromptVersion)};
+    const imageLanes = ${JSON.stringify(imageLanes)};
+    const imageLaneOrder = ${JSON.stringify(imageLaneOrder)};
+    const artisticTreatments = ${JSON.stringify(artisticTreatments)};
+    const artisticTreatmentOrder = ${JSON.stringify(artisticTreatmentOrder)};
+    window.__LE_BOOT.stage = "client-script";
+    function showRenderFailure(message, moduleName = "render") {
+      if (typeof window.__LE_FAIL_BOOT === "function") {
+        window.__LE_FAIL_BOOT(moduleName, message);
+        return;
+      }
+      const app = document.querySelector("#app");
+      if (!app) return;
+      const safeMessage = String(message || "Refresh the app and try again.").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[char]));
+      app.innerHTML = '<div class="panel empty"><div class="eyebrow">Render issue</div><h1 class="big-title">The app did not finish rendering.</h1><p class="big-copy">' + safeMessage + '</p><div class="card-actions" style="justify-content:center;margin-top:14px"><button class="primary" onclick="location.reload()">Reload app</button><button onclick="window.load && window.load()">Retry data load</button><a class="button-link" href="#queue">Open Queue</a></div></div>';
+    }
     const platforms = ${JSON.stringify(platforms)};
     const visualBuckets = ${JSON.stringify(visualBuckets)};
     const wilmaImageWorkflowStates = ${JSON.stringify(wilmaImageWorkflowStates)};
@@ -7486,11 +11644,15 @@ function htmlShell() {
     }
 
     async function load() {
+      window.__LE_BOOT.stage = "state-fetch";
       try {
         state = await api("/api/state", { timeoutMs: 5000 });
-        render();
+        window.__LE_BOOT.stage = "first-render";
+        try { render(); } catch (renderError) { showRenderFailure(renderError.message || "Unknown render error", "first-render"); throw renderError; }
+        window.__LE_BOOT.ready = true;
+        if (window.__LE_BOOT.timeout) clearTimeout(window.__LE_BOOT.timeout);
       } catch (error) {
-        document.querySelector("#app").innerHTML = '<div class="panel empty"><strong>Could not load Queue.</strong><br><span class="muted">' + esc(error.message || "Refresh and try again.") + '</span><div style="margin-top:14px"><button class="primary" onclick="load()">Try again</button></div></div>';
+        showRenderFailure(error.message || "Refresh and try again.", "state-fetch");
         return;
       }
       Promise.allSettled([
@@ -7499,7 +11661,14 @@ function htmlShell() {
       ]).then(results => {
         if (results[0].status === "fulfilled") supabaseHealth = results[0].value;
         if (results[1].status === "fulfilled") backups = results[1].value.backups || [];
-        render();
+        try {
+          window.__LE_BOOT.stage = "secondary-render";
+          render();
+          window.__LE_BOOT.ready = true;
+        } catch (renderError) {
+          console.error(renderError);
+          showRenderFailure(renderError.message || "Secondary render failed.", "secondary-render");
+        }
       });
     }
 
@@ -7518,11 +11687,11 @@ function htmlShell() {
     }
 
     function imageStyleLabel(image = {}) {
-      return image.styleProfile || image.creativeDirection?.styleProfile || image.assetBundleUsed?.stylePresetName || "Techno Afro-Futurist Concept";
+      return image.styleProfile || image.visualLaneLabel || image.creativeDirection?.styleProfile || image.assetBundleUsed?.stylePresetName || "Premium LegalEase Social Creative";
     }
 
     function imageVariantLabel(image = {}) {
-      return image.imageVariantLabel || image.creativeDirection?.imageVariantLabel || image.assetBundleUsed?.imageVariantLabel || "LegalEase Institutional";
+      return image.visualLaneLabel || image.imageVariantLabel || image.creativeDirection?.imageVariantLabel || image.assetBundleUsed?.imageVariantLabel || "Auto-selected";
     }
 
     function overlayTextForPost(post) {
@@ -7543,6 +11712,20 @@ function htmlShell() {
         image.generationStatus === "generated" &&
         (image.finalImageReady || image.textRenderingMode === "baked_overlay" || image.textRenderingMode === "no_text_overlay" || image.assetBundleUsed?.finalImage?.ready)
       );
+    }
+
+    function publicHttpsUrlReady(value = "") {
+      return /^https:\\/\\//i.test(String(value || "")) && !/localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0/i.test(String(value || ""));
+    }
+
+    function publicImageUrlForPost(post = {}, image = {}) {
+      return String(
+        post.publicImageUrl ||
+        post.finalExportKit?.publicImageUrl ||
+        image?.publicImageUrl ||
+        image?.assetBundleUsed?.finalImage?.publicImageUrl ||
+        ""
+      ).trim();
     }
 
     function workflowStageForPost(post, image) {
@@ -7677,10 +11860,31 @@ function htmlShell() {
       return \`<div class="panel muted"><h2>\${title}</h2><p>\${body}</p></div>\`;
     }
 
+    function imageIsDiagnosticFallback(image) {
+      const values = [
+        image?.promptSummary,
+        image?.generationError,
+        image?.wilmaReferenceMode,
+        image?.imageStatus,
+        image?.templateKey,
+        image?.generationMode
+      ].map(value => String(value || "").toLowerCase()).join(" ");
+      return values.includes("creative prompt ready")
+        || values.includes("blocked_missing_canonical_reference")
+        || values.includes("canonical reference asset missing")
+        || values.includes("billing hard limit")
+        || values.includes("openai_api_key is missing")
+        || values.includes("none_creative_generation");
+    }
+
     function postImageMarkup(image, post) {
       const isGenerating = generatingImages.has(post.id) && !finalPngReady(post, image);
       if (isGenerating) return \`<div class="image-empty"><strong>Generating image...</strong><br>This can take 10-30 seconds. Keep this tab open.<div style="margin-top:14px"><button class="primary" disabled>Working</button></div></div>\`;
       if (!image) return \`<div class="image-empty"><strong>No image yet</strong><br>Generate or upload a branded visual.<div style="margin-top:14px"><button class="primary" onclick="regenerateImage('\${post.id}')">Generate image</button></div></div>\`;
+      if (imageIsDiagnosticFallback(image) && image.generationMode !== "local_branded_placeholder") {
+        const message = image.generationError || "The last preview was an internal diagnostic, not a usable social image.";
+        return \`<div class="image-empty"><strong>Image needs regeneration</strong><br>\${esc(message)}<div style="margin-top:14px"><button class="primary" onclick="regenerateImage('\${post.id}')">Generate clean image</button></div></div>\`;
+      }
       if (!image.imageUrl) {
         const message = image.generationError || "The latest image did not finish. Regenerate or upload a replacement.";
         const retryLabel = image.rateLimited && image.rateLimitRetryAfterSeconds
@@ -8142,7 +12346,7 @@ function htmlShell() {
       else if (!post.imageFinalized) issues.push("Finalize the image.");
       if (post.imageFinalized && !post.finalPreviewConfirmed) issues.push("Confirm the final preview.");
       const styleGate = image?.styleGate || image?.creativeDirection?.styleGate;
-      if (image && styleGate && styleGate.passed === false) issues.push(styleGate.message || "Regenerate image in Techno Afro-Futurist Concept style.");
+      if (image && styleGate && styleGate.passed === false) issues.push(styleGate.message || "Regenerate image with the premium LegalEase prompt system.");
       if (image && ["generated_with_logo_asset_anchoring", "openai_image_generation_with_logo_reference"].includes(String(image.logoReferenceMode || ""))) {
         issues.push("Regenerate image without embedded logo.");
       }
@@ -8628,6 +12832,29 @@ function htmlShell() {
       }).join("");
     }
 
+    function storageDiagnosticsHtml() {
+      const storage = state.runtime?.supabaseStorage || {};
+      const finalCount = (state.postImages || []).filter(image => finalPngReady((state.posts || []).find(post => post.id === image.postId), image)).length;
+      const publicCount = (state.posts || []).filter(post => publicHttpsUrlReady(publicImageUrlForPost(post, imageForPost(post.id)))).length;
+      const checks = [
+        ["Storage configured", Boolean(storage.configured), storage.message || "Add SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and SUPABASE_STORAGE_BUCKET."],
+        ["Bucket", Boolean(storage.bucket), storage.bucket || "social-assets"],
+        ["Final PNGs", finalCount > 0, finalCount + " local final PNG" + (finalCount === 1 ? "" : "s") + " ready to upload."],
+        ["Public URLs", publicCount > 0, publicCount + " post" + (publicCount === 1 ? "" : "s") + " already have public image URLs."]
+      ];
+      return \`<div class="panel">
+        <div class="toprow">
+          <div>
+            <div class="eyebrow">Public image hosting</div>
+            <h2 style="margin:4px 0 0">Supabase Storage</h2>
+            <p class="muted" style="margin:8px 0 0">Final PNGs stay local until you upload them. Service role access is server-side only.</p>
+          </div>
+          <button onclick="runStorageDiagnostics()">Run Storage Check</button>
+        </div>
+        <div class="metric-table" style="margin-top:14px">\${checks.map(([label, ok, detail]) => \`<div class="metric-row"><span>\${esc(label)}<br><small class="muted">\${esc(detail)}</small></span><span class="badge \${ok ? "good" : "warn"}">\${ok ? "Ready" : "Blocked"}</span></div>\`).join("")}</div>
+      </div>\`;
+    }
+
     function linkedInDryTestChecklistHtml() {
       const account = channelFor("linkedin");
       const hasFinalPng = state.posts.some(post => {
@@ -8736,7 +12963,7 @@ function htmlShell() {
         {
           title: "OpenAI content and image key",
           ok: Boolean(state.runtime?.openAIConfigured),
-          body: state.runtime?.openAIConfigured ? \`OpenAI key detected. Image model: \${state.runtime?.imageModel || "gpt-image-1"}.\` : "OPENAI_API_KEY is missing.",
+          body: state.runtime?.openAIConfigured ? \`OpenAI key detected. Image model: \${state.runtime?.imageModel || "gpt-image-1.5"}.\` : "OPENAI_API_KEY is missing.",
           action: "Add OPENAI_API_KEY in production and confirm billing limits."
         },
         {
@@ -8765,7 +12992,7 @@ function htmlShell() {
           action: "Regenerate or upload a replacement image if needed."
         },
         {
-          title: "Techno Afro-Futurist image style",
+          title: "Premium image prompt",
           ok: latestImage?.generationStatus === "generated" && (!latestStyleGate || latestStyleGate.passed !== false),
           body: latestImage ? \`Style: \${imageStyleLabel(latestImage)}. Variant: \${imageVariantLabel(latestImage)}.\` : "No image generated yet.",
           action: "Regenerate if the image is generic, logo-like, text-heavy, or outside the poster system."
@@ -8914,6 +13141,16 @@ function htmlShell() {
       const tags = post.hashtags?.length ? post.hashtags.join(" ") : "No hashtags";
       const image = imageForPost(post.id);
       const imageLabel = image?.generationStatus === "generated" ? "Image ready" : image ? "Image needs attention" : "No image";
+      const selectedLane = image?.visualLane || post.visualLane || "";
+      const laneOptions = imageLaneOrder.map((laneId) => {
+        const lane = imageLanes[laneId];
+        return '<option value="' + laneId + '" ' + (selectedLane === laneId ? "selected" : "") + '>' + esc(lane.label) + '</option>';
+      }).join("");
+      const selectedTreatment = image?.artisticTreatment || post.artisticTreatment || "";
+      const treatmentOptions = artisticTreatmentOrder.map((treatmentId) => {
+        const treatment = artisticTreatments[treatmentId];
+        return '<option value="' + treatmentId + '" ' + (selectedTreatment === treatmentId ? "selected" : "") + '>' + esc(treatment.label) + '</option>';
+      }).join("");
       const publishStatus = post.publishingStatus || (post.status === "posted" ? "ready" : "");
       const targetChannels = (post.targetChannels && post.targetChannels.length ? post.targetChannels : [post.platform]).filter(Boolean);
       const watermarkPosition = image?.watermarkPosition || image?.assetBundleUsed?.watermark?.position || "none";
@@ -8934,6 +13171,8 @@ function htmlShell() {
       const shortExcerpt = postExcerpt.length > 180 ? postExcerpt.slice(0, 177).trim() + "..." : postExcerpt;
       const finalDownloadUrl = post.finalExportKit?.downloadUrl || (finalPngReady(post, image) ? "/api/posts/" + post.id + "/final-png" : "");
       const finalDownloadFilename = post.finalPngFilename || post.finalExportKit?.exportFilename || "legalease-final-" + post.id + ".png";
+      const publicImageUrl = publicImageUrlForPost(post, image);
+      const publicImageReady = publicHttpsUrlReady(publicImageUrl);
       const packageRecord = post.postingPackage || post.finalExportKit?.postingPackage || {};
       const postingZipUrl = packageRecord.zipDownloadUrl || post.postingPackageZipDownloadUrl || (post.postingPackageGenerated ? "/api/posts/" + post.id + "/posting-package-zip" : "");
       const postingZipFilename = (String(post.id || "post").toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "post") + "-posting-kit.zip";
@@ -8945,6 +13184,114 @@ function htmlShell() {
       const livePublishNote = liveGate.enabled
         ? (liveAccount.connected ? "Ready to publish to " + (platformLabels[liveChannel] || liveChannel) + "." : "Connect " + (platformLabels[liveChannel] || liveChannel) + " in Settings to publish from here.")
         : "Finish " + (platformLabels[liveChannel] || liveChannel) + " setup in Settings before publishing.";
+      const packageReady = Boolean(post.postingPackageGenerated || packageRecord.generated);
+      const workflowSteps = [
+        ["Image", image?.generationStatus === "generated"],
+        ["Final PNG", finalPngReady(post, image)],
+        ["Public URL", publicImageReady],
+        ["Posting Kit", packageReady],
+        ["Publish", post.status === "posted" || post.status === "manually_posted" || post.manuallyPostedAt || post.postedAt]
+      ];
+      const primaryLabel = isGenerating
+        ? "Generating image..."
+        : simpleStatus.key === "ready" && livePublishReady
+          ? "Publish Now"
+          : simpleStatus.key === "ready"
+            ? "Review Publish Setup"
+            : simpleAction.label;
+      const primaryAction = simpleStatus.key === "ready" ? "publishNow('" + post.id + "')" : simpleAction.action;
+      const packageLine = packageReady
+        ? "Posting kit is exported and ready for the demo."
+        : "Export the kit after the final PNG is ready.";
+      const draftOriginLabel = post.aiDraftStatus === "generated"
+        ? "AI generated"
+        : post.aiDraftStatus === "fallback" || post.generationMode === "local_fallback_after_ai_failure"
+          ? "Local fallback"
+          : post.generationMode === "local_demo" || post.generationMode === "local_content_bank"
+            ? "Local demo"
+            : post.sourceType === "content_bank"
+              ? "Content Bank"
+              : "";
+      const draftOriginTone = post.aiDraftStatus === "generated"
+        ? "good"
+        : post.aiDraftStatus === "fallback" || post.generationMode === "local_fallback_after_ai_failure"
+          ? "warn"
+          : "info";
+      const aiFailureLine = (post.aiDraftStatus === "fallback" || post.aiDraftError)
+        ? (post.aiDraftError || "OpenAI did not return a usable draft, so the local draft generator was used.")
+        : "";
+      const canRegenerateAIDraft = post.sourceType === "content_bank" || post.contentBankIdeaId || post.aiDraftStatus || String(post.generationMode || "").includes("content_bank");
+      return \`<article class="card queue-card queue-card-clean \${bulkMode && selectedPosts.has(post.id) ? "selected" : ""}">
+        \${bulkMode ? \`<label class="bulk-check"><input type="checkbox" \${selectedPosts.has(post.id) ? "checked" : ""} onchange="toggleBulkPost('\${post.id}', this.checked)"> Select</label>\` : ""}
+        <div class="queue-card-main">
+          <div class="queue-card-top">
+            <span class="badge \${simpleStatus.tone} simple-status-pill">\${esc(simpleStatus.label)}</span>
+            <span class="queue-platform">\${esc(channelSummary)}</span>
+            <span class="queue-dot"></span>
+            <span class="queue-platform">\${esc(post.contentBucket || post.wilmaVisualBucket || "Content")}</span>
+            \${draftOriginLabel ? \`<span class="badge \${draftOriginTone} draft-origin-badge">\${esc(draftOriginLabel)}</span>\` : ""}
+          </div>
+          <h3 class="queue-title">\${esc(post.title)}</h3>
+          <p class="simple-meta">\${speakerLabels[post.speaker] || "LegalEase"} · \${esc(riskLabel(post.complianceRisk || "low"))}</p>
+          \${simpleStatus.group === "blocked" && simpleStatus.why ? \`<p class="why-line">Why: \${esc(simpleStatus.why)}</p>\` : ""}
+          \${aiFailureLine ? \`<p class="why-line">AI failed because: \${esc(aiFailureLine)}</p>\` : ""}
+          \${shortExcerpt ? \`<p class="queue-copy-preview">\${esc(shortExcerpt)}</p>\` : ""}
+          <div class="queue-flow" aria-label="Production steps">
+            \${workflowSteps.map(([label, done], index) => \`<span class="queue-step \${done ? "done" : index === workflowSteps.findIndex(([, ok]) => !ok) ? "current" : ""}"><i>\${done ? "✓" : index + 1}</i>\${esc(label)}</span>\`).join("")}
+          </div>
+          <p class="simple-meta">Final PNG: \${finalPngReady(post, image) ? "ready" : "missing"} · Public URL: \${publicImageReady ? "ready" : "missing"}</p>
+          <div class="queue-action-row">
+            <button class="primary queue-primary-action" \${isGenerating ? "disabled" : ""} onclick="\${primaryAction}">\${esc(primaryLabel)}</button>
+            \${canRegenerateAIDraft ? \`<button onclick="regenerateAIDraft('\${post.id}')">Regenerate with AI</button>\` : ""}
+            \${finalPngReady(post, image) && !publicImageReady ? \`<button onclick="uploadPublicImage('\${post.id}')">Upload public image</button>\` : ""}
+            \${publicImageReady ? \`<a class="button-link" href="\${esc(publicImageUrl)}" target="_blank" rel="noreferrer">Public URL</a>\` : ""}
+            \${finalDownloadUrl ? \`<a class="button-link" href="\${esc(finalDownloadUrl)}" download="\${esc(finalDownloadFilename)}">PNG</a>\` : ""}
+            \${postingZipUrl ? \`<a class="button-link" href="\${esc(postingZipUrl)}" download="\${esc(postingZipFilename)}">Posting Kit</a>\` : ""}
+            <details class="queue-details">
+              <summary>Details</summary>
+              <div class="queue-details-body">
+                <div class="queue-preview-strip">
+                  <div class="image-preview">\${postImageMarkup(image, post)}</div>
+                  <div>
+                    <h4>Caption</h4>
+                    <p class="post-body">\${esc(composePreviewText(post))}</p>
+                    <p class="muted"><strong>Files:</strong> \${esc(packageLine)}<br><strong>Final PNG:</strong> \${finalPngReady(post, image) ? "ready" : "not ready"} · <strong>Public URL:</strong> \${publicImageReady ? esc(publicImageUrl) : "missing"} · <strong>Image:</strong> \${esc(imageLabel)}</p>
+                  </div>
+                </div>
+                <div class="card-actions quiet-actions">
+                  \${simpleStatus.key !== "image" ? \`<button \${isGenerating ? "disabled" : ""} onclick="regenerateImage('\${post.id}')">\${image ? "Regenerate Image" : "Generate Image"}</button>\` : ""}
+                  <button onclick="document.querySelector('#upload-\${post.id}').click()">Upload Image</button>
+                  \${image && !finalPngReady(post, image) ? \`<button onclick="finalizeImage('\${post.id}')">Create Final PNG</button>\` : ""}
+                  \${finalPngReady(post, image) && !packageReady ? \`<button onclick="exportPostingPackage('\${post.id}')">Export Posting Kit</button>\` : ""}
+                  \${canApprove ? \`<button onclick="setStatus('\${post.id}','approved')">Approve</button>\` : ""}
+                  <button onclick="checkPublishing('\${post.id}')">Check Publish Setup</button>
+                </div>
+                <details class="queue-advanced">
+                  <summary>Advanced</summary>
+                  <div class="queue-advanced-grid">
+                    <form onsubmit="saveOperatorNotes(event,'\${post.id}')">
+                      <label>Operator notes<textarea name="operatorNotes" placeholder="What should the operator remember?">\${esc(post.operatorNotes || "")}</textarea></label>
+                      <button>Save notes</button>
+                    </form>
+                    \${canEdit ? \`<form onsubmit="editPost(event,'\${post.id}')">
+                      <label>Hook<input name="hook" value="\${esc(post.hook)}"></label>
+                      <label>Body<textarea name="body">\${esc(post.body)}</textarea></label>
+                      <label>CTA<input name="cta" value="\${esc(post.cta)}"></label>
+                      <button>Save copy</button>
+                    </form>\` : ""}
+                    \${canEdit ? \`<form onsubmit="editOverlayText(event,'\${post.id}')">
+                      <label>Overlay headline<textarea name="overlayHeadline" maxlength="120">\${esc(overlay.headline)}</textarea></label>
+                      <label>Overlay support<textarea name="overlaySupport" maxlength="160">\${esc(overlay.support)}</textarea></label>
+                      <button>Update overlay</button>
+                    </form>\` : ""}
+                  </div>
+                </details>
+              </div>
+            </details>
+          </div>
+          <input id="upload-\${post.id}" type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none" onchange="uploadImage('\${post.id}', this)">
+        </div>
+      </article>\`;
       return \`<article class="card queue-card \${bulkMode && selectedPosts.has(post.id) ? "selected" : ""}">
         <div class="queue-content">
           \${bulkMode ? \`<label class="bulk-check"><input type="checkbox" \${selectedPosts.has(post.id) ? "checked" : ""} onchange="toggleBulkPost('\${post.id}', this.checked)"> Select</label>\` : ""}
@@ -8990,6 +13337,29 @@ function htmlShell() {
               <button onclick="document.querySelector('#upload-\${post.id}').click()">Upload image</button>
               \${image && !post.imageFinalized && simpleStatus.key !== "final_png" ? \`<button onclick="finalizeImage('\${post.id}')">Create Final PNG</button>\` : ""}
               \${post.imageFinalized && !post.finalPreviewConfirmed ? \`<button onclick="confirmPreview('\${post.id}')">Confirm preview</button>\` : ""}
+            </div>
+            <div class="readiness-card \${image?.generationStatus === "failed" ? "warn" : "good"}" style="margin-top:12px">
+              <div class="row"><strong>Image direction</strong><span class="badge info">\${esc(image?.promptVersion || imagePromptVersion)}</span></div>
+              <p class="muted" style="margin:6px 0 0"><strong>Lane:</strong> \${esc(image?.visualLaneLabel || "Auto-select on generate")} · <strong>Treatment:</strong> \${esc(image?.artisticTreatmentLabel || "Auto-select")} · <strong>Overlay:</strong> \${esc(image?.overlayZone || "auto")}</p>
+              <p class="muted" style="margin:6px 0 0"><strong>Metaphor:</strong> \${esc(image?.visualMetaphor || "Chosen when the image is generated.")} · <strong>Wilma:</strong> \${esc(image?.wilmaTreatment || "auto")}</p>
+              \${image?.visualLaneReason ? \`<p class="muted" style="margin:6px 0 0"><strong>Why this lane:</strong> \${esc(image.visualLaneReason)}</p>\` : ""}
+              \${image?.generationError ? \`<p class="why-line">Image issue: \${esc(image.generationError)}</p>\` : ""}
+              <div class="row" style="margin-top:10px">
+                <label style="min-width:260px">Regenerate with lane
+                  <select id="image-lane-\${post.id}">
+                    <option value="">Auto-select</option>
+                    \${laneOptions}
+                  </select>
+                </label>
+                <label style="min-width:260px">Treatment
+                  <select id="image-treatment-\${post.id}">
+                    <option value="">Auto-select</option>
+                    \${treatmentOptions}
+                  </select>
+                </label>
+                <button \${isGenerating ? "disabled" : ""} onclick="regenerateImageWithLane('\${post.id}')">Regenerate</button>
+                <button \${isGenerating ? "disabled" : ""} onclick="surpriseImageLane('\${post.id}')">Surprise me</button>
+              </div>
             </div>
             <div class="image-preview" style="margin-top:12px">\${postImageMarkup(image, post)}</div>
             <div style="margin-top:12px">\${wilmaImagePanelHtml(post, image)}</div>
@@ -9324,6 +13694,158 @@ function htmlShell() {
       </article>\`).join("")}</div>\`;
     }
 
+    const proofPointDefinitions = [
+      { id:"signed_pilots", label:"Signed Pilots", target:3, unit:"pilots", page:"pilots" },
+      { id:"recordshield_users", label:"RecordShield Users", target:1000, unit:"users", page:"funnel" },
+      { id:"recordshield_to_expungement_conversion", label:"RS → Expungement.ai", target:20, unit:"%", page:"funnel" },
+      { id:"active_partner_campaigns", label:"Active Campaigns", target:10, unit:"campaigns", page:"campaigns" },
+      { id:"public_institutional_proof", label:"Public Proof", target:1, unit:"artifact", page:"dataroom" },
+      { id:"infrastructure_dashboard", label:"Infrastructure Dashboard", target:100, unit:"%", page:"reports" },
+      { id:"compliance_safety", label:"Compliance Safety", target:100, unit:"%", page:"compliance" },
+      { id:"acquisition_readiness", label:"Acquisition Readiness", target:100, unit:"%", page:"dataroom" }
+    ];
+
+    function funnelTotals() {
+      return growthItems("funnelSnapshots").reduce((memo, item) => {
+        ["landingPageVisits", "actualReferrals", "recordShieldStarts", "recordShieldCompletions", "resultsViewed", "cleanupCtaClicks", "expungementIntakeStarted", "paymentStarted", "paymentCompleted", "packetGenerated", "packetCompleted", "petitionFiled", "outcomeKnown", "revenue"].forEach(key => {
+          memo[key] = (memo[key] || 0) + Number(item[key] || 0);
+        });
+        return memo;
+      }, {});
+    }
+
+    function itemProofPointIds(item = {}, fallback = []) {
+      const raw = item.relatedProofPoints || item.proofPointIds || item.proofPoints || fallback;
+      if (Array.isArray(raw)) return raw.filter(Boolean);
+      if (typeof raw === "string") return raw.split(/[, ]+/).filter(Boolean);
+      return fallback;
+    }
+
+    function proofScoreForItem(item = {}, type = "") {
+      if (Number.isFinite(Number(item.proofScore))) return Number(item.proofScore);
+      const status = String(item.status || item.publicProofStatus || "").toLowerCase();
+      if (["expanded", "renewed", "paid", "material_revenue"].some(value => status.includes(value))) return 6;
+      if (["published", "public", "case_study", "quote", "press", "acquirer_ready"].some(value => status.includes(value))) return 5;
+      if (["live", "active", "current"].some(value => status.includes(value))) return 4;
+      if (["signed", "agreement", "mou", "contract", "signed_pilot"].some(value => status.includes(value)) || item.checklist?.agreementSigned) return 3;
+      if (["proposal_sent", "pilot_negotiation", "verbal_yes", "qualified", "partner_commitment"].some(value => status.includes(value))) return 2;
+      if (item.nextAction || item.owner || item.notes) return 1;
+      return 0;
+    }
+
+    function proofProgressFor(id = "") {
+      const totals = funnelTotals();
+      const dataRoom = dataRoomReadiness();
+      const campaigns = growthItems("campaigns");
+      const pilots = growthItems("pilots");
+      const partners = growthItems("partners");
+      if (id === "signed_pilots") return partners.filter(item => ["signed", "signed_pilot", "active"].includes(String(item.status || "").toLowerCase())).length + pilots.filter(item => ["signed", "active", "completed", "expanded"].includes(String(item.status || "").toLowerCase()) || item.checklist?.agreementSigned).length;
+      if (id === "recordshield_users") return totals.recordShieldStarts || 0;
+      if (id === "recordshield_to_expungement_conversion") {
+        const base = Number(totals.recordShieldCompletions || totals.recordShieldStarts || 0);
+        const conversion = Number(totals.expungementIntakeStarted || 0);
+        return base ? Math.round((conversion / base) * 100) : 0;
+      }
+      if (id === "active_partner_campaigns") return campaigns.filter(campaign => campaignCountsAsActive(campaign)).length;
+      if (id === "public_institutional_proof") return growthItems("dataRoomItems").filter(item => /proof|case|quote|press|public/i.test([item.title, item.section, item.notes].join(" ")) && ["usable", "investor-ready", "approved", "uploaded", "current"].includes(String(item.status || "").toLowerCase())).length;
+      if (id === "infrastructure_dashboard") return Math.min(100, Math.round(((growthItems("reports").length ? 30 : 0) + (growthItems("funnelSnapshots").length ? 35 : 0) + (growthItems("campaigns").length ? 20 : 0) + (growthItems("partners").length ? 15 : 0))));
+      if (id === "compliance_safety") {
+        const items = growthItems("complianceItems");
+        const blockers = items.filter(item => complianceFlags(item).some(flag => flag.tone === "danger")).length;
+        return items.length ? Math.max(0, Math.round(((items.length - blockers) / items.length) * 100)) : 35;
+      }
+      if (id === "acquisition_readiness") return dataRoom.score;
+      return 0;
+    }
+
+    function proofPointStatus(progress, target) {
+      const pct = target ? progress / target : 0;
+      if (pct >= 1) return "complete";
+      if (pct >= .7) return "on_track";
+      if (pct >= .35) return "needs_attention";
+      return "at_risk";
+    }
+
+    function proofPointCards() {
+      return proofPointDefinitions.map(def => {
+        const progress = proofProgressFor(def.id);
+        const percent = Math.min(100, Math.round((progress / def.target) * 100));
+        const related = [
+          ...growthItems("milestones"),
+          ...growthItems("partners"),
+          ...growthItems("campaigns"),
+          ...growthItems("pilots"),
+          ...growthItems("dataRoomItems")
+        ].filter(item => itemProofPointIds(item).includes(def.id));
+        const topRelated = related.sort((a, b) => proofScoreForItem(b) - proofScoreForItem(a))[0] || {};
+        const blocker = blockedGrowthItems().find(item => item.object === (topRelated.title || topRelated.campaignName || topRelated.pilotName || topRelated.organizationName));
+        return {
+          ...def,
+          progress,
+          percent,
+          status: proofPointStatus(progress, def.target),
+          proofScore: related.length ? Math.max(...related.map(item => proofScoreForItem(item))) : Math.min(6, Math.floor(percent / 17)),
+          blocker: blocker?.label || (percent < 35 ? "Proof gap" : ""),
+          nextAction: topRelated.nextAction || blocker?.action || "Assign owner, next action, and proof artifact.",
+          owner: topRelated.owner || topRelated.internalOwner || "Operations",
+          dueDate: topRelated.dueDate || topRelated.endDate || ""
+        };
+      });
+    }
+
+    function readiness9_5() {
+      const weights = {
+        signed_pilots:.18,
+        recordshield_users:.16,
+        recordshield_to_expungement_conversion:.16,
+        active_partner_campaigns:.13,
+        public_institutional_proof:.12,
+        infrastructure_dashboard:.08,
+        compliance_safety:.08,
+        acquisition_readiness:.09
+      };
+      const cards = proofPointCards();
+      const raw = cards.reduce((sum, card) => sum + Math.min(1, card.progress / card.target) * (weights[card.id] || 0), 0);
+      const score = Math.round(raw * 9.5 * 10) / 10;
+      const label = score >= 9.5 ? "9.5 Ready" : score >= 7.5 ? "Strong" : score >= 5.5 ? "On Track" : score >= 3.5 ? "At Risk" : "Critical";
+      const tone = score >= 7.5 ? "good" : score >= 3.5 ? "warn" : "danger";
+      return { score, label, tone, cards };
+    }
+
+    function proofCardsHtml() {
+      const readiness = readiness9_5();
+      return \`<div class="grid post-grid">\${readiness.cards.map(card => \`<article class="card compact-card">
+        <div class="row"><span class="badge \${growthTone(card.status)}">\${esc(growthLabel(card.status))}</span><span class="badge info">Proof L\${card.proofScore}</span></div>
+        <h3>\${esc(card.label)}</h3>
+        <p class="muted"><strong>\${esc(card.progress)} / \${esc(card.target)}\${card.unit === "%" ? "%" : ""}</strong> · \${card.percent}%</p>
+        <p><strong>Next:</strong> \${esc(card.nextAction)}</p>
+        <p class="muted">Owner: \${esc(card.owner)}\${card.dueDate ? " · Due: " + esc(card.dueDate) : ""}\${card.blocker ? "<br>Blocked: " + esc(card.blocker) : ""}</p>
+        <button onclick="location.hash='\${card.page}'">View</button>
+      </article>\`).join("")}</div>\`;
+    }
+
+    function productEventsDashboardHtml() {
+      const events = automationItems("automationEvents").filter(event => ["recordshield", "expungement_ai", "website"].includes(event.source) && event.rawPayload?.product);
+      const today = new Date().toISOString().slice(0, 10);
+      const by = (fn) => {
+        const counts = {};
+        for (const event of events) counts[fn(event) || "Missing attribution"] = (counts[fn(event) || "Missing attribution"] || 0) + 1;
+        return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+      };
+      const last = events.slice().sort((a, b) => String(b.receivedAt || "").localeCompare(String(a.receivedAt || "")))[0];
+      const missing = events.filter(event => !event.rawPayload?.campaignSlug && !event.rawPayload?.partnerId).length;
+      return \`<div class="grid two">
+        <section class="panel"><div class="eyebrow">Product Events</div><div class="metric-table">
+          <div class="metric-row"><span>Received today</span><strong>\${events.filter(event => String(event.receivedAt || "").startsWith(today)).length}</strong></div>
+          <div class="metric-row"><span>Last product event</span><strong>\${esc(last?.eventType || "None yet")}</strong></div>
+          <div class="metric-row"><span>Missing attribution</span><strong>\${missing}</strong></div>
+        </div></section>
+        <section class="panel"><div class="eyebrow">By Type</div><div class="metric-table">\${by(event => event.eventType).map(([key, value]) => \`<div class="metric-row"><span>\${esc(growthLabel(key))}</span><strong>\${value}</strong></div>\`).join("") || '<div class="empty">No product events yet.</div>'}</div></section>
+        <section class="panel"><div class="eyebrow">By Campaign</div><div class="metric-table">\${by(event => campaignById(event.relatedEntityId)?.campaignName || event.rawPayload?.campaignSlug).map(([key, value]) => \`<div class="metric-row"><span>\${esc(key)}</span><strong>\${value}</strong></div>\`).join("") || '<div class="empty">No campaign attribution yet.</div>'}</div></section>
+        <section class="panel"><div class="eyebrow">By Partner</div><div class="metric-table">\${by(event => partnerById(event.rawPayload?.partnerId)?.organizationName || event.rawPayload?.partnerId).map(([key, value]) => \`<div class="metric-row"><span>\${esc(key)}</span><strong>\${value}</strong></div>\`).join("") || '<div class="empty">No partner attribution yet.</div>'}</div></section>
+      </div>\`;
+    }
+
     function partnerById(id = "") {
       return growthItems("partners").find(item => item.id === id) || null;
     }
@@ -9338,35 +13860,344 @@ function htmlShell() {
       return Number.isFinite(due) && due - Date.now() <= 3 * 24 * 60 * 60 * 1000;
     }
 
-    function nextBestActionsHtml() {
+    function automationItems(collection) {
+      return Array.isArray(state?.[collection]) ? state[collection] : [];
+    }
+
+    function connectorItems() {
+      const existing = new Map(automationItems("connectorStatus").map(item => [item.connector, item]));
+      const googleAccount = (state.socialAccounts || []).find(account => account.platform === "google_workspace") || {};
+      const googleConnected = Boolean(googleAccount.connected || googleAccount.status === "connected" || googleAccount.hasStoredToken || googleAccount.accountName);
+      return ["gmail", "calendar", "stripe", "supabase", "drive", "website", "recordshield", "expungement_ai", "social", "manual_import"].map(connector => ({
+        connector,
+        enabled: ["website", "manual_import"].includes(connector) || (["gmail", "calendar"].includes(connector) && googleConnected),
+        configured: ["website", "manual_import"].includes(connector) || (["gmail", "calendar"].includes(connector) && googleConnected) || (["recordshield", "expungement_ai"].includes(connector) && Boolean(existing.get(connector)?.configured)) || (connector === "supabase" && Boolean(supabaseHealth?.configured || state.persistence === "supabase")),
+        lastSyncAt: "",
+        lastSyncStatus: ["website", "manual_import"].includes(connector) ? "available" : "not connected",
+        lastError: "",
+        recordsImported: 0,
+        recordsSuggested: 0,
+        ...(existing.get(connector) || {})
+      }));
+    }
+
+    function automationSuggestionsFiltered(filter = automationFilter) {
+      const suggestions = automationItems("automationSuggestions");
+      if (filter === "high") return suggestions.filter(item => item.confidence === "high" && item.status === "pending");
+      if (filter === "review") return suggestions.filter(item => ["pending", "edited"].includes(item.status));
+      if (filter === "ignored") return suggestions.filter(item => item.status === "ignored");
+      if (filter === "applied") return suggestions.filter(item => item.status === "applied");
+      if (["gmail", "calendar", "stripe", "supabase", "drive", "website", "recordshield", "expungement_ai"].includes(filter)) {
+        const eventIds = new Set(automationItems("automationEvents").filter(event => event.source === filter).map(event => event.id));
+        return suggestions.filter(item => eventIds.has(item.eventId));
+      }
+      return suggestions;
+    }
+
+    function automationEventById(id = "") {
+      return automationItems("automationEvents").find(event => event.id === id) || null;
+    }
+
+    function automationSummary() {
+      const suggestions = automationItems("automationSuggestions");
+      const sync = automationItems("syncRuns")[0] || null;
+      const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      return {
+        pending: suggestions.filter(item => item.status === "pending").length,
+        high: suggestions.filter(item => item.status === "pending" && item.confidence === "high").length,
+        applied: suggestions.filter(item => item.status === "applied").length,
+        lastSync: sync?.finishedAt || "",
+        lastStatus: sync?.status || "No sync yet",
+        capturedThisWeek: automationItems("automationEvents").filter(event => new Date(event.receivedAt || event.createdAt || 0).getTime() >= weekAgo).length
+      };
+    }
+
+    function automationOverviewHtml() {
+      const summary = automationSummary();
+      return \`<div class="readiness-strip">
+        <button class="strip-card" onclick="location.hash='automation'"><span class="badge \${summary.pending ? "warn" : "good"}">Automation Inbox</span><strong>\${summary.pending}</strong></button>
+        <button class="strip-card" onclick="location.hash='automation'"><span class="badge \${summary.high ? "good" : "info"}">High confidence</span><strong>\${summary.high}</strong></button>
+        <button class="strip-card" onclick="location.hash='automation'"><span class="badge warn">Waiting approval</span><strong>\${summary.pending}</strong></button>
+        <button class="strip-card" onclick="location.hash='automation'"><span class="badge info">Last sync</span><strong>\${esc(summary.lastStatus)}</strong></button>
+        <button class="strip-card" onclick="location.hash='automation'"><span class="badge info">Captured this week</span><strong>\${summary.capturedThisWeek}</strong></button>
+      </div>\`;
+    }
+
+    function daysSince(value = "") {
+      if (!value) return Infinity;
+      const time = new Date(value).getTime();
+      if (!Number.isFinite(time)) return Infinity;
+      return Math.floor((Date.now() - time) / (24 * 60 * 60 * 1000));
+    }
+
+    function isOlderThan(value = "", days = 7) {
+      return daysSince(value) > days;
+    }
+
+    function taskObjectTypeAliases(type = "") {
+      const key = String(type || "");
+      if (key === "dataRoomItems" || key === "dataroom") return ["data_room_item", "dataRoomItems", "dataroom"];
+      if (key === "partners") return ["partner", "partners"];
+      if (key === "campaigns") return ["campaign", "campaigns"];
+      if (key === "pilots") return ["pilot", "pilots"];
+      if (key === "milestones") return ["milestone", "milestones"];
+      if (key === "complianceItems") return ["compliance_item", "complianceItems", "compliance"];
+      return [key];
+    }
+
+    function relatedTasks(type = "", id = "") {
+      const aliases = taskObjectTypeAliases(type);
+      return growthItems("tasks").filter(task => aliases.includes(task.relatedObjectType) && task.relatedObjectId === id);
+    }
+
+    function proofArtifactFor(item = {}) {
+      const title = String(item.title || item.campaignName || item.pilotName || item.organizationName || "").toLowerCase();
+      const sectionHints = String(item.section || item.unit || "").toLowerCase();
+      return growthItems("dataRoomItems").find(proof => {
+        const haystack = [proof.title, proof.section, proof.notes, proof.filePath].filter(Boolean).join(" ").toLowerCase();
+        return ["uploaded", "approved", "usable", "investor-ready", "draft"].includes(proof.status) && (
+          (title && haystack.includes(title.split(" ")[0])) ||
+          (sectionHints && haystack.includes(sectionHints)) ||
+          haystack.includes("proof") ||
+          haystack.includes("traction")
+        );
+      }) || null;
+    }
+
+    function partnerQualification(partner = {}) {
+      const checks = [
+        ["Need identified", Boolean(partner.useCase || partner.notes), 15],
+        ["Decision-maker identified", Boolean(partner.decisionMaker || partner.primaryContactName), 15],
+        ["Budget source identified", Boolean(partner.budgetSource || partner.budgetOwner), 15],
+        ["Use case defined", Boolean(partner.useCase || partner.proposedPilotType || partner.proposedCampaignType), 15],
+        ["Pilot/campaign selected", Boolean(partner.relatedCampaign || partner.relatedPilot || partner.proposedPilotType || partner.proposedCampaignType), 10],
+        ["Timeline known", Boolean(partner.closeDate || partner.nextFollowUpDate), 10],
+        ["Next action set", Boolean(partner.nextAction), 10],
+        ["Public proof potential", Boolean((partner.relatedProofPoints || []).includes?.("public_institutional_proof") || /proof|case study|quote|public/i.test(partner.notes || "")), 10]
+      ];
+      const score = checks.reduce((sum, [, ok, points]) => sum + (ok ? points : 0), 0);
+      const label = score >= 90 ? "High-confidence pipeline" : score >= 75 ? "Qualified opportunity" : score >= 50 ? "Developing opportunity" : "Relationship inventory, not pipeline";
+      const missing = checks.filter(([, ok]) => !ok).map(([label]) => label);
+      return { score, label, missing };
+    }
+
+    function partnerFlags(partner = {}) {
+      const flags = [];
+      if (!partner.nextFollowUpDate) flags.push({ label:"Follow-up missing", tone:"warn", action:"Add next follow-up date.", page:"partners", impact:70 });
+      if (!partner.nextAction) flags.push({ label:"Next action missing", tone:"warn", action:"Record the next committed step.", page:"partners", impact:65 });
+      if (partner.status === "proposal_sent" && isOlderThan(partner.lastTouchDate || partner.updatedAt || partner.createdAt, 7)) {
+        flags.push({ label:"Stalled proposal", tone:"danger", action:"Follow up or force a decision.", page:"partners", impact:95 });
+      }
+      if (partner.status === "verbal_yes" && !partner.relatedCampaign && !partner.relatedPilot) {
+        flags.push({ label:"Activation needed", tone:"danger", action:"Create or link a pilot/campaign.", page:"partners", impact:90 });
+      }
+      if (daysSince(partner.lastTouchDate || partner.updatedAt || partner.createdAt) > 30) flags.push({ label:"Dormant warning", tone:"danger", action:"Mark dormant or send a reactivation motion.", page:"partners", impact:74 });
+      else if (daysSince(partner.lastTouchDate || partner.updatedAt || partner.createdAt) > 14) flags.push({ label:"Needs follow-up", tone:"warn", action:"Follow up before this relationship goes stale.", page:"partners", impact:72 });
+      if (!partner.owner) flags.push({ label:"Owner missing", tone:"warn", action:"Assign an owner.", page:"partners", impact:50 });
+      if (partnerQualification(partner).score < 50) flags.push({ label:"Not qualified", tone:"warn", action:"Identify need, decision-maker, budget, and use case.", page:"partners", impact:62 });
+      return flags;
+    }
+
+    function partnerNextAction(partner = {}) {
+      return partner.nextAction || partnerFlags(partner)[0]?.action || "Follow up and record the next committed step.";
+    }
+
+    function campaignFlags(campaign = {}) {
+      const flags = [];
+      const tracking = campaign.trackingSlug || campaign.trackingUrl || campaign.landingPageUrl;
+      const linkedCompliance = growthItems("complianceItems").filter(item => item.relatedCampaign === campaign.id && item.riskLevel === "high" && item.status !== "approved");
+      for (const missing of campaignLaunchGate(campaign).missing) flags.push({ label:missing, tone:"danger", action:"Complete campaign launch gate.", page:"campaigns", impact:85 });
+      if (campaign.status === "live" && !tracking) flags.push({ label:"Tracking missing", tone:"danger", action:"Add tracking slug or URL before launch.", page:"campaigns", impact:92 });
+      if (campaign.status === "live" && isOlderThan(campaign.lastActivityAt || campaign.updatedAt || campaign.latestCampaignKitAt || campaign.startDate, 7)) {
+        flags.push({ label:"Stalled campaign", tone:"warn", action:"Review referrals and campaign activity.", page:"campaigns", impact:70 });
+      }
+      if (campaign.status === "live" && daysSince(campaign.startDate) >= 14 && Number(campaign.actualReferrals || campaign.recordShieldStarts || 0) < 10) flags.push({ label:"Review or kill", tone:"warn", action:"Campaign has low activity after 14 days.", page:"campaigns", impact:76 });
+      if (Number(campaign.landingPageVisits || 0) > 50 && Number(campaign.recordShieldStarts || 0) < 5) flags.push({ label:"Landing page leak", tone:"warn", action:"Review landing page copy and handoff.", page:"funnel", impact:78 });
+      if (campaign.status === "assets_needed") flags.push({ label:"Assets missing", tone:"warn", action:"Generate campaign kit or approve launch assets.", page:"campaigns", impact:80 });
+      if (linkedCompliance.length) flags.push({ label:"Compliance blocking launch", tone:"danger", action:"Resolve high-risk compliance item before launch.", page:"compliance", impact:98 });
+      if (!campaign.partnerId) flags.push({ label:"Partner missing", tone:"warn", action:"Link campaign to a partner.", page:"campaigns", impact:55 });
+      return flags;
+    }
+
+    function campaignLaunchGate(campaign = {}) {
+      const missing = [];
+      if (campaign.status !== "live" && campaign.status !== "scheduled") return { ready:true, missing };
+      if (!campaign.owner) missing.push("Owner missing");
+      if (!campaign.startDate) missing.push("Start date missing");
+      if (!campaign.trackingSlug && !campaign.trackingUrl) missing.push("Tracking missing");
+      if (!campaign.landingPageUrl) missing.push("Landing page missing");
+      if (!campaign.targetAudience) missing.push("Audience missing");
+      if (!["approved", "approved_with_notes", "not_required"].includes(campaign.complianceStatus || "")) missing.push("Compliance not approved");
+      if (!["approved", "not_required"].includes(campaign.partnerApprovalStatus || "not_required")) missing.push("Partner approval missing");
+      if (!Number(campaign.targetReferrals || 0)) missing.push("Target referrals missing");
+      if (!campaign.nextReportDate) missing.push("Next report date missing");
+      return { ready: missing.length === 0, missing };
+    }
+
+    function campaignCountsAsActive(campaign = {}) {
+      const distribution = Array.isArray(campaign.distributionActions) && campaign.distributionActions.length > 0;
+      const activity = Number(campaign.actualReferrals || 0) + Number(campaign.recordShieldStarts || 0) + Number(campaign.landingPageVisits || 0) > 0;
+      return campaign.status === "live" && distribution && activity;
+    }
+
+    function campaignNextAction(campaign = {}) {
+      return campaign.nextAction || campaignFlags(campaign)[0]?.action || "Confirm launch owner, tracking, assets, and next reporting date.";
+    }
+
+    function pilotFlags(pilot = {}) {
+      const flags = [];
+      for (const missing of pilotLaunchGate(pilot).missing) flags.push({ label:missing, tone:"danger", action:"Complete pilot launch gate.", page:"pilots", impact:84 });
+      if (pilot.status === "live" && !pilot.successMetrics) flags.push({ label:"Metrics missing", tone:"danger", action:"Define success metrics before the next report.", page:"pilots", impact:86 });
+      if (pilot.status === "completed" && !(pilot.checklist?.testimonialRequested || pilot.checklist?.caseStudyDrafted || ["requested", "approved", "published"].includes(pilot.publicProofStatus))) {
+        flags.push({ label:"Proof missing", tone:"danger", action:"Request testimonial or draft case study.", page:"pilots", impact:88 });
+      }
+      if (!pilot.nextAction) flags.push({ label:"Next action missing", tone:"warn", action:"Add the next pilot action.", page:"pilots", impact:60 });
+      if (!pilot.partnerId) flags.push({ label:"Partner missing", tone:"warn", action:"Link pilot to a partner.", page:"pilots", impact:50 });
+      if (pilot.status === "proposal_sent" && !pilot.decisionDate) flags.push({ label:"Decision date missing", tone:"warn", action:"Request a decision date.", page:"pilots", impact:76 });
+      return flags;
+    }
+
+    function pilotLaunchGate(pilot = {}) {
+      const missing = [];
+      if (pilot.status !== "active" && pilot.status !== "live") return { ready:true, missing };
+      if (!pilot.checklist?.agreementSigned && !pilot.signedAgreement) missing.push("Agreement missing");
+      if (!pilot.objective) missing.push("Objective missing");
+      if (!Number(pilot.targetUsers || 0)) missing.push("Target users missing");
+      if (!pilot.successMetrics) missing.push("Success metrics missing");
+      if (!pilot.internalOwner && !pilot.owner) missing.push("Owner missing");
+      if (!pilot.startDate) missing.push("Start date missing");
+      if (!pilot.endDate) missing.push("End date missing");
+      if (!pilot.reportingCadence && !pilot.weeklyReportingStatus) missing.push("Reporting cadence missing");
+      if (pilot.legalComplianceRisk === "high" && pilot.complianceReviewComplete !== true) missing.push("Compliance review missing");
+      if (!pilot.expansionPath && !pilot.renewalExpansionPath) missing.push("Expansion proof missing");
+      return { ready: missing.length === 0, missing };
+    }
+
+    function pilotNextAction(pilot = {}) {
+      return pilot.nextAction || pilotFlags(pilot)[0]?.action || "Schedule the next pilot check-in.";
+    }
+
+    function complianceFlags(item = {}) {
+      const flags = [];
+      if (item.riskLevel === "high" && item.status !== "approved") flags.push({ label:"Blocks launch", tone:"danger", action:"Approve or edit before related publishing/campaign launch.", page:"compliance", impact:99 });
+      if (!item.reviewer) flags.push({ label:"Reviewer missing", tone:"warn", action:"Assign reviewer.", page:"compliance", impact:55 });
+      return flags;
+    }
+
+    const dataRoomRequiredSections = ["Company overview", "Product suite", "Traction", "Partner pipeline", "Campaigns", "Pilots", "RecordShield funnel", "Revenue", "Compliance", "Technical architecture", "Security", "Case studies", "Press/public proof", "Financial model", "Acquisition thesis"];
+
+    function normalizedDataRoomStatus(status = "") {
+      const value = String(status || "missing").toLowerCase();
+      if (value === "approved" || value === "investor-ready") return "investor-ready";
+      if (value === "uploaded" || value === "usable") return "usable";
+      if (value === "draft") return "draft";
+      return "missing";
+    }
+
+    function dataRoomReadiness() {
+      const items = growthItems("dataRoomItems");
+      const sectionMap = new Map();
+      for (const section of dataRoomRequiredSections) sectionMap.set(section, "missing");
+      for (const item of items) {
+        const section = item.section || "Company overview";
+        const current = sectionMap.get(section) || "missing";
+        const next = normalizedDataRoomStatus(item.status);
+        const rank = { missing:0, draft:1, usable:2, "investor-ready":3 };
+        if ((rank[next] || 0) >= (rank[current] || 0)) sectionMap.set(section, next);
+      }
+      const counts = { missing:0, draft:0, usable:0, "investor-ready":0 };
+      for (const status of sectionMap.values()) counts[status] += 1;
+      const points = [...sectionMap.values()].reduce((sum, status) => sum + ({ missing:0, draft:1, usable:2, "investor-ready":3 }[status] || 0), 0);
+      return { counts, sectionMap, score: Math.round((points / (dataRoomRequiredSections.length * 3)) * 100) };
+    }
+
+    function funnelMissingDataFlag() {
+      const snapshots = growthItems("funnelSnapshots");
+      const totals = funnelTotals();
+      if (!snapshots.length) return { label:"Funnel data missing", tone:"danger", action:"Add a manual funnel snapshot or connect RecordShield events.", page:"funnel", impact:84 };
+      if (!totals.recordShieldStarts || !totals.expungementIntakeStarted) return { label:"Conversion data thin", tone:"warn", action:"Add RecordShield and Expungement.ai stage counts.", page:"funnel", impact:72 };
+      return null;
+    }
+
+    function blockedGrowthItems() {
+      const items = [];
+      for (const partner of growthItems("partners")) for (const flag of partnerFlags(partner)) items.push({ ...flag, title:flag.label, object:partner.organizationName, owner:partner.owner || "Unassigned", dueDate:partner.nextFollowUpDate || "", why:"Partner motion stalls without a recorded owner and follow-up.", page:"partners" });
+      for (const campaign of growthItems("campaigns")) for (const flag of campaignFlags(campaign)) items.push({ ...flag, title:flag.label, object:campaign.campaignName, owner:campaign.owner || "Growth", dueDate:campaign.startDate || "", why:"Campaigns need tracking, assets, and compliance before they can produce reliable funnel data.", page:flag.page || "campaigns" });
+      for (const pilot of growthItems("pilots")) for (const flag of pilotFlags(pilot)) items.push({ ...flag, title:flag.label, object:pilot.pilotName, owner:pilot.internalOwner || "Unassigned", dueDate:pilot.endDate || "", why:"Pilots only become proof when metrics and public-proof actions are explicit.", page:"pilots" });
+      for (const item of growthItems("complianceItems")) for (const flag of complianceFlags(item)) items.push({ ...flag, title:flag.label, object:item.itemTitle, owner:item.reviewer || "Unassigned", dueDate:item.reviewDate || "", why:"High-risk copy must be approved before launch.", page:"compliance" });
+      const dataRoom = dataRoomReadiness();
+      for (const [section, status] of dataRoom.sectionMap.entries()) if (status === "missing") items.push({ label:"Data room missing proof", title:"Data room missing proof", object:section, tone:"warn", action:"Add required proof artifact.", owner:"Operations", dueDate:"", why:"Investor-critical sections need at least a draft artifact.", page:"dataroom", impact:76 });
+      const funnelFlag = funnelMissingDataFlag();
+      if (funnelFlag) items.push({ ...funnelFlag, title:funnelFlag.label, object:"RecordShield Funnel", owner:"Growth", dueDate:"", why:"Conversion data is central to RecordShield-to-Expungement.ai proof.", page:"funnel" });
+      return items.sort((a, b) => (b.impact || 0) - (a.impact || 0));
+    }
+
+    function blockedGrowthHtml() {
+      const blocked = blockedGrowthItems().slice(0, 8);
+      return \`<div class="priority-list">\${blocked.map((item, index) => \`<button class="priority-item" onclick="location.hash='\${item.page}'"><span class="priority-rank">\${index + 1}</span><h3>\${esc(item.object)}<br><small class="muted">\${esc(item.title)} · \${esc(item.action)}</small></h3><span class="badge \${item.tone || "warn"}">\${esc(item.label)}</span></button>\`).join("") || '<div class="empty">No blocked growth items. Keep adding partner, campaign, funnel, and data room updates so the system can catch risk early.</div>'}</div>\`;
+    }
+
+    function dataRoomReadinessHtml() {
+      const readiness = dataRoomReadiness();
+      return \`<div class="metric-table">
+        <div class="metric-row"><span>Readiness score</span><strong>\${readiness.score}%</strong></div>
+        <div class="metric-row"><span>Missing</span><strong>\${readiness.counts.missing}</strong></div>
+        <div class="metric-row"><span>Draft</span><strong>\${readiness.counts.draft}</strong></div>
+        <div class="metric-row"><span>Usable</span><strong>\${readiness.counts.usable}</strong></div>
+        <div class="metric-row"><span>Investor-ready</span><strong>\${readiness.counts["investor-ready"]}</strong></div>
+      </div>\`;
+    }
+
+    function nextBestActionItems() {
       const actions = [];
-      for (const task of growthItems("tasks").filter(item => item.status === "open" && dueSoon(item.dueDate)).slice(0, 6)) {
-        actions.push(["Follow up", task.title, task.suggestedAction || "Complete the due task.", "tasks", "warn"]);
+      const push = item => actions.push({ owner:"Unassigned", dueDate:"", page:"overview", tone:"info", impact:50, ...item });
+      for (const suggestion of automationItems("automationSuggestions").filter(item => item.status === "pending" && item.confidence === "high").slice(0, 5)) {
+        push({ title:\`Review automation: \${suggestion.title}\`, object:"Automation Inbox", why:suggestion.explanation || "High-confidence signal is waiting for human approval.", owner:"Operations", dueDate:"", page:"automation", tone:"good", impact:94 });
       }
-      for (const milestone of growthItems("milestones").filter(item => ["at_risk", "needs_attention"].includes(item.status)).slice(0, 4)) {
-        actions.push(["Milestone", milestone.title, milestone.nextAction, "milestones", growthTone(milestone.status)]);
+      for (const partner of growthItems("partners")) {
+        for (const flag of partnerFlags(partner)) {
+          const impact = partner.status === "signed_pilot" ? 100 : flag.label === "Stalled proposal" ? 96 : flag.impact;
+          push({ title:flag.label === "Stalled proposal" ? \`Follow up on proposal: \${partner.organizationName}\` : \`Follow up: \${partner.organizationName}\`, object:partner.organizationName, why:"Partners are the path to pilots, campaigns, referrals, and institutional proof.", owner:partner.owner || "Unassigned", dueDate:partner.nextFollowUpDate || "", page:"partners", tone:flag.tone, impact });
+        }
       }
-      for (const campaign of growthItems("campaigns").filter(item => ["draft", "assets_needed", "ready"].includes(item.status) && !item.latestCampaignKitPath).slice(0, 3)) {
-        actions.push(["Generate kit", campaign.campaignName, "Create the partner-ready campaign kit.", "campaigns", "info"]);
-      }
-      for (const item of growthItems("dataRoomItems").filter(entry => ["missing", "draft"].includes(entry.status)).slice(0, 3)) {
-        actions.push(["Add proof", item.title, item.notes || "Move this data room item toward approved.", "dataroom", growthTone(item.status)]);
-      }
-      return \`<div class="priority-list">\${actions.slice(0, 8).map(([label, title, detail, page, tone], index) => \`<button class="priority-item" onclick="location.hash='\${page}'"><span class="priority-rank">\${index + 1}</span><h3>\${esc(title)}<br><small class="muted">\${esc(detail || label)}</small></h3><span class="badge \${tone}">\${esc(label)}</span></button>\`).join("") || '<div class="empty">No urgent growth actions. Add partners, campaigns, or funnel snapshots to drive the plan.</div>'}</div>\`;
+      for (const campaign of growthItems("campaigns")) for (const flag of campaignFlags(campaign)) push({ title:\`Fix campaign blocker: \${campaign.campaignName}\`, object:campaign.campaignName, why:"Campaigns create tracked referrals and RecordShield starts.", owner:campaign.owner || "Growth", dueDate:campaign.startDate || "", page:flag.page || "campaigns", tone:flag.tone, impact:flag.impact });
+      const funnelFlag = funnelMissingDataFlag();
+      if (funnelFlag) push({ title:"Add RecordShield funnel data", object:"RecordShield Funnel", why:"Conversion data is required for the investor and acquisition story.", owner:"Growth", dueDate:"", page:"funnel", tone:funnelFlag.tone, impact:funnelFlag.impact });
+      for (const item of growthItems("complianceItems")) for (const flag of complianceFlags(item)) push({ title:\`Resolve compliance blocker: \${item.itemTitle}\`, object:item.itemTitle, why:"Compliance blockers should fail closed before consumer-facing launch.", owner:item.reviewer || "Compliance", dueDate:item.reviewDate || "", page:"compliance", tone:flag.tone, impact:flag.impact });
+      for (const pilot of growthItems("pilots")) for (const flag of pilotFlags(pilot)) push({ title:flag.label === "Proof missing" ? \`Request public proof: \${pilot.pilotName}\` : \`Fix pilot gap: \${pilot.pilotName}\`, object:pilot.pilotName, why:"Pilots become useful when they produce metrics, reports, and proof.", owner:pilot.internalOwner || "Unassigned", dueDate:pilot.endDate || "", page:"pilots", tone:flag.tone, impact:flag.impact });
+      for (const [section, status] of dataRoomReadiness().sectionMap.entries()) if (status === "missing") push({ title:\`Add data room item: \${section}\`, object:section, why:"Investor-critical data room sections need proof artifacts.", owner:"Operations", dueDate:"", page:"dataroom", tone:"warn", impact:["Traction", "Compliance", "RecordShield funnel", "Security"].includes(section) ? 85 : 64 });
+      for (const milestone of growthItems("milestones").filter(item => ["at_risk", "needs_attention"].includes(item.status))) push({ title:milestone.nextAction ? milestone.nextAction : \`Add next action: \${milestone.title}\`, object:milestone.title, why:"Milestones are the six-month operating plan.", owner:milestone.owner || "Unassigned", dueDate:milestone.dueDate || "", page:"milestones", tone:growthTone(milestone.status), impact:milestone.status === "at_risk" ? 82 : 68 });
+      return actions.sort((a, b) => (b.impact || 0) - (a.impact || 0));
+    }
+
+    function nextBestActionsHtml() {
+      const actions = nextBestActionItems().slice(0, 8);
+      return \`<div class="priority-list">\${actions.map((action, index) => \`<button class="priority-item" onclick="location.hash='\${action.page}'"><span class="priority-rank">\${index + 1}</span><h3>\${esc(action.title)}<br><small class="muted">\${esc(action.object)} · \${esc(action.why)} · Owner: \${esc(action.owner)}\${action.dueDate ? " · Due: " + esc(action.dueDate) : ""}</small></h3><span class="badge \${action.tone}">Go</span></button>\`).join("") || '<div class="empty">No urgent growth actions. Add partners, campaigns, or funnel snapshots to drive the plan.</div>'}</div>\`;
+    }
+
+    function simpleOverviewRow(item, index) {
+      return \`<button class="simple-row" onclick="location.hash='\${item.page || "overview"}'">
+        <span class="simple-row-main"><strong>\${index}. \${esc(item.title || item.label || "Open item")}</strong><small>\${esc(item.object || item.owner || "Open")}\${item.dueDate ? " · " + esc(item.dueDate) : ""}</small></span>
+        <span class="badge \${item.tone || "info"}">Open</span>
+      </button>\`;
+    }
+
+    function simpleOverviewList(items, emptyText) {
+      return \`<div class="simple-list">\${items.length ? items.map((item, index) => simpleOverviewRow(item, index + 1)).join("") : \`<div class="empty simple-empty">\${esc(emptyText)}</div>\`}</div>\`;
     }
 
     function growthAttentionHtml() {
-      const blockedCampaigns = growthItems("campaigns").filter(item => ["assets_needed", "paused"].includes(item.status));
-      const pilotGaps = growthItems("pilots").filter(item => !item.nextAction || ["stalled", "proposed", "scoped"].includes(item.status));
-      const compliance = growthItems("complianceItems").filter(item => ["needs_review", "attorney_review", "needs_edits", "blocked"].includes(item.status));
-      const dataRoom = growthItems("dataRoomItems").filter(item => ["missing", "draft"].includes(item.status));
+      const blockedCampaigns = growthItems("campaigns").filter(item => campaignFlags(item).length);
+      const pilotGaps = growthItems("pilots").filter(item => pilotFlags(item).length);
+      const compliance = growthItems("complianceItems").filter(item => complianceFlags(item).length);
+      const dataRoom = dataRoomReadiness().counts.missing + dataRoomReadiness().counts.draft;
       const cards = [
         ["At-risk milestones", growthItems("milestones").filter(item => ["at_risk", "needs_attention"].includes(item.status)).length, "milestones"],
-        ["Due follow-ups", growthItems("tasks").filter(item => item.status === "open" && dueSoon(item.dueDate)).length, "partners"],
+        ["Due follow-ups", growthItems("partners").filter(item => partnerFlags(item).length).length, "partners"],
         ["Blocked campaigns", blockedCampaigns.length, "campaigns"],
         ["Pilots need action", pilotGaps.length, "pilots"],
         ["Compliance waiting", compliance.length, "compliance"],
-        ["Data room gaps", dataRoom.length, "dataroom"]
+        ["Data room gaps", dataRoom, "dataroom"]
       ];
       return \`<div class="readiness-strip">\${cards.map(([label, count, page]) => \`<button class="strip-card" onclick="location.hash='\${page}'"><span class="badge \${count ? "warn" : "good"}">\${esc(label)}</span><strong>\${count}</strong></button>\`).join("")}</div>\`;
     }
@@ -9388,7 +14219,8 @@ function htmlShell() {
 
     function funnelTotals() {
       return growthItems("funnelSnapshots").reduce((memo, item) => {
-        ["landingPageVisits", "recordShieldStarts", "recordShieldCompletions", "resultsViewed", "cleanupCtaClicked", "expungementIntakeStarted", "paymentStarted", "paymentCompleted", "packetGenerated", "packetCompleted", "petitionFiled", "outcomeKnown", "revenue", "usersNeedingFollowUp"].forEach(key => memo[key] = (memo[key] || 0) + Number(item[key] || 0));
+        ["landingPageVisits", "actualReferrals", "recordShieldStarts", "recordShieldCompletions", "resultsViewed", "cleanupCtaClicks", "cleanupCtaClicked", "expungementIntakeStarted", "paymentStarted", "paymentCompleted", "packetGenerated", "packetCompleted", "petitionFiled", "outcomeKnown", "revenue", "usersNeedingFollowUp"].forEach(key => memo[key] = (memo[key] || 0) + Number(item[key] || 0));
+        memo.cleanupCtaClicks = Number(memo.cleanupCtaClicks || 0) + Number(item.cleanupCtaClicked || 0);
         return memo;
       }, {});
     }
@@ -9416,46 +14248,194 @@ function htmlShell() {
       return \`<div class="activity-list">\${events.map(event => \`<div class="activity-item"><span class="badge info">\${esc(event.label)}</span><h3>\${esc(event.title)}</h3><p class="muted">\${esc(event.at || "recent")}</p></div>\`).join("") || '<div class="empty">Growth activity will appear as partners, campaigns, reports, and proof artifacts move.</div>'}</div>\`;
     }
 
+    function thisWeekViewHtml(posts) {
+      const now = Date.now();
+      const weekAhead = now + 7 * 86400000;
+      const inNextWeek = value => {
+        const time = Date.parse(value || "");
+        return Number.isFinite(time) && time >= now - 7 * 86400000 && time <= weekAhead;
+      };
+      const approved = posts.filter(post => post.status === "approved" && inNextWeek(post.updatedAt || post.copyReviewedAt || post.createdAt));
+      const scheduled = posts.filter(post => inNextWeek(post.scheduledFor));
+      const waiting = (state.approvalQueue || []).filter(item => item.status !== "approved");
+      const missingImages = posts.filter(post => ["needs_review", "approved"].includes(post.status) && !finalPngReady(post, imageForPost(post.id)));
+      const campaignGaps = (state.campaigns || []).filter(campaign => ["live", "ready"].includes(campaign.status) && !(posts || []).some(post => post.campaign === campaign.campaignName || post.campaign === campaign.id)).slice(0, 3);
+      const next = missingImages[0]?.title ? "Generate final PNG for " + missingImages[0].title : waiting[0]?.title ? "Approve " + waiting[0].title : campaignGaps[0]?.campaignName ? "Create coverage for " + campaignGaps[0].campaignName : "Build the weekly evidence pack";
+      return \`<section class="panel section this-week-panel">
+        <div class="simple-panel-head"><h2>This Week</h2><button onclick="location.hash='content-bank'">Plan posts</button></div>
+        <div class="this-week-grid">
+          <div><strong>\${approved.length}</strong><span>Approved</span></div>
+          <div><strong>\${scheduled.length}</strong><span>Scheduled</span></div>
+          <div><strong>\${waiting.length}</strong><span>Waiting approval</span></div>
+          <div><strong>\${missingImages.length}</strong><span>Missing images</span></div>
+          <div><strong>\${campaignGaps.length}</strong><span>Coverage gaps</span></div>
+        </div>
+        <p class="muted"><strong>Recommended next action:</strong> \${esc(next)}</p>
+      </section>\`;
+    }
+
+    function autonomyOverviewHtml() {
+      const summary = state.autonomySummary || {};
+      return \`<section class="panel section autonomy-compact">
+        <div class="simple-panel-head"><h2>Autonomy</h2><button onclick="location.hash='autonomy'">Open</button></div>
+        <div class="this-week-grid">
+          <div><strong>\${Number(summary.executed || 0)}</strong><span>Handled</span></div>
+          <div><strong>\${Number(summary.pendingDecision || 0)}</strong><span>Needs decision</span></div>
+          <div><strong>\${Number(summary.humanReview || 0)}</strong><span>Hard review</span></div>
+          <div><strong>\${Number(summary.forbidden || 0)}</strong><span>Forbidden</span></div>
+        </div>
+        <p class="muted"><strong>Last run:</strong> \${esc(summary.latestRunAt || "not yet")} · Routine internal work only. External, legal, security, and live actions stay gated.</p>
+      </section>\`;
+    }
+
     function commandCenterOverviewHtml(posts) {
       const latestBackup = backups[0] || state.settings?.latestBackup;
-      const lastPublish = postedPosts()[0];
-      const liveEnabled = Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate.enabled).length;
-      const mode = state.persistence === "supabase" ? "Production storage" : "Local";
-      return \`<section class="page-section active">
-        <div class="mission-grid">
-          <div class="panel mission-card">
-            <div class="eyebrow">Growth Command Center</div>
-            <h1 class="big-title">LegalEase Growth Command Center</h1>
-            <p class="big-copy">Run the six-month plan: partners, pilots, RecordShield growth, compliant campaigns, proof artifacts, and social production.</p>
-            <div class="simple-status-row">
-              <span class="badge good">\${esc(mode)}</span>
-              <span class="badge \${liveEnabled ? "good" : "info"}">\${liveEnabled ? liveEnabled + " live gate(s) enabled" : "Manual only"}</span>
-              <span class="badge info">Backup: \${esc(latestBackup?.createdAt || "not created")}</span>
-              <span class="badge info">Last publish: \${esc(lastPublish?.manuallyPostedAt || lastPublish?.postedAt || "none")}</span>
+      const brief = state.cooBrief || {};
+      const priorities = (state.priorities || []).slice(0, 5);
+      const approvals = (state.approvalQueue || []).slice(0, 6);
+      const blockers = (state.blockers || []).slice(0, 5);
+      const signals = (state.growthSignals || []).slice(0, 5);
+      const readyChannels = platforms.filter(platform => state.runtime?.livePostingGates?.[platform]?.enabled).length;
+      const pngReady = posts.filter(post => finalPngReady(post, imageForPost(post.id))).length;
+      const publicUrlReady = credentialPresent("PUBLIC_APP_BASE_URL");
+      const row = (item, index, page = "queue") => \`<button class="coo-row" onclick="location.hash='\${page}'">
+        <span class="coo-index">\${index}</span>
+        <span><strong>\${esc(item.title || item.whatIsBlocked || "Review item")}</strong><small>\${esc(item.whyItMatters || item.summary || item.whyBlocked || item.recommendedAction || "")}</small></span>
+        <em>\${esc(item.recommendedAction || item.fix || item.status || "Open")}</em>
+      </button>\`;
+      return \`<section class="page-section active coo-home">
+        <section class="panel coo-brief">
+          <div>
+            <div class="eyebrow">COO Brief</div>
+            <h1 class="big-title">Today</h1>
+            <p class="big-copy">Approvals: \${Number(brief.approvals || approvals.length)} · Blocked: \${Number(brief.blocked?.count || blockers.length)} · Backup: \${esc(latestBackup?.createdAt || "not created")}</p>
+          </div>
+          <div class="coo-brief-copy">
+            <strong>Recommended move</strong>
+            <p>\${esc(brief.recommendedMove || priorities[0]?.recommendedAction || "Review the approval queue.")}</p>
+          </div>
+          <div class="simple-hero-actions">
+            <button class="primary" onclick="document.getElementById('overview-approval-queue')?.scrollIntoView({behavior:'smooth', block:'start'})">Approve Content</button>
+            <button onclick="location.hash='content-bank'">Generate From Content Bank</button>
+            <button onclick="document.getElementById('overview-blockers')?.scrollIntoView({behavior:'smooth', block:'start'})">Fix Blockers</button>
+            <button onclick="createWeeklyEvidencePack()">Build Weekly Evidence Pack</button>
+          </div>
+        </section>
+        \${thisWeekViewHtml(posts)}
+        \${autonomyOverviewHtml()}
+        <div class="grid two section">
+          <section class="panel coo-panel">
+            <div class="simple-panel-head"><h2>Today's Priorities</h2><button onclick="rebuildPriorities()">Refresh</button></div>
+            <div class="coo-list">\${priorities.map((item, index) => row(item, index + 1, item.sourceType === "campaign" ? "campaigns" : item.sourceType === "partner" ? "partners" : item.sourceType === "pilot" ? "pilots" : "queue")).join("") || '<div class="empty">No priorities yet. Add content ideas, partners, or campaign updates.</div>'}</div>
+          </section>
+          <section class="panel coo-panel" id="overview-approval-queue">
+            <div class="simple-panel-head"><h2>Approval Queue</h2><button onclick="selectAllApprovalItems()">Select all</button></div>
+            <div class="coo-batch-bar"><button class="primary" onclick="batchApproveItems()">Approve selected</button><button onclick="batchBlockItems()">Block selected</button><button onclick="batchSendApprovalToQueue()">Send to Queue</button><button onclick="batchArchiveApprovalItems()">Archive</button></div>
+            <div class="coo-list">\${approvals.map((item, index) => \`<article class="coo-row coo-approval-card"><label class="coo-check"><input type="checkbox" class="approval-select" value="\${esc(item.id)}"><span class="coo-index">\${index + 1}</span></label><span><strong>\${esc(item.title)}</strong><small>\${esc(item.whyItMatters)}</small></span><div class="coo-card-actions"><button class="primary" onclick="approveItem('\${esc(item.id)}')">Approve</button><button onclick="blockItem('\${esc(item.id)}')">Block</button><button onclick="sendApprovalToQueue('\${esc(item.id)}')">Queue</button></div></article>\`).join("") || '<div class="empty">Nothing is waiting on Roger.</div>'}</div>
+          </section>
+        </div>
+        <div class="grid two section">
+          <section class="panel coo-panel" id="overview-blockers">
+            <div class="simple-panel-head"><h2>Blockers</h2><button onclick="location.hash='settings'">Fix setup</button></div>
+            <div class="coo-list">\${blockers.map((item, index) => row(item, index + 1, item.sourceType === "campaign" ? "campaigns" : "queue")).join("") || '<div class="empty">No blockers. Publishing still fails closed unless setup is ready.</div>'}</div>
+          </section>
+          <section class="panel coo-panel">
+            <div class="simple-panel-head"><h2>Growth Signals</h2><button onclick="location.hash='funnel'">Funnel</button></div>
+            <div class="coo-list">\${signals.map((item, index) => row({ ...item, recommendedAction:item.strength === "strong" ? "Turn into proof" : "Monitor" }, index + 1, item.sourceType === "partner" ? "partners" : item.sourceType === "pilot" ? "pilots" : "campaigns")).join("") || '<div class="empty">No traction signals yet. Add campaign or funnel data.</div>'}</div>
+          </section>
+        </div>
+        <details class="panel section coo-health">
+          <summary>System Health</summary>
+          <div class="metric-table" style="margin-top:12px">
+            <div class="metric-row"><span>Live channel gates enabled</span><strong>\${readyChannels}</strong></div>
+            <div class="metric-row"><span>Final PNGs ready</span><strong>\${pngReady}</strong></div>
+            <div class="metric-row"><span>Public image URL</span><strong>\${publicUrlReady ? "configured" : "missing"}</strong></div>
+            <div class="metric-row"><span>TikTok</span><strong>diagnostic only</strong></div>
+          </div>
+        </details>
+      </section>\`;
+    }
+
+    function contentBankPageHtml(pageClass) {
+      const ideas = state.contentBank || [];
+      const ready = ideas.filter(idea => ["idea", "ready_to_generate"].includes(idea.status || "idea")).length;
+      const aiReady = Boolean(state.runtime?.openAIConfigured);
+      const unique = key => [...new Set(ideas.map(idea => idea[key]).filter(Boolean))].sort();
+      const uniquePlatforms = [...new Set(ideas.flatMap(idea => idea.platforms || []).filter(Boolean))].sort();
+      const optionHtml = (values, selected, labeler = value => value) => '<option value="all">All</option>' + values.map(value => \`<option value="\${esc(value)}" \${selected === value ? "selected" : ""}>\${esc(labeler(value))}</option>\`).join("");
+      const filteredIdeas = ideas.filter(idea => {
+        if (contentBankFilters.status !== "all" && (idea.status || "idea") !== contentBankFilters.status) return false;
+        if (contentBankFilters.campaign !== "all" && (idea.campaign || "") !== contentBankFilters.campaign) return false;
+        if (contentBankFilters.bucket !== "all" && (idea.bucket || "") !== contentBankFilters.bucket) return false;
+        if (contentBankFilters.platform !== "all" && !(idea.platforms || []).includes(contentBankFilters.platform)) return false;
+        if (contentBankFilters.wilma !== "all" && (idea.usesWilma || "optional") !== contentBankFilters.wilma) return false;
+        if (contentBankFilters.risk !== "all" && (idea.complianceRisk || "low") !== contentBankFilters.risk) return false;
+        if (contentBankFilters.thisWeek && idea.priority !== "high" && !["ready_to_generate", "generated"].includes(idea.status || "idea")) return false;
+        return true;
+      });
+      const aiFallbacks = (state.posts || [])
+        .filter(post => post.aiDraftStatus === "fallback" || post.aiDraftError)
+        .slice(0, 5);
+      return \`<section id="content-bank" class="section \${pageClass("content-bank")}">
+        <div class="panel hero-panel">
+          <div><div class="eyebrow">Production</div><h1 class="big-title">Content Bank</h1></div>
+          <div class="simple-hero-actions">
+            <span class="badge info">\${ideas.length} ideas · \${ready} ready · \${filteredIdeas.length} shown</span>
+            <button class="primary" onclick="generateContentBank({limit:10})">Generate This Week</button>
+            <button onclick="generateContentBank({limit:30})">Generate 30-Day Queue</button>
+          </div>
+        </div>
+        <div class="grid two section">
+          <form class="panel" onsubmit="importContentBank(event)">
+            <h2>Paste ideas</h2>
+            <p class="muted">Use markdown blocks, CSV-style text, or JSON. Generated drafts go to Approval Queue.</p>
+            <textarea name="ideas" rows="12" placeholder="Title: Clean Slate is infrastructure&#10;Idea: Explain why policy is only step one and implementation is the next phase.&#10;Bucket: Implementation Layer&#10;Platforms: LinkedIn, X, Facebook&#10;CTA: Learn more&#10;Wilma: no&#10;Risk: medium&#10;Creative: clean editorial graphic showing policy to process gap"></textarea>
+            <div class="card-actions"><button class="primary">Save Ideas</button></div>
+          </form>
+          <section class="panel">
+            <div class="simple-panel-head"><h2>Batch actions</h2><span class="badge info">approval-first</span></div>
+            <div class="mode-toggle" role="group" aria-label="Draft mode">
+              <button class="\${contentBankDraftMode === "local" ? "primary" : ""}" onclick="setContentBankDraftMode('local')">Local Demo Mode</button>
+              <button class="\${contentBankDraftMode === "ai" ? "primary" : ""}" onclick="setContentBankDraftMode('ai')">AI Draft Mode</button>
             </div>
-            <div class="toolbar"><button class="primary" onclick="runSystemCheck()">Run System Check</button><button onclick="location.hash='queue'">Open Queue</button></div>
+            <p class="muted">\${contentBankDraftMode === "ai" ? (aiReady ? "AI Draft Mode uses OPENAI_API_KEY on the server only. Drafts still go to Approval Queue." : "AI Draft Mode selected, but OPENAI_API_KEY is missing. The server will fall back to local generation.") : "Local Demo Mode is the default. It is fast, offline, and approval-first."}</p>
+            <div class="card-actions">
+              <button class="primary" onclick="generateSelectedContentBank()">Generate selected</button>
+              <button onclick="generateContentBank({limit:10})">Generate this week</button>
+              <button onclick="generateSelectedContentBank()">Send selected to approval</button>
+              <button onclick="sendSelectedContentBankToQueue()">Send selected to Queue</button>
+              <button onclick="archiveSelectedContentBank()">Archive</button>
+              <button onclick="rebuildPriorities()">Refresh Priorities</button>
+            </div>
+          </section>
+        </div>
+        \${aiFallbacks.length ? \`<section class="panel section ai-draft-issues">
+          <div class="simple-panel-head"><h2>AI Draft Issues</h2><span class="badge warn">\${aiFallbacks.length} fallback\${aiFallbacks.length === 1 ? "" : "s"}</span></div>
+          <div class="coo-list">\${aiFallbacks.map(post => \`<article class="content-idea-row">
+            <strong>\${esc(post.title || post.hook || "Draft")}</strong>
+            <p class="why-line">AI failed because: \${esc(post.aiDraftError || "OpenAI did not return a usable draft, so local generation was used.")}</p>
+            <div class="card-actions"><button onclick="regenerateAIDraft('\${post.id}')">Regenerate with AI</button><button onclick="location.hash='queue'">View in Queue</button></div>
+          </article>\`).join("")}</div>
+        </section>\` : ""}
+        <section class="panel section">
+          <div class="simple-panel-head"><h2>Ideas</h2><button onclick="selectAllContentIdeas()">Select all</button></div>
+          <div class="content-filter-bar">
+            <label>Status<select onchange="setContentBankFilter('status', this.value)">\${optionHtml(["idea", "ready_to_generate", "generated", "queued", "approved", "posted", "archived"], contentBankFilters.status, growthLabel)}</select></label>
+            <label>Campaign<select onchange="setContentBankFilter('campaign', this.value)">\${optionHtml(unique("campaign"), contentBankFilters.campaign)}</select></label>
+            <label>Bucket<select onchange="setContentBankFilter('bucket', this.value)">\${optionHtml(unique("bucket"), contentBankFilters.bucket)}</select></label>
+            <label>Platform<select onchange="setContentBankFilter('platform', this.value)">\${optionHtml(uniquePlatforms, contentBankFilters.platform, value => platformLabels[value] || value)}</select></label>
+            <label>Wilma<select onchange="setContentBankFilter('wilma', this.value)">\${optionHtml(["yes", "no", "optional"], contentBankFilters.wilma)}</select></label>
+            <label>Risk<select onchange="setContentBankFilter('risk', this.value)">\${optionHtml(["low", "medium", "high"], contentBankFilters.risk)}</select></label>
+            <button class="\${contentBankFilters.thisWeek ? "primary" : ""}" onclick="toggleContentBankThisWeek()">This Week</button>
+            <button onclick="clearContentBankFilters()">Clear</button>
           </div>
-          <div class="panel">
-            <div class="eyebrow">Next Best Actions</div>
-            \${nextBestActionsHtml()}
-          </div>
-        </div>
-        <div class="section"><div class="eyebrow">Six-month milestone progress</div>\${milestoneSummaryHtml()}</div>
-        <div class="section"><div class="eyebrow">What needs attention today?</div>\${growthAttentionHtml()}</div>
-        <div class="grid two section">
-          <div class="panel"><div class="eyebrow">Partner Pipeline</div>\${partnerPipelineSummaryHtml()}</div>
-          <div class="panel"><div class="eyebrow">RecordShield Funnel</div>\${funnelSummaryHtml()}</div>
-        </div>
-        <div class="grid two section">
-          <div class="panel"><div class="eyebrow">Content Production</div>\${readinessStripHtml(posts)}</div>
-          <div class="panel"><div class="eyebrow">Channel Health</div>\${channelHealthOverviewHtml()}</div>
-        </div>
-        <div class="section"><div class="eyebrow">Production Pipeline</div>\${productionPipelineHtml(posts)}</div>
-        <div class="grid two section">
-          <div class="panel"><div class="eyebrow">Performance Snapshot</div>\${performanceSnapshotHtml()}</div>
-          <div class="panel"><div class="eyebrow">System Check</div>\${systemCheckPanelHtml()}</div>
-        </div>
-        <div class="section"><div class="eyebrow">Recent Activity</div>\${growthActivityFeedHtml()}</div>
+          <div class="content-bank-list">\${filteredIdeas.map(idea => \`<article class="content-idea-row">
+            <label><input type="checkbox" class="content-idea-select" value="\${esc(idea.id)}"> <strong>\${esc(idea.title)}</strong></label>
+            <p>\${esc(idea.rawIdea || "No raw idea.")}</p>
+            <small>\${esc(idea.bucket || "Bucket")} · \${esc((idea.platforms || []).map(platform => platformLabels[platform] || platform).join(", ") || "LinkedIn")} · Risk: \${esc(idea.complianceRisk || "low")} · Status: \${esc(idea.status || "idea")}</small>
+            <em>\${esc(idea.nextBestAction || "Generate draft")}</em>
+          </article>\`).join("") || '<div class="empty">Paste the first 30 ideas. Start with titles, rough ideas, platforms, risk, and creative direction.</div>'}</div>
+        </section>
       </section>\`;
     }
 
@@ -9466,11 +14446,15 @@ function htmlShell() {
     function milestonesPageHtml(pageClass) {
       return growthHero(pageClass, "milestones", "Six-month plan", "Milestones", "Track the investor-critical goals and the next action needed to move each one.") + \`
         \${growthAttentionHtml()}
-        <div class="grid post-grid section">\${growthItems("milestones").map(item => \`<article class="card drawer-card">
+        <div class="grid post-grid section">\${growthItems("milestones").map(item => {
+          const tasks = relatedTasks("milestones", item.id);
+          const proof = proofArtifactFor(item);
+          return \`<article class="card drawer-card">
           <div class="row"><span class="badge \${growthTone(item.status)}">\${esc(growthLabel(item.status))}</span><strong>\${milestoneProgressValue(item)}%</strong></div>
           <h2>\${esc(item.title)}</h2>
           <p class="muted">Target: <strong>\${esc(item.target)} \${esc(item.unit || "")}</strong> · Current: <strong>\${esc(item.current)}</strong> · Owner: \${esc(item.owner || "Unassigned")} · Due: \${esc(item.dueDate || "TBD")}</p>
-          <p><strong>Next:</strong> \${esc(item.nextAction || "Add next action.")}</p>
+          <p><strong>Next:</strong> \${esc(item.nextAction || "Needs next action.")}</p>
+          <p class="muted"><strong>Related tasks:</strong> \${tasks.length ? tasks.map(task => esc(task.title)).join(" · ") : "No related tasks yet."}<br><strong>Proof artifact:</strong> \${proof ? esc(proof.title) + " · " + esc(growthLabel(proof.status)) : "No related proof artifact yet."}</p>
           <details><summary>Update milestone</summary>
             <form class="mini-form" onsubmit="saveMilestone(event, '\${item.id}')">
               <label>Current<input name="current" value="\${esc(item.current)}"></label>
@@ -9480,7 +14464,8 @@ function htmlShell() {
               <button class="primary">Save</button>
             </form>
           </details>
-        </article>\`).join("")}</div>
+        </article>\`;
+        }).join("")}</div>
       </section>\`;
     }
 
@@ -9503,16 +14488,22 @@ function htmlShell() {
         </details>
         <div class="section board-columns">\${statuses.slice(0, 8).map(status => {
           const items = partners.filter(item => item.status === status);
-          return \`<section class="board-column"><h3>\${esc(growthLabel(status))}<span class="badge info">\${items.length}</span></h3>\${items.map(partner => \`<article class="card compact-card">
-            <span class="badge \${partner.priority === "High" ? "warn" : "info"}">\${esc(partner.priority || "Normal")}</span>
+          return \`<section class="board-column"><h3>\${esc(growthLabel(status))}<span class="badge info">\${items.length}</span></h3>\${items.map(partner => {
+            const flags = partnerFlags(partner);
+          return \`<article class="card compact-card">
+            \${(() => { const q = partnerQualification(partner); return \`<div class="row"><span class="badge \${partner.priority === "High" ? "warn" : "info"}">\${esc(partner.priority || "Normal")}</span><span class="badge \${q.score >= 75 ? "good" : q.score >= 50 ? "warn" : "danger"}">Q \${q.score}</span><span class="badge info">Proof L\${proofScoreForItem(partner, "partner")}</span>\${flags.slice(0, 2).map(flag => \`<span class="badge \${flag.tone}">\${esc(flag.label)}</span>\`).join("")}</div>\`; })()}
             <h3>\${esc(partner.organizationName)}</h3>
-            <p class="muted">\${esc(partner.partnerType || "partner")} · \${esc(partner.regionState || "region TBD")}<br>Next follow-up: \${esc(partner.nextFollowUpDate || "TBD")}</p>
+            <p class="muted">\${esc(partner.partnerType || "partner")} · \${esc(partner.regionState || "region TBD")}<br>Owner: \${esc(partner.owner || "Unassigned")} · Last touch: \${esc(partner.lastTouchDate || "TBD")}<br>Next follow-up: \${esc(partner.nextFollowUpDate || "Follow-up missing")}</p>
+            <p><strong>Next:</strong> \${esc(partnerNextAction(partner))}</p>
+            <p class="muted"><strong>Qualification:</strong> \${esc(partnerQualification(partner).label)}</p>
+            <p class="muted">Related: \${esc(campaignById(partner.relatedCampaign)?.campaignName || partner.relatedCampaign || "No campaign")} · \${esc(growthItems("pilots").find(pilot => pilot.id === partner.relatedPilot)?.pilotName || partner.relatedPilot || "No pilot")}</p>
             <div class="card-actions"><button onclick="quickPartnerStatus('\${partner.id}', 'proposal_sent')">Proposal sent</button><button onclick="quickPartnerStatus('\${partner.id}', 'signed_pilot')">Signed pilot</button></div>
-          </article>\`).join("") || '<div class="empty">No partners here.</div>'}</section>\`;
+          </article>\`;
+          }).join("") || '<div class="empty">No partners in this stage. Add or move a partner when there is a real next step.</div>'}</section>\`;
         }).join("")}</div>
         <details class="panel section"><summary>Table view, due follow-ups, and stalled partners</summary><div class="ops-table" style="margin-top:12px">
-          <div class="ops-row header"><span>Partner</span><span>Status</span><span>Owner</span><span>Follow-up</span><span>RecordShield</span><span>Next action</span></div>
-          \${partners.map(partner => \`<div class="ops-row"><strong>\${esc(partner.organizationName)}</strong><span class="badge \${growthTone(partner.status)}">\${esc(growthLabel(partner.status))}</span><span>\${esc(partner.owner || "")}</span><span>\${esc(partner.nextFollowUpDate || "TBD")}</span><span>\${Number(partner.recordShieldStarts || 0)}</span><span class="muted">\${esc(partner.notes || "")}</span></div>\`).join("")}
+          <div class="ops-row header"><span>Partner</span><span>Status</span><span>Owner</span><span>Follow-up</span><span>Flags</span><span>Next action</span></div>
+          \${partners.map(partner => \`<div class="ops-row"><strong>\${esc(partner.organizationName)}</strong><span class="badge \${growthTone(partner.status)}">\${esc(growthLabel(partner.status))}</span><span>\${esc(partner.owner || "Unassigned")}</span><span>\${esc(partner.nextFollowUpDate || "Follow-up missing")}</span><span>\${partnerFlags(partner).map(flag => esc(flag.label)).join(" · ") || "Clear"}</span><span class="muted">\${esc(partnerNextAction(partner))}</span></div>\`).join("") || '<div class="empty">Add your first partner target. Start with organizations that can send users or validate infrastructure value.</div>'}
         </div></details>
       </section>\`;
     }
@@ -9531,30 +14522,39 @@ function htmlShell() {
             <button class="primary">Add campaign</button>
           </form>
         </details>
-        <div class="grid post-grid section">\${campaigns.map(campaign => \`<article class="card drawer-card">
-          <div class="row"><span class="badge \${growthTone(campaign.status)}">\${esc(growthLabel(campaign.status))}</span><span class="badge info">\${esc(campaign.campaignType || "campaign")}</span></div>
+        <div class="grid post-grid section">\${campaigns.map(campaign => {
+          const flags = campaignFlags(campaign);
+          const launchGate = campaignLaunchGate(campaign);
+          const launchBlocked = flags.some(flag => flag.label === "Compliance blocking launch") || !launchGate.ready;
+          return \`<article class="card drawer-card">
+          <div class="row"><span class="badge \${growthTone(campaign.status)}">\${esc(growthLabel(campaign.status))}</span><span class="badge info">\${esc(campaign.campaignType || "campaign")}</span><span class="badge info">Proof L\${proofScoreForItem(campaign, "campaign")}</span><span class="badge \${campaignCountsAsActive(campaign) ? "good" : "warn"}">\${campaignCountsAsActive(campaign) ? "Activation proven" : "Activation unproven"}</span>\${flags.slice(0, 3).map(flag => \`<span class="badge \${flag.tone}">\${esc(flag.label)}</span>\`).join("")}</div>
           <h2>\${esc(campaign.campaignName)}</h2>
-          <p class="muted">Partner: \${esc(partnerById(campaign.partnerId)?.organizationName || "Unlinked")} · Region: \${esc(campaign.stateRegion || "TBD")} · Tracking: \${esc(campaign.trackingSlug || "needed")}</p>
+          <p class="muted">Partner: \${esc(partnerById(campaign.partnerId)?.organizationName || "Unlinked")} · Region: \${esc(campaign.stateRegion || "TBD")} · Tracking: \${esc(campaign.trackingSlug || campaign.trackingUrl || campaign.landingPageUrl || "Tracking missing")}</p>
           <div class="metric-table">
             <div class="metric-row"><span>Referrals</span><strong>\${Number(campaign.actualReferrals || 0)} / \${Number(campaign.targetReferrals || 0)}</strong></div>
             <div class="metric-row"><span>RecordShield starts</span><strong>\${Number(campaign.recordShieldStarts || 0)}</strong></div>
             <div class="metric-row"><span>Expungement.ai starts</span><strong>\${Number(campaign.expungementStarts || 0)}</strong></div>
             <div class="metric-row"><span>Paid conversions</span><strong>\${Number(campaign.paidConversions || 0)}</strong></div>
           </div>
+          <p><strong>Next:</strong> \${esc(campaignNextAction(campaign))}</p>
+          \${launchBlocked ? \`<p class="badge danger">Launch blocked: \${esc(launchGate.missing.join(" · ") || "high-risk compliance is not approved")}</p>\` : ""}
           <div class="card-actions"><button class="primary" onclick="generateCampaignKit('\${campaign.id}')">Generate campaign kit</button><button onclick="location.hash='queue'">Create social posts</button><button onclick="addCampaignProof('\${campaign.id}')">Add proof artifact</button></div>
           <details><summary>Campaign kit and copy actions</summary><p class="muted">Landing page copy, partner email, SMS, 5 social drafts, flyer copy, FAQ, talking points, disclaimers, launch timeline, and reporting expectations are exported locally.</p><p><code>\${esc(campaign.latestCampaignKitPath || "No kit generated yet")}</code></p></details>
-        </article>\`).join("") || '<div class="empty">No campaigns yet. Add one campaign to generate a launch kit.</div>'}</div>
+        </article>\`;
+        }).join("") || '<div class="empty">Create a campaign from a partner to begin tracking referrals and RecordShield starts.</div>'}</div>
       </section>\`;
     }
 
     function funnelPageHtml(pageClass) {
       const totals = funnelTotals();
+      const snapshots = growthItems("funnelSnapshots");
+      const missing = funnelMissingDataFlag();
       const stages = [
         ["Landing visits", totals.landingPageVisits],
         ["RecordShield starts", totals.recordShieldStarts],
         ["RecordShield completions", totals.recordShieldCompletions],
         ["Results viewed", totals.resultsViewed],
-        ["Cleanup CTA clicked", totals.cleanupCtaClicked],
+        ["Cleanup CTA clicked", totals.cleanupCtaClicks || totals.cleanupCtaClicked],
         ["Expungement.ai intake", totals.expungementIntakeStarted],
         ["Payment started", totals.paymentStarted],
         ["Payment completed", totals.paymentCompleted],
@@ -9563,7 +14563,12 @@ function htmlShell() {
         ["Petition filed", totals.petitionFiled],
         ["Outcome known", totals.outcomeKnown]
       ];
+      const completionBase = Number(totals.recordShieldCompletions || totals.recordShieldStarts || 0);
+      const cleanupRate = completionBase ? Math.round((Number(totals.cleanupCtaClicks || totals.cleanupCtaClicked || 0) / completionBase) * 100) : 0;
+      const health = cleanupRate >= 35 ? ["Excellent", "good", "Scale this partner/source mix."] : cleanupRate >= 20 ? ["Strong", "good", "Ask for proof and expand distribution."] : cleanupRate >= 10 ? ["Acceptable", "warn", "Keep testing handoff copy."] : cleanupRate >= 5 ? ["Weak", "warn", "Review CTA copy and Wilma explainer language."] : ["Critical", "danger", "Review CTA copy, trust language, and handoff immediately."];
       return growthHero(pageClass, "funnel", "RecordShield funnel", "RecordShield Funnel", "Manually track conversion until automated events are wired.") + \`
+        \${missing ? \`<div class="panel section"><span class="badge \${missing.tone}">\${esc(missing.label)}</span><p class="muted">\${esc(missing.action)}</p></div>\` : ""}
+        <section class="panel section"><div class="row"><span class="badge \${health[1]}">Conversion health: \${health[0]}</span><strong>\${cleanupRate}% cleanup CTA after RecordShield</strong></div><p class="muted">\${esc(health[2])}</p></section>
         <div class="grid three section">\${stages.map(([label, value], index) => {
           const prev = index ? Number(stages[index - 1][1] || 0) : Number(value || 0);
           const rate = prev ? Math.round((Number(value || 0) / prev) * 100) : 0;
@@ -9582,6 +14587,7 @@ function htmlShell() {
             <button class="primary">Save snapshot</button>
           </form>
         </details>
+        \${!snapshots.length ? '<div class="empty section">Add a manual funnel snapshot or connect RecordShield events.</div>' : ""}
       </section>\`;
     }
 
@@ -9591,55 +14597,408 @@ function htmlShell() {
           const checklist = pilot.checklist || {};
           const done = Object.values(checklist).filter(Boolean).length;
           const total = Object.keys(checklist).length || 14;
+          const flags = pilotFlags(pilot);
+          const gate = pilotLaunchGate(pilot);
           return \`<article class="card drawer-card">
-            <div class="row"><span class="badge \${growthTone(pilot.status)}">\${esc(growthLabel(pilot.status))}</span><span class="badge info">Proof: \${esc(growthLabel(pilot.publicProofStatus))}</span></div>
+            <div class="row"><span class="badge \${growthTone(pilot.status)}">\${esc(growthLabel(pilot.status))}</span><span class="badge info">Proof L\${proofScoreForItem(pilot, "pilot")}</span><span class="badge info">Public proof: \${esc(growthLabel(pilot.publicProofStatus || "not requested"))}</span>\${flags.slice(0, 3).map(flag => \`<span class="badge \${flag.tone}">\${esc(flag.label)}</span>\`).join("")}</div>
             <h2>\${esc(pilot.pilotName)}</h2>
-            <p class="muted">Partner: \${esc(partnerById(pilot.partnerId)?.organizationName || "Unlinked")} · Users: \${Number(pilot.actualUsers || 0)} / \${Number(pilot.targetUsers || 0)} · Checklist: \${done}/\${total}</p>
-            <p><strong>Next:</strong> \${esc(pilot.nextAction || "Add next action.")}</p>
+            <p class="muted">Partner: \${esc(partnerById(pilot.partnerId)?.organizationName || "Unlinked")} · \${esc(pilot.startDate || "Start TBD")} → \${esc(pilot.endDate || "End TBD")}<br>Users: \${Number(pilot.actualUsers || 0)} / \${Number(pilot.targetUsers || 0)} · Checklist: \${done}/\${total}</p>
+            <p><strong>Objective:</strong> \${esc(pilot.objective || "Objective needed.")}</p>
+            <p><strong>Success metrics:</strong> \${esc(pilot.successMetrics || "Metrics missing.")}</p>
+            \${gate.ready ? "" : \`<p class="badge danger">Launch blocked: \${esc(gate.missing.join(" · "))}</p>\`}
+            <p><strong>Expansion proof:</strong> \${esc(pilot.expansionPath || pilot.renewalExpansionPath || "Required: what would make this partner expand, renew, or publicly validate LegalEase?")}</p>
+            <p><strong>Next:</strong> \${esc(pilotNextAction(pilot))}</p>
             <details><summary>Pilot checklist</summary><div class="grid three" style="margin-top:12px">\${Object.entries(checklist).map(([key, value]) => \`<div class="metric-row"><span>\${esc(growthLabel(key))}</span><span class="badge \${value ? "good" : "warn"}">\${value ? "Done" : "Open"}</span></div>\`).join("")}</div></details>
           </article>\`;
-        }).join("") || '<div class="empty">No pilots yet. Link a signed partner to create the first pilot.</div>'}</div>
+        }).join("") || '<div class="empty">Create a pilot once a partner has agreed to test LegalEase infrastructure.</div>'}</div>
       </section>\`;
     }
 
     function compliancePageHtml(pageClass) {
       return growthHero(pageClass, "compliance", "Compliance queue", "Compliance", "Keep consumer-facing claims operationally honest and non-UPL safe.") + \`
-        <div class="grid post-grid section">\${growthItems("complianceItems").map(item => \`<article class="card drawer-card">
-          <div class="row"><span class="badge \${growthTone(item.status)}">\${esc(growthLabel(item.status))}</span><span class="badge \${growthTone(item.riskLevel)}">\${esc(item.riskLevel || "medium")} risk</span></div>
+        <div class="grid post-grid section">\${growthItems("complianceItems").map(item => {
+          const flags = complianceFlags(item);
+          return \`<article class="card drawer-card">
+          <div class="row"><span class="badge \${growthTone(item.status)}">\${esc(growthLabel(item.status))}</span><span class="badge \${growthTone(item.riskLevel)}">\${esc(item.riskLevel || "medium")} risk</span><span class="badge info">Proof L\${proofScoreForItem(item, "compliance")}</span>\${flags.map(flag => \`<span class="badge \${flag.tone}">\${esc(flag.label)}</span>\`).join("")}</div>
           <h2>\${esc(item.itemTitle)}</h2>
-          <p class="muted">\${esc(item.itemType || "item")} · Reviewer: \${esc(item.reviewer || "Unassigned")} · Review date: \${esc(item.reviewDate || "TBD")}</p>
+          <p class="muted">\${esc(item.itemType || "item")} · Reviewer: \${esc(item.reviewer || "Unassigned")} · Review date: \${esc(item.reviewDate || "TBD")}<br>Related: \${esc(item.relatedCampaign || item.relatedPost || item.relatedPage || "No linked item")}</p>
           <p><strong>Issue:</strong> \${esc(item.issueSummary || "Needs review.")}</p>
-          <p class="muted"><strong>Disclaimer:</strong> \${esc(item.requiredDisclaimer || "General information only. Rules vary by state and case.")}</p>
+          <p class="muted"><strong>Disclaimer:</strong> \${esc(item.requiredDisclaimer || "General information only. Rules vary by state and case.")}<br><strong>Checklist:</strong> No eligibility guarantee · No outcome guarantee · Legal information, not legal advice · Human review when needed</p>
           <div class="card-actions"><button onclick="quickComplianceStatus('\${item.id}', 'approved')">Approve</button><button onclick="quickComplianceStatus('\${item.id}', 'needs_edits')">Needs edits</button><button onclick="quickComplianceStatus('\${item.id}', 'blocked')">Block</button></div>
-        </article>\`).join("") || '<div class="empty">No compliance items. Route campaign kits, landing pages, emails, and high-risk posts here before launch.</div>'}</div>
+        </article>\`;
+        }).join("") || '<div class="empty">No compliance items. Route campaign kits, landing pages, emails, SMS, and high-risk posts here before launch.</div>'}</div>
       </section>\`;
     }
 
     function reportsPageHtml(pageClass) {
-      const types = ["weekly_internal", "partner_campaign", "pilot_report", "investor_update", "data_room_traction_snapshot"];
+      const primaryTypes = [
+        ["weekly_operating", "Weekly", "Run the company."],
+        ["investor_update", "Investor", "Send the update."],
+        ["partner_campaign", "Partner", "Show campaign results."],
+        ["pilot_report", "Pilot", "Show pilot progress."],
+        ["data_room_traction_snapshot", "Data Room", "Update diligence."]
+      ];
+      const moreTypes = ["weekly_internal", "funnel_conversion_report", "public_proof_case_study_draft"];
+      const reports = growthItems("reports");
+      const exported = reports.filter(report => report.status !== "template").slice(0, 6);
+      const templates = reports.filter(report => report.status === "template");
       return growthHero(pageClass, "reports", "Report generator", "Reports", "Export concise operating reports from milestones, partner pipeline, campaigns, pilots, funnel, content, risks, and next actions.") + \`
-        <section class="panel section"><div class="grid three">\${types.map(type => \`<article class="card compact-card"><span class="badge info">\${esc(growthLabel(type))}</span><h3>\${esc(growthLabel(type))}</h3><p class="muted">Exports .md and .txt under data/exports/reports/.</p><button class="primary" onclick="exportGrowthReport('\${type}')">Export report</button></article>\`).join("")}</div></section>
-        <div class="grid post-grid section">\${growthItems("reports").map(report => \`<article class="card drawer-card"><span class="badge good">Exported</span><h2>\${esc(growthLabel(report.reportTitle))}</h2><p class="muted">\${esc(report.generatedAt || "")}<br><code>\${esc(report.markdownPath || "")}</code><br><code>\${esc(report.textPath || "")}</code></p></article>\`).join("") || '<div class="empty">No reports exported yet.</div>'}</div>
+        <section class="panel section reports-console">
+          <div class="simple-panel-head"><h2>Create report</h2><span class="badge info">Saved to data/exports/reports</span></div>
+          <div class="report-action-grid">
+            \${primaryTypes.map(([type, label, hint], index) => \`<button class="report-action-card \${index === 0 ? "featured" : ""}" onclick="exportGrowthReport('\${type}')"><span>\${esc(label)}</span><strong>\${esc(growthLabel(type))}</strong><small>\${esc(hint)}</small></button>\`).join("")}
+          </div>
+          <details class="simple-more report-more">
+            <summary>More report types</summary>
+            <div class="card-actions" style="margin-top:12px">\${moreTypes.map(type => \`<button onclick="exportGrowthReport('\${type}')">\${esc(growthLabel(type))}</button>\`).join("")}</div>
+          </details>
+        </section>
+        <section class="panel section">
+          <div class="simple-panel-head"><h2>Recent exports</h2><button onclick="exportGrowthReport('weekly_operating')">New weekly report</button></div>
+          <div class="report-export-list">
+            \${exported.map(report => \`<article class="report-export-row"><span class="badge good">Exported</span><strong>\${esc(growthLabel(report.reportTitle))}</strong><small>\${esc(report.generatedAt || "recent")}</small><code>\${esc(report.markdownPath || report.textPath || "local export")}</code></article>\`).join("") || '<div class="empty">No reports exported yet. Start with Weekly.</div>'}
+          </div>
+          <details class="simple-more report-more">
+            <summary>Templates</summary>
+            <div class="report-export-list" style="margin-top:12px">\${templates.map(report => \`<article class="report-export-row muted-row"><span class="badge info">Template</span><strong>\${esc(growthLabel(report.reportTitle))}</strong><small>\${esc(report.notes || "Ready")}</small></article>\`).join("") || '<div class="empty">No templates yet.</div>'}</div>
+          </details>
+        </section>
       </section>\`;
     }
 
     function dataRoomPageHtml(pageClass) {
-      const sections = ["Company overview", "Product suite", "Traction", "Partner pipeline", "Campaigns", "Pilots", "RecordShield funnel", "Revenue", "Compliance", "Technical architecture", "Security", "Case studies", "Press/public proof", "Financial model", "Acquisition thesis"];
+      const sections = dataRoomRequiredSections;
+      const readiness = dataRoomReadiness();
       return growthHero(pageClass, "dataroom", "Investor proof system", "Data Room", "Track the artifacts that support investor, institutional, and acquisition conversations.") + \`
-        <div class="readiness-strip section">\${["missing", "draft", "uploaded", "approved"].map(status => \`<button class="strip-card"><span class="badge \${growthTone(status)}">\${esc(status)}</span><strong>\${growthItems("dataRoomItems").filter(item => item.status === status).length}</strong></button>\`).join("")}</div>
+        <div class="grid two section"><section class="panel"><div class="eyebrow">Readiness Score</div>\${dataRoomReadinessHtml()}</section><section class="panel"><div class="eyebrow">Required Sections</div><div class="metric-table">\${[...readiness.sectionMap.entries()].map(([section, status]) => \`<div class="metric-row"><span>\${esc(section)}</span><span class="badge \${growthTone(status)}">\${esc(growthLabel(status))}</span></div>\`).join("")}</div></section></div>
         <details class="panel section" open><summary>Add data room item</summary>
           <form class="mini-form" style="margin-top:12px" onsubmit="saveDataRoomItem(event)">
             <label>Title<input name="title" required></label>
             <label>Section<select name="section">\${sections.map(section => \`<option>\${esc(section)}</option>\`).join("")}</select></label>
-            <label>Status<select name="status"><option>missing</option><option>draft</option><option>uploaded</option><option>approved</option></select></label>
+            <label>Status<select name="status"><option value="missing">Missing</option><option value="draft">Draft</option><option value="usable">Usable</option><option value="investor-ready">Investor-ready</option></select></label>
             <label>File/link/path<input name="filePath"></label>
             <label>Owner<input name="owner" value="Operations"></label>
             <button class="primary">Add item</button>
           </form>
         </details>
-        <div class="grid post-grid section">\${growthItems("dataRoomItems").map(item => \`<article class="card drawer-card"><div class="row"><span class="badge \${growthTone(item.status)}">\${esc(item.status)}</span><span class="badge info">\${esc(item.section)}</span></div><h2>\${esc(item.title)}</h2><p class="muted">Owner: \${esc(item.owner || "Unassigned")} · Updated: \${esc(item.lastUpdated || "not yet")}<br><code>\${esc(item.filePath || "No file attached")}</code></p><p>\${esc(item.notes || "")}</p></article>\`).join("")}</div>
+        <div class="grid post-grid section">\${growthItems("dataRoomItems").map(item => {
+          const stale = ["usable", "investor-ready", "current", "acquirer_ready"].includes(normalizedDataRoomStatus(item.status)) && daysSince(item.lastUpdated) > 30;
+          return \`<article class="card drawer-card"><div class="row"><span class="badge \${growthTone(normalizedDataRoomStatus(item.status))}">\${esc(growthLabel(normalizedDataRoomStatus(item.status)))}</span><span class="badge info">\${esc(item.section || item.category || "Uncategorized")}</span><span class="badge info">Proof L\${proofScoreForItem(item, "data_room")}</span>\${stale ? '<span class="badge warn">Stale review</span>' : ""}</div><h2>\${esc(item.title)}</h2><p class="muted">Owner: \${esc(item.owner || "Unassigned")} · Updated: \${esc(item.lastUpdated || "not yet")} · Diligence: \${esc(item.diligenceValue || "medium")}<br><code>\${esc(item.filePath || "No file attached")}</code></p><p><strong>Next:</strong> \${esc(item.nextAction || "Assign owner, category, and next artifact step.")}</p><p>\${esc(item.notes || "")}</p></article>\`;
+        }).join("") || '<div class="empty">Add traction, product, compliance, and proof artifacts as they are created.</div>'}</div>
       </section>\`;
     }
+
+    function autonomyPageHtml(pageClass) {
+      const summary = state.autonomySummary || {};
+      const policy = state.autonomyPolicy || {};
+      const governance = state.autonomyGovernance || {};
+      const actions = state.autonomyActions || [];
+      const grouped = [
+        ["automatic", "Automatic", "Routine internal work the system can handle.", actions.filter(item => item.decisionClass === "automatic")],
+        ["approval_required", "Needs decision", "External or public-facing work waiting for approval.", actions.filter(item => item.decisionClass === "approval_required")],
+        ["human_review", "Hard review", "Legal, compliance, security, financial, or high-risk items.", actions.filter(item => item.decisionClass === "human_review")],
+        ["forbidden", "Forbidden", "Actions the system will not run automatically.", actions.filter(item => item.decisionClass === "forbidden")]
+      ];
+      const actionRows = grouped.map(([key, label, help, items]) => \`<section class="panel">
+        <div class="simple-panel-head"><h2>\${esc(label)}</h2><span class="badge \${key === "forbidden" || key === "human_review" ? "danger" : key === "approval_required" ? "warn" : "good"}">\${items.length}</span></div>
+        <p class="muted">\${esc(help)}</p>
+        <div class="coo-list">\${items.slice(0, 8).map(item => \`<article class="coo-row autonomy-row">
+          <span><strong>\${esc(item.title)}</strong><small>\${esc(item.description || item.whyItMatters || "")}</small></span>
+          <em>\${esc(item.status || "pending")}</em>
+          <span class="card-actions">\${["approval_required", "human_review"].includes(item.decisionClass) && item.status === "pending" ? \`<button data-id="\${esc(item.id)}" onclick="approveAutonomyAction(this.dataset.id)">Approve</button><button data-id="\${esc(item.id)}" onclick="blockAutonomyAction(this.dataset.id)">Block</button>\` : ""}<button data-id="\${esc(item.id)}" onclick="ignoreAutonomyAction(this.dataset.id)">Ignore</button></span>
+        </article>\`).join("") || '<div class="empty">No items in this lane.</div>'}</div>
+      </section>\`).join("");
+      return growthHero(pageClass, "autonomy", "Autonomy layer", "Autonomy", "Routine work can happen quietly. Risk-sensitive work waits for a human. Forbidden work never runs.") + \`
+        <section class="panel section">
+          <div class="row">
+            <div><span class="badge info">Fail-closed</span><p class="muted">No emails, live publishing, pricing changes, legal policy changes, destructive database work, RLS weakening, audit-log removal, or secret exposure are allowed here.</p></div>
+            <div class="card-actions"><button class="primary" onclick="runAutonomyCycle()">Run Autonomy Cycle</button><button onclick="location.hash='soc2-audit'">View audit logs</button></div>
+          </div>
+        </section>
+        <div class="grid three section">
+          \${soc2MetricCard("Handled automatically", summary.executed || 0, "good")}
+          \${soc2MetricCard("Needs decision", summary.pendingDecision || 0, "warn")}
+          \${soc2MetricCard("Forbidden", summary.forbidden || 0, "danger")}
+        </div>
+        <div class="grid two section">
+          <section class="panel"><h2>Policy</h2><div class="metric-table">
+            <div class="metric-row"><span>Automatic</span><strong>\${esc(policy.automatic || "Routine internal actions only.")}</strong></div>
+            <div class="metric-row"><span>Approval</span><strong>\${esc(policy.approvalRequired || "Public-facing actions wait.")}</strong></div>
+            <div class="metric-row"><span>Review</span><strong>\${esc(policy.humanReview || "Sensitive work needs review.")}</strong></div>
+            <div class="metric-row"><span>Forbidden</span><strong>\${esc(policy.forbidden || "Never auto-run forbidden work.")}</strong></div>
+          </div></section>
+          <section class="panel"><h2>Latest run</h2><div class="metric-table">
+            <div class="metric-row"><span>Status</span><strong>\${esc(summary.latestRunStatus || "not_run")}</strong></div>
+            <div class="metric-row"><span>Last run</span><strong>\${esc(summary.latestRunAt || "never")}</strong></div>
+            <div class="metric-row"><span>Automatic lane</span><strong>\${Number(summary.automatic || 0)}</strong></div>
+            <div class="metric-row"><span>Human review lane</span><strong>\${Number(summary.humanReview || 0)}</strong></div>
+          </div></section>
+        </div>
+        <div class="grid two section">
+          <section class="panel"><h2>Operating memory</h2><div class="metric-table">
+            <div class="metric-row"><span>Events remembered</span><strong>\${Number(governance.eventIntelligence?.totalEvents || 0)}</strong></div>
+            <div class="metric-row"><span>Unattributed events</span><strong>\${Number(governance.eventIntelligence?.unattributedEvents || 0)}</strong></div>
+            <div class="metric-row"><span>Support signals</span><strong>\${Number(governance.eventIntelligence?.supportSignals?.length || 0)}</strong></div>
+            <div class="metric-row"><span>Stale connectors</span><strong>\${Number(governance.eventIntelligence?.staleConnectors?.length || 0)}</strong></div>
+          </div></section>
+          <section class="panel"><h2>Revenue awareness</h2><div class="metric-table">
+            <div class="metric-row"><span>Expected pipeline</span><strong>$\${Number(governance.revenueAwareness?.expectedPipeline || 0).toLocaleString()}</strong></div>
+            <div class="metric-row"><span>Weighted pipeline</span><strong>$\${Number(governance.revenueAwareness?.weightedPipeline || 0).toLocaleString()}</strong></div>
+            <div class="metric-row"><span>Tagged revenue</span><strong>$\${Number(governance.revenueAwareness?.revenueTagged || 0).toLocaleString()}</strong></div>
+            <div class="metric-row"><span>Unowned records</span><strong>\${Number(governance.ownership?.unownedRecords?.length || 0)}</strong></div>
+          </div></section>
+        </div>
+        <div class="grid two section">
+          <section class="panel"><h2>Role approvals</h2><div class="metric-table">\${(governance.roleMatrix || []).map(role => \`<div class="metric-row"><span>\${esc(role.role)}</span><strong>\${esc((role.canApprove || []).join(", ") || "read only")}</strong></div>\`).join("")}</div></section>
+          <section class="panel"><h2>Runbooks</h2><div class="coo-list">\${(governance.runbooks || []).map(runbook => \`<article class="coo-row"><span><strong>\${esc(runbook.title)}</strong><small>\${esc(runbook.trigger)}</small></span><em>\${esc(runbook.owner)}</em></article>\`).join("")}</div></section>
+        </div>
+        <div class="grid two section">\${actionRows}</div>
+      </section>\`;
+    }
+
+    function automationInboxPageHtml(pageClass) {
+      const filters = [["review", "Needs review"], ["all", "All"], ["high", "High confidence"], ["gmail", "Gmail"], ["calendar", "Calendar"], ["stripe", "Stripe"], ["supabase", "Supabase"], ["drive", "Drive"], ["website", "Website"], ["recordshield", "RecordShield"], ["expungement_ai", "Expungement.ai"], ["ignored", "Ignored"], ["applied", "Applied"]];
+      const suggestions = automationSuggestionsFiltered();
+      const sourceFor = suggestion => automationEventById(suggestion.eventId)?.source || "manual_import";
+      const googleAccount = (state.socialAccounts || []).find(account => account.platform === "google_workspace") || {};
+      const googleConnected = Boolean(googleAccount.connected || googleAccount.status === "connected" || googleAccount.hasStoredToken || googleAccount.accountName);
+      return growthHero(pageClass, "automation", "Human-approved automation", "Automation Inbox", "Capture signals from email, calendar, Stripe, Drive, website, Supabase, and manual imports, then approve suggested updates.") + \`
+        <div class="grid two section">
+          <section class="panel">
+            <h3>Connector status</h3>
+            <p class="muted">Only Website events and Manual import are active in this local demo unless credentials exist. No emails are sent and no suggestions are auto-applied.</p>
+            <div class="metric-table">\${connectorItems().map(item => \`<div class="metric-row"><span>\${esc(growthLabel(item.connector))}</span><span class="badge \${item.configured ? "good" : "warn"}">\${item.configured ? "configured/available" : "not connected"}</span><span class="muted">\${esc(item.lastSyncAt || item.lastSyncStatus || "never")}</span></div>\`).join("")}</div>
+          </section>
+          <section class="panel">
+            <h3>Import controls</h3>
+            <p class="muted">Use Demo sync for investor demos, connect Google read-only, or paste JSON events from another system. Google sync never sends email or creates calendar events.</p>
+            <div class="card-actions"><button class="primary" onclick="runAutomationDemoSync()">Run Demo Sync</button><button onclick="connectGoogle()">\${googleConnected ? "Reconnect Google" : "Connect Google"}</button><button onclick="syncGmail()">Sync Gmail</button><button onclick="syncCalendar()">Sync Calendar</button><button onclick="markSelectedSuggestionsReviewed()">Mark reviewed</button></div>
+            <p class="muted">Google: \${googleConnected ? "connected as " + esc(googleAccount.accountName || "Google account") : "not connected"} · Scopes: Gmail readonly, Calendar readonly.</p>
+            <p class="muted">Scheduled sync placeholder: run these manually for now. Cron can call the same server endpoints later.</p>
+            <details style="margin-top:12px"><summary>Manual JSON import</summary>
+              <form onsubmit="importAutomationEvents(event)" style="margin-top:12px">
+                <label>Events JSON<textarea name="events" placeholder='[{ "source":"gmail", "eventType":"email_received", "title":"Proposal follow-up", "summary":"..." }]'></textarea></label>
+                <button class="primary">Import Events</button>
+              </form>
+            </details>
+          </section>
+        </div>
+        <div class="toolbar section">\${filters.map(([id, label]) => \`<button class="\${automationFilter === id ? "primary" : ""}" onclick="setAutomationFilter('\${id}')">\${esc(label)}</button>\`).join("")}</div>
+        <div class="toolbar"><button onclick="approveSelectedHighConfidence()">Approve selected high-confidence suggestions</button><button onclick="ignoreSelectedSuggestions()">Ignore selected</button><button onclick="markSelectedSuggestionsReviewed()">Mark reviewed</button></div>
+        <div class="grid post-grid section">\${suggestions.map(suggestion => {
+          const event = automationEventById(suggestion.eventId) || {};
+          const checked = selectedSuggestions.has(suggestion.id) ? "checked" : "";
+          const related = suggestion.relatedEntityId ? suggestion.relatedEntityId : suggestion.relatedEntityType || "unknown";
+          return \`<article class="card drawer-card">
+            <div class="row"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" \${checked} onchange="toggleSuggestionSelection('\${suggestion.id}', this.checked)"> Select</label><span class="badge info">\${esc(growthLabel(sourceFor(suggestion)))}</span><span class="badge \${suggestion.confidence === "high" ? "good" : suggestion.confidence === "low" ? "warn" : "info"}">\${esc(suggestion.confidence || "medium")} confidence</span><span class="badge \${growthTone(suggestion.status)}">\${esc(growthLabel(suggestion.status))}</span></div>
+            <h2>\${esc(suggestion.title)}</h2>
+            <p class="muted"><strong>Detected event:</strong> \${esc(event.title || suggestion.eventId)}<br><strong>Suggested action:</strong> \${esc(growthLabel(suggestion.suggestionType))} · <strong>Related:</strong> \${esc(related)}</p>
+            <p><strong>Why this matters:</strong> \${esc(suggestion.explanation || "This signal can reduce manual data entry after approval.")}</p>
+            <details><summary>Proposed changes preview</summary><pre class="post-body">\${esc(JSON.stringify(suggestion.proposedChanges || {}, null, 2))}</pre></details>
+            <div class="card-actions"><button class="primary" \${["pending", "edited"].includes(suggestion.status) ? "" : "disabled"} onclick="approveAutomationSuggestion('\${suggestion.id}')">Approve</button><button \${["pending", "edited"].includes(suggestion.status) ? "" : "disabled"} onclick="editAutomationSuggestion('\${suggestion.id}')">Edit</button><button onclick="ignoreAutomationSuggestion('\${suggestion.id}')">Ignore</button></div>
+          </article>\`;
+        }).join("") || '<div class="empty">No automation suggestions for this filter. Run Demo Sync or import JSON events to create human-reviewed suggestions.</div>'}</div>
+      </section>\`;
+    }
+
+
+    function soc2Items(collection) { return state[collection] || []; }
+    function soc2StatusTone(status = "") {
+      const value = String(status || "").toLowerCase();
+      if (/complete|approved|resolved|closed|deployed/.test(value)) return "good";
+      if (/critical|high|blocked|overdue|needs review|investigating|remediating/.test(value)) return "danger";
+      if (/progress|submitted|medium|draft/.test(value)) return "warn";
+      return "info";
+    }
+    const clientSoc2ControlAreas = ["Access Control","Change Management","Vendor Management","Incident Response","Data Security","AI Governance","Evidence Collection","Policy Management"];
+    function clientSoc2ReadinessBand(score) {
+      const value = Number(score || 0);
+      if (value >= 85) return "Strong Readiness Posture";
+      if (value >= 70) return "Approaching Type I Readiness";
+      if (value >= 40) return "Building Foundation";
+      return "Not Ready";
+    }
+    function clientNormalizeSoc2ControlArea(value) {
+      const text = String(value || "").trim();
+      if (/^security$/i.test(text)) return "Data Security";
+      return clientSoc2ControlAreas.includes(text) ? text : "Evidence Collection";
+    }
+    function clientAddMonthsIso(input, months) {
+      const date = new Date(input || Date.now());
+      if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+      date.setMonth(date.getMonth() + months);
+      return date.toISOString().slice(0, 10);
+    }
+    function clientEvidenceStatus(item) {
+      const status = String(item.evidenceStatus || item.status || "");
+      if (/approved|complete/i.test(status)) return "Approved";
+      if (/ready/i.test(status)) return "Ready for Review";
+      if (/reject/i.test(status)) return "Rejected";
+      if (/archive/i.test(status)) return "Archived";
+      return "Draft";
+    }
+    function clientEvidenceQuality(item) {
+      return ["Weak","Acceptable","Strong"].includes(item.evidenceQuality) ? item.evidenceQuality : "Acceptable";
+    }
+    function clientNextCollectionDue(item) {
+      if (item.nextCollectionDue) return item.nextCollectionDue;
+      const base = item.collectionDate || item.generatedAt || item.createdAt || new Date().toISOString();
+      if (item.renewalFrequency === "One-Time") return "";
+      if (item.renewalFrequency === "Annual") return clientAddMonthsIso(base, 12);
+      if (item.renewalFrequency === "Quarterly") return clientAddMonthsIso(base, 3);
+      return clientAddMonthsIso(base, 1);
+    }
+    function clientSoc2EvidenceQuality() {
+      const today = new Date().toISOString().slice(0, 10);
+      const evidence = soc2Items("soc2Evidence").map(item => ({ ...item, controlArea:clientNormalizeSoc2ControlArea(item.controlArea), evidenceStatus:clientEvidenceStatus(item), evidenceQuality:clientEvidenceQuality(item), nextCollectionDue:clientNextCollectionDue(item) }));
+      const active = evidence.filter(item => item.evidenceStatus !== "Archived");
+      const byControlArea = clientSoc2ControlAreas.map(controlArea => {
+        const items = active.filter(item => item.controlArea === controlArea);
+        const score = items.length ? Math.round(items.reduce((sum, item) => sum + (item.evidenceQuality === "Strong" ? 3 : item.evidenceQuality === "Acceptable" ? 2 : 1) + (item.evidenceStatus === "Approved" ? 2 : item.evidenceStatus === "Ready for Review" ? 1 : 0), 0) / (items.length * 5) * 100) : 0;
+        return { controlArea, count:items.length, score };
+      });
+      const overdue = active.filter(item => item.nextCollectionDue && item.nextCollectionDue < today);
+      const strongest = byControlArea.slice().sort((a,b)=>b.score-a.score || b.count-a.count)[0] || null;
+      const weakest = byControlArea.slice().sort((a,b)=>a.score-b.score || a.count-b.count)[0] || null;
+      const qualityScore = active.length ? Math.round(active.reduce((sum, item) => sum + Math.min(100, (item.evidenceStatus === "Approved" ? 35 : item.evidenceStatus === "Ready for Review" ? 20 : item.evidenceStatus === "Rejected" ? 0 : 10) + (item.evidenceQuality === "Strong" ? 35 : item.evidenceQuality === "Acceptable" ? 22 : 8) + (item.nextCollectionDue && item.nextCollectionDue < today ? 0 : 30)), 0) / active.length) : 0;
+      return { total:evidence.length, approved:evidence.filter(item=>item.evidenceStatus==="Approved").length, pendingReview:evidence.filter(item=>item.evidenceStatus==="Ready for Review").length, rejected:evidence.filter(item=>item.evidenceStatus==="Rejected").length, weak:evidence.filter(item=>item.evidenceQuality==="Weak").length, overdueCollection:overdue.length, strongestControlArea:strongest?.controlArea || "None", weakestControlArea:weakest?.controlArea || "None", qualityScore };
+    }
+    function clientSoc2ControlOwners() {
+      const existing = state.soc2ControlOwners || [];
+      const next = clientAddMonthsIso(new Date(), 1);
+      const fallback = clientSoc2ControlAreas.map(controlArea => ({ controlArea, owner: controlArea === "AI Governance" ? "Product" : controlArea === "Data Security" || controlArea === "Access Control" ? "Engineering" : "Operations", backupOwner:"Operations", reviewCadence:"Monthly", nextReviewDue:next, status:"In Progress" }));
+      return fallback.map(item => ({ ...item, ...(existing.find(entry => clientNormalizeSoc2ControlArea(entry.controlArea) === item.controlArea) || {}) }));
+    }
+    function clientSoc2TypeIChecklist() {
+      const policies = soc2Items("soc2Policies");
+      const access = soc2Items("soc2AccessReviews");
+      const vendors = soc2Items("soc2Vendors");
+      const incidents = soc2Items("soc2Incidents");
+      const changes = soc2Items("soc2Changes");
+      const evidence = soc2Items("soc2Evidence");
+      const auditLogs = soc2Items("soc2AuditLogs");
+      const generated = evidence.some(item => item.artifactFilename || /SOC 2 Readiness Snapshot/i.test(String(item.evidenceTitle || "")));
+      return [
+        ["Access control policy exists and has owner", policies.some(item => /access control/i.test(item.policyName || "") && item.owner)],
+        ["User access inventory exists", access.length > 0],
+        ["Access review cadence established", access.some(item => item.nextReviewDate || item.lastReviewedDate)],
+        ["Change management process documented", policies.some(item => /change management/i.test(item.policyName || "")) || changes.length > 0],
+        ["High-risk changes require approval", !changes.some(item => /high|critical/i.test(item.riskLevel || "") && !/approved/i.test(item.approvalStatus || ""))],
+        ["Vendor inventory exists", vendors.length > 0],
+        ["High-risk vendors reviewed", vendors.some(item => /high|critical/i.test(item.riskLevel || "")) && !vendors.some(item => /high|critical/i.test(item.riskLevel || "") && !/complete|approved/i.test(item.securityReviewStatus || ""))],
+        ["Incident response policy exists", policies.some(item => /incident response/i.test(item.policyName || ""))],
+        ["Incident register exists", incidents.length > 0],
+        ["Evidence collection process exists", evidence.length > 0],
+        ["AI governance notes exist", policies.some(item => /ai governance/i.test(item.policyName || "")) || changes.some(item => /ai|prompt|model/i.test(item.changeType || item.title || ""))],
+        ["Human approval process documented for sensitive AI workflows", /human approval/i.test(JSON.stringify(policies.concat(changes)))],
+        ["Data retention policy exists", policies.some(item => /data retention/i.test(item.policyName || ""))],
+        ["Security policy exists", policies.some(item => /information security|security policy/i.test(item.policyName || ""))],
+        ["Monthly snapshot export exists", generated],
+        ["Audit log is active", auditLogs.length > 0]
+      ].map(([title, complete]) => ({ title, status: complete ? "Complete" : "In Progress", owner:"Operations", evidenceLink: title === "Monthly snapshot export exists" && generated ? "/api/soc2/evidence-snapshot/export" : "", notes: complete ? "Evidence exists in the operating system." : "Needs evidence before Type I readiness review." }));
+    }
+    function soc2Readiness() {
+      const policies = soc2Items("soc2Policies");
+      const access = soc2Items("soc2AccessReviews");
+      const incidents = soc2Items("soc2Incidents");
+      const changes = soc2Items("soc2Changes");
+      const evidence = soc2Items("soc2Evidence");
+      const vendors = soc2Items("soc2Vendors");
+      const openGaps = policies.filter(item => !/approved|complete/i.test(item.approvalStatus || item.status || "")).concat(vendors.filter(item => !/complete|approved/i.test(item.securityReviewStatus || "")), access.filter(item => !/complete|approved/i.test(item.reviewStatus || "")));
+      const overdueReviews = access.concat(policies).filter(item => item.nextReviewDate && new Date(item.nextReviewDate) < new Date() && !/approved|complete/i.test(item.reviewStatus || item.approvalStatus || item.status || ""));
+      const recentIncidents = incidents.filter(item => !/closed/i.test(item.status || "")).slice(0, 5);
+      const recentChanges = changes.slice(0, 5);
+      const month = new Date().toISOString().slice(0, 7);
+      const evidenceThisMonth = evidence.filter(item => String(item.collectionDate || "").startsWith(month));
+      const completePolicies = policies.filter(item => /approved|complete/i.test(item.approvalStatus || item.status || "")).length;
+      const score = Math.round(((completePolicies + Math.max(0, access.length - overdueReviews.length) + evidenceThisMonth.length) / Math.max(1, policies.length + access.length + 4)) * 100);
+      const readinessByControlArea = ["Access Control","Change Management","Vendor Management","Incident Response","Data Security","AI Governance","Evidence Collection","Policy Management"].map(controlArea => {
+        const items = [
+          ...access.filter(item => (item.controlArea || "Access Control") === controlArea),
+          ...changes.filter(item => (item.controlArea || (/prompt|model|ai|automation/i.test(String(item.changeType || item.title || "")) ? "AI Governance" : "Change Management")) === controlArea),
+          ...vendors.filter(item => (item.controlArea || "Vendor Management") === controlArea),
+          ...incidents.filter(item => (item.controlArea || (/ai|prompt|output|automation/i.test(String(item.incidentType || item.summary || item.incidentTitle || "")) ? "AI Governance" : /privacy|confidential|security|data/i.test(String(item.incidentType || item.summary || item.incidentTitle || "")) ? "Data Security" : "Incident Response")) === controlArea),
+          ...evidence.filter(item => (item.controlArea || "Evidence Collection") === controlArea),
+          ...policies.filter(item => {
+            const derived = item.controlArea || (/ai/i.test(String(item.policyName || "")) ? "AI Governance" : /access/i.test(String(item.policyName || "")) ? "Access Control" : /vendor/i.test(String(item.policyName || "")) ? "Vendor Management" : /incident/i.test(String(item.policyName || "")) ? "Incident Response" : /data|privacy|security/i.test(String(item.policyName || "")) ? "Data Security" : /change/i.test(String(item.policyName || "")) ? "Change Management" : "Policy Management");
+            return derived === controlArea;
+          })
+        ];
+        const complete = items.filter(item => /approved|complete|resolved|closed|deployed/i.test(item.approvalStatus || item.reviewStatus || item.securityReviewStatus || item.status || "")).length;
+        const score = items.length ? Math.round((complete / items.length) * 100) : 0;
+        return { controlArea, score, totalItems: items.length };
+      });
+      const weakestControlArea = readinessByControlArea.slice().sort((a, b) => a.score - b.score)[0] || null;
+      const highestRiskOpenItem = vendors.filter(item => /high|critical/i.test(item.riskLevel || "") && !/complete|approved/i.test(item.securityReviewStatus || "")).map(item => ({ title:item.vendorName, risk:item.riskLevel, owner:item.owner || "Unassigned" })).concat(incidents.filter(item => !/closed|resolved/i.test(item.status || "")).map(item => ({ title:item.incidentTitle, risk:item.severity, owner:item.owner || "Unassigned" }))).sort((a, b) => ({ critical:4, high:3, medium:2, low:1 }[String(b.risk || "").toLowerCase()] || 0) - ({ critical:4, high:3, medium:2, low:1 }[String(a.risk || "").toLowerCase()] || 0))[0] || null;
+      const evidenceQuality = clientSoc2EvidenceQuality();
+      const controlOwners = clientSoc2ControlOwners();
+      const typeIChecklist = clientSoc2TypeIChecklist();
+      const ownerScore = controlOwners.length ? Math.round(controlOwners.filter(item => item.owner && (!item.nextReviewDue || item.nextReviewDue >= new Date().toISOString().slice(0, 10))).length / controlOwners.length * 100) : 0;
+      const controlStatusScore = readinessByControlArea.length ? Math.round(readinessByControlArea.reduce((sum, item) => sum + item.score, 0) / readinessByControlArea.length) : 0;
+      const operationsPenalty = Math.min(100, overdueReviews.length * 15 + recentIncidents.length * 20 + vendors.filter(item => /high|critical/i.test(item.riskLevel || "") && !/complete|approved/i.test(item.securityReviewStatus || "")).length * 15 + evidenceQuality.overdueCollection * 15);
+      const refinedScore = Math.round(controlStatusScore * 0.35 + evidenceQuality.qualityScore * 0.25 + ownerScore * 0.20 + Math.max(0, 100 - operationsPenalty) * 0.20);
+      return { score: Math.min(100, refinedScore), readinessBand:clientSoc2ReadinessBand(refinedScore), openGaps, overdueReviews, recentIncidents, recentChanges, evidenceThisMonth, readinessByControlArea, weakestControlArea, highestRiskOpenItem, evidenceQuality, controlOwners, typeIChecklist };
+    }
+    function soc2MetricCard(label, value, tone) { return '<article class="readiness-card ' + (tone || 'info') + '"><div class="readiness-title">' + esc(label) + '</div><strong>' + esc(value) + '</strong></article>'; }
+    function soc2DashboardPageHtml(pageClass) {
+      const readiness = soc2Readiness();
+      const trust = ["Security", "Availability", "Processing Integrity", "Confidentiality", "Privacy"];
+      const trustHtml = trust.map((name, index) => '<div class="metric-row"><span>' + esc(name) + '</span><span class="badge ' + (index ? 'warn' : 'good') + '">' + (index ? 'In Progress' : 'Complete') + '</span></div>').join('');
+      const gapHtml = readiness.openGaps.slice(0, 6).map(item => '<div class="activity-item"><span class="badge ' + soc2StatusTone(item.reviewStatus || item.approvalStatus || item.securityReviewStatus || item.status || item.evidenceStatus) + '">' + esc(item.reviewStatus || item.approvalStatus || item.securityReviewStatus || item.status || item.evidenceStatus || 'Needs Review') + '</span><h3>' + esc(item.policyName || item.vendorName || item.userName || item.title || item.evidenceTitle || item.id) + '</h3><p class="muted">Owner: ' + esc(item.owner || 'Unassigned') + '</p></div>').join('') || '<div class="empty">No open control gaps. Keep collecting evidence monthly.</div>';
+      const controlHtml = (readiness.readinessByControlArea || []).map(item => '<div class="metric-row"><span>' + esc(item.controlArea) + '</span><strong>' + esc(String(item.score)) + '%</strong></div>').join('') || '<div class="empty">No control mapping yet. Add access reviews, changes, vendors, incidents, evidence, and policies.</div>';
+      const aiGovernanceHtml = [
+        '<div class="metric-row"><span>Prompt changes tracked</span><strong>' + esc(String((state.soc2Changes || []).filter(item => /prompt/i.test(String(item.changeType || item.title || ""))).length)) + '</strong></div>',
+        '<div class="metric-row"><span>Model/provider changes</span><strong>' + esc(String((state.soc2Changes || []).filter(item => /model|provider/i.test(String(item.changeType || item.title || ""))).length)) + '</strong></div>',
+        '<div class="metric-row"><span>AI output approvals logged</span><strong>' + esc(String((state.soc2AuditLogs || []).filter(item => /approval|ai governance/i.test(String(item.action || ""))).length)) + '</strong></div>',
+        '<div class="metric-row"><span>Open AI incidents</span><strong>' + esc(String((state.soc2Incidents || []).filter(item => /ai|prompt|output|automation/i.test(String(item.incidentType || item.summary || item.incidentTitle || "")) && !/closed|resolved/i.test(item.status || "")).length)) + '</strong></div>'
+      ].join('');
+      const evidenceQuality = readiness.evidenceQuality || { total:0, approved:0, pendingReview:0, rejected:0, weak:0, overdueCollection:0, strongestControlArea:'None', weakestControlArea:'None' };
+      const evidenceQualityHtml = [
+        '<div class="metric-row"><span>Total evidence records</span><strong>' + esc(String(evidenceQuality.total)) + '</strong></div>',
+        '<div class="metric-row"><span>Approved evidence</span><strong>' + esc(String(evidenceQuality.approved)) + '</strong></div>',
+        '<div class="metric-row"><span>Pending review</span><strong>' + esc(String(evidenceQuality.pendingReview)) + '</strong></div>',
+        '<div class="metric-row"><span>Rejected evidence</span><strong>' + esc(String(evidenceQuality.rejected)) + '</strong></div>',
+        '<div class="metric-row"><span>Weak evidence</span><strong>' + esc(String(evidenceQuality.weak)) + '</strong></div>',
+        '<div class="metric-row"><span>Overdue collection</span><strong>' + esc(String(evidenceQuality.overdueCollection)) + '</strong></div>',
+        '<div class="metric-row"><span>Strongest control area</span><strong>' + esc(evidenceQuality.strongestControlArea || 'None') + '</strong></div>',
+        '<div class="metric-row"><span>Weakest control area</span><strong>' + esc(evidenceQuality.weakestControlArea || 'None') + '</strong></div>'
+      ].join('');
+      const today = new Date().toISOString().slice(0, 10);
+      const controlOwnersHtml = (readiness.controlOwners || []).map(item => '<div class="metric-row"><span>' + esc(item.controlArea) + '<br><small class="muted">Owner: ' + esc(item.owner || 'Unassigned') + ' · Backup: ' + esc(item.backupOwner || 'Unassigned') + '</small></span><span class="badge ' + (item.nextReviewDue && item.nextReviewDue < today ? 'danger' : soc2StatusTone(item.status)) + '">' + esc(item.nextReviewDue && item.nextReviewDue < today ? 'Overdue' : item.status || 'In Progress') + '</span></div>').join('') || '<div class="empty">No control owners mapped yet.</div>';
+      const typeIHtml = (readiness.typeIChecklist || []).map(item => '<div class="metric-row"><span>' + esc(item.title) + '<br><small class="muted">Owner: ' + esc(item.owner || 'Unassigned') + '</small></span><span class="badge ' + soc2StatusTone(item.status) + '">' + esc(item.status || 'In Progress') + '</span></div>').join('') || '<div class="empty">No Type I checklist records yet.</div>';
+      return growthHero(pageClass, "soc2", "SOC 2 Readiness", "Compliance Dashboard", "Operate like an auditable company from day one. This does not claim SOC 2 compliance.") + '<section class="panel section"><div class="row"><div><span class="badge warn">Readiness only</span><p class="muted">This module supports readiness and evidence collection. Formal SOC 2 compliance requires review by a qualified auditor.</p><p><strong>' + esc(readiness.readinessBand || clientSoc2ReadinessBand(readiness.score)) + '</strong> · ' + esc(String(readiness.score)) + '% readiness score</p></div><div class="card-actions"><button class="primary" onclick="generateSoc2EvidenceSnapshot()">Generate Monthly Evidence Snapshot</button><button onclick="exportSoc2MarkdownSnapshot()">Export Markdown Snapshot</button></div></div></section><div class="grid three section">' + soc2MetricCard('Readiness', readiness.score + '%', readiness.score >= 85 ? 'good' : readiness.score >= 70 ? 'info' : readiness.score >= 40 ? 'warn' : 'danger') + soc2MetricCard('Readiness band', readiness.readinessBand || clientSoc2ReadinessBand(readiness.score), readiness.score >= 85 ? 'good' : readiness.score >= 70 ? 'info' : readiness.score >= 40 ? 'warn' : 'danger') + soc2MetricCard('Open control gaps', readiness.openGaps.length, readiness.openGaps.length ? 'warn' : 'good') + soc2MetricCard('Overdue reviews', readiness.overdueReviews.length, readiness.overdueReviews.length ? 'danger' : 'good') + soc2MetricCard('Open incidents', readiness.recentIncidents.length, readiness.recentIncidents.length ? 'danger' : 'good') + soc2MetricCard('Evidence this month', readiness.evidenceThisMonth.length, 'info') + '</div><div class="grid two section"><section class="panel"><h2>Evidence Quality</h2><div class="metric-table">' + evidenceQualityHtml + '</div></section><section class="panel"><h2>Control Owners</h2><div class="metric-table">' + controlOwnersHtml + '</div></section></div><div class="grid two section"><section class="panel"><h2>Type I Readiness Checklist</h2><div class="metric-table">' + typeIHtml + '</div></section><section class="panel"><h2>Open Control Gaps</h2><div class="coo-list">' + gapHtml + '</div></section></div><div class="grid two section"><section class="panel"><h2>Readiness by control area</h2><div class="metric-table">' + controlHtml + '</div><p class="muted" style="margin-top:12px">Highest-risk open item: ' + esc(readiness.highestRiskOpenItem?.title || 'None right now') + (readiness.highestRiskOpenItem ? ' · Owner: ' + esc(readiness.highestRiskOpenItem.owner || 'Unassigned') : '') + '</p></section><section class="panel"><h2>AI Governance</h2><p class="muted">Track prompt changes, model/provider changes, human approvals, automation actions, AI incidents, and sensitive-data handling notes.</p><div class="metric-table">' + aiGovernanceHtml + '</div><p class="muted" style="margin-top:12px">This area needs evidence before an auditor review if prompts, models, or approvals are changing without logs.</p></section></div><div class="grid two section"><section class="panel"><h2>Trust Service Categories</h2><div class="metric-table">' + trustHtml + '</div></section><section class="panel"><h2>Score bands</h2><div class="metric-table"><div class="metric-row"><span>0-39</span><strong>Not Ready</strong></div><div class="metric-row"><span>40-69</span><strong>Building Foundation</strong></div><div class="metric-row"><span>70-84</span><strong>Approaching Type I Readiness</strong></div><div class="metric-row"><span>85-100</span><strong>Strong Readiness Posture</strong></div></div></section></div></section>';
+    }
+
+    function soc2CrudForm(collection, fields, title) {
+      return '<details class="panel section"><summary>Add ' + esc(title) + '</summary><form class="mini-form" data-collection="' + esc(collection) + '" style="margin-top:12px" onsubmit="saveSoc2(event, this.dataset.collection)">' + fields.map(field => '<label>' + esc(field[1]) + '<input name="' + esc(field[0]) + '" type="' + esc(field[2] || 'text') + '"></label>').join('') + '<button class="primary">Save</button></form></details>';
+    }
+    function soc2TablePageHtml(pageClass, id, title, copy, collection, fields, cardTitle, formFields) {
+      const items = soc2Items(collection);
+      const head = fields.map(field => '<span>' + esc(field[1]) + '</span>').join('') + '<span>Action</span>';
+      const emptyCopy = {
+        soc2AccessReviews: 'No access reviews are overdue. Add systems and owners before an auditor asks for them.',
+        soc2AuditLogs: 'No audit logs yet. Sensitive actions will appear here as you review access, vendors, incidents, evidence, and policies.',
+        soc2Changes: 'No tracked changes yet. Add product, infrastructure, prompt, AI workflow, database, or deployment changes here.',
+        soc2Vendors: 'No high-risk vendors pending review. Add every vendor that touches product, data, infrastructure, or AI workflows.',
+        soc2Incidents: 'No open incidents. Keep this empty by logging issues quickly and closing them with remediation notes.',
+        soc2Evidence: 'No evidence collected this month yet. This area needs evidence before an auditor review.',
+        soc2Policies: 'No policies tracked yet. Start with Information Security, Access Control, Incident Response, Vendor Management, Change Management, Data Retention, and AI Governance.'
+      };
+      const rows = items.map(item => {
+        const actionHtml = collection === "soc2Evidence"
+          ? '<span class="card-actions"><button data-id="' + esc(item.id) + '" onclick="reviewSoc2Evidence(this.dataset.id, &quot;mark_ready&quot;)">Ready</button><button data-id="' + esc(item.id) + '" onclick="reviewSoc2Evidence(this.dataset.id, &quot;approve&quot;)">Approve</button><button data-id="' + esc(item.id) + '" onclick="reviewSoc2Evidence(this.dataset.id, &quot;reject&quot;)">Reject</button><button data-id="' + esc(item.id) + '" onclick="reviewSoc2Evidence(this.dataset.id, &quot;archive&quot;)">Archive</button></span>'
+          : '<span><button data-collection="' + esc(collection) + '" data-id="' + esc(item.id) + '" onclick="quickSoc2Review(this.dataset.collection, this.dataset.id)">Mark Reviewed</button></span>';
+        return '<div class="ops-row">' + fields.map(field => '<span>' + esc(item[field[0]] || '-') + '</span>').join('') + actionHtml + '</div>';
+      }).join('') || '<div class="empty">' + esc(emptyCopy[collection] || ('No ' + title.toLowerCase() + ' records yet. Add the first record to start evidence collection.')) + '</div>';
+      return growthHero(pageClass, id, "SOC 2 Readiness", title, copy) + soc2CrudForm(collection, formFields, cardTitle) + '<div class="ops-table section"><div class="ops-row header">' + head + '</div>' + rows + '</div></section>';
+    }
+    function soc2AccessReviewsPageHtml(pageClass) { return soc2TablePageHtml(pageClass, "soc2-access", "Access Reviews", "Review who has access to critical systems and whether that access still makes sense.", "soc2AccessReviews", [["userName","User"],["role","Role"],["system","System"],["accessLevel","Access"],["owner","Owner"],["lastReviewedDate","Last reviewed"],["reviewStatus","Status"]], "access review", [["userName","User"],["role","Role"],["system","System"],["accessLevel","Access level"],["owner","Owner"],["dateGranted","Date granted","date"]]); }
+    function soc2AuditLogsPageHtml(pageClass) { return soc2TablePageHtml(pageClass, "soc2-audit", "Audit Logs", "Sensitive actions are logged for auditability and operator review.", "soc2AuditLogs", [["timestamp","Timestamp"],["actor","Actor"],["action","Action"],["resourceType","Resource"],["resourceId","ID"]], "audit log", [["actor","Actor"],["action","Action"],["resourceType","Resource type"],["resourceId","Resource id"]]); }
+    function soc2ChangesPageHtml(pageClass) { return soc2TablePageHtml(pageClass, "soc2-changes", "Change Management", "Track product, infrastructure, prompt, AI workflow, database, and deployment changes.", "soc2Changes", [["title","Change"],["changeType","Type"],["owner","Owner"],["riskLevel","Risk"],["approvalStatus","Approval"],["status","Status"]], "change", [["title","Title"],["changeType","Type"],["owner","Owner"],["riskLevel","Risk"],["rollbackPlan","Rollback plan"]]); }
+    function soc2VendorsPageHtml(pageClass) { return soc2TablePageHtml(pageClass, "soc2-vendors", "Vendor Inventory", "Track vendors by data access, risk, contract status, DPA status, and security review.", "soc2Vendors", [["vendorName","Vendor"],["serviceProvided","Service"],["riskLevel","Risk"],["owner","Owner"],["dpaStatus","DPA"],["securityReviewStatus","Security review"]], "vendor", [["vendorName","Vendor"],["serviceProvided","Service"],["dataAccessed","Data accessed"],["riskLevel","Risk"],["owner","Owner"]]); }
+    function soc2IncidentsPageHtml(pageClass) { return soc2TablePageHtml(pageClass, "soc2-incidents", "Incident Register", "Track security, privacy, availability, data, AI-output, and operational incidents.", "soc2Incidents", [["incidentTitle","Incident"],["severity","Severity"],["owner","Owner"],["dateOpened","Opened"],["dateResolved","Resolved"],["status","Status"]], "incident", [["incidentTitle","Title"],["severity","Severity"],["owner","Owner"],["affectedSystems","Affected systems"],["summary","Summary"]]); }
+    function soc2EvidencePageHtml(pageClass) { return soc2TablePageHtml(pageClass, "soc2-evidence", "Evidence Center", "Record monthly evidence, review status, quality, and renewal timing without storing heavy files here.", "soc2Evidence", [["evidenceTitle","Evidence"],["controlArea","Control"],["evidenceStatus","Status"],["evidenceQuality","Quality"],["sourceReliability","Source type"],["nextCollectionDue","Next due"]], "evidence", [["evidenceTitle","Title"],["controlArea","Control area"],["sourceSystem","Source system"],["owner","Owner"],["collectionDate","Collection date","date"],["evidencePeriod","Evidence period"],["evidenceQuality","Quality"],["sourceReliability","Source reliability"],["renewalFrequency","Renewal frequency"],["nextCollectionDue","Next collection due","date"],["link","Link/path"]]); }
+    function soc2PoliciesPageHtml(pageClass) { return soc2TablePageHtml(pageClass, "soc2-policies", "Policies", "Startup-grade policies for operating safely with sensitive legal workflow data and AI output.", "soc2Policies", [["policyName","Policy"],["owner","Owner"],["version","Version"],["status","Status"],["approvalStatus","Approval"],["nextReviewDate","Next review"]], "policy", [["policyName","Policy name"],["owner","Owner"],["version","Version"],["status","Status"],["nextReviewDate","Next review","date"]]); }
 
     function assetLibraryPageHtml(pageClass) {
       const local = state.settings?.localAssets || [];
@@ -9717,7 +15076,7 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const pageId = ["overview", "milestones", "partners", "campaigns", "funnel", "queue", "sources", "assets", "posted", "pilots", "compliance", "reports", "dataroom", "metrics", "settings"].includes(requestedPage) ? requestedPage : "overview";
+      const pageId = ["overview", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(requestedPage) ? requestedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -9729,12 +15088,22 @@ function htmlShell() {
         \${partnersPageHtml(pageClass)}
         \${campaignsPageHtml(pageClass)}
         \${funnelPageHtml(pageClass)}
+        \${contentBankPageHtml(pageClass)}
+        \${pageId === "autonomy" ? autonomyPageHtml(pageClass) : ""}
+        \${pageId === "automation" ? automationInboxPageHtml(pageClass) : ""}
+        \${soc2DashboardPageHtml(pageClass)}
+        \${soc2AccessReviewsPageHtml(pageClass)}
+        \${soc2AuditLogsPageHtml(pageClass)}
+        \${soc2ChangesPageHtml(pageClass)}
+        \${soc2VendorsPageHtml(pageClass)}
+        \${soc2IncidentsPageHtml(pageClass)}
+        \${soc2EvidencePageHtml(pageClass)}
+        \${soc2PoliciesPageHtml(pageClass)}
         <section id="queue" class="grid command \${pageClass("queue")}">
           <div class="panel hero-panel">
             <div>
-              <div class="eyebrow">Today's queue</div>
-              <h1 class="big-title">Make the next good post.</h1>
-              <p class="big-copy">\${fallbackQueue.length || reviewPosts.length} posts need attention. Start with the first card, follow the one next action, and leave the machinery tucked away.</p>
+              <div class="eyebrow">Production</div>
+              <h1 class="big-title">Queue</h1>
             </div>
             \${dailyControlBarHtml(reviewPosts)}
             <div class="toolbar">
@@ -9758,7 +15127,7 @@ function htmlShell() {
                 </select>
               </label>
             </div>
-            \${bulkMode ? \`<div class="bulk-bar"><strong>\${selectedPosts.size} selected</strong><button onclick="bulkMarkReviewed()">Mark reviewed</button><button onclick="bulkCreateFinalPngs()">Create final PNGs</button><button onclick="bulkExportKits()">Export kits</button><button onclick="bulkMarkManualPosted()">Mark manual posted</button></div>\` : ""}
+            \${bulkMode ? \`<div class="bulk-bar"><strong>\${selectedPosts.size} selected</strong><button onclick="bulkMarkReviewed()">Mark reviewed</button><button onclick="bulkCreateFinalPngs()">Create final PNGs</button><button onclick="bulkUploadPublicImages()">Upload public images</button><button onclick="bulkExportKits()">Export kits</button><button onclick="bulkMarkManualPosted()">Mark manual posted</button></div>\` : ""}
             <div class="queue-filter">
               <span class="muted">Queue filter</span>
               <button class="tab \${queueReadinessFilter === "all" ? "active" : ""}" onclick="setQueueReadinessFilter('all')">All \${reviewPosts.length}</button>
@@ -9850,28 +15219,34 @@ function htmlShell() {
         \${dataRoomPageHtml(pageClass)}
         \${metricsDashboardHtml(pageClass)}
         <section id="settings" class="section secondary \${pageClass("settings")}">
-          <details open>
+          <details>
             <summary>Launch setup</summary>
             <div style="margin-top:14px">\${manualModeHtml()}</div>
+            <div style="margin-top:14px">\${storageDiagnosticsHtml()}</div>
             <div style="margin-top:14px">\${linkedInDryTestChecklistHtml()}</div>
             <div style="margin-top:14px">\${dailyRhythmHtml()}</div>
             <div class="grid two" style="margin-top:14px">\${credentialReadinessHtml()}</div>
           </details>
-          <details open>
+          <details>
             <summary>Launch readiness</summary>
             <div style="margin-top:14px">\${launchChecklistHtml()}</div>
           </details>
-          <details open>
+          <details>
             <summary>Assets</summary>
             <p class="muted">Local Wilma poses, backgrounds, and watermark files used by Final PNG rendering.</p>
             <div style="margin-top:14px">\${assetsSettingsHtml()}</div>
           </details>
-          <details open>
+          <details>
             <summary>Backup & Restore</summary>
             <p class="muted">Local safety snapshots for operational data and generated posting files.</p>
             <div style="margin-top:14px">\${backupRestoreHtml()}</div>
           </details>
-          <details open>
+          <details>
+            <summary>Admin seed data</summary>
+            <p class="muted">Optional startup data for the LegalEase six-month operating plan. This adds missing seed records and keeps user-created data.</p>
+            <div style="margin-top:14px">\${sixMonthSeedHtml()}</div>
+          </details>
+          <details>
             <summary>Channels</summary>
             <p class="muted">Connect once. After that, approved scheduled posts can publish without you touching platform settings.</p>
             <div class="grid channel-grid" style="margin-top:14px">\${channelCards()}</div>
@@ -9884,7 +15259,7 @@ function htmlShell() {
               <div class="panel"><h2>Supabase</h2><p><span class="badge \${healthTone}">\${schemaStale ? "Schema update needed" : supabaseHealth?.connected ? "Connected" : "Not connected"}</span></p><p class="muted">\${esc(state.schemaStatus?.detail || supabaseHealth?.error || "No connection errors.")}</p></div>
             </div>
           </details>
-          <details style="margin-top:12px" open>
+          <details style="margin-top:12px">
             <summary>Production setup checklist</summary>
             <p class="muted">This is the shortest path from local MVP to real publishing. It shows status only, never secret values.</p>
             <div class="grid two" style="margin-top:14px">\${setupChecklistHtml()}</div>
@@ -10025,6 +15400,22 @@ function htmlShell() {
       </div>\`;
     }
 
+    function sixMonthSeedHtml() {
+      const summary = state.settings?.sixMonthSeedDataSummary || {};
+      const loadedAt = state.settings?.sixMonthSeedDataLoadedAt || "";
+      const rows = ["milestones", "partners", "campaigns", "pilots", "dataRoomItems", "reports"].map(collection => {
+        const item = summary[collection] || {};
+        return \`<div class="metric-row"><span>\${esc(growthLabel(collection))}</span><strong>\${Number(item.total || growthItems(collection).length || 0)}</strong></div>\`;
+      }).join("");
+      return \`<section class="panel">
+        <h3>LegalEase Six-Month Seed Data</h3>
+        <p class="muted">Loads the real six-month operating plan: milestones, partner targets, campaigns, pilots, data room items, and report templates. Existing records are not overwritten.</p>
+        <button class="primary" onclick="loadSixMonthSeedData()">Load LegalEase six-month seed data</button>
+        <p class="muted">\${loadedAt ? "Last loaded: " + esc(loadedAt) : "Not loaded yet."}</p>
+        <div class="metric-table" style="margin-top:12px">\${rows}</div>
+      </section>\`;
+    }
+
     function formObject(form) {
       const data = Object.fromEntries(new FormData(form).entries());
       for (const key of Object.keys(data)) {
@@ -10043,6 +15434,32 @@ function htmlShell() {
       render();
       return result;
     }
+
+    async function runAutonomyCycle() {
+      try {
+        const result = await api("/api/autonomy/run", { method:"POST", body:JSON.stringify({ executeAutomatic:true }) });
+        state = result.state;
+        toast("Autonomy cycle complete: " + (result.run?.executedCount || 0) + " routine action(s) handled.");
+        render();
+      } catch (error) {
+        toast(error.message || "Could not run autonomy cycle.");
+      }
+    }
+
+    async function updateAutonomyAction(id, action) {
+      try {
+        const result = await api("/api/autonomy/actions/" + encodeURIComponent(id) + "/" + action, { method:"POST", body:JSON.stringify({}) });
+        state = result.state;
+        toast(result.message || "Autonomy action updated.");
+        render();
+      } catch (error) {
+        toast(error.message || "Could not update autonomy action.");
+      }
+    }
+
+    async function approveAutonomyAction(id) { await updateAutonomyAction(id, "approve"); }
+    async function ignoreAutonomyAction(id) { await updateAutonomyAction(id, "ignore"); }
+    async function blockAutonomyAction(id) { await updateAutonomyAction(id, "block"); }
 
     async function saveMilestone(event, id) {
       event.preventDefault();
@@ -10111,6 +15528,224 @@ function htmlShell() {
       event.preventDefault();
       await saveGrowth("dataRoomItems", { ...formObject(event.target), lastUpdated:new Date().toISOString().slice(0, 10) });
       event.target.reset();
+    }
+
+
+    async function saveSoc2(event, collection) {
+      event.preventDefault();
+      const item = formObject(event.target);
+      if (collection === "soc2AccessReviews") item.reviewStatus = item.reviewStatus || "Needs Review";
+      if (collection === "soc2AuditLogs") item.timestamp = item.timestamp || new Date().toISOString();
+      if (collection === "soc2Changes") item.status = item.status || "Draft";
+      if (collection === "soc2Vendors") item.securityReviewStatus = item.securityReviewStatus || "Needs Review";
+      if (collection === "soc2Incidents") item.status = item.status || "Open";
+      if (collection === "soc2Evidence") { item.collectionDate = item.collectionDate || new Date().toISOString().slice(0, 10); item.evidenceStatus = item.evidenceStatus || "Draft"; item.evidenceQuality = item.evidenceQuality || "Acceptable"; item.sourceReliability = item.sourceReliability || "Manual"; item.renewalFrequency = item.renewalFrequency || "Monthly"; item.evidencePeriod = item.evidencePeriod || item.auditPeriod || new Date().toISOString().slice(0, 7); }
+      if (collection === "soc2Policies") item.approvalStatus = item.approvalStatus || "Needs Review";
+      await saveGrowth(collection, item);
+      event.target.reset();
+    }
+
+    async function quickSoc2Review(collection, id) {
+      const item = (state[collection] || []).find(entry => entry.id === id);
+      if (!item) return;
+      const patch = { ...item };
+      if (collection === "soc2AccessReviews") { patch.reviewStatus = "Complete"; patch.lastReviewedDate = new Date().toISOString().slice(0, 10); }
+      if (collection === "soc2Policies") { patch.approvalStatus = "Complete"; patch.lastReviewedDate = new Date().toISOString().slice(0, 10); }
+      if (collection === "soc2Vendors") patch.securityReviewStatus = "Complete";
+      if (collection === "soc2Changes") patch.approvalStatus = "Approved";
+      if (collection === "soc2Incidents") { patch.status = "Closed"; patch.dateResolved = patch.dateResolved || new Date().toISOString().slice(0, 10); }
+      if (collection === "soc2Evidence") { patch.collectionDate = new Date().toISOString().slice(0, 10); patch.evidenceStatus = patch.evidenceStatus || "Ready for Review"; patch.evidenceQuality = patch.evidenceQuality || "Acceptable"; }
+      await saveGrowth(collection, patch);
+    }
+
+    async function generateSoc2EvidenceSnapshot() {
+      const result = await api("/api/soc2/evidence-snapshot", { method:"POST", body:JSON.stringify({}) });
+      state = result.state;
+      toast(result.message || "Evidence snapshot generated.");
+      render();
+      location.hash = "soc2-evidence";
+    }
+
+    async function exportSoc2MarkdownSnapshot() {
+      try {
+        const response = await fetch("/api/soc2/evidence-snapshot/export");
+        if (!response.ok) throw new Error(await response.text());
+        const markdown = await response.text();
+        const disposition = response.headers.get("content-disposition") || "";
+        const match = disposition.match(/filename="?([^";]+)"?/i);
+        const filename = match?.[1] || "legalease-soc2-readiness-snapshot.md";
+        const blob = new Blob([markdown], { type:"text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        toast("Markdown snapshot exported.");
+        await load();
+      } catch (error) {
+        showRenderFailure(error.message || "Could not export Markdown snapshot.", "soc2-markdown-export");
+      }
+    }
+
+    async function loadSixMonthSeedData() {
+      const ok = window.confirm("Load LegalEase six-month seed data? This adds missing seed records and does not overwrite existing user data.");
+      if (!ok) return;
+      const result = await api("/api/growth/seed-six-month-plan", { method:"POST", body:JSON.stringify({ mode:"merge" }) });
+      state = result.state;
+      toast(result.message || "Seed data loaded.");
+      render();
+      location.hash = "overview";
+    }
+
+    function setAutomationFilter(filter) {
+      automationFilter = filter;
+      selectedSuggestions = new Set();
+      render();
+    }
+
+    function toggleSuggestionSelection(id, checked) {
+      if (checked) selectedSuggestions.add(id);
+      else selectedSuggestions.delete(id);
+    }
+
+    async function runAutomationDemoSync() {
+      const result = await api("/api/automation/demo-sync", { method:"POST", body:JSON.stringify({}) });
+      state = result.state;
+      toast(result.message || "Demo sync complete.");
+      automationFilter = "review";
+      selectedSuggestions = new Set();
+      render();
+      location.hash = "automation";
+    }
+
+    function connectGoogle() {
+      window.location.href = "/api/oauth/google_workspace/start";
+    }
+
+    async function syncGmail() {
+      try {
+        const result = await api("/api/automation/sync-gmail", { method:"POST", body:JSON.stringify({}) });
+        state = result.state;
+        toast(result.message || "Gmail sync complete.");
+      } catch (error) {
+        toast(error.message || "Gmail sync failed closed.");
+        await load();
+        return;
+      }
+      automationFilter = "review";
+      selectedSuggestions = new Set();
+      render();
+      location.hash = "automation";
+    }
+
+    async function syncCalendar() {
+      try {
+        const result = await api("/api/automation/sync-calendar", { method:"POST", body:JSON.stringify({}) });
+        state = result.state;
+        toast(result.message || "Calendar sync complete.");
+      } catch (error) {
+        toast(error.message || "Calendar sync failed closed.");
+        await load();
+        return;
+      }
+      automationFilter = "review";
+      selectedSuggestions = new Set();
+      render();
+      location.hash = "automation";
+    }
+
+    async function importAutomationEvents(event) {
+      event.preventDefault();
+      let events = [];
+      try {
+        events = JSON.parse(event.target.events.value || "[]");
+      } catch (error) {
+        toast("Import failed: JSON is not valid.");
+        return;
+      }
+      const result = await api("/api/automation/import-events", {
+        method:"POST",
+        body:JSON.stringify({ events, connector:"manual_import" })
+      });
+      state = result.state;
+      toast(result.message || "Events imported.");
+      event.target.reset();
+      automationFilter = "review";
+      selectedSuggestions = new Set();
+      render();
+    }
+
+    async function approveAutomationSuggestion(id) {
+      const result = await api("/api/automation/suggestions/" + encodeURIComponent(id) + "/approve", { method:"POST", body:JSON.stringify({}) });
+      state = result.state;
+      selectedSuggestions.delete(id);
+      toast(result.message || "Automation suggestion applied.");
+      render();
+    }
+
+    async function ignoreAutomationSuggestion(id) {
+      const result = await api("/api/automation/suggestions/" + encodeURIComponent(id) + "/ignore", { method:"POST", body:JSON.stringify({}) });
+      state = result.state;
+      selectedSuggestions.delete(id);
+      toast(result.message || "Automation suggestion ignored.");
+      render();
+    }
+
+    async function editAutomationSuggestion(id) {
+      const suggestion = (state.automationSuggestions || []).find(item => item.id === id);
+      if (!suggestion) return;
+      const current = JSON.stringify(suggestion.proposedChanges || {}, null, 2);
+      const updated = window.prompt("Edit proposed changes as JSON. This stays pending until approved.", current);
+      if (updated === null) return;
+      let proposedChanges = {};
+      try {
+        proposedChanges = JSON.parse(updated || "{}");
+      } catch (error) {
+        toast("Edit failed: JSON is not valid.");
+        return;
+      }
+      const result = await api("/api/automation/suggestions/" + encodeURIComponent(id) + "/edit", {
+        method:"POST",
+        body:JSON.stringify({ proposedChanges })
+      });
+      state = result.state;
+      toast(result.message || "Automation suggestion edited.");
+      render();
+    }
+
+    async function approveSelectedHighConfidence() {
+      const ids = [...selectedSuggestions].filter(id => {
+        const suggestion = (state.automationSuggestions || []).find(item => item.id === id);
+        return suggestion && suggestion.confidence === "high" && ["pending", "edited"].includes(suggestion.status);
+      });
+      if (!ids.length) {
+        toast("Select at least one pending high-confidence suggestion.");
+        return;
+      }
+      for (const id of ids) await approveAutomationSuggestion(id);
+      selectedSuggestions = new Set();
+      render();
+    }
+
+    async function ignoreSelectedSuggestions() {
+      const ids = [...selectedSuggestions];
+      if (!ids.length) {
+        toast("Select suggestions to ignore.");
+        return;
+      }
+      for (const id of ids) await ignoreAutomationSuggestion(id);
+      selectedSuggestions = new Set();
+      render();
+    }
+
+    function markSelectedSuggestionsReviewed() {
+      const count = selectedSuggestions.size;
+      selectedSuggestions = new Set();
+      toast(count ? "Reviewed. Suggestions remain pending until approved or ignored." : "No suggestions selected.");
+      render();
     }
 
     function renderBrandTab(tab) {
@@ -10380,16 +16015,24 @@ function htmlShell() {
       const channel = (post.targetChannels?.length ? post.targetChannels : [post.platform]).filter(Boolean)[0] || "linkedin";
       const account = channelFor(channel);
       const gate = state.runtime?.livePostingGates?.[channel] || {};
-      const publicRequired = ["instagram", "threads"].includes(channel);
-      const checks = [
+      const serverRun = post.channelDryRuns?.[channel] || post.channelReadiness?.[channel] || null;
+      const publicRequired = ["instagram", "threads", "tiktok"].includes(channel);
+      const publicImageUrl = publicImageUrlForPost(post, image);
+      const localChecks = [
+        { label:"Publisher adapter", ok:channel !== "tiktok", reason:"TikTok connector is not implemented yet." },
         { label:"Live gate", ok:Boolean(gate.enabled), reason:"Missing live gate" },
         { label:"Token/account", ok:Boolean(account.connected || account.status === "connected"), reason:"Missing token or account ID" },
-        { label:"Public URL", ok:!publicRequired || credentialPresent("PUBLIC_APP_BASE_URL"), reason:"Missing public HTTPS URL" },
+        { label:"Public HTTPS image", ok:!publicRequired || publicHttpsUrlReady(publicImageUrl), reason:"Upload public image first" },
+        { label:"Caption", ok:Boolean(composePreviewText(post)), reason:"Caption missing" },
         { label:"Final PNG", ok:finalPngReady(post, image), reason:"Missing final PNG" },
-        { label:"Preview confirmed", ok:Boolean(post.finalPreviewConfirmed || finalPngReady(post, image)), reason:"Preview not confirmed" }
+        { label:"Preview confirmed", ok:Boolean(post.finalPreviewConfirmed), reason:"Preview not confirmed" },
+        { label:"X / Twitter length", ok:channel !== "x" || (post.channelAdaptations?.x?.text || composePreviewText(post)).length <= 280, reason:"X / Twitter copy is over 280 characters." }
       ];
+      const checks = Array.isArray(serverRun?.checks) && serverRun.checks.length
+        ? serverRun.checks.map(check => ({ label:check.label, ok:Boolean(check.ok), reason:check.reason || "Needs setup" }))
+        : localChecks;
       const missing = checks.filter(check => !check.ok).map(check => check.reason);
-      return { channel, account, gate, image, checks, missing, ready:missing.length === 0 };
+      return { channel, account, gate, image, checks, missing, ready:missing.length === 0, serverRun };
     }
 
     function renderPublishConfirmDialog() {
@@ -10408,9 +16051,9 @@ function htmlShell() {
           <div class="modal-grid">
             <div class="publish-preview">\${image?.imageUrl ? \`<img src="\${esc(image.finalPngUrl || image.imageUrl)}" alt="Final PNG preview">\` : '<span class="muted">No final PNG preview</span>'}</div>
             <div>
-              <p class="muted"><strong>Account:</strong> \${esc(readiness.account.accountName || readiness.account.displayName || "not connected")}<br><strong>Post:</strong> \${esc(post.title)}</p>
+              <p class="muted"><strong>Account:</strong> \${esc(readiness.account.accountName || readiness.account.displayName || "not connected")}<br><strong>Post:</strong> \${esc(post.title)}<br><strong>Live gate:</strong> \${readiness.gate.enabled ? "enabled" : "disabled"}\${readiness.serverRun?.message ? \`<br><strong>Diagnostic:</strong> \${esc(readiness.serverRun.message)}\` : ""}</p>
               <p class="post-body">\${esc(composePreviewText(post)).slice(0, 700)}</p>
-              <div class="grid">\${readiness.checks.map(check => \`<div class="metric-row"><span>\${esc(check.label)}</span><span class="badge \${check.ok ? "good" : "danger"}">\${check.ok ? "Ready" : "Missing"}</span></div>\`).join("")}</div>
+              <div class="grid">\${readiness.checks.map(check => \`<div class="metric-row"><span>\${esc(check.label)}\${check.ok ? "" : \`<br><small class="muted">\${esc(check.reason || "Needs setup")}</small>\`}</span><span class="badge \${check.ok ? "good" : "danger"}">\${check.ok ? "Ready" : "Blocked"}</span></div>\`).join("")}</div>
               \${readiness.ready ? '<p class="readiness-card danger"><strong>This will post live.</strong> Confirm only when the caption, image, and account are correct.</p>' : \`<p class="readiness-card warn"><strong>Cannot publish yet.</strong><br>\${esc(readiness.missing.join(" · "))}</p>\`}
             </div>
           </div>
@@ -10444,6 +16087,26 @@ function htmlShell() {
       }
       selectedPosts = new Set();
       render();
+    }
+
+    async function bulkUploadPublicImages() {
+      const targets = Array.from(selectedPosts);
+      if (!targets.length) {
+        toast("Select at least one post with a final PNG.");
+        return;
+      }
+      try {
+        const result = await api("/api/posts/batch-upload-public-images", {
+          method:"POST",
+          body:JSON.stringify({ ids:targets })
+        });
+        state = result.state;
+        selectedPosts = new Set();
+        render();
+        toast(result.message || "Public image upload finished.");
+      } catch (error) {
+        toast(error.message || "Public image upload blocked.");
+      }
     }
 
     async function bulkExportKits() {
@@ -10537,6 +16200,216 @@ function htmlShell() {
       state = result.state;
       render();
       toast(result.message || "Tomorrow's 3-post queue created");
+    }
+
+    function selectedContentIdeaIds() {
+      return Array.from(document.querySelectorAll(".content-idea-select:checked")).map(input => input.value);
+    }
+
+    async function cooAction(run, fallbackMessage = "Action failed.") {
+      try {
+        return await run();
+      } catch (error) {
+        console.error(error);
+        toast(error.message || fallbackMessage);
+        return null;
+      }
+    }
+
+    async function importContentBank(event) {
+      event.preventDefault();
+      return cooAction(async () => {
+        const ideas = new FormData(event.target).get("ideas") || "";
+        const result = await api("/api/content-bank/import", {
+          method:"POST",
+          body:JSON.stringify({ text:ideas })
+        });
+        state = result.state;
+        render();
+        toast("Saved " + (result.imported || 0) + " ideas");
+      }, "Could not save ideas.");
+    }
+
+    async function generateContentBank(options = {}) {
+      return cooAction(async () => {
+        const result = await api("/api/content-bank/generate", {
+          method:"POST",
+          body:JSON.stringify({ mode:contentBankDraftMode, ...options })
+        });
+        state = result.state;
+        render();
+        const fallback = result.fallbackCount ? " · " + result.fallbackCount + " local fallback" : "";
+        toast("Generated " + (result.generated || 0) + " drafts for approval" + fallback);
+      }, "Could not generate drafts.");
+    }
+
+    async function generateSelectedContentBank() {
+      const ids = selectedContentIdeaIds();
+      if (!ids.length) {
+        toast("Select ideas first");
+        return;
+      }
+      await generateContentBank({ ids, limit:ids.length });
+    }
+
+    async function sendSelectedContentBankToQueue() {
+      const ids = selectedContentIdeaIds();
+      if (!ids.length) {
+        toast("Select ideas first");
+        return;
+      }
+      return cooAction(async () => {
+        const result = await api("/api/content-bank/send-to-queue", {
+          method:"POST",
+          body:JSON.stringify({ ids })
+        });
+        state = result.state;
+        render();
+        toast("Sent " + (result.queued || 0) + " drafts to Queue");
+      }, "Could not send ideas to Queue.");
+    }
+
+    async function archiveSelectedContentBank() {
+      const ids = selectedContentIdeaIds();
+      if (!ids.length) {
+        toast("Select ideas first");
+        return;
+      }
+      if (!window.confirm("Archive " + ids.length + " selected idea(s)? This hides them from planning but does not delete files.")) return;
+      return cooAction(async () => {
+        const result = await api("/api/content-bank/archive", {
+          method:"POST",
+          body:JSON.stringify({ ids })
+        });
+        state = result.state;
+        render();
+        toast("Archived " + (result.archived || 0) + " ideas");
+      }, "Could not archive ideas.");
+    }
+
+    function selectAllContentIdeas() {
+      const boxes = Array.from(document.querySelectorAll(".content-idea-select"));
+      const shouldSelect = boxes.some(input => !input.checked);
+      boxes.forEach(input => { input.checked = shouldSelect; });
+    }
+
+    function setContentBankFilter(key, value) {
+      contentBankFilters = { ...contentBankFilters, [key]: value };
+      render();
+    }
+
+    function setContentBankDraftMode(mode) {
+      contentBankDraftMode = mode === "ai" ? "ai" : "local";
+      render();
+    }
+
+    function toggleContentBankThisWeek() {
+      contentBankFilters = { ...contentBankFilters, thisWeek: !contentBankFilters.thisWeek };
+      render();
+    }
+
+    function clearContentBankFilters() {
+      contentBankFilters = { status:"all", campaign:"all", bucket:"all", platform:"all", wilma:"all", risk:"all", thisWeek:false };
+      render();
+    }
+
+    function selectedApprovalIds() {
+      return Array.from(document.querySelectorAll(".approval-select:checked")).map(input => input.value);
+    }
+
+    function selectAllApprovalItems() {
+      const boxes = Array.from(document.querySelectorAll(".approval-select"));
+      const shouldSelect = boxes.some(input => !input.checked);
+      boxes.forEach(input => { input.checked = shouldSelect; });
+    }
+
+    async function batchApproval(action, payload = {}) {
+      const ids = selectedApprovalIds();
+      if (!ids.length) {
+        toast("Select approval items first");
+        return;
+      }
+      return cooAction(async () => {
+        const result = await api("/api/approval/batch-" + action, {
+          method:"POST",
+          body:JSON.stringify({ ids, ...payload })
+        });
+        state = result.state;
+        render();
+        toast(result.message || "Approval batch updated");
+      }, "Could not update selected approvals.");
+    }
+
+    async function batchApproveItems() {
+      await batchApproval("approve");
+    }
+
+    async function batchBlockItems() {
+      const reason = prompt("Why are these blocked?") || "Blocked by operator.";
+      await batchApproval("block", { reason });
+    }
+
+    async function batchSendApprovalToQueue() {
+      await batchApproval("send-to-queue");
+    }
+
+    async function batchArchiveApprovalItems() {
+      const ids = selectedApprovalIds();
+      if (!ids.length) {
+        toast("Select approval items first");
+        return;
+      }
+      if (!window.confirm("Archive " + ids.length + " approval item(s)? This is a soft archive and does not delete exports.")) return;
+      await batchApproval("archive");
+    }
+
+    async function createWeeklyEvidencePack() {
+      return cooAction(async () => {
+        const result = await api("/api/reports/weekly-evidence-pack", { method:"POST" });
+        state = result.state;
+        render();
+        toast(result.message || "Weekly evidence pack exported");
+      }, "Could not export weekly evidence pack.");
+    }
+
+    async function rebuildPriorities() {
+      return cooAction(async () => {
+        const result = await api("/api/priority/rebuild", { method:"POST" });
+        state = result.state;
+        render();
+        toast(result.message || "Priorities refreshed");
+      }, "Could not refresh priorities.");
+    }
+
+    async function approveItem(id) {
+      return cooAction(async () => {
+        const result = await api("/api/approval/" + encodeURIComponent(id) + "/approve", { method:"POST" });
+        state = result.state;
+        render();
+        toast(result.message || "Approved");
+      }, "Could not approve item.");
+    }
+
+    async function blockItem(id) {
+      const reason = prompt("Why is this blocked?") || "Blocked by operator.";
+      return cooAction(async () => {
+        const result = await api("/api/approval/" + encodeURIComponent(id) + "/block", {
+          method:"POST",
+          body:JSON.stringify({ reason })
+        });
+        state = result.state;
+        render();
+        toast(result.message || "Blocked");
+      }, "Could not block item.");
+    }
+
+    async function sendApprovalToQueue(id) {
+      return cooAction(async () => {
+        const result = await api("/api/approval/" + encodeURIComponent(id) + "/send-to-queue", { method:"POST" });
+        state = result.state;
+        render();
+        toast(result.message || "Sent to Queue");
+      }, "Could not send item to Queue.");
     }
 
     async function runLinkedInDryTest() {
@@ -10792,7 +16665,7 @@ function htmlShell() {
       render();
       toast("Generating image...");
       try {
-        const result = await api("/api/images/generate", { method:"POST", body:JSON.stringify({ postId:id, ...overrides }) });
+        const result = await api("/api/images/generate", { method:"POST", body:JSON.stringify({ postId:id, ...overrides }), timeoutMs:120000 });
         if (result.state) state = result.state;
         if (result.image) {
           state.postImages = [
@@ -10803,7 +16676,11 @@ function htmlShell() {
           await load();
         }
         const image = result.image || imageForPost(id);
-        toast(image?.rateLimited ? (image.generationError || "Image API cooling down. Try again shortly.") : "Image regenerated");
+        toast(image?.generationStatus !== "generated"
+          ? (image?.generationError || result.message || "OpenAI image generation needs setup.")
+          : image?.rateLimited
+            ? (image.generationError || "Image API cooling down. Try again shortly.")
+            : (result.message || "OpenAI image generated"));
       } catch (error) {
         toast("Image generation failed. See image card.");
         console.error(error);
@@ -10811,6 +16688,34 @@ function htmlShell() {
         generatingImages.delete(id);
         render();
       }
+    }
+
+    async function regenerateAIDraft(id) {
+      await cooAction(async () => {
+        toast("Regenerating AI draft...");
+        const result = await api("/api/posts/" + encodeURIComponent(id) + "/regenerate-ai-draft", {
+          method:"POST",
+          timeoutMs:120000
+        });
+        state = result.state;
+        render();
+        toast(result.fallback
+          ? "AI failed; local fallback draft saved."
+          : (result.message || "AI draft regenerated."));
+      }, "Could not regenerate AI draft.");
+    }
+
+    async function regenerateImageWithLane(id) {
+      const lane = document.getElementById("image-lane-" + id)?.value || "";
+      const artisticTreatment = document.getElementById("image-treatment-" + id)?.value || "";
+      await regenerateImage(id, {
+        ...(lane ? { visualLane: lane } : {}),
+        ...(artisticTreatment ? { artisticTreatment } : {})
+      });
+    }
+
+    async function surpriseImageLane(id) {
+      await regenerateImage(id, { visualLane: "surprise" });
     }
 
     async function uploadImage(id, input) {
@@ -10846,6 +16751,32 @@ function htmlShell() {
       state = result.state;
       render();
       toast(result.message || "Image finalized");
+    }
+
+    async function uploadPublicImage(id) {
+      try {
+        const result = await api(\`/api/posts/\${id}/upload-public-image\`, { method:"POST" });
+        state = result.state;
+        render();
+        toast(result.message || "Public image uploaded");
+      } catch (error) {
+        toast(error.message || "Public image upload blocked.");
+      }
+    }
+
+    async function runStorageDiagnostics() {
+      try {
+        const result = await api("/api/storage/diagnostics", { method:"POST" });
+        const status = result.uploadPermissionWorks
+          ? "Supabase Storage upload works."
+          : result.configured
+            ? (result.error || "Storage is configured, but upload permission did not pass.")
+            : result.message;
+        toast(status);
+        await load();
+      } catch (error) {
+        toast(error.message || "Storage diagnostics failed.");
+      }
     }
 
     async function confirmPreview(id) {
@@ -10899,8 +16830,17 @@ function htmlShell() {
     }
 
     async function publishNow(id) {
-      pendingPublishId = id;
-      renderPublishConfirmDialog();
+      try {
+        const result = await api(\`/api/posts/\${encodeURIComponent(id)}/publishing-check\`, { method:"POST" });
+        state = result.state;
+        pendingPublishId = id;
+        render();
+        renderPublishConfirmDialog();
+      } catch (error) {
+        pendingPublishId = id;
+        renderPublishConfirmDialog();
+        toast((error?.message || "Could not run publish diagnostics").slice(0, 180));
+      }
     }
 
     async function confirmPublishNow(id) {
@@ -11186,7 +17126,14 @@ function htmlShell() {
       URL.revokeObjectURL(url);
     }
 
-    window.addEventListener("hashchange", () => render());
+    window.addEventListener("hashchange", () => {
+      try {
+        window.__LE_BOOT.stage = "route-render";
+        render();
+      } catch (error) {
+        showRenderFailure(error.message || "Route render failed.", "route-render");
+      }
+    });
     window.addEventListener("keydown", event => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -11205,6 +17152,13 @@ function htmlShell() {
 
 async function handleRequest(request, response) {
   const url = new URL(request.url ?? "/", `http://${request.headers.host}`);
+  const accessDecision = authorizeRequest(request, url, process.env);
+  if (!accessDecision.ok) {
+    await logAccessDecision(accessDecision, url);
+    if (request.method === "GET" && url.pathname === "/") sendAuthRequired(response, accessDecision);
+    else sendJson(response, { error: accessDecision.reason, requiredPermission: accessDecision.requiredPermission, actor: publicActor(accessDecision.actor) }, accessDecision.status || 403);
+    return;
+  }
 
 	  if (url.pathname.startsWith("/assets/") && request.method === "GET") {
 	    await serveAsset(url.pathname, response);
@@ -11212,6 +17166,11 @@ async function handleRequest(request, response) {
 	  }
 
 	  if (url.pathname.startsWith("/data/exports/final-pngs/") && request.method === "GET") {
+	    await serveAsset(url.pathname, response);
+	    return;
+	  }
+
+	  if (url.pathname.startsWith("/data/exports/openai-images/") && request.method === "GET") {
 	    await serveAsset(url.pathname, response);
 	    return;
 	  }
@@ -11237,8 +17196,249 @@ async function handleRequest(request, response) {
 	    return;
 	  }
 
+	  if (url.pathname === "/api/health" && request.method === "GET") {
+    const supabaseDb = await getSupabaseHealth();
+    const storageDiagnostics = await diagnoseSupabaseStorage({ testUpload: false });
+    const hostingConfig = storageRuntimeConfig();
+    sendJson(response, {
+      appRunning: true,
+      timestamp: new Date().toISOString(),
+      storageBackend: hostingConfig.activeStorageBackend,
+      requestedStorageBackend: hostingConfig.requestedStorageBackend,
+      localDemoMode: hostingConfig.localDemoMode,
+      appBaseUrl: appBaseUrl(),
+      supabaseDbConfigured: Boolean(supabaseDb.configured),
+      supabaseDbConnected: Boolean(supabaseDb.connected),
+      supabaseDbMode: supabaseDb.mode || "unknown",
+      supabaseDbTable: supabaseDb.table || hostingConfig.supabaseRecordsTable,
+      supabaseDbError: supabaseDb.connected ? "" : String(supabaseDb.error || "").slice(0, 300),
+      supabaseStorageConfigured: Boolean(storageDiagnostics.configured),
+      supabaseStorageConnected: Boolean(storageDiagnostics.bucketReachable),
+      supabaseStorageBucket: storageDiagnostics.bucket,
+      supabaseStoragePublic: storageDiagnostics.bucketPublic,
+      supabaseStorageError: storageDiagnostics.bucketReachable ? "" : String(storageDiagnostics.error || "").slice(0, 300),
+      openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
+      liveGatesCount: Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length
+    });
+    return;
+  }
+
 	  if (url.pathname === "/api/state" && request.method === "GET") {
     sendJson(response, withPublicChannelSetup(await store.readState()));
+    return;
+  }
+
+  if (url.pathname === "/api/coo-brief" && request.method === "GET") {
+    const state = analyzeOperations(await store.readState());
+    sendJson(response, { cooBrief: state.cooBrief || {}, state: withPublicChannelSetup(state) });
+    return;
+  }
+
+  if (url.pathname === "/api/autonomy/status" && request.method === "GET") {
+    const currentState = analyzeOperations(await store.readState());
+    const report = buildAutonomyReport(currentState);
+    const governance = buildAutonomyGovernance(currentState);
+    sendJson(response, { ...report, governance, state: withPublicChannelSetup(currentState) });
+    return;
+  }
+
+  if (url.pathname === "/api/autonomy/check" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const governance = buildAutonomyGovernance(analyzeOperations(await store.readState()));
+      const candidate = governance.actions.find((action) => action.actionType === input.actionType || action.id === input.id) || {
+        actionType: input.actionType || "unknown",
+        title: input.title || "Ad hoc autonomy check",
+        decisionClass: "approval_required",
+        approvalPolicy: "approval_required",
+        requiredRole: "Owner",
+        blockedReason: ""
+      };
+      sendJson(response, { ok: candidate.approvalPolicy !== "never_execute", decision: candidate, governance: { safetyRails: governance.safetyRails, roleMatrix: governance.roleMatrix } });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not run autonomy check." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/autonomy/run" && request.method === "POST") {
+    try {
+      const payload = await readJson(request);
+      const result = await runAutonomyCycle({ executeAutomatic: payload.executeAutomatic !== false });
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not run autonomy cycle." }, 400);
+    }
+    return;
+  }
+
+  const autonomyAction = url.pathname.match(/^\/api\/autonomy\/actions\/([^/]+)\/(approve|ignore|block)$/);
+  if (autonomyAction && request.method === "POST") {
+    try {
+      const patch = request.headers["content-length"] === "0" ? {} : await readJson(request);
+      const result = await updateAutonomyAction(decodeURIComponent(autonomyAction[1]), autonomyAction[2], patch || {});
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update autonomy action." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/priority/rebuild" && request.method === "POST") {
+    try {
+      const result = await rebuildPriorityState();
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not rebuild priorities." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/content-bank/import" && request.method === "POST") {
+    try {
+      const result = await importContentBankIdeas(await readJson(request));
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not import content ideas." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/content-bank/generate" && request.method === "POST") {
+    try {
+      const result = await generateContentBankDrafts(await readJson(request));
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not generate content drafts." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/content-bank/send-to-queue" && request.method === "POST") {
+    try {
+      const result = await sendContentBankIdeasToQueue(await readJson(request));
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not send ideas to Queue." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/content-bank/archive" && request.method === "POST") {
+    try {
+      const result = await archiveContentBankIdeas(await readJson(request));
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not archive ideas." }, 400);
+    }
+    return;
+  }
+
+  const batchApprovalAction = url.pathname.match(/^\/api\/approval\/batch-(approve|block|send-to-queue|archive)$/);
+  if (batchApprovalAction && request.method === "POST") {
+    try {
+      const payload = await readJson(request);
+      const result = await updateApprovalItems(payload.ids || [], batchApprovalAction[1], payload || {});
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update approval items." }, 400);
+    }
+    return;
+  }
+
+  const approvalAction = url.pathname.match(/^\/api\/approval\/([^/]+)\/(approve|block|edit|send-to-queue)$/);
+  if (approvalAction && request.method === "POST") {
+    try {
+      const patch = request.headers["content-length"] === "0" ? {} : await readJson(request);
+      const result = await updateApprovalItem(decodeURIComponent(approvalAction[1]), approvalAction[2], patch || {});
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update approval item." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/reports/weekly-evidence-pack" && request.method === "POST") {
+    try {
+      const result = await exportWeeklyEvidencePack();
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not export weekly evidence pack." }, 400);
+    }
+    return;
+  }
+
+
+  if (url.pathname === "/api/soc2/readiness" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, { readiness: soc2ReadinessForState(currentState) });
+    return;
+  }
+
+  if (url.pathname === "/api/soc2/evidence-snapshot" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, soc2EvidenceSnapshotForState(currentState));
+    return;
+  }
+
+  if (url.pathname === "/api/soc2/evidence-snapshot/export" && request.method === "GET") {
+    try {
+      const result = await exportSoc2MarkdownSnapshot();
+      response.writeHead(200, {
+        "content-type": "text/markdown; charset=utf-8",
+        "content-disposition": "attachment; filename=\"" + result.filename + "\""
+      });
+      response.end(result.markdown);
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not export SOC 2 Markdown snapshot." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/soc2/evidence-snapshot" && request.method === "POST") {
+    try {
+      const snapshotState = await store.readState();
+      const snapshot = soc2EvidenceSnapshotForState(snapshotState);
+      const title = "SOC 2 Readiness Snapshot - " + snapshot.month;
+      const markdownExport = await exportSoc2MarkdownSnapshot();
+      const result = await upsertGrowthItem("soc2Evidence", {
+        evidenceTitle: title,
+        controlArea: "Evidence Collection",
+        sourceSystem: "LegalEase Operating System",
+        owner: "Operations",
+        collectionDate: new Date().toISOString().slice(0, 10),
+        auditPeriod: snapshot.month,
+        evidencePeriod: snapshot.month,
+        evidenceStatus: "Ready for Review",
+        reviewer: "Operations",
+        evidenceQuality: "Acceptable",
+        sourceReliability: "System Generated",
+        renewalFrequency: "Monthly",
+        nextCollectionDue: addMonthsIso(new Date(), 1),
+        link: "/api/soc2/evidence-snapshot/export",
+        artifactFilename: markdownExport.filename,
+        artifactPath: markdownExport.relativePath,
+        generatedAt: markdownExport.generatedAt,
+        exportEndpoint: "/api/soc2/evidence-snapshot/export",
+        status: "Complete",
+        notes: "Readiness " + snapshot.readinessScore + "%. Missing evidence areas: " + (snapshot.missingEvidenceAreas.join(", ") || "none") + ". Markdown artifact: " + markdownExport.relativePath + "."
+      });
+      sendJson(response, { snapshot, ...result, state: withPublicChannelSetup(result.state), message: title + " created." });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not generate SOC 2 evidence snapshot." }, 400);
+    }
+    return;
+  }
+
+  const soc2EvidenceReview = url.pathname.match(/^\/api\/soc2\/evidence\/([^/]+)\/review$/);
+  if (soc2EvidenceReview && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const result = await reviewSoc2Evidence(decodeURIComponent(soc2EvidenceReview[1]), input || {});
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update evidence review." }, 400);
+    }
     return;
   }
 
@@ -11275,6 +17475,109 @@ async function handleRequest(request, response) {
     return;
   }
 
+  if (url.pathname === "/api/growth/seed-six-month-plan" && request.method === "POST") {
+    try {
+      const { force } = await readJson(request);
+      const result = await seedSixMonthPlan({ force: Boolean(force) });
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not load seed data." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/automation/events" && request.method === "GET") {
+    const state = await store.readState();
+    sendJson(response, {
+      events: state.automationEvents || [],
+      connectorStatus: defaultConnectorStatus(state),
+      syncRuns: state.syncRuns || []
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/automation/suggestions" && request.method === "GET") {
+    const state = await store.readState();
+    sendJson(response, {
+      suggestions: state.automationSuggestions || [],
+      events: state.automationEvents || [],
+      connectorStatus: defaultConnectorStatus(state),
+      syncRuns: state.syncRuns || []
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/automation/demo-sync" && request.method === "POST") {
+    try {
+      const result = await runAutomationDemoSync();
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not run demo sync." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/automation/sync-gmail" && request.method === "POST") {
+    try {
+      const result = await syncGmailReadOnly();
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) }, result.failedClosed ? 400 : 200);
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not sync Gmail." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/automation/sync-calendar" && request.method === "POST") {
+    try {
+      const result = await syncCalendarReadOnly();
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) }, result.failedClosed ? 400 : 200);
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not sync Google Calendar." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/automation/import-events" && request.method === "POST") {
+    try {
+      const { events, connector } = await readJson(request);
+      const result = await importAutomationEvents(events || [], connector || "manual_import");
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not import automation events." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/events/product" && request.method === "POST") {
+    try {
+      const payload = await readJson(request);
+      const result = await receiveProductEvent(payload || {}, request);
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) }, result.importedCount ? 202 : 200);
+    } catch (error) {
+      const message = error.message || "Product event rejected.";
+      sendJson(response, { error: message }, /secret|signature|configured/i.test(message) ? 401 : 400);
+    }
+    return;
+  }
+
+  const automationSuggestionAction = url.pathname.match(/^\/api\/automation\/suggestions\/([^/]+)\/(approve|ignore|edit)$/);
+  if (automationSuggestionAction && request.method === "POST") {
+    try {
+      const id = decodeURIComponent(automationSuggestionAction[1]);
+      const action = automationSuggestionAction[2];
+      const input = await readJson(request);
+      const result = action === "approve"
+        ? await approveAutomationSuggestion(id, input?.proposedChanges || null)
+        : action === "ignore"
+          ? await ignoreAutomationSuggestion(id)
+          : await editAutomationSuggestion(id, input?.proposedChanges || {});
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update automation suggestion." }, 400);
+    }
+    return;
+  }
+
   if (url.pathname === "/api/channels" && request.method === "GET") {
     const channels = safeChannelsResponse(await store.readState()).map((channel) => ({
       channel: channel.channel,
@@ -11296,6 +17599,80 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/health/supabase" && request.method === "GET") {
     sendJson(response, await getSupabaseHealth());
+    return;
+  }
+
+  if (url.pathname === "/api/storage/diagnostics" && request.method === "GET") {
+    sendJson(response, await diagnoseSupabaseStorage({ testUpload: false }));
+    return;
+  }
+
+  if (url.pathname === "/api/storage/debug" && request.method === "GET") {
+    const diagnostics = await diagnoseSupabaseStorage({ testUpload: false });
+    sendJson(response, {
+      envConfigured: Boolean(diagnostics.configured),
+      urlHostname: diagnostics.hostname,
+      expectedHostname: diagnostics.expectedHostname,
+      hostnameLooksValid: diagnostics.hostnameLooksValid,
+      bucketName: diagnostics.bucket,
+      serviceRoleKeyPresent: diagnostics.serviceRoleKeyPresent,
+      serviceRoleKeyFormat: diagnostics.serviceRoleKeyFormat,
+      serviceRoleKeyRole: diagnostics.serviceRoleKeyRole,
+      serviceRoleKeyLooksUsable: diagnostics.serviceRoleKeyLooksUsable,
+      bucketReachable: Boolean(diagnostics.bucketReachable),
+      bucketPublic: diagnostics.bucketPublic,
+      uploadTestPossible: Boolean(diagnostics.uploadTestPossible),
+      lastErrorMessage: diagnostics.error || ""
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/storage/diagnostics" && request.method === "POST") {
+    sendJson(response, await diagnoseSupabaseStorage({ testUpload: true }));
+    return;
+  }
+
+  if (url.pathname === "/api/debug/env" && request.method === "GET") {
+    sendJson(response, { ...openAIImageEnvStatus(), ...openAIDraftEnvStatus() });
+    return;
+  }
+
+  if (url.pathname === "/api/debug/openai-image-test" && request.method === "POST") {
+    const timestamp = new Date().toISOString();
+    const env = openAIImageEnvStatus();
+    const result = await generateOpenAICreativeImage(
+      "simple abstract legal-tech background, no text, no letters, no words, clean modern composition",
+      "1:1",
+      []
+    );
+    if (!result.imageUrl) {
+      sendJson(response, {
+        ok: false,
+        model: env.openaiImageModel,
+        timestamp,
+        ...(result.errorDetails || {
+          errorCode: "OPENAI_IMAGE_GENERATION_FAILED",
+          safeMessage: result.error || "Image generation failed. Check server logs.",
+          apiKeyPresent: env.openaiKeyPresent,
+          fallbackEnabled: env.allowLocalImageFallback
+        })
+      }, 200);
+      return;
+    }
+    try {
+      const saved = await saveDebugOpenAIImage(result.imageUrl);
+      sendJson(response, {
+        ok: true,
+        model: env.openaiImageModel,
+        filePath: saved.filePath,
+        size: saved.size,
+        timestamp
+      });
+    } catch (error) {
+      const details = openAIErrorDetails({ message: error.message || "Could not save OpenAI test image.", route:"openai_image_debug_save" });
+      logOpenAIImageFailure(details, error);
+      sendJson(response, { ...details, model: env.openaiImageModel }, 500);
+    }
     return;
   }
 
@@ -11412,7 +17789,24 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/images/generate" && request.method === "POST") {
     const { postId, ...overrides } = await readJson(request);
     const result = await generateImageForPost(postId, overrides);
-    sendJson(response, { image: result.image, message: result.message || "Image generated." });
+    sendJson(response, {
+      ok: result.ok,
+      state: result.state ? withPublicChannelSetup(result.state) : undefined,
+      image: result.image,
+      error: result.error,
+      message: result.message || (result.ok ? "Image generated." : "OpenAI image generation failed.")
+    });
+    return;
+  }
+
+  const regenerateAIDraft = url.pathname.match(/^\/api\/posts\/([^/]+)\/regenerate-ai-draft$/);
+  if (regenerateAIDraft && request.method === "POST") {
+    try {
+      const result = await regenerateAIDraftForPost(decodeURIComponent(regenerateAIDraft[1]));
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not regenerate AI draft." }, 400);
+    }
     return;
   }
 
@@ -11485,6 +17879,28 @@ async function handleRequest(request, response) {
     return;
   }
 
+  const uploadPublicImage = url.pathname.match(/^\/api\/posts\/([^/]+)\/upload-public-image$/);
+  if (uploadPublicImage && request.method === "POST") {
+    try {
+      const result = await uploadPostFinalPngToStorage(decodeURIComponent(uploadPublicImage[1]));
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: safeSupabaseError(error) }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/posts/batch-upload-public-images" && request.method === "POST") {
+    try {
+      const payload = await readJson(request);
+      const result = await batchUploadPublicImages(payload.ids || []);
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) }, result.failed ? 207 : 200);
+    } catch (error) {
+      sendJson(response, { error: safeSupabaseError(error) }, 400);
+    }
+    return;
+  }
+
   const exportPackage = url.pathname.match(/^\/api\/posts\/([^/]+)\/export-posting-package$/);
   if (exportPackage && request.method === "POST") {
     try {
@@ -11541,7 +17957,7 @@ async function handleRequest(request, response) {
         message: result.message
       });
     } catch (error) {
-      sendJson(response, { error: error.message || "Could not publish post." }, 400);
+      sendJson(response, { error: error.message || "Could not publish post.", readiness: error.readiness || null }, 400);
     }
     return;
   }
@@ -11710,6 +18126,20 @@ async function handleRequest(request, response) {
   const oauthStart = url.pathname.match(/^\/api\/oauth\/([^/]+)\/start$/);
   if (oauthStart && request.method === "GET") {
     const platform = oauthStart[1];
+    if (platform === "google_workspace") {
+      if (!googleOAuthConfigured()) {
+        sendJson(response, { error:"Google OAuth setup required.", missing_env_vars: googleOAuthMissingEnv() }, 400);
+        return;
+      }
+      if (!process.env.OAUTH_TOKEN_ENCRYPTION_KEY) {
+        sendJson(response, { error:"OAUTH_TOKEN_ENCRYPTION_KEY is required before connecting Google." }, 400);
+        return;
+      }
+      const state = signOAuthState(platform);
+      response.writeHead(302, { location: googleAuthorizationUrl({ state }) });
+      response.end();
+      return;
+    }
     if (!platforms.includes(platform)) {
       sendJson(response, { error: "Unsupported platform." }, 400);
       return;
@@ -11740,6 +18170,81 @@ async function handleRequest(request, response) {
   const oauthCallback = url.pathname.match(/^\/api\/oauth\/([^/]+)\/callback$/);
   if (oauthCallback && request.method === "GET") {
     const platform = oauthCallback[1];
+    if (platform === "google_workspace") {
+      if (url.searchParams.get("error")) {
+        const state = await store.updateSocialAccount(platform, {
+          status:"error",
+          displayName:"Google Workspace",
+          lastErrorSummary:"Google OAuth provider returned an error.",
+          lastError:url.searchParams.get("error_description") || url.searchParams.get("error") || "Google OAuth provider returned an error.",
+          lastTestedAt:new Date().toISOString(),
+          oauthConfigured:googleOAuthConfigured()
+        });
+        sendJson(response, { state: withPublicChannelSetup(state), message:"Google OAuth provider returned an error." }, 400);
+        return;
+      }
+      const verified = verifyOAuthState(platform, url.searchParams.get("state"));
+      if (!verified.ok) {
+        const state = await store.updateSocialAccount(platform, {
+          status:"error",
+          displayName:"Google Workspace",
+          lastErrorSummary:verified.error,
+          lastError:verified.error,
+          lastTestedAt:new Date().toISOString(),
+          oauthConfigured:googleOAuthConfigured()
+        });
+        sendJson(response, { state: withPublicChannelSetup(state), message: verified.error }, 400);
+        return;
+      }
+      if (!url.searchParams.get("code")) {
+        sendJson(response, { channel:platform, status:"error", message:"Google OAuth callback is missing an authorization code." }, 400);
+        return;
+      }
+      try {
+        const tokenPayload = await exchangeGoogleCode(url.searchParams.get("code"));
+        const profile = await fetchGoogleUserInfo(tokenPayload.access_token);
+        const existingAccount = (await store.readState()).socialAccounts?.find((account) => account.platform === platform) || {};
+        const accountName = profile.email || profile.name || "Google account";
+        const tokenExpiresAt = tokenPayload.expires_in ? new Date(Date.now() + Number(tokenPayload.expires_in) * 1000).toISOString() : "";
+        let state = await store.updateSocialAccount(platform, {
+          status:"connected",
+          displayName:"Google Workspace",
+          accountName,
+          accountId:profile.sub || "",
+          externalAccountId:profile.sub || "",
+          accessTokenEncrypted:encryptToken(tokenPayload.access_token || ""),
+          refreshTokenEncrypted:tokenPayload.refresh_token ? encryptToken(tokenPayload.refresh_token) : existingAccount.refreshTokenEncrypted || "",
+          tokenExpiresAt,
+          connectedAt:new Date().toISOString(),
+          lastTestStatus:"connected",
+          lastTestMessage:"Google connected read-only for Gmail and Calendar.",
+          lastErrorSummary:"",
+          lastError:"",
+          lastTestedAt:new Date().toISOString(),
+          oauthConfigured:true,
+          scopes:googleReadOnlyScopes
+        });
+        const withGmailStatus = { ...state, connectorStatus: connectorStatusPatch(state, "gmail", { configured:true, enabled:true, lastSyncStatus:"connected", lastError:"" }) };
+        state = { ...withGmailStatus, connectorStatus: connectorStatusPatch(withGmailStatus, "calendar", { configured:true, enabled:true, lastSyncStatus:"connected", lastError:"" }) };
+        await store.writeState(state);
+        response.writeHead(302, { location:"/?v=google-connected#automation" });
+        response.end();
+      } catch (error) {
+        const safeError = safeGoogleError(error);
+        const state = await store.updateSocialAccount(platform, {
+          status:"error",
+          displayName:"Google Workspace",
+          lastErrorSummary:safeError,
+          lastError:safeError,
+          lastTestStatus:"error",
+          lastTestMessage:safeError,
+          lastTestedAt:new Date().toISOString(),
+          oauthConfigured:googleOAuthConfigured()
+        });
+        sendJson(response, { state: withPublicChannelSetup(state), channel:platform, status:"error", message:safeError }, 400);
+      }
+      return;
+    }
     if (!platforms.includes(platform)) {
       sendJson(response, { error: "Unsupported platform." }, 400);
       return;
@@ -11897,6 +18402,7 @@ const server = http.createServer((request, response) => {
   });
 });
 
-server.listen(port, () => {
-  console.log(`LegalEase preview server ready at http://localhost:${port} (${store.kind} persistence)`);
+server.listen(port, host, () => {
+  console.log(`LegalEase preview server ready at http://${host}:${port} (${store.kind} persistence)`);
+  logOpenAIImageConfigStatus();
 });

@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: legalease-command-center
+    env: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm run start:production
+    healthCheckPath: /api/health
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOCAL_DEMO_MODE
+        value: "false"
+      - key: STORAGE_BACKEND
+        value: supabase
+      - key: SUPABASE_STORAGE_BUCKET
+        value: social-assets
+      - key: ENABLE_LIVE_LINKEDIN_POSTING
+        value: "false"
+      - key: ENABLE_LIVE_FACEBOOK_POSTING
+        value: "false"
+      - key: ENABLE_LIVE_INSTAGRAM_POSTING
+        value: "false"
+      - key: ENABLE_LIVE_X_POSTING
+        value: "false"
+      - key: ENABLE_LIVE_TIKTOK_POSTING
+        value: "false"
+      - key: ENABLE_LIVE_THREADS_POSTING
+        value: "false"
