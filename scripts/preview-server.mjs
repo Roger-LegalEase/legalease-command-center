@@ -12543,6 +12543,30 @@ function htmlShell() {
     .lee-status-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
     .lee-status-grid div { border:1px solid rgba(8,20,95,.08); border-radius:12px; padding:10px; background:#F7FAF9; display:grid; gap:4px; }
     .lee-status-grid strong { color:var(--ink); font-size:20px; }
+    .lee-simple { max-width:820px; margin:0 auto; display:grid; gap:16px; width:100%; }
+    .lee-simple h1 { margin:0; font-size:42px; letter-spacing:0; line-height:1; }
+    .lee-simple-help { margin:4px 0 0; color:#667085; font-size:15px; }
+    .lee-simple-input { display:grid; gap:12px; }
+    .lee-simple-input textarea { min-height:138px; font-size:17px; line-height:1.48; padding:16px; border-radius:16px; }
+    .lee-simple-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
+    .lee-quick { display:flex; gap:8px; flex-wrap:wrap; }
+    .lee-quick button { border-radius:999px; min-height:34px; font-size:12px; }
+    .lee-menu { margin-left:auto; position:relative; }
+    .lee-menu summary { list-style:none; cursor:pointer; border:1px solid var(--line); border-radius:999px; width:34px; height:34px; display:grid; place-items:center; font-weight:900; background:white; }
+    .lee-menu summary::-webkit-details-marker { display:none; }
+    .lee-menu > div { position:absolute; right:0; top:40px; min-width:160px; border:1px solid var(--line); border-radius:12px; background:white; box-shadow:0 18px 48px rgba(8,20,95,.12); padding:8px; z-index:5; display:grid; gap:6px; }
+    .lee-menu button { width:100%; justify-content:flex-start; text-align:left; }
+    .lee-latest-answer { display:grid; gap:12px; border:1px solid rgba(8,20,95,.08); border-radius:18px; background:white; padding:18px; }
+    .lee-latest-answer pre { margin:0; white-space:pre-wrap; font:inherit; line-height:1.55; color:#202434; }
+    .lee-collapsed-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .lee-collapsed-row details { border:1px solid rgba(8,20,95,.1); border-radius:999px; padding:6px 10px; background:#F7FAF9; }
+    .lee-collapsed-row summary { cursor:pointer; font-size:12px; font-weight:850; color:#475467; }
+    .lee-collapsed-row details[open] { border-radius:14px; width:100%; }
+    .lee-simple-proposal { border:1px solid rgba(8,20,95,.1); border-radius:16px; background:#F7FAF9; padding:14px; display:grid; gap:10px; }
+    .lee-simple-proposal h2 { margin:0; font-size:17px; }
+    .lee-simple-proposal p { margin:0; color:#667085; font-size:14px; }
+    .lee-advanced { display:grid; gap:16px; }
+    .lee-advanced[hidden] { display:none; }
     :root {
       --paper:#F6F7F5;
       --surface:#FFFFFF;
@@ -12751,6 +12775,7 @@ function htmlShell() {
     let focusIndex = 0;
     let leeDraft = "";
     let leeBusy = false;
+    let leeAdvanced = false;
     const focusModes = [
       { id:"inbox-triage", label:"Inbox Triage" },
       { id:"partner-follow-up", label:"Partner Follow-Up" },
@@ -16121,10 +16146,55 @@ function htmlShell() {
       </article>\`;
     }
 
+    function leeShortAnswer(content = "") {
+      const full = content || "";
+      const simpleLines = String(full).split("\\n");
+      const kept = [];
+      let skippingWhy = false;
+      for (const line of simpleLines) {
+        if (/^\\s*Sources:/i.test(line)) continue;
+        if (/^\\s*Why it matters/i.test(line)) {
+          skippingWhy = true;
+          continue;
+        }
+        if (/^\\s*Recommended action/i.test(line)) skippingWhy = false;
+        if (!skippingWhy) kept.push(line);
+      }
+      const simple = kept.join("\\n").replace(/\\n{3,}/g, "\\n\\n").trim() || full;
+      const words = simple.split(/\\s+/).filter(Boolean);
+      if (words.length <= 120) return { short: simple, full, truncated: simple !== full };
+      return { short: words.slice(0, 120).join(" ") + "...", full, truncated: true };
+    }
+
+    function leeSimpleProposalSummary(proposals = []) {
+      const active = proposals.filter(proposal => proposal.status === "proposed");
+      if (!active.length) return "";
+      const safe = active.filter(proposal => proposal.autonomyLevel === "auto_safe" && !proposal.requiredApproval);
+      const blocked = active.filter(proposal => proposal.status === "blocked" || proposal.autonomyLevel === "forbidden");
+      const first = safe[0] || active[0];
+      const label = safe.length
+        ? \`\${safe.length} safe change\${safe.length === 1 ? "" : "s"} proposed\`
+        : blocked.length
+          ? \`\${blocked.length} blocked action\${blocked.length === 1 ? "" : "s"}\`
+          : \`\${active.length} change\${active.length === 1 ? "" : "s"} need review\`;
+      return \`<article class="lee-simple-proposal">
+        <h2>\${esc(label)}</h2>
+        <p>\${esc(first?.title || "Review Le-E proposed changes.")}</p>
+        <div class="card-actions">
+          <button class="primary" onclick="applyLeeAction('\${esc(first?.id || "")}')" \${safe.length && first?.id ? "" : "disabled"}>Apply</button>
+          <button onclick="leeAdvanced=true; render()">Review</button>
+          <button onclick="rejectLeeAction('\${esc(first?.id || "")}')" \${first?.id ? "" : "disabled"}>Dismiss</button>
+        </div>
+      </article>\`;
+    }
+
     function leePageHtml(pageClass) {
       const threadId = leeCurrentThreadId();
       const messages = leeThreadMessages(threadId);
       const proposals = leeThreadProposals(threadId).slice(0, 12);
+      const assistantMessages = messages.filter(message => message.role === "assistant");
+      const latest = assistantMessages[assistantMessages.length - 1] || null;
+      const answer = leeShortAnswer(latest?.content || "");
       const status = {
         openAIConfigured:Boolean(state.runtime?.openAIConfigured),
         knowledgeIndexRecords:(state.leeKnowledgeChunks || []).length || ["growthInbox", "tasks", "partnerPrograms", "partners", "campaigns", "contentBank", "approvalQueue", "reports", "dataRoomItems", "soc2Evidence", "events", "activityEvents"].reduce((sum, key) => sum + ((state[key] || []).length || 0), 0),
@@ -16142,44 +16212,62 @@ function htmlShell() {
         "What is risky or blocked?",
         "What should go into the Evidence Pack?"
       ];
-      const onboarding = [
-        ["Ask Le-E what matters today", "What should I focus on today?"],
-        ["Create tasks from Growth Inbox", "Create tasks from Growth Inbox."],
-        ["Find stalled partners", "Which partners are stalled?"],
-        ["Prepare Evidence Pack", "What should go into the Evidence Pack?"],
-        ["Check risky language", "What content or partner language needs compliance review?"]
+      const quickPrompts = [
+        ["Plan my day", "What should I focus on today?"],
+        ["What needs me?", "What needs my decision?"],
+        ["Create tasks", "Create tasks from Growth Inbox."]
       ];
       return \`<section id="lee" class="section \${pageClass("lee")}">
-        <div class="panel hero-panel">
-          <div class="eyebrow">Le-E, pronounced Lee</div>
-          <h1 class="big-title">Ask Le-E</h1>
-          <p class="big-copy">LegalEase's AI Chief of Staff. Le-E answers from Command Center memory, proposes safe internal actions, and keeps external work gated.</p>
-        </div>
-        <div class="lee-shell">
-          <section class="panel lee-chat">
+        <div class="lee-simple">
+          <section class="panel lee-command-card">
             <div class="simple-panel-head">
-              <h2>Conversation</h2>
-              <div class="card-actions"><button onclick="newLeeThread()">New thread</button><button onclick="clearLeeThread()">Clear thread</button></div>
+              <div>
+                <div class="eyebrow">Le-E</div>
+                <h1>Le-E</h1>
+                <p class="lee-simple-help">Ask what matters, create a task, or find something in LegalEase.</p>
+              </div>
+              <details class="lee-menu">
+                <summary aria-label="Le-E menu">...</summary>
+                <div>
+                  <button onclick="newLeeThread()">New thread</button>
+                  <button onclick="clearLeeThread()">Clear thread</button>
+                  <button onclick="leeAdvanced=!leeAdvanced; render()">\${leeAdvanced ? "Hide Advanced" : "Advanced"}</button>
+                </div>
+              </details>
             </div>
-            <div class="lee-messages">
-              \${messages.length ? messages.map(message => \`<article class="lee-message \${message.role === "user" ? "user" : "assistant"}">
-                <div class="today-meta"><span>\${esc(message.role === "assistant" ? "Le-E" : "Roger")}</span><span>\${esc(message.createdAt || "")}</span></div>
-                <pre>\${leeFormat(message.content || "")}</pre>
-                \${leeSourceChips(message.sourceRefs || [])}
-              </article>\`).join("") : '<div class="done-state"><h2>Ask Le-E anything about the operating system.</h2><p>Start with what needs your attention, what is blocked, or what proof should move into the Evidence Pack.</p></div>'}
-              \${leeBusy ? '<article class="lee-message assistant"><div class="today-meta"><span>Le-E</span><span>Working</span></div><pre>Checking Command Center memory and safety rules...</pre></article>' : ""}
-            </div>
-            <form class="lee-input" onsubmit="sendLeeMessage(event)">
-              <textarea name="message" required placeholder="Ask Le-E what to do next, search the Command Center, or draft a safe internal action…">\${esc(leeDraft)}</textarea>
-              <div class="card-actions"><button class="primary" type="submit" \${leeBusy ? "disabled" : ""}>\${leeBusy ? "Checking access..." : "Send"}</button><button type="button" onclick="rebuildLeeIndex()">Rebuild index</button></div>
+            <form class="lee-simple-input" onsubmit="sendLeeMessage(event)">
+              <textarea name="message" required placeholder="Ask Le-E...">\${esc(leeDraft)}</textarea>
+              <div class="lee-simple-actions">
+                <div class="lee-quick">\${quickPrompts.map(([label, prompt]) => \`<button type="button" onclick='askLeePrompt(\${JSON.stringify(prompt)})'>\${esc(label)}</button>\`).join("")}</div>
+                <button class="primary" type="submit" \${leeBusy ? "disabled" : ""}>\${leeBusy ? "Thinking..." : "Send"}</button>
+              </div>
             </form>
           </section>
-          <aside class="lee-side">
-            <section class="panel">
-              <h2>Start here</h2>
-              <p class="muted">Le-E keeps answers short by default and turns work into safe internal proposals.</p>
-              <div class="lee-onboarding">\${onboarding.map(([label, prompt]) => \`<button onclick='askLeePrompt(\${JSON.stringify(prompt)})'>\${esc(label)}</button>\`).join("")}</div>
-            </section>
+          \${leeBusy ? '<section class="lee-latest-answer"><pre>Checking Command Center memory and safety rules...</pre></section>' : latest ? \`<section class="lee-latest-answer">
+            <div class="eyebrow">Latest answer</div>
+            <pre>\${leeFormat(answer.short)}</pre>
+            \${answer.truncated ? \`<details><summary>Show details</summary><pre>\${leeFormat(answer.full)}</pre></details>\` : ""}
+            <div class="lee-collapsed-row">
+              <details><summary>Sources: \${(latest.sourceRefs || []).length}</summary>\${leeSourceChips(latest.sourceRefs || []) || '<p class="muted">No source references attached.</p>'}</details>
+            </div>
+          </section>\` : '<section class="lee-latest-answer"><pre>Ask Le-E what matters today.</pre></section>'}
+          \${leeSimpleProposalSummary(proposals)}
+          <section class="lee-advanced" \${leeAdvanced ? "" : "hidden"}>
+            <div class="lee-shell">
+              <section class="panel lee-chat">
+                <div class="simple-panel-head">
+                  <h2>Advanced conversation</h2>
+                  <div class="card-actions"><button onclick="newLeeThread()">New thread</button><button onclick="clearLeeThread()">Clear thread</button><button type="button" onclick="rebuildLeeIndex()">Rebuild index</button></div>
+                </div>
+                <div class="lee-messages">
+                  \${messages.length ? messages.map(message => \`<article class="lee-message \${message.role === "user" ? "user" : "assistant"}">
+                    <div class="today-meta"><span>\${esc(message.role === "assistant" ? "Le-E" : "Roger")}</span><span>\${esc(message.createdAt || "")}</span></div>
+                    <pre>\${leeFormat(message.content || "")}</pre>
+                    \${leeSourceChips(message.sourceRefs || [])}
+                  </article>\`).join("") : '<div class="done-state"><h2>No conversation history yet.</h2><p>Ask one question in Simple Mode first.</p></div>'}
+                </div>
+              </section>
+              <aside class="lee-side">
             <section class="panel">
               <h2>Suggested prompts</h2>
               <div class="lee-suggestions">\${prompts.map(prompt => \`<button onclick='askLeePrompt(\${JSON.stringify(prompt)})'>\${esc(prompt)}</button>\`).join("")}</div>
@@ -16199,7 +16287,9 @@ function htmlShell() {
               <div class="simple-panel-head"><h2>Proposed changes</h2><button onclick="applyAllSafeLeeActions()">Apply all safe</button></div>
               <div class="grid">\${proposals.map(leeProposalCard).join("") || '<div class="done-state">No proposed actions. Le-E will show draft changes here before anything important changes.</div>'}</div>
             </section>
-          </aside>
+              </aside>
+            </div>
+          </section>
         </div>
       </section>\`;
     }

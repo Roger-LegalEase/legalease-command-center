@@ -16,14 +16,20 @@ assert.match(server, /\/api\/lee\/index\/rebuild/, "Le-E index rebuild endpoint 
 assert.match(server, /leeActionProposals/, "Le-E action proposals should be in UI/server state.");
 assert.match(server, /applyLeeAction/, "Le-E action proposal cards should support applying safe actions.");
 assert.match(server, /forbidden|proposal-only|proposal_only/i, "Le-E UI/API should preserve dangerous/forbidden action language.");
-assert.match(server, /Ask Le-E anything about the operating system/, "Le-E should include an empty state.");
-assert.match(server, /Ask Le-E what matters today/, "Le-E should include the operator onboarding panel.");
-assert.match(server, /Create tasks from Growth Inbox/, "Le-E should expose the Growth Inbox task starter.");
-assert.match(server, /Prepare Evidence Pack/, "Le-E should expose the Evidence Pack starter.");
-assert.match(server, /Check risky language/, "Le-E should expose compliance-language checking.");
+assert.match(server, /Ask what matters, create a task, or find something in LegalEase/, "Le-E Simple Mode should have short helper text.");
+assert.match(server, /class="lee-simple"/, "Le-E should render Simple Mode by default.");
+assert.match(server, /Plan my day/, "Le-E Simple Mode should show the Plan my day quick prompt.");
+assert.match(server, /What needs me\?/, "Le-E Simple Mode should show the What needs me quick prompt.");
+assert.match(server, /Create tasks/, "Le-E Simple Mode should show the Create tasks quick prompt.");
+assert.match(server, /leeAdvanced \? "" : "hidden"/, "Advanced mode should be hidden by default.");
+assert.match(server, /Sources: /, "Simple Mode should collapse sources into a count.");
+assert.match(server, /Show details/, "Long answers should have collapsed details.");
+assert.ok(server.includes("/^\\\\s*Sources:/i"), "Simple Mode should strip source lines from the visible short answer.");
+assert.ok(server.includes("/^\\\\s*Why it matters/i"), "Simple Mode should remove the why section from the visible short answer.");
 assert.match(server, /Apply safe change/, "Le-E proposal cards should distinguish safe apply from approval.");
 assert.match(server, /Proposal only\. Review and route/, "Le-E proposal cards should explain approval-required actions.");
 assert.match(server, /Checking Command Center memory and safety rules/, "Le-E should show a useful loading state.");
 assert.match(server, /safeMessage/, "Le-E endpoints should return safe error messages.");
+assert.doesNotMatch(server, /<h2>Start here<\/h2>/, "Simple Mode should not show the old onboarding sidebar.");
 
 console.log("Le-E UI tests passed");
