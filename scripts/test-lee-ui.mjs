@@ -6,8 +6,14 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const server = readFileSync(join(here, "preview-server.mjs"), "utf8");
 
-assert.match(server, /href="#lee">Ask Le-E/, "Le-E should be reachable from nav.");
+assert.doesNotMatch(server, /href="#lee">Ask Le-E/, "Le-E should not be exposed as a top nav item.");
 assert.match(server, /function leePageHtml\(pageClass\)/, "Le-E route should render a chat page.");
+assert.match(server, /function leeBubbleHtml\(\)/, "Le-E should render a persistent chat bubble.");
+assert.match(server, /class="lee-bubble-root"/, "Le-E bubble root should be present.");
+assert.match(server, /aria-label="Ask Le-E"/, "Le-E bubble should have an accessible Ask Le-E label.");
+assert.match(server, /function openLeeBubble\(\)/, "Le-E bubble should have an open handler.");
+assert.match(server, /function closeLeeBubble\(\)/, "Le-E bubble should have a close handler.");
+assert.match(server, /leeBubbleOpen = true/, "Le-E prompt flow should open the bubble instead of navigating away.");
 assert.match(server, /id="lee"/, "Le-E page section should use #lee.");
 assert.match(server, /POST" && request\.method === "POST"|\/api\/lee\/chat/, "Le-E chat endpoint should exist.");
 assert.match(server, /\/api\/lee\/status/, "Le-E status endpoint should exist.");
@@ -18,6 +24,7 @@ assert.match(server, /applyLeeAction/, "Le-E action proposal cards should suppor
 assert.match(server, /forbidden|proposal-only|proposal_only/i, "Le-E UI/API should preserve dangerous/forbidden action language.");
 assert.match(server, /Ask what matters, create a task, or find something in LegalEase/, "Le-E Simple Mode should have short helper text.");
 assert.match(server, /class="lee-simple"/, "Le-E should render Simple Mode by default.");
+assert.match(server, /<details class="lee-advanced">/, "Bubble Advanced mode should be collapsed behind details.");
 assert.match(server, /Plan my day/, "Le-E Simple Mode should show the Plan my day quick prompt.");
 assert.match(server, /What needs me\?/, "Le-E Simple Mode should show the What needs me quick prompt.");
 assert.match(server, /Create tasks/, "Le-E Simple Mode should show the Create tasks quick prompt.");
@@ -31,5 +38,6 @@ assert.match(server, /Proposal only\. Review and route/, "Le-E proposal cards sh
 assert.match(server, /Checking Command Center memory and safety rules/, "Le-E should show a useful loading state.");
 assert.match(server, /safeMessage/, "Le-E endpoints should return safe error messages.");
 assert.doesNotMatch(server, /<h2>Start here<\/h2>/, "Simple Mode should not show the old onboarding sidebar.");
+assert.match(server, /run:\(\) => \{ openLeeBubble\(\); \}/, "Command palette Ask Le-E should open the bubble.");
 
 console.log("Le-E UI tests passed");

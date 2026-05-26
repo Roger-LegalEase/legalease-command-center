@@ -12483,7 +12483,7 @@ function htmlShell() {
     .toast.show { opacity:1; transform:translateY(0); }
     html, body, .shell, main { max-width:100%; overflow-x:hidden; }
     .operator-today { display:block; width:100%; max-width:100%; }
-    .today-hero { display:grid; gap:18px; border:0; background:#08145F; color:white; box-shadow:0 24px 62px rgba(8,20,95,.18); }
+    .today-hero { display:grid; gap:18px; border:0; background:var(--le-navy); color:white; box-shadow:0 24px 62px rgba(8,20,95,.18); }
     .today-hero .big-title { color:white; }
     .today-hero .big-copy, .today-hero .muted { color:rgba(255,255,255,.74); }
     .today-actions { display:flex; flex-wrap:wrap; gap:10px; }
@@ -12510,7 +12510,7 @@ function htmlShell() {
     .page-section.focus-shell.active { display:block; }
     .focus-mode-tabs { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 18px; }
     .focus-mode-tabs button { border-radius:999px; }
-    .focus-mode-tabs button.active { background:#08145F; color:white; }
+    .focus-mode-tabs button.active { background:var(--le-navy); color:white; }
     .focus-card { display:block; width:100%; box-sizing:border-box; padding:26px; border:1px solid rgba(8,20,95,.08); border-radius:20px; background:white; box-shadow:0 24px 60px rgba(16,24,40,.09); word-break:normal; overflow-wrap:break-word; }
     .focus-card h2 { margin:10px 0 0; color:var(--ink); font-size:30px; line-height:1.1; letter-spacing:0; white-space:normal; word-break:normal; overflow-wrap:break-word; }
     .focus-progress { color:var(--muted); font-size:13px; font-weight:900; text-transform:uppercase; letter-spacing:.08em; }
@@ -12523,7 +12523,7 @@ function htmlShell() {
     .lee-chat { min-height:620px; display:flex; flex-direction:column; gap:14px; }
     .lee-messages { flex:1; display:flex; flex-direction:column; gap:12px; max-height:620px; overflow:auto; padding-right:4px; }
     .lee-message { display:grid; gap:8px; max-width:86%; padding:14px 16px; border:1px solid rgba(8,20,95,.08); border-radius:16px; background:#F7FAF9; white-space:normal; word-break:normal; overflow-wrap:break-word; }
-    .lee-message.user { align-self:flex-end; background:#08145F; color:white; }
+    .lee-message.user { align-self:flex-end; background:var(--le-navy); color:white; }
     .lee-message.user .muted { color:rgba(255,255,255,.72); }
     .lee-message.assistant { align-self:flex-start; background:white; }
     .lee-message pre { margin:0; white-space:pre-wrap; font:inherit; line-height:1.5; }
@@ -12567,42 +12567,78 @@ function htmlShell() {
     .lee-simple-proposal p { margin:0; color:#667085; font-size:14px; }
     .lee-advanced { display:grid; gap:16px; }
     .lee-advanced[hidden] { display:none; }
+    .lee-bubble-root { position:fixed; right:22px; bottom:22px; z-index:60; display:grid; justify-items:end; gap:12px; pointer-events:none; }
+    .lee-bubble-button { pointer-events:auto; min-width:72px; min-height:52px; border:0; border-radius:999px; background:var(--le-navy); color:white; box-shadow:0 18px 48px rgba(15,31,92,.24); font-family:inherit; font-size:15px; text-transform:none; letter-spacing:0; }
+    .lee-bubble-button:hover, .lee-bubble-button:focus-visible { background:var(--le-navy-mid); outline:3px solid rgba(27,43,128,.22); }
+    .lee-bubble-panel { pointer-events:auto; width:min(420px,calc(100vw - 28px)); max-height:80vh; overflow:auto; border:1px solid var(--le-border); border-radius:22px; background:white; box-shadow:0 28px 90px rgba(15,31,92,.22); padding:16px; display:grid; gap:12px; }
+    .lee-bubble-panel[hidden] { display:none; }
+    .lee-bubble-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+    .lee-bubble-head h2 { margin:0; color:var(--le-navy); font-size:22px; }
+    .lee-bubble-close { width:36px; height:36px; border-radius:999px; padding:0; }
+    .lee-bubble-panel .lee-simple-input textarea { min-height:112px; font-size:15px; }
+    .lee-bubble-panel .lee-latest-answer { box-shadow:none; padding:14px; border-radius:16px; }
+    .lee-bubble-panel .lee-advanced { max-height:48vh; overflow:auto; }
+    .lee-bubble-panel .lee-shell { grid-template-columns:1fr; }
+    .lee-bubble-panel .lee-message { max-width:100%; }
+    @media (max-width:640px) {
+      .lee-bubble-root { inset:0; right:0; bottom:0; justify-items:stretch; align-items:end; padding:0; }
+      .lee-bubble-button { position:fixed; right:16px; bottom:16px; justify-self:end; }
+      .lee-bubble-panel { width:100vw; max-height:100vh; min-height:100vh; border-radius:0; border:0; }
+    }
     :root {
-      --paper:#F6F7F5;
-      --surface:#FFFFFF;
-      --surface-soft:#F2F5F4;
-      --line:#DCE5E3;
-      --ink:#08145F;
-      --text:#172033;
-      --muted:#667085;
-      --accent:#F15A24;
-      --success:#2F6B4F;
-      --warning:#9A6A19;
-      --danger:#B42318;
+      --le-navy:#0F1F5C;
+      --le-navy-mid:#1B2B80;
+      --le-orange:#E83A0A;
+      --le-teal:#00A99D;
+      --le-green:#059669;
+      --le-amber:#D97706;
+      --le-red:#DC2626;
+      --le-bg:#F4F5F7;
+      --le-border:#DDE0E8;
+      --le-text:#1A1A2E;
+      --le-muted:#6B7280;
+      --le-white:#FFFFFF;
+      --paper:var(--le-bg);
+      --surface:var(--le-white);
+      --surface-soft:#F8FAFB;
+      --line:var(--le-border);
+      --ink:var(--le-navy);
+      --text:var(--le-text);
+      --muted:var(--le-muted);
+      --accent:var(--le-orange);
+      --success:var(--le-green);
+      --warning:var(--le-amber);
+      --danger:var(--le-red);
       --shadow:0 18px 45px rgba(16,24,40,.08);
     }
-    body { background:linear-gradient(180deg,#F9FAF7 0,#EEF4F3 100%); color:var(--text); }
+    body { background:var(--le-bg); color:var(--text); }
     aside { min-height:72px; padding:0 32px; background:rgba(255,255,255,.9); backdrop-filter:blur(18px); box-shadow:0 1px 0 rgba(16,24,40,.05); }
     .brand h1 { color:var(--ink); font-size:18px; letter-spacing:0; }
     .brand small, .eyebrow { color:var(--accent); letter-spacing:.12em; }
-    nav { gap:4px; }
-    .nav-group { display:flex; align-items:center; gap:4px; padding-left:8px; border-left:1px solid rgba(8,20,95,.08); }
-    .nav-group:first-child { border-left:0; padding-left:0; }
-    .nav-label { color:#98A2B3; font-size:10px; font-weight:900; letter-spacing:.12em; text-transform:uppercase; padding:0 4px; }
+    nav { gap:6px; flex-wrap:nowrap; overflow:visible; }
+    .nav-menu { position:relative; }
+    .nav-menu summary { list-style:none; cursor:pointer; display:inline-flex; align-items:center; gap:7px; border-radius:999px; padding:10px 14px; color:#475467; font-weight:850; font-size:14px; outline:none; }
+    .nav-menu summary::-webkit-details-marker { display:none; }
+    .nav-menu summary::after { content:""; width:6px; height:6px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; transform:rotate(45deg) translateY(-2px); opacity:.55; }
+    .nav-menu summary:hover, .nav-menu summary:focus-visible, .nav-menu.active summary { background:var(--le-navy-mid); color:white; }
+    .nav-menu-panel { position:absolute; top:44px; left:0; min-width:230px; z-index:20; display:grid; gap:5px; padding:8px; border:1px solid var(--le-border); border-radius:14px; background:white; box-shadow:0 24px 70px rgba(15,31,92,.16); }
+    .nav-menu-panel a { display:flex; justify-content:space-between; gap:12px; border-radius:10px; padding:10px 11px; color:#344054; text-decoration:none; font-size:13px; font-weight:750; }
+    .nav-menu-panel a:hover, .nav-menu-panel a.active { background:#F4F5F7; color:var(--le-navy); }
+    .nav-menu-panel a.active::after { content:"Selected"; color:var(--le-muted); font-size:11px; font-weight:800; }
     nav a { border-radius:999px; padding:10px 14px; color:#475467; font-weight:750; }
-    nav a.active, nav a:hover { background:#08145F; color:white; }
+    nav a.active, nav a:hover { background:var(--le-navy-mid); color:white; }
     main { max-width:1040px; padding-top:28px; }
     .panel,.card { border-color:rgba(8,20,95,.08); border-radius:14px; box-shadow:var(--shadow); background:rgba(255,255,255,.96); }
     .panel,.card { padding:20px; }
     .hero-panel { border:0; box-shadow:none; background:transparent; padding:4px 2px 10px; gap:8px; }
     .big-title { font-size:32px; line-height:1.05; color:var(--ink); letter-spacing:0; }
     .big-copy { color:var(--muted); font-size:15px; max-width:680px; }
-    .daily-control-bar { border:0; border-radius:16px; background:#08145F; color:rgba(255,255,255,.78); padding:14px 16px; box-shadow:0 16px 36px rgba(8,20,95,.16); }
+    .daily-control-bar { border:0; border-radius:16px; background:var(--le-navy); color:rgba(255,255,255,.78); padding:14px 16px; box-shadow:0 16px 36px rgba(8,20,95,.16); }
     .daily-control-bar strong { color:white; }
     .daily-control-bar span:not(:last-child)::after { color:rgba(255,255,255,.45); }
     .queue-filter { margin:14px 0 6px; }
     .queue-filter button, .tabs .tab, .source-filter button { border-radius:999px; min-height:38px; background:white; border-color:rgba(8,20,95,.1); color:#475467; text-transform:none; font-family:inherit; font-weight:800; }
-    .queue-filter button.primary, .tabs .tab.active { background:#08145F; color:white; }
+    .queue-filter button.primary, .tabs .tab.active { background:var(--le-navy); color:white; }
     .queue-card { padding:22px; gap:14px; border-radius:18px; }
     .queue-title { font-size:24px; line-height:1.12; color:var(--ink); max-width:820px; }
     .simple-meta { color:var(--muted); font-size:14px; }
@@ -12610,15 +12646,16 @@ function htmlShell() {
     .queue-card .simple-status-row .badge.info { display:inline-flex; }
     .badge { border-radius:999px; min-height:26px; padding:4px 10px; font-size:12px; font-weight:850; }
     .simple-status-pill { font-size:13px; min-height:30px; padding:5px 12px; }
-    .good { background:rgba(47,107,79,.1); color:var(--success); border-color:rgba(47,107,79,.2); }
-    .warn { background:rgba(154,106,25,.1); color:var(--warning); border-color:rgba(154,106,25,.22); }
-    .danger { background:rgba(180,35,24,.1); color:var(--danger); border-color:rgba(180,35,24,.22); }
+    .good { background:rgba(5,150,105,.1); color:var(--le-green); border-color:rgba(5,150,105,.22); }
+    .info { background:rgba(0,169,157,.1); color:#047A72; border-color:rgba(0,169,157,.24); }
+    .warn { background:rgba(217,119,6,.11); color:#92400E; border-color:rgba(217,119,6,.24); }
+    .danger { background:rgba(220,38,38,.1); color:var(--le-red); border-color:rgba(220,38,38,.24); }
     .next-action-card { border:0; border-radius:16px; padding:14px; background:#F4F7F6; gap:10px; }
     .next-action-card .row span { display:none; }
     .next-action-card strong { font-size:15px; color:var(--ink); }
     .next-action-card .primary { min-height:52px; border-radius:12px; font-size:15px; font-family:inherit; text-transform:none; }
     button,.button,.button-link { border-radius:10px; font-family:inherit; text-transform:none; letter-spacing:0; font-weight:800; }
-    .primary, .button-link.primary { background:#08145F; color:white; box-shadow:0 10px 20px rgba(8,20,95,.16); }
+    .primary, .button-link.primary { background:var(--le-navy); color:white; box-shadow:0 10px 20px rgba(8,20,95,.16); }
     button:hover,.button:hover,.button-link:hover { transform:translateY(-1px); }
     button:disabled { transform:none; }
     .readiness-card { border-radius:14px; margin:10px 0; padding:12px 14px; background:#F7FAF9; }
@@ -12644,7 +12681,7 @@ function htmlShell() {
     .empty { border:1px dashed rgba(8,20,95,.14); border-radius:16px; background:#fff; color:var(--muted); padding:24px; text-align:center; }
     input,textarea,select { border-radius:10px; border-color:rgba(8,20,95,.12); }
     input:focus,textarea:focus,select:focus,button:focus-visible,a:focus-visible,summary:focus-visible { outline:3px solid rgba(241,90,36,.22); outline-offset:2px; }
-    .toast { border-radius:12px; background:#08145F; box-shadow:0 18px 44px rgba(8,20,95,.2); }
+    .toast { border-radius:12px; background:var(--le-navy); box-shadow:0 18px 44px rgba(8,20,95,.2); }
     .loading-panel { display:grid; gap:14px; box-shadow:none; border:0; background:transparent; }
     .loading-line, .loading-card { position:relative; overflow:hidden; border-radius:999px; background:#E6ECEB; }
     .loading-line { width:54%; height:18px; }
@@ -12654,7 +12691,7 @@ function htmlShell() {
     @keyframes loadingSweep { to { transform:translateX(100%); } }
     .mission-grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr); gap:18px; align-items:stretch; }
     .executive-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
-    .mission-card { background:#08145F; color:white; border:0; box-shadow:0 24px 60px rgba(8,20,95,.18); }
+    .mission-card { background:var(--le-navy); color:white; border:0; box-shadow:0 24px 60px rgba(8,20,95,.18); }
     .mission-card .big-title,.mission-card h1,.mission-card h2 { color:white; }
     .mission-card .muted,.mission-card .big-copy { color:rgba(255,255,255,.72); }
     .status-dot { display:inline-flex; width:8px; height:8px; border-radius:999px; background:currentColor; margin-right:7px; }
@@ -12674,7 +12711,7 @@ function htmlShell() {
     .metric-table { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .metric-row { display:flex; justify-content:space-between; align-items:center; gap:12px; }
     .asset-library-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
-    .asset-thumb { aspect-ratio:16/10; border-radius:14px; background:linear-gradient(135deg,#08145F,#0F766E); display:grid; place-items:center; color:white; font-weight:900; overflow:hidden; }
+    .asset-thumb { aspect-ratio:16/10; border-radius:14px; background:linear-gradient(135deg,var(--le-navy),#0F766E); display:grid; place-items:center; color:white; font-weight:900; overflow:hidden; }
     .asset-thumb img { width:100%; height:100%; object-fit:cover; }
     .command-overlay,.modal-backdrop { position:fixed; inset:0; z-index:50; display:grid; place-items:start center; padding-top:9vh; background:rgba(8,20,95,.32); backdrop-filter:blur(10px); }
     .command-panel,.modal-panel { width:min(760px,calc(100vw - 32px)); border-radius:20px; background:white; box-shadow:0 30px 80px rgba(8,20,95,.24); border:1px solid rgba(8,20,95,.1); padding:18px; }
@@ -12699,7 +12736,7 @@ function htmlShell() {
     .mini-form button { align-self:end; }
     .funnel-stage { display:grid; gap:6px; padding:12px; border-radius:14px; background:#F4F7F6; border:1px solid rgba(8,20,95,.08); }
     .funnel-stage strong { color:var(--ink); font-size:20px; }
-    @media (max-width:1100px) { .layout,.command,.post-grid,.three,.two,.calendar,.queue-card,.operator-review,.wilma-grid,.export-grid,.archive-grid,.executive-grid,.ops-row { grid-template-columns:1fr; } aside { position:static; min-height:auto; align-items:flex-start; flex-direction:column; padding:14px 18px; } nav { width:100%; overflow:auto; align-items:flex-start; } .nav-group { flex:0 0 auto; } header,main { padding-left:18px; padding-right:18px; } .image-stage { position:static; order:-1; } .operator-preview .image-preview { min-height:300px; } }
+    @media (max-width:1100px) { .layout,.command,.post-grid,.three,.two,.calendar,.queue-card,.operator-review,.wilma-grid,.export-grid,.archive-grid,.executive-grid,.ops-row { grid-template-columns:1fr; } aside { position:static; min-height:auto; align-items:flex-start; flex-direction:column; padding:14px 18px; } nav { width:100%; overflow:auto; align-items:flex-start; } .nav-menu { flex:0 0 auto; } header,main { padding-left:18px; padding-right:18px; } .image-stage { position:static; order:-1; } .operator-preview .image-preview { min-height:300px; } }
     @media (max-width:1100px) { .mission-grid,.readiness-strip,.pipeline-board,.health-grid,.metric-table,.asset-library-grid,.modal-grid,.lee-shell { grid-template-columns:1fr; } .readiness-strip,.pipeline-board { overflow:visible; } .lee-message { max-width:100%; } }
 
     ${designSystem.interfaceCss}
@@ -12711,12 +12748,12 @@ function htmlShell() {
     <aside>
       <div class="brand"><small>LegalEase</small><h1>Command Center</h1></div>
       <nav>
-        <div class="nav-group"><span class="nav-label">Today</span><a href="#overview" class="active">Today</a><a href="#focus">Focus</a><a href="#lee">Ask Le-E</a></div>
-        <div class="nav-group"><span class="nav-label">Growth</span><a href="#growth-inbox">Growth Inbox</a><a href="#tasks">Tasks</a><a href="#milestones">Milestones</a><a href="#campaigns">Campaigns</a><a href="#funnel">Funnel</a></div>
-        <div class="nav-group"><span class="nav-label">Partners</span><a href="#partners">Partners</a><a href="#partner-programs">Programs</a><a href="#partner-pages">Pages</a><a href="#partner-dashboards">Dashboards</a><a href="#partner-proposals">Proposals</a><a href="#partner-reports">Reports</a><a href="#pilots">Pilots</a></div>
-        <div class="nav-group"><span class="nav-label">Production</span><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a><a href="#sources">Sources</a></div>
-        <div class="nav-group"><span class="nav-label">Proof</span><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2</a></div>
-        <div class="nav-group"><span class="nav-label">Operations</span><a href="#autonomy">Autonomy</a><a href="#automation">Automation</a><a href="#compliance">Compliance</a><a href="#metrics">Metrics</a><a href="#settings">Settings</a></div>
+        <details class="nav-menu" data-nav-section="today"><summary>Today</summary><div class="nav-menu-panel"><a href="#overview">Today</a><a href="#focus">Focus</a><a href="#overview">Quick Capture</a><a href="#tasks">Today's Tasks</a></div></details>
+        <details class="nav-menu" data-nav-section="growth"><summary>Growth</summary><div class="nav-menu-panel"><a href="#growth-inbox">Growth Inbox</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a><a href="#metrics">Metrics</a></div></details>
+        <details class="nav-menu" data-nav-section="partners"><summary>Partners</summary><div class="nav-menu-panel"><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
+        <details class="nav-menu" data-nav-section="production"><summary>Production</summary><div class="nav-menu-panel"><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
+        <details class="nav-menu" data-nav-section="proof"><summary>Proof</summary><div class="nav-menu-panel"><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
+        <details class="nav-menu" data-nav-section="more"><summary>More</summary><div class="nav-menu-panel"><a href="#tasks">Tasks</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
       </nav>
     </aside>
     <div>
@@ -12776,6 +12813,7 @@ function htmlShell() {
     let leeDraft = "";
     let leeBusy = false;
     let leeAdvanced = false;
+    let leeBubbleOpen = false;
     const focusModes = [
       { id:"inbox-triage", label:"Inbox Triage" },
       { id:"partner-follow-up", label:"Partner Follow-Up" },
@@ -15951,7 +15989,7 @@ function htmlShell() {
           </div>
           <div class="today-actions">
             <button class="primary" onclick="location.hash='focus'">Start Focus Mode</button>
-            <button onclick="location.hash='lee'">Ask Le-E</button>
+            <button onclick="openLeeBubble()">Ask Le-E</button>
             <button onclick="location.hash='growth-inbox'">Open Growth Inbox</button>
             <button onclick="location.hash='tasks'">Open Tasks</button>
             <button onclick="createWeeklyEvidencePack()">Build Weekly Evidence Pack</button>
@@ -16292,6 +16330,87 @@ function htmlShell() {
           </section>
         </div>
       </section>\`;
+    }
+
+    function leeBubbleHtml() {
+      const threadId = leeCurrentThreadId();
+      const messages = leeThreadMessages(threadId);
+      const proposals = leeThreadProposals(threadId).slice(0, 8);
+      const assistantMessages = messages.filter(message => message.role === "assistant");
+      const latest = assistantMessages[assistantMessages.length - 1] || null;
+      const answer = leeShortAnswer(latest?.content || "");
+      const quickPrompts = [
+        ["Plan my day", "What should I focus on today?"],
+        ["What needs me?", "What needs my decision?"],
+        ["Create tasks", "Create tasks from Growth Inbox."]
+      ];
+      const status = {
+        openAIConfigured:Boolean(state.runtime?.openAIConfigured),
+        knowledgeIndexRecords:(state.leeKnowledgeChunks || []).length || ["growthInbox", "tasks", "partnerPrograms", "partners", "campaigns", "contentBank", "approvalQueue", "reports", "dataRoomItems", "soc2Evidence", "events", "activityEvents"].reduce((sum, key) => sum + ((state[key] || []).length || 0), 0),
+        pendingProposedActions:(state.leeActionProposals || []).filter(item => item.status === "proposed").length,
+        liveGatesCount:Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length
+      };
+      return \`<div class="lee-bubble-root" aria-live="polite">
+        <section class="lee-bubble-panel" \${leeBubbleOpen ? "" : "hidden"} aria-label="Le-E chat panel">
+          <div class="lee-bubble-head">
+            <div>
+              <h2>Le-E</h2>
+              <p class="lee-simple-help">Ask what matters, create a task, or find something in LegalEase.</p>
+            </div>
+            <button class="lee-bubble-close" type="button" onclick="closeLeeBubble()" aria-label="Close Le-E">×</button>
+          </div>
+          <form class="lee-simple-input" onsubmit="sendLeeMessage(event)">
+            <textarea name="message" required aria-label="Ask Le-E" placeholder="Ask Le-E...">\${esc(leeDraft)}</textarea>
+            <div class="lee-simple-actions">
+              <div class="lee-quick">\${quickPrompts.map(([label, prompt]) => \`<button type="button" onclick='askLeePrompt(\${JSON.stringify(prompt)})'>\${esc(label)}</button>\`).join("")}</div>
+              <button class="primary" type="submit" \${leeBusy ? "disabled" : ""}>\${leeBusy ? "Thinking..." : "Send"}</button>
+            </div>
+          </form>
+          \${leeBusy ? '<section class="lee-latest-answer"><pre>Checking Command Center memory and safety rules...</pre></section>' : latest ? \`<section class="lee-latest-answer">
+            <div class="eyebrow">Latest answer</div>
+            <pre>\${leeFormat(answer.short)}</pre>
+            \${answer.truncated ? \`<details><summary>Show details</summary><pre>\${leeFormat(answer.full)}</pre></details>\` : ""}
+            <div class="lee-collapsed-row">
+              <details><summary>Sources: \${(latest.sourceRefs || []).length}</summary>\${leeSourceChips(latest.sourceRefs || []) || '<p class="muted">No source references attached.</p>'}</details>
+            </div>
+          </section>\` : '<section class="lee-latest-answer"><pre>Ask Le-E what matters today.</pre></section>'}
+          \${leeSimpleProposalSummary(proposals)}
+          <details class="lee-advanced">
+            <summary>Advanced</summary>
+            <div class="lee-shell" style="margin-top:12px">
+              <section class="lee-chat">
+                <div class="simple-panel-head">
+                  <h2>Conversation</h2>
+                  <div class="card-actions"><button onclick="newLeeThread()">New</button><button onclick="clearLeeThread()">Clear</button><button type="button" onclick="rebuildLeeIndex()">Rebuild index</button></div>
+                </div>
+                <div class="lee-messages">
+                  \${messages.length ? messages.map(message => \`<article class="lee-message \${message.role === "user" ? "user" : "assistant"}">
+                    <div class="today-meta"><span>\${esc(message.role === "assistant" ? "Le-E" : "Roger")}</span><span>\${esc(message.createdAt || "")}</span></div>
+                    <pre>\${leeFormat(message.content || "")}</pre>
+                    \${leeSourceChips(message.sourceRefs || [])}
+                  </article>\`).join("") : '<div class="done-state">No conversation history yet.</div>'}
+                </div>
+              </section>
+              <aside class="lee-side">
+                <section class="panel">
+                  <h2>Status</h2>
+                  <div class="lee-status-grid">
+                    <div><span>OpenAI</span><strong>\${status.openAIConfigured ? "yes" : "no"}</strong></div>
+                    <div><span>Index</span><strong>\${status.knowledgeIndexRecords}</strong></div>
+                    <div><span>Pending</span><strong>\${status.pendingProposedActions}</strong></div>
+                    <div><span>Live gates</span><strong>\${status.liveGatesCount}</strong></div>
+                  </div>
+                </section>
+                <section class="panel">
+                  <div class="simple-panel-head"><h2>Proposed changes</h2><button onclick="applyAllSafeLeeActions()">Apply all safe</button></div>
+                  <div class="grid">\${proposals.map(leeProposalCard).join("") || '<div class="done-state">No proposed actions.</div>'}</div>
+                </section>
+              </aside>
+            </div>
+          </details>
+        </section>
+        <button class="lee-bubble-button" type="button" onclick="openLeeBubble()" aria-label="Ask Le-E" \${leeBubbleOpen ? "hidden" : ""}>Le-E</button>
+      </div>\`;
     }
 
     function growthInboxPageHtml(pageClass) {
@@ -17600,11 +17719,24 @@ function htmlShell() {
             </div>
             <div id="brandTab"></div>
           </details>
-        </section>\`;
+        </section>
+        \${leeBubbleHtml()}\`;
       document.querySelectorAll("nav a").forEach(link => {
         link.classList.toggle("active", link.getAttribute("href") === "#" + pageId);
       });
+      document.querySelectorAll(".nav-menu").forEach(menu => {
+        menu.classList.toggle("active", menu.dataset.navSection === navSectionForPage(pageId));
+      });
       renderBrandTab("assets");
+    }
+
+    function navSectionForPage(pageId = "overview") {
+      if (["overview", "focus"].includes(pageId)) return "today";
+      if (["growth-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
+      if (["partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
+      if (["content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
+      if (["reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
+      return "more";
     }
 
     function showBrandTab(tab, button) {
@@ -18038,6 +18170,7 @@ function htmlShell() {
         toast("Ask Le-E a question first.");
         return;
       }
+      leeBubbleOpen = true;
       leeDraft = message;
       leeBusy = true;
       render();
@@ -18059,9 +18192,9 @@ function htmlShell() {
     }
 
     async function askLeePrompt(prompt) {
+      leeBubbleOpen = true;
       leeDraft = prompt;
       leeBusy = true;
-      location.hash = "lee";
       render();
       await cooAction(async () => {
         toast("Le-E is thinking...");
@@ -18070,7 +18203,6 @@ function htmlShell() {
           body:JSON.stringify({ threadId: leeCurrentThreadId(), message:prompt })
         });
         state = result.state;
-        location.hash = "lee";
         render();
         const messageText = result.proposals?.length ? "Le-E answered with proposed actions." : "Le-E answered.";
         toast(messageText);
@@ -18078,6 +18210,16 @@ function htmlShell() {
       }, "Could not ask Le-E.");
       leeBusy = false;
       leeDraft = "";
+      render();
+    }
+
+    function openLeeBubble() {
+      leeBubbleOpen = true;
+      render();
+    }
+
+    function closeLeeBubble() {
+      leeBubbleOpen = false;
       render();
     }
 
@@ -18553,7 +18695,7 @@ function htmlShell() {
     function commandActions() {
       return [
         { label:"Open Today", detail:"COO operating cockpit", run:() => { location.hash = "overview"; } },
-        { label:"Ask Le-E", detail:"AI Chief of Staff and operating memory", run:() => { location.hash = "lee"; } },
+        { label:"Ask Le-E", detail:"AI Chief of Staff and operating memory", run:() => { openLeeBubble(); } },
         { label:"Start Focus Mode", detail:"One item at a time", run:() => { location.hash = "focus"; } },
         { label:"Open Growth Inbox", detail:"Daily company signal intake", run:() => { location.hash = "growth-inbox"; } },
         { label:"Open Tasks", detail:"Owned work and escalations", run:() => { location.hash = "tasks"; } },
