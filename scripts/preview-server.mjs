@@ -1107,6 +1107,7 @@ function withPublicChannelSetup(state) {
         account: (state.socialAccounts || []).find((account) => account.platform === "google_workspace") || {},
         connectorStatus: defaultConnectorStatus(state)
       }),
+      productionReadiness: productionReadinessForState(state, { hostingConfig }),
       manualModeActive: platforms.every((platform) => !livePostingEnabledForChannel(platform)),
       hosting: {
         localDemoMode: hostingConfig.localDemoMode,
@@ -1144,6 +1145,65 @@ function withPublicChannelSetup(state) {
 	        liveGateEnvVars: safe.liveGateEnvVars
 	      };
     })
+  };
+}
+
+function productionReadinessCheck(id, label, ok, detail = "", owner = "Operations") {
+  return { id, label, ok: Boolean(ok), detail, owner };
+}
+
+function productionReadinessForState(state = {}, options = {}) {
+  const hostingConfig = options.hostingConfig || storageRuntimeConfig();
+  const liveGatesCount = Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length;
+  const hostedMode = hostingConfig.requestedStorageBackend === "supabase" && !hostingConfig.localDemoMode;
+  const checks = [
+    productionReadinessCheck("storage-backend", "Supabase data backend selected", hostingConfig.activeStorageBackend === "supabase", `Active backend: ${hostingConfig.activeStorageBackend}. Requested: ${hostingConfig.requestedStorageBackend}.`),
+    productionReadinessCheck("local-fallback", "Local JSON fallback preserved", true, "Local fallback remains available for development and emergency recovery."),
+    productionReadinessCheck("app-base-url", "APP_BASE_URL configured", Boolean(appBaseUrl()), appBaseUrl() ? "Hosted callback/export URLs can resolve." : "Set APP_BASE_URL on Render."),
+    productionReadinessCheck("owner-token", "Hosted owner token configured", !hostedMode || Boolean(process.env.COMMAND_CENTER_OWNER_TOKEN), hostedMode ? "Required for hosted access." : "Not required in local fallback."),
+    productionReadinessCheck("oauth-encryption", "OAuth token encryption configured", Boolean(process.env.OAUTH_TOKEN_ENCRYPTION_KEY), "Required before connecting Google/LinkedIn in hosted mode."),
+    productionReadinessCheck("openai", "OpenAI configured", Boolean(process.env.OPENAI_API_KEY), "Required for AI drafts and real image generation."),
+    productionReadinessCheck("live-gates", "Live publishing gates remain disabled", liveGatesCount === 0, `${liveGatesCount} live gate(s) enabled.`),
+    productionReadinessCheck("growth-inbox", "Growth Inbox available", Array.isArray(state.growthInbox), `${(state.growthInbox || []).filter((item) => !["converted", "ignored"].includes(item.status)).length} open inbox item(s).`),
+    productionReadinessCheck("tasks", "Tasks and escalations available", Array.isArray(state.tasks), `${(state.tasks || []).filter((task) => !["done", "dismissed"].includes(String(task.status || "").toLowerCase())).length} open task(s).`),
+    productionReadinessCheck("audit-events", "Operating events are captured", Array.isArray(state.events) && Array.isArray(state.activityEvents), `${(state.events || []).length} event(s), ${(state.activityEvents || []).length} activity record(s).`)
+  ];
+  const blockers = checks.filter((check) => !check.ok);
+  return {
+    status: blockers.length ? "needs_attention" : "ready",
+    hostedMode,
+    activeStorageBackend: hostingConfig.activeStorageBackend,
+    requestedStorageBackend: hostingConfig.requestedStorageBackend,
+    localDemoMode: hostingConfig.localDemoMode,
+    liveGatesCount,
+    checks,
+    blockers,
+    generatedAt: new Date().toISOString()
+  };
+}
+
+async function productionReadinessSnapshot() {
+  const state = await store.readState();
+  const hostingConfig = storageRuntimeConfig();
+  const supabaseDb = await getSupabaseHealth();
+  const storageDiagnostics = await diagnoseSupabaseStorage({ testUpload: false });
+  const base = productionReadinessForState(state, { hostingConfig });
+  const checks = [
+    ...base.checks,
+    productionReadinessCheck("supabase-db", "Supabase DB connected", Boolean(supabaseDb.connected), supabaseDb.connected ? `Table: ${supabaseDb.table || hostingConfig.supabaseRecordsTable}` : String(supabaseDb.error || "Supabase DB unavailable.").slice(0, 260)),
+    productionReadinessCheck("supabase-storage", "Supabase Storage connected", Boolean(storageDiagnostics.bucketReachable), storageDiagnostics.bucketReachable ? `Bucket: ${storageDiagnostics.bucket}; public: ${storageDiagnostics.bucketPublic === true}` : String(storageDiagnostics.error || "Supabase Storage unavailable.").slice(0, 260))
+  ];
+  const blockers = checks.filter((check) => !check.ok);
+  return {
+    ...base,
+    status: blockers.length ? "needs_attention" : "ready",
+    checks,
+    blockers,
+    supabaseDbConnected: Boolean(supabaseDb.connected),
+    supabaseStorageConnected: Boolean(storageDiagnostics.bucketReachable),
+    openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
+    noSecretsReturned: true,
+    generatedAt: new Date().toISOString()
   };
 }
 
@@ -13588,6 +13648,26 @@ function htmlShell() {
       </div>\`).join("");
     }
 
+    function productionReadinessSettingsHtml() {
+      const readiness = state.runtime?.productionReadiness || {};
+      const checks = readiness.checks || [];
+      const blockers = readiness.blockers || checks.filter(check => !check.ok);
+      return \`<div class="panel">
+        <div class="toprow">
+          <div>
+            <div class="eyebrow">Production readiness</div>
+            <h2 style="margin:4px 0 0">Real operations status</h2>
+            <p class="muted" style="margin:8px 0 0">Hosted operations should use Supabase, owner-token access, encrypted OAuth tokens, OpenAI, audit/event memory, and zero live posting gates.</p>
+          </div>
+          <span class="badge \${blockers.length ? "warn" : "good"}">\${blockers.length ? blockers.length + " blocker" + (blockers.length === 1 ? "" : "s") : "Ready"}</span>
+        </div>
+        <div class="metric-table" style="margin-top:14px">
+          \${checks.map(check => \`<div class="metric-row"><span>\${esc(check.label)}<br><small class="muted">\${esc(check.detail || "")}</small></span><span class="badge \${check.ok ? "good" : "warn"}">\${check.ok ? "Ready" : "Fix"}</span></div>\`).join("") || '<div class="empty">Production readiness snapshot is not available yet.</div>'}
+        </div>
+        <div class="card-actions" style="margin-top:14px"><button onclick="openProductionReadiness()">Open JSON Snapshot</button><button onclick="location.hash='growth-inbox'">Open Growth Inbox</button><button onclick="location.hash='tasks'">Open Tasks</button></div>
+      </div>\`;
+    }
+
     function credentialReadinessHtml() {
       const items = state.runtime?.credentialReadiness || [];
       const groups = ["core", "openai", "supabase", "google", "linkedin", "meta", "threads", "x", "live-gate"];
@@ -16423,6 +16503,7 @@ function htmlShell() {
         <section id="settings" class="section secondary \${pageClass("settings")}">
           <details>
             <summary>Launch setup</summary>
+            <div style="margin-top:14px">\${productionReadinessSettingsHtml()}</div>
             <div style="margin-top:14px">\${manualModeHtml()}</div>
             <div style="margin-top:14px">\${googleWorkspaceSettingsHtml()}</div>
             <div style="margin-top:14px">\${storageDiagnosticsHtml()}</div>
@@ -17674,6 +17755,20 @@ function htmlShell() {
       }, "Could not refresh priorities.");
     }
 
+    async function openProductionReadiness() {
+      return cooAction(async () => {
+        const result = await api("/api/production/readiness");
+        const lines = [
+          "Production readiness: " + (result.status || "unknown"),
+          "Live gates: " + result.liveGatesCount,
+          "Storage backend: " + result.activeStorageBackend,
+          "",
+          ...(result.checks || []).map(check => (check.ok ? "✓ " : "! ") + check.label + " - " + (check.detail || ""))
+        ];
+        alert(lines.join("\\n"));
+      }, "Could not load production readiness.");
+    }
+
     function setTaskView(view) {
       taskView = view || "today";
       render();
@@ -18562,6 +18657,11 @@ async function handleRequest(request, response) {
       openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
       liveGatesCount: Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length
     });
+    return;
+  }
+
+  if (url.pathname === "/api/production/readiness" && request.method === "GET") {
+    sendJson(response, await productionReadinessSnapshot());
     return;
   }
 
