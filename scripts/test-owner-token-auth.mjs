@@ -72,6 +72,32 @@ try {
   });
   assert.equal(correctToken.status, 200, "correct owner token should be accepted even if env value is wrapped in quotes");
 
+  const leeNoToken = await fetch(`${baseUrl}/api/lee/status`);
+  assert.equal(leeNoToken.status, 401, "Le-E status must preserve hosted auth");
+
+  const leeWrongToken = await fetch(`${baseUrl}/api/lee/status`, {
+    headers:{ authorization:"Bearer wrong-token" }
+  });
+  assert.equal(leeWrongToken.status, 401, "Le-E status must reject wrong owner token");
+
+  const leeStatus = await fetch(`${baseUrl}/api/lee/status`, {
+    headers:{ authorization:"Bearer " + ownerToken }
+  });
+  assert.equal(leeStatus.status, 200, "Le-E status should work with correct owner token");
+  const leeStatusJson = await leeStatus.json();
+  assert.equal(leeStatusJson.status.safeModeActive, true);
+  assert.equal(leeStatusJson.status.liveGatesCount, 0);
+
+  const leeChat = await fetch(`${baseUrl}/api/lee/chat`, {
+    method:"POST",
+    headers:{ "content-type":"application/json", authorization:"Bearer " + ownerToken },
+    body:JSON.stringify({ message:"Le-E, what should I focus on today?" })
+  });
+  assert.equal(leeChat.status, 200, "Le-E chat should work with correct owner token");
+  const leeChatJson = await leeChat.json();
+  assert.match(leeChatJson.assistant.content, /What matters/i);
+  assert.ok(!JSON.stringify(leeChatJson).includes(ownerToken), "Le-E responses must not expose owner token");
+
   const diagnosticsCorrect = await fetch(`${baseUrl}/api/auth/diagnostics`, {
     headers:{ authorization:"Bearer " + ownerToken }
   });

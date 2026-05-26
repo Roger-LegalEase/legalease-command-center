@@ -12532,10 +12532,13 @@ function htmlShell() {
     .lee-input { display:grid; gap:10px; border-top:1px solid rgba(8,20,95,.08); padding-top:14px; }
     .lee-input textarea { min-height:92px; resize:vertical; font-size:15px; line-height:1.45; }
     .lee-side { display:grid; gap:14px; }
+    .lee-onboarding { display:grid; gap:10px; }
+    .lee-onboarding button { justify-content:flex-start; text-align:left; }
     .lee-suggestions { display:flex; flex-wrap:wrap; gap:8px; }
     .lee-suggestions button { border-radius:999px; min-height:34px; font-size:12px; }
     .lee-proposal { display:grid; gap:10px; border:1px solid rgba(8,20,95,.08); border-radius:16px; background:white; padding:14px; }
     .lee-proposal h3 { margin:0; color:var(--ink); font-size:16px; line-height:1.3; }
+    .lee-proposal-note { margin:0; color:#667085; font-size:13px; line-height:1.45; }
     .lee-proposal code { display:block; white-space:pre-wrap; max-height:160px; overflow:auto; }
     .lee-status-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
     .lee-status-grid div { border:1px solid rgba(8,20,95,.08); border-radius:12px; padding:10px; background:#F7FAF9; display:grid; gap:4px; }
@@ -12747,6 +12750,7 @@ function htmlShell() {
     let focusMode = "inbox-triage";
     let focusIndex = 0;
     let leeDraft = "";
+    let leeBusy = false;
     const focusModes = [
       { id:"inbox-triage", label:"Inbox Triage" },
       { id:"partner-follow-up", label:"Partner Follow-Up" },
@@ -12878,7 +12882,16 @@ function htmlShell() {
         } finally {
           if (timeout) clearTimeout(timeout);
         }
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) {
+          const text = await response.text();
+          try {
+            const parsed = JSON.parse(text || "{}");
+            throw new Error(parsed.safeMessage || parsed.error || parsed.message || "Request failed.");
+          } catch (parseError) {
+            if (parseError?.message && parseError.message !== "Unexpected end of JSON input") throw parseError;
+            throw new Error(text || "Request failed.");
+          }
+        }
         return response.json();
       }
       return new Promise((resolve, reject) => {
@@ -16085,17 +16098,24 @@ function htmlShell() {
     function leeProposalCard(proposal = {}) {
       const canApply = proposal.status === "proposed" && proposal.autonomyLevel === "auto_safe" && !proposal.requiredApproval;
       const blocked = proposal.status === "blocked" || proposal.autonomyLevel === "forbidden";
+      const proposalOnly = !blocked && !canApply;
+      const actionNote = blocked
+        ? "Blocked by LegalEase safety rules. This cannot be applied."
+        : canApply
+          ? "Safe internal change. Applying this updates Command Center records only."
+          : "Proposal only. Review and route through the required approval workflow before anything external happens.";
       return \`<article class="lee-proposal">
         <div class="today-meta"><span class="today-phase \${blocked ? "now" : proposal.riskLevel === "high" ? "next" : "later"}">\${esc(plainOperatorState(proposal.status))}</span><span>\${esc(growthLabel(proposal.riskLevel || "low"))} risk</span><span>\${esc(growthLabel(proposal.autonomyLevel || "approval_required"))}</span></div>
         <h3>\${esc(proposal.title || "Le-E proposed action")}</h3>
         <p class="muted">\${esc(proposal.summary || "Review before applying.")}</p>
+        <p class="lee-proposal-note">\${esc(actionNote)}</p>
         <details>
           <summary>What will change</summary>
           <code>\${esc(JSON.stringify(proposal.proposedChanges || {}, null, 2))}</code>
         </details>
         <div class="card-actions">
-          <button class="primary" onclick="applyLeeAction('\${esc(proposal.id)}')" \${canApply ? "" : "disabled"}>Apply</button>
-          <button onclick="approveLeeAction('\${esc(proposal.id)}')" \${proposal.status === "proposed" && !blocked ? "" : "disabled"}>Approve</button>
+          <button class="primary" onclick="applyLeeAction('\${esc(proposal.id)}')" \${canApply ? "" : "disabled"}>\${canApply ? "Apply safe change" : blocked ? "Blocked" : "Needs approval"}</button>
+          <button onclick="approveLeeAction('\${esc(proposal.id)}')" \${proposal.status === "proposed" && !blocked ? "" : "disabled"}>\${proposalOnly ? "Mark reviewed" : "Approve"}</button>
           <button onclick="rejectLeeAction('\${esc(proposal.id)}')" \${["applied", "rejected"].includes(proposal.status) ? "disabled" : ""}>Reject</button>
         </div>
       </article>\`;
@@ -16122,6 +16142,13 @@ function htmlShell() {
         "What is risky or blocked?",
         "What should go into the Evidence Pack?"
       ];
+      const onboarding = [
+        ["Ask Le-E what matters today", "What should I focus on today?"],
+        ["Create tasks from Growth Inbox", "Create tasks from Growth Inbox."],
+        ["Find stalled partners", "Which partners are stalled?"],
+        ["Prepare Evidence Pack", "What should go into the Evidence Pack?"],
+        ["Check risky language", "What content or partner language needs compliance review?"]
+      ];
       return \`<section id="lee" class="section \${pageClass("lee")}">
         <div class="panel hero-panel">
           <div class="eyebrow">Le-E, pronounced Lee</div>
@@ -16140,13 +16167,19 @@ function htmlShell() {
                 <pre>\${leeFormat(message.content || "")}</pre>
                 \${leeSourceChips(message.sourceRefs || [])}
               </article>\`).join("") : '<div class="done-state"><h2>Ask Le-E anything about the operating system.</h2><p>Start with what needs your attention, what is blocked, or what proof should move into the Evidence Pack.</p></div>'}
+              \${leeBusy ? '<article class="lee-message assistant"><div class="today-meta"><span>Le-E</span><span>Working</span></div><pre>Checking Command Center memory and safety rules...</pre></article>' : ""}
             </div>
             <form class="lee-input" onsubmit="sendLeeMessage(event)">
-              <textarea name="message" required placeholder="Ask Le-E what to do next, search the Command Center, or draft a safe internal action…"></textarea>
-              <div class="card-actions"><button class="primary" type="submit">Send</button><button type="button" onclick="rebuildLeeIndex()">Rebuild index</button></div>
+              <textarea name="message" required placeholder="Ask Le-E what to do next, search the Command Center, or draft a safe internal action…">\${esc(leeDraft)}</textarea>
+              <div class="card-actions"><button class="primary" type="submit" \${leeBusy ? "disabled" : ""}>\${leeBusy ? "Checking access..." : "Send"}</button><button type="button" onclick="rebuildLeeIndex()">Rebuild index</button></div>
             </form>
           </section>
           <aside class="lee-side">
+            <section class="panel">
+              <h2>Start here</h2>
+              <p class="muted">Le-E keeps answers short by default and turns work into safe internal proposals.</p>
+              <div class="lee-onboarding">\${onboarding.map(([label, prompt]) => \`<button onclick='askLeePrompt(\${JSON.stringify(prompt)})'>\${esc(label)}</button>\`).join("")}</div>
+            </section>
             <section class="panel">
               <h2>Suggested prompts</h2>
               <div class="lee-suggestions">\${prompts.map(prompt => \`<button onclick='askLeePrompt(\${JSON.stringify(prompt)})'>\${esc(prompt)}</button>\`).join("")}</div>
@@ -17915,7 +17948,9 @@ function htmlShell() {
         toast("Ask Le-E a question first.");
         return;
       }
-      event.target.querySelector("button[type='submit']").disabled = true;
+      leeDraft = message;
+      leeBusy = true;
+      render();
       await cooAction(async () => {
         toast("Le-E is thinking...");
         const result = await api("/api/lee/chat", {
@@ -17923,17 +17958,21 @@ function htmlShell() {
           body:JSON.stringify({ threadId: leeCurrentThreadId(), message })
         });
         state = result.state;
-        event.target.reset();
+        leeDraft = "";
         render();
         const messageText = result.proposals?.length ? "Le-E answered and proposed " + result.proposals.length + " action(s)." : "Le-E answered.";
         toast(messageText);
         return messageText;
       }, "Could not ask Le-E.");
-      const submit = event.target.querySelector("button[type='submit']");
-      if (submit) submit.disabled = false;
+      leeBusy = false;
+      render();
     }
 
     async function askLeePrompt(prompt) {
+      leeDraft = prompt;
+      leeBusy = true;
+      location.hash = "lee";
+      render();
       await cooAction(async () => {
         toast("Le-E is thinking...");
         const result = await api("/api/lee/chat", {
@@ -17947,6 +17986,9 @@ function htmlShell() {
         toast(messageText);
         return messageText;
       }, "Could not ask Le-E.");
+      leeBusy = false;
+      leeDraft = "";
+      render();
     }
 
     async function newLeeThread() {
@@ -19923,7 +19965,7 @@ async function handleRequest(request, response) {
       const result = await createLeeThreadRecord(await readJson(request));
       sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
     } catch (error) {
-      sendJson(response, { error: error.message || "Could not create Le-E thread." }, 400);
+      sendJson(response, { error: "Could not create Le-E thread.", safeMessage: error.message || "Le-E could not create a new thread." }, 400);
     }
     return;
   }
@@ -19950,7 +19992,7 @@ async function handleRequest(request, response) {
       const result = await runLeeChat(await readJson(request));
       sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
     } catch (error) {
-      sendJson(response, { error: error.message || "Could not ask Le-E." }, 400);
+      sendJson(response, { error: "Could not ask Le-E.", safeMessage: error.message || "Le-E could not answer that request." }, 400);
     }
     return;
   }
@@ -19960,7 +20002,7 @@ async function handleRequest(request, response) {
       const result = await rebuildLeeIndex();
       sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
     } catch (error) {
-      sendJson(response, { error: error.message || "Could not rebuild Le-E index." }, 400);
+      sendJson(response, { error: "Could not rebuild Le-E index.", safeMessage: error.message || "Le-E could not rebuild the knowledge index." }, 400);
     }
     return;
   }
@@ -19972,7 +20014,7 @@ async function handleRequest(request, response) {
       const result = await updateLeeAction(decodeURIComponent(leeAction[1]), leeAction[2], payload || {});
       sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
     } catch (error) {
-      sendJson(response, { error: error.message || "Could not update Le-E action.", policy: leeToolPolicy("") }, 400);
+      sendJson(response, { error: "Could not update Le-E action.", safeMessage: error.message || "Le-E could not update that action.", policy: leeToolPolicy("") }, 400);
     }
     return;
   }

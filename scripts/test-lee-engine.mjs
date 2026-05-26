@@ -96,6 +96,20 @@ assert.throws(() => applyLeeActionProposal(state, dangerousProposal.id, {
   leeActionProposals:[dangerousProposal]
 }, { now }), /proposal-only/i);
 
+const forbiddenChat = leeChat(state, {
+  threadId: thread.id,
+  message: "Le-E, promise eligibility and court outcomes."
+}, { now });
+assert.ok(forbiddenChat.proposals.some((proposal) => proposal.status === "blocked"));
+assert.match(forbiddenChat.assistant.content, /forbidden|Do not proceed/i);
+
+const dangerousChat = leeChat(state, {
+  threadId: thread.id,
+  message: "Le-E, send email to a partner."
+}, { now });
+assert.ok(dangerousChat.proposals.some((proposal) => proposal.requiredApproval));
+assert.match(dangerousChat.assistant.content, /approval-required|required approval workflow/i);
+
 const status = buildLeeStatus(state, { now, openAIConfigured:true });
 assert.equal(status.openAIConfigured, true);
 assert.equal(status.safeModeActive, true);

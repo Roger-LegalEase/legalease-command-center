@@ -485,6 +485,35 @@ function answerForPrompt(state = {}, prompt = "", search = {}, proposals = []) {
     ].join("\n");
   }
 
+  if (/task|growth inbox|inbox/.test(q)) {
+    return [
+      "What matters",
+      proposals.length
+        ? `Le-E found ${proposals.length} Growth Inbox item${proposals.length === 1 ? "" : "s"} that can become owned work.`
+        : "Growth Inbox is clear for task creation right now.",
+      "",
+      "Why it matters",
+      "Raw company signals should turn into owned tasks instead of staying in Roger's head.",
+      "",
+      "Recommended action",
+      proposals.length ? "Review the proposed task cards below and apply the safe ones." : "Capture the next partner update, meeting note, support issue, or concern in Quick Capture."
+    ].join("\n");
+  }
+
+  if (/publish|send email|activate|payment|pricing|delete|eligibility|court outcome|legal advice/.test(q) && proposals.length) {
+    const blocked = proposals.some((proposal) => proposal.status === "blocked" || proposal.autonomyLevel === "forbidden");
+    return [
+      "What matters",
+      blocked ? "That request includes a forbidden or legal-sensitive action." : "That request is approval-required and cannot happen silently.",
+      "",
+      "Why it matters",
+      "Le-E protects live posting, outbound messages, partner activation, payment status, legal claims, and security controls.",
+      "",
+      "Recommended action",
+      blocked ? "Do not proceed. Use compliant, non-promissory wording or route it to human review." : "Review the proposal below. It stays internal until the required approval workflow clears it."
+    ].join("\n");
+  }
+
   const lines = priorities.length
     ? priorities.map((item, index) => `${index + 1}. ${item.title} — ${item.action}`)
     : ["1. Capture any new operating signal.", "2. Review Focus Mode.", "3. Build weekly proof if nothing is blocked."];
