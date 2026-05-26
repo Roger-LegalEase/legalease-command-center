@@ -14527,7 +14527,7 @@ function htmlShell() {
           <section class="panel coo-panel" id="overview-approval-queue">
             <div class="simple-panel-head"><h2>Approval Queue</h2><button onclick="selectAllApprovalItems()">Select all</button></div>
             <div class="coo-batch-bar"><button class="primary" onclick="batchApproveItems()">Approve selected</button><button onclick="batchBlockItems()">Block selected</button><button onclick="batchSendApprovalToQueue()">Send to Queue</button><button onclick="batchArchiveApprovalItems()">Archive</button></div>
-            <div class="approval-queue-list">\${approvals.map((item) => \`<article class="approval-queue-card"><div class="approval-card-top"><label class="approval-card-title"><input type="checkbox" class="approval-select" value="\${esc(item.id)}"><span>\${esc(item.title || "Review item")}</span></label>\${String(item.risk || "").toLowerCase() === "high" ? '<span class="approval-risk-label">High risk</span>' : ""}</div><p class="approval-card-reason">\${esc(item.whyItMatters || item.summary || item.recommendedAction || "Review this item before it moves forward.")}</p><div class="approval-card-actions"><button class="primary" onclick="approveItem('\${esc(item.id)}')">Approve</button><button onclick="blockItem('\${esc(item.id)}')">Block</button><button onclick="sendApprovalToQueue('\${esc(item.id)}')">Queue</button></div></article>\`).join("") || '<div class="empty">Nothing is waiting on Roger.</div>'}</div>
+            <div class="approval-simple-list">\${approvals.map((item) => \`<div class="approval-simple-card"><label class="approval-simple-title-row"><input type="checkbox" class="approval-select" value="\${esc(item.id)}"><span class="approval-simple-title">\${esc(item.title || "Review item")}</span></label><p class="approval-simple-description">\${esc(item.whyItMatters || item.summary || item.recommendedAction || "Review this item before it moves forward.")}</p><div class="approval-simple-actions"><button class="primary" onclick="approveItem('\${esc(item.id)}')">Approve</button><button onclick="blockItem('\${esc(item.id)}')">Block</button><button onclick="sendApprovalToQueue('\${esc(item.id)}')">Queue</button></div></div>\`).join("") || '<div class="empty">Nothing is waiting on Roger.</div>'}</div>
           </section>
         </div>
         <div class="coo-overview-stack section">
@@ -17346,6 +17346,93 @@ function htmlShell() {
 </html>`;
 }
 
+function approvalLayoutDebugHtml() {
+  const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[char]));
+  const cards = [
+    {
+      title: "A partner campaign is only real when distribution happens",
+      description: "This post has the assets needed for approval or publish setup."
+    },
+    {
+      title: "Approve the weekly evidence pack before it becomes investor-facing proof",
+      description: "A long title should wrap across normal lines, not collapse into a narrow right-side column."
+    },
+    {
+      title: "RecordShield conversion proof needs a clean campaign follow-up for partners and reviewers",
+      description: "The checkbox, title, description, and action buttons should stay in normal document flow."
+    }
+  ];
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Approval Layout Debug</title>
+  <style>
+    * { box-sizing:border-box; }
+    body { margin:0; padding:28px; background:#f7f8fa; color:#111827; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+    main { width:min(900px,100%); margin:0 auto; }
+    h1 { margin:0 0 18px; font-size:28px; line-height:1.1; }
+    button { border:1px solid #d9e1ec; background:#fff; border-radius:10px; min-height:38px; padding:0 12px; font-weight:700; }
+    button.primary { background:#0b3b8c; color:#fff; border-color:#0b3b8c; }
+    .approval-simple-card {
+      display:block;
+      width:100%;
+      padding:18px;
+      border:1px solid #d9e1ec;
+      border-radius:16px;
+      background:#fff;
+      margin-bottom:14px;
+    }
+    .approval-simple-title-row {
+      display:flex;
+      align-items:flex-start;
+      gap:12px;
+      width:100%;
+    }
+    .approval-simple-title-row input {
+      flex:0 0 auto;
+      margin-top:4px;
+    }
+    .approval-simple-title {
+      display:block;
+      width:auto;
+      max-width:100%;
+      font-size:16px;
+      font-weight:700;
+      line-height:1.35;
+      white-space:normal;
+      word-break:normal;
+      overflow-wrap:normal;
+    }
+    .approval-simple-description {
+      margin:10px 0 0 32px;
+      font-size:14px;
+      line-height:1.45;
+      color:#506079;
+    }
+    .approval-simple-actions {
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin:14px 0 0 32px;
+    }
+    @media (max-width:720px) {
+      .approval-simple-description,
+      .approval-simple-actions { margin-left:0; }
+      .approval-simple-actions button { flex:1 1 96px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Approval Queue Layout Debug</h1>
+    ${cards.map((card) => `<div class="approval-simple-card"><label class="approval-simple-title-row"><input type="checkbox"><span class="approval-simple-title">${escapeHtml(card.title)}</span></label><p class="approval-simple-description">${escapeHtml(card.description)}</p><div class="approval-simple-actions"><button class="primary">Approve</button><button>Block</button><button>Queue</button></div></div>`).join("")}
+  </main>
+</body>
+</html>`;
+}
+
 async function handleRequest(request, response) {
   const url = new URL(request.url ?? "/", `http://${request.headers.host}`);
   const accessDecision = authorizeRequest(request, url, process.env);
@@ -17358,6 +17445,15 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/auth/diagnostics" && request.method === "GET") {
     sendJson(response, authDiagnosticsForRequest(request));
+    return;
+  }
+
+  if (url.pathname === "/debug/approval-layout" && request.method === "GET") {
+    response.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store, max-age=0"
+    });
+    response.end(approvalLayoutDebugHtml());
     return;
   }
 

@@ -1048,18 +1048,14 @@ details > summary {
   min-height:320px;
 }
 
-.coo-overview-primary {
-  display:grid;
-  grid-template-columns:1fr;
-  gap:18px;
-  align-items:start;
+.coo-overview-primary,
+.coo-overview-stack {
+  display:block;
 }
 
-.coo-overview-stack {
-  display:grid;
-  grid-template-columns:1fr;
-  gap:18px;
-  align-items:start;
+.coo-overview-primary > * + *,
+.coo-overview-stack > * + * {
+  margin-top:18px;
 }
 
 .coo-list {
@@ -1122,108 +1118,64 @@ details > summary {
   white-space:nowrap;
 }
 
-.approval-queue-list {
+.approval-simple-list {
   display:block;
 }
 
-.approval-queue-list > * + * {
-  margin-top:12px;
-}
-
-.approval-queue-card {
+.approval-simple-card {
+  display:block;
   width:100%;
-  border:1px solid var(--line);
-  border-radius:14px;
-  background:#fff;
   padding:18px;
-  display:block;
-  box-shadow:0 1px 2px rgba(16,24,40,.04);
+  border:1px solid #d9e1ec;
+  border-radius:16px;
+  background:#fff;
+  margin-bottom:14px;
 }
 
-.approval-card-top {
-  display:block;
-  width:100%;
-}
-
-.approval-card-title {
-  width:100%;
-  min-width:0;
+.approval-simple-title-row {
   display:flex;
   align-items:flex-start;
   gap:12px;
-  color:var(--ink);
+  width:100%;
+}
+
+.approval-simple-title-row input {
+  flex:0 0 auto;
+  margin-top:4px;
+}
+
+.approval-simple-title {
+  display:block;
+  width:auto;
+  max-width:100%;
   font-size:16px;
-  font-weight:780;
+  font-weight:700;
   line-height:1.35;
   white-space:normal;
   word-break:normal;
   overflow-wrap:normal;
 }
 
-.approval-card-title input {
-  flex:0 0 auto;
-  margin-top:4px;
-}
-
-.approval-card-title span {
-  display:block;
-  width:100%;
-  min-width:0;
+.approval-simple-description {
+  margin:10px 0 0 32px;
+  font-size:14px;
+  line-height:1.45;
+  color:#506079;
   white-space:normal;
   word-break:normal;
   overflow-wrap:normal;
 }
 
-.approval-risk-label {
-  display:inline-flex;
-  width:max-content;
-  max-width:100%;
-  margin:10px 0 0 28px;
-  border:1px solid rgba(180,35,24,.18);
-  border-radius:999px;
-  background:rgba(180,35,24,.08);
-  color:var(--danger);
-  padding:4px 9px;
-  font-size:12px;
-  font-weight:850;
-  white-space:nowrap;
-}
-
-.approval-card-reason {
-  margin:10px 0 0 28px;
-  max-width:72ch;
-  color:var(--muted);
-  font-size:13px;
-  line-height:1.5;
-  white-space:normal;
-  word-break:normal;
-  overflow-wrap:normal;
-}
-
-.approval-card-actions {
+.approval-simple-actions {
   display:flex;
   flex-wrap:wrap;
   gap:8px;
-  justify-content:flex-start;
-  margin:14px 0 0 28px;
+  margin:14px 0 0 32px;
 }
 
-.approval-card-actions button {
+.approval-simple-actions button {
   min-height:38px;
   min-width:78px;
-  white-space:nowrap;
-}
-
-.coo-card-actions {
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px;
-  justify-content:flex-start;
-}
-
-.coo-card-actions button {
-  min-height:38px;
-  min-width:76px;
   white-space:nowrap;
 }
 
@@ -1368,13 +1320,12 @@ details > summary {
     justify-content:center;
   }
 
-  .approval-risk-label,
-  .approval-card-reason,
-  .approval-card-actions {
+  .approval-simple-description,
+  .approval-simple-actions {
     margin-left:0;
   }
 
-  .approval-card-actions button {
+  .approval-simple-actions button {
     flex:1 1 96px;
   }
 }
