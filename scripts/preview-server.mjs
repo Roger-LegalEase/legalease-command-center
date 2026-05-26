@@ -11568,11 +11568,58 @@ async function exportGrowthReport(reportType = "weekly_internal") {
   });
 }
 
+function weeklyEvidencePackPeriod(now = new Date()) {
+  const start = new Date(now);
+  start.setDate(start.getDate() - 7);
+  return {
+    generatedAt: now.toISOString(),
+    periodStart: start.toISOString(),
+    periodEnd: now.toISOString().slice(0, 10)
+  };
+}
+
+function weeklyEvidenceDate(item = {}) {
+  return item.createdAt || item.updatedAt || item.completedAt || item.generatedAt || item.receivedAt || item.timestamp || item.lastTouchDate || item.lastUpdated || "";
+}
+
+function isWithinWeeklyEvidencePeriod(item = {}, period = weeklyEvidencePackPeriod()) {
+  const value = String(weeklyEvidenceDate(item) || "");
+  return Boolean(value) && value.slice(0, 10) >= period.periodStart.slice(0, 10);
+}
+
+function weeklyEvidenceTitle(item = {}, fallback = "Untitled item") {
+  return item.title || item.reportTitle || item.campaignName || item.organizationName || item.name || item.pilotName || item.itemTitle || item.evidenceTitle || item.summary || fallback;
+}
+
+function weeklyEvidenceBullets(items = [], mapper = (item) => String(item), empty = "- No recorded movement this week.") {
+  const rows = (items || []).filter(Boolean);
+  if (!rows.length) return [empty];
+  return rows.map((item) => `- ${mapper(item)}`);
+}
+
+function weeklyEvidenceNumber(value = 0) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? Math.round(number) : 0;
+}
+
 function weeklyEvidencePackBody(state = {}) {
   const analyzed = analyzeOperations(state);
   const lifecycle = partnerLifecycleInsights(analyzed);
+  const period = weeklyEvidencePackPeriod();
   const brief = analyzed.cooBrief || {};
-  const approvedPosts = (analyzed.posts || []).filter((post) => post.status === "approved").slice(0, 12);
+  const events = [
+    ...(analyzed.events || []),
+    ...(analyzed.activityEvents || []).map((event) => ({ ...event, source: event.source || "activity" }))
+  ]
+    .filter((event) => isWithinWeeklyEvidencePeriod(event, period))
+    .sort((a, b) => String(weeklyEvidenceDate(b)).localeCompare(String(weeklyEvidenceDate(a))))
+    .slice(0, 18);
+  const completedTasks = (analyzed.tasks || [])
+    .filter((task) => ["done", "completed"].includes(String(task.status || "").toLowerCase()) && isWithinWeeklyEvidencePeriod(task, period))
+    .slice(0, 12);
+  const approvedPosts = (analyzed.posts || [])
+    .filter((post) => ["approved", "posted", "published"].includes(String(post.status || "").toLowerCase()) || post.manuallyPostedAt || post.postedAt || post.publishedAt)
+    .slice(0, 14);
   const blocked = (analyzed.blockers || []).slice(0, 12);
   const signals = (analyzed.growthSignals || []).slice(0, 10);
   const partnerMovement = lifecycle.partnerMovement.slice(0, 10);
@@ -11581,8 +11628,9 @@ function weeklyEvidencePackBody(state = {}) {
   const campaignMovement = (analyzed.campaigns || [])
     .filter((campaign) => ["ready", "live", "report_generated"].includes(campaign.status) || Number(campaign.recordShieldStarts || 0) > 0)
     .slice(0, 10);
+  const campaignReports = (analyzed.reports || []).filter((report) => /campaign|weekly|evidence|pilot|investor/i.test([report.reportTitle, report.reportType].join(" "))).slice(0, 8);
   const funnelTotals = (analyzed.funnelSnapshots || []).reduce((memo, item) => {
-    ["landingPageVisits", "recordShieldStarts", "recordShieldCompletions", "cleanupCtaClicks", "expungementIntakeStarted", "paymentCompleted", "revenue"].forEach((key) => {
+    ["landingPageVisits", "actualReferrals", "recordShieldStarts", "recordShieldCompletions", "cleanupCtaClicks", "expungementIntakeStarted", "paymentStarted", "paymentCompleted", "packetGenerated", "packetCompleted", "petitionFiled", "revenue"].forEach((key) => {
       memo[key] = (memo[key] || 0) + Number(item[key] || 0);
     });
     return memo;
@@ -11590,86 +11638,145 @@ function weeklyEvidencePackBody(state = {}) {
   const conversionRate = Number(funnelTotals.recordShieldCompletions || funnelTotals.recordShieldStarts || 0)
     ? Math.round((Number(funnelTotals.expungementIntakeStarted || 0) / Number(funnelTotals.recordShieldCompletions || funnelTotals.recordShieldStarts || 1)) * 100)
     : 0;
+  const partners = analyzed.partners || [];
+  const pilots = analyzed.pilots || [];
+  const totalPipeline = partners.reduce((sum, item) => sum + Number(item.revenuePotential || item.expectedValue || 0), 0) + pilots.reduce((sum, item) => sum + Number(item.price || item.expectedValue || 0), 0);
+  const weightedPipeline = partners.reduce((sum, item) => sum + Number(item.revenuePotential || item.expectedValue || 0) * (Number(item.probability || 0) / 100), 0);
+  const revenueNotes = [
+    ...(analyzed.growthInbox || []).filter((item) => item.sourceType === "revenue_pipeline_update"),
+    ...(analyzed.evidencePackNotes || []).filter((item) => /revenue|pipeline|paid|customer|contract/i.test([item.title, item.summary, item.notes].join(" ")))
+  ].slice(0, 8);
+  const supportLearnings = [
+    ...(analyzed.supportIssues || []),
+    ...(analyzed.growthInbox || []).filter((item) => ["customer_support_issue", "compliance_concern"].includes(item.sourceType))
+  ].slice(0, 10);
+  const autonomyActions = [
+    ...(analyzed.autonomyRuns || []),
+    ...(analyzed.autonomyDecisions || []),
+    ...(analyzed.autonomyActions || []).filter((item) => ["completed", "approved", "blocked", "ignored"].includes(String(item.status || "").toLowerCase()))
+  ].slice(0, 10);
+  const soc2Readiness = soc2ReadinessForState(analyzed);
+  const complianceNotes = [
+    ...(analyzed.complianceItems || []).filter((item) => ["blocked", "needs_edits", "needs_review", "attorney_review"].includes(String(item.status || "").toLowerCase()) || ["high", "critical"].includes(String(item.riskLevel || "").toLowerCase())),
+    ...(supportLearnings || []).filter((item) => ["high", "critical"].includes(String(item.riskLevel || item.severity || "").toLowerCase()))
+  ].slice(0, 10);
   const dataRoomRecommendations = (analyzed.dataRoomItems || [])
     .filter((item) => ["missing", "draft"].includes(String(item.status || "").toLowerCase()) || /proof|traction|compliance|security|funnel/i.test([item.title, item.section].join(" ")))
     .slice(0, 10);
   const nextWeek = (analyzed.recommendedActions || analyzed.nextBestActions || []).slice(0, 10);
+  const proofPoints = [
+    ...proofWorthyPartners.map((item) => ({ title: weeklyEvidenceTitle(item), reason: `Partner proof value ${item.proofValue || "medium"}`, source: "Partner" })),
+    ...signals.map((item) => ({ title: weeklyEvidenceTitle(item), reason: item.summary || "Growth signal recorded", source: "Growth signal" })),
+    ...campaignMovement.filter((item) => Number(item.recordShieldStarts || item.actualReferrals || item.landingPageVisits || 0) > 0).map((item) => ({ title: weeklyEvidenceTitle(item), reason: `${weeklyEvidenceNumber(item.recordShieldStarts)} RecordShield starts`, source: "Campaign" })),
+    ...dataRoomRecommendations.filter((item) => /proof|traction|funnel|compliance|security/i.test([item.title, item.section].join(" "))).map((item) => ({ title: weeklyEvidenceTitle(item), reason: `${item.status || "tracked"} data room artifact`, source: "Data Room" }))
+  ].slice(0, 12);
+  const executiveTakeaway = [
+    `${signals.length || 0} growth signal(s), ${partnerMovement.length} partner movement item(s), ${campaignMovement.length} campaign movement item(s), and ${blocked.length} blocker(s) are recorded for this operating period.`,
+    `Recorded funnel snapshots show ${weeklyEvidenceNumber(funnelTotals.recordShieldStarts)} RecordShield start(s), ${weeklyEvidenceNumber(funnelTotals.expungementIntakeStarted)} Expungement.ai intake start(s), and ${conversionRate}% RS-to-Expungement.ai conversion where data exists.`,
+    `Recommended move: ${brief.recommendedMove || nextWeek[0]?.title || "review approvals, clear blockers, and convert proof into data room artifacts"}.`
+  ].join(" ");
   const lines = [
     "# LegalEase Weekly Evidence Pack",
     "",
-    `Generated: ${new Date().toISOString()}`,
+    `Generated: ${period.generatedAt}`,
+    `Period: ${period.periodStart.slice(0, 10)} to ${period.periodEnd}`,
+    "Status: Draft operating evidence, not an audited claim.",
     "",
     "## Executive Takeaway",
-    `LegalEase is operating around ${signals.length || 0} current growth signal(s), ${(analyzed.approvalQueue || []).length} approval item(s), and ${blocked.length} blocker(s). The strongest measurable funnel signal is ${funnelTotals.recordShieldStarts || 0} RecordShield start(s) with ${conversionRate}% RecordShield-to-Expungement.ai conversion on the recorded snapshots. The recommended move is: ${brief.recommendedMove || nextWeek[0]?.title || "review approvals and clear blockers"}.`,
+    executiveTakeaway,
     "",
-    "## COO Summary",
-    `- Approvals waiting: ${brief.approvals || (analyzed.approvalQueue || []).length}`,
-    `- Blocked items: ${brief.blocked?.count || blocked.length}`,
-    `- Strongest growth signal: ${brief.growth || "No growth signal recorded yet."}`,
-    `- Recommended move: ${brief.recommendedMove || nextWeek[0]?.title || "Review approvals and blockers."}`,
+    "## What Changed This Week",
+    ...weeklyEvidenceBullets([
+      ...events.map((item) => ({ title: weeklyEvidenceTitle(item), detail: item.action || item.eventType || item.source || "event", at: weeklyEvidenceDate(item) })),
+      ...completedTasks.map((item) => ({ title: weeklyEvidenceTitle(item), detail: "task completed", at: item.completedAt || item.updatedAt || "" }))
+    ].slice(0, 18), (item) => `${item.title}: ${item.detail}${item.at ? ` (${String(item.at).slice(0, 10)})` : ""}`, "- No events or completed tasks recorded this week."),
     "",
-    "## Key Growth Signals",
-    ...(signals.length ? signals.map((item) => `- ${item.title}: ${item.summary || "movement recorded"}`) : ["- No traction signal recorded yet."]),
-    "",
-    "## Campaign Movement",
-    ...(campaignMovement.length ? campaignMovement.map((item) => `- ${item.campaignName}: ${item.status || "not set"}; ${item.recordShieldStarts || 0} RecordShield starts; next ${item.nextAction || "Review campaign next step"}`) : ["- No campaign movement recorded yet."]),
+    "## Growth Signals",
+    ...weeklyEvidenceBullets(signals, (item) => `${weeklyEvidenceTitle(item)}: ${item.summary || item.why || "movement recorded"}`, "- No traction signal recorded yet."),
     "",
     "## Partner Movement",
-    ...(partnerMovement.length ? partnerMovement.map((item) => `- ${item.name || item.organizationName}: ${item.stage || item.status || "not set"}; owner ${item.owner || "Unassigned"}; next ${item.nextAction || "Set next action"}`) : ["- No partner movement recorded yet."]),
+    ...weeklyEvidenceBullets(partnerMovement, (item) => `${item.name || item.organizationName}: ${item.stage || item.status || "not set"}; owner ${item.owner || "Unassigned"}; next ${item.nextAction || "Set next action"}`, "- No partner movement recorded yet."),
+    ...weeklyEvidenceBullets(stalledPartners, (item) => `${item.name || item.organizationName}: stalled; owner ${item.owner || "Unassigned"}; next ${item.nextAction || "Reframe, revive, or close"}`, "- No stalled partners recorded."),
     "",
-    "## Stalled Partners",
-    ...(stalledPartners.length ? stalledPartners.map((item) => `- ${item.name || item.organizationName}: stalled; owner ${item.owner || "Unassigned"}; next ${item.nextAction || "Reframe, revive, or close"}`) : ["- No stalled partners recorded."]),
+    "## Campaign Movement",
+    ...weeklyEvidenceBullets(campaignMovement, (item) => `${item.campaignName}: ${item.status || "not set"}; ${weeklyEvidenceNumber(item.recordShieldStarts)} RecordShield starts; ${weeklyEvidenceNumber(item.actualReferrals)} referrals; next ${item.nextAction || "Review campaign next step"}`, "- No campaign movement recorded yet."),
+    ...weeklyEvidenceBullets(campaignReports, (item) => `${weeklyEvidenceTitle(item)}: ${item.status || "exported"}; ${item.markdownPath || item.publicUrl || "report artifact tracked"}`, "- No campaign reports recorded this week."),
     "",
-    "## Proof-Worthy Partner Updates",
-    ...(proofWorthyPartners.length ? proofWorthyPartners.map((item) => `- ${item.name || item.organizationName}: proof value ${item.proofValue || "medium"}; recommended evidence action ${item.nextAction || "Add evidence pack note"}`) : ["- No proof-worthy partner updates recorded yet."]),
-    "",
-    "## RecordShield Funnel Movement",
-    `- Landing page visits: ${funnelTotals.landingPageVisits || 0}`,
-    `- RecordShield starts: ${funnelTotals.recordShieldStarts || 0}`,
-    `- RecordShield completions: ${funnelTotals.recordShieldCompletions || 0}`,
-    `- Cleanup CTA clicks: ${funnelTotals.cleanupCtaClicks || 0}`,
-    `- Expungement.ai starts: ${funnelTotals.expungementIntakeStarted || 0}`,
-    `- Payments completed: ${funnelTotals.paymentCompleted || 0}`,
-    `- Revenue: $${funnelTotals.revenue || 0}`,
+    "## RecordShield Funnel",
+    `- Landing page visits: ${weeklyEvidenceNumber(funnelTotals.landingPageVisits)}`,
+    `- Referrals: ${weeklyEvidenceNumber(funnelTotals.actualReferrals)}`,
+    `- RecordShield starts: ${weeklyEvidenceNumber(funnelTotals.recordShieldStarts)}`,
+    `- RecordShield completions: ${weeklyEvidenceNumber(funnelTotals.recordShieldCompletions)}`,
+    `- Cleanup CTA clicks: ${weeklyEvidenceNumber(funnelTotals.cleanupCtaClicks)}`,
+    `- Expungement.ai starts: ${weeklyEvidenceNumber(funnelTotals.expungementIntakeStarted)}`,
+    `- Payments completed: ${weeklyEvidenceNumber(funnelTotals.paymentCompleted)}`,
+    `- Packet completions: ${weeklyEvidenceNumber(funnelTotals.packetCompleted)}`,
+    `- Petition filings: ${weeklyEvidenceNumber(funnelTotals.petitionFiled)}`,
+    `- Revenue: $${weeklyEvidenceNumber(funnelTotals.revenue)}`,
     `- RS → Expungement.ai conversion: ${conversionRate}%`,
     "",
-    "## Approved Content",
-    ...(approvedPosts.length ? approvedPosts.map((post) => `- ${post.title} (${platformLabels[post.platform] || post.platform}): ${post.nextBestAction || "Check publish setup"}`) : ["- No approved content ready yet."]),
+    "## Revenue / Pipeline Notes",
+    `- Recorded direct revenue from funnel snapshots: $${weeklyEvidenceNumber(funnelTotals.revenue)}`,
+    `- Total pipeline value tracked on partners/pilots: $${weeklyEvidenceNumber(totalPipeline)}`,
+    `- Probability-weighted partner pipeline: $${weeklyEvidenceNumber(weightedPipeline)}`,
+    ...weeklyEvidenceBullets(revenueNotes, (item) => `${weeklyEvidenceTitle(item)}: ${item.suggestedAction || item.notes || item.summary || "Review revenue/pipeline note"}`, "- No additional revenue or pipeline notes recorded."),
     "",
-    "## Blocked Items",
-    ...(blocked.length ? blocked.map((item) => `- ${item.title || item.whatIsBlocked}: ${item.whyBlocked || "Blocked"}; fix ${item.fix || "Review next step"}`) : ["- No blockers recorded."]),
+    "## Customer / Support Learnings",
+    ...weeklyEvidenceBullets(supportLearnings, (item) => `${weeklyEvidenceTitle(item)}: ${item.summary || item.rawText || item.recommendedFix || item.suggestedAction || "Review support signal"}; risk ${item.riskLevel || item.severity || "medium"}`, "- No customer/support learnings recorded."),
     "",
-    "## Data Room Recommendations",
-    ...(dataRoomRecommendations.length ? dataRoomRecommendations.map((item) => `- ${item.title}: ${item.status || "missing"}; next ${item.nextAction || "Move toward investor-ready"}`) : ["- No data room gaps surfaced."]),
+    "## Content and Distribution",
+    ...weeklyEvidenceBullets(approvedPosts, (post) => `${post.title} (${platformLabels[post.platform] || post.platform || "platform TBD"}): ${post.status || "approved"}; ${post.publicImageUrl ? "public image ready" : "public image not recorded"}; next ${post.nextBestAction || "Check distribution setup"}`, "- No approved or published content ready yet."),
+    `- Approval queue items waiting: ${(analyzed.approvalQueue || []).length}`,
     "",
-    "## Next Week Recommendations",
-    ...(nextWeek.length ? nextWeek.map((item) => `- ${item.title || item.description}: ${item.reasonGenerated || item.description || "Recommended action"}`) : ["- Review approvals, blockers, and partner follow-ups."]),
+    "## Compliance / Risk Notes",
+    ...weeklyEvidenceBullets(complianceNotes, (item) => `${weeklyEvidenceTitle(item)}: ${item.status || item.riskLevel || item.severity || "needs review"}; reviewer ${item.reviewer || item.owner || "Unassigned"}`, "- No high-risk compliance/support notes recorded."),
+    ...weeklyEvidenceBullets(blocked, (item) => `${item.title || item.whatIsBlocked}: ${item.whyBlocked || "Blocked"}; fix ${item.fix || "Review next step"}`, "- No blockers recorded."),
+    `- SOC 2 Readiness score: ${soc2Readiness.score}% (${soc2Readiness.readinessBand || "readiness band unavailable"})`,
+    ...weeklyEvidenceBullets(autonomyActions, (item) => `${weeklyEvidenceTitle(item, item.action || "Autonomy action")}: ${item.status || item.decisionClass || "recorded"}; no external action implied`, "- No autonomy actions recorded."),
     "",
-    "## Investor-Ready Proof Notes",
-    "- Use this pack as a weekly source of truth, not a replacement for diligence artifacts.",
-    "- Convert strong partner/campaign/funnel signals into data room artifacts within the same week.",
-    "- Keep claims operational: pilots signed, users started, conversions measured, blockers named."
+    "## Proof Points for Investors",
+    ...weeklyEvidenceBullets(proofPoints, (item) => `${item.title}: ${item.reason} [${item.source}]`, "- No investor proof points are ready yet. Convert measurable signals into approved artifacts before sharing externally."),
+    ...weeklyEvidenceBullets(dataRoomRecommendations, (item) => `${item.title}: ${item.status || "missing"}; next ${item.nextAction || "Move toward investor-ready"}`, "- No data room recommendations surfaced."),
+    "",
+    "## Next Week Priorities",
+    ...weeklyEvidenceBullets(nextWeek, (item) => `${item.title || item.description}: ${item.reasonGenerated || item.description || "Recommended action"}`, "- Review approvals, blockers, and partner follow-ups."),
+    "",
+    "## Guardrails",
+    "- This pack is internal operating evidence. Do not send automatically.",
+    "- Do not present draft signals as audited facts, legal outcomes, eligibility promises, or guaranteed court results.",
+    "- Convert externally useful proof into reviewed Data Room artifacts before investor, partner, or public use."
   ];
   const summary = {
-    generatedAt: new Date().toISOString(),
-    executiveTakeaway: `LegalEase is operating around ${signals.length || 0} growth signal(s), ${(analyzed.approvalQueue || []).length} approval item(s), and ${blocked.length} blocker(s). Recommended move: ${brief.recommendedMove || nextWeek[0]?.title || "review approvals and clear blockers"}.`,
+    generatedAt: period.generatedAt,
+    period,
+    status: "draft_operating_evidence",
+    executiveTakeaway,
     cooSummary: brief,
+    whatChangedThisWeek: { events, completedTasks },
     growthSignals: signals,
-    campaignMovement,
     partnerMovement,
     stalledPartners,
     proofWorthyPartners,
+    campaignMovement,
+    campaignReports,
     funnelTotals,
     conversionRate,
+    revenuePipeline: { directRevenue: weeklyEvidenceNumber(funnelTotals.revenue), totalPipeline: weeklyEvidenceNumber(totalPipeline), weightedPipeline: weeklyEvidenceNumber(weightedPipeline), notes: revenueNotes },
+    supportLearnings,
     approvedContent: approvedPosts.map((post) => ({ id: post.id, title: post.title, platform: post.platform, nextBestAction: post.nextBestAction })),
+    complianceRiskNotes: complianceNotes,
+    autonomyActions,
+    soc2Readiness: { score: soc2Readiness.score, readinessBand: soc2Readiness.readinessBand, openGaps: soc2Readiness.openGaps?.length || 0 },
     blockedItems: blocked,
+    proofPointsForInvestors: proofPoints,
     dataRoomRecommendations,
-    nextWeekRecommendations: nextWeek
+    nextWeekPriorities: nextWeek,
+    guardrails: ["draft/internal only", "no automatic sending", "no unsupported claims"]
   };
   return { markdown: `${lines.join("\n")}\n`, summary };
 }
 
-async function exportWeeklyEvidencePack() {
+async function exportWeeklyEvidencePack(options = {}) {
   return serializeStateMutation(async () => {
     const state = await store.readState();
     const now = new Date().toISOString();
@@ -11678,39 +11785,83 @@ async function exportWeeklyEvidencePack() {
     const outputDir = path.resolve(process.cwd(), relativeDir);
     if (!outputDir.startsWith(path.resolve(process.cwd(), "data/exports/reports"))) throw new Error("Unsafe report path.");
     await mkdir(outputDir, { recursive: true });
+    const action = String(options.action || "export_all").toLowerCase();
     const { markdown, summary } = weeklyEvidencePackBody(state);
     let markdownPath = `${relativeDir}/${filename}.md`;
     let jsonPath = `${relativeDir}/${filename}.json`;
     let storage = null;
-    if (hostedModeEnabled()) {
+    const shouldWriteLocal = ["export_all", "export_markdown", "export_json", "save_data_room"].includes(action) || (action === "draft" && options.writeDraftFile);
+    const shouldUploadStorage = action === "export_storage" || (hostedModeEnabled() && ["export_all", "save_data_room"].includes(action));
+    if (shouldWriteLocal) {
+      if (action !== "export_json") await writeFile(path.join(outputDir, `${filename}.md`), markdown);
+      if (action !== "export_markdown") await writeFile(path.join(outputDir, `${filename}.json`), JSON.stringify(summary, null, 2));
+    }
+    if (shouldUploadStorage) {
       const markdownUpload = await uploadBytesToSupabaseStorage(`reports/${filename}.md`, Buffer.from(markdown), "text/markdown");
       const jsonUpload = await uploadBytesToSupabaseStorage(`reports/${filename}.json`, Buffer.from(JSON.stringify(summary, null, 2)), "application/json");
       storage = { markdown: markdownUpload, json: jsonUpload };
       markdownPath = markdownUpload.publicUrl;
       jsonPath = jsonUpload.publicUrl;
-    } else {
-      await mkdir(outputDir, { recursive: true });
-      await writeFile(path.join(outputDir, `${filename}.md`), markdown);
-      await writeFile(path.join(outputDir, `${filename}.json`), JSON.stringify(summary, null, 2));
     }
     const report = {
       id: `report-${filename}`,
       reportTitle: "Weekly Evidence Pack",
       reportType: "weekly_evidence_pack",
-      markdownPath,
-      jsonPath,
-      storageBackend: hostedModeEnabled() ? "supabase_storage" : "local_json",
+      markdownPath: (shouldUploadStorage || (shouldWriteLocal && action !== "export_json")) ? markdownPath : "",
+      jsonPath: (shouldUploadStorage || (shouldWriteLocal && action !== "export_markdown")) ? jsonPath : "",
+      storageBackend: storage ? "supabase_storage" : "local_json",
       storage,
+      summary,
       generatedAt: now,
-      status: "exported"
+      status: action === "draft" ? "draft" : action === "save_data_room" ? "saved_to_data_room" : "exported",
+      artifactAction: action
     };
+    const dataRoomItem = action === "save_data_room" ? {
+      id: `dataroom-weekly-evidence-${filename}`,
+      title: `Weekly Evidence Pack - ${now.slice(0, 10)}`,
+      section: "Traction",
+      category: "Campaign Reports",
+      status: "draft",
+      owner: "Operations",
+      lastUpdated: now.slice(0, 10),
+      source: "LegalEase Operating System",
+      relatedProofPoint: "active_partner_campaigns",
+      proofScore: 2,
+      diligenceValue: "high",
+      filePath: report.markdownPath || report.jsonPath || "Generated draft in Reports",
+      notes: "Internal weekly operating proof pack. Review before sharing with investors or partners.",
+      nextAction: "Review claims, approve shareable proof, then move to investor-ready if appropriate."
+    } : null;
+    const activityTitle = action === "draft" ? "Weekly evidence pack draft generated" : action === "save_data_room" ? "Weekly evidence pack saved to Data Room" : action === "export_storage" ? "Weekly evidence pack uploaded to Supabase Storage" : "Weekly evidence pack exported";
     const nextState = analyzeOperations({
       ...state,
       reports: [report, ...(state.reports || [])],
-      activityEvents: [{ id: `activity-report-${crypto.randomUUID().slice(0, 8)}`, eventType: "Weekly evidence pack exported", title: "Weekly Evidence Pack", relatedObjectType: "report", relatedObjectId: report.id, createdAt: now }, ...(state.activityEvents || [])].slice(0, 500)
+      dataRoomItems: dataRoomItem ? [dataRoomItem, ...(state.dataRoomItems || [])] : state.dataRoomItems || [],
+      events: [{
+        id: `event-weekly-evidence-${crypto.randomUUID().slice(0, 10)}`,
+        eventType: "weekly_evidence_pack",
+        timestamp: now,
+        actor: "system",
+        source: "reports",
+        objectType: "report",
+        objectId: report.id,
+        riskLevel: "low",
+        proofValue: action === "save_data_room" ? "medium" : "low",
+        revenueImpact: "low",
+        nextAction: "Review before external use.",
+        metadata: { action, markdownPath: report.markdownPath, jsonPath: report.jsonPath, storageUploaded: Boolean(storage) }
+      }, ...(state.events || [])].slice(0, 1000),
+      activityEvents: [{ id: `activity-report-${crypto.randomUUID().slice(0, 8)}`, eventType: activityTitle, title: "Weekly Evidence Pack", relatedObjectType: "report", relatedObjectId: report.id, createdAt: now }, ...(state.activityEvents || [])].slice(0, 500)
     });
     await store.writeState(nextState);
-    return { state: nextState, report, message: "Weekly evidence pack exported." };
+    const message = action === "draft"
+      ? "Weekly evidence pack draft generated."
+      : action === "save_data_room"
+        ? "Weekly evidence pack saved to Data Room as draft evidence."
+        : action === "export_storage"
+          ? "Weekly evidence pack uploaded to Supabase Storage."
+          : "Weekly evidence pack exported.";
+    return { state: nextState, report, markdown, summary, message };
   });
 }
 
@@ -15680,6 +15831,17 @@ function htmlShell() {
             <div class="card-actions" style="margin-top:12px">\${moreTypes.map(type => \`<button onclick="exportGrowthReport('\${type}')">\${esc(growthLabel(type))}</button>\`).join("")}</div>
           </details>
         </section>
+        <section class="panel section reports-console">
+          <div class="simple-panel-head"><div><h2>Weekly Evidence Pack</h2><p class="muted">Investor and partner proof from events, tasks, partner movement, campaigns, funnel, content, support, revenue, autonomy, and SOC 2 readiness. Draft/internal only until reviewed.</p></div><span class="badge warn">No automatic sending</span></div>
+          <div class="card-actions">
+            <button class="primary" onclick="createWeeklyEvidencePack('draft')">Generate Draft</button>
+            <button onclick="createWeeklyEvidencePack('save_data_room')">Save to Data Room</button>
+            <button onclick="downloadWeeklyEvidencePack('markdown')">Export Markdown</button>
+            <button onclick="downloadWeeklyEvidencePack('json')">Export JSON</button>
+            <button onclick="createWeeklyEvidencePack('export_storage')">Export to Supabase Storage</button>
+          </div>
+          <p class="muted" style="margin-top:10px">Exports make no unsupported legal, compliance, revenue, or outcome claims. Review before sharing externally.</p>
+        </section>
         <section class="panel section">
           <div class="simple-panel-head"><h2>Recent exports</h2><button onclick="exportGrowthReport('weekly_operating')">New weekly report</button></div>
           <div class="report-export-list">
@@ -17470,13 +17632,37 @@ function htmlShell() {
       await batchApproval("archive");
     }
 
-    async function createWeeklyEvidencePack() {
+    async function createWeeklyEvidencePack(action = "export_all") {
       return cooAction(async () => {
-        const result = await api("/api/reports/weekly-evidence-pack", { method:"POST" });
+        const result = await api("/api/reports/weekly-evidence-pack", { method:"POST", body:JSON.stringify({ action }) });
         state = result.state;
         render();
         toast(result.message || "Weekly evidence pack exported");
       }, "Could not export weekly evidence pack.");
+    }
+
+    async function downloadWeeklyEvidencePack(format = "markdown") {
+      return cooAction(async () => {
+        const headers = {};
+        const token = storedOwnerToken();
+        if (token) headers.Authorization = "Bearer " + token;
+        const response = await fetch("/api/reports/weekly-evidence-pack/export?format=" + encodeURIComponent(format), { headers });
+        if (!response.ok) throw new Error(await response.text());
+        const blob = await response.blob();
+        const fallback = "weekly-evidence-pack." + (format === "json" ? "json" : "md");
+        const disposition = response.headers.get("content-disposition") || "";
+        const match = disposition.match(/filename="([^"]+)"/);
+        const filename = match ? match[1] : fallback;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        toast(format === "json" ? "Weekly evidence JSON exported" : "Weekly evidence Markdown exported");
+      }, "Could not download weekly evidence pack.");
     }
 
     async function rebuildPriorities() {
@@ -18566,10 +18752,36 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/reports/weekly-evidence-pack" && request.method === "POST") {
     try {
-      const result = await exportWeeklyEvidencePack();
+      const input = !request.headers["content-length"] || request.headers["content-length"] === "0" ? {} : await readJson(request);
+      const result = await exportWeeklyEvidencePack(input || {});
       sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not export weekly evidence pack." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/reports/weekly-evidence-pack/export" && request.method === "GET") {
+    try {
+      const state = await store.readState();
+      const { markdown, summary } = weeklyEvidencePackBody(state);
+      const format = String(url.searchParams.get("format") || "markdown").toLowerCase();
+      const date = new Date().toISOString().slice(0, 10);
+      if (format === "json") {
+        response.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+          "content-disposition": `attachment; filename="weekly-evidence-pack-${date}.json"`
+        });
+        response.end(JSON.stringify(summary, null, 2));
+      } else {
+        response.writeHead(200, {
+          "content-type": "text/markdown; charset=utf-8",
+          "content-disposition": `attachment; filename="weekly-evidence-pack-${date}.md"`
+        });
+        response.end(markdown);
+      }
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not download weekly evidence pack." }, 400);
     }
     return;
   }

@@ -291,8 +291,12 @@ curl https://your-render-app.onrender.com/api/health
 
 Weekly Evidence Pack export behavior:
 
-- Local/demo mode writes Markdown and JSON under `data/exports/reports/`.
-- Hosted Supabase mode uploads Markdown and JSON to Supabase Storage under `reports/` and stores the public URLs on the report record.
+- The Weekly Evidence Pack is an internal operating artifact for investor, partner, and leadership proof. It pulls from events, completed tasks, partner movement, campaign movement, RecordShield funnel snapshots, approved/published content, support learnings, revenue/pipeline notes, autonomy actions, and SOC 2 Readiness signals.
+- Report sections include Executive Takeaway, What Changed This Week, Growth Signals, Partner Movement, Campaign Movement, RecordShield Funnel, Revenue / Pipeline Notes, Customer / Support Learnings, Content and Distribution, Compliance / Risk Notes, Proof Points for Investors, and Next Week Priorities.
+- Actions available from Reports: Generate Draft, Save to Data Room, Export Markdown, Export JSON, and Export to Supabase Storage.
+- Local/demo mode writes Markdown and JSON under `data/exports/reports/` for export actions.
+- Hosted Supabase mode uploads Markdown and JSON to Supabase Storage under `reports/` for hosted exports and stores the public URLs on the report record.
+- Evidence packs are draft/internal until reviewed. They do not send emails, publish content, claim audited compliance, promise eligibility, or imply guaranteed legal outcomes.
 
 Render deployment:
 
@@ -432,4 +436,4 @@ The partner lifecycle engine creates owned tasks for proposal follow-ups after 7
 
 The Partners page includes a detail drawer with timeline, next action, linked documents/artifacts, linked reports, open tasks, and a suggested follow-up draft. Follow-up drafts are draft-only and require human approval before any external email is sent.
 
-Weekly Evidence Packs now include partner movement, stalled partners, and proof-worthy partner updates so partner progress turns into investor/acquirer evidence instead of living only in memory.
+Weekly Evidence Packs include partner movement, stalled partners, proof-worthy partner updates, campaign movement, funnel movement, revenue/pipeline notes, support learnings, autonomy actions, and SOC 2 Readiness notes so operating work turns into reviewed investor/acquirer evidence instead of living only in memory.
