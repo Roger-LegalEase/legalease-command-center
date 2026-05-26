@@ -14530,7 +14530,7 @@ function htmlShell() {
             <div class="approval-queue-list">\${approvals.map((item) => \`<article class="approval-queue-card"><div class="approval-card-top"><label class="approval-card-title"><input type="checkbox" class="approval-select" value="\${esc(item.id)}"><span>\${esc(item.title || "Review item")}</span></label>\${String(item.risk || "").toLowerCase() === "high" ? '<span class="approval-risk-label">High risk</span>' : ""}</div><p class="approval-card-reason">\${esc(item.whyItMatters || item.summary || item.recommendedAction || "Review this item before it moves forward.")}</p><div class="approval-card-actions"><button class="primary" onclick="approveItem('\${esc(item.id)}')">Approve</button><button onclick="blockItem('\${esc(item.id)}')">Block</button><button onclick="sendApprovalToQueue('\${esc(item.id)}')">Queue</button></div></article>\`).join("") || '<div class="empty">Nothing is waiting on Roger.</div>'}</div>
           </section>
         </div>
-        <div class="grid two section">
+        <div class="coo-overview-stack section">
           <section class="panel coo-panel" id="overview-blockers">
             <div class="simple-panel-head"><h2>Blockers</h2><button onclick="location.hash='settings'">Fix setup</button></div>
             <div class="coo-list">\${blockers.map((item, index) => row(item, index + 1, item.sourceType === "campaign" ? "campaigns" : "queue")).join("") || '<div class="empty">No blockers. Publishing still fails closed unless setup is ready.</div>'}</div>
