@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { partnerLifecycleTasks } from "./partner-lifecycle.mjs";
 
 const terminalStatuses = new Set(["done", "dismissed"]);
 
@@ -72,7 +73,7 @@ function task(input = {}, options = {}) {
 export function deriveAutomaticTasks(state = {}, options = {}) {
   const now = options.now || new Date().toISOString();
   const dayOfWeek = Number.isFinite(options.dayOfWeek) ? options.dayOfWeek : new Date(now).getDay();
-  const tasks = [];
+  const tasks = [...partnerLifecycleTasks(state, { now })];
 
   for (const partner of list(state.partners)) {
     const stale = !partner.nextAction || daysSince(partner.updatedAt || partner.lastTouchDate || partner.lastContacted, now) >= 7;

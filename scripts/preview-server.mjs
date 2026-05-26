@@ -16,6 +16,7 @@ import {
   triageGrowthInboxItem
 } from "./growth-inbox.mjs";
 import { deriveAutomaticTasks, mergeAutomaticTasks, updateTask } from "./tasks-engine.mjs";
+import { normalizePartnerLifecycle, partnerFollowUpDraft, partnerLifecycleInsights } from "./partner-lifecycle.mjs";
 import {
   channelSetup,
   channelSetupMessage,
@@ -10747,6 +10748,9 @@ async function upsertGrowthItem(collection, input = {}) {
     const id = input.id || `${slugify(collection)}-${crypto.randomUUID().slice(0, 8)}`;
     const previous = current.find((item) => item.id === id) || {};
     const item = { ...previous, ...input, id, updatedAt: now, createdAt: previous.createdAt || input.createdAt || now };
+    if (collection === "partners") {
+      Object.assign(item, normalizePartnerLifecycle(item, { now }));
+    }
     if (String(collection || '').startsWith('soc2') || collection === 'complianceItems' || collection === 'approvalQueue' || collection === 'posts') {
       item.controlArea = item.controlArea || controlAreaFromCollection(collection, item);
     }
@@ -11458,13 +11462,14 @@ async function exportGrowthReport(reportType = "weekly_internal") {
 
 function weeklyEvidencePackBody(state = {}) {
   const analyzed = analyzeOperations(state);
+  const lifecycle = partnerLifecycleInsights(analyzed);
   const brief = analyzed.cooBrief || {};
   const approvedPosts = (analyzed.posts || []).filter((post) => post.status === "approved").slice(0, 12);
   const blocked = (analyzed.blockers || []).slice(0, 12);
   const signals = (analyzed.growthSignals || []).slice(0, 10);
-  const partnerMovement = (analyzed.partners || [])
-    .filter((partner) => ["proposal_sent", "verbal_yes", "signed_pilot", "campaign_live"].includes(partner.status))
-    .slice(0, 10);
+  const partnerMovement = lifecycle.partnerMovement.slice(0, 10);
+  const stalledPartners = lifecycle.stalledPartners.slice(0, 10);
+  const proofWorthyPartners = lifecycle.proofWorthyPartners.slice(0, 10);
   const campaignMovement = (analyzed.campaigns || [])
     .filter((campaign) => ["ready", "live", "report_generated"].includes(campaign.status) || Number(campaign.recordShieldStarts || 0) > 0)
     .slice(0, 10);
@@ -11502,7 +11507,13 @@ function weeklyEvidencePackBody(state = {}) {
     ...(campaignMovement.length ? campaignMovement.map((item) => `- ${item.campaignName}: ${item.status || "not set"}; ${item.recordShieldStarts || 0} RecordShield starts; next ${item.nextAction || "Review campaign next step"}`) : ["- No campaign movement recorded yet."]),
     "",
     "## Partner Movement",
-    ...(partnerMovement.length ? partnerMovement.map((item) => `- ${item.organizationName}: ${item.status || "not set"}; next ${item.nextAction || "Set next action"}`) : ["- No partner movement recorded yet."]),
+    ...(partnerMovement.length ? partnerMovement.map((item) => `- ${item.name || item.organizationName}: ${item.stage || item.status || "not set"}; owner ${item.owner || "Unassigned"}; next ${item.nextAction || "Set next action"}`) : ["- No partner movement recorded yet."]),
+    "",
+    "## Stalled Partners",
+    ...(stalledPartners.length ? stalledPartners.map((item) => `- ${item.name || item.organizationName}: stalled; owner ${item.owner || "Unassigned"}; next ${item.nextAction || "Reframe, revive, or close"}`) : ["- No stalled partners recorded."]),
+    "",
+    "## Proof-Worthy Partner Updates",
+    ...(proofWorthyPartners.length ? proofWorthyPartners.map((item) => `- ${item.name || item.organizationName}: proof value ${item.proofValue || "medium"}; recommended evidence action ${item.nextAction || "Add evidence pack note"}`) : ["- No proof-worthy partner updates recorded yet."]),
     "",
     "## RecordShield Funnel Movement",
     `- Landing page visits: ${funnelTotals.landingPageVisits || 0}`,
@@ -11538,6 +11549,8 @@ function weeklyEvidencePackBody(state = {}) {
     growthSignals: signals,
     campaignMovement,
     partnerMovement,
+    stalledPartners,
+    proofWorthyPartners,
     funnelTotals,
     conversionRate,
     approvedContent: approvedPosts.map((post) => ({ id: post.id, title: post.title, platform: post.platform, nextBestAction: post.nextBestAction })),
@@ -11673,6 +11686,7 @@ function htmlShell() {
     textarea { min-height:90px; resize:vertical; }
     .split { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .post-body { white-space:pre-wrap; color:#4e5664; font-size:14px; }
+    .code-block { white-space:pre-wrap; overflow-wrap:break-word; border:1px solid var(--line); border-radius:8px; padding:12px; background:rgba(229,235,235,.34); color:#3040BF; font-size:12px; line-height:1.5; }
 	    .image-preview { margin:0; border:1px solid var(--line); background:#0f1723; border-radius:8px; min-height:260px; aspect-ratio:1 / 1; display:grid; place-items:center; overflow:hidden; }
 	    .image-frame { position:relative; width:100%; height:100%; min-height:260px; display:grid; place-items:center; background:#0f1723; }
     .image-preview img.poster-image { width:100%; height:100%; object-fit:contain; display:block; }
@@ -14532,6 +14546,74 @@ function htmlShell() {
       }) || null;
     }
 
+    function normalizePartnerLifecycle(partner = {}) {
+      const statusMap = { target_identified:"lead", contact_found:"lead", outreach_sent:"qualified", meeting_booked:"intro_scheduled", proposal_sent:"proposal_sent", verbal_yes:"pilot_scoped", signed_pilot:"active_pilot", campaign_live:"reporting", paused:"stalled", dormant:"stalled", closed_lost:"lost" };
+      const name = partner.name || partner.organizationName || partner.partnerName || "Unnamed partner";
+      const stage = partner.stage || partner.lifecycleStage || statusMap[partner.status] || partner.status || "lead";
+      const type = String(partner.type || partner.partnerType || "nonprofit").toLowerCase().replace(/\\s+/g, "_");
+      const nextActionDueDate = partner.nextActionDueDate || partner.nextFollowUpDate || "";
+      return {
+        ...partner,
+        name,
+        organizationName: partner.organizationName || name,
+        type,
+        partnerType: partner.partnerType || type,
+        stage,
+        status: partner.status || stage,
+        owner: partner.owner || "Roger",
+        nextAction: partner.nextAction || "",
+        nextActionDueDate,
+        nextFollowUpDate: partner.nextFollowUpDate || nextActionDueDate,
+        lastTouchDate: partner.lastTouchDate || partner.lastContacted || partner.updatedAt || partner.createdAt || "",
+        priority: String(partner.priority || "medium").toLowerCase(),
+        revenuePotential: Number(partner.revenuePotential || partner.expectedValue || 0),
+        proofValue: partner.proofValue || partner.proofPotential || "medium",
+        riskLevel: String(partner.riskLevel || "medium").toLowerCase(),
+        relatedCampaigns: Array.isArray(partner.relatedCampaigns) ? partner.relatedCampaigns : (partner.relatedCampaign ? [partner.relatedCampaign] : []),
+        relatedPilots: Array.isArray(partner.relatedPilots) ? partner.relatedPilots : (partner.relatedPilot ? [partner.relatedPilot] : []),
+        relatedReports: Array.isArray(partner.relatedReports) ? partner.relatedReports : [],
+        history: Array.isArray(partner.history) ? partner.history : []
+      };
+    }
+
+    function partnerHasStrongProof(partner = {}) {
+      const proof = partner.proofValue;
+      if (Number.isFinite(Number(proof)) && Number(proof) >= 4) return true;
+      if (/strong|high|critical|public|case|signed|live/i.test(String(proof || ""))) return true;
+      if (["active_pilot", "reporting", "renewal", "case_study", "expansion"].includes(partner.stage)) return true;
+      return (partner.relatedReports || []).length > 0 || (partner.relatedPilots || []).length > 0;
+    }
+
+    function partnerLifecycleInsights(inputState = {}) {
+      const partners = (inputState.partners || []).map(partner => normalizePartnerLifecycle(partner));
+      return {
+        partners,
+        stalledPartners: partners.filter(partner => partner.stage === "stalled"),
+        proofWorthyPartners: partners.filter(partnerHasStrongProof),
+        partnerMovement: partners.filter(partner => ["proposal_sent", "pilot_scoped", "contract_pending", "active_pilot", "reporting", "renewal", "case_study", "expansion"].includes(partner.stage))
+      };
+    }
+
+    function partnerFollowUpDraft(partner = {}) {
+      const normalized = normalizePartnerLifecycle(partner);
+      return {
+        subject: normalized.name + " - " + (normalized.stage === "proposal_sent" ? "proposal next steps" : normalized.stage === "stalled" ? "a smaller pilot path" : "next steps"),
+        body: [
+          "Draft only - not sent automatically and requires approval before use.",
+          "",
+          "Hi " + (normalized.primaryContactName || "there") + ",",
+          "",
+          "Wanted to follow up on " + normalized.name + " and the next step we discussed: " + (normalized.nextAction || "confirming the next committed partner action"),
+          "",
+          "LegalEase is positioning this work as implementation infrastructure: policy created the opportunity, and implementation is the next chapter.",
+          "",
+          "Would it be useful to set a clear decision date, pilot scope, or reporting milestone so we can keep the work moving responsibly?",
+          "",
+          "Roger"
+        ].join("\\n")
+      };
+    }
+
     function partnerQualification(partner = {}) {
       const checks = [
         ["Need identified", Boolean(partner.useCase || partner.notes), 15],
@@ -14551,13 +14633,16 @@ function htmlShell() {
 
     function partnerFlags(partner = {}) {
       const flags = [];
-      if (!partner.nextFollowUpDate) flags.push({ label:"Follow-up missing", tone:"warn", action:"Add next follow-up date.", page:"partners", impact:70 });
+      if (!partner.nextFollowUpDate && !partner.nextActionDueDate) flags.push({ label:"Follow-up missing", tone:"warn", action:"Add next follow-up date.", page:"partners", impact:70 });
       if (!partner.nextAction) flags.push({ label:"Next action missing", tone:"warn", action:"Record the next committed step.", page:"partners", impact:65 });
-      if (partner.status === "proposal_sent" && isOlderThan(partner.lastTouchDate || partner.updatedAt || partner.createdAt, 7)) {
+      const lifecycleStage = normalizePartnerLifecycle(partner).stage;
+      if (lifecycleStage === "proposal_sent" && isOlderThan(partner.lastTouchDate || partner.updatedAt || partner.createdAt, 7)) {
         flags.push({ label:"Stalled proposal", tone:"danger", action:"Follow up or force a decision.", page:"partners", impact:95 });
       }
-      if (partner.status === "verbal_yes" && !partner.relatedCampaign && !partner.relatedPilot) {
+      if (["verbal_yes", "pilot_scoped"].includes(partner.status) || lifecycleStage === "pilot_scoped") {
+        if (!partner.relatedCampaign && !partner.relatedPilot && !(partner.relatedCampaigns || []).length && !(partner.relatedPilots || []).length) {
         flags.push({ label:"Activation needed", tone:"danger", action:"Create or link a pilot/campaign.", page:"partners", impact:90 });
+        }
       }
       if (daysSince(partner.lastTouchDate || partner.updatedAt || partner.createdAt) > 30) flags.push({ label:"Dormant warning", tone:"danger", action:"Mark dormant or send a reactivation motion.", page:"partners", impact:74 });
       else if (daysSince(partner.lastTouchDate || partner.updatedAt || partner.createdAt) > 14) flags.push({ label:"Needs follow-up", tone:"warn", action:"Follow up before this relationship goes stale.", page:"partners", impact:72 });
@@ -14867,6 +14952,7 @@ function htmlShell() {
       const blockers = (state.blockers || []).slice(0, 5);
       const signals = (state.growthSignals || []).slice(0, 5);
       const inboxBrief = brief.growthInbox || {};
+      const partnerBrief = brief.partnerLifecycle || {};
       const urgentInbox = inboxBrief.urgentItems || [];
       const openTasks = (state.tasks || []).filter(taskStatusOpen);
       const overdueTasks = openTasks.filter(taskIsOverdue);
@@ -14885,7 +14971,7 @@ function htmlShell() {
           <div>
             <div class="eyebrow">COO Brief</div>
             <h1 class="big-title">Today</h1>
-            <p class="big-copy">Approvals: \${Number(brief.approvals || activeApprovals.length)} · Tasks: \${openTasks.length} open · Overdue: \${overdueTasks.length} · Inbox: \${Number(inboxBrief.untriagedCount || 0)} untriaged</p>
+            <p class="big-copy">Approvals: \${Number(brief.approvals || activeApprovals.length)} · Tasks: \${openTasks.length} open · Overdue: \${overdueTasks.length} · Inbox: \${Number(inboxBrief.untriagedCount || 0)} untriaged · Stalled partners: \${Number(partnerBrief.stalledCount || 0)}</p>
           </div>
           <div class="coo-brief-copy">
             <strong>Recommended move</strong>
@@ -14921,6 +15007,14 @@ function htmlShell() {
             <div class="simple-count-card"><span>Urgent</span><strong>\${urgentInbox.length}</strong></div>
           </div>
           <div class="coo-list" style="margin-top:14px">\${urgentInbox.map((item, index) => row({ title:item.summary, whyItMatters:item.riskLevel + " risk · " + item.priority + " priority", recommendedAction:item.suggestedAction }, index + 1, "growth-inbox")).join("") || '<div class="empty">No urgent inbox items. Paste raw company signals as they happen.</div>'}</div>
+        </section>
+        <section class="panel coo-panel section">
+          <div class="simple-panel-head"><h2>Partner Lifecycle</h2><button onclick="location.hash='partners'">Open Partners</button></div>
+          <div class="simple-counts" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:14px;">
+            <div class="simple-count-card"><span>Stalled</span><strong>\${Number(partnerBrief.stalledCount || 0)}</strong></div>
+            <div class="simple-count-card"><span>Proof-worthy</span><strong>\${Number(partnerBrief.proofWorthyCount || 0)}</strong></div>
+          </div>
+          <div class="coo-list" style="margin-top:14px">\${(partnerBrief.stalledPartners || []).map((item, index) => row({ title:item.name, whyItMatters:"Partner is stalled and needs a decision.", recommendedAction:item.nextAction || "Reframe, revive, or close" }, index + 1, "partners")).join("") || '<div class="empty">No stalled partners. Keep every partner tied to a next action and decision point.</div>'}</div>
         </section>
         <section class="panel section" id="overview-approval-queue">
           <div class="eyebrow">Overview Approval Summary v1</div>
@@ -15208,40 +15302,86 @@ function htmlShell() {
     }
 
     function partnersPageHtml(pageClass) {
-      const statuses = ["target_identified", "contact_found", "outreach_sent", "meeting_booked", "proposal_sent", "verbal_yes", "signed_pilot", "campaign_live", "paused", "closed_lost"];
-      const partners = growthItems("partners");
-      return growthHero(pageClass, "partners", "Partner CRM", "Partners", "Move priority organizations from target to signed pilot to live campaign.") + \`
+      const stages = ["lead", "qualified", "intro_scheduled", "proposal_sent", "pilot_scoped", "contract_pending", "active_pilot", "reporting", "renewal", "case_study", "expansion", "stalled", "lost"];
+      const partnerTypes = ["nonprofit", "county", "city", "funder", "workforce", "reentry", "legal_aid", "investor", "enterprise"];
+      const partners = growthItems("partners").map(partner => normalizePartnerLifecycle(partner));
+      const lifecycle = partnerLifecycleInsights({ ...state, partners });
+      function partnerDocuments(partner = {}) {
+        const needles = [partner.id, partner.name, partner.organizationName].filter(Boolean).map(value => String(value).toLowerCase());
+        return growthItems("dataRoomItems").filter(item => {
+          const text = [item.partnerId, item.relatedPartnerId, item.title, item.notes, item.filePath, item.link].filter(Boolean).join(" ").toLowerCase();
+          return needles.some(value => text.includes(value));
+        }).slice(0, 5);
+      }
+      function partnerReports(partner = {}) {
+        const first = String(partner.name || "").toLowerCase().split(" ")[0];
+        return growthItems("reports").filter(report => report.partnerId === partner.id || report.relatedPartnerId === partner.id || partner.relatedReports?.includes?.(report.id) || (first && String(report.reportTitle || report.title || "").toLowerCase().includes(first))).slice(0, 5);
+      }
+      function partnerTimeline(partner = {}) {
+        const events = [
+          ...(partner.history || []).map(entry => ({ at: entry.at || entry.timestamp || partner.updatedAt, title: entry.action || "Partner update", detail: entry.note || "" })),
+          ...growthItems("activityEvents").filter(event => event.relatedObjectType === "partners" && event.relatedObjectId === partner.id).map(event => ({ at:event.createdAt, title:event.eventType, detail:event.title })),
+          ...growthItems("events").filter(event => event.objectType === "partner" && event.objectId === partner.id).map(event => ({ at:event.timestamp || event.createdAt, title:event.eventType || event.action, detail:event.nextAction || "" }))
+        ].filter(event => event.title).sort((a, b) => String(b.at || "").localeCompare(String(a.at || ""))).slice(0, 8);
+        return events.length ? events.map(event => \`<div class="metric-row"><span>\${esc(event.at || "No date")}</span><strong>\${esc(event.title)}\${event.detail ? " · " + esc(event.detail) : ""}</strong></div>\`).join("") : '<div class="empty">No lifecycle history yet. Save a partner update to start the timeline.</div>';
+      }
+      return growthHero(pageClass, "partners", "Partner operations", "Partners", "Move priority organizations through owned stages, evidence, reports, and renewal paths.") + \`
         <details class="panel" open><summary>Add partner</summary>
           <form class="mini-form" style="margin-top:12px" onsubmit="savePartner(event)">
             <label>Organization<input name="organizationName" required></label>
-            <label>Type<select name="partnerType"><option>nonprofit</option><option>government</option><option>workforce</option><option>reentry</option><option>employer</option><option>legal aid</option><option>foundation</option><option>church/community</option><option>other</option></select></label>
+            <label>Type<select name="partnerType">\${partnerTypes.map(type => \`<option value="\${type}">\${growthLabel(type)}</option>\`).join("")}</select></label>
+            <label>Stage<select name="stage">\${stages.map(stage => \`<option value="\${stage}">\${growthLabel(stage)}</option>\`).join("")}</select></label>
             <label>Region/state<input name="regionState"></label>
             <label>Contact<input name="primaryContactName"></label>
             <label>Email<input name="email" type="email"></label>
-            <label>Status<select name="status">\${statuses.map(status => \`<option value="\${status}">\${growthLabel(status)}</option>\`).join("")}</select></label>
-            <label>Next follow-up<input name="nextFollowUpDate" type="date"></label>
             <label>Owner<input name="owner" value="Roger"></label>
+            <label>Next action<input name="nextAction" placeholder="What happens next?"></label>
+            <label>Next action due<input name="nextActionDueDate" type="date"></label>
+            <label>Last touch<input name="lastTouchDate" type="date"></label>
+            <label>Revenue potential<input name="revenuePotential" type="number" value="0"></label>
+            <label>Proof value<select name="proofValue"><option>medium</option><option>high</option><option>strong</option><option>critical</option></select></label>
+            <label>Risk<select name="riskLevel"><option>medium</option><option>low</option><option>high</option><option>critical</option></select></label>
             <button class="primary">Add partner</button>
           </form>
         </details>
-        <div class="section board-columns">\${statuses.slice(0, 8).map(status => {
-          const items = partners.filter(item => item.status === status);
-          return \`<section class="board-column"><h3>\${esc(growthLabel(status))}<span class="badge info">\${items.length}</span></h3>\${items.map(partner => {
+        <div class="grid three section">
+          <article class="card"><span class="eyebrow">Lifecycle</span><h2>\${partners.length}</h2><p class="muted">Tracked partners with owners, stages, and next actions.</p></article>
+          <article class="card"><span class="eyebrow">Stalled</span><h2>\${lifecycle.stalledPartners.length}</h2><p class="muted">Surfaced in the COO Brief until revived, closed, or reframed.</p></article>
+          <article class="card"><span class="eyebrow">Proof-worthy</span><h2>\${lifecycle.proofWorthyPartners.length}</h2><p class="muted">Partner movement ready for evidence notes, reports, or case studies.</p></article>
+        </div>
+        <div class="section board-columns">\${stages.slice(0, 10).map(stage => {
+          const items = partners.filter(item => item.stage === stage);
+          return \`<section class="board-column"><h3>\${esc(growthLabel(stage))}<span class="badge info">\${items.length}</span></h3>\${items.map(partner => {
             const flags = partnerFlags(partner);
-          return \`<article class="card compact-card">
-            \${(() => { const q = partnerQualification(partner); return \`<div class="row"><span class="badge \${partner.priority === "High" ? "warn" : "info"}">\${esc(partner.priority || "Normal")}</span><span class="badge \${q.score >= 75 ? "good" : q.score >= 50 ? "warn" : "danger"}">Q \${q.score}</span><span class="badge info">Proof L\${proofScoreForItem(partner, "partner")}</span>\${flags.slice(0, 2).map(flag => \`<span class="badge \${flag.tone}">\${esc(flag.label)}</span>\`).join("")}</div>\`; })()}
-            <h3>\${esc(partner.organizationName)}</h3>
-            <p class="muted">\${esc(partner.partnerType || "partner")} · \${esc(partner.regionState || "region TBD")}<br>Owner: \${esc(partner.owner || "Unassigned")} · Last touch: \${esc(partner.lastTouchDate || "TBD")}<br>Next follow-up: \${esc(partner.nextFollowUpDate || "Follow-up missing")}</p>
-            <p><strong>Next:</strong> \${esc(partnerNextAction(partner))}</p>
-            <p class="muted"><strong>Qualification:</strong> \${esc(partnerQualification(partner).label)}</p>
-            <p class="muted">Related: \${esc(campaignById(partner.relatedCampaign)?.campaignName || partner.relatedCampaign || "No campaign")} · \${esc(growthItems("pilots").find(pilot => pilot.id === partner.relatedPilot)?.pilotName || partner.relatedPilot || "No pilot")}</p>
-            <div class="card-actions"><button onclick="quickPartnerStatus('\${partner.id}', 'proposal_sent')">Proposal sent</button><button onclick="quickPartnerStatus('\${partner.id}', 'signed_pilot')">Signed pilot</button></div>
-          </article>\`;
+            const tasks = relatedTasks("partners", partner.id).filter(taskStatusOpen);
+            const docs = partnerDocuments(partner);
+            const reports = partnerReports(partner);
+            const draft = partnerFollowUpDraft(partner);
+            return \`<article class="card compact-card">
+              \${(() => { const q = partnerQualification(partner); return \`<div class="row"><span class="badge \${partner.priority === "high" ? "warn" : "info"}">\${esc(growthLabel(partner.priority || "medium"))}</span><span class="badge \${q.score >= 75 ? "good" : q.score >= 50 ? "warn" : "danger"}">Q \${q.score}</span><span class="badge info">Proof L\${proofScoreForItem(partner, "partner")}</span>\${flags.slice(0, 2).map(flag => \`<span class="badge \${flag.tone}">\${esc(flag.label)}</span>\`).join("")}</div>\`; })()}
+              <h3>\${esc(partner.name || partner.organizationName)}</h3>
+              <p class="muted">\${esc(growthLabel(partner.type || partner.partnerType || "partner"))} · \${esc(partner.regionState || "region TBD")}<br>Owner: \${esc(partner.owner || "Unassigned")} · Last touch: \${esc(partner.lastTouchDate || "TBD")}<br>Next due: \${esc(partner.nextActionDueDate || partner.nextFollowUpDate || "Due date missing")}</p>
+              <p><strong>Next:</strong> \${esc(partnerNextAction(partner))}</p>
+              <p class="muted">Revenue: $\${Number(partner.revenuePotential || partner.expectedValue || 0).toLocaleString()} · Risk: \${esc(growthLabel(partner.riskLevel || "medium"))}</p>
+              <details><summary>Partner detail</summary>
+                <div class="metric-table">
+                  <div class="metric-row"><span>Documents/artifacts</span><strong>\${docs.length ? docs.map(doc => esc(doc.title)).join(" · ") : "No linked artifacts"}</strong></div>
+                  <div class="metric-row"><span>Reports</span><strong>\${reports.length ? reports.map(report => esc(report.reportTitle || report.title)).join(" · ") : "No linked reports"}</strong></div>
+                  <div class="metric-row"><span>Open tasks</span><strong>\${tasks.length ? tasks.map(task => esc(task.title)).join(" · ") : "No open tasks"}</strong></div>
+                </div>
+                <h3>Timeline</h3>
+                <div class="metric-table">\${partnerTimeline(partner)}</div>
+                <h3>Suggested follow-up draft</h3>
+                <p class="muted">Draft only. It requires approval before sending.</p>
+                <pre class="code-block">\${esc(draft.subject + "\\n\\n" + draft.body)}</pre>
+              </details>
+              <div class="card-actions"><button onclick="quickPartnerStatus('\${partner.id}', 'proposal_sent')">Proposal sent</button><button onclick="quickPartnerStatus('\${partner.id}', 'active_pilot')">Active pilot</button><button onclick="quickPartnerStatus('\${partner.id}', 'reporting')">Reporting</button></div>
+            </article>\`;
           }).join("") || '<div class="empty">No partners in this stage. Add or move a partner when there is a real next step.</div>'}</section>\`;
         }).join("")}</div>
         <details class="panel section"><summary>Table view, due follow-ups, and stalled partners</summary><div class="ops-table" style="margin-top:12px">
-          <div class="ops-row header"><span>Partner</span><span>Status</span><span>Owner</span><span>Follow-up</span><span>Flags</span><span>Next action</span></div>
-          \${partners.map(partner => \`<div class="ops-row"><strong>\${esc(partner.organizationName)}</strong><span class="badge \${growthTone(partner.status)}">\${esc(growthLabel(partner.status))}</span><span>\${esc(partner.owner || "Unassigned")}</span><span>\${esc(partner.nextFollowUpDate || "Follow-up missing")}</span><span>\${partnerFlags(partner).map(flag => esc(flag.label)).join(" · ") || "Clear"}</span><span class="muted">\${esc(partnerNextAction(partner))}</span></div>\`).join("") || '<div class="empty">Add your first partner target. Start with organizations that can send users or validate infrastructure value.</div>'}
+          <div class="ops-row header"><span>Partner</span><span>Stage</span><span>Owner</span><span>Next due</span><span>Flags</span><span>Next action</span></div>
+          \${partners.map(partner => \`<div class="ops-row"><strong>\${esc(partner.name || partner.organizationName)}</strong><span class="badge \${growthTone(partner.stage || partner.status)}">\${esc(growthLabel(partner.stage || partner.status))}</span><span>\${esc(partner.owner || "Unassigned")}</span><span>\${esc(partner.nextActionDueDate || partner.nextFollowUpDate || "Due date missing")}</span><span>\${partnerFlags(partner).map(flag => esc(flag.label)).join(" · ") || "Clear"}</span><span class="muted">\${esc(partnerNextAction(partner))}</span></div>\`).join("") || '<div class="empty">Add your first partner target. Start with organizations that can send users or validate infrastructure value.</div>'}
         </div></details>
       </section>\`;
     }
@@ -16219,14 +16359,14 @@ function htmlShell() {
 
     async function savePartner(event) {
       event.preventDefault();
-      await saveGrowth("partners", { ...formObject(event.target), priority:"High", referralCount:0, screenings:0, recordShieldStarts:0, expungementStarts:0, revenue:0 });
+      await saveGrowth("partners", { ...formObject(event.target), priority:"high", referralCount:0, screenings:0, recordShieldStarts:0, expungementStarts:0, revenue:0 });
       event.target.reset();
     }
 
     async function quickPartnerStatus(id, status) {
       const partner = partnerById(id);
       if (!partner) return;
-      await saveGrowth("partners", { ...partner, status, lastTouchDate:new Date().toISOString().slice(0, 10) });
+      await saveGrowth("partners", { ...partner, status, stage:status, lastTouchDate:new Date().toISOString().slice(0, 10), history:[{ action:"stage updated", at:new Date().toISOString(), note:"Moved to " + status }, ...(partner.history || [])] });
     }
 
     async function saveCampaign(event) {

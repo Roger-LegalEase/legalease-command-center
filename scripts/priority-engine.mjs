@@ -1,3 +1,5 @@
+import { normalizePartnerLifecycle, partnerLifecycleInsights } from "./partner-lifecycle.mjs";
+
 const nowMs = () => Date.now();
 
 function list(value) {
@@ -198,6 +200,7 @@ function buildBlockers(state = {}) {
 
 function buildGrowthSignals(state = {}) {
   const signals = [];
+  const lifecycle = partnerLifecycleInsights(state);
   for (const campaign of list(state.campaigns)) {
     const starts = Number(campaign.recordShieldStarts || 0);
     const conversions = Number(campaign.expungementStarts || campaign.paidConversions || 0);
@@ -213,15 +216,16 @@ function buildGrowthSignals(state = {}) {
       });
     }
   }
-  for (const partner of list(state.partners)) {
-    if (["signed_pilot", "campaign_live", "verbal_yes", "proposal_sent"].includes(partner.status)) {
+  for (const rawPartner of list(state.partners)) {
+    const partner = normalizePartnerLifecycle(rawPartner);
+    if (["signed_pilot", "campaign_live", "verbal_yes", "proposal_sent"].includes(partner.status) || ["proposal_sent", "pilot_scoped", "contract_pending", "active_pilot", "reporting", "renewal", "case_study", "expansion"].includes(partner.stage)) {
       signals.push({
         id: `signal-partner-${partner.id}`,
-        title: partner.organizationName || "Partner movement",
-        summary: `${partner.status || "movement"} - ${partner.nextAction || "next action needed"}`,
+        title: partner.organizationName || partner.name || "Partner movement",
+        summary: `${partner.stage || partner.status || "movement"} - ${partner.nextAction || "next action needed"}`,
         sourceType: "partner",
         sourceId: partner.id,
-        strength: ["signed_pilot", "campaign_live"].includes(partner.status) ? "strong" : "monitor",
+        strength: lifecycle.proofWorthyPartners.some((item) => item.id === partner.id) ? "strong" : "monitor",
         createdAt: partner.updatedAt || partner.lastTouchDate || new Date().toISOString()
       });
     }
@@ -247,6 +251,7 @@ function buildGrowthSignals(state = {}) {
 function buildRecommendedActions(state = {}, approvalItems = [], blockers = [], growthSignals = []) {
   const actions = [];
   const add = (item) => actions.push({ status: "open", ...item });
+  const lifecycle = partnerLifecycleInsights(state);
   for (const blocker of blockers.slice(0, 5)) {
     add({
       id: `action-${blocker.id}`,
@@ -290,6 +295,34 @@ function buildRecommendedActions(state = {}, approvalItems = [], blockers = [], 
         reasonGenerated: "Partner follow-up is due or missing."
       });
     }
+  }
+  for (const partner of lifecycle.stalledPartners.slice(0, 4)) {
+    add({
+      id: `action-partner-stalled-${partner.id}`,
+      title: `Unstick partner: ${partner.name}`,
+      description: `${partner.name} is marked stalled. Decide whether to reframe, revive, or close it.`,
+      relatedRecordType: "partner",
+      relatedRecordId: partner.id,
+      priority: partner.priority === "critical" || partner.priority === "high" ? "high" : "medium",
+      owner: partner.owner || "Roger",
+      dueDate: partner.nextActionDueDate || partner.nextFollowUpDate || "",
+      cta: "Review partner",
+      reasonGenerated: "Stalled partner should be surfaced in the COO Brief."
+    });
+  }
+  for (const partner of lifecycle.proofWorthyPartners.slice(0, 4)) {
+    add({
+      id: `action-partner-proof-${partner.id}`,
+      title: `Capture proof from ${partner.name}`,
+      description: `${partner.name} has partner proof value worth turning into an evidence note.`,
+      relatedRecordType: "partner",
+      relatedRecordId: partner.id,
+      priority: "medium",
+      owner: partner.owner || "Growth",
+      dueDate: "",
+      cta: "Add evidence note",
+      reasonGenerated: "Proof-worthy partner movement should appear in investor evidence."
+    });
   }
   for (const signal of growthSignals.filter((item) => item.strength === "strong").slice(0, 3)) {
     add({
@@ -379,6 +412,7 @@ function buildPriorities(state = {}, approvalItems = [], blockers = [], growthSi
 function buildCooBrief(priorities = [], approvalItems = [], blockers = [], growthSignals = [], state = {}) {
   const strongestSignal = growthSignals.find((item) => item.strength === "strong") || growthSignals[0];
   const openInbox = list(state.growthInbox).filter((item) => !["converted", "ignored"].includes(item.status));
+  const lifecycle = partnerLifecycleInsights(state);
   const urgentInboxItems = openInbox
     .filter((item) => item.priority === "high" || item.riskLevel === "high")
     .slice(0, 3)
@@ -395,6 +429,12 @@ function buildCooBrief(priorities = [], approvalItems = [], blockers = [], growt
       untriagedCount: openInbox.filter((item) => item.status === "new").length,
       openCount: openInbox.length,
       urgentItems: urgentInboxItems
+    },
+    partnerLifecycle: {
+      stalledCount: lifecycle.stalledPartners.length,
+      stalledPartners: lifecycle.stalledPartners.slice(0, 3).map((item) => ({ id: item.id, name: item.name, nextAction: item.nextAction, owner: item.owner })),
+      proofWorthyCount: lifecycle.proofWorthyPartners.length,
+      proofWorthyPartners: lifecycle.proofWorthyPartners.slice(0, 3).map((item) => ({ id: item.id, name: item.name, proofValue: item.proofValue, nextAction: item.nextAction }))
     },
     approvals: approvalItems.length,
     blocked: {

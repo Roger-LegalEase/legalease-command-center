@@ -395,3 +395,29 @@ Task actions are local/Supabase persisted and event logged:
 - Convert to content idea
 
 Tasks do not send emails, publish, or change live gates.
+
+## Partner Lifecycle Automation
+
+Partners now operate as lifecycle records, not static CRM notes. Each partner can track type, stage, owner, next action, next action due date, last touch date, priority, revenue potential, proof value, risk level, related campaigns, related pilots, related reports, and history.
+
+Lifecycle stages:
+
+- lead
+- qualified
+- intro_scheduled
+- proposal_sent
+- pilot_scoped
+- contract_pending
+- active_pilot
+- reporting
+- renewal
+- case_study
+- expansion
+- stalled
+- lost
+
+The partner lifecycle engine creates owned tasks for proposal follow-ups after 7 days, active-pilot reports after 14 days without a report, strong proof-value evidence notes, and case-study drafts when a partner reaches reporting. Stalled partners and proof-worthy partners are surfaced in the COO Brief and Overview.
+
+The Partners page includes a detail drawer with timeline, next action, linked documents/artifacts, linked reports, open tasks, and a suggested follow-up draft. Follow-up drafts are draft-only and require human approval before any external email is sent.
+
+Weekly Evidence Packs now include partner movement, stalled partners, and proof-worthy partner updates so partner progress turns into investor/acquirer evidence instead of living only in memory.
