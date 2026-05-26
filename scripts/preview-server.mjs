@@ -14519,7 +14519,7 @@ function htmlShell() {
         </section>
         \${thisWeekViewHtml(posts)}
         \${autonomyOverviewHtml()}
-        <div class="grid two section">
+        <div class="coo-overview-primary section">
           <section class="panel coo-panel">
             <div class="simple-panel-head"><h2>Today's Priorities</h2><button onclick="rebuildPriorities()">Refresh</button></div>
             <div class="coo-list">\${priorities.map((item, index) => row(item, index + 1, item.sourceType === "campaign" ? "campaigns" : item.sourceType === "partner" ? "partners" : item.sourceType === "pilot" ? "pilots" : "queue")).join("") || '<div class="empty">No priorities yet. Add content ideas, partners, or campaign updates.</div>'}</div>
@@ -14527,7 +14527,7 @@ function htmlShell() {
           <section class="panel coo-panel" id="overview-approval-queue">
             <div class="simple-panel-head"><h2>Approval Queue</h2><button onclick="selectAllApprovalItems()">Select all</button></div>
             <div class="coo-batch-bar"><button class="primary" onclick="batchApproveItems()">Approve selected</button><button onclick="batchBlockItems()">Block selected</button><button onclick="batchSendApprovalToQueue()">Send to Queue</button><button onclick="batchArchiveApprovalItems()">Archive</button></div>
-            <div class="coo-list">\${approvals.map((item, index) => \`<article class="coo-row coo-approval-card"><label class="coo-check"><input type="checkbox" class="approval-select" value="\${esc(item.id)}"><span class="coo-index">\${index + 1}</span></label><span class="coo-approval-content"><strong>\${esc(item.title)}</strong><small>\${esc(item.whyItMatters)}</small></span><div class="coo-card-actions"><button class="primary" onclick="approveItem('\${esc(item.id)}')">Approve</button><button onclick="blockItem('\${esc(item.id)}')">Block</button><button onclick="sendApprovalToQueue('\${esc(item.id)}')">Queue</button></div></article>\`).join("") || '<div class="empty">Nothing is waiting on Roger.</div>'}</div>
+            <div class="approval-queue-list">\${approvals.map((item) => \`<article class="approval-queue-card"><div class="approval-card-top"><label class="approval-card-title"><input type="checkbox" class="approval-select" value="\${esc(item.id)}"><span>\${esc(item.title || "Review item")}</span></label>\${String(item.risk || "").toLowerCase() === "high" ? '<span class="approval-risk-label">High risk</span>' : ""}</div><p class="approval-card-reason">\${esc(item.whyItMatters || item.summary || item.recommendedAction || "Review this item before it moves forward.")}</p><div class="approval-card-actions"><button class="primary" onclick="approveItem('\${esc(item.id)}')">Approve</button><button onclick="blockItem('\${esc(item.id)}')">Block</button><button onclick="sendApprovalToQueue('\${esc(item.id)}')">Queue</button></div></article>\`).join("") || '<div class="empty">Nothing is waiting on Roger.</div>'}</div>
           </section>
         </div>
         <div class="grid two section">

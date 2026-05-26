@@ -1048,6 +1048,13 @@ details > summary {
   min-height:320px;
 }
 
+.coo-overview-primary {
+  display:grid;
+  grid-template-columns:minmax(300px,.85fr) minmax(520px,1.15fr);
+  gap:18px;
+  align-items:start;
+}
+
 .coo-list {
   display:grid;
   gap:10px;
@@ -1108,46 +1115,82 @@ details > summary {
   white-space:nowrap;
 }
 
-.coo-approval-card {
-  cursor:default;
-  grid-template-columns:max-content minmax(0,1fr) max-content;
-  align-items:start;
-  column-gap:16px;
-  row-gap:12px;
-  padding:16px;
-}
-
-.coo-approval-card:hover {
-  transform:none;
-}
-
-.coo-approval-content {
+.approval-queue-list {
   display:grid;
-  gap:5px;
-  min-width:0;
+  gap:12px;
 }
 
-.coo-approval-content strong {
-  line-height:1.25;
+.approval-queue-card {
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:#fff;
+  padding:18px;
+  display:grid;
+  gap:12px;
+  box-shadow:0 1px 2px rgba(16,24,40,.04);
+}
+
+.approval-card-top {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+}
+
+.approval-card-title {
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  min-width:0;
+  color:var(--ink);
+  font-size:16px;
+  font-weight:780;
+  line-height:1.28;
+}
+
+.approval-card-title input {
+  flex:0 0 auto;
+  margin-top:3px;
+}
+
+.approval-card-title span {
+  min-width:0;
   overflow-wrap:anywhere;
 }
 
-.coo-approval-content small {
-  max-width:62ch;
+.approval-risk-label {
+  flex:0 0 auto;
+  border:1px solid rgba(180,35,24,.18);
+  border-radius:999px;
+  background:rgba(180,35,24,.08);
+  color:var(--danger);
+  padding:4px 9px;
+  font-size:12px;
+  font-weight:850;
+  white-space:nowrap;
 }
 
+.approval-card-reason {
+  margin:0 0 2px 28px;
+  max-width:68ch;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.5;
+}
+
+.approval-card-actions,
 .coo-card-actions {
-  align-self:start;
   display:flex;
-  flex:0 0 auto;
   flex-wrap:wrap;
   gap:8px;
-  justify-content:flex-end;
-  min-width:max-content;
+  justify-content:flex-start;
+  margin-left:28px;
 }
 
+.approval-card-actions button,
 .coo-card-actions button {
-  min-height:34px;
+  min-height:38px;
+  min-width:76px;
   white-space:nowrap;
 }
 
@@ -1162,34 +1205,6 @@ details > summary {
   display:flex;
   align-items:center;
   gap:8px;
-  min-width:52px;
-  padding-top:2px;
-}
-
-.coo-check input {
-  flex:0 0 auto;
-}
-
-@media (max-width:720px) {
-  .coo-approval-card {
-    grid-template-columns:max-content minmax(0,1fr);
-  }
-
-  .coo-card-actions {
-    grid-column:2;
-    justify-content:flex-start;
-    min-width:0;
-  }
-}
-
-@media (max-width:520px) {
-  .coo-approval-card {
-    column-gap:12px;
-  }
-
-  .coo-card-actions {
-    grid-column:1 / -1;
-  }
 }
 
 .coo-health summary {
@@ -1304,6 +1319,12 @@ details > summary {
   }
 }
 
+@media (max-width:1180px) {
+  .coo-overview-primary {
+    grid-template-columns:1fr;
+  }
+}
+
 @media (max-width:720px) {
   .simple-counts,
   .simple-progress-grid,
@@ -1318,5 +1339,19 @@ details > summary {
   .queue-action-row .button-link {
     flex:1 1 auto;
     justify-content:center;
+  }
+
+  .approval-card-top {
+    display:grid;
+    gap:10px;
+  }
+
+  .approval-card-reason,
+  .approval-card-actions {
+    margin-left:0;
+  }
+
+  .approval-card-actions button {
+    flex:1 1 96px;
   }
 }
