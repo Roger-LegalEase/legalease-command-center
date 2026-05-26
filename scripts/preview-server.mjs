@@ -15,6 +15,7 @@ import {
   normalizeGrowthInboxItem,
   triageGrowthInboxItem
 } from "./growth-inbox.mjs";
+import { deriveAutomaticTasks, mergeAutomaticTasks, updateTask } from "./tasks-engine.mjs";
 import {
   channelSetup,
   channelSetupMessage,
@@ -1785,6 +1786,113 @@ function appendGrowthInboxEvent(state = {}, event = null) {
       ...(state.activityEvents || [])
     ].slice(0, 500)
   };
+}
+
+function taskEvent(eventType = "task_updated", task = {}, metadata = {}) {
+  const now = new Date().toISOString();
+  return {
+    id: `event-${eventType}-${crypto.randomUUID().slice(0, 8)}`,
+    eventType,
+    title: task.title || "Task",
+    source: "tasks",
+    objectType: "task",
+    objectId: task.id || "",
+    partnerId: task.partnerId || "",
+    campaignId: task.campaignId || "",
+    riskLevel: task.riskLevel || "low",
+    proofValue: task.sourceType === "report" || task.sourceType === "data_room" ? "medium" : "low",
+    revenueImpact: task.sourceType === "revenue" ? "medium" : "low",
+    nextAction: task.nextAction || "",
+    metadata,
+    createdAt: now,
+    timestamp: now
+  };
+}
+
+function appendTaskEvent(state = {}, event = null) {
+  if (!event) return state;
+  return {
+    ...state,
+    events: [event, ...(state.events || [])].slice(0, 1000),
+    activityEvents: [
+      {
+        id: event.id.replace(/^event-/, "activity-"),
+        eventType: event.eventType,
+        title: event.title,
+        relatedObjectType: event.objectType,
+        relatedObjectId: event.objectId,
+        createdAt: event.createdAt
+      },
+      ...(state.activityEvents || [])
+    ].slice(0, 500)
+  };
+}
+
+async function rebuildTasksState() {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const analyzed = analyzeOperations(state);
+    const automaticTasks = deriveAutomaticTasks(analyzed);
+    const merged = mergeAutomaticTasks(analyzed, automaticTasks);
+    const event = taskEvent("tasks_rebuilt", { id: "automatic", title: `${automaticTasks.length} automatic task(s) evaluated`, sourceType: "tasks" }, { automaticCount: automaticTasks.length });
+    const nextState = analyzeOperations(appendTaskEvent(merged, event));
+    await store.writeState(nextState);
+    return { state: nextState, created: Math.max(0, (nextState.tasks || []).length - (state.tasks || []).length), automaticCount: automaticTasks.length, message: "Tasks rebuilt." };
+  });
+}
+
+async function updateTaskRecord(id = "", action = "in_progress", patch = {}) {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const existing = (state.tasks || []).find((task) => task.id === id);
+    if (!existing) throw new Error("Task not found.");
+    const updated = updateTask(existing, action, patch || {});
+    let next = {
+      ...state,
+      tasks: (state.tasks || []).map((task) => task.id === id ? updated : task)
+    };
+    if (action === "convert-report-note") {
+      const note = {
+        id: `evidence-note-task-${id}`,
+        title: updated.title,
+        summary: updated.description || updated.nextAction || "",
+        sourceType: "task",
+        sourceId: id,
+        riskLevel: updated.riskLevel || "low",
+        status: "draft",
+        nextBestAction: "Review for Weekly Evidence Pack",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      next.evidencePackNotes = [note, ...(next.evidencePackNotes || []).filter((item) => item.id !== note.id)];
+    }
+    if (action === "convert-content-idea") {
+      const idea = {
+        id: `idea-task-${id}`,
+        title: updated.title,
+        rawIdea: updated.description || updated.nextAction || updated.title,
+        bucket: "LegalEase Growth",
+        audience: updated.sourceType === "partner" ? "partners" : "general",
+        platforms: ["linkedin"],
+        campaign: updated.campaignId || "",
+        cta: "Learn more",
+        creativeDirection: "Clean LegalEase operational story. No legal promises.",
+        usesWilma: "optional",
+        complianceRisk: updated.riskLevel === "high" ? "high" : "low",
+        priority: updated.priority || "medium",
+        status: "idea",
+        nextBestAction: "Generate draft when ready",
+        sourceId: id,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      next.contentBank = [idea, ...(next.contentBank || []).filter((item) => item.id !== idea.id)];
+    }
+    const event = taskEvent(`task_${action.replaceAll("-", "_")}`, updated, { action });
+    next = analyzeOperations(appendTaskEvent(next, event));
+    await store.writeState(next);
+    return { state: next, task: updated, message: action === "done" ? "Task marked done." : action === "dismiss" ? "Task dismissed." : "Task updated." };
+  });
 }
 
 async function createGrowthInboxItem(payload = {}) {
@@ -11846,7 +11954,7 @@ function htmlShell() {
     <aside>
       <div class="brand"><small>LegalEase</small><h1>Command Center</h1></div>
       <nav>
-        <div class="nav-group"><span class="nav-label">Growth</span><a href="#overview" class="active">Overview</a><a href="#growth-inbox">Growth Inbox</a><a href="#milestones">Milestones</a><a href="#partners">Partners</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a></div>
+        <div class="nav-group"><span class="nav-label">Growth</span><a href="#overview" class="active">Overview</a><a href="#growth-inbox">Growth Inbox</a><a href="#tasks">Tasks</a><a href="#milestones">Milestones</a><a href="#partners">Partners</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a></div>
         <div class="nav-group"><span class="nav-label">Production</span><a href="#content-bank">Content Bank</a><a href="#sources">Sources</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div>
         <div class="nav-group"><span class="nav-label">Operations</span><a href="#autonomy">Autonomy</a><a href="#automation">Automation Inbox</a><a href="#pilots">Pilots</a><a href="#compliance">Compliance</a><a href="#soc2">SOC 2</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#metrics">Metrics</a><a href="#settings">Settings</a></div><div class="nav-group"><span class="nav-label">SOC 2</span><a href="#soc2-access">Access</a><a href="#soc2-audit">Audit Logs</a><a href="#soc2-changes">Changes</a><a href="#soc2-vendors">Vendors</a><a href="#soc2-incidents">Incidents</a><a href="#soc2-evidence">Evidence</a><a href="#soc2-policies">Policies</a></div>
       </nav>
@@ -11902,6 +12010,7 @@ function htmlShell() {
     let selectedSuggestions = new Set();
     let contentBankFilters = { status:"all", campaign:"all", bucket:"all", platform:"all", wilma:"all", risk:"all", thisWeek:false };
     let contentBankDraftMode = "local";
+    let taskView = "today";
     const generatingImages = new Set();
     const imagePromptVersion = ${JSON.stringify(imagePromptVersion)};
     const imageLanes = ${JSON.stringify(imageLanes)};
@@ -14355,7 +14464,58 @@ function htmlShell() {
 
     function relatedTasks(type = "", id = "") {
       const aliases = taskObjectTypeAliases(type);
-      return growthItems("tasks").filter(task => aliases.includes(task.relatedObjectType) && task.relatedObjectId === id);
+      return growthItems("tasks").filter(task => (aliases.includes(task.relatedObjectType) && task.relatedObjectId === id) || (aliases.includes(task.sourceType) && task.sourceId === id));
+    }
+
+    function taskStatusOpen(task = {}) {
+      return !["done", "dismissed"].includes(String(task.status || "").toLowerCase());
+    }
+
+    function taskIsOverdue(task = {}) {
+      return taskStatusOpen(task) && task.dueDate && task.dueDate < new Date().toISOString().slice(0, 10);
+    }
+
+    function taskViewFilter(view = "today") {
+      const today = new Date().toISOString().slice(0, 10);
+      return (state.tasks || []).filter(task => {
+        const status = String(task.status || "open").toLowerCase();
+        if (view === "today") return taskStatusOpen(task) && (!task.dueDate || task.dueDate <= today);
+        if (view === "overdue") return taskIsOverdue(task);
+        if (view === "waiting-roger") return taskStatusOpen(task) && /roger/i.test(task.owner || "");
+        if (view === "blocked") return status === "blocked" || task.escalationReason;
+        if (view === "partner-follow-up") return taskStatusOpen(task) && task.sourceType === "partner";
+        if (view === "investor-proof") return taskStatusOpen(task) && /proof|evidence|investor|report|data_room/i.test([task.sourceType, task.title, task.description].join(" "));
+        if (view === "compliance-review") return taskStatusOpen(task) && (/compliance|legal|high/i.test([task.sourceType, task.riskLevel, task.title].join(" ")) || task.priority === "critical");
+        if (view === "content-production") return taskStatusOpen(task) && /post|content|approval|queue|image|png/i.test([task.sourceType, task.title, task.description].join(" "));
+        return taskStatusOpen(task);
+      }).sort((a, b) => {
+        const priorityRank = { critical:4, high:3, medium:2, low:1 };
+        return (priorityRank[String(b.priority || "").toLowerCase()] || 0) - (priorityRank[String(a.priority || "").toLowerCase()] || 0) || String(a.dueDate || "").localeCompare(String(b.dueDate || ""));
+      });
+    }
+
+    function taskCardHtml(task = {}) {
+      const status = String(task.status || "open").toLowerCase();
+      return \`<article class="card drawer-card">
+        <div class="row"><span class="badge \${growthTone(status)}">\${esc(growthLabel(status))}</span><span class="badge \${task.priority === "critical" ? "danger" : task.priority === "high" ? "warn" : "info"}">\${esc(growthLabel(task.priority || "medium"))}</span><span class="badge \${taskIsOverdue(task) ? "danger" : "info"}">\${taskIsOverdue(task) ? "overdue" : esc(task.dueDate || "no date")}</span></div>
+        <h2>\${esc(task.title || "Task")}</h2>
+        <p class="muted">\${esc(task.description || task.nextAction || "")}</p>
+        <div class="metric-table">
+          <div class="metric-row"><span>Owner</span><strong>\${esc(task.owner || "Unassigned")}</strong></div>
+          <div class="metric-row"><span>Next action</span><strong>\${esc(task.nextAction || "Review")}</strong></div>
+          <div class="metric-row"><span>Source</span><strong>\${esc(growthLabel(task.sourceType || task.relatedObjectType || "manual"))}</strong></div>
+          <div class="metric-row"><span>Escalation</span><strong>\${esc(task.escalationReason || "None")}</strong></div>
+        </div>
+        <div class="card-actions">
+          <button class="primary" onclick="updateTaskAction('\${task.id}', 'done')">Done</button>
+          <button onclick="snoozeTask('\${task.id}')">Snooze</button>
+          <button onclick="assignTask('\${task.id}')">Assign</button>
+          <button onclick="updateTaskAction('\${task.id}', 'convert-report-note')">Report Note</button>
+          <button onclick="updateTaskAction('\${task.id}', 'convert-content-idea')">Content Idea</button>
+          <button onclick="dismissTask('\${task.id}')">Dismiss</button>
+        </div>
+        <details><summary>History</summary><div class="metric-table">\${(task.history || []).slice(0, 6).map(entry => \`<div class="metric-row"><span>\${esc(entry.action)}</span><strong>\${esc(entry.at || "")}</strong></div>\`).join("") || '<div class="empty">No task history yet.</div>'}</div></details>
+      </article>\`;
     }
 
     function proofArtifactFor(item = {}) {
@@ -14708,6 +14868,10 @@ function htmlShell() {
       const signals = (state.growthSignals || []).slice(0, 5);
       const inboxBrief = brief.growthInbox || {};
       const urgentInbox = inboxBrief.urgentItems || [];
+      const openTasks = (state.tasks || []).filter(taskStatusOpen);
+      const overdueTasks = openTasks.filter(taskIsOverdue);
+      const waitingRogerTasks = openTasks.filter(task => /roger/i.test(task.owner || ""));
+      const todayTasks = taskViewFilter("today").slice(0, 5);
       const readyChannels = platforms.filter(platform => state.runtime?.livePostingGates?.[platform]?.enabled).length;
       const pngReady = posts.filter(post => finalPngReady(post, imageForPost(post.id))).length;
       const publicUrlReady = credentialPresent("PUBLIC_APP_BASE_URL");
@@ -14721,7 +14885,7 @@ function htmlShell() {
           <div>
             <div class="eyebrow">COO Brief</div>
             <h1 class="big-title">Today</h1>
-            <p class="big-copy">Approvals: \${Number(brief.approvals || activeApprovals.length)} · Blocked: \${Number(brief.blocked?.count || blockers.length)} · Inbox: \${Number(inboxBrief.untriagedCount || 0)} untriaged · Backup: \${esc(latestBackup?.createdAt || "not created")}</p>
+            <p class="big-copy">Approvals: \${Number(brief.approvals || activeApprovals.length)} · Tasks: \${openTasks.length} open · Overdue: \${overdueTasks.length} · Inbox: \${Number(inboxBrief.untriagedCount || 0)} untriaged</p>
           </div>
           <div class="coo-brief-copy">
             <strong>Recommended move</strong>
@@ -14730,6 +14894,7 @@ function htmlShell() {
           <div class="simple-hero-actions">
             <button class="primary" onclick="document.getElementById('overview-approval-queue')?.scrollIntoView({behavior:'smooth', block:'start'})">Approve Content</button>
             <button onclick="location.hash='growth-inbox'">Open Growth Inbox</button>
+            <button onclick="location.hash='tasks'">Open Tasks</button>
             <button onclick="location.hash='content-bank'">Generate From Content Bank</button>
             <button onclick="document.getElementById('overview-blockers')?.scrollIntoView({behavior:'smooth', block:'start'})">Fix Blockers</button>
             <button onclick="createWeeklyEvidencePack()">Build Weekly Evidence Pack</button>
@@ -14739,6 +14904,15 @@ function htmlShell() {
         <section class="panel coo-panel section">
           <div class="simple-panel-head"><h2>Today's Priorities</h2><button onclick="rebuildPriorities()">Refresh</button></div>
           <div class="coo-list">\${priorities.map((item, index) => row(item, index + 1, item.sourceType === "growth_inbox" ? "growth-inbox" : item.sourceType === "campaign" ? "campaigns" : item.sourceType === "partner" ? "partners" : item.sourceType === "pilot" ? "pilots" : "queue")).join("") || '<div class="empty">No priorities yet. Add content ideas, partners, or campaign updates.</div>'}</div>
+        </section>
+        <section class="panel coo-panel section">
+          <div class="simple-panel-head"><h2>Today's Tasks</h2><button onclick="location.hash='tasks'">Open Tasks</button></div>
+          <div class="simple-counts" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:14px;">
+            <div class="simple-count-card"><span>Today</span><strong>\${todayTasks.length}</strong></div>
+            <div class="simple-count-card"><span>Overdue</span><strong>\${overdueTasks.length}</strong></div>
+            <div class="simple-count-card"><span>Waiting on Roger</span><strong>\${waitingRogerTasks.length}</strong></div>
+          </div>
+          <div class="coo-list" style="margin-top:14px">\${todayTasks.map((task, index) => row({ title:task.title, whyItMatters:task.escalationReason || task.description, recommendedAction:task.nextAction || "Do task" }, index + 1, "tasks")).join("") || '<div class="empty">No tasks due today. Rebuild tasks to scan for escalations.</div>'}</div>
         </section>
         <section class="panel coo-panel section">
           <div class="simple-panel-head"><h2>Growth Inbox</h2><button onclick="location.hash='growth-inbox'">Open Inbox</button></div>
@@ -14877,6 +15051,41 @@ function htmlShell() {
           <article class="readiness-card good"><div class="readiness-title">Converted</div><strong>\${items.filter(item => item.status === "converted").length}</strong></article>
         </div>
         <div class="grid post-grid section">\${itemHtml}</div>
+      </section>\`;
+    }
+
+    function tasksPageHtml(pageClass) {
+      const views = [
+        ["today", "Today"],
+        ["overdue", "Overdue"],
+        ["waiting-roger", "Waiting on Roger"],
+        ["blocked", "Blocked"],
+        ["partner-follow-up", "Partner Follow-Up"],
+        ["investor-proof", "Investor Proof"],
+        ["compliance-review", "Compliance Review"],
+        ["content-production", "Content Production"]
+      ];
+      const activeView = taskView || "today";
+      const tasks = taskViewFilter(activeView);
+      const allOpen = (state.tasks || []).filter(taskStatusOpen);
+      const overdue = allOpen.filter(taskIsOverdue);
+      const waitingRoger = allOpen.filter(task => /roger/i.test(task.owner || ""));
+      return \`<section id="tasks" class="section \${pageClass("tasks")}">
+        <div class="panel hero-panel">
+          <div><div class="eyebrow">Operations</div><h1 class="big-title">Tasks</h1><p class="muted">Owned work, escalation rules, and next actions Roger can actually close.</p></div>
+          <div class="simple-hero-actions">
+            <span class="badge \${overdue.length ? "danger" : "good"}">\${overdue.length} overdue</span>
+            <span class="badge info">\${waitingRoger.length} waiting on Roger</span>
+            <button class="primary" onclick="rebuildTasks()">Rebuild Tasks</button>
+          </div>
+        </div>
+        <div class="toolbar section">\${views.map(([id, label]) => \`<button class="\${activeView === id ? "primary" : ""}" onclick="setTaskView('\${id}')">\${esc(label)} \${taskViewFilter(id).length}</button>\`).join("")}</div>
+        <div class="grid three section">
+          <article class="readiness-card info"><div class="readiness-title">Open</div><strong>\${allOpen.length}</strong></article>
+          <article class="readiness-card danger"><div class="readiness-title">Overdue</div><strong>\${overdue.length}</strong></article>
+          <article class="readiness-card warn"><div class="readiness-title">Waiting on Roger</div><strong>\${waitingRoger.length}</strong></article>
+        </div>
+        <div class="grid post-grid section">\${tasks.map(taskCardHtml).join("") || '<div class="empty">No tasks in this view. Rebuild tasks to scan partners, campaigns, approvals, Growth Inbox, pilots, support, and evidence cadence.</div>'}</div>
       </section>\`;
     }
 
@@ -15616,7 +15825,7 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const pageId = ["overview", "growth-inbox", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(requestedPage) ? requestedPage : "overview";
+      const pageId = ["overview", "growth-inbox", "tasks", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(requestedPage) ? requestedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -15625,6 +15834,7 @@ function htmlShell() {
       document.querySelector("#app").innerHTML = \`
         \${pageId === "overview" ? commandCenterOverviewHtml(reviewPosts) : ""}
         \${growthInboxPageHtml(pageClass)}
+        \${tasksPageHtml(pageClass)}
         \${milestonesPageHtml(pageClass)}
         \${partnersPageHtml(pageClass)}
         \${campaignsPageHtml(pageClass)}
@@ -16554,6 +16764,8 @@ function htmlShell() {
       return [
         { label:"Open Overview", detail:"Mission control", run:() => { location.hash = "overview"; } },
         { label:"Open Growth Inbox", detail:"Daily company signal intake", run:() => { location.hash = "growth-inbox"; } },
+        { label:"Open Tasks", detail:"Owned work and escalations", run:() => { location.hash = "tasks"; } },
+        { label:"Rebuild Tasks", detail:"Scan for escalations", run:() => rebuildTasks() },
         { label:"Open Milestones", detail:"Six-month plan", run:() => { location.hash = "milestones"; } },
         { label:"Open Partners", detail:"Partner CRM", run:() => { location.hash = "partners"; } },
         { label:"Open Campaigns", detail:"Campaign operations", run:() => { location.hash = "campaigns"; } },
@@ -16974,6 +17186,50 @@ function htmlShell() {
         render();
         toast(result.message || "Priorities refreshed");
       }, "Could not refresh priorities.");
+    }
+
+    function setTaskView(view) {
+      taskView = view || "today";
+      render();
+    }
+
+    async function rebuildTasks() {
+      return cooAction(async () => {
+        const result = await api("/api/tasks/rebuild", { method:"POST" });
+        state = result.state;
+        render();
+        toast(result.message || "Tasks rebuilt");
+      }, "Could not rebuild tasks.");
+    }
+
+    async function updateTaskAction(id, action, patch = {}) {
+      return cooAction(async () => {
+        const result = await api("/api/tasks/" + encodeURIComponent(id) + "/" + action, {
+          method:"POST",
+          body:JSON.stringify(patch || {})
+        });
+        state = result.state;
+        render();
+        return result.message || "Task updated.";
+      }, "Could not update task.");
+    }
+
+    async function snoozeTask(id) {
+      const days = window.prompt("Snooze for how many days?", "3");
+      if (days === null) return;
+      await updateTaskAction(id, "snooze", { days:Number(days || 3) });
+    }
+
+    async function assignTask(id) {
+      const owner = window.prompt("Assign owner", "Roger");
+      if (!owner) return;
+      await updateTaskAction(id, "assign", { owner });
+    }
+
+    async function dismissTask(id) {
+      const reason = window.prompt("Why dismiss this task?");
+      if (reason === null) return;
+      await updateTaskAction(id, "dismiss", { reason: reason || "Dismissed by operator." });
     }
 
     async function approveItem(id) {
@@ -17890,6 +18146,28 @@ async function handleRequest(request, response) {
       sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not rebuild priorities." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/tasks/rebuild" && request.method === "POST") {
+    try {
+      const result = await rebuildTasksState();
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not rebuild tasks." }, 400);
+    }
+    return;
+  }
+
+  const taskAction = url.pathname.match(/^\/api\/tasks\/([^/]+)\/(done|snooze|assign|dismiss|block|convert-report-note|convert-content-idea)$/);
+  if (taskAction && request.method === "POST") {
+    try {
+      const payload = request.headers["content-length"] === "0" ? {} : await readJson(request);
+      const result = await updateTaskRecord(decodeURIComponent(taskAction[1]), taskAction[2], payload || {});
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update task." }, 400);
     }
     return;
   }

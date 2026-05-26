@@ -367,3 +367,31 @@ Workflow:
 5. Ignored items require a reason.
 
 Growth Inbox never sends emails, never publishes, never enables live gates, and never turns high-risk legal/compliance content into external output without human review. Created, triaged, converted, and ignored events are written to operating memory for COO Briefs and evidence packs.
+
+## Tasks and Escalations
+
+The Tasks page lives at `#tasks`. It turns recommendations, blockers, and stale operating records into owned work with owner, status, priority, due date, source link, risk level, next action, escalation reason, and history.
+
+Task views:
+
+- Today
+- Overdue
+- Waiting on Roger
+- Blocked
+- Partner Follow-Up
+- Investor Proof
+- Compliance Review
+- Content Production
+
+`Rebuild Tasks` scans the current operating state and creates missing escalation tasks for stale partners, campaigns without weekly movement, blocked approvals, missing Friday evidence packs, high-risk content waiting more than 48 hours, stale pilots, high-priority Growth Inbox items, and high-severity support issues. Existing open tasks are de-duplicated by escalation key.
+
+Task actions are local/Supabase persisted and event logged:
+
+- Mark done
+- Snooze
+- Assign owner
+- Dismiss with reason
+- Convert to report note
+- Convert to content idea
+
+Tasks do not send emails, publish, or change live gates.
