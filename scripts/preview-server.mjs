@@ -9,6 +9,13 @@ import { analyzeOperations } from "./priority-engine.mjs";
 import { buildAutonomyGovernance, buildAutonomyReport, runAutonomyCycleOnState } from "./autonomy-engine.mjs";
 import { authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequest, publicActor, roleDefinitions, tokenFromRequest } from "./access-control.mjs";
 import {
+  classifyGrowthInboxText,
+  convertGrowthInboxItem,
+  growthInboxEvent,
+  normalizeGrowthInboxItem,
+  triageGrowthInboxItem
+} from "./growth-inbox.mjs";
+import {
   channelSetup,
   channelSetupMessage,
   exchangeLinkedInCode,
@@ -1642,6 +1649,206 @@ async function archiveContentBankIdeas(payload = {}) {
   });
   await store.writeState(nextState);
   return { state: nextState, archived: selectedIds.size };
+}
+
+function growthInboxTriagePrompt(item = {}) {
+  return `Classify this LegalEase company signal for internal operations only.
+
+Return JSON only with:
+- sourceType: one of meeting_notes, partner_update, investor_note, customer_support_issue, content_idea, campaign_idea, pilot_update, revenue_pipeline_update, compliance_concern
+- priority: low, normal, medium, high
+- riskLevel: low, medium, high
+- summary: one concise sentence
+- suggestedAction: one concrete next action
+- suggestedDestination: one of task, content_idea, partner_update, campaign_update, support_issue, evidence_pack_note, pilot_update
+
+Safety:
+- Draft triage only.
+- Do not write legal advice.
+- Do not promise eligibility or court outcomes.
+- High-risk legal/compliance/customer issues require human review.
+
+Raw signal:
+${item.rawText || ""}`;
+}
+
+function growthInboxTriageSchema() {
+  return {
+    type: "json_schema",
+    name: "legalese_growth_inbox_triage",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        sourceType: { type: "string", enum: ["meeting_notes", "partner_update", "investor_note", "customer_support_issue", "content_idea", "campaign_idea", "pilot_update", "revenue_pipeline_update", "compliance_concern"] },
+        priority: { type: "string", enum: ["low", "normal", "medium", "high"] },
+        riskLevel: { type: "string", enum: ["low", "medium", "high"] },
+        summary: { type: "string" },
+        suggestedAction: { type: "string" },
+        suggestedDestination: { type: "string", enum: ["task", "content_idea", "partner_update", "campaign_update", "support_issue", "evidence_pack_note", "pilot_update"] }
+      },
+      required: ["sourceType", "priority", "riskLevel", "summary", "suggestedAction", "suggestedDestination"]
+    }
+  };
+}
+
+async function aiTriageGrowthInboxItem(item = {}) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const env = openAIDraftEnvStatus();
+  if (!apiKey) throw new Error("OPENAI_API_KEY is missing. Rule-assisted triage used.");
+  let response;
+  try {
+    response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: env.openaiDraftModel,
+        instructions: "You are LegalEase's internal operations triage assistant. Classify raw company signals into safe draft operational work. Never send, publish, or provide legal advice. Return JSON only.",
+        input: [{ role: "user", content: [{ type: "input_text", text: growthInboxTriagePrompt(item) }] }],
+        text: { format: growthInboxTriageSchema(), verbosity: "low" },
+        max_output_tokens: 700
+      })
+    });
+  } catch (error) {
+    throw new Error(`OpenAI triage request failed. ${safeShortError(error.message)}`);
+  }
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = payload?.error?.message || response.statusText || "OpenAI triage request failed.";
+    throw new Error(`OpenAI triage request failed. ${safeShortError(message)}`);
+  }
+  const text = extractOpenAIText(payload);
+  if (!text) throw new Error("OpenAI triage response was empty. Rule-assisted triage used.");
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("OpenAI triage response was not valid JSON. Rule-assisted triage used.");
+  }
+}
+
+function upsertConvertedGrowthRecord(state = {}, convertedRecord = null) {
+  if (!convertedRecord?.collection || !convertedRecord?.record) return state;
+  const collection = convertedRecord.collection;
+  const record = convertedRecord.record;
+  const current = Array.isArray(state[collection]) ? state[collection] : [];
+  const relatedName = String(record.organizationName || record.campaignName || "").toLowerCase();
+  if (collection === "partners" && relatedName) {
+    const existing = current.find((item) => String(item.organizationName || "").toLowerCase() === relatedName);
+    if (existing) {
+      return {
+        ...state,
+        partners: current.map((item) => item.id === existing.id ? {
+          ...item,
+          nextAction: record.nextAction || item.nextAction,
+          notes: [item.notes, record.notes].filter(Boolean).join("\n\n"),
+          lastTouchDate: record.lastTouchDate || item.lastTouchDate,
+          updatedAt: record.updatedAt
+        } : item)
+      };
+    }
+  }
+  if (collection === "campaigns" && relatedName) {
+    const existing = current.find((item) => String(item.campaignName || "").toLowerCase() === relatedName);
+    if (existing) {
+      return {
+        ...state,
+        campaigns: current.map((item) => item.id === existing.id ? {
+          ...item,
+          nextAction: record.nextAction || item.nextAction,
+          notes: [item.notes, record.notes].filter(Boolean).join("\n\n"),
+          updatedAt: record.updatedAt
+        } : item)
+      };
+    }
+  }
+  return { ...state, [collection]: [record, ...current.filter((item) => item.id !== record.id)] };
+}
+
+function appendGrowthInboxEvent(state = {}, event = null) {
+  if (!event) return state;
+  return {
+    ...state,
+    events: [event, ...(state.events || [])].slice(0, 1000),
+    activityEvents: [
+      {
+        id: event.id.replace(/^event-/, "activity-"),
+        eventType: event.eventType,
+        title: event.title,
+        relatedObjectType: event.objectType,
+        relatedObjectId: event.objectId,
+        createdAt: event.createdAt
+      },
+      ...(state.activityEvents || [])
+    ].slice(0, 500)
+  };
+}
+
+async function createGrowthInboxItem(payload = {}) {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const item = normalizeGrowthInboxItem(payload || {});
+    const event = growthInboxEvent("growth_inbox_item_created", item, { sourceType: item.sourceType });
+    const nextState = analyzeOperations(appendGrowthInboxEvent({
+      ...state,
+      growthInbox: [item, ...(state.growthInbox || [])]
+    }, event));
+    await store.writeState(nextState);
+    return { state: nextState, item, message: "Growth Inbox item added." };
+  });
+}
+
+async function triageGrowthInboxRecord(id = "", options = {}) {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const item = (state.growthInbox || []).find((entry) => entry.id === id);
+    if (!item) throw new Error("Growth Inbox item not found.");
+    let aiPatch = {};
+    let aiError = "";
+    if (options.useAI !== false && process.env.OPENAI_API_KEY) {
+      try {
+        aiPatch = await aiTriageGrowthInboxItem(item);
+      } catch (error) {
+        aiError = safeShortError(error.message);
+      }
+    }
+    const triaged = triageGrowthInboxItem(item, {
+      ...aiPatch,
+      aiTriage: {
+        mode: Object.keys(aiPatch).length ? "openai_draft" : "rule_assisted",
+        model: Object.keys(aiPatch).length ? openAIDraftEnvStatus().openaiDraftModel : "",
+        error: aiError,
+        generatedAt: new Date().toISOString()
+      }
+    });
+    const event = growthInboxEvent("growth_inbox_item_triaged", triaged, { triageMode: triaged.aiTriage?.mode || "rule_assisted", aiError });
+    const nextState = analyzeOperations(appendGrowthInboxEvent({
+      ...state,
+      growthInbox: (state.growthInbox || []).map((entry) => entry.id === id ? triaged : entry)
+    }, event));
+    await store.writeState(nextState);
+    return { state: nextState, item: triaged, aiError, message: aiError ? "Triaged with rule-assisted fallback." : "Growth Inbox item triaged." };
+  });
+}
+
+async function convertGrowthInboxRecord(id = "", destination = "task", options = {}) {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const item = (state.growthInbox || []).find((entry) => entry.id === id);
+    if (!item) throw new Error("Growth Inbox item not found.");
+    const result = convertGrowthInboxItem(item, destination, options || {});
+    let next = {
+      ...state,
+      growthInbox: (state.growthInbox || []).map((entry) => entry.id === id ? result.item : entry)
+    };
+    next = upsertConvertedGrowthRecord(next, result.convertedRecord);
+    next = analyzeOperations(appendGrowthInboxEvent(next, result.event));
+    await store.writeState(next);
+    return { state: next, item: result.item, convertedRecord: result.convertedRecord, message: result.convertedRecord ? `Converted to ${result.convertedRecord.collection}.` : "Growth Inbox item ignored." };
+  });
 }
 
 async function rebuildPriorityState() {
@@ -5792,6 +5999,11 @@ const initialState = {
   autonomyActions: [],
   autonomyDecisions: [],
   autonomyRuns: [],
+  growthInbox: [],
+  tasks: [],
+  supportIssues: [],
+  evidencePackNotes: [],
+  events: [],
   postImages: []
 };
 
@@ -11634,7 +11846,7 @@ function htmlShell() {
     <aside>
       <div class="brand"><small>LegalEase</small><h1>Command Center</h1></div>
       <nav>
-        <div class="nav-group"><span class="nav-label">Growth</span><a href="#overview" class="active">Overview</a><a href="#milestones">Milestones</a><a href="#partners">Partners</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a></div>
+        <div class="nav-group"><span class="nav-label">Growth</span><a href="#overview" class="active">Overview</a><a href="#growth-inbox">Growth Inbox</a><a href="#milestones">Milestones</a><a href="#partners">Partners</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a></div>
         <div class="nav-group"><span class="nav-label">Production</span><a href="#content-bank">Content Bank</a><a href="#sources">Sources</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div>
         <div class="nav-group"><span class="nav-label">Operations</span><a href="#autonomy">Autonomy</a><a href="#automation">Automation Inbox</a><a href="#pilots">Pilots</a><a href="#compliance">Compliance</a><a href="#soc2">SOC 2</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#metrics">Metrics</a><a href="#settings">Settings</a></div><div class="nav-group"><span class="nav-label">SOC 2</span><a href="#soc2-access">Access</a><a href="#soc2-audit">Audit Logs</a><a href="#soc2-changes">Changes</a><a href="#soc2-vendors">Vendors</a><a href="#soc2-incidents">Incidents</a><a href="#soc2-evidence">Evidence</a><a href="#soc2-policies">Policies</a></div>
       </nav>
@@ -14494,6 +14706,8 @@ function htmlShell() {
       const blockedApprovals = approvalItems.filter((item) => String(item.status || "").toLowerCase().includes("blocked"));
       const blockers = (state.blockers || []).slice(0, 5);
       const signals = (state.growthSignals || []).slice(0, 5);
+      const inboxBrief = brief.growthInbox || {};
+      const urgentInbox = inboxBrief.urgentItems || [];
       const readyChannels = platforms.filter(platform => state.runtime?.livePostingGates?.[platform]?.enabled).length;
       const pngReady = posts.filter(post => finalPngReady(post, imageForPost(post.id))).length;
       const publicUrlReady = credentialPresent("PUBLIC_APP_BASE_URL");
@@ -14507,7 +14721,7 @@ function htmlShell() {
           <div>
             <div class="eyebrow">COO Brief</div>
             <h1 class="big-title">Today</h1>
-            <p class="big-copy">Approvals: \${Number(brief.approvals || activeApprovals.length)} · Blocked: \${Number(brief.blocked?.count || blockers.length)} · Backup: \${esc(latestBackup?.createdAt || "not created")}</p>
+            <p class="big-copy">Approvals: \${Number(brief.approvals || activeApprovals.length)} · Blocked: \${Number(brief.blocked?.count || blockers.length)} · Inbox: \${Number(inboxBrief.untriagedCount || 0)} untriaged · Backup: \${esc(latestBackup?.createdAt || "not created")}</p>
           </div>
           <div class="coo-brief-copy">
             <strong>Recommended move</strong>
@@ -14515,6 +14729,7 @@ function htmlShell() {
           </div>
           <div class="simple-hero-actions">
             <button class="primary" onclick="document.getElementById('overview-approval-queue')?.scrollIntoView({behavior:'smooth', block:'start'})">Approve Content</button>
+            <button onclick="location.hash='growth-inbox'">Open Growth Inbox</button>
             <button onclick="location.hash='content-bank'">Generate From Content Bank</button>
             <button onclick="document.getElementById('overview-blockers')?.scrollIntoView({behavior:'smooth', block:'start'})">Fix Blockers</button>
             <button onclick="createWeeklyEvidencePack()">Build Weekly Evidence Pack</button>
@@ -14523,7 +14738,15 @@ function htmlShell() {
         \${autonomyOverviewHtml()}
         <section class="panel coo-panel section">
           <div class="simple-panel-head"><h2>Today's Priorities</h2><button onclick="rebuildPriorities()">Refresh</button></div>
-          <div class="coo-list">\${priorities.map((item, index) => row(item, index + 1, item.sourceType === "campaign" ? "campaigns" : item.sourceType === "partner" ? "partners" : item.sourceType === "pilot" ? "pilots" : "queue")).join("") || '<div class="empty">No priorities yet. Add content ideas, partners, or campaign updates.</div>'}</div>
+          <div class="coo-list">\${priorities.map((item, index) => row(item, index + 1, item.sourceType === "growth_inbox" ? "growth-inbox" : item.sourceType === "campaign" ? "campaigns" : item.sourceType === "partner" ? "partners" : item.sourceType === "pilot" ? "pilots" : "queue")).join("") || '<div class="empty">No priorities yet. Add content ideas, partners, or campaign updates.</div>'}</div>
+        </section>
+        <section class="panel coo-panel section">
+          <div class="simple-panel-head"><h2>Growth Inbox</h2><button onclick="location.hash='growth-inbox'">Open Inbox</button></div>
+          <div class="simple-counts" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:14px;">
+            <div class="simple-count-card"><span>Untriaged</span><strong>\${Number(inboxBrief.untriagedCount || 0)}</strong></div>
+            <div class="simple-count-card"><span>Urgent</span><strong>\${urgentInbox.length}</strong></div>
+          </div>
+          <div class="coo-list" style="margin-top:14px">\${urgentInbox.map((item, index) => row({ title:item.summary, whyItMatters:item.riskLevel + " risk · " + item.priority + " priority", recommendedAction:item.suggestedAction }, index + 1, "growth-inbox")).join("") || '<div class="empty">No urgent inbox items. Paste raw company signals as they happen.</div>'}</div>
         </section>
         <section class="panel section" id="overview-approval-queue">
           <div class="eyebrow">Overview Approval Summary v1</div>
@@ -14561,6 +14784,99 @@ function htmlShell() {
             <div class="metric-row"><span>TikTok</span><strong>diagnostic only</strong></div>
           </div>
         </details>
+      </section>\`;
+    }
+
+    function growthInboxPageHtml(pageClass) {
+      const items = state.growthInbox || [];
+      const open = items.filter(item => !["converted", "ignored"].includes(item.status || "new"));
+      const urgent = open.filter(item => item.priority === "high" || item.riskLevel === "high");
+      const sourceTypes = [
+        ["", "Auto-detect"],
+        ["meeting_notes", "Meeting notes"],
+        ["partner_update", "Partner update"],
+        ["investor_note", "Investor note"],
+        ["customer_support_issue", "Customer/support issue"],
+        ["content_idea", "Content idea"],
+        ["campaign_idea", "Campaign idea"],
+        ["pilot_update", "Pilot update"],
+        ["revenue_pipeline_update", "Revenue/pipeline update"],
+        ["compliance_concern", "Compliance concern"]
+      ];
+      const destinationOptions = [
+        ["task", "Task"],
+        ["content_idea", "Content Idea"],
+        ["partner_update", "Partner Update"],
+        ["campaign_update", "Campaign Update"],
+        ["support_issue", "Support Issue"],
+        ["evidence_pack_note", "Evidence Pack Note"]
+      ];
+      const itemHtml = items.slice(0, 30).map(item => {
+        const status = item.status || "new";
+        const disabled = ["converted", "ignored"].includes(status) ? "disabled" : "";
+        return \`<article class="card drawer-card">
+          <div class="row">
+            <span class="badge \${growthTone(status)}">\${esc(growthLabel(status))}</span>
+            <span class="badge \${item.priority === "high" ? "danger" : item.priority === "medium" ? "warn" : "info"}">\${esc(growthLabel(item.priority || "normal"))}</span>
+            <span class="badge \${item.riskLevel === "high" ? "danger" : item.riskLevel === "medium" ? "warn" : "info"}">\${esc(growthLabel(item.riskLevel || "low"))} risk</span>
+          </div>
+          <h2>\${esc(item.summary || item.rawText || "Growth Inbox item")}</h2>
+          <p class="muted">\${esc(item.rawText || "")}</p>
+          <div class="metric-table">
+            <div class="metric-row"><span>Source</span><strong>\${esc(growthLabel(item.sourceType || "meeting_notes"))}</strong></div>
+            <div class="metric-row"><span>Suggested action</span><strong>\${esc(item.suggestedAction || "Triage this signal")}</strong></div>
+            <div class="metric-row"><span>Suggested destination</span><strong>\${esc(growthLabel(item.suggestedDestination || "task"))}</strong></div>
+            <div class="metric-row"><span>Related</span><strong>\${esc([item.relatedPartner, item.relatedCampaign, item.relatedPilot].filter(Boolean).join(" · ") || "None")}</strong></div>
+          </div>
+          \${item.aiTriage?.error ? \`<p class="muted">AI triage fallback: \${esc(item.aiTriage.error)}</p>\` : ""}
+          <div class="card-actions">
+            <button \${disabled} onclick="triageGrowthInbox('\${item.id}')">Triage</button>
+            \${destinationOptions.map(([destination, label]) => \`<button \${disabled} onclick="convertGrowthInbox('\${item.id}', '\${destination}')">\${esc(label)}</button>\`).join("")}
+            <button \${disabled} onclick="ignoreGrowthInbox('\${item.id}')">Ignore</button>
+          </div>
+          <details><summary>History</summary><div class="metric-table">\${(item.history || []).slice(0, 6).map(entry => \`<div class="metric-row"><span>\${esc(entry.action)}</span><strong>\${esc(entry.at || "")}</strong></div>\`).join("") || '<div class="empty">No history yet.</div>'}</div></details>
+        </article>\`;
+      }).join("") || '<div class="empty">Paste a meeting note, partner signal, investor thought, support issue, campaign idea, or compliance concern. The inbox will classify it and suggest the next destination.</div>';
+      return \`<section id="growth-inbox" class="section \${pageClass("growth-inbox")}">
+        <div class="panel hero-panel">
+          <div><div class="eyebrow">Growth</div><h1 class="big-title">Growth Inbox</h1><p class="muted">Paste raw company signals. The Command Center turns them into structured work for human approval.</p></div>
+          <div class="simple-hero-actions">
+            <span class="badge \${urgent.length ? "danger" : "good"}">\${urgent.length} urgent</span>
+            <span class="badge info">\${open.length} open</span>
+          </div>
+        </div>
+        <div class="grid two section">
+          <form class="panel" onsubmit="createGrowthInbox(event)">
+            <h2>Paste signal</h2>
+            <label>Raw text<textarea name="rawText" required rows="10" placeholder="Paste meeting notes, partner updates, investor notes, customer issues, content ideas, campaign ideas, pilot updates, revenue notes, or compliance concerns."></textarea></label>
+            <div class="grid split">
+              <label>Source type<select name="sourceType">\${sourceTypes.map(([value, label]) => \`<option value="\${esc(value)}">\${esc(label)}</option>\`).join("")}</select></label>
+              <label>Priority<select name="priority"><option value="">Auto</option><option value="normal">Normal</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+            </div>
+            <div class="grid split">
+              <label>Partner<input name="relatedPartner" placeholder="Optional"></label>
+              <label>Campaign<input name="relatedCampaign" placeholder="Optional"></label>
+            </div>
+            <label>Pilot<input name="relatedPilot" placeholder="Optional"></label>
+            <button class="primary">Add to Growth Inbox</button>
+          </form>
+          <section class="panel">
+            <h2>What happens next</h2>
+            <div class="metric-table">
+              <div class="metric-row"><span>AI/rule triage</span><strong>Draft only</strong></div>
+              <div class="metric-row"><span>External actions</span><strong>Never automatic</strong></div>
+              <div class="metric-row"><span>Publishing gates</span><strong>Fail closed</strong></div>
+              <div class="metric-row"><span>Events</span><strong>Created, triaged, converted, ignored</strong></div>
+            </div>
+            <p class="muted" style="margin-top:12px">High-risk legal, compliance, support, and customer-sensitive signals stay internal and route to human review.</p>
+          </section>
+        </div>
+        <div class="grid three section">
+          <article class="readiness-card info"><div class="readiness-title">New</div><strong>\${items.filter(item => (item.status || "new") === "new").length}</strong></article>
+          <article class="readiness-card warn"><div class="readiness-title">Triaged</div><strong>\${items.filter(item => item.status === "triaged").length}</strong></article>
+          <article class="readiness-card good"><div class="readiness-title">Converted</div><strong>\${items.filter(item => item.status === "converted").length}</strong></article>
+        </div>
+        <div class="grid post-grid section">\${itemHtml}</div>
       </section>\`;
     }
 
@@ -15300,7 +15616,7 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const pageId = ["overview", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(requestedPage) ? requestedPage : "overview";
+      const pageId = ["overview", "growth-inbox", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(requestedPage) ? requestedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -15308,6 +15624,7 @@ function htmlShell() {
       const healthTone = schemaStale ? "danger" : supabaseHealth?.connected ? "good" : supabaseHealth?.configured ? "warn" : "danger";
       document.querySelector("#app").innerHTML = \`
         \${pageId === "overview" ? commandCenterOverviewHtml(reviewPosts) : ""}
+        \${growthInboxPageHtml(pageClass)}
         \${milestonesPageHtml(pageClass)}
         \${partnersPageHtml(pageClass)}
         \${campaignsPageHtml(pageClass)}
@@ -15902,6 +16219,59 @@ function htmlShell() {
       render();
     }
 
+    async function createGrowthInbox(event) {
+      event.preventDefault();
+      const payload = formObject(event.target);
+      await cooAction(async () => {
+        const result = await api("/api/growth-inbox", {
+          method:"POST",
+          body:JSON.stringify(payload)
+        });
+        state = result.state;
+        render();
+        event.target.reset();
+        return result.message || "Growth Inbox item added.";
+      }, "Could not add Growth Inbox item.");
+    }
+
+    async function triageGrowthInbox(id) {
+      await cooAction(async () => {
+        const result = await api("/api/growth-inbox/" + encodeURIComponent(id) + "/triage", {
+          method:"POST",
+          body:JSON.stringify({ useAI:true })
+        });
+        state = result.state;
+        render();
+        return result.message || "Growth Inbox item triaged.";
+      }, "Could not triage Growth Inbox item.");
+    }
+
+    async function convertGrowthInbox(id, destination) {
+      await cooAction(async () => {
+        const result = await api("/api/growth-inbox/" + encodeURIComponent(id) + "/convert", {
+          method:"POST",
+          body:JSON.stringify({ destination })
+        });
+        state = result.state;
+        render();
+        return result.message || "Growth Inbox item converted.";
+      }, "Could not convert Growth Inbox item.");
+    }
+
+    async function ignoreGrowthInbox(id) {
+      const reason = window.prompt("Why ignore this signal?");
+      if (reason === null) return;
+      await cooAction(async () => {
+        const result = await api("/api/growth-inbox/" + encodeURIComponent(id) + "/ignore", {
+          method:"POST",
+          body:JSON.stringify({ reason: reason || "Ignored by operator." })
+        });
+        state = result.state;
+        render();
+        return result.message || "Growth Inbox item ignored.";
+      }, "Could not ignore Growth Inbox item.");
+    }
+
     async function approveAutomationSuggestion(id) {
       const result = await api("/api/automation/suggestions/" + encodeURIComponent(id) + "/approve", { method:"POST", body:JSON.stringify({}) });
       state = result.state;
@@ -16183,6 +16553,7 @@ function htmlShell() {
     function commandActions() {
       return [
         { label:"Open Overview", detail:"Mission control", run:() => { location.hash = "overview"; } },
+        { label:"Open Growth Inbox", detail:"Daily company signal intake", run:() => { location.hash = "growth-inbox"; } },
         { label:"Open Milestones", detail:"Six-month plan", run:() => { location.hash = "milestones"; } },
         { label:"Open Partners", detail:"Partner CRM", run:() => { location.hash = "partners"; } },
         { label:"Open Campaigns", detail:"Campaign operations", run:() => { location.hash = "campaigns"; } },
@@ -17519,6 +17890,34 @@ async function handleRequest(request, response) {
       sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not rebuild priorities." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/growth-inbox" && request.method === "POST") {
+    try {
+      const result = await createGrowthInboxItem(await readJson(request));
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not create Growth Inbox item." }, 400);
+    }
+    return;
+  }
+
+  const growthInboxAction = url.pathname.match(/^\/api\/growth-inbox\/([^/]+)\/(triage|convert|ignore)$/);
+  if (growthInboxAction && request.method === "POST") {
+    try {
+      const payload = request.headers["content-length"] === "0" ? {} : await readJson(request);
+      const id = decodeURIComponent(growthInboxAction[1]);
+      const action = growthInboxAction[2];
+      const result = action === "triage"
+        ? await triageGrowthInboxRecord(id, payload || {})
+        : action === "ignore"
+          ? await convertGrowthInboxRecord(id, "ignore", { reason: payload?.reason || "Ignored by operator." })
+          : await convertGrowthInboxRecord(id, payload?.destination || "task", payload || {});
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update Growth Inbox item." }, 400);
     }
     return;
   }

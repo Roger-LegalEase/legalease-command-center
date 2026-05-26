@@ -310,6 +310,18 @@ function buildRecommendedActions(state = {}, approvalItems = [], blockers = [], 
 
 function buildPriorities(state = {}, approvalItems = [], blockers = [], growthSignals = [], actions = []) {
   const items = [];
+  for (const inboxItem of list(state.growthInbox).filter((item) => !["converted", "ignored"].includes(item.status)).slice(0, 3)) {
+    items.push({
+      id: `priority-growth-inbox-${inboxItem.id}`,
+      title: inboxItem.summary || clean(inboxItem.rawText).slice(0, 100) || "Growth Inbox item",
+      whyItMatters: inboxItem.riskLevel === "high" ? "High-risk company signal needs triage before it becomes external work." : "Raw company signal is waiting to become structured work.",
+      recommendedAction: inboxItem.suggestedAction || "Triage Growth Inbox item",
+      status: inboxItem.riskLevel === "high" ? "review" : "monitor",
+      score: inboxItem.priority === "high" ? 94 : inboxItem.priority === "medium" ? 74 : 52,
+      sourceType: "growth_inbox",
+      sourceId: inboxItem.id
+    });
+  }
   for (const blocker of blockers.slice(0, 3)) {
     items.push({
       id: `priority-${blocker.id}`,
@@ -364,10 +376,26 @@ function buildPriorities(state = {}, approvalItems = [], blockers = [], growthSi
     .slice(0, 5);
 }
 
-function buildCooBrief(priorities = [], approvalItems = [], blockers = [], growthSignals = []) {
+function buildCooBrief(priorities = [], approvalItems = [], blockers = [], growthSignals = [], state = {}) {
   const strongestSignal = growthSignals.find((item) => item.strength === "strong") || growthSignals[0];
+  const openInbox = list(state.growthInbox).filter((item) => !["converted", "ignored"].includes(item.status));
+  const urgentInboxItems = openInbox
+    .filter((item) => item.priority === "high" || item.riskLevel === "high")
+    .slice(0, 3)
+    .map((item) => ({
+      id: item.id,
+      summary: item.summary || clean(item.rawText).slice(0, 140),
+      riskLevel: item.riskLevel || "low",
+      priority: item.priority || "normal",
+      suggestedAction: item.suggestedAction || "Triage this signal"
+    }));
   return {
     today: priorities.slice(0, 3).map((item) => item.title),
+    growthInbox: {
+      untriagedCount: openInbox.filter((item) => item.status === "new").length,
+      openCount: openInbox.length,
+      urgentItems: urgentInboxItems
+    },
     approvals: approvalItems.length,
     blocked: {
       count: blockers.length,
@@ -388,6 +416,7 @@ export function addNextBestActions(state = {}) {
   nextState.dataRoomItems = list(state.dataRoomItems).map((item) => ({ ...item, nextBestAction: nextActionFor("data_room_item", item) }));
   nextState.reports = list(state.reports).map((item) => ({ ...item, nextBestAction: item.nextBestAction || "Review report" }));
   nextState.funnelSnapshots = list(state.funnelSnapshots).map((item) => ({ ...item, nextBestAction: item.nextBestAction || "Update funnel snapshot" }));
+  nextState.growthInbox = list(state.growthInbox).map((item) => ({ ...item, nextBestAction: item.suggestedAction || item.nextBestAction || "Triage Growth Inbox item" }));
   return nextState;
 }
 
@@ -398,7 +427,7 @@ export function analyzeOperations(state = {}) {
   const growthSignals = buildGrowthSignals(withActions);
   const recommendedActions = buildRecommendedActions(withActions, approvalItems, blockers, growthSignals);
   const priorities = buildPriorities(withActions, approvalItems, blockers, growthSignals, recommendedActions);
-  const cooBrief = buildCooBrief(priorities, approvalItems, blockers, growthSignals);
+  const cooBrief = buildCooBrief(priorities, approvalItems, blockers, growthSignals, withActions);
   return {
     ...withActions,
     approvalQueue: approvalItems,

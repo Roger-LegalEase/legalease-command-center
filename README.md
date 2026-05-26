@@ -353,3 +353,17 @@ POST /api/autonomy/actions/:id/ignore
 `POST /api/autonomy/run` only executes safe internal actions. It does not send email, publish to social media, change pricing, change legal policy, expose secrets, or run destructive database operations. Every autonomy run writes SOC 2 audit evidence and activity events.
 
 The Overview page shows a compact Autonomy panel so Roger can see what happened automatically, what needs a decision, what needs hard review, and what the system refused to run.
+
+## Growth Inbox
+
+The Growth Inbox lives at `#growth-inbox`. It is the daily intake surface for raw company signals: meeting notes, partner updates, investor notes, customer/support issues, content ideas, campaign ideas, pilot updates, revenue/pipeline updates, and compliance concerns.
+
+Workflow:
+
+1. Paste raw text into Growth Inbox.
+2. The server creates a structured inbox item and classifies source type, risk, priority, suggested action, and destination.
+3. Optional OpenAI triage runs server-side when configured; failures fall back to rule-assisted triage.
+4. Roger converts the item into a task, Content Bank idea, partner update, campaign update, support issue, or evidence-pack note.
+5. Ignored items require a reason.
+
+Growth Inbox never sends emails, never publishes, never enables live gates, and never turns high-risk legal/compliance content into external output without human review. Created, triaged, converted, and ignored events are written to operating memory for COO Briefs and evidence packs.

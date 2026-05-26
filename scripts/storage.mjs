@@ -12,6 +12,7 @@ const defaultSeedPath = path.join(defaultDataDir, "seed", "social-command-center
 const supabaseRecordsTable = process.env.SUPABASE_CORE_RECORDS_TABLE || "leos_core_records";
 const coreStateCollections = [
   "contentBank",
+  "growthInbox",
   "approvalQueue",
   "posts",
   "priorities",
@@ -25,6 +26,10 @@ const coreStateCollections = [
   "systemHealth",
   "soc2AuditLogs",
   "auditHistory",
+  "events",
+  "tasks",
+  "supportIssues",
+  "evidencePackNotes",
   "autonomyActions",
   "autonomyDecisions",
   "autonomyRuns",
