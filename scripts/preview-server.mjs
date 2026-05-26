@@ -14488,7 +14488,10 @@ function htmlShell() {
       const latestBackup = backups[0] || state.settings?.latestBackup;
       const brief = state.cooBrief || {};
       const priorities = (state.priorities || []).slice(0, 5);
-      const approvals = (state.approvalQueue || []).slice(0, 6);
+      const approvalItems = state.approvalQueue || [];
+      const activeApprovals = approvalItems.filter((item) => !["approved", "archived", "ignored"].includes(String(item.status || "").toLowerCase()));
+      const readyApprovals = approvalItems.filter((item) => ["ready_to_approve", "ready", "ready_to_send"].includes(String(item.status || "").toLowerCase()));
+      const blockedApprovals = approvalItems.filter((item) => String(item.status || "").toLowerCase().includes("blocked"));
       const blockers = (state.blockers || []).slice(0, 5);
       const signals = (state.growthSignals || []).slice(0, 5);
       const readyChannels = platforms.filter(platform => state.runtime?.livePostingGates?.[platform]?.enabled).length;
@@ -14504,7 +14507,7 @@ function htmlShell() {
           <div>
             <div class="eyebrow">COO Brief</div>
             <h1 class="big-title">Today</h1>
-            <p class="big-copy">Approvals: \${Number(brief.approvals || approvals.length)} · Blocked: \${Number(brief.blocked?.count || blockers.length)} · Backup: \${esc(latestBackup?.createdAt || "not created")}</p>
+            <p class="big-copy">Approvals: \${Number(brief.approvals || activeApprovals.length)} · Blocked: \${Number(brief.blocked?.count || blockers.length)} · Backup: \${esc(latestBackup?.createdAt || "not created")}</p>
           </div>
           <div class="coo-brief-copy">
             <strong>Recommended move</strong>
@@ -14522,17 +14525,21 @@ function htmlShell() {
           <div class="simple-panel-head"><h2>Today's Priorities</h2><button onclick="rebuildPriorities()">Refresh</button></div>
           <div class="coo-list">\${priorities.map((item, index) => row(item, index + 1, item.sourceType === "campaign" ? "campaigns" : item.sourceType === "partner" ? "partners" : item.sourceType === "pilot" ? "pilots" : "queue")).join("") || '<div class="empty">No priorities yet. Add content ideas, partners, or campaign updates.</div>'}</div>
         </section>
-        <section id="overview-approval-queue" style="display:block;width:100%;max-width:100%;box-sizing:border-box;padding:18px;border:1px solid #d9e1ec;border-radius:16px;background:#fff;margin-top:18px;">
-          <div style="display:block;margin:0 0 8px 0;font-size:12px;font-weight:800;line-height:1.2;color:#506079;">Approval Queue Layout v4</div>
-          <h2 style="display:block;margin:0 0 14px 0;font-size:22px;line-height:1.2;color:#111827;">Approval Queue</h2>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
-            <button class="primary" onclick="batchApproveItems()">Approve selected</button>
-            <button onclick="batchBlockItems()">Block selected</button>
-            <button onclick="batchSendApprovalToQueue()">Send to Queue</button>
-            <button onclick="batchArchiveApprovalItems()">Archive</button>
-            <button onclick="selectAllApprovalItems()">Select all</button>
+        <section class="panel section" id="overview-approval-queue">
+          <div class="eyebrow">Overview Approval Summary v1</div>
+          <div class="simple-panel-head">
+            <h2>Approval Queue</h2>
+            <button class="primary" onclick="location.hash='queue'">Open Queue</button>
           </div>
-          \${approvals.map((item) => \`<article style="display:block;width:100%;box-sizing:border-box;padding:18px;border:1px solid #d9e1ec;border-radius:16px;background:#fff;margin-bottom:14px;"><div style="display:flex;align-items:flex-start;gap:12px;width:100%;box-sizing:border-box;"><input type="checkbox" class="approval-select" value="\${esc(item.id)}" style="margin-top:4px;flex:0 0 auto;"><div style="display:block;flex:1 1 auto;width:auto;min-width:0;box-sizing:border-box;"><div style="display:block;width:100%;font-size:16px;font-weight:700;line-height:1.35;color:#111827;white-space:normal;word-break:normal;overflow-wrap:break-word;">\${esc(item.title || "Review item")}</div><p style="margin:8px 0 0 0;font-size:14px;line-height:1.45;color:#506079;">\${esc(item.whyItMatters || item.summary || item.recommendedAction || "Review this item before it moves forward.")}</p></div></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;margin-left:32px;"><button class="primary" onclick="approveItem('\${esc(item.id)}')">Approve</button><button onclick="blockItem('\${esc(item.id)}')">Block</button><button onclick="sendApprovalToQueue('\${esc(item.id)}')">Queue</button></div></article>\`).join("") || '<div class="empty">Nothing is waiting on Roger.</div>'}
+          <div class="simple-counts" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:14px;">
+            <div class="simple-count-card"><span>Items need review</span><strong>\${activeApprovals.length}</strong></div>
+            <div class="simple-count-card"><span>Items ready to approve</span><strong>\${readyApprovals.length}</strong></div>
+            <div class="simple-count-card"><span>Blocked</span><strong>\${blockedApprovals.length}</strong></div>
+          </div>
+          <div class="card-actions" style="margin-top:14px;">
+            <button class="primary" onclick="location.hash='queue'">Open Queue</button>
+            <button onclick="location.hash='content-bank'">Open Content Bank</button>
+          </div>
         </section>
         <div class="coo-overview-stack section">
           <section class="panel coo-panel" id="overview-blockers">
@@ -17351,48 +17358,6 @@ function htmlShell() {
 </html>`;
 }
 
-function approvalLayoutDebugHtml() {
-  const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[char]));
-  const cardHtml = (card) => `<article style="display:block;width:100%;box-sizing:border-box;padding:18px;border:1px solid #d9e1ec;border-radius:16px;background:#fff;margin-bottom:14px;"><div style="display:flex;align-items:flex-start;gap:12px;width:100%;box-sizing:border-box;"><input type="checkbox" style="margin-top:4px;flex:0 0 auto;"><div style="display:block;flex:1 1 auto;width:auto;min-width:0;box-sizing:border-box;"><div style="display:block;width:100%;font-size:16px;font-weight:700;line-height:1.35;color:#111827;white-space:normal;word-break:normal;overflow-wrap:break-word;">${escapeHtml(card.title)}</div><p style="margin:8px 0 0 0;font-size:14px;line-height:1.45;color:#506079;">${escapeHtml(card.description)}</p></div></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;margin-left:32px;"><button style="background:#0b3b8c;color:#fff;border:1px solid #0b3b8c;border-radius:10px;min-height:38px;padding:0 12px;font-weight:700;">Approve</button><button style="border:1px solid #d9e1ec;background:#fff;border-radius:10px;min-height:38px;padding:0 12px;font-weight:700;">Block</button><button style="border:1px solid #d9e1ec;background:#fff;border-radius:10px;min-height:38px;padding:0 12px;font-weight:700;">Queue</button></div></article>`;
-  const cards = [
-    {
-      title: "A partner campaign is only real when distribution happens",
-      description: "This post has the assets needed for approval or publish setup."
-    },
-    {
-      title: "Approve the weekly evidence pack before it becomes investor-facing proof",
-      description: "A long title should wrap across normal lines, not collapse into a narrow right-side column."
-    },
-    {
-      title: "RecordShield conversion proof needs a clean campaign follow-up for partners and reviewers",
-      description: "The checkbox, title, description, and action buttons should stay in normal document flow."
-    }
-  ];
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Approval Layout Debug</title>
-  <style>
-    * { box-sizing:border-box; }
-    body { margin:0; padding:28px; background:#f7f8fa; color:#111827; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
-    main { width:min(900px,100%); margin:0 auto; }
-    h1 { margin:0 0 18px; font-size:28px; line-height:1.1; }
-  </style>
-</head>
-<body>
-  <main>
-    <div style="display:block;margin:0 0 8px 0;font-size:12px;font-weight:800;line-height:1.2;color:#506079;">Approval Queue Layout v4</div>
-    <h1>Approval Queue Layout Debug</h1>
-    <section style="display:block;width:100%;max-width:100%;box-sizing:border-box;">
-      ${cards.map(cardHtml).join("")}
-    </section>
-  </main>
-</body>
-</html>`;
-}
-
 async function handleRequest(request, response) {
   const url = new URL(request.url ?? "/", `http://${request.headers.host}`);
   const accessDecision = authorizeRequest(request, url, process.env);
@@ -17405,15 +17370,6 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/auth/diagnostics" && request.method === "GET") {
     sendJson(response, authDiagnosticsForRequest(request));
-    return;
-  }
-
-  if (url.pathname === "/debug/approval-layout" && request.method === "GET") {
-    response.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store, max-age=0"
-    });
-    response.end(approvalLayoutDebugHtml());
     return;
   }
 
