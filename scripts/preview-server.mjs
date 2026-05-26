@@ -19,6 +19,16 @@ import {
 import { deriveAutomaticTasks, mergeAutomaticTasks, normalizeTaskRecord, updateTask } from "./tasks-engine.mjs";
 import { normalizePartnerLifecycle, partnerFollowUpDraft, partnerLifecycleInsights } from "./partner-lifecycle.mjs";
 import {
+  buildPartnerDashboardBridgeStatus,
+  buildPartnerProgramArtifact,
+  defaultPartnerProgramSeeds,
+  normalizePartnerProgram,
+  partnerProgramEvent,
+  partnerProgramOverview,
+  partnerProgramStripeReadiness,
+  partnerProgramTask
+} from "./partner-program-engine.mjs";
+import {
   googleWorkspaceDiagnostics,
   googleWorkspaceDraftOutputs,
   googleWorkspaceMissingEnv,
@@ -6200,6 +6210,8 @@ const initialState = {
       usersNeedingFollowUp: 5
     }
   ],
+  partnerPrograms: defaultPartnerProgramSeeds({ now: "2026-05-26T00:00:00.000Z" }),
+  partnerProgramArtifacts: [],
   reports: [],
   soc2AccessReviews: [{ id: "access-review-supabase-admin", userName: "Roger Roman", role: "Owner", system: "Supabase", accessLevel: "Service role admin", owner: "Roger", dateGranted: "2026-05-22", lastReviewedDate: "2026-05-22", reviewStatus: "Needs Review", notes: "Confirm service role usage remains server-side only." }],
   soc2AuditLogs: [{ id: "soc2-audit-seed", timestamp: "2026-05-22T00:00:00.000Z", actor: "system", action: "SOC 2 readiness module initialized", resourceType: "soc2", resourceId: "readiness", beforeValue: null, afterValue: { status: "In Progress" }, ip: "", userAgent: "" }],
@@ -6611,7 +6623,9 @@ async function serveAsset(pathname, response) {
       svg: "image/svg+xml",
       pdf: "application/pdf",
       json: "application/json",
-      txt: "text/plain"
+      txt: "text/plain",
+      md: "text/markdown",
+      html: "text/html"
     }[extension || ""] || "application/octet-stream";
     response.writeHead(200, { "content-type": mimeType, "cache-control": "public, max-age=3600" });
     response.end(body);
@@ -9519,7 +9533,9 @@ const growthCollections = new Set([
   "soc2Evidence",
   "soc2Policies",
   "soc2ControlOwners",
-  "soc2TypeIChecklist"
+  "soc2TypeIChecklist",
+  "partnerPrograms",
+  "partnerProgramArtifacts"
 ]);
 
 const proofPointDefinitions = [
@@ -9568,7 +9584,7 @@ const productEventMetricMap = {
 };
 
 function titleForGrowthItem(collection, item = {}) {
-  return item.title || item.organizationName || item.campaignName || item.pilotName || item.itemTitle || item.reportTitle || item.id || collection;
+  return item.title || item.name || item.organizationName || item.campaignName || item.pilotName || item.itemTitle || item.reportTitle || item.id || collection;
 }
 
 function appendDaysIso(days = 3) {
@@ -10955,6 +10971,9 @@ async function upsertGrowthItem(collection, input = {}) {
     if (collection === "tasks") {
       item = normalizeTaskRecord(item, { now });
     }
+    if (collection === "partnerPrograms") {
+      item = normalizePartnerProgram(item, { now });
+    }
     if (String(collection || '').startsWith('soc2') || collection === 'complianceItems' || collection === 'approvalQueue' || collection === 'posts') {
       item.controlArea = item.controlArea || controlAreaFromCollection(collection, item);
     }
@@ -11000,16 +11019,234 @@ async function upsertGrowthItem(collection, input = {}) {
       relatedObjectId: id,
       createdAt: now
     };
+    const partnerProgramCreatedEvent = collection === "partnerPrograms"
+      ? partnerProgramEvent(previous.id ? "partner_program_updated" : "partner_program_created", item, { status:item.status, packageTier:item.packageTier, paymentStatus:item.paymentStatus }, { now })
+      : null;
     const auditEntry = soc2AuditEntry({ collection, item, previous, now });
     const nextState = {
       ...state,
       [collection]: [item, ...current.filter((entry) => entry.id !== id)],
       tasks: collection === "tasks" ? [item, ...current.filter((entry) => entry.id !== id)] : [...autoTasks, ...(state.tasks || [])],
+      events: partnerProgramCreatedEvent ? [partnerProgramCreatedEvent, ...(state.events || [])].slice(0, 1000) : (state.events || []),
       activityEvents: [activity, ...(state.activityEvents || [])].slice(0, 500),
       soc2AuditLogs: auditEntry ? [auditEntry, ...(state.soc2AuditLogs || [])].slice(0, 1000) : (state.soc2AuditLogs || [])
     };
     await store.writeState(nextState);
     return { state: nextState, item, tasks: autoTasks, activity, message: `${titleForGrowthItem(collection, item)} saved.` };
+  });
+}
+
+function partnerDashboardRepoCandidates() {
+  return [
+    path.resolve(process.cwd(), "..", "legalease-partner-dashboard-clean"),
+    path.resolve(process.cwd(), "..", "Roger-LegalEase", "legalease-partner-dashboard-clean"),
+    path.resolve(process.env.PARTNER_DASHBOARD_REPO_PATH || "")
+  ].filter((item) => item && item !== path.resolve(process.cwd()));
+}
+
+function partnerDashboardBridgeForState(state = {}) {
+  const repoPath = partnerDashboardRepoCandidates().find((candidate) => existsSync(candidate)) || "";
+  const partnerRecords = [
+    ...(state.partnerPrograms || []).map((program) => ({
+      slug: program.slug,
+      id: program.slug || program.id,
+      adminWriteVerified: program.adminWriteVerified,
+      productionReadinessVerified: program.productionReadinessVerified
+    })),
+    ...(state.partners || []).map((partner) => ({
+      slug: partner.slug || slugify(partner.organizationName || partner.name || partner.id),
+      id: partner.id,
+      adminWriteVerified: partner.adminWriteVerified,
+      productionReadinessVerified: partner.productionReadinessVerified
+    }))
+  ];
+  return buildPartnerDashboardBridgeStatus({
+    repoExists: Boolean(repoPath),
+    repoPath,
+    partnerRecords
+  });
+}
+
+function safePartnerProgramExportRoot(program = {}) {
+  const root = path.resolve(process.cwd(), "data/exports/partner-programs", safePackageSegment(program.slug || program.id || "partner-program"));
+  const allowed = path.resolve(process.cwd(), "data/exports/partner-programs");
+  if (!root.startsWith(allowed)) throw new Error("Unsafe Partner Program export path.");
+  return root;
+}
+
+async function writePartnerProgramArtifactFiles(program = {}, artifact = {}) {
+  const outputDir = safePartnerProgramExportRoot(program);
+  await mkdir(outputDir, { recursive: true });
+  const stamp = new Date().toISOString().slice(0, 10);
+  const base = safeDownloadFilename(`${program.slug}-${artifact.artifactType}-${stamp}-${crypto.randomUUID().slice(0, 6)}`).replace(/\.png$/i, "");
+  const htmlPath = path.join(outputDir, `${base}.html`);
+  const markdownPath = path.join(outputDir, `${base}.md`);
+  const jsonPath = path.join(outputDir, `${base}.json`);
+  await writeFile(htmlPath, artifact.html, "utf8");
+  await writeFile(markdownPath, artifact.markdown, "utf8");
+  await writeFile(jsonPath, JSON.stringify(artifact.json, null, 2), "utf8");
+  const relative = (filePath) => path.relative(process.cwd(), filePath);
+  return {
+    htmlPath: relative(htmlPath),
+    markdownPath: relative(markdownPath),
+    jsonPath: relative(jsonPath)
+  };
+}
+
+function partnerProgramTasksForArtifact(program = {}, artifactType = "proposal", options = {}) {
+  const map = {
+    proposal: [
+      ["Review proposal", "Review proposal scope, tier, pricing range, and compliance note."],
+      ["Send proposal", "Send only after approval; no automatic email."],
+      ["Follow up after proposal", "Ask for package decision and payment/onboarding timeline."]
+    ],
+    landing_page: [
+      ["Approve landing page", "Review partner-specific copy, CTA, UTM, and compliance disclaimer."],
+      ["Activate dashboard", "Verify dashboard readiness before partner launch."]
+    ],
+    weekly_report: [
+      ["Review weekly report", "Confirm metrics and blockers before sharing."],
+      ["Generate weekly report", "Keep partner reporting cadence current."]
+    ],
+    final_report: [
+      ["Review final impact report", "Confirm outcomes, limitations, and expansion recommendation."],
+      ["Renewal/expansion follow-up", "Ask for renewal, case study, or expansion if evidence supports it."]
+    ]
+  };
+  return (map[artifactType] || []).map(([title, description]) => partnerProgramTask(title, program, { description, sourceId: program.id, nextAction:title }, options));
+}
+
+async function savePartnerProgramArtifact(programId = "", artifactType = "proposal") {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const existing = (state.partnerPrograms || []).find((program) => program.id === programId || program.slug === programId);
+    if (!existing) throw new Error("Partner Program not found.");
+    const now = new Date().toISOString();
+    const program = normalizePartnerProgram(existing, { now });
+    const artifact = buildPartnerProgramArtifact(program, artifactType, { now });
+    const files = await writePartnerProgramArtifactFiles(program, artifact);
+    const artifactRecord = {
+      ...artifact,
+      ...files,
+      html: "",
+      markdown: "",
+      json: artifact.json,
+      status: "draft",
+      nextAction: "Review before external use.",
+      createdAt: now,
+      updatedAt: now
+    };
+    const statusPatch = artifact.artifactType === "proposal"
+      ? { status: program.status === "lead" || program.status === "qualified" ? "proposal_draft" : program.status, proposalStatus: "draft" }
+      : artifact.artifactType === "landing_page"
+        ? { status: "page_draft", pageStatus: "draft", partnerLandingPageUrl: program.partnerLandingPageUrl || `/partners/${program.slug}` }
+        : artifact.artifactType === "weekly_report"
+          ? { weeklyReportStatus: "ready_for_review" }
+          : { finalReportStatus: "ready_for_review", status: program.status === "active" || program.status === "reporting" ? "final_report" : program.status };
+    const updatedProgram = normalizePartnerProgram({
+      ...program,
+      ...statusPatch,
+      history: [
+        { action: `${artifact.artifactType}_generated`, at: now, note: `${artifact.title} generated.` },
+        ...(program.history || [])
+      ],
+      updatedAt: now
+    }, { now });
+    const tasks = partnerProgramTasksForArtifact(updatedProgram, artifact.artifactType, { now });
+    const eventType = {
+      proposal: "proposal_generated",
+      landing_page: "landing_page_generated",
+      weekly_report: "weekly_report_generated",
+      final_report: "final_report_generated"
+    }[artifact.artifactType] || "partner_program_artifact_generated";
+    const event = partnerProgramEvent(eventType, updatedProgram, { artifactId: artifactRecord.id, artifactType: artifact.artifactType }, { now });
+    const activity = {
+      id: event.id.replace(/^event-/, "activity-"),
+      eventType: event.eventType,
+      title: event.title,
+      relatedObjectType: "partnerPrograms",
+      relatedObjectId: updatedProgram.id,
+      createdAt: now
+    };
+    const dataRoomItem = {
+      id: `data-room-partner-program-${artifactRecord.id}`,
+      title: artifactRecord.title,
+      section: artifact.artifactType === "proposal" ? "Partner Pipeline" : artifact.artifactType === "final_report" ? "Case Studies" : "Campaign Reports",
+      status: "draft",
+      filePath: artifactRecord.htmlPath,
+      owner: updatedProgram.owner,
+      lastUpdated: now.slice(0, 10),
+      diligenceValue: artifact.artifactType === "final_report" ? "high" : "medium",
+      notes: "Generated by Partner Program Engine. Review before external sharing.",
+      nextAction: "Review and approve artifact.",
+      relatedProofPoint: "active_partner_campaigns"
+    };
+    const next = analyzeOperations({
+      ...state,
+      partnerPrograms: [updatedProgram, ...(state.partnerPrograms || []).filter((item) => item.id !== updatedProgram.id)],
+      partnerProgramArtifacts: [artifactRecord, ...(state.partnerProgramArtifacts || []).filter((item) => item.id !== artifactRecord.id)].slice(0, 250),
+      tasks: [...tasks, ...(state.tasks || [])],
+      dataRoomItems: [dataRoomItem, ...(state.dataRoomItems || []).filter((item) => item.id !== dataRoomItem.id)],
+      events: [event, ...(state.events || [])].slice(0, 1000),
+      activityEvents: [activity, ...(state.activityEvents || [])].slice(0, 500)
+    });
+    await store.writeState(next);
+    return { state: next, program: updatedProgram, artifact: artifactRecord, tasks, files, message: `${artifactRecord.title} generated for review.` };
+  });
+}
+
+async function markPartnerProgramProposalSent(programId = "") {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const existing = (state.partnerPrograms || []).find((program) => program.id === programId || program.slug === programId);
+    if (!existing) throw new Error("Partner Program not found.");
+    const now = new Date().toISOString();
+    const program = normalizePartnerProgram({
+      ...existing,
+      status: "proposal_sent",
+      proposalStatus: "sent",
+      nextAction: "Follow up for package decision and checkout timing.",
+      history: [{ action:"proposal_sent", at:now, note:"Marked sent by operator. No automatic email was sent." }, ...(existing.history || [])]
+    }, { now });
+    const task = partnerProgramTask("Follow up after proposal", program, {
+      description: "Ask for package decision, payment status, and onboarding timing.",
+      priority: "high",
+      nextAction: "Follow up with partner. No automatic email."
+    }, { now });
+    const event = partnerProgramEvent("proposal_sent", program, { noAutomaticEmail:true }, { now });
+    const next = analyzeOperations({
+      ...state,
+      partnerPrograms: [program, ...(state.partnerPrograms || []).filter((item) => item.id !== program.id)],
+      tasks: [task, ...(state.tasks || [])],
+      events: [event, ...(state.events || [])].slice(0, 1000),
+      activityEvents: [{ id:event.id.replace(/^event-/, "activity-"), eventType:event.eventType, title:event.title, relatedObjectType:"partnerPrograms", relatedObjectId:program.id, createdAt:now }, ...(state.activityEvents || [])].slice(0, 500)
+    });
+    await store.writeState(next);
+    return { state: next, program, task, message: "Proposal marked sent. Follow-up task created." };
+  });
+}
+
+async function verifyPartnerProgramDashboard(programId = "") {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const existing = (state.partnerPrograms || []).find((program) => program.id === programId || program.slug === programId);
+    if (!existing) throw new Error("Partner Program not found.");
+    const now = new Date().toISOString();
+    const bridge = partnerDashboardBridgeForState(state);
+    const program = normalizePartnerProgram({
+      ...existing,
+      ...bridge,
+      history: [{ action:"dashboard_readiness_verified", at:now, note:`Dashboard repo status: ${bridge.dashboardRepoStatus}.` }, ...(existing.history || [])]
+    }, { now });
+    const event = partnerProgramEvent("dashboard_provisioning_verified", program, { bridge }, { now });
+    const next = analyzeOperations({
+      ...state,
+      partnerPrograms: [program, ...(state.partnerPrograms || []).filter((item) => item.id !== program.id)],
+      events: [event, ...(state.events || [])].slice(0, 1000),
+      activityEvents: [{ id:event.id.replace(/^event-/, "activity-"), eventType:event.eventType, title:event.title, relatedObjectType:"partnerPrograms", relatedObjectId:program.id, createdAt:now }, ...(state.activityEvents || [])].slice(0, 500)
+    });
+    await store.writeState(next);
+    return { state: next, program, bridge, message: bridge.productionReadinessVerified ? "Partner dashboard readiness verified." : "Partner dashboard readiness has blockers." };
   });
 }
 
@@ -12323,7 +12560,7 @@ function htmlShell() {
     <aside>
       <div class="brand"><small>LegalEase</small><h1>Command Center</h1></div>
       <nav>
-        <div class="nav-group"><span class="nav-label">Growth</span><a href="#overview" class="active">Overview</a><a href="#growth-inbox">Growth Inbox</a><a href="#tasks">Tasks</a><a href="#milestones">Milestones</a><a href="#partners">Partners</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a></div>
+        <div class="nav-group"><span class="nav-label">Growth</span><a href="#overview" class="active">Overview</a><a href="#growth-inbox">Growth Inbox</a><a href="#tasks">Tasks</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-reports">Partner Reports</a><a href="#partner-proposals">Partner Proposals</a><a href="#milestones">Milestones</a><a href="#partners">Partners</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a></div>
         <div class="nav-group"><span class="nav-label">Production</span><a href="#content-bank">Content Bank</a><a href="#sources">Sources</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div>
         <div class="nav-group"><span class="nav-label">Operations</span><a href="#autonomy">Autonomy</a><a href="#automation">Automation Inbox</a><a href="#pilots">Pilots</a><a href="#compliance">Compliance</a><a href="#soc2">SOC 2</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#metrics">Metrics</a><a href="#settings">Settings</a></div><div class="nav-group"><span class="nav-label">SOC 2</span><a href="#soc2-access">Access</a><a href="#soc2-audit">Audit Logs</a><a href="#soc2-changes">Changes</a><a href="#soc2-vendors">Vendors</a><a href="#soc2-incidents">Incidents</a><a href="#soc2-evidence">Evidence</a><a href="#soc2-policies">Policies</a></div>
       </nav>
@@ -15625,6 +15862,137 @@ function htmlShell() {
       </section>\`;
     }
 
+    function partnerProgramList() {
+      return (state.partnerPrograms || []).map(program => ({
+        ...program,
+        metrics: program.metrics || {},
+        packageTierLabel: program.packageTierLabel || growthLabel(program.packageTier || "starter")
+      }));
+    }
+    function partnerProgramArtifacts(type = "") {
+      return (state.partnerProgramArtifacts || []).filter(artifact => !type || artifact.artifactType === type);
+    }
+    function partnerProgramById(id = "") {
+      return partnerProgramList().find(program => program.id === id || program.slug === id) || {};
+    }
+    function partnerProgramOverviewClient() {
+      const programs = partnerProgramList();
+      const paid = programs.filter(program => program.paymentStatus === "paid");
+      return {
+        total: programs.length,
+        paid,
+        onboarding: programs.filter(program => program.paymentStatus === "paid" && ["paid", "onboarding", "page_draft", "dashboard_draft", "ready_for_approval"].includes(program.status)),
+        proposalsNeedReview: programs.filter(program => ["proposal_draft"].includes(program.status) || ["draft", "ready_for_review", "generated"].includes(program.proposalStatus)),
+        pagesNeedApproval: programs.filter(program => ["page_draft", "ready_for_approval"].includes(program.status) || ["draft", "ready_for_review"].includes(program.pageStatus)),
+        dashboardsNeedActivation: programs.filter(program => program.dashboardProvisioningStatus && !["active", "verified"].includes(program.dashboardProvisioningStatus)),
+        weeklyReportsDue: programs.filter(program => ["active", "reporting"].includes(program.status) && program.weeklyReportStatus !== "ready_for_review"),
+        stalled: programs.filter(program => program.status === "stalled"),
+        renewalCandidates: programs.filter(program => ["reporting", "final_report", "renewal", "case_study", "expansion"].includes(program.status)),
+        revenueBooked: paid.reduce((sum, program) => sum + Number(program.metrics?.revenueBooked || 0), 0)
+      };
+    }
+    function partnerProgramCard(program) {
+      const m = program.metrics || {};
+      return \`<article class="card drawer-card">
+        <div class="row"><span class="badge \${growthTone(program.status)}">\${esc(growthLabel(program.status))}</span><span class="badge info">\${esc(program.packageTierLabel || growthLabel(program.packageTier))}</span><span class="badge \${program.paymentStatus === "paid" ? "good" : "warn"}">\${esc(growthLabel(program.paymentStatus || "unpaid"))}</span></div>
+        <h2>\${esc(program.name)}</h2>
+        <p class="muted">\${esc(program.partnerType || "partner")} · \${esc(program.jurisdiction || "TBD")} · Owner: \${esc(program.owner || "Roger")}<br>\${esc(program.programGoal || "")}</p>
+        <div class="metric-table">
+          <div class="metric-row"><span>Revenue booked</span><strong>$\${Number(m.revenueBooked || 0).toLocaleString()}</strong></div>
+          <div class="metric-row"><span>RecordShield starts</span><strong>\${Number(m.recordShieldStarts || 0)}</strong></div>
+          <div class="metric-row"><span>Expungement handoffs</span><strong>\${Number(m.expungementHandoffs || 0)}</strong></div>
+          <div class="metric-row"><span>Next</span><strong>\${esc(program.nextAction || "Set next action")}</strong></div>
+        </div>
+        <div class="card-actions">
+          <button class="primary" onclick="generatePartnerProgramArtifact('\${esc(program.id)}', 'proposal')">Generate Proposal</button>
+          <button onclick="generatePartnerProgramArtifact('\${esc(program.id)}', 'landing-page')">Landing Page</button>
+          <button onclick="generatePartnerProgramArtifact('\${esc(program.id)}', 'weekly-report')">Weekly Report</button>
+          <button onclick="generatePartnerProgramArtifact('\${esc(program.id)}', 'final-report')">Final Report</button>
+          <button onclick="verifyPartnerProgramDashboard('\${esc(program.id)}')">Verify Dashboard</button>
+        </div>
+        <details><summary>Program workflow</summary><div class="metric-table" style="margin-top:12px">
+          <div class="metric-row"><span>Proposal</span><strong>\${esc(growthLabel(program.proposalStatus || "not_started"))}</strong></div>
+          <div class="metric-row"><span>Weekly report</span><strong>\${esc(growthLabel(program.weeklyReportStatus || "not_started"))}</strong></div>
+          <div class="metric-row"><span>Final report</span><strong>\${esc(growthLabel(program.finalReportStatus || "not_started"))}</strong></div>
+          <div class="metric-row"><span>Dashboard repo</span><strong>\${esc(growthLabel(program.dashboardRepoStatus || "unknown"))}</strong></div>
+        </div></details>
+      </article>\`;
+    }
+    function partnerProgramsPageHtml(pageClass) {
+      const programs = partnerProgramList();
+      const overview = partnerProgramOverviewClient();
+      return growthHero(pageClass, "partner-programs", "Record-Clearing Access Program", "Partner Program Engine", "Run paid 90-day RCAP programs from proposal through landing page, dashboard, weekly reports, final impact report, renewal, and expansion.") + \`
+        <div class="grid three section">
+          <article class="readiness-card good"><div class="readiness-title">Paid programs</div><strong>\${overview.paid.length}</strong></article>
+          <article class="readiness-card warn"><div class="readiness-title">Needs onboarding</div><strong>\${overview.onboarding.length}</strong></article>
+          <article class="readiness-card info"><div class="readiness-title">Booked revenue</div><strong>$\${Number(overview.revenueBooked || 0).toLocaleString()}</strong></article>
+        </div>
+        <div class="grid two section">
+          <section class="panel"><h2>Program work</h2><div class="metric-table">
+            <div class="metric-row"><span>Proposals need review</span><strong>\${overview.proposalsNeedReview.length}</strong></div>
+            <div class="metric-row"><span>Pages need approval</span><strong>\${overview.pagesNeedApproval.length}</strong></div>
+            <div class="metric-row"><span>Dashboards need activation</span><strong>\${overview.dashboardsNeedActivation.length}</strong></div>
+            <div class="metric-row"><span>Weekly reports due</span><strong>\${overview.weeklyReportsDue.length}</strong></div>
+            <div class="metric-row"><span>Stalled</span><strong>\${overview.stalled.length}</strong></div>
+            <div class="metric-row"><span>Renewal/case study candidates</span><strong>\${overview.renewalCandidates.length}</strong></div>
+          </div></section>
+          <form class="panel" onsubmit="createPartnerProgram(event)">
+            <h2>Create Partner Program</h2>
+            <label>Name<input name="name" required placeholder="Partner RCAP"></label>
+            <div class="grid split"><label>Type<select name="partnerType"><option>nonprofit</option><option>county</option><option>city</option><option>funder</option><option>workforce</option><option>reentry</option><option>legal aid</option><option>investor</option><option>enterprise</option></select></label><label>Tier<select name="packageTier"><option>Starter Program</option><option>Implementation Program</option><option>Strategic Program</option></select></label></div>
+            <div class="grid split"><label>Status<select name="status"><option>lead</option><option>qualified</option><option>proposal_draft</option><option>proposal_sent</option><option>checkout_started</option><option>paid</option><option>onboarding</option><option>active</option><option>reporting</option><option>renewal</option><option>stalled</option></select></label><label>Payment<select name="paymentStatus"><option>unpaid</option><option>checkout_started</option><option>paid</option></select></label></div>
+            <label>Program goal<textarea name="programGoal" rows="3" placeholder="What this 90-day program should prove."></textarea></label>
+            <div class="grid split"><label>Jurisdiction<input name="jurisdiction"></label><label>Owner<input name="owner" value="Roger"></label></div>
+            <button class="primary">Create Program</button>
+          </form>
+        </div>
+        <section class="panel section"><h2>Stripe readiness</h2><p class="muted">No payment starts automatically. Paid launch requires Stripe env vars, payment confirmation, and human approval.</p><button onclick="checkPartnerProgramStripe()">Check Stripe readiness</button></section>
+        <div class="grid post-grid section">\${programs.map(partnerProgramCard).join("") || '<div class="empty">Create the first RCAP partner program. Programs stay draft/internal until reviewed.</div>'}</div>
+      </section>\`;
+    }
+    function partnerPagesPageHtml(pageClass) {
+      const programs = partnerProgramList();
+      const pages = partnerProgramArtifacts("landing_page");
+      return growthHero(pageClass, "partner-pages", "Co-branded access pages", "Partner Pages", "Generate partner-specific RCAP landing pages with Wilma intake, RecordShield access, Expungement.ai routing, UTM metadata, FAQs, and compliance disclaimers.") + \`
+        <div class="grid post-grid section">\${programs.map(program => \`<article class="card drawer-card"><div class="row"><span class="badge \${growthTone(program.status)}">\${esc(growthLabel(program.status))}</span><span class="badge warn">Approval required</span></div><h2>\${esc(program.name)}</h2><p class="muted">Landing URL: \${esc(program.partnerLandingPageUrl || "/partners/" + program.slug)}<br>UTM campaign: \${esc(program.slug)}</p><div class="card-actions"><button class="primary" onclick="generatePartnerProgramArtifact('\${esc(program.id)}', 'landing-page')">Generate Landing Page</button></div></article>\`).join("") || '<div class="empty">No partner programs yet.</div>'}</div>
+        <section class="panel section"><h2>Generated page drafts</h2><div class="report-export-list">\${pages.map(artifact => \`<article class="report-export-row"><span class="badge warn">Draft</span><strong>\${esc(artifact.title)}</strong><small>\${esc(artifact.generatedAt || "")}</small><code>\${esc(artifact.htmlPath || "")}</code></article>\`).join("") || '<div class="empty">No co-branded page drafts yet.</div>'}</div></section>
+      </section>\`;
+    }
+    function partnerDashboardsPageHtml(pageClass) {
+      const programs = partnerProgramList();
+      const bridge = programs[0] ? {
+        dashboardRepoStatus: programs[0].dashboardRepoStatus || "unknown",
+        supabasePartnerRecordStatus: programs[0].supabasePartnerRecordStatus || "unknown",
+        adminWriteVerified: programs.some(program => program.adminWriteVerified),
+        productionReadinessVerified: programs.some(program => program.productionReadinessVerified)
+      } : {};
+      return growthHero(pageClass, "partner-dashboards", "Provisioning bridge", "Partner Dashboards", "Track external partner dashboard readiness without activating dashboards automatically.") + \`
+        <section class="panel section"><h2>Bridge status</h2><div class="metric-table">
+          <div class="metric-row"><span>Dashboard repo</span><strong>\${esc(growthLabel(bridge.dashboardRepoStatus || "unknown"))}</strong></div>
+          <div class="metric-row"><span>Supabase partner records</span><strong>\${esc(growthLabel(bridge.supabasePartnerRecordStatus || "unknown"))}</strong></div>
+          <div class="metric-row"><span>Admin write verified</span><strong>\${bridge.adminWriteVerified ? "yes" : "no"}</strong></div>
+          <div class="metric-row"><span>Production readiness</span><strong>\${bridge.productionReadinessVerified ? "verified" : "blocked/not verified"}</strong></div>
+        </div><p class="muted">Required partner records: demo-partner, we-must-vote, fulton-county.</p></section>
+        <div class="grid post-grid section">\${programs.map(program => \`<article class="card drawer-card"><h2>\${esc(program.name)}</h2><p class="muted">Dashboard URL: \${esc(program.partnerDashboardUrl || "Not set")}<br>Last sync: \${esc(program.lastDashboardSyncAt || "Never")}</p><div class="metric-table"><div class="metric-row"><span>Provisioning</span><strong>\${esc(growthLabel(program.dashboardProvisioningStatus || "not_started"))}</strong></div><div class="metric-row"><span>Repo</span><strong>\${esc(growthLabel(program.dashboardRepoStatus || "unknown"))}</strong></div></div><div class="card-actions"><button class="primary" onclick="verifyPartnerProgramDashboard('\${esc(program.id)}')">Verify Partner Dashboard Readiness</button></div></article>\`).join("") || '<div class="empty">No partner programs to provision yet.</div>'}</div>
+      </section>\`;
+    }
+    function partnerReportsPageHtml(pageClass) {
+      const programs = partnerProgramList();
+      const reports = [...partnerProgramArtifacts("weekly_report"), ...partnerProgramArtifacts("final_report")];
+      return growthHero(pageClass, "partner-reports", "Weekly and final proof", "Partner Reports", "Generate reviewed partner reports from RCAP metrics, blockers, lessons, and renewal recommendations.") + \`
+        <div class="grid post-grid section">\${programs.map(program => \`<article class="card drawer-card"><div class="row"><span class="badge info">\${esc(program.packageTierLabel || growthLabel(program.packageTier))}</span><span class="badge \${growthTone(program.weeklyReportStatus)}">Weekly: \${esc(growthLabel(program.weeklyReportStatus || "not_started"))}</span><span class="badge \${growthTone(program.finalReportStatus)}">Final: \${esc(growthLabel(program.finalReportStatus || "not_started"))}</span></div><h2>\${esc(program.name)}</h2><p class="muted">Reports are drafts until reviewed. Do not send automatically.</p><div class="card-actions"><button class="primary" onclick="generatePartnerProgramArtifact('\${esc(program.id)}', 'weekly-report')">Generate Weekly Report</button><button onclick="generatePartnerProgramArtifact('\${esc(program.id)}', 'final-report')">Generate Final Report</button></div></article>\`).join("") || '<div class="empty">No programs ready for reporting.</div>'}</div>
+        <section class="panel section"><h2>Generated report drafts</h2><div class="report-export-list">\${reports.map(artifact => \`<article class="report-export-row"><span class="badge warn">Ready for review</span><strong>\${esc(artifact.title)}</strong><small>\${esc(artifact.generatedAt || "")}</small><code>\${esc(artifact.markdownPath || artifact.htmlPath || "")}</code></article>\`).join("") || '<div class="empty">No partner reports generated yet.</div>'}</div></section>
+      </section>\`;
+    }
+    function partnerProposalsPageHtml(pageClass) {
+      const programs = partnerProgramList();
+      const proposals = partnerProgramArtifacts("proposal");
+      return growthHero(pageClass, "partner-proposals", "RCAP proposal generator", "Partner Proposals", "Generate partner-specific proposal drafts from the LegalEase RCAP proposal materials. Sending remains human-approved.") + \`
+        <div class="grid post-grid section">\${programs.map(program => \`<article class="card drawer-card"><div class="row"><span class="badge \${growthTone(program.proposalStatus)}">\${esc(growthLabel(program.proposalStatus || "not_started"))}</span><span class="badge info">\${esc(program.packageTierLabel || growthLabel(program.packageTier))}</span></div><h2>\${esc(program.name)}</h2><p class="muted">Scope: \${esc(program.programGoal || "")}<br>Next: \${esc(program.nextAction || "Review proposal")}</p><div class="card-actions"><button class="primary" onclick="generatePartnerProgramArtifact('\${esc(program.id)}', 'proposal')">Generate Proposal</button><button onclick="markPartnerProgramProposalSent('\${esc(program.id)}')">Mark Sent</button><button onclick="location.hash='dataroom'">Open Data Room</button></div></article>\`).join("") || '<div class="empty">No proposal records yet.</div>'}</div>
+        <section class="panel section"><h2>Generated proposal drafts</h2><div class="report-export-list">\${proposals.map(artifact => \`<article class="report-export-row"><span class="badge warn">Draft</span><strong>\${esc(artifact.title)}</strong><small>\${esc(artifact.generatedAt || "")}</small><code>\${esc(artifact.htmlPath || "")}</code></article>\`).join("") || '<div class="empty">No proposal drafts generated yet.</div>'}</div></section>
+      </section>\`;
+    }
+
     function contentBankPageHtml(pageClass) {
       const ideas = state.contentBank || [];
       const ready = ideas.filter(idea => ["idea", "ready_to_generate"].includes(idea.status || "idea")).length;
@@ -16418,7 +16786,7 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const pageId = ["overview", "growth-inbox", "tasks", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(requestedPage) ? requestedPage : "overview";
+      const pageId = ["overview", "growth-inbox", "tasks", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(requestedPage) ? requestedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -16428,6 +16796,11 @@ function htmlShell() {
         \${pageId === "overview" ? commandCenterOverviewHtml(reviewPosts) : ""}
         \${growthInboxPageHtml(pageClass)}
         \${tasksPageHtml(pageClass)}
+        \${partnerProgramsPageHtml(pageClass)}
+        \${partnerPagesPageHtml(pageClass)}
+        \${partnerDashboardsPageHtml(pageClass)}
+        \${partnerReportsPageHtml(pageClass)}
+        \${partnerProposalsPageHtml(pageClass)}
         \${milestonesPageHtml(pageClass)}
         \${partnersPageHtml(pageClass)}
         \${campaignsPageHtml(pageClass)}
@@ -17869,6 +18242,72 @@ function htmlShell() {
       }, "Could not create task.");
     }
 
+    async function createPartnerProgram(event) {
+      event.preventDefault();
+      const payload = formObject(event.target);
+      await cooAction(async () => {
+        const result = await api("/api/partner-programs", {
+          method:"POST",
+          body:JSON.stringify(payload)
+        });
+        state = result.state;
+        render();
+        event.target.reset();
+        return result.message || "Partner Program created.";
+      }, "Could not create Partner Program.");
+    }
+
+    async function generatePartnerProgramArtifact(id, type) {
+      const pathType = String(type || "proposal");
+      await cooAction(async () => {
+        const result = await api("/api/partner-programs/" + encodeURIComponent(id) + "/generate-" + encodeURIComponent(pathType), {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return result.message || "Partner Program artifact generated.";
+      }, "Could not generate Partner Program artifact.");
+    }
+
+    async function markPartnerProgramProposalSent(id) {
+      if (!window.confirm("Mark this proposal as sent? No email will be sent automatically.")) return;
+      await cooAction(async () => {
+        const result = await api("/api/partner-programs/" + encodeURIComponent(id) + "/mark-sent", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return result.message || "Proposal marked sent.";
+      }, "Could not mark proposal sent.");
+    }
+
+    async function verifyPartnerProgramDashboard(id) {
+      await cooAction(async () => {
+        const result = await api("/api/partner-programs/" + encodeURIComponent(id) + "/verify-dashboard", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return result.message || "Partner Dashboard readiness checked.";
+      }, "Could not verify Partner Dashboard readiness.");
+    }
+
+    async function checkPartnerProgramStripe() {
+      await cooAction(async () => {
+        const result = await api("/api/partner-programs/stripe-readiness");
+        const missing = (result.missing || []).join(", ") || "none";
+        alert([
+          "Stripe configured: " + Boolean(result.configured),
+          "Missing: " + missing,
+          "Live payments enabled: " + Boolean(result.livePaymentsEnabled),
+          result.note || "No checkout starts automatically."
+        ].join("\\n"));
+      }, "Could not check Stripe readiness.");
+    }
+
     async function updateTaskAction(id, action, patch = {}) {
       return cooAction(async () => {
         const result = await api("/api/tasks/" + encodeURIComponent(id) + "/" + action, {
@@ -18703,6 +19142,11 @@ async function handleRequest(request, response) {
 	    return;
 	  }
 
+	  if (url.pathname.startsWith("/data/exports/partner-programs/") && request.method === "GET") {
+	    await serveAsset(url.pathname, response);
+	    return;
+	  }
+
 	  if (url.pathname.startsWith("/data/assets/") && request.method === "GET") {
 	    await serveAsset(url.pathname, response);
 	    return;
@@ -19005,6 +19449,65 @@ async function handleRequest(request, response) {
       response.end(result.markdown);
     } catch (error) {
       sendJson(response, { error: error.message || "Could not export SOC 2 Markdown snapshot." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/partner-programs/overview" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, {
+      overview: partnerProgramOverview(currentState),
+      stripe: partnerProgramStripeReadiness(process.env),
+      dashboardBridge: partnerDashboardBridgeForState(currentState)
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/partner-programs/stripe-readiness" && request.method === "GET") {
+    sendJson(response, partnerProgramStripeReadiness(process.env));
+    return;
+  }
+
+  if (url.pathname === "/api/partner-programs" && request.method === "POST") {
+    try {
+      const result = await upsertGrowthItem("partnerPrograms", await readJson(request));
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not save Partner Program." }, 400);
+    }
+    return;
+  }
+
+  const partnerProgramGenerate = url.pathname.match(/^\/api\/partner-programs\/([^/]+)\/generate-(proposal|landing-page|weekly-report|final-report)$/);
+  if (partnerProgramGenerate && request.method === "POST") {
+    try {
+      const typeMap = { "proposal":"proposal", "landing-page":"landing_page", "weekly-report":"weekly_report", "final-report":"final_report" };
+      const result = await savePartnerProgramArtifact(decodeURIComponent(partnerProgramGenerate[1]), typeMap[partnerProgramGenerate[2]]);
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not generate Partner Program artifact." }, 400);
+    }
+    return;
+  }
+
+  const partnerProgramMarkSent = url.pathname.match(/^\/api\/partner-programs\/([^/]+)\/mark-sent$/);
+  if (partnerProgramMarkSent && request.method === "POST") {
+    try {
+      const result = await markPartnerProgramProposalSent(decodeURIComponent(partnerProgramMarkSent[1]));
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not mark proposal sent." }, 400);
+    }
+    return;
+  }
+
+  const partnerProgramVerifyDashboard = url.pathname.match(/^\/api\/partner-programs\/([^/]+)\/verify-dashboard$/);
+  if (partnerProgramVerifyDashboard && request.method === "POST") {
+    try {
+      const result = await verifyPartnerProgramDashboard(decodeURIComponent(partnerProgramVerifyDashboard[1]));
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not verify Partner Dashboard readiness." }, 400);
     }
     return;
   }

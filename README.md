@@ -437,3 +437,51 @@ The partner lifecycle engine creates owned tasks for proposal follow-ups after 7
 The Partners page includes a detail drawer with timeline, next action, linked documents/artifacts, linked reports, open tasks, and a suggested follow-up draft. Follow-up drafts are draft-only and require human approval before any external email is sent.
 
 Weekly Evidence Packs include partner movement, stalled partners, proof-worthy partner updates, campaign movement, funnel movement, revenue/pipeline notes, support learnings, autonomy actions, and SOC 2 Readiness notes so operating work turns into reviewed investor/acquirer evidence instead of living only in memory.
+
+## Partner Program Engine
+
+The Partner Program Engine lives under Growth:
+
+- `#partner-programs`
+- `#partner-pages`
+- `#partner-dashboards`
+- `#partner-reports`
+- `#partner-proposals`
+
+It operationalizes the LegalEase Record-Clearing Access Program (RCAP): a 90-day partner program for nonprofits, workforce programs, clinics, cities, counties, coalitions, and funders. Each program tracks package tier, payment status, contact, goal, audience, jurisdiction, landing page, dashboard URL, proposal status, report status, metrics, owner, next action, dashboard provisioning state, and history.
+
+Supported tiers:
+
+- Starter Program
+- Implementation Program
+- Strategic Program
+
+Generators create draft-only artifacts from the uploaded LegalEase RCAP materials:
+
+- Partner proposal draft
+- Co-branded partner landing page draft
+- Weekly partner report draft
+- 90-day final impact report draft
+
+Generated artifacts are saved under `data/exports/partner-programs/` in local mode and recorded in `partnerProgramArtifacts`. The generator also creates Data Room draft records and internal follow-up tasks. Nothing is emailed, published, or externally sent automatically.
+
+Compliance boundary:
+
+> LegalEase provides guided intake, information, workflow infrastructure, document preparation support where available, and partner reporting. LegalEase does not guarantee eligibility, court approval, filing acceptance, or legal outcomes.
+
+Partner Dashboard bridge:
+
+- Tracks the expected external dashboard repo `legalease-partner-dashboard-clean`.
+- Checks required partner records: `demo-partner`, `we-must-vote`, and `fulton-county`.
+- Records dashboard repo status, Supabase partner record status, admin write verification, production readiness verification, and last sync time.
+
+Stripe readiness is diagnostic only. These environment variables must be configured before paid onboarding can be treated as ready:
+
+- `STRIPE_SECRET_KEY`
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PRICE_STARTER_ACCESS_PROGRAM`
+- `STRIPE_PRICE_IMPLEMENTATION_PROGRAM`
+- `STRIPE_PRICE_STRATEGIC_PROGRAM`
+
+No payment checkout is started by the Command Center in this pass. No payment means no active launch.

@@ -35,7 +35,9 @@ const coreStateCollections = [
   "autonomyRuns",
   "activityEvents",
   "reports",
-  "funnelSnapshots"
+  "funnelSnapshots",
+  "partnerPrograms",
+  "partnerProgramArtifacts"
 ];
 const singletonCollections = new Set(["metrics", "systemHealth"]);
 

@@ -1,3 +1,5 @@
+import { buildPartnerProgramAutonomyActions } from "./partner-program-engine.mjs";
+
 const nowIso = () => new Date().toISOString();
 const list = (value) => Array.isArray(value) ? value : [];
 const clean = (value = "") => String(value || "").trim();
@@ -230,6 +232,12 @@ export function buildAutonomyActions(state = {}) {
       owner: item.reviewer || "Compliance",
       recommendedAction: "Review before launch"
     });
+  }
+
+  for (const program of list(state.partnerPrograms)) {
+    for (const action of buildPartnerProgramAutonomyActions(program)) {
+      add(action);
+    }
   }
 
   add({

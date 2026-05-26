@@ -7078,5 +7078,167 @@
     "growth": "Fresh Start Campaign: 82 RecordShield starts, 17 Expungement.ai signals.",
     "recommendedMove": "Fix publish setup",
     "generatedAt": "2026-05-25T14:13:58.294Z"
-  }
+  },
+  "partnerPrograms": [
+    {
+      "id": "partner-program-we-must-vote",
+      "name": "We Must Vote Record-Clearing Access Program",
+      "slug": "we-must-vote",
+      "partnerType": "nonprofit",
+      "status": "proposal_draft",
+      "packageTier": "implementation",
+      "packageTierLabel": "Implementation Program",
+      "paymentStatus": "unpaid",
+      "primaryContact": "",
+      "brand": {
+        "name": "We Must Vote",
+        "logoUrl": "",
+        "primaryColor": "#0F1F5C",
+        "accentColor": "#E83A0A"
+      },
+      "programGoal": "Launch a civic access record-clearing pathway campaign with weekly reporting.",
+      "targetAudience": "Residents who need plain-English next steps for record-clearing access.",
+      "jurisdiction": "Texas",
+      "launchDate": "",
+      "partnerDashboardUrl": "",
+      "partnerLandingPageUrl": "",
+      "proposalStatus": "draft",
+      "weeklyReportStatus": "not_started",
+      "finalReportStatus": "not_started",
+      "metrics": {
+        "pageViews": 0,
+        "intakeStarts": 0,
+        "recordShieldStarts": 0,
+        "recordShieldCompletions": 0,
+        "expungementHandoffs": 0,
+        "paidConversions": 0,
+        "dropOffs": 0,
+        "revenueBooked": 0
+      },
+      "nextAction": "Review proposal and confirm package decision.",
+      "owner": "Roger",
+      "dashboardProvisioningStatus": "not_started",
+      "dashboardRepoStatus": "unknown",
+      "supabasePartnerRecordStatus": "unknown",
+      "adminWriteVerified": false,
+      "productionReadinessVerified": false,
+      "lastDashboardSyncAt": "",
+      "history": [
+        {
+          "action": "seeded",
+          "at": "2026-05-26T00:00:00.000Z",
+          "note": "Seeded RCAP partner program."
+        }
+      ],
+      "createdAt": "2026-05-26T00:00:00.000Z",
+      "updatedAt": "2026-05-26T00:00:00.000Z"
+    },
+    {
+      "id": "partner-program-fulton-county",
+      "name": "Fulton County Backlog Triage RCAP",
+      "slug": "fulton-county",
+      "partnerType": "county",
+      "status": "qualified",
+      "packageTier": "starter",
+      "packageTierLabel": "Starter Program",
+      "paymentStatus": "unpaid",
+      "primaryContact": "",
+      "brand": {
+        "name": "Fulton County",
+        "logoUrl": "",
+        "primaryColor": "#0F1F5C",
+        "accentColor": "#E83A0A"
+      },
+      "programGoal": "Scope a smaller 30- to 90-day access and backlog triage program.",
+      "targetAudience": "Residents who need access routing and backlog triage support.",
+      "jurisdiction": "Georgia",
+      "launchDate": "",
+      "partnerDashboardUrl": "",
+      "partnerLandingPageUrl": "",
+      "proposalStatus": "not_started",
+      "weeklyReportStatus": "not_started",
+      "finalReportStatus": "not_started",
+      "metrics": {
+        "pageViews": 0,
+        "intakeStarts": 0,
+        "recordShieldStarts": 0,
+        "recordShieldCompletions": 0,
+        "expungementHandoffs": 0,
+        "paidConversions": 0,
+        "dropOffs": 0,
+        "revenueBooked": 0
+      },
+      "nextAction": "Generate proposal draft and follow-up task.",
+      "owner": "Roger",
+      "dashboardProvisioningStatus": "not_started",
+      "dashboardRepoStatus": "unknown",
+      "supabasePartnerRecordStatus": "unknown",
+      "adminWriteVerified": false,
+      "productionReadinessVerified": false,
+      "lastDashboardSyncAt": "",
+      "history": [
+        {
+          "action": "seeded",
+          "at": "2026-05-26T00:00:00.000Z",
+          "note": "Seeded RCAP partner program."
+        }
+      ],
+      "createdAt": "2026-05-26T00:00:00.000Z",
+      "updatedAt": "2026-05-26T00:00:00.000Z"
+    },
+    {
+      "id": "partner-program-demo-partner",
+      "name": "Demo Partner RCAP",
+      "slug": "demo-partner",
+      "partnerType": "workforce",
+      "status": "dashboard_draft",
+      "packageTier": "starter",
+      "packageTierLabel": "Starter Program",
+      "paymentStatus": "paid",
+      "primaryContact": "",
+      "brand": {
+        "name": "Demo Partner",
+        "logoUrl": "",
+        "primaryColor": "#0F1F5C",
+        "accentColor": "#E83A0A"
+      },
+      "programGoal": "Verify partner dashboard provisioning workflow.",
+      "targetAudience": "Partner dashboard users and implementation staff.",
+      "jurisdiction": "Multi-state",
+      "launchDate": "",
+      "partnerDashboardUrl": "",
+      "partnerLandingPageUrl": "",
+      "proposalStatus": "not_started",
+      "weeklyReportStatus": "not_started",
+      "finalReportStatus": "not_started",
+      "metrics": {
+        "pageViews": 320,
+        "intakeStarts": 84,
+        "recordShieldStarts": 62,
+        "recordShieldCompletions": 0,
+        "expungementHandoffs": 0,
+        "paidConversions": 0,
+        "dropOffs": 0,
+        "revenueBooked": 12500
+      },
+      "nextAction": "Verify Partner Dashboard Readiness.",
+      "owner": "Operations",
+      "dashboardProvisioningStatus": "not_started",
+      "dashboardRepoStatus": "unknown",
+      "supabasePartnerRecordStatus": "unknown",
+      "adminWriteVerified": false,
+      "productionReadinessVerified": false,
+      "lastDashboardSyncAt": "",
+      "history": [
+        {
+          "action": "seeded",
+          "at": "2026-05-26T00:00:00.000Z",
+          "note": "Seeded RCAP partner program."
+        }
+      ],
+      "createdAt": "2026-05-26T00:00:00.000Z",
+      "updatedAt": "2026-05-26T00:00:00.000Z"
+    }
+  ],
+  "partnerProgramArtifacts": []
 }
