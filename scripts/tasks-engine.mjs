@@ -70,6 +70,10 @@ function task(input = {}, options = {}) {
   };
 }
 
+export function normalizeTaskRecord(input = {}, options = {}) {
+  return task(input, options);
+}
+
 export function deriveAutomaticTasks(state = {}, options = {}) {
   const now = options.now || new Date().toISOString();
   const dayOfWeek = Number.isFinite(options.dayOfWeek) ? options.dayOfWeek : new Date(now).getDay();
@@ -198,6 +202,21 @@ export function deriveAutomaticTasks(state = {}, options = {}) {
         escalationKey: `growth-inbox-high:${item.id}`
       }, { now }));
     }
+    if (!["converted", "ignored"].includes(item.status) && String(item.status || "new").toLowerCase() === "new" && daysSince(item.createdAt || item.updatedAt, now) >= 1) {
+      tasks.push(task({
+        title: `Triage aging inbox item: ${item.summary || clean(item.rawText).slice(0, 80)}`,
+        description: item.rawText || item.summary || "Inbox item has not been triaged.",
+        owner: item.owner || "Operations",
+        priority: item.riskLevel === "high" ? "critical" : "medium",
+        dueDate: todayIso(now),
+        sourceType: "growth_inbox",
+        sourceId: item.id,
+        riskLevel: item.riskLevel || "low",
+        nextAction: item.suggestedAction || "Triage and route this signal.",
+        escalationReason: "Growth Inbox item has been untriaged for more than 24 hours.",
+        escalationKey: `growth-inbox-aging:${item.id}`
+      }, { now }));
+    }
   }
 
   for (const issue of list(state.supportIssues)) {
@@ -214,6 +233,58 @@ export function deriveAutomaticTasks(state = {}, options = {}) {
         nextAction: issue.recommendedFix || "Review and resolve support issue.",
         escalationReason: "Support issue marked high severity.",
         escalationKey: `support-high:${issue.id}`
+      }, { now }));
+    }
+  }
+
+  for (const post of list(state.posts)) {
+    const status = String(post.status || "").toLowerCase();
+    const finalPngReady = Boolean(post.imageFinalized || post.finalPngPath || post.finalPngFilename || post.finalExportKit?.finalPngReady);
+    const publicUrlReady = /^https:\/\//i.test(String(post.publicImageUrl || post.finalExportKit?.publicImageUrl || ""));
+    if (["approved", "ready", "ready_to_publish"].includes(status) && !finalPngReady) {
+      tasks.push(task({
+        title: `Generate final PNG: ${post.title || post.hook || "approved post"}`,
+        description: "Approved content cannot be distributed until a final PNG exists.",
+        owner: "Production",
+        priority: "high",
+        dueDate: todayIso(now),
+        sourceType: "post",
+        sourceId: post.id,
+        nextAction: "Create final PNG and confirm visual preview.",
+        escalationReason: "Approved post is missing final PNG.",
+        escalationKey: `post-final-png:${post.id}`
+      }, { now }));
+    }
+    if (["approved", "ready", "ready_to_publish"].includes(status) && finalPngReady && !publicUrlReady) {
+      tasks.push(task({
+        title: `Upload public image URL: ${post.title || post.hook || "approved post"}`,
+        description: "Most real social connectors require a public HTTPS image URL.",
+        owner: "Production",
+        priority: "high",
+        dueDate: todayIso(now),
+        sourceType: "post",
+        sourceId: post.id,
+        nextAction: "Upload final PNG to Supabase Storage.",
+        escalationReason: "Approved post has final PNG but no public image URL.",
+        escalationKey: `post-public-url:${post.id}`
+      }, { now }));
+    }
+  }
+
+  for (const evidence of list(state.soc2Evidence)) {
+    if (!["approved", "archived"].includes(String(evidence.evidenceStatus || evidence.status || "").toLowerCase()) && evidence.nextCollectionDue && daysUntil(evidence.nextCollectionDue, now) < 0) {
+      tasks.push(task({
+        title: `Collect overdue evidence: ${evidence.evidenceTitle || evidence.title || "SOC 2 evidence"}`,
+        description: "SOC 2 Readiness evidence cadence has slipped.",
+        owner: evidence.owner || "Compliance",
+        priority: "medium",
+        dueDate: todayIso(now),
+        sourceType: "soc2_evidence",
+        sourceId: evidence.id,
+        riskLevel: "medium",
+        nextAction: "Collect, review, or archive this evidence record.",
+        escalationReason: "SOC 2 evidence collection is overdue.",
+        escalationKey: `soc2-evidence-overdue:${evidence.id}`
       }, { now }));
     }
   }

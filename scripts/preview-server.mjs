@@ -16,7 +16,7 @@ import {
   normalizeGrowthInboxItem,
   triageGrowthInboxItem
 } from "./growth-inbox.mjs";
-import { deriveAutomaticTasks, mergeAutomaticTasks, updateTask } from "./tasks-engine.mjs";
+import { deriveAutomaticTasks, mergeAutomaticTasks, normalizeTaskRecord, updateTask } from "./tasks-engine.mjs";
 import { normalizePartnerLifecycle, partnerFollowUpDraft, partnerLifecycleInsights } from "./partner-lifecycle.mjs";
 import {
   googleWorkspaceDiagnostics,
@@ -10948,9 +10948,12 @@ async function upsertGrowthItem(collection, input = {}) {
     const current = state[collection] || [];
     const id = input.id || `${slugify(collection)}-${crypto.randomUUID().slice(0, 8)}`;
     const previous = current.find((item) => item.id === id) || {};
-    const item = { ...previous, ...input, id, updatedAt: now, createdAt: previous.createdAt || input.createdAt || now };
+    let item = { ...previous, ...input, id, updatedAt: now, createdAt: previous.createdAt || input.createdAt || now };
     if (collection === "partners") {
       Object.assign(item, normalizePartnerLifecycle(item, { now }));
+    }
+    if (collection === "tasks") {
+      item = normalizeTaskRecord(item, { now });
     }
     if (String(collection || '').startsWith('soc2') || collection === 'complianceItems' || collection === 'approvalQueue' || collection === 'posts') {
       item.controlArea = item.controlArea || controlAreaFromCollection(collection, item);
@@ -15596,6 +15599,23 @@ function htmlShell() {
           </div>
         </div>
         <div class="toolbar section">\${views.map(([id, label]) => \`<button class="\${activeView === id ? "primary" : ""}" onclick="setTaskView('\${id}')">\${esc(label)} \${taskViewFilter(id).length}</button>\`).join("")}</div>
+        <details class="panel section">
+          <summary>Create task</summary>
+          <form class="mini-form" style="margin-top:12px" onsubmit="createManualTask(event)">
+            <label>Title<input name="title" required placeholder="Follow up with partner"></label>
+            <label>Description<textarea name="description" placeholder="What changed, why it matters, and context Roger needs."></textarea></label>
+            <div class="grid split">
+              <label>Owner<input name="owner" value="Roger"></label>
+              <label>Due date<input name="dueDate" type="date"></label>
+            </div>
+            <div class="grid split">
+              <label>Priority<select name="priority"><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option><option value="low">Low</option></select></label>
+              <label>View/source<select name="sourceType"><option value="manual">Manual</option><option value="partner">Partner Follow-Up</option><option value="investor_proof">Investor Proof</option><option value="compliance">Compliance Review</option><option value="content">Content Production</option></select></label>
+            </div>
+            <label>Next action<input name="nextAction" placeholder="The next concrete move"></label>
+            <button class="primary">Create Task</button>
+          </form>
+        </details>
         <div class="grid three section">
           <article class="readiness-card info"><div class="readiness-title">Open</div><strong>\${allOpen.length}</strong></article>
           <article class="readiness-card danger"><div class="readiness-title">Overdue</div><strong>\${overdue.length}</strong></article>
@@ -17832,6 +17852,21 @@ function htmlShell() {
         render();
         toast(result.message || "Tasks rebuilt");
       }, "Could not rebuild tasks.");
+    }
+
+    async function createManualTask(event) {
+      event.preventDefault();
+      const payload = formObject(event.target);
+      await cooAction(async () => {
+        const result = await api("/api/growth/upsert", {
+          method:"POST",
+          body:JSON.stringify({ collection:"tasks", item:{ ...payload, status:"open" } })
+        });
+        state = result.state;
+        render();
+        event.target.reset();
+        return result.message || "Task created.";
+      }, "Could not create task.");
     }
 
     async function updateTaskAction(id, action, patch = {}) {
