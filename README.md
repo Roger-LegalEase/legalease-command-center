@@ -96,16 +96,18 @@ Authorization: Bearer <secret>
 
 Unsigned or invalid events fail closed. Raw payload metadata is redacted for obvious PII/legal-detail keys before storage. Events create Automation Inbox entries and funnel update suggestions for human approval.
 
-## Read-Only Google Sync
+## Google Workspace Read-Only Foundation
 
-Automation Inbox includes manual sync buttons for Gmail and Google Calendar. These are server-side, read-only syncs:
+Settings includes a Google Workspace section, and Automation Inbox includes manual sync buttons for Gmail and Google Calendar. These are server-side, read-only syncs:
 
 - Gmail reads recent matching messages from the last 14 days.
 - Calendar reads recent/upcoming matching meetings from the last 14 days through the next 30 days.
-- Sync creates Automation Inbox events and suggestions only.
+- Sync creates Automation Inbox events and suggestions.
+- Sync also creates draft/internal Growth Inbox items, Tasks, COO Brief inputs, and Evidence Pack notes when the signal matters.
 - No emails are sent or modified.
 - No calendar events are created or modified.
 - Tokens are never sent to the browser.
+- Stored OAuth tokens are encrypted server-side with `OAUTH_TOKEN_ENCRYPTION_KEY`.
 
 Supported server-side env vars:
 
@@ -114,6 +116,7 @@ OAUTH_TOKEN_ENCRYPTION_KEY=
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=
+APP_BASE_URL=
 GMAIL_ACCESS_TOKEN=
 GOOGLE_GMAIL_ACCESS_TOKEN=
 GOOGLE_CALENDAR_ACCESS_TOKEN=
@@ -122,7 +125,16 @@ GOOGLE_ACCESS_TOKEN=
 GOOGLE_CALENDAR_ID=
 ```
 
-Preferred setup is the Google OAuth button in Automation Inbox, which stores encrypted refresh tokens server-side and refreshes access tokens automatically. The direct access-token env vars are fallback/dev options only. If tokens are missing, sync fails closed and records the connector error in the Automation Inbox status panel.
+Preferred setup is the Google OAuth button in Settings or Automation Inbox. If `GOOGLE_REDIRECT_URI` is not set, hosted mode derives the callback from `APP_BASE_URL` as `/api/oauth/google_workspace/callback`. The direct access-token env vars are fallback/dev options only. If tokens are missing, sync fails closed and records the connector error in the Automation Inbox status panel.
+
+Diagnostics:
+
+```bash
+GET /api/google-workspace/diagnostics
+POST /api/google-workspace/disconnect
+```
+
+Diagnostics return safe status only: configuration, callback URL, connected account name, sync timestamps, and whether encrypted tokens exist. They never return token values.
 
 ## Local Notes
 

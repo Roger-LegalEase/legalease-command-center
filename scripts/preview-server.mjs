@@ -18,6 +18,14 @@ import {
 import { deriveAutomaticTasks, mergeAutomaticTasks, updateTask } from "./tasks-engine.mjs";
 import { normalizePartnerLifecycle, partnerFollowUpDraft, partnerLifecycleInsights } from "./partner-lifecycle.mjs";
 import {
+  googleWorkspaceDiagnostics,
+  googleWorkspaceDraftOutputs,
+  googleWorkspaceMissingEnv,
+  googleWorkspaceOAuthConfigured,
+  googleWorkspaceRedirectUri,
+  mergeGoogleWorkspaceOutputs
+} from "./google-workspace.mjs";
+import {
   channelSetup,
   channelSetupMessage,
   exchangeLinkedInCode,
@@ -802,6 +810,18 @@ const credentialSpecs = [
     description: "Public bucket used to host final PNGs for social platforms.",
     nextAction: "Set SUPABASE_STORAGE_BUCKET=social-assets and make the bucket public."
   },
+  ...["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI", "APP_BASE_URL"].map((key) => ({
+    key,
+    label: key.replaceAll("_", " ").toLowerCase(),
+    category: "google",
+    severity: key === "GOOGLE_REDIRECT_URI" ? "recommended" : "required",
+    description: key === "APP_BASE_URL"
+      ? "Used to derive the hosted Google OAuth callback when GOOGLE_REDIRECT_URI is not set."
+      : "Required for read-only Google Workspace OAuth.",
+    nextAction: key === "GOOGLE_REDIRECT_URI"
+      ? "Set GOOGLE_REDIRECT_URI or APP_BASE_URL so Google can redirect back to the hosted app."
+      : `Add ${key} server-side.`
+  })),
   ...channelRequiredEnv.linkedin.map((key) => ({
     key,
     label: `LinkedIn ${key.replace("LINKEDIN_", "").replaceAll("_", " ").toLowerCase()}`,
@@ -1082,6 +1102,11 @@ function withPublicChannelSetup(state) {
       visualStylePreset: narrativeInfrastructurePreset,
       credentialReadiness: getCredentialReadiness(),
       supabaseStorage: supabaseStorageStatus(),
+      googleWorkspace: googleWorkspaceDiagnostics({
+        env: process.env,
+        account: (state.socialAccounts || []).find((account) => account.platform === "google_workspace") || {},
+        connectorStatus: defaultConnectorStatus(state)
+      }),
       manualModeActive: platforms.every((platform) => !livePostingEnabledForChannel(platform)),
       hosting: {
         localDemoMode: hostingConfig.localDemoMode,
@@ -4767,19 +4792,15 @@ const googleReadOnlyScopes = [
 ];
 
 function googleOAuthRedirectUri() {
-  return process.env.GOOGLE_REDIRECT_URI || process.env.GOOGLE_OAUTH_REDIRECT_URI || "";
+  return googleWorkspaceRedirectUri(process.env);
 }
 
 function googleOAuthConfigured() {
-  return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && googleOAuthRedirectUri());
+  return googleWorkspaceOAuthConfigured(process.env);
 }
 
 function googleOAuthMissingEnv() {
-  return [
-    ["GOOGLE_CLIENT_ID", process.env.GOOGLE_CLIENT_ID],
-    ["GOOGLE_CLIENT_SECRET", process.env.GOOGLE_CLIENT_SECRET],
-    ["GOOGLE_REDIRECT_URI or GOOGLE_OAUTH_REDIRECT_URI", googleOAuthRedirectUri()]
-  ].filter(([, value]) => !value).map(([key]) => key);
+  return googleWorkspaceMissingEnv(process.env);
 }
 
 function googleAuthorizationUrl({ state }) {
@@ -9818,6 +9839,14 @@ const googleSyncTerms = [
   "pilot",
   "proposal",
   "partnership",
+  "investor",
+  "raise",
+  "diligence",
+  "acquirer",
+  "document request",
+  "complaint",
+  "refund",
+  "legal advice",
   "campaign",
   "launch",
   "follow up",
@@ -10083,6 +10112,7 @@ function upsertAutomationRecords(state = {}, events = []) {
   return {
     events: [...importedEvents, ...currentEvents],
     suggestions: [...importedSuggestions, ...currentSuggestions],
+    importedEvents,
     importedCount: importedEvents.length,
     suggestedCount: importedSuggestions.length
   };
@@ -10113,7 +10143,7 @@ async function importAutomationEvents(inputEvents = [], connector = "manual_impo
       recordsSuggested: Number(item.recordsSuggested || 0) + result.suggestedCount,
       lastError: ""
     } : item);
-    const nextState = {
+    let nextState = {
       ...state,
       automationEvents: result.events,
       automationSuggestions: result.suggestions,
@@ -10121,6 +10151,28 @@ async function importAutomationEvents(inputEvents = [], connector = "manual_impo
       syncRuns: [syncRun, ...(state.syncRuns || [])].slice(0, 100),
       activityEvents: result.importedCount ? [{ id:`activity-automation-import-${crypto.randomUUID().slice(0, 8)}`, eventType:"Automation import", title:`${result.importedCount} events imported from ${connector}`, relatedObjectType:"automation", relatedObjectId:syncRun.id, createdAt:syncRun.finishedAt }, ...(state.activityEvents || [])].slice(0, 500) : state.activityEvents || []
     };
+    if (["gmail_sync", "calendar_sync"].includes(syncMode) && result.importedEvents.length) {
+      const outputs = googleWorkspaceDraftOutputs(result.importedEvents, { now });
+      nextState = mergeGoogleWorkspaceOutputs(nextState, outputs);
+      nextState.auditHistory = [{
+        id: `audit-google-workspace-${crypto.randomUUID().slice(0, 8)}`,
+        timestamp: syncRun.finishedAt,
+        actor: "google_workspace_readonly_sync",
+        action: `${connector} read-only sync captured internal draft outputs`,
+        resourceType: "google_workspace",
+        resourceId: syncRun.id,
+        beforeValue: null,
+        afterValue: {
+          connector,
+          importedCount: result.importedCount,
+          growthInboxItems: outputs.growthInbox.length,
+          tasks: outputs.tasks.length,
+          evidencePackNotes: outputs.evidencePackNotes.length,
+          noOutboundAction: true
+        }
+      }, ...(nextState.auditHistory || [])].slice(0, 1000);
+      nextState = analyzeOperations(nextState);
+    }
     await store.writeState(nextState);
     return { state: nextState, syncRun, importedCount: result.importedCount, suggestedCount: result.suggestedCount, message: `${result.importedCount} automation events imported; ${result.suggestedCount} suggestions created.` };
   });
@@ -10219,6 +10271,62 @@ async function syncCalendarReadOnly() {
   });
   const result = await importAutomationEvents(events, "calendar", "calendar_sync");
   return { ...result, message:`Calendar sync complete. ${result.importedCount} new events imported; ${result.suggestedCount} suggestions created.` };
+}
+
+async function disconnectGoogleWorkspace() {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const now = new Date().toISOString();
+    const current = (state.socialAccounts || []).find((account) => account.platform === "google_workspace") || { id:"channel-google_workspace", platform:"google_workspace" };
+    const googleAccount = {
+      ...current,
+      status: "not_connected",
+      accountName: "",
+      accountId: "",
+      externalAccountId: "",
+      connectedAt: "",
+      tokenExpiresAt: "",
+      accessTokenEncrypted: "",
+      refreshTokenEncrypted: "",
+      lastTestStatus: "disconnected",
+      lastTestMessage: "Google Workspace disconnected. No Gmail or Calendar data was modified.",
+      lastErrorSummary: "",
+      lastError: "",
+      lastTestedAt: now,
+      oauthConfigured: googleOAuthConfigured(),
+      scopes: [],
+      updatedAt: now
+    };
+    const withAccount = {
+      ...state,
+      socialAccounts: [googleAccount, ...(state.socialAccounts || []).filter((account) => account.platform !== "google_workspace")]
+    };
+    const withGmail = { ...withAccount, connectorStatus: connectorStatusPatch(withAccount, "gmail", { enabled:false, configured:false, lastSyncStatus:"disconnected", lastError:"" }) };
+    const nextState = analyzeOperations({
+      ...withGmail,
+      connectorStatus: connectorStatusPatch(withGmail, "calendar", { enabled:false, configured:false, lastSyncStatus:"disconnected", lastError:"" }),
+      auditHistory: [{
+        id: `audit-google-disconnect-${crypto.randomUUID().slice(0, 8)}`,
+        timestamp: now,
+        actor: "local_operator",
+        action: "google workspace disconnected",
+        resourceType: "google_workspace",
+        resourceId: "google_workspace",
+        beforeValue: { connected: Boolean(current.connectedAt || current.accountName), accountName: current.accountName || "" },
+        afterValue: { connected: false, tokensRemoved: true }
+      }, ...(state.auditHistory || [])].slice(0, 1000),
+      activityEvents: [{
+        id: `activity-google-disconnect-${crypto.randomUUID().slice(0, 8)}`,
+        eventType: "Google Workspace disconnected",
+        title: "Read-only Google Workspace connection removed",
+        relatedObjectType: "google_workspace",
+        relatedObjectId: "google_workspace",
+        createdAt: now
+      }, ...(state.activityEvents || [])].slice(0, 500)
+    });
+    await store.writeState(nextState);
+    return { state: nextState, message: "Google Workspace disconnected. Stored tokens removed." };
+  });
 }
 
 function productWebhookConfigured() {
@@ -13331,11 +13439,12 @@ function htmlShell() {
 
     function credentialReadinessHtml() {
       const items = state.runtime?.credentialReadiness || [];
-      const groups = ["core", "openai", "supabase", "linkedin", "meta", "threads", "x", "live-gate"];
+      const groups = ["core", "openai", "supabase", "google", "linkedin", "meta", "threads", "x", "live-gate"];
       const groupLabels = {
         core: "Core",
         openai: "OpenAI",
         supabase: "Supabase",
+        google: "Google Workspace",
         linkedin: "LinkedIn",
         meta: "Meta / Facebook + Instagram",
         threads: "Threads",
@@ -13446,6 +13555,46 @@ function htmlShell() {
           </div>
           <button onclick="createTomorrowQueue()">Create Tomorrow's 3-Post Queue</button>
         </div>
+      </div>\`;
+    }
+
+    function googleWorkspaceSettingsHtml() {
+      const diagnostics = state.runtime?.googleWorkspace || {};
+      const gmail = connectorItems().find(item => item.connector === "gmail") || {};
+      const calendar = connectorItems().find(item => item.connector === "calendar") || {};
+      const connected = Boolean(diagnostics.connected);
+      const checks = [
+        ["OAuth configured", Boolean(diagnostics.oauthConfigured), (diagnostics.missingEnvVars || []).length ? "Missing: " + diagnostics.missingEnvVars.join(", ") : "Ready"],
+        ["Token encryption", Boolean(diagnostics.tokenEncryptionConfigured), diagnostics.tokenEncryptionConfigured ? "Encrypted server-side token storage is available." : "Set OAUTH_TOKEN_ENCRYPTION_KEY."],
+        ["Connected account", connected, connected ? "Connected as " + (diagnostics.accountName || "Google account") : "No Google account connected."],
+        ["Gmail readonly", Boolean(gmail.configured), gmail.lastSyncAt || gmail.lastSyncStatus || "Not synced yet."],
+        ["Calendar readonly", Boolean(calendar.configured), calendar.lastSyncAt || calendar.lastSyncStatus || "Not synced yet."]
+      ];
+      return \`<div class="panel">
+        <div class="toprow">
+          <div>
+            <div class="eyebrow">Google Workspace</div>
+            <h2 style="margin:4px 0 0">Read-only operating rhythm</h2>
+            <p class="muted" style="margin:8px 0 0">Gmail and Calendar sync create internal Growth Inbox items, tasks, COO Brief signals, and evidence notes. No emails are sent. No calendar events are created or modified.</p>
+          </div>
+          <span class="badge \${connected ? "good" : diagnostics.oauthConfigured ? "warn" : "danger"}">\${connected ? "Connected" : diagnostics.oauthConfigured ? "Ready to connect" : "Setup needed"}</span>
+        </div>
+        <div class="metric-table" style="margin-top:14px">\${checks.map(([label, ok, detail]) => \`<div class="metric-row"><span>\${esc(label)}<br><small class="muted">\${esc(detail)}</small></span><span class="badge \${ok ? "good" : "warn"}">\${ok ? "Ready" : "Blocked"}</span></div>\`).join("")}</div>
+        <div class="card-actions" style="margin-top:14px">
+          <button class="primary" onclick="connectGoogle()">\${connected ? "Reconnect Google" : "Connect Google"}</button>
+          <button \${connected || gmail.configured ? "" : "disabled"} onclick="syncGmail()">Sync Gmail</button>
+          <button \${connected || calendar.configured ? "" : "disabled"} onclick="syncCalendar()">Sync Calendar</button>
+          <button \${connected ? "" : "disabled"} onclick="disconnectGoogleWorkspace()">Disconnect</button>
+        </div>
+        <details style="margin-top:12px">
+          <summary class="muted">Diagnostics</summary>
+          <div class="metric-table" style="margin-top:10px">
+            <div class="metric-row"><span>Callback URL</span><strong>\${esc(diagnostics.redirectUri || "Not configured")}</strong></div>
+            <div class="metric-row"><span>Scopes</span><strong>\${esc((diagnostics.scopes || []).join(", ") || "gmail.readonly, calendar.readonly requested at connect time")}</strong></div>
+            <div class="metric-row"><span>Stored token</span><strong>\${diagnostics.hasStoredToken ? "present, encrypted server-side" : "not stored"}</strong></div>
+            <div class="metric-row"><span>Last error</span><strong>\${esc(diagnostics.lastError || "none")}</strong></div>
+          </div>
+        </details>
       </div>\`;
     }
 
@@ -16113,6 +16262,7 @@ function htmlShell() {
           <details>
             <summary>Launch setup</summary>
             <div style="margin-top:14px">\${manualModeHtml()}</div>
+            <div style="margin-top:14px">\${googleWorkspaceSettingsHtml()}</div>
             <div style="margin-top:14px">\${storageDiagnosticsHtml()}</div>
             <div style="margin-top:14px">\${linkedInDryTestChecklistHtml()}</div>
             <div style="margin-top:14px">\${dailyRhythmHtml()}</div>
@@ -16509,11 +16659,21 @@ function htmlShell() {
       automationFilter = "review";
       selectedSuggestions = new Set();
       render();
-      location.hash = "automation";
+      location.hash = location.hash === "#settings" ? "settings" : "automation";
     }
 
     function connectGoogle() {
       window.location.href = "/api/oauth/google_workspace/start";
+    }
+
+    async function disconnectGoogleWorkspace() {
+      const ok = window.confirm("Disconnect Google Workspace? Stored Google tokens will be removed. No Gmail or Calendar data will be modified.");
+      if (!ok) return;
+      const result = await api("/api/google-workspace/disconnect", { method:"POST", body:JSON.stringify({}) });
+      state = result.state;
+      toast(result.message || "Google Workspace disconnected.");
+      render();
+      location.hash = "settings";
     }
 
     async function syncGmail() {
@@ -16529,7 +16689,7 @@ function htmlShell() {
       automationFilter = "review";
       selectedSuggestions = new Set();
       render();
-      location.hash = "automation";
+      location.hash = location.hash === "#settings" ? "settings" : "automation";
     }
 
     async function syncCalendar() {
@@ -18583,6 +18743,23 @@ async function handleRequest(request, response) {
     return;
   }
 
+  if (url.pathname === "/api/google-workspace/diagnostics" && request.method === "GET") {
+    const state = await store.readState();
+    const account = (state.socialAccounts || []).find((item) => item.platform === "google_workspace") || {};
+    sendJson(response, googleWorkspaceDiagnostics({ env: process.env, account, connectorStatus: defaultConnectorStatus(state) }));
+    return;
+  }
+
+  if (url.pathname === "/api/google-workspace/disconnect" && request.method === "POST") {
+    try {
+      const result = await disconnectGoogleWorkspace();
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not disconnect Google Workspace." }, 400);
+    }
+    return;
+  }
+
   if (url.pathname === "/api/automation/import-events" && request.method === "POST") {
     try {
       const { events, connector } = await readJson(request);
@@ -19272,8 +19449,29 @@ async function handleRequest(request, response) {
         });
         const withGmailStatus = { ...state, connectorStatus: connectorStatusPatch(state, "gmail", { configured:true, enabled:true, lastSyncStatus:"connected", lastError:"" }) };
         state = { ...withGmailStatus, connectorStatus: connectorStatusPatch(withGmailStatus, "calendar", { configured:true, enabled:true, lastSyncStatus:"connected", lastError:"" }) };
+        state = {
+          ...state,
+          auditHistory: [{
+            id: `audit-google-connect-${crypto.randomUUID().slice(0, 8)}`,
+            timestamp: new Date().toISOString(),
+            actor: "local_operator",
+            action: "google workspace connected read only",
+            resourceType: "google_workspace",
+            resourceId: profile.sub || "google_workspace",
+            beforeValue: null,
+            afterValue: { accountName, scopes: googleReadOnlyScopes, noOutboundScopes: true }
+          }, ...(state.auditHistory || [])].slice(0, 1000),
+          activityEvents: [{
+            id: `activity-google-connect-${crypto.randomUUID().slice(0, 8)}`,
+            eventType: "Google Workspace connected",
+            title: "Gmail and Calendar read-only connected",
+            relatedObjectType: "google_workspace",
+            relatedObjectId: profile.sub || "google_workspace",
+            createdAt: new Date().toISOString()
+          }, ...(state.activityEvents || [])].slice(0, 500)
+        };
         await store.writeState(state);
-        response.writeHead(302, { location:"/?v=google-connected#automation" });
+        response.writeHead(302, { location:"/?v=google-connected#settings" });
         response.end();
       } catch (error) {
         const safeError = safeGoogleError(error);
