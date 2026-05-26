@@ -1048,12 +1048,10 @@ details > summary {
   min-height:320px;
 }
 
-.coo-overview-primary,
 .coo-overview-stack {
   display:block;
 }
 
-.coo-overview-primary > * + *,
 .coo-overview-stack > * + * {
   margin-top:18px;
 }
@@ -1115,67 +1113,6 @@ details > summary {
   font-size:12px;
   font-style:normal;
   font-weight:800;
-  white-space:nowrap;
-}
-
-.approval-simple-list {
-  display:block;
-}
-
-.approval-simple-card {
-  display:block;
-  width:100%;
-  padding:18px;
-  border:1px solid #d9e1ec;
-  border-radius:16px;
-  background:#fff;
-  margin-bottom:14px;
-}
-
-.approval-simple-title-row {
-  display:flex;
-  align-items:flex-start;
-  gap:12px;
-  width:100%;
-}
-
-.approval-simple-title-row input {
-  flex:0 0 auto;
-  margin-top:4px;
-}
-
-.approval-simple-title {
-  display:block;
-  width:auto;
-  max-width:100%;
-  font-size:16px;
-  font-weight:700;
-  line-height:1.35;
-  white-space:normal;
-  word-break:normal;
-  overflow-wrap:normal;
-}
-
-.approval-simple-description {
-  margin:10px 0 0 32px;
-  font-size:14px;
-  line-height:1.45;
-  color:#506079;
-  white-space:normal;
-  word-break:normal;
-  overflow-wrap:normal;
-}
-
-.approval-simple-actions {
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px;
-  margin:14px 0 0 32px;
-}
-
-.approval-simple-actions button {
-  min-height:38px;
-  min-width:78px;
   white-space:nowrap;
 }
 
@@ -1320,12 +1257,4 @@ details > summary {
     justify-content:center;
   }
 
-  .approval-simple-description,
-  .approval-simple-actions {
-    margin-left:0;
-  }
-
-  .approval-simple-actions button {
-    flex:1 1 96px;
-  }
 }
