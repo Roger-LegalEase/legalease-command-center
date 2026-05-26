@@ -12416,6 +12416,42 @@ function htmlShell() {
     .tab.active { background:var(--ink); color:white; }
     .toast { position:fixed; right:20px; bottom:20px; background:var(--ink); color:white; padding:12px 14px; border-radius:7px; opacity:0; transform:translateY(8px); transition:.2s; z-index:10; }
     .toast.show { opacity:1; transform:translateY(0); }
+    html, body, .shell, main { max-width:100%; overflow-x:hidden; }
+    .operator-today { display:block; width:100%; max-width:100%; }
+    .today-hero { display:grid; gap:18px; border:0; background:#08145F; color:white; box-shadow:0 24px 62px rgba(8,20,95,.18); }
+    .today-hero .big-title { color:white; }
+    .today-hero .big-copy, .today-hero .muted { color:rgba(255,255,255,.74); }
+    .today-actions { display:flex; flex-wrap:wrap; gap:10px; }
+    .today-actions button { min-height:42px; }
+    .today-lane { display:grid; gap:14px; margin-top:18px; }
+    .today-card { display:block; width:100%; max-width:100%; box-sizing:border-box; padding:18px; border:1px solid rgba(8,20,95,.08); border-radius:16px; background:white; box-shadow:0 14px 34px rgba(16,24,40,.06); word-break:normal; overflow-wrap:break-word; }
+    .today-card h3 { margin:0; color:var(--ink); font-size:18px; line-height:1.25; letter-spacing:0; white-space:normal; word-break:normal; overflow-wrap:break-word; }
+    .today-card p { margin:8px 0 0; }
+    .today-card .card-actions { margin-top:14px; }
+    .today-meta { display:flex; flex-wrap:wrap; gap:8px; align-items:center; color:var(--muted); font-size:13px; margin-bottom:8px; }
+    .today-phase { display:inline-flex; align-items:center; min-height:26px; padding:4px 10px; border-radius:999px; background:#F2F4F7; color:#344054; font-size:12px; font-weight:900; }
+    .today-phase.now { background:rgba(180,35,24,.1); color:var(--danger); }
+    .today-phase.next { background:rgba(154,106,25,.1); color:var(--warning); }
+    .today-phase.later { background:rgba(47,107,79,.1); color:var(--success); }
+    .today-summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
+    .today-summary-card { border:1px solid rgba(8,20,95,.08); border-radius:16px; background:white; padding:16px; display:grid; gap:8px; }
+    .today-summary-card strong { color:var(--ink); font-size:28px; line-height:1; }
+    .quick-capture { display:grid; gap:12px; }
+    .quick-capture textarea { min-height:118px; resize:vertical; font-size:15px; line-height:1.45; }
+    .focus-launcher { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
+    .focus-launcher button { justify-content:flex-start; min-height:48px; }
+    .focus-shell { display:block; width:100%; max-width:860px; margin:0 auto; }
+    .focus-mode-tabs { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 18px; }
+    .focus-mode-tabs button { border-radius:999px; }
+    .focus-mode-tabs button.active { background:#08145F; color:white; }
+    .focus-card { display:block; width:100%; box-sizing:border-box; padding:26px; border:1px solid rgba(8,20,95,.08); border-radius:20px; background:white; box-shadow:0 24px 60px rgba(16,24,40,.09); word-break:normal; overflow-wrap:break-word; }
+    .focus-card h2 { margin:10px 0 0; color:var(--ink); font-size:30px; line-height:1.1; letter-spacing:0; white-space:normal; word-break:normal; overflow-wrap:break-word; }
+    .focus-progress { color:var(--muted); font-size:13px; font-weight:900; text-transform:uppercase; letter-spacing:.08em; }
+    .focus-field { border-top:1px solid rgba(8,20,95,.08); margin-top:16px; padding-top:16px; }
+    .focus-field span { display:block; color:var(--muted); font-size:12px; font-weight:900; text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+    .focus-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:20px; }
+    .focus-actions button { min-height:44px; }
+    .done-state { border:1px dashed rgba(8,20,95,.14); border-radius:16px; background:#fff; color:var(--muted); padding:22px; text-align:center; }
     :root {
       --paper:#F6F7F5;
       --surface:#FFFFFF;
@@ -12560,14 +12596,17 @@ function htmlShell() {
     <aside>
       <div class="brand"><small>LegalEase</small><h1>Command Center</h1></div>
       <nav>
-        <div class="nav-group"><span class="nav-label">Growth</span><a href="#overview" class="active">Overview</a><a href="#growth-inbox">Growth Inbox</a><a href="#tasks">Tasks</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-reports">Partner Reports</a><a href="#partner-proposals">Partner Proposals</a><a href="#milestones">Milestones</a><a href="#partners">Partners</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a></div>
-        <div class="nav-group"><span class="nav-label">Production</span><a href="#content-bank">Content Bank</a><a href="#sources">Sources</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div>
-        <div class="nav-group"><span class="nav-label">Operations</span><a href="#autonomy">Autonomy</a><a href="#automation">Automation Inbox</a><a href="#pilots">Pilots</a><a href="#compliance">Compliance</a><a href="#soc2">SOC 2</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#metrics">Metrics</a><a href="#settings">Settings</a></div><div class="nav-group"><span class="nav-label">SOC 2</span><a href="#soc2-access">Access</a><a href="#soc2-audit">Audit Logs</a><a href="#soc2-changes">Changes</a><a href="#soc2-vendors">Vendors</a><a href="#soc2-incidents">Incidents</a><a href="#soc2-evidence">Evidence</a><a href="#soc2-policies">Policies</a></div>
+        <div class="nav-group"><span class="nav-label">Today</span><a href="#overview" class="active">Today</a><a href="#focus">Focus</a></div>
+        <div class="nav-group"><span class="nav-label">Growth</span><a href="#growth-inbox">Growth Inbox</a><a href="#tasks">Tasks</a><a href="#milestones">Milestones</a><a href="#campaigns">Campaigns</a><a href="#funnel">Funnel</a></div>
+        <div class="nav-group"><span class="nav-label">Partners</span><a href="#partners">Partners</a><a href="#partner-programs">Programs</a><a href="#partner-pages">Pages</a><a href="#partner-dashboards">Dashboards</a><a href="#partner-proposals">Proposals</a><a href="#partner-reports">Reports</a><a href="#pilots">Pilots</a></div>
+        <div class="nav-group"><span class="nav-label">Production</span><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a><a href="#sources">Sources</a></div>
+        <div class="nav-group"><span class="nav-label">Proof</span><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2</a></div>
+        <div class="nav-group"><span class="nav-label">Operations</span><a href="#autonomy">Autonomy</a><a href="#automation">Automation</a><a href="#compliance">Compliance</a><a href="#metrics">Metrics</a><a href="#settings">Settings</a></div>
       </nav>
     </aside>
     <div>
       <header>
-        <div><div class="eyebrow">Narrative infrastructure</div><h2>Social Command Center</h2></div>
+        <div><div class="eyebrow">Operator cockpit</div><h2>LegalEase OS</h2></div>
         <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><button onclick="openCommandPalette()">Command</button><button onclick="lockCommandCenter()">Lock</button><button class="primary" onclick="runSystemCheck()">Run System Check</button></div>
       </header>
       <main id="app"><div class="panel loading-panel"><div class="eyebrow">Starting command center</div><h1 class="big-title">Loading LegalEase...</h1><p class="big-copy">If this stays here, the browser could not finish the app render. The server is still serving a visible fallback so you are not staring at a blank screen.</p><div class="loading-line wide"></div><div class="loading-line"></div><div class="loading-card"></div><div class="card-actions"><button class="primary" onclick="location.reload()">Reload app</button><a class="button-link" href="#queue">Open Queue</a></div></div></main>
@@ -12617,6 +12656,17 @@ function htmlShell() {
     let contentBankFilters = { status:"all", campaign:"all", bucket:"all", platform:"all", wilma:"all", risk:"all", thisWeek:false };
     let contentBankDraftMode = "local";
     let taskView = "today";
+    let focusMode = "inbox-triage";
+    let focusIndex = 0;
+    const focusModes = [
+      { id:"inbox-triage", label:"Inbox Triage" },
+      { id:"partner-follow-up", label:"Partner Follow-Up" },
+      { id:"content-approval", label:"Content Approval" },
+      { id:"proposal-review", label:"Proposal Review" },
+      { id:"weekly-report", label:"Weekly Report" },
+      { id:"evidence-pack", label:"Evidence Pack" },
+      { id:"clear-blockers", label:"Clear Blockers" }
+    ];
     const generatingImages = new Set();
     const imagePromptVersion = ${JSON.stringify(imagePromptVersion)};
     const imageLanes = ${JSON.stringify(imageLanes)};
@@ -15594,110 +15644,242 @@ function htmlShell() {
       </section>\`;
     }
 
+    function plainOperatorState(value = "") {
+      const key = String(value || "").toLowerCase();
+      if (["approval_required", "needs_review", "ready_to_approve", "ready_for_review"].includes(key)) return "Needs your decision";
+      if (["open", "new", "draft", "proposal_draft", "page_draft", "dashboard_draft"].includes(key)) return "Ready to review";
+      if (["blocked", "failed", "blocked_channel_not_connected"].some(part => key.includes(part))) return "Blocked";
+      if (["proposal_sent", "waiting", "stalled"].includes(key)) return "Waiting on partner";
+      if (["report_due", "reporting"].includes(key)) return "Report due";
+      if (["ready_for_approval"].includes(key)) return "Page needs approval";
+      if (["dashboard_draft", "not_verified", "missing"].includes(key)) return "Dashboard not active yet";
+      if (["unpaid", "checkout_started", "payment_pending"].includes(key)) return "Payment not verified";
+      if (["paid", "ready", "ready_for_launch", "active"].includes(key)) return "Ready for launch";
+      return growthLabel(value || "Review");
+    }
+
+    function operatingPhaseFor(item = {}) {
+      const priority = String(item.priority || "").toLowerCase();
+      const status = String(item.status || "").toLowerCase();
+      if (item.phase) return item.phase;
+      if (item.blocked || status.includes("blocked") || priority === "critical" || item.overdue) return "Now";
+      if (priority === "high" || /roger|approval|review|today/i.test([item.owner, item.nextAction, item.recommendedAction, item.title].join(" "))) return "Now";
+      if (priority === "medium" || /week|soon|next/i.test([item.nextAction, item.recommendedAction, item.title].join(" "))) return "Next";
+      return "Later";
+    }
+
+    function operatingPhaseClass(phase = "") {
+      const key = String(phase || "").toLowerCase();
+      if (key === "now") return "now";
+      if (key === "next") return "next";
+      return "later";
+    }
+
+    function operatorItemCard(item = {}, options = {}) {
+      const phase = operatingPhaseFor(item);
+      const action = item.primaryAction || item.nextAction || item.recommendedAction || "Open";
+      const href = item.href || item.page || "tasks";
+      const button = item.button || "Open";
+      return \`<article class="today-card">
+        <div class="today-meta"><span class="today-phase \${operatingPhaseClass(phase)}">\${esc(phase)}</span><span>\${esc(item.stateLabel || plainOperatorState(item.status || item.priority || phase))}</span></div>
+        <h3>\${esc(item.title || "Review item")}</h3>
+        <p class="muted"><strong>Why it matters:</strong> \${esc(item.whyItMatters || item.reason || item.description || "This keeps the operating system moving without forcing you to hunt.")}</p>
+        <p class="simple-meta"><strong>Next action:</strong> \${esc(action)}</p>
+        <div class="card-actions"><button class="\${options.primary === false ? "" : "primary"}" onclick="location.hash='\${esc(href)}'">\${esc(button)}</button></div>
+      </article>\`;
+    }
+
+    function operatorItems(posts = []) {
+      const todayTasks = taskViewFilter("today").map(task => ({
+        type:"task",
+        id:task.id,
+        title:task.title,
+        whyItMatters:task.escalationReason || task.description || "Owned work due now.",
+        nextAction:task.nextAction || "Complete or snooze this task.",
+        priority:task.priority || "medium",
+        status:task.status,
+        owner:task.owner,
+        overdue:taskIsOverdue(task),
+        href:"tasks",
+        button:"Open task"
+      }));
+      const inboxItems = (state.growthInbox || [])
+        .filter(item => !["converted", "ignored"].includes(String(item.status || "").toLowerCase()))
+        .map(item => ({
+          type:"growth_inbox",
+          id:item.id,
+          title:item.summary || item.rawText || "New company signal",
+          whyItMatters:item.riskLevel === "high" ? "This may create legal, partner, customer, or revenue risk." : "This needs routing before it becomes founder memory.",
+          nextAction:item.suggestedAction || "Triage and route this signal.",
+          priority:item.priority || "medium",
+          status:item.status || "new",
+          href:"growth-inbox",
+          button:"Triage"
+        }));
+      const approvals = (state.approvalQueue || []).filter(item => !["approved", "archived", "ignored"].includes(String(item.status || "").toLowerCase()));
+      const approvalSummary = approvals.length ? [{
+        type:"approval_summary",
+        id:"approval-summary",
+        title:\`\${approvals.length} approval item\${approvals.length === 1 ? "" : "s"} waiting\`,
+        whyItMatters:"Approved content and proof artifacts should move without pulling you into every module.",
+        nextAction:"Open Queue and approve, block, or send forward.",
+        priority:approvals.some(item => String(item.risk || "").toLowerCase() === "high") ? "high" : "medium",
+        status:"needs_review",
+        href:"queue",
+        button:"Open Queue"
+      }] : [];
+      const partnerProgramItems = (state.partnerPrograms || []).filter(program => {
+        const status = String(program.status || "").toLowerCase();
+        return ["proposal_draft", "proposal_sent", "paid", "onboarding", "page_draft", "dashboard_draft", "ready_for_approval", "stalled", "reporting"].includes(status);
+      }).map(program => ({
+        type:"partner_program",
+        id:program.id,
+        title:program.name || "Partner program",
+        whyItMatters:program.paymentStatus === "paid" ? "Paid partner work should move into onboarding and reporting cleanly." : "Partner program movement creates revenue and institutional proof.",
+        nextAction:program.nextAction || "Review the partner program next step.",
+        priority:program.status === "stalled" ? "high" : "medium",
+        status:program.status,
+        href:"partner-programs",
+        button:"Open program"
+      }));
+      const blockers = (state.blockers || []).map(item => ({
+        type:"blocker",
+        id:item.id,
+        title:item.whatIsBlocked || item.title || "Blocked item",
+        whyItMatters:item.whyBlocked || item.reason || "Blocked work stops the weekly operating rhythm.",
+        nextAction:item.fix || item.recommendedAction || "Fix the blocker.",
+        priority:"high",
+        status:"blocked",
+        blocked:true,
+        href:item.sourceType === "settings" ? "settings" : item.sourceType === "campaign" ? "campaigns" : "tasks",
+        button:"Fix"
+      }));
+      return [...todayTasks, ...inboxItems, ...approvalSummary, ...partnerProgramItems, ...blockers].sort((a, b) => {
+        const phaseRank = { Now:3, Next:2, Later:1 };
+        const priorityRank = { critical:4, high:3, medium:2, low:1 };
+        return (phaseRank[operatingPhaseFor(b)] || 0) - (phaseRank[operatingPhaseFor(a)] || 0)
+          || (priorityRank[String(b.priority || "").toLowerCase()] || 0) - (priorityRank[String(a.priority || "").toLowerCase()] || 0);
+      });
+    }
+
     function commandCenterOverviewHtml(posts) {
-      const latestBackup = backups[0] || state.settings?.latestBackup;
       const brief = state.cooBrief || {};
-      const priorities = (state.priorities || []).slice(0, 5);
       const approvalItems = state.approvalQueue || [];
       const activeApprovals = approvalItems.filter((item) => !["approved", "archived", "ignored"].includes(String(item.status || "").toLowerCase()));
-      const readyApprovals = approvalItems.filter((item) => ["ready_to_approve", "ready", "ready_to_send"].includes(String(item.status || "").toLowerCase()));
-      const blockedApprovals = approvalItems.filter((item) => String(item.status || "").toLowerCase().includes("blocked"));
-      const blockers = (state.blockers || []).slice(0, 5);
-      const signals = (state.growthSignals || []).slice(0, 5);
       const inboxBrief = brief.growthInbox || {};
       const partnerBrief = brief.partnerLifecycle || {};
-      const urgentInbox = inboxBrief.urgentItems || [];
       const openTasks = (state.tasks || []).filter(taskStatusOpen);
       const overdueTasks = openTasks.filter(taskIsOverdue);
       const waitingRogerTasks = openTasks.filter(task => /roger/i.test(task.owner || ""));
-      const todayTasks = taskViewFilter("today").slice(0, 5);
+      const allItems = operatorItems(posts);
+      const nowItems = allItems.filter(item => operatingPhaseFor(item) === "Now").slice(0, 5);
+      const waitingItems = [
+        ...activeApprovals.slice(0, 1).map(() => ({
+          title:\`\${activeApprovals.length} item\${activeApprovals.length === 1 ? "" : "s"} need review\`,
+          whyItMatters:"This is content, proof, or operating work waiting on your decision.",
+          nextAction:"Open Queue and approve, block, or move forward.",
+          status:"needs_review",
+          href:"queue",
+          button:"Open Queue"
+        })),
+        ...waitingRogerTasks.slice(0, 2).map(task => ({
+          title:task.title,
+          whyItMatters:task.escalationReason || task.description || "This is assigned to Roger.",
+          nextAction:task.nextAction || "Decide the next step.",
+          status:task.status,
+          href:"tasks",
+          button:"Open task"
+        })),
+        ...(partnerBrief.stalledPartners || []).slice(0, 1).map(partner => ({
+          title:\`\${partner.name} is waiting\`,
+          whyItMatters:"A stalled partner can become proof, revenue, or a clean close.",
+          nextAction:partner.nextAction || "Revive, reframe, or close.",
+          status:"stalled",
+          href:"partners",
+          button:"Open partner"
+        }))
+      ].slice(0, 3);
+      const blockedItems = allItems.filter(item => item.blocked || String(item.status || "").toLowerCase().includes("blocked")).slice(0, 3);
+      const growthSignals = (state.growthSignals || []).slice(0, 3);
+      const proofEvents = [
+        ...(state.activityEvents || []).filter(event => /proof|report|pilot|partner|evidence|public|conversion/i.test([event.eventType, event.title].join(" "))),
+        ...(state.events || []).filter(event => /proof|report|pilot|partner|evidence|public|conversion/i.test([event.eventType, event.title].join(" ")))
+      ].slice().sort((a, b) => String(b.createdAt || b.timestamp || "").localeCompare(String(a.createdAt || a.timestamp || ""))).slice(0, 3);
       const readyChannels = platforms.filter(platform => state.runtime?.livePostingGates?.[platform]?.enabled).length;
       const pngReady = posts.filter(post => finalPngReady(post, imageForPost(post.id))).length;
       const publicUrlReady = credentialPresent("PUBLIC_APP_BASE_URL");
-      const row = (item, index, page = "queue") => \`<button class="coo-row" onclick="location.hash='\${page}'">
-        <span class="coo-index">\${index}</span>
-        <span><strong>\${esc(item.title || item.whatIsBlocked || "Review item")}</strong><small>\${esc(item.whyItMatters || item.summary || item.whyBlocked || item.recommendedAction || "")}</small></span>
-        <em>\${esc(item.recommendedAction || item.fix || item.status || "Open")}</em>
-      </button>\`;
-      return \`<section class="page-section active coo-home">
-        <section class="panel coo-brief">
+      const setupIssues = readyChannels + (publicUrlReady ? 0 : 1) === 0 ? 1 : Math.max(0, 1 - readyChannels) + (publicUrlReady ? 0 : 1);
+      return \`<section class="page-section active operator-today">
+        <section class="panel today-hero">
           <div>
-            <div class="eyebrow">COO Brief</div>
-            <h1 class="big-title">Today</h1>
-            <p class="big-copy">Approvals: \${Number(brief.approvals || activeApprovals.length)} · Tasks: \${openTasks.length} open · Overdue: \${overdueTasks.length} · Inbox: \${Number(inboxBrief.untriagedCount || 0)} untriaged · Stalled partners: \${Number(partnerBrief.stalledCount || 0)}</p>
+            <div class="eyebrow">Today</div>
+            <h1 class="big-title">Run the day from here.</h1>
+            <p class="big-copy">\${esc(brief.recommendedMove || "Capture what changed, clear the decisions, and move proof forward.")}</p>
           </div>
-          <div class="coo-brief-copy">
-            <strong>Recommended move</strong>
-            <p>\${esc(brief.recommendedMove || priorities[0]?.recommendedAction || "Review the approval queue.")}</p>
+          <div class="today-summary-grid">
+            <div class="today-summary-card"><span>Waiting on Roger</span><strong>\${activeApprovals.length + waitingRogerTasks.length}</strong><small>Needs your decision</small></div>
+            <div class="today-summary-card"><span>Blocked</span><strong>\${blockedItems.length}</strong><small>Stops forward motion</small></div>
+            <div class="today-summary-card"><span>Inbox</span><strong>\${Number(inboxBrief.untriagedCount || 0)}</strong><small>Untriaged signals</small></div>
+            <div class="today-summary-card"><span>Overdue</span><strong>\${overdueTasks.length}</strong><small>Owned tasks</small></div>
           </div>
-          <div class="simple-hero-actions">
-            <button class="primary" onclick="document.getElementById('overview-approval-queue')?.scrollIntoView({behavior:'smooth', block:'start'})">Approve Content</button>
+          <div class="today-actions">
+            <button class="primary" onclick="location.hash='focus'">Start Focus Mode</button>
             <button onclick="location.hash='growth-inbox'">Open Growth Inbox</button>
             <button onclick="location.hash='tasks'">Open Tasks</button>
-            <button onclick="location.hash='content-bank'">Generate From Content Bank</button>
-            <button onclick="document.getElementById('overview-blockers')?.scrollIntoView({behavior:'smooth', block:'start'})">Fix Blockers</button>
             <button onclick="createWeeklyEvidencePack()">Build Weekly Evidence Pack</button>
           </div>
         </section>
-        \${autonomyOverviewHtml()}
-        <section class="panel coo-panel section">
-          <div class="simple-panel-head"><h2>Today's Priorities</h2><button onclick="rebuildPriorities()">Refresh</button></div>
-          <div class="coo-list">\${priorities.map((item, index) => row(item, index + 1, item.sourceType === "growth_inbox" ? "growth-inbox" : item.sourceType === "campaign" ? "campaigns" : item.sourceType === "partner" ? "partners" : item.sourceType === "pilot" ? "pilots" : "queue")).join("") || '<div class="empty">No priorities yet. Add content ideas, partners, or campaign updates.</div>'}</div>
+        <section class="panel today-lane">
+          <div class="simple-panel-head"><h2>Today’s 3 Priorities</h2><button onclick="rebuildPriorities()">Refresh</button></div>
+          \${nowItems.slice(0, 3).map(item => operatorItemCard(item)).join("") || '<div class="done-state">No Now items. Growth Inbox clear for today.</div>'}
         </section>
-        <section class="panel coo-panel section">
-          <div class="simple-panel-head"><h2>Today's Tasks</h2><button onclick="location.hash='tasks'">Open Tasks</button></div>
-          <div class="simple-counts" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:14px;">
-            <div class="simple-count-card"><span>Today</span><strong>\${todayTasks.length}</strong></div>
-            <div class="simple-count-card"><span>Overdue</span><strong>\${overdueTasks.length}</strong></div>
-            <div class="simple-count-card"><span>Waiting on Roger</span><strong>\${waitingRogerTasks.length}</strong></div>
-          </div>
-          <div class="coo-list" style="margin-top:14px">\${todayTasks.map((task, index) => row({ title:task.title, whyItMatters:task.escalationReason || task.description, recommendedAction:task.nextAction || "Do task" }, index + 1, "tasks")).join("") || '<div class="empty">No tasks due today. Rebuild tasks to scan for escalations.</div>'}</div>
+        <section class="panel today-lane">
+          <div class="simple-panel-head"><h2>Waiting on Roger</h2><button onclick="location.hash='focus'">Focus</button></div>
+          \${waitingItems.map(item => operatorItemCard(item)).join("") || '<div class="done-state">No high-risk items waiting.</div>'}
         </section>
-        <section class="panel coo-panel section">
-          <div class="simple-panel-head"><h2>Growth Inbox</h2><button onclick="location.hash='growth-inbox'">Open Inbox</button></div>
-          <div class="simple-counts" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:14px;">
-            <div class="simple-count-card"><span>Untriaged</span><strong>\${Number(inboxBrief.untriagedCount || 0)}</strong></div>
-            <div class="simple-count-card"><span>Urgent</span><strong>\${urgentInbox.length}</strong></div>
-          </div>
-          <div class="coo-list" style="margin-top:14px">\${urgentInbox.map((item, index) => row({ title:item.summary, whyItMatters:item.riskLevel + " risk · " + item.priority + " priority", recommendedAction:item.suggestedAction }, index + 1, "growth-inbox")).join("") || '<div class="empty">No urgent inbox items. Paste raw company signals as they happen.</div>'}</div>
+        <section class="panel today-lane">
+          <div class="simple-panel-head"><h2>Blocked</h2><button onclick="location.hash='focus'; focusMode='clear-blockers'; focusIndex=0; setTimeout(render,0)">Clear blockers</button></div>
+          \${blockedItems.map(item => operatorItemCard(item)).join("") || '<div class="done-state">No urgent partner follow-ups or blocked operating work.</div>'}
         </section>
-        <section class="panel coo-panel section">
-          <div class="simple-panel-head"><h2>Partner Lifecycle</h2><button onclick="location.hash='partners'">Open Partners</button></div>
-          <div class="simple-counts" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:14px;">
-            <div class="simple-count-card"><span>Stalled</span><strong>\${Number(partnerBrief.stalledCount || 0)}</strong></div>
-            <div class="simple-count-card"><span>Proof-worthy</span><strong>\${Number(partnerBrief.proofWorthyCount || 0)}</strong></div>
-          </div>
-          <div class="coo-list" style="margin-top:14px">\${(partnerBrief.stalledPartners || []).map((item, index) => row({ title:item.name, whyItMatters:"Partner is stalled and needs a decision.", recommendedAction:item.nextAction || "Reframe, revive, or close" }, index + 1, "partners")).join("") || '<div class="empty">No stalled partners. Keep every partner tied to a next action and decision point.</div>'}</div>
+        <section class="panel section quick-capture">
+          <div><h2>Quick Capture</h2><p class="muted">Drop the signal here. The system will classify and route it.</p></div>
+          <form class="quick-capture" onsubmit="quickCapture(event)">
+            <textarea name="rawText" required placeholder="Capture a partner update, task, idea, meeting note, or concern…"></textarea>
+            <div class="card-actions"><button class="primary" type="submit">Capture</button><button type="button" onclick="location.hash='growth-inbox'">Open Growth Inbox</button></div>
+          </form>
         </section>
-        <section class="panel section" id="overview-approval-queue">
-          <div class="eyebrow">Overview Approval Summary v1</div>
-          <div class="simple-panel-head">
-            <h2>Approval Queue</h2>
-            <button class="primary" onclick="location.hash='queue'">Open Queue</button>
-          </div>
-          <div class="simple-counts" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:14px;">
-            <div class="simple-count-card"><span>Items need review</span><strong>\${activeApprovals.length}</strong></div>
-            <div class="simple-count-card"><span>Items ready to approve</span><strong>\${readyApprovals.length}</strong></div>
-            <div class="simple-count-card"><span>Blocked</span><strong>\${blockedApprovals.length}</strong></div>
-          </div>
-          <div class="card-actions" style="margin-top:14px;">
-            <button class="primary" onclick="location.hash='queue'">Open Queue</button>
-            <button onclick="location.hash='content-bank'">Open Content Bank</button>
+        <section class="panel section">
+          <div class="simple-panel-head"><h2>Focus Mode Launcher</h2><button class="primary" onclick="location.hash='focus'">Start</button></div>
+          <div class="focus-launcher">
+            \${focusModes.map(mode => \`<button onclick="setFocusMode('\${mode.id}')">\${esc(mode.label)}</button>\`).join("")}
           </div>
         </section>
-        <div class="coo-overview-stack section">
-          <section class="panel coo-panel" id="overview-blockers">
-            <div class="simple-panel-head"><h2>Blockers</h2><button onclick="location.hash='settings'">Fix setup</button></div>
-            <div class="coo-list">\${blockers.map((item, index) => row(item, index + 1, item.sourceType === "campaign" ? "campaigns" : "queue")).join("") || '<div class="empty">No blockers. Publishing still fails closed unless setup is ready.</div>'}</div>
-          </section>
-          <section class="panel coo-panel">
-            <div class="simple-panel-head"><h2>Growth Signals</h2><button onclick="location.hash='funnel'">Funnel</button></div>
-            <div class="coo-list">\${signals.map((item, index) => row({ ...item, recommendedAction:item.strength === "strong" ? "Turn into proof" : "Monitor" }, index + 1, item.sourceType === "partner" ? "partners" : item.sourceType === "pilot" ? "pilots" : "campaigns")).join("") || '<div class="empty">No traction signals yet. Add campaign or funnel data.</div>'}</div>
-          </section>
-        </div>
-        \${thisWeekViewHtml(posts)}
+        <section class="panel today-lane">
+          <div class="simple-panel-head"><h2>Growth Movement</h2><button onclick="location.hash='funnel'">Open Growth</button></div>
+          \${growthSignals.map(signal => operatorItemCard({
+            title:signal.title || signal.summary || "Growth signal",
+            whyItMatters:signal.whyItMatters || signal.summary || "This is traction worth turning into proof.",
+            nextAction:signal.strength === "strong" ? "Turn into investor proof." : "Monitor and keep attribution clean.",
+            priority:signal.strength === "strong" ? "high" : "medium",
+            status:"ready",
+            href:signal.sourceType === "partner" ? "partners" : signal.sourceType === "pilot" ? "pilots" : "campaigns",
+            button:"Open"
+          })).join("") || '<div class="done-state">No new growth movement yet.</div>'}
+        </section>
+        <section class="panel today-lane">
+          <div class="simple-panel-head"><h2>Proof Created This Week</h2><button onclick="createWeeklyEvidencePack()">Build Evidence Pack</button></div>
+          \${proofEvents.map(event => operatorItemCard({
+            title:event.title || event.eventType || "Proof event",
+            whyItMatters:event.summary || "This can become investor, partner, or diligence evidence.",
+            nextAction:"Capture this in the weekly evidence pack.",
+            priority:"medium",
+            status:"ready",
+            href:"reports",
+            button:"Open reports"
+          })).join("") || '<div class="done-state">Weekly proof captured.</div>'}
+        </section>
         <details class="panel section coo-health">
-          <summary>System Health</summary>
+          <summary>\${setupIssues ? setupIssues + " setup issue" + (setupIssues === 1 ? "" : "s") : "All systems ready"}</summary>
           <div class="metric-table" style="margin-top:12px">
             <div class="metric-row"><span>Live channel gates enabled</span><strong>\${readyChannels}</strong></div>
             <div class="metric-row"><span>Final PNGs ready</span><strong>\${pngReady}</strong></div>
@@ -15705,6 +15887,82 @@ function htmlShell() {
             <div class="metric-row"><span>TikTok</span><strong>diagnostic only</strong></div>
           </div>
         </details>
+      </section>\`;
+    }
+
+    function focusItemsForMode(mode = focusMode) {
+      const openInbox = (state.growthInbox || []).filter(item => !["converted", "ignored"].includes(String(item.status || "").toLowerCase()));
+      const openTasks = (state.tasks || []).filter(taskStatusOpen);
+      const activeApprovals = (state.approvalQueue || []).filter(item => !["approved", "archived", "ignored"].includes(String(item.status || "").toLowerCase()));
+      const partnerPrograms = state.partnerPrograms || [];
+      const blockers = state.blockers || [];
+      const make = (item = {}, type, page) => ({
+        id:item.id || item.sourceId || item.title,
+        type,
+        page,
+        title:item.title || item.summary || item.name || item.whatIsBlocked || "Focus item",
+        whyItMatters:item.whyItMatters || item.escalationReason || item.reason || item.whyBlocked || item.description || "This is surfaced because it helps Roger move the company without context switching.",
+        nextAction:item.nextAction || item.recommendedAction || item.suggestedAction || item.fix || "Review and decide.",
+        status:item.status || item.priority || "ready",
+        raw:item
+      });
+      if (mode === "inbox-triage") return openInbox.map(item => make(item, "growth_inbox", "growth-inbox"));
+      if (mode === "partner-follow-up") {
+        return [
+          ...openTasks.filter(task => task.sourceType === "partner" || /partner|follow/i.test([task.title, task.description].join(" "))).map(item => make(item, "task", "tasks")),
+          ...(state.cooBrief?.partnerLifecycle?.stalledPartners || []).map(item => make({ ...item, title:item.name, nextAction:item.nextAction || "Revive, reframe, or close." }, "partner", "partners"))
+        ];
+      }
+      if (mode === "content-approval") return activeApprovals.map(item => make(item, "approval", "queue"));
+      if (mode === "proposal-review") return partnerPrograms.filter(program => /proposal|ready_for_approval|sent/i.test([program.status, program.proposalStatus].join(" "))).map(item => make(item, "partner_program", "partner-proposals"));
+      if (mode === "weekly-report") return [
+        ...partnerPrograms.filter(program => /active|reporting|weekly/i.test([program.status, program.weeklyReportStatus].join(" "))).map(item => make(item, "partner_program", "partner-reports")),
+        ...openTasks.filter(task => /weekly|report/i.test([task.title, task.description, task.sourceType].join(" "))).map(item => make(item, "task", "tasks"))
+      ];
+      if (mode === "evidence-pack") return [
+        ...openTasks.filter(task => /proof|evidence|investor|data room|data_room/i.test([task.title, task.description, task.sourceType].join(" "))).map(item => make(item, "task", "tasks")),
+        make({ id:"weekly-evidence-pack", title:"Build weekly evidence pack", whyItMatters:"This turns operating activity into investor and partner proof.", nextAction:"Generate the draft, review claims, and save the artifact." }, "evidence_pack", "reports")
+      ];
+      if (mode === "clear-blockers") return [
+        ...blockers.map(item => make(item, "blocker", item.sourceType === "settings" ? "settings" : "tasks")),
+        ...openTasks.filter(task => String(task.status || "").toLowerCase() === "blocked" || task.escalationReason).map(item => make(item, "task", "tasks"))
+      ];
+      return operatorItems().map(item => make(item, item.type || "operator_item", item.href || "tasks"));
+    }
+
+    function focusPageHtml(pageClass) {
+      const mode = focusModes.find(item => item.id === focusMode) || focusModes[0];
+      const items = focusItemsForMode(mode.id);
+      if (focusIndex >= items.length) focusIndex = Math.max(0, items.length - 1);
+      const item = items[focusIndex];
+      return \`<section id="focus" class="section focus-shell \${pageClass("focus")}">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Focus Mode</div>
+          <h1 class="big-title">\${esc(mode.label)}</h1>
+          <p class="big-copy">One item at a time. Decide, snooze, dismiss, or open details.</p>
+        </div>
+        <div class="focus-mode-tabs">
+          \${focusModes.map(option => \`<button class="\${option.id === mode.id ? "active" : ""}" onclick="setFocusMode('\${option.id}')">\${esc(option.label)}</button>\`).join("")}
+        </div>
+        \${item ? \`<article class="focus-card">
+          <div class="focus-progress">\${focusIndex + 1} of \${items.length}</div>
+          <div class="today-meta"><span class="today-phase \${operatingPhaseClass(operatingPhaseFor(item))}">\${esc(operatingPhaseFor(item))}</span><span>\${esc(plainOperatorState(item.status))}</span></div>
+          <h2>\${esc(item.title)}</h2>
+          <div class="focus-field"><span>Why it matters</span><p>\${esc(item.whyItMatters)}</p></div>
+          <div class="focus-field"><span>Recommended action</span><p>\${esc(item.nextAction)}</p></div>
+          <div class="focus-actions">
+            <button class="primary" onclick="focusDone()">Done</button>
+            <button onclick="focusSnooze()">Snooze</button>
+            <button onclick="focusDismiss()">Dismiss</button>
+            <button onclick="focusDetails()">Details</button>
+            <button onclick="moveFocus(-1)" \${focusIndex <= 0 ? "disabled" : ""}>Previous</button>
+            <button onclick="moveFocus(1)" \${focusIndex >= items.length - 1 ? "disabled" : ""}>Next</button>
+          </div>
+        </article>\` : \`<div class="done-state">
+          <h2>\${esc(mode.label)} clear for now.</h2>
+          <p>No items in this lane. That is the point.</p>
+          <div class="card-actions" style="justify-content:center;margin-top:14px"><button class="primary" onclick="location.hash='overview'">Back to Today</button></div>
+        </div>\`}
       </section>\`;
     }
 
@@ -16786,7 +17044,7 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const pageId = ["overview", "growth-inbox", "tasks", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(requestedPage) ? requestedPage : "overview";
+      const pageId = ["overview", "focus", "growth-inbox", "tasks", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(requestedPage) ? requestedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -16794,6 +17052,7 @@ function htmlShell() {
       const healthTone = schemaStale ? "danger" : supabaseHealth?.connected ? "good" : supabaseHealth?.configured ? "warn" : "danger";
       document.querySelector("#app").innerHTML = \`
         \${pageId === "overview" ? commandCenterOverviewHtml(reviewPosts) : ""}
+        \${focusPageHtml(pageClass)}
         \${growthInboxPageHtml(pageClass)}
         \${tasksPageHtml(pageClass)}
         \${partnerProgramsPageHtml(pageClass)}
@@ -17420,6 +17679,97 @@ function htmlShell() {
         event.target.reset();
         return result.message || "Growth Inbox item added.";
       }, "Could not add Growth Inbox item.");
+    }
+
+    async function quickCapture(event) {
+      event.preventDefault();
+      const rawText = String(new FormData(event.target).get("rawText") || "").trim();
+      if (!rawText) {
+        toast("Add a note before capturing.");
+        return;
+      }
+      await cooAction(async () => {
+        const result = await api("/api/growth-inbox", {
+          method:"POST",
+          body:JSON.stringify({ rawText, sourceType:"", priority:"", owner:"Roger" })
+        });
+        state = result.state;
+        event.target.reset();
+        focusIndex = 0;
+        render();
+        return result.message || "Captured and routed to Growth Inbox.";
+      }, "Could not capture item.");
+    }
+
+    function setFocusMode(mode) {
+      focusMode = mode;
+      focusIndex = 0;
+      location.hash = "focus";
+      render();
+    }
+
+    function moveFocus(direction) {
+      const items = focusItemsForMode(focusMode);
+      focusIndex = Math.max(0, Math.min(items.length - 1, focusIndex + Number(direction || 0)));
+      render();
+    }
+
+    function currentFocusItem() {
+      return focusItemsForMode(focusMode)[focusIndex] || null;
+    }
+
+    async function focusDone() {
+      const item = currentFocusItem();
+      if (!item) return;
+      if (item.type === "task") {
+        await updateTaskAction(item.id, "done");
+      } else if (item.type === "growth_inbox") {
+        await triageGrowthInbox(item.id);
+      } else if (item.type === "approval") {
+        await approveItem(item.id);
+      } else if (item.type === "evidence_pack") {
+        await createWeeklyEvidencePack();
+      } else {
+        toast("Open details to complete this item safely.");
+      }
+      focusIndex = Math.min(focusIndex, Math.max(0, focusItemsForMode(focusMode).length - 1));
+      render();
+    }
+
+    async function focusSnooze() {
+      const item = currentFocusItem();
+      if (!item) return;
+      if (item.type === "task") {
+        await updateTaskAction(item.id, "snooze", { days:3 });
+      } else {
+        toast("Snooze is available for tasks. Open details for this item.");
+      }
+    }
+
+    async function focusDismiss() {
+      const item = currentFocusItem();
+      if (!item) return;
+      if (item.type === "task") {
+        await updateTaskAction(item.id, "dismiss", { reason:"Dismissed from Focus Mode." });
+      } else if (item.type === "growth_inbox") {
+        await cooAction(async () => {
+          const result = await api("/api/growth-inbox/" + encodeURIComponent(item.id) + "/ignore", {
+            method:"POST",
+            body:JSON.stringify({ reason:"Dismissed from Focus Mode." })
+          });
+          state = result.state;
+          render();
+          return result.message || "Growth Inbox item ignored.";
+        }, "Could not dismiss Growth Inbox item.");
+      } else {
+        toast("Dismiss is only available for tasks and inbox items.");
+      }
+    }
+
+    function focusDetails() {
+      const item = currentFocusItem();
+      if (!item) return;
+      location.hash = item.page || "overview";
     }
 
     async function triageGrowthInbox(id) {
