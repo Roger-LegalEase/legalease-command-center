@@ -12483,24 +12483,47 @@ function htmlShell() {
     .toast.show { opacity:1; transform:translateY(0); }
     html, body, .shell, main { max-width:100%; overflow-x:hidden; }
     .operator-today { display:block; width:100%; max-width:100%; }
-    .today-hero { display:grid; gap:18px; border:0; background:var(--le-navy); color:white; box-shadow:0 24px 62px rgba(8,20,95,.18); }
+    .today-hero { display:grid; gap:14px; border:0; background:var(--le-navy); color:white; box-shadow:0 20px 42px rgba(8,20,95,.16); }
     .today-hero .big-title { color:white; }
     .today-hero .big-copy, .today-hero .muted { color:rgba(255,255,255,.74); }
+    .operator-command-strip { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:center; padding:12px 14px; border:1px solid rgba(15,31,92,.12); border-radius:18px; background:linear-gradient(135deg,#FFFFFF,#F7FAFC); box-shadow:0 12px 30px rgba(15,31,92,.06); }
+    .operator-command-strip h1 { margin:0; font-size:24px; line-height:1.05; color:var(--le-navy); }
+    .operator-command-strip p { margin:4px 0 0; color:var(--le-muted); font-size:13px; line-height:1.35; }
+    .operator-strip-status { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
+    .operator-status-label { display:inline-flex; align-items:center; min-height:28px; gap:6px; padding:4px 9px; border-radius:999px; border:1px solid rgba(15,31,92,.1); background:white; color:#344054; font-size:12px; font-weight:850; }
+    .operator-status-label.safe { border-color:rgba(0,169,157,.22); color:#047A72; }
+    .operator-status-label.warn { border-color:rgba(217,119,6,.24); color:#92400E; }
+    .operator-status-label.danger { border-color:rgba(220,38,38,.24); color:var(--le-red); }
+    .operator-cockpit-grid { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(280px,.75fr); gap:14px; align-items:start; margin-top:14px; }
+    .operator-main-stack,.operator-side-rail { display:grid; gap:12px; min-width:0; }
+    .section-band { border:1px solid rgba(15,31,92,.12); border-radius:18px; padding:12px; background:var(--le-canvas); box-shadow:0 8px 22px rgba(15,31,92,.045); }
+    .section-band.work-queue { background:linear-gradient(180deg,#FFFFFF,#F4F7FB); border-left:4px solid var(--le-orange); }
+    .section-band.growth-band { background:linear-gradient(180deg,#FFFFFF,#F0F9F7); border-left:4px solid var(--le-teal); }
+    .section-band.proof-band { background:linear-gradient(180deg,#FFFFFF,#F5F8FC); border-left:4px solid var(--le-navy-mid); }
+    .section-band.blocked-band { border-left:4px solid var(--le-red); }
+    .compact-card { display:block; width:100%; max-width:100%; box-sizing:border-box; padding:12px 13px; border:1px solid rgba(15,31,92,.1); border-radius:12px; background:white; box-shadow:0 4px 14px rgba(15,31,92,.04); word-break:normal; overflow-wrap:break-word; }
+    .compact-card h3 { margin:0; color:var(--le-text); font-size:16px; line-height:1.25; letter-spacing:0; white-space:normal; word-break:normal; overflow-wrap:break-word; }
+    .compact-card p { margin:6px 0 0; font-size:13px; line-height:1.42; }
+    .compact-card .card-actions { margin-top:10px; }
+    .compact-list { display:grid; gap:9px; }
+    .section-band .simple-panel-head { margin-bottom:8px; }
+    .section-band .simple-panel-head h2 { font-size:18px; margin:0; }
+    .section-band textarea { min-height:92px; }
     .today-actions { display:flex; flex-wrap:wrap; gap:10px; }
     .today-actions button { min-height:42px; }
-    .today-lane { display:grid; gap:14px; margin-top:18px; }
-    .today-card { display:block; width:100%; max-width:100%; box-sizing:border-box; padding:18px; border:1px solid rgba(8,20,95,.08); border-radius:16px; background:white; box-shadow:0 14px 34px rgba(16,24,40,.06); word-break:normal; overflow-wrap:break-word; }
-    .today-card h3 { margin:0; color:var(--ink); font-size:18px; line-height:1.25; letter-spacing:0; white-space:normal; word-break:normal; overflow-wrap:break-word; }
+    .today-lane { display:grid; gap:10px; margin-top:12px; }
+    .today-card { display:block; width:100%; max-width:100%; box-sizing:border-box; padding:12px 13px; border:1px solid rgba(15,31,92,.1); border-radius:12px; background:white; box-shadow:0 4px 14px rgba(15,31,92,.04); word-break:normal; overflow-wrap:break-word; }
+    .today-card h3 { margin:0; color:var(--ink); font-size:16px; line-height:1.25; letter-spacing:0; white-space:normal; word-break:normal; overflow-wrap:break-word; }
     .today-card p { margin:8px 0 0; }
-    .today-card .card-actions { margin-top:14px; }
+    .today-card .card-actions { margin-top:10px; }
     .today-meta { display:flex; flex-wrap:wrap; gap:8px; align-items:center; color:var(--muted); font-size:13px; margin-bottom:8px; }
     .today-phase { display:inline-flex; align-items:center; min-height:26px; padding:4px 10px; border-radius:999px; background:#F2F4F7; color:#344054; font-size:12px; font-weight:900; }
     .today-phase.now { background:rgba(180,35,24,.1); color:var(--danger); }
     .today-phase.next { background:rgba(154,106,25,.1); color:var(--warning); }
     .today-phase.later { background:rgba(47,107,79,.1); color:var(--success); }
-    .today-summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
-    .today-summary-card { border:1px solid rgba(8,20,95,.08); border-radius:16px; background:white; padding:16px; display:grid; gap:8px; }
-    .today-summary-card strong { color:var(--ink); font-size:28px; line-height:1; }
+    .today-summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
+    .today-summary-card { border:1px solid rgba(8,20,95,.08); border-radius:14px; background:white; padding:11px; display:grid; gap:5px; }
+    .today-summary-card strong { color:var(--ink); font-size:23px; line-height:1; }
     .quick-capture { display:grid; gap:12px; }
     .quick-capture textarea { min-height:118px; resize:vertical; font-size:15px; line-height:1.45; }
     .focus-launcher { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
@@ -12585,6 +12608,10 @@ function htmlShell() {
       .lee-bubble-button { position:fixed; right:16px; bottom:16px; justify-self:end; }
       .lee-bubble-panel { width:100vw; max-height:100vh; min-height:100vh; border-radius:0; border:0; }
     }
+    .landing-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(260px,.75fr); gap:14px; align-items:start; }
+    .landing-actions { display:grid; gap:9px; }
+    .landing-actions a { display:flex; justify-content:space-between; align-items:center; gap:12px; min-height:44px; padding:10px 12px; border:1px solid rgba(15,31,92,.1); border-radius:12px; background:white; color:var(--le-text); text-decoration:none; font-weight:850; }
+    .landing-actions a:hover,.landing-actions a:focus-visible { background:#F4F7FB; color:var(--le-navy); }
     :root {
       --le-navy:#0F1F5C;
       --le-navy-mid:#1B2B80;
@@ -12593,12 +12620,16 @@ function htmlShell() {
       --le-green:#059669;
       --le-amber:#D97706;
       --le-red:#DC2626;
+      --le-shell-bg:#EEF2F6;
+      --le-canvas:#F8FAFC;
+      --le-band:#E7ECF3;
+      --le-band-strong:#DDE6F0;
       --le-bg:#F4F5F7;
       --le-border:#DDE0E8;
       --le-text:#1A1A2E;
       --le-muted:#6B7280;
       --le-white:#FFFFFF;
-      --paper:var(--le-bg);
+      --paper:var(--le-shell-bg);
       --surface:var(--le-white);
       --surface-soft:#F8FAFB;
       --line:var(--le-border);
@@ -12611,13 +12642,15 @@ function htmlShell() {
       --danger:var(--le-red);
       --shadow:0 18px 45px rgba(16,24,40,.08);
     }
-    body { background:var(--le-bg); color:var(--text); }
-    aside { min-height:72px; padding:0 32px; background:rgba(255,255,255,.9); backdrop-filter:blur(18px); box-shadow:0 1px 0 rgba(16,24,40,.05); }
+    body { background:var(--le-shell-bg); color:var(--text); }
+    aside { min-height:64px; padding:0 26px; background:rgba(255,255,255,.94); backdrop-filter:blur(18px); border-bottom:1px solid rgba(15,31,92,.12); box-shadow:0 8px 24px rgba(15,31,92,.06); }
     .brand h1 { color:var(--ink); font-size:18px; letter-spacing:0; }
     .brand small, .eyebrow { color:var(--accent); letter-spacing:.12em; }
     nav { gap:6px; flex-wrap:nowrap; overflow:visible; }
+    .nav-top-link { display:inline-flex; align-items:center; min-height:38px; border-radius:999px; padding:10px 14px; color:#475467; font-weight:850; font-size:14px; text-decoration:none; }
+    .nav-top-link:hover, .nav-top-link:focus-visible, .nav-top-link.active { background:var(--le-navy-mid); color:white; }
     .nav-menu { position:relative; }
-    .nav-menu summary { list-style:none; cursor:pointer; display:inline-flex; align-items:center; gap:7px; border-radius:999px; padding:10px 14px; color:#475467; font-weight:850; font-size:14px; outline:none; }
+    .nav-menu summary { list-style:none; cursor:pointer; display:inline-flex; align-items:center; min-height:38px; gap:7px; border-radius:999px; padding:10px 14px; color:#475467; font-weight:850; font-size:14px; outline:none; }
     .nav-menu summary::-webkit-details-marker { display:none; }
     .nav-menu summary::after { content:""; width:6px; height:6px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; transform:rotate(45deg) translateY(-2px); opacity:.55; }
     .nav-menu summary:hover, .nav-menu summary:focus-visible, .nav-menu.active summary { background:var(--le-navy-mid); color:white; }
@@ -12627,9 +12660,9 @@ function htmlShell() {
     .nav-menu-panel a.active::after { content:"Selected"; color:var(--le-muted); font-size:11px; font-weight:800; }
     nav a { border-radius:999px; padding:10px 14px; color:#475467; font-weight:750; }
     nav a.active, nav a:hover { background:var(--le-navy-mid); color:white; }
-    main { max-width:1040px; padding-top:28px; }
-    .panel,.card { border-color:rgba(8,20,95,.08); border-radius:14px; box-shadow:var(--shadow); background:rgba(255,255,255,.96); }
-    .panel,.card { padding:20px; }
+    main { max-width:1180px; padding-top:18px; }
+    .panel,.card { border-color:rgba(15,31,92,.12); border-radius:14px; box-shadow:0 10px 26px rgba(15,31,92,.055); background:rgba(255,255,255,.97); }
+    .panel,.card { padding:14px; }
     .hero-panel { border:0; box-shadow:none; background:transparent; padding:4px 2px 10px; gap:8px; }
     .big-title { font-size:32px; line-height:1.05; color:var(--ink); letter-spacing:0; }
     .big-copy { color:var(--muted); font-size:15px; max-width:680px; }
@@ -12736,10 +12769,25 @@ function htmlShell() {
     .mini-form button { align-self:end; }
     .funnel-stage { display:grid; gap:6px; padding:12px; border-radius:14px; background:#F4F7F6; border:1px solid rgba(8,20,95,.08); }
     .funnel-stage strong { color:var(--ink); font-size:20px; }
-    @media (max-width:1100px) { .layout,.command,.post-grid,.three,.two,.calendar,.queue-card,.operator-review,.wilma-grid,.export-grid,.archive-grid,.executive-grid,.ops-row { grid-template-columns:1fr; } aside { position:static; min-height:auto; align-items:flex-start; flex-direction:column; padding:14px 18px; } nav { width:100%; overflow:auto; align-items:flex-start; } .nav-menu { flex:0 0 auto; } header,main { padding-left:18px; padding-right:18px; } .image-stage { position:static; order:-1; } .operator-preview .image-preview { min-height:300px; } }
+    @media (max-width:1100px) { .layout,.command,.post-grid,.three,.two,.calendar,.queue-card,.operator-review,.wilma-grid,.export-grid,.archive-grid,.executive-grid,.ops-row,.operator-cockpit-grid,.landing-grid { grid-template-columns:1fr; } aside { position:static; min-height:auto; align-items:flex-start; flex-direction:column; padding:14px 18px; } nav { width:100%; overflow:auto; align-items:flex-start; } .nav-menu,.nav-top-link { flex:0 0 auto; } header,main { padding-left:18px; padding-right:18px; } .image-stage { position:static; order:-1; } .operator-preview .image-preview { min-height:300px; } .operator-command-strip { grid-template-columns:1fr; } .operator-strip-status { justify-content:flex-start; } }
     @media (max-width:1100px) { .mission-grid,.readiness-strip,.pipeline-board,.health-grid,.metric-table,.asset-library-grid,.modal-grid,.lee-shell { grid-template-columns:1fr; } .readiness-strip,.pipeline-board { overflow:visible; } .lee-message { max-width:100%; } }
 
     ${designSystem.interfaceCss}
+
+    /* Operator shell final overrides. Keep these after legacy design CSS so the COO cockpit stays compact. */
+    body { background:var(--le-shell-bg); color:var(--le-text); }
+    aside { background:rgba(255,255,255,.94); border-bottom:1px solid rgba(15,31,92,.12); box-shadow:0 8px 24px rgba(15,31,92,.06); }
+    main { max-width:1180px; padding-top:18px; }
+    .panel,.card { border-color:rgba(15,31,92,.12); box-shadow:0 10px 26px rgba(15,31,92,.055); }
+    .operator-cockpit-grid { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(280px,.75fr); gap:14px; align-items:start; margin-top:14px; }
+    .operator-main-stack,.operator-side-rail { display:grid; gap:12px; min-width:0; }
+    .section-band { border:1px solid rgba(15,31,92,.12); border-radius:18px; padding:12px; background:var(--le-canvas); box-shadow:0 8px 22px rgba(15,31,92,.045); }
+    .compact-card,.today-card { padding:12px 13px; border-radius:12px; box-shadow:0 4px 14px rgba(15,31,92,.04); }
+    .compact-card h3,.today-card h3 { font-size:16px; line-height:1.25; word-break:normal; white-space:normal; }
+    .compact-card p,.today-card p { font-size:13px; line-height:1.42; }
+    .nav-top-link { display:inline-flex; align-items:center; min-height:38px; border-radius:999px; padding:10px 14px; color:#475467; font-weight:850; font-size:14px; text-decoration:none; }
+    .nav-top-link:hover,.nav-top-link:focus-visible,.nav-top-link.active { background:var(--le-navy-mid); color:white; }
+    @media (max-width:1100px) { .operator-cockpit-grid,.landing-grid { grid-template-columns:1fr; } .operator-command-strip { grid-template-columns:1fr; } }
 
   </style>
 </head>
@@ -12748,12 +12796,12 @@ function htmlShell() {
     <aside>
       <div class="brand"><small>LegalEase</small><h1>Command Center</h1></div>
       <nav>
-        <details class="nav-menu" data-nav-section="today"><summary>Today</summary><div class="nav-menu-panel"><a href="#overview">Today</a><a href="#focus">Focus</a><a href="#overview">Quick Capture</a><a href="#tasks">Today's Tasks</a></div></details>
-        <details class="nav-menu" data-nav-section="growth"><summary>Growth</summary><div class="nav-menu-panel"><a href="#growth-inbox">Growth Inbox</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a><a href="#metrics">Metrics</a></div></details>
-        <details class="nav-menu" data-nav-section="partners"><summary>Partners</summary><div class="nav-menu-panel"><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
-        <details class="nav-menu" data-nav-section="production"><summary>Production</summary><div class="nav-menu-panel"><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
-        <details class="nav-menu" data-nav-section="proof"><summary>Proof</summary><div class="nav-menu-panel"><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
-        <details class="nav-menu" data-nav-section="more"><summary>More</summary><div class="nav-menu-panel"><a href="#tasks">Tasks</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
+        <a class="nav-top-link" href="#overview" data-nav-section="today">Today</a>
+        <details class="nav-menu" data-nav-section="growth"><summary>Growth</summary><div class="nav-menu-panel"><a href="#growth">Growth Home</a><a href="#growth-inbox">Growth Inbox</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a><a href="#metrics">Metrics</a></div></details>
+        <details class="nav-menu" data-nav-section="partners"><summary>Partners</summary><div class="nav-menu-panel"><a href="#partner-hub">Partners Home</a><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
+        <details class="nav-menu" data-nav-section="production"><summary>Production</summary><div class="nav-menu-panel"><a href="#production">Production Home</a><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
+        <details class="nav-menu" data-nav-section="proof"><summary>Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
+        <details class="nav-menu" data-nav-section="more"><summary>More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
       </nav>
     </aside>
     <div>
@@ -15845,7 +15893,7 @@ function htmlShell() {
       const action = item.primaryAction || item.nextAction || item.recommendedAction || "Open";
       const href = item.href || item.page || "tasks";
       const button = item.button || "Open";
-      return \`<article class="today-card">
+      return \`<article class="compact-card today-card">
         <div class="today-meta"><span class="today-phase \${operatingPhaseClass(phase)}">\${esc(phase)}</span><span>\${esc(item.stateLabel || plainOperatorState(item.status || item.priority || phase))}</span></div>
         <h3>\${esc(item.title || "Review item")}</h3>
         <p class="muted"><strong>Why it matters:</strong> \${esc(item.whyItMatters || item.reason || item.description || "This keeps the operating system moving without forcing you to hunt.")}</p>
@@ -15974,76 +16022,95 @@ function htmlShell() {
       const pngReady = posts.filter(post => finalPngReady(post, imageForPost(post.id))).length;
       const publicUrlReady = credentialPresent("PUBLIC_APP_BASE_URL");
       const setupIssues = readyChannels + (publicUrlReady ? 0 : 1) === 0 ? 1 : Math.max(0, 1 - readyChannels) + (publicUrlReady ? 0 : 1);
+      const partnerPrograms = state.partnerPrograms || [];
+      const paidPrograms = partnerPrograms.filter(program => program.paymentStatus === "paid").length;
+      const stalledPrograms = partnerPrograms.filter(program => String(program.status || "").toLowerCase() === "stalled").length;
+      const readyContent = posts.filter(post => ["approved", "scheduled", "retry_ready"].includes(post.status)).length;
+      const todaysDate = new Date().toLocaleDateString(undefined, { weekday:"long", month:"short", day:"numeric" });
       return \`<section class="page-section active operator-today">
-        <section class="panel today-hero">
+        <section class="operator-command-strip">
           <div>
-            <div class="eyebrow">Today</div>
-            <h1 class="big-title">Run the day from here.</h1>
-            <p class="big-copy">\${esc(brief.recommendedMove || "Capture what changed, clear the decisions, and move proof forward.")}</p>
+            <div class="eyebrow">Today · \${esc(todaysDate)}</div>
+            <h1>Run the day from here.</h1>
+            <p>\${esc(brief.recommendedMove || "Capture what changed, clear decisions, and move proof forward.")}</p>
           </div>
-          <div class="today-summary-grid">
-            <div class="today-summary-card"><span>Waiting on Roger</span><strong>\${activeApprovals.length + waitingRogerTasks.length}</strong><small>Needs your decision</small></div>
-            <div class="today-summary-card"><span>Blocked</span><strong>\${blockedItems.length}</strong><small>Stops forward motion</small></div>
-            <div class="today-summary-card"><span>Inbox</span><strong>\${Number(inboxBrief.untriagedCount || 0)}</strong><small>Untriaged signals</small></div>
-            <div class="today-summary-card"><span>Overdue</span><strong>\${overdueTasks.length}</strong><small>Owned tasks</small></div>
-          </div>
-          <div class="today-actions">
+          <div class="operator-strip-status">
+            <span class="operator-status-label safe">Le-E ready</span>
+            <span class="operator-status-label \${setupIssues ? "warn" : "safe"}">\${setupIssues ? setupIssues + " setup issue" + (setupIssues === 1 ? "" : "s") : "Systems ready"}</span>
+            <span class="operator-status-label \${readyChannels ? "danger" : "safe"}">Live gates: \${readyChannels}</span>
             <button class="primary" onclick="location.hash='focus'">Start Focus Mode</button>
-            <button onclick="openLeeBubble()">Ask Le-E</button>
-            <button onclick="location.hash='growth-inbox'">Open Growth Inbox</button>
-            <button onclick="location.hash='tasks'">Open Tasks</button>
-            <button onclick="createWeeklyEvidencePack()">Build Weekly Evidence Pack</button>
           </div>
         </section>
-        <section class="panel today-lane">
-          <div class="simple-panel-head"><h2>Today’s 3 Priorities</h2><button onclick="rebuildPriorities()">Refresh</button></div>
-          \${nowItems.slice(0, 3).map(item => operatorItemCard(item)).join("") || '<div class="done-state">No Now items. Growth Inbox clear for today.</div>'}
-        </section>
-        <section class="panel today-lane">
-          <div class="simple-panel-head"><h2>Waiting on Roger</h2><button onclick="location.hash='focus'">Focus</button></div>
-          \${waitingItems.map(item => operatorItemCard(item)).join("") || '<div class="done-state">No high-risk items waiting.</div>'}
-        </section>
-        <section class="panel today-lane">
-          <div class="simple-panel-head"><h2>Blocked</h2><button onclick="location.hash='focus'; focusMode='clear-blockers'; focusIndex=0; setTimeout(render,0)">Clear blockers</button></div>
-          \${blockedItems.map(item => operatorItemCard(item)).join("") || '<div class="done-state">No urgent partner follow-ups or blocked operating work.</div>'}
-        </section>
-        <section class="panel section quick-capture">
-          <div><h2>Quick Capture</h2><p class="muted">Drop the signal here. The system will classify and route it.</p></div>
-          <form class="quick-capture" onsubmit="quickCapture(event)">
-            <textarea name="rawText" required placeholder="Capture a partner update, task, idea, meeting note, or concern…"></textarea>
-            <div class="card-actions"><button class="primary" type="submit">Capture</button><button type="button" onclick="location.hash='growth-inbox'">Open Growth Inbox</button></div>
-          </form>
-        </section>
-        <section class="panel section">
-          <div class="simple-panel-head"><h2>Focus Mode Launcher</h2><button class="primary" onclick="location.hash='focus'">Start</button></div>
-          <div class="focus-launcher">
-            \${focusModes.map(mode => \`<button onclick="setFocusMode('\${mode.id}')">\${esc(mode.label)}</button>\`).join("")}
+        <div class="operator-cockpit-grid">
+          <div class="operator-main-stack">
+            <section class="section-band today-command-band">
+              <div class="simple-panel-head"><h2>Today’s 3 Priorities</h2><button onclick="rebuildPriorities()">Refresh</button></div>
+              <div class="compact-list">\${nowItems.slice(0, 3).map(item => operatorItemCard(item)).join("") || '<div class="done-state">No Now items. Growth Inbox clear for today.</div>'}</div>
+            </section>
+            <section class="section-band work-queue">
+              <div class="simple-panel-head"><h2>Waiting on Roger</h2><button onclick="location.hash='focus'">Focus</button></div>
+              <div class="compact-list">\${waitingItems.slice(0, 3).map(item => operatorItemCard(item)).join("") || '<div class="done-state">No high-risk items waiting.</div>'}</div>
+            </section>
+            <section class="section-band blocked-band">
+              <div class="simple-panel-head"><h2>Blocked</h2><button onclick="location.hash='focus'; focusMode='clear-blockers'; focusIndex=0; setTimeout(render,0)">Clear blockers</button></div>
+              <div class="compact-list">\${blockedItems.slice(0, 3).map(item => operatorItemCard(item)).join("") || '<div class="done-state">No urgent partner follow-ups or blocked operating work.</div>'}</div>
+            </section>
           </div>
-        </section>
-        <section class="panel today-lane">
-          <div class="simple-panel-head"><h2>Growth Movement</h2><button onclick="location.hash='funnel'">Open Growth</button></div>
-          \${growthSignals.map(signal => operatorItemCard({
-            title:signal.title || signal.summary || "Growth signal",
-            whyItMatters:signal.whyItMatters || signal.summary || "This is traction worth turning into proof.",
-            nextAction:signal.strength === "strong" ? "Turn into investor proof." : "Monitor and keep attribution clean.",
-            priority:signal.strength === "strong" ? "high" : "medium",
-            status:"ready",
-            href:signal.sourceType === "partner" ? "partners" : signal.sourceType === "pilot" ? "pilots" : "campaigns",
-            button:"Open"
-          })).join("") || '<div class="done-state">No new growth movement yet.</div>'}
-        </section>
-        <section class="panel today-lane">
-          <div class="simple-panel-head"><h2>Proof Created This Week</h2><button onclick="createWeeklyEvidencePack()">Build Evidence Pack</button></div>
-          \${proofEvents.map(event => operatorItemCard({
-            title:event.title || event.eventType || "Proof event",
-            whyItMatters:event.summary || "This can become investor, partner, or diligence evidence.",
-            nextAction:"Capture this in the weekly evidence pack.",
-            priority:"medium",
-            status:"ready",
-            href:"reports",
-            button:"Open reports"
-          })).join("") || '<div class="done-state">Weekly proof captured.</div>'}
-        </section>
+          <aside class="operator-side-rail">
+            <section class="section-band quick-capture">
+              <div><h2>Quick Capture</h2><p class="muted">Drop the signal here. The system classifies and routes it.</p></div>
+              <form class="quick-capture" onsubmit="quickCapture(event)">
+                <textarea name="rawText" required aria-label="Quick capture" placeholder="Capture a partner update, task, idea, meeting note, or concern…"></textarea>
+                <div class="card-actions"><button class="primary" type="submit">Capture</button><button type="button" onclick="openLeeBubble()">Ask Le-E</button></div>
+              </form>
+            </section>
+            <section class="section-band">
+              <div class="simple-panel-head"><h2>Focus Launcher</h2><button class="primary" onclick="location.hash='focus'">Start</button></div>
+              <div class="focus-launcher">
+                \${focusModes.slice(0, 5).map(mode => \`<button onclick="setFocusMode('\${mode.id}')">\${esc(mode.label)}</button>\`).join("")}
+              </div>
+            </section>
+            <section class="section-band proof-band">
+              <div class="simple-panel-head"><h2>Proof Created This Week</h2><button onclick="createWeeklyEvidencePack()">Build</button></div>
+              <div class="compact-list">\${proofEvents.slice(0, 3).map(event => operatorItemCard({
+                title:event.title || event.eventType || "Proof event",
+                whyItMatters:event.summary || "This can become investor, partner, or diligence evidence.",
+                nextAction:"Capture this in the weekly evidence pack.",
+                priority:"medium",
+                status:"ready",
+                href:"reports",
+                button:"Open"
+              })).join("") || '<div class="done-state">Weekly proof captured.</div>'}</div>
+            </section>
+          </aside>
+        </div>
+        <div class="operator-cockpit-grid">
+          <section class="section-band growth-band">
+            <div class="simple-panel-head"><h2>Growth Movement</h2><button onclick="location.hash='growth'">Open Growth</button></div>
+            <div class="today-summary-grid">
+              <div class="today-summary-card"><span>Inbox</span><strong>\${Number(inboxBrief.untriagedCount || 0)}</strong><small>Untriaged signals</small></div>
+              <div class="today-summary-card"><span>Overdue</span><strong>\${overdueTasks.length}</strong><small>Owned tasks</small></div>
+              <div class="today-summary-card"><span>Ready content</span><strong>\${readyContent}</strong><small>Can move forward</small></div>
+            </div>
+            <div class="compact-list" style="margin-top:10px">\${growthSignals.slice(0, 3).map(signal => operatorItemCard({
+              title:signal.title || signal.summary || "Growth signal",
+              whyItMatters:signal.whyItMatters || signal.summary || "This is traction worth turning into proof.",
+              nextAction:signal.strength === "strong" ? "Turn into investor proof." : "Monitor and keep attribution clean.",
+              priority:signal.strength === "strong" ? "high" : "medium",
+              status:"ready",
+              href:signal.sourceType === "partner" ? "partners" : signal.sourceType === "pilot" ? "pilots" : "campaigns",
+              button:"Open"
+            })).join("") || '<div class="done-state">No new growth movement yet.</div>'}</div>
+          </section>
+          <section class="section-band proof-band">
+            <div class="simple-panel-head"><h2>Partner + Production Snapshot</h2><button onclick="location.hash='partner-hub'">Open</button></div>
+            <div class="today-summary-grid">
+              <div class="today-summary-card"><span>Paid programs</span><strong>\${paidPrograms}</strong><small>Need clean execution</small></div>
+              <div class="today-summary-card"><span>Stalled partners</span><strong>\${stalledPrograms}</strong><small>Need a decision</small></div>
+              <div class="today-summary-card"><span>Final PNGs</span><strong>\${pngReady}</strong><small>Ready assets</small></div>
+            </div>
+          </section>
+        </div>
         <details class="panel section coo-health">
           <summary>\${setupIssues ? setupIssues + " setup issue" + (setupIssues === 1 ? "" : "s") : "All systems ready"}</summary>
           <div class="metric-table" style="margin-top:12px">
@@ -16411,6 +16478,80 @@ function htmlShell() {
         </section>
         <button class="lee-bubble-button" type="button" onclick="openLeeBubble()" aria-label="Ask Le-E" \${leeBubbleOpen ? "hidden" : ""}>Le-E</button>
       </div>\`;
+    }
+
+    function sectionLandingConfig(section) {
+      const configs = [
+        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Triage signals, move campaigns, and keep RecordShield proof visible.", links:[["Growth Inbox","growth-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"]] },
+        { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Move partner programs from lead to paid onboarding, reports, and renewal proof.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"]] },
+        { id:"production", eyebrow:"Production", title:"Production", copy:"Turn ideas into approved assets without losing the approval-first safety model.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
+        { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
+        { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
+      ];
+      return configs.find(item => item.id === section) || configs[0];
+    }
+
+    function sectionLandingPageHtml(pageClass, section) {
+      const config = sectionLandingConfig(section);
+      const activeApprovals = (state.approvalQueue || []).filter(item => !["approved", "archived", "ignored"].includes(String(item.status || "").toLowerCase()));
+      const openTasks = (state.tasks || []).filter(taskStatusOpen);
+      const blockedTasks = openTasks.filter(task => String(task.status || "").toLowerCase() === "blocked" || task.escalationReason);
+      const partnerPrograms = state.partnerPrograms || [];
+      const metrics = {
+        growth:[
+          ["Inbox", (state.growthInbox || []).filter(item => !["converted", "ignored"].includes(String(item.status || "").toLowerCase())).length, "Need routing"],
+          ["Campaigns", (state.campaigns || []).length, "Active or tracked"],
+          ["Funnel", (state.recordShieldFunnel || state.funnel || []).length || "Ready", "RecordShield view"]
+        ],
+        "partner-hub":[
+          ["Programs", partnerPrograms.length, "Tracked"],
+          ["Paid", partnerPrograms.filter(program => program.paymentStatus === "paid").length, "Need execution"],
+          ["Stalled", partnerPrograms.filter(program => String(program.status || "").toLowerCase() === "stalled").length, "Need decision"]
+        ],
+        production:[
+          ["Queue", activeApprovals.length, "Need review"],
+          ["Content Bank", (state.contentBank || []).length, "Ideas"],
+          ["Posted", (state.posts || []).filter(post => /posted|manually/i.test(String(post.status || ""))).length, "Published/manual"]
+        ],
+        proof:[
+          ["Reports", (state.reports || []).length, "Artifacts"],
+          ["Data Room", (state.dataRoomItems || []).length, "Items"],
+          ["SOC 2", (state.soc2Evidence || []).length, "Evidence records"]
+        ],
+        more:[
+          ["Tasks", openTasks.length, "Open"],
+          ["Blocked", blockedTasks.length, "Need clearing"],
+          ["Live gates", Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length, "Must stay 0"]
+        ]
+      }[section] || [];
+      const nextAction = {
+        growth:"Triage Growth Inbox first, then turn strong movement into proof.",
+        "partner-hub":"Open Partner Programs and move paid or stalled partners forward.",
+        production:"Open Queue for approval work; do not auto-publish.",
+        proof:"Generate or review the Weekly Evidence Pack.",
+        more:"Clear owned tasks, then check settings only if something is blocked."
+      }[section] || "Open the next relevant page.";
+      return \`<section id="\${esc(config.id)}" class="\${pageClass(config.id)}">
+        <section class="operator-command-strip">
+          <div>
+            <div class="eyebrow">\${esc(config.eyebrow)}</div>
+            <h1>\${esc(config.title)}</h1>
+            <p>\${esc(config.copy)}</p>
+          </div>
+          <div class="operator-strip-status"><span class="operator-status-label warn">Next action</span><button class="primary" onclick="location.hash='\${esc(config.links[0]?.[1] || "overview")}'">Open first</button></div>
+        </section>
+        <div class="landing-grid section">
+          <section class="section-band">
+            <div class="simple-panel-head"><h2>Snapshot</h2><button onclick="location.hash='overview'">Today</button></div>
+            <div class="today-summary-grid">\${metrics.map(([label, value, detail]) => \`<div class="today-summary-card"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></div>\`).join("")}</div>
+            <article class="compact-card" style="margin-top:10px"><h3>Recommended move</h3><p class="muted">\${esc(nextAction)}</p></article>
+          </section>
+          <aside class="section-band proof-band">
+            <div class="simple-panel-head"><h2>Open</h2></div>
+            <div class="landing-actions">\${config.links.map(([label, href]) => \`<a href="#\${esc(href)}"><span>\${esc(label)}</span><strong>Open</strong></a>\`).join("")}</div>
+          </aside>
+        </div>
+      </section>\`;
     }
 
     function growthInboxPageHtml(pageClass) {
@@ -17492,7 +17633,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth-inbox", "tasks", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "tasks", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -17502,6 +17643,11 @@ function htmlShell() {
         \${pageId === "overview" ? commandCenterOverviewHtml(reviewPosts) : ""}
         \${focusPageHtml(pageClass)}
         \${leePageHtml(pageClass)}
+        \${sectionLandingPageHtml(pageClass, "growth")}
+        \${sectionLandingPageHtml(pageClass, "partner-hub")}
+        \${sectionLandingPageHtml(pageClass, "production")}
+        \${sectionLandingPageHtml(pageClass, "proof")}
+        \${sectionLandingPageHtml(pageClass, "more")}
         \${growthInboxPageHtml(pageClass)}
         \${tasksPageHtml(pageClass)}
         \${partnerProgramsPageHtml(pageClass)}
@@ -17727,16 +17873,25 @@ function htmlShell() {
       document.querySelectorAll(".nav-menu").forEach(menu => {
         menu.classList.toggle("active", menu.dataset.navSection === navSectionForPage(pageId));
       });
+      document.querySelectorAll(".nav-top-link").forEach(link => {
+        link.classList.toggle("active", link.dataset.navSection === navSectionForPage(pageId));
+      });
       renderBrandTab("assets");
     }
 
     function navSectionForPage(pageId = "overview") {
       if (["overview", "focus"].includes(pageId)) return "today";
-      if (["growth-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
-      if (["partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
-      if (["content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
-      if (["reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
+      if (["growth", "growth-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
+      if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
+      if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
+      if (["proof", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
       return "more";
+    }
+
+    function closeNavMenus(event) {
+      document.querySelectorAll(".nav-menu[open]").forEach(menu => {
+        if (!event || !menu.contains(event.target)) menu.removeAttribute("open");
+      });
     }
 
     function showBrandTab(tab, button) {
@@ -20032,12 +20187,14 @@ function htmlShell() {
 
     window.addEventListener("hashchange", () => {
       try {
+        closeNavMenus();
         window.__LE_BOOT.stage = "route-render";
         render();
       } catch (error) {
         showRenderFailure(error.message || "Route render failed.", "route-render");
       }
     });
+    window.addEventListener("click", closeNavMenus);
     window.addEventListener("keydown", event => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();

@@ -12,13 +12,28 @@ assert.match(server, /Capture a partner update, task, idea, meeting note, or con
 assert.match(server, /function quickCapture\(event\)/, "Quick Capture should have a dedicated submit handler.");
 assert.match(server, /api\("\/api\/growth-inbox"/, "Quick Capture should create Growth Inbox items.");
 assert.match(server, /function focusPageHtml\(pageClass\)/, "Focus Mode page should render through the app shell.");
-assert.match(server, /data-nav-section="today"><summary>Today<\/summary>/, "Simplified nav should expose Today.");
+assert.match(server, /--le-shell-bg:\s*#EEF2F6/, "Operator shell should use a cooler high-contrast page background token.");
+assert.match(server, /class="nav-top-link" href="#overview" data-nav-section="today"/, "Today top nav item should be a real link to #overview.");
 assert.match(server, /data-nav-section="growth"><summary>Growth<\/summary>/, "Simplified nav should expose Growth.");
 assert.match(server, /data-nav-section="partners"><summary>Partners<\/summary>/, "Simplified nav should expose Partners.");
 assert.match(server, /data-nav-section="production"><summary>Production<\/summary>/, "Simplified nav should expose Production.");
 assert.match(server, /data-nav-section="proof"><summary>Proof<\/summary>/, "Simplified nav should expose Proof.");
 assert.match(server, /data-nav-section="more"><summary>More<\/summary>/, "Simplified nav should expose More.");
 assert.equal((server.match(/data-nav-section="/g) || []).length, 6, "Top navigation should have exactly six visible sections.");
+assert.match(server, /function closeNavMenus/, "Navigation menus should close on outside clicks.");
+assert.match(server, /addEventListener\("click", closeNavMenus/, "Navigation should wire outside-click closing.");
+assert.match(server, /function sectionLandingPageHtml\(pageClass, section\)/, "Top-level sections should have compact landing pages.");
+assert.match(server, /id:"growth"/, "Growth landing route should exist.");
+assert.match(server, /id:"partner-hub"/, "Partners landing route should exist.");
+assert.match(server, /id:"production"/, "Production landing route should exist.");
+assert.match(server, /id:"proof"/, "Proof landing route should exist.");
+assert.match(server, /id:"more"/, "More landing route should exist.");
+assert.match(server, /operator-command-strip/, "Today should have a compact top command strip.");
+assert.match(server, /operator-cockpit-grid/, "Today should use a true COO cockpit grid.");
+assert.match(server, /operator-side-rail/, "Today should use a narrower side rail for capture/focus/proof.");
+assert.match(server, /compact-card/, "Today cards should use compact density.");
+assert.match(server, /section-band work-queue/, "Today should have a distinct work queue band.");
+assert.match(server, /section-band proof-band/, "Today should have a distinct proof band.");
 assert.match(server, /class="lee-bubble-button"/, "Le-E should be available as a bottom-right bubble.");
 assert.match(server, /openLeeBubble\(\)">Ask Le-E<\/button>/, "Today should open the Le-E bubble instead of navigating to a full page.");
 assert.match(server, /Inbox Triage/, "Focus Mode should include Inbox Triage.");
@@ -32,5 +47,7 @@ assert.match(server, /"focus"/, "Focus route should be included in the render wh
 assert.doesNotMatch(server, /Overview Approval Summary v1/, "Today should not keep the old Overview approval summary marker.");
 assert.doesNotMatch(server, /overview-approval-queue/, "Today should not render approval queue cards or summary blocks.");
 assert.doesNotMatch(server, /href="#lee">Ask Le-E/, "Top navigation should not expose Ask Le-E.");
+assert.doesNotMatch(server, /word-break:\s*break-all/, "Operator shell should never force one-letter vertical text.");
+assert.doesNotMatch(server, /writing-mode:/, "Operator shell should not use vertical writing modes.");
 
 console.log("operator experience tests passed");
