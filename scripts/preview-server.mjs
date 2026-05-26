@@ -44,6 +44,18 @@ import {
   linkedinAuthorizationUrl,
   publicChannelSetup
 } from "./channel-connectors.mjs";
+import {
+  applyLeeActionProposal,
+  buildLeeKnowledgeIndex,
+  buildLeeStatus,
+  createLeeThread,
+  leeChat,
+  leeToolPolicy,
+  leeTools,
+  rebuildLeeIndexState,
+  searchLeeKnowledge,
+  updateLeeActionProposal
+} from "./lee-engine.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -1989,6 +2001,59 @@ async function updateTaskRecord(id = "", action = "in_progress", patch = {}) {
     next = analyzeOperations(appendTaskEvent(next, event));
     await store.writeState(next);
     return { state: next, task: updated, message: action === "done" ? "Task marked done." : action === "dismiss" ? "Task dismissed." : "Task updated." };
+  });
+}
+
+async function runLeeChat(payload = {}) {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const result = leeChat(state, payload || {}, {
+      openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
+      now: new Date().toISOString()
+    });
+    const nextState = analyzeOperations(result.state);
+    await store.writeState(nextState);
+    return { ...result, state: nextState };
+  });
+}
+
+async function createLeeThreadRecord(payload = {}) {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const thread = createLeeThread(payload || {}, { now: new Date().toISOString() });
+    const nextState = {
+      ...state,
+      leeThreads: [thread, ...(state.leeThreads || [])].slice(0, 100),
+      leeMemory: { ...(state.leeMemory || {}), lastThreadId: thread.id, updatedAt: thread.updatedAt }
+    };
+    await store.writeState(nextState);
+    return { state: nextState, thread, message: "Le-E thread created." };
+  });
+}
+
+async function rebuildLeeIndex() {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const nextState = rebuildLeeIndexState(state, { now: new Date().toISOString() });
+    await store.writeState(nextState);
+    return {
+      state: nextState,
+      sources: nextState.leeKnowledgeSources || [],
+      chunks: nextState.leeKnowledgeChunks || [],
+      message: "Le-E knowledge index rebuilt."
+    };
+  });
+}
+
+async function updateLeeAction(id = "", action = "approve", payload = {}) {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const result = action === "apply"
+      ? applyLeeActionProposal(state, id, state, { now: new Date().toISOString() })
+      : updateLeeActionProposal(state, id, action, { actor: "Roger", reason: payload?.reason || "", now: new Date().toISOString() });
+    const nextState = analyzeOperations(result.state);
+    await store.writeState(nextState);
+    return { ...result, state: nextState };
   });
 }
 
@@ -12441,6 +12506,8 @@ function htmlShell() {
     .focus-launcher { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
     .focus-launcher button { justify-content:flex-start; min-height:48px; }
     .focus-shell { display:block; width:100%; max-width:860px; margin:0 auto; }
+    .page-section.focus-shell { display:none; }
+    .page-section.focus-shell.active { display:block; }
     .focus-mode-tabs { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 18px; }
     .focus-mode-tabs button { border-radius:999px; }
     .focus-mode-tabs button.active { background:#08145F; color:white; }
@@ -12452,6 +12519,27 @@ function htmlShell() {
     .focus-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:20px; }
     .focus-actions button { min-height:44px; }
     .done-state { border:1px dashed rgba(8,20,95,.14); border-radius:16px; background:#fff; color:var(--muted); padding:22px; text-align:center; }
+    .lee-shell { display:grid; grid-template-columns:minmax(0,1fr) minmax(260px,320px); gap:18px; align-items:start; }
+    .lee-chat { min-height:620px; display:flex; flex-direction:column; gap:14px; }
+    .lee-messages { flex:1; display:flex; flex-direction:column; gap:12px; max-height:620px; overflow:auto; padding-right:4px; }
+    .lee-message { display:grid; gap:8px; max-width:86%; padding:14px 16px; border:1px solid rgba(8,20,95,.08); border-radius:16px; background:#F7FAF9; white-space:normal; word-break:normal; overflow-wrap:break-word; }
+    .lee-message.user { align-self:flex-end; background:#08145F; color:white; }
+    .lee-message.user .muted { color:rgba(255,255,255,.72); }
+    .lee-message.assistant { align-self:flex-start; background:white; }
+    .lee-message pre { margin:0; white-space:pre-wrap; font:inherit; line-height:1.5; }
+    .lee-source-row { display:flex; flex-wrap:wrap; gap:6px; }
+    .lee-source-chip { display:inline-flex; max-width:100%; border:1px solid rgba(8,20,95,.1); border-radius:999px; padding:4px 9px; color:#475467; background:#F2F4F7; font-size:12px; font-weight:800; }
+    .lee-input { display:grid; gap:10px; border-top:1px solid rgba(8,20,95,.08); padding-top:14px; }
+    .lee-input textarea { min-height:92px; resize:vertical; font-size:15px; line-height:1.45; }
+    .lee-side { display:grid; gap:14px; }
+    .lee-suggestions { display:flex; flex-wrap:wrap; gap:8px; }
+    .lee-suggestions button { border-radius:999px; min-height:34px; font-size:12px; }
+    .lee-proposal { display:grid; gap:10px; border:1px solid rgba(8,20,95,.08); border-radius:16px; background:white; padding:14px; }
+    .lee-proposal h3 { margin:0; color:var(--ink); font-size:16px; line-height:1.3; }
+    .lee-proposal code { display:block; white-space:pre-wrap; max-height:160px; overflow:auto; }
+    .lee-status-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+    .lee-status-grid div { border:1px solid rgba(8,20,95,.08); border-radius:12px; padding:10px; background:#F7FAF9; display:grid; gap:4px; }
+    .lee-status-grid strong { color:var(--ink); font-size:20px; }
     :root {
       --paper:#F6F7F5;
       --surface:#FFFFFF;
@@ -12585,7 +12673,7 @@ function htmlShell() {
     .funnel-stage { display:grid; gap:6px; padding:12px; border-radius:14px; background:#F4F7F6; border:1px solid rgba(8,20,95,.08); }
     .funnel-stage strong { color:var(--ink); font-size:20px; }
     @media (max-width:1100px) { .layout,.command,.post-grid,.three,.two,.calendar,.queue-card,.operator-review,.wilma-grid,.export-grid,.archive-grid,.executive-grid,.ops-row { grid-template-columns:1fr; } aside { position:static; min-height:auto; align-items:flex-start; flex-direction:column; padding:14px 18px; } nav { width:100%; overflow:auto; align-items:flex-start; } .nav-group { flex:0 0 auto; } header,main { padding-left:18px; padding-right:18px; } .image-stage { position:static; order:-1; } .operator-preview .image-preview { min-height:300px; } }
-    @media (max-width:1100px) { .mission-grid,.readiness-strip,.pipeline-board,.health-grid,.metric-table,.asset-library-grid,.modal-grid { grid-template-columns:1fr; } .readiness-strip,.pipeline-board { overflow:visible; } }
+    @media (max-width:1100px) { .mission-grid,.readiness-strip,.pipeline-board,.health-grid,.metric-table,.asset-library-grid,.modal-grid,.lee-shell { grid-template-columns:1fr; } .readiness-strip,.pipeline-board { overflow:visible; } .lee-message { max-width:100%; } }
 
     ${designSystem.interfaceCss}
 
@@ -12596,7 +12684,7 @@ function htmlShell() {
     <aside>
       <div class="brand"><small>LegalEase</small><h1>Command Center</h1></div>
       <nav>
-        <div class="nav-group"><span class="nav-label">Today</span><a href="#overview" class="active">Today</a><a href="#focus">Focus</a></div>
+        <div class="nav-group"><span class="nav-label">Today</span><a href="#overview" class="active">Today</a><a href="#focus">Focus</a><a href="#lee">Ask Le-E</a></div>
         <div class="nav-group"><span class="nav-label">Growth</span><a href="#growth-inbox">Growth Inbox</a><a href="#tasks">Tasks</a><a href="#milestones">Milestones</a><a href="#campaigns">Campaigns</a><a href="#funnel">Funnel</a></div>
         <div class="nav-group"><span class="nav-label">Partners</span><a href="#partners">Partners</a><a href="#partner-programs">Programs</a><a href="#partner-pages">Pages</a><a href="#partner-dashboards">Dashboards</a><a href="#partner-proposals">Proposals</a><a href="#partner-reports">Reports</a><a href="#pilots">Pilots</a></div>
         <div class="nav-group"><span class="nav-label">Production</span><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a><a href="#sources">Sources</a></div>
@@ -12658,6 +12746,7 @@ function htmlShell() {
     let taskView = "today";
     let focusMode = "inbox-triage";
     let focusIndex = 0;
+    let leeDraft = "";
     const focusModes = [
       { id:"inbox-triage", label:"Inbox Triage" },
       { id:"partner-follow-up", label:"Partner Follow-Up" },
@@ -15824,6 +15913,7 @@ function htmlShell() {
           </div>
           <div class="today-actions">
             <button class="primary" onclick="location.hash='focus'">Start Focus Mode</button>
+            <button onclick="location.hash='lee'">Ask Le-E</button>
             <button onclick="location.hash='growth-inbox'">Open Growth Inbox</button>
             <button onclick="location.hash='tasks'">Open Tasks</button>
             <button onclick="createWeeklyEvidencePack()">Build Weekly Evidence Pack</button>
@@ -15963,6 +16053,121 @@ function htmlShell() {
           <p>No items in this lane. That is the point.</p>
           <div class="card-actions" style="justify-content:center;margin-top:14px"><button class="primary" onclick="location.hash='overview'">Back to Today</button></div>
         </div>\`}
+      </section>\`;
+    }
+
+    function leeCurrentThreadId() {
+      return state.leeMemory?.lastThreadId || state.leeThreads?.[0]?.id || "";
+    }
+
+    function leeThreadMessages(threadId = leeCurrentThreadId()) {
+      return (state.leeMessages || [])
+        .filter(message => !threadId || message.threadId === threadId)
+        .slice()
+        .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+    }
+
+    function leeThreadProposals(threadId = leeCurrentThreadId()) {
+      return (state.leeActionProposals || [])
+        .filter(proposal => !threadId || proposal.threadId === threadId)
+        .slice()
+        .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+    }
+
+    function leeFormat(content = "") {
+      return esc(content || "").replace(/\\n/g, "<br>");
+    }
+
+    function leeSourceChips(refs = []) {
+      return refs?.length ? \`<div class="lee-source-row">\${refs.slice(0, 5).map(ref => \`<span class="lee-source-chip">\${esc(ref.citationLabel || ref.title || ref.sourceType)}</span>\`).join("")}</div>\` : "";
+    }
+
+    function leeProposalCard(proposal = {}) {
+      const canApply = proposal.status === "proposed" && proposal.autonomyLevel === "auto_safe" && !proposal.requiredApproval;
+      const blocked = proposal.status === "blocked" || proposal.autonomyLevel === "forbidden";
+      return \`<article class="lee-proposal">
+        <div class="today-meta"><span class="today-phase \${blocked ? "now" : proposal.riskLevel === "high" ? "next" : "later"}">\${esc(plainOperatorState(proposal.status))}</span><span>\${esc(growthLabel(proposal.riskLevel || "low"))} risk</span><span>\${esc(growthLabel(proposal.autonomyLevel || "approval_required"))}</span></div>
+        <h3>\${esc(proposal.title || "Le-E proposed action")}</h3>
+        <p class="muted">\${esc(proposal.summary || "Review before applying.")}</p>
+        <details>
+          <summary>What will change</summary>
+          <code>\${esc(JSON.stringify(proposal.proposedChanges || {}, null, 2))}</code>
+        </details>
+        <div class="card-actions">
+          <button class="primary" onclick="applyLeeAction('\${esc(proposal.id)}')" \${canApply ? "" : "disabled"}>Apply</button>
+          <button onclick="approveLeeAction('\${esc(proposal.id)}')" \${proposal.status === "proposed" && !blocked ? "" : "disabled"}>Approve</button>
+          <button onclick="rejectLeeAction('\${esc(proposal.id)}')" \${["applied", "rejected"].includes(proposal.status) ? "disabled" : ""}>Reject</button>
+        </div>
+      </article>\`;
+    }
+
+    function leePageHtml(pageClass) {
+      const threadId = leeCurrentThreadId();
+      const messages = leeThreadMessages(threadId);
+      const proposals = leeThreadProposals(threadId).slice(0, 12);
+      const status = {
+        openAIConfigured:Boolean(state.runtime?.openAIConfigured),
+        knowledgeIndexRecords:(state.leeKnowledgeChunks || []).length || ["growthInbox", "tasks", "partnerPrograms", "partners", "campaigns", "contentBank", "approvalQueue", "reports", "dataRoomItems", "soc2Evidence", "events", "activityEvents"].reduce((sum, key) => sum + ((state[key] || []).length || 0), 0),
+        pendingProposedActions:(state.leeActionProposals || []).filter(item => item.status === "proposed").length,
+        blockedActions:(state.leeActionProposals || []).filter(item => item.status === "blocked").length,
+        liveGatesCount:Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length
+      };
+      const prompts = [
+        "What should I focus on today?",
+        "Which partners are stalled?",
+        "What needs my decision?",
+        "What proof did we create this week?",
+        "Generate a partner follow-up plan.",
+        "Create tasks from Growth Inbox.",
+        "What is risky or blocked?",
+        "What should go into the Evidence Pack?"
+      ];
+      return \`<section id="lee" class="section \${pageClass("lee")}">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Le-E, pronounced Lee</div>
+          <h1 class="big-title">Ask Le-E</h1>
+          <p class="big-copy">LegalEase's AI Chief of Staff. Le-E answers from Command Center memory, proposes safe internal actions, and keeps external work gated.</p>
+        </div>
+        <div class="lee-shell">
+          <section class="panel lee-chat">
+            <div class="simple-panel-head">
+              <h2>Conversation</h2>
+              <div class="card-actions"><button onclick="newLeeThread()">New thread</button><button onclick="clearLeeThread()">Clear thread</button></div>
+            </div>
+            <div class="lee-messages">
+              \${messages.length ? messages.map(message => \`<article class="lee-message \${message.role === "user" ? "user" : "assistant"}">
+                <div class="today-meta"><span>\${esc(message.role === "assistant" ? "Le-E" : "Roger")}</span><span>\${esc(message.createdAt || "")}</span></div>
+                <pre>\${leeFormat(message.content || "")}</pre>
+                \${leeSourceChips(message.sourceRefs || [])}
+              </article>\`).join("") : '<div class="done-state"><h2>Ask Le-E anything about the operating system.</h2><p>Start with what needs your attention, what is blocked, or what proof should move into the Evidence Pack.</p></div>'}
+            </div>
+            <form class="lee-input" onsubmit="sendLeeMessage(event)">
+              <textarea name="message" required placeholder="Ask Le-E what to do next, search the Command Center, or draft a safe internal action…"></textarea>
+              <div class="card-actions"><button class="primary" type="submit">Send</button><button type="button" onclick="rebuildLeeIndex()">Rebuild index</button></div>
+            </form>
+          </section>
+          <aside class="lee-side">
+            <section class="panel">
+              <h2>Suggested prompts</h2>
+              <div class="lee-suggestions">\${prompts.map(prompt => \`<button onclick='askLeePrompt(\${JSON.stringify(prompt)})'>\${esc(prompt)}</button>\`).join("")}</div>
+            </section>
+            <section class="panel">
+              <h2>Status</h2>
+              <div class="lee-status-grid">
+                <div><span>OpenAI</span><strong>\${status.openAIConfigured ? "yes" : "no"}</strong></div>
+                <div><span>Index</span><strong>\${status.knowledgeIndexRecords}</strong></div>
+                <div><span>Pending</span><strong>\${status.pendingProposedActions}</strong></div>
+                <div><span>Blocked</span><strong>\${status.blockedActions}</strong></div>
+                <div><span>Safe mode</span><strong>on</strong></div>
+                <div><span>Live gates</span><strong>\${status.liveGatesCount}</strong></div>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="simple-panel-head"><h2>Proposed changes</h2><button onclick="applyAllSafeLeeActions()">Apply all safe</button></div>
+              <div class="grid">\${proposals.map(leeProposalCard).join("") || '<div class="done-state">No proposed actions. Le-E will show draft changes here before anything important changes.</div>'}</div>
+            </section>
+          </aside>
+        </div>
       </section>\`;
     }
 
@@ -17044,7 +17249,8 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const pageId = ["overview", "focus", "growth-inbox", "tasks", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(requestedPage) ? requestedPage : "overview";
+      const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
+      const pageId = ["overview", "focus", "lee", "growth-inbox", "tasks", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -17053,6 +17259,7 @@ function htmlShell() {
       document.querySelector("#app").innerHTML = \`
         \${pageId === "overview" ? commandCenterOverviewHtml(reviewPosts) : ""}
         \${focusPageHtml(pageClass)}
+        \${leePageHtml(pageClass)}
         \${growthInboxPageHtml(pageClass)}
         \${tasksPageHtml(pageClass)}
         \${partnerProgramsPageHtml(pageClass)}
@@ -17701,6 +17908,120 @@ function htmlShell() {
       }, "Could not capture item.");
     }
 
+    async function sendLeeMessage(event) {
+      event.preventDefault();
+      const message = String(new FormData(event.target).get("message") || "").trim();
+      if (!message) {
+        toast("Ask Le-E a question first.");
+        return;
+      }
+      event.target.querySelector("button[type='submit']").disabled = true;
+      await cooAction(async () => {
+        toast("Le-E is thinking...");
+        const result = await api("/api/lee/chat", {
+          method:"POST",
+          body:JSON.stringify({ threadId: leeCurrentThreadId(), message })
+        });
+        state = result.state;
+        event.target.reset();
+        render();
+        const messageText = result.proposals?.length ? "Le-E answered and proposed " + result.proposals.length + " action(s)." : "Le-E answered.";
+        toast(messageText);
+        return messageText;
+      }, "Could not ask Le-E.");
+      const submit = event.target.querySelector("button[type='submit']");
+      if (submit) submit.disabled = false;
+    }
+
+    async function askLeePrompt(prompt) {
+      await cooAction(async () => {
+        toast("Le-E is thinking...");
+        const result = await api("/api/lee/chat", {
+          method:"POST",
+          body:JSON.stringify({ threadId: leeCurrentThreadId(), message:prompt })
+        });
+        state = result.state;
+        location.hash = "lee";
+        render();
+        const messageText = result.proposals?.length ? "Le-E answered with proposed actions." : "Le-E answered.";
+        toast(messageText);
+        return messageText;
+      }, "Could not ask Le-E.");
+    }
+
+    async function newLeeThread() {
+      await cooAction(async () => {
+        const result = await api("/api/lee/threads", {
+          method:"POST",
+          body:JSON.stringify({ title:"Le-E thread" })
+        });
+        state = result.state;
+        render();
+        toast(result.message || "New Le-E thread created.");
+        return result.message || "New Le-E thread created.";
+      }, "Could not create Le-E thread.");
+    }
+
+    async function clearLeeThread() {
+      const ok = window.confirm("Start a fresh Le-E thread? Existing messages and audit events stay preserved.");
+      if (!ok) return;
+      await newLeeThread();
+    }
+
+    async function rebuildLeeIndex() {
+      await cooAction(async () => {
+        const result = await api("/api/lee/index/rebuild", { method:"POST", body:JSON.stringify({}) });
+        state = result.state;
+        render();
+        toast(result.message || "Le-E index rebuilt.");
+        return result.message || "Le-E index rebuilt.";
+      }, "Could not rebuild Le-E index.");
+    }
+
+    async function applyLeeAction(id) {
+      await cooAction(async () => {
+        const result = await api("/api/lee/actions/" + encodeURIComponent(id) + "/apply", { method:"POST", body:JSON.stringify({}) });
+        state = result.state;
+        render();
+        toast(result.message || "Le-E action applied.");
+        return result.message || "Le-E action applied.";
+      }, "Le-E action was not applied.");
+    }
+
+    async function approveLeeAction(id) {
+      await cooAction(async () => {
+        const result = await api("/api/lee/actions/" + encodeURIComponent(id) + "/approve", { method:"POST", body:JSON.stringify({}) });
+        state = result.state;
+        render();
+        toast(result.message || "Le-E action approved.");
+        return result.message || "Le-E action approved.";
+      }, "Could not approve Le-E action.");
+    }
+
+    async function rejectLeeAction(id) {
+      await cooAction(async () => {
+        const result = await api("/api/lee/actions/" + encodeURIComponent(id) + "/reject", { method:"POST", body:JSON.stringify({ reason:"Rejected by Roger." }) });
+        state = result.state;
+        render();
+        toast(result.message || "Le-E action rejected.");
+        return result.message || "Le-E action rejected.";
+      }, "Could not reject Le-E action.");
+    }
+
+    async function applyAllSafeLeeActions() {
+      const safe = (state.leeActionProposals || []).filter(proposal => proposal.status === "proposed" && proposal.autonomyLevel === "auto_safe" && !proposal.requiredApproval);
+      if (!safe.length) {
+        toast("No safe Le-E actions are ready to apply.");
+        return;
+      }
+      for (const proposal of safe) {
+        const result = await api("/api/lee/actions/" + encodeURIComponent(proposal.id) + "/apply", { method:"POST", body:JSON.stringify({}) });
+        state = result.state;
+      }
+      render();
+      toast("Applied " + safe.length + " safe Le-E action(s).");
+    }
+
     function setFocusMode(mode) {
       focusMode = mode;
       focusIndex = 0;
@@ -18099,7 +18420,9 @@ function htmlShell() {
 
     function commandActions() {
       return [
-        { label:"Open Overview", detail:"Mission control", run:() => { location.hash = "overview"; } },
+        { label:"Open Today", detail:"COO operating cockpit", run:() => { location.hash = "overview"; } },
+        { label:"Ask Le-E", detail:"AI Chief of Staff and operating memory", run:() => { location.hash = "lee"; } },
+        { label:"Start Focus Mode", detail:"One item at a time", run:() => { location.hash = "focus"; } },
         { label:"Open Growth Inbox", detail:"Daily company signal intake", run:() => { location.hash = "growth-inbox"; } },
         { label:"Open Tasks", detail:"Owned work and escalations", run:() => { location.hash = "tasks"; } },
         { label:"Rebuild Tasks", detail:"Scan for escalations", run:() => rebuildTasks() },
@@ -19561,6 +19884,96 @@ async function handleRequest(request, response) {
     const report = buildAutonomyReport(currentState);
     const governance = buildAutonomyGovernance(currentState);
     sendJson(response, { ...report, governance, state: withPublicChannelSetup(currentState) });
+    return;
+  }
+
+  if (url.pathname === "/api/lee/status" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, {
+      status: buildLeeStatus(currentState, { openAIConfigured: Boolean(process.env.OPENAI_API_KEY), now: new Date().toISOString() }),
+      tools: leeTools().map((tool) => ({
+        name: tool.name,
+        category: tool.category,
+        autonomyLevel: tool.autonomyLevel,
+        executionMode: tool.executionMode,
+        allowed: tool.allowed
+      }))
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/lee/search" && request.method === "GET") {
+    const currentState = await store.readState();
+    const query = url.searchParams.get("q") || "";
+    const index = currentState.leeKnowledgeChunks?.length
+      ? { chunks: currentState.leeKnowledgeChunks, sources: currentState.leeKnowledgeSources || [], rebuiltAt: currentState.leeMemory?.lastIndexRebuildAt || "" }
+      : buildLeeKnowledgeIndex(currentState, { now: new Date().toISOString() });
+    sendJson(response, searchLeeKnowledge(index, query, { limit: Number(url.searchParams.get("limit") || 8) }));
+    return;
+  }
+
+  if (url.pathname === "/api/lee/threads" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, { threads: currentState.leeThreads || [], messages: currentState.leeMessages || [], proposals: currentState.leeActionProposals || [] });
+    return;
+  }
+
+  if (url.pathname === "/api/lee/threads" && request.method === "POST") {
+    try {
+      const result = await createLeeThreadRecord(await readJson(request));
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not create Le-E thread." }, 400);
+    }
+    return;
+  }
+
+  const leeThread = url.pathname.match(/^\/api\/lee\/threads\/([^/]+)$/);
+  if (leeThread && request.method === "GET") {
+    const id = decodeURIComponent(leeThread[1]);
+    const currentState = await store.readState();
+    const thread = (currentState.leeThreads || []).find((item) => item.id === id);
+    if (!thread) {
+      sendJson(response, { error: "Le-E thread not found." }, 404);
+      return;
+    }
+    sendJson(response, {
+      thread,
+      messages: (currentState.leeMessages || []).filter((message) => message.threadId === id),
+      proposals: (currentState.leeActionProposals || []).filter((proposal) => proposal.threadId === id)
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/lee/chat" && request.method === "POST") {
+    try {
+      const result = await runLeeChat(await readJson(request));
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not ask Le-E." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/lee/index/rebuild" && request.method === "POST") {
+    try {
+      const result = await rebuildLeeIndex();
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not rebuild Le-E index." }, 400);
+    }
+    return;
+  }
+
+  const leeAction = url.pathname.match(/^\/api\/lee\/actions\/([^/]+)\/(approve|reject|apply)$/);
+  if (leeAction && request.method === "POST") {
+    try {
+      const payload = !request.headers["content-length"] || request.headers["content-length"] === "0" ? {} : await readJson(request);
+      const result = await updateLeeAction(decodeURIComponent(leeAction[1]), leeAction[2], payload || {});
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update Le-E action.", policy: leeToolPolicy("") }, 400);
+    }
     return;
   }
 

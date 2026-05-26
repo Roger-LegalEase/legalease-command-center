@@ -37,9 +37,16 @@ const coreStateCollections = [
   "reports",
   "funnelSnapshots",
   "partnerPrograms",
-  "partnerProgramArtifacts"
+  "partnerProgramArtifacts",
+  "leeThreads",
+  "leeMessages",
+  "leeActionProposals",
+  "leeKnowledgeSources",
+  "leeKnowledgeChunks",
+  "leeRuns",
+  "leeMemory"
 ];
-const singletonCollections = new Set(["metrics", "systemHealth"]);
+const singletonCollections = new Set(["metrics", "systemHealth", "leeMemory"]);
 
 function parseBoolean(value = "") {
   return ["true", "1", "yes", "on"].includes(String(value || "").toLowerCase());
