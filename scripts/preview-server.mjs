@@ -13397,7 +13397,7 @@ function htmlShell() {
             : simpleAction.label;
       const primaryAction = simpleStatus.key === "ready" ? "publishNow('" + post.id + "')" : simpleAction.action;
       const packageLine = packageReady
-        ? "Posting kit is exported and ready for the demo."
+        ? "Posting kit is exported and ready for review."
         : "Export the kit after the final PNG is ready.";
       const draftOriginLabel = post.aiDraftStatus === "generated"
         ? "AI generated"
@@ -14568,6 +14568,11 @@ function htmlShell() {
       const ideas = state.contentBank || [];
       const ready = ideas.filter(idea => ["idea", "ready_to_generate"].includes(idea.status || "idea")).length;
       const aiReady = Boolean(state.runtime?.openAIConfigured);
+      const hostedProductionMode = state.runtime?.localDemoMode === false || state.persistence === "supabase";
+      const localDraftLabel = hostedProductionMode ? "Local Draft Mode" : "Local Demo Mode";
+      const localDraftCopy = hostedProductionMode
+        ? "Local Draft Mode is an offline fallback. Use AI Draft Mode for production drafts; everything still lands in Approval Queue."
+        : "Local Demo Mode is the default. It is fast, offline, and approval-first.";
       const unique = key => [...new Set(ideas.map(idea => idea[key]).filter(Boolean))].sort();
       const uniquePlatforms = [...new Set(ideas.flatMap(idea => idea.platforms || []).filter(Boolean))].sort();
       const optionHtml = (values, selected, labeler = value => value) => '<option value="all">All</option>' + values.map(value => \`<option value="\${esc(value)}" \${selected === value ? "selected" : ""}>\${esc(labeler(value))}</option>\`).join("");
@@ -14603,10 +14608,10 @@ function htmlShell() {
           <section class="panel">
             <div class="simple-panel-head"><h2>Batch actions</h2><span class="badge info">approval-first</span></div>
             <div class="mode-toggle" role="group" aria-label="Draft mode">
-              <button class="\${contentBankDraftMode === "local" ? "primary" : ""}" onclick="setContentBankDraftMode('local')">Local Demo Mode</button>
+              <button class="\${contentBankDraftMode === "local" ? "primary" : ""}" onclick="setContentBankDraftMode('local')">\${localDraftLabel}</button>
               <button class="\${contentBankDraftMode === "ai" ? "primary" : ""}" onclick="setContentBankDraftMode('ai')">AI Draft Mode</button>
             </div>
-            <p class="muted">\${contentBankDraftMode === "ai" ? (aiReady ? "AI Draft Mode uses OPENAI_API_KEY on the server only. Drafts still go to Approval Queue." : "AI Draft Mode selected, but OPENAI_API_KEY is missing. The server will fall back to local generation.") : "Local Demo Mode is the default. It is fast, offline, and approval-first."}</p>
+            <p class="muted">\${contentBankDraftMode === "ai" ? (aiReady ? "AI Draft Mode uses OPENAI_API_KEY on the server only. Drafts still go to Approval Queue." : "AI Draft Mode selected, but OPENAI_API_KEY is missing. The server will fall back to local generation.") : localDraftCopy}</p>
             <div class="card-actions">
               <button class="primary" onclick="generateSelectedContentBank()">Generate selected</button>
               <button onclick="generateContentBank({limit:10})">Generate this week</button>
@@ -14970,17 +14975,28 @@ function htmlShell() {
       const sourceFor = suggestion => automationEventById(suggestion.eventId)?.source || "manual_import";
       const googleAccount = (state.socialAccounts || []).find(account => account.platform === "google_workspace") || {};
       const googleConnected = Boolean(googleAccount.connected || googleAccount.status === "connected" || googleAccount.hasStoredToken || googleAccount.accountName);
+      const hostedProductionMode = state.runtime?.localDemoMode === false || state.persistence === "supabase";
+      const connectorCopy = hostedProductionMode
+        ? "Website events and manual imports are available. Connect Google read-only or other connectors to capture more signals. No emails are sent and no suggestions are auto-applied."
+        : "Only Website events and Manual import are active in this local demo unless credentials exist. No emails are sent and no suggestions are auto-applied.";
+      const importCopy = hostedProductionMode
+        ? "Connect Google read-only, sync Gmail or Calendar, or paste JSON events from another system. Google sync never sends email or creates calendar events."
+        : "Use Demo sync for investor demos, connect Google read-only, or paste JSON events from another system. Google sync never sends email or creates calendar events.";
+      const demoSyncButton = hostedProductionMode ? "" : '<button class="primary" onclick="runAutomationDemoSync()">Run Demo Sync</button>';
+      const automationEmptyCopy = hostedProductionMode
+        ? "No automation suggestions for this filter. Connect a read-only source or import JSON events to create human-reviewed suggestions."
+        : "No automation suggestions for this filter. Run Demo Sync or import JSON events to create human-reviewed suggestions.";
       return growthHero(pageClass, "automation", "Human-approved automation", "Automation Inbox", "Capture signals from email, calendar, Stripe, Drive, website, Supabase, and manual imports, then approve suggested updates.") + \`
         <div class="grid two section">
           <section class="panel">
             <h3>Connector status</h3>
-            <p class="muted">Only Website events and Manual import are active in this local demo unless credentials exist. No emails are sent and no suggestions are auto-applied.</p>
+            <p class="muted">\${connectorCopy}</p>
             <div class="metric-table">\${connectorItems().map(item => \`<div class="metric-row"><span>\${esc(growthLabel(item.connector))}</span><span class="badge \${item.configured ? "good" : "warn"}">\${item.configured ? "configured/available" : "not connected"}</span><span class="muted">\${esc(item.lastSyncAt || item.lastSyncStatus || "never")}</span></div>\`).join("")}</div>
           </section>
           <section class="panel">
             <h3>Import controls</h3>
-            <p class="muted">Use Demo sync for investor demos, connect Google read-only, or paste JSON events from another system. Google sync never sends email or creates calendar events.</p>
-            <div class="card-actions"><button class="primary" onclick="runAutomationDemoSync()">Run Demo Sync</button><button onclick="connectGoogle()">\${googleConnected ? "Reconnect Google" : "Connect Google"}</button><button onclick="syncGmail()">Sync Gmail</button><button onclick="syncCalendar()">Sync Calendar</button><button onclick="markSelectedSuggestionsReviewed()">Mark reviewed</button></div>
+            <p class="muted">\${importCopy}</p>
+            <div class="card-actions">\${demoSyncButton}<button onclick="connectGoogle()">\${googleConnected ? "Reconnect Google" : "Connect Google"}</button><button onclick="syncGmail()">Sync Gmail</button><button onclick="syncCalendar()">Sync Calendar</button><button onclick="markSelectedSuggestionsReviewed()">Mark reviewed</button></div>
             <p class="muted">Google: \${googleConnected ? "connected as " + esc(googleAccount.accountName || "Google account") : "not connected"} · Scopes: Gmail readonly, Calendar readonly.</p>
             <p class="muted">Scheduled sync placeholder: run these manually for now. Cron can call the same server endpoints later.</p>
             <details style="margin-top:12px"><summary>Manual JSON import</summary>
@@ -15005,7 +15021,7 @@ function htmlShell() {
             <details><summary>Proposed changes preview</summary><pre class="post-body">\${esc(JSON.stringify(suggestion.proposedChanges || {}, null, 2))}</pre></details>
             <div class="card-actions"><button class="primary" \${["pending", "edited"].includes(suggestion.status) ? "" : "disabled"} onclick="approveAutomationSuggestion('\${suggestion.id}')">Approve</button><button \${["pending", "edited"].includes(suggestion.status) ? "" : "disabled"} onclick="editAutomationSuggestion('\${suggestion.id}')">Edit</button><button onclick="ignoreAutomationSuggestion('\${suggestion.id}')">Ignore</button></div>
           </article>\`;
-        }).join("") || '<div class="empty">No automation suggestions for this filter. Run Demo Sync or import JSON events to create human-reviewed suggestions.</div>'}</div>
+        }).join("") || \`<div class="empty">\${automationEmptyCopy}</div>\`}</div>
       </section>\`;
     }
 
@@ -15441,19 +15457,19 @@ function htmlShell() {
           </details>
           <details>
             <summary>Assets</summary>
-            <p class="muted">Local Wilma poses, backgrounds, and watermark files used by Final PNG rendering.</p>
+            <p class="muted">\${state.persistence === "supabase" ? "Operational brand assets used by Final PNG rendering." : "Local Wilma poses, backgrounds, and watermark files used by Final PNG rendering."}</p>
             <div style="margin-top:14px">\${assetsSettingsHtml()}</div>
           </details>
           <details>
             <summary>Backup & Restore</summary>
-            <p class="muted">Local safety snapshots for operational data and generated posting files.</p>
+            <p class="muted">\${state.persistence === "supabase" ? "Operational safety snapshots and export records for recovery workflows." : "Local safety snapshots for operational data and generated posting files."}</p>
             <div style="margin-top:14px">\${backupRestoreHtml()}</div>
           </details>
-          <details>
+          \${state.runtime?.localDemoMode === false || state.persistence === "supabase" ? "" : \`<details>
             <summary>Admin seed data</summary>
             <p class="muted">Optional startup data for the LegalEase six-month operating plan. This adds missing seed records and keeps user-created data.</p>
             <div style="margin-top:14px">\${sixMonthSeedHtml()}</div>
-          </details>
+          </details>\`}
           <details>
             <summary>Channels</summary>
             <p class="muted">Connect once. After that, approved scheduled posts can publish without you touching platform settings.</p>
@@ -15469,7 +15485,7 @@ function htmlShell() {
           </details>
           <details style="margin-top:12px">
             <summary>Production setup checklist</summary>
-            <p class="muted">This is the shortest path from local MVP to real publishing. It shows status only, never secret values.</p>
+            <p class="muted">Production readiness status for hosted operations. It shows status only, never secret values.</p>
             <div class="grid two" style="margin-top:14px">\${setupChecklistHtml()}</div>
           </details>
           <details style="margin-top:12px">
