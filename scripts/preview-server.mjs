@@ -11,6 +11,7 @@ import { authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequ
 import {
   classifyGrowthInboxText,
   convertGrowthInboxItem,
+  growthInboxFingerprint,
   growthInboxEvent,
   normalizeGrowthInboxItem,
   triageGrowthInboxItem
@@ -1985,6 +1986,16 @@ async function createGrowthInboxItem(payload = {}) {
   return serializeStateMutation(async () => {
     const state = await store.readState();
     const item = normalizeGrowthInboxItem(payload || {});
+    const duplicate = (state.growthInbox || []).find((entry) => {
+      if (entry.fingerprint && entry.fingerprint === item.fingerprint) return true;
+      return growthInboxFingerprint(entry.rawText || "") === item.fingerprint;
+    });
+    if (duplicate && !["ignored", "converted"].includes(String(duplicate.status || "").toLowerCase())) {
+      const event = growthInboxEvent("growth_inbox_duplicate_blocked", duplicate, { attemptedId: item.id, fingerprint: item.fingerprint }, new Date().toISOString());
+      const nextState = analyzeOperations(appendGrowthInboxEvent(state, event));
+      await store.writeState(nextState);
+      return { state: nextState, item: duplicate, duplicate: true, message: "Duplicate signal already exists in Growth Inbox." };
+    }
     const event = growthInboxEvent("growth_inbox_item_created", item, { sourceType: item.sourceType });
     const nextState = analyzeOperations(appendGrowthInboxEvent({
       ...state,
@@ -1992,6 +2003,28 @@ async function createGrowthInboxItem(payload = {}) {
     }, event));
     await store.writeState(nextState);
     return { state: nextState, item, message: "Growth Inbox item added." };
+  });
+}
+
+async function triageNewGrowthInboxItems() {
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const now = new Date().toISOString();
+    let count = 0;
+    const items = (state.growthInbox || []).map((item) => {
+      if (String(item.status || "new").toLowerCase() !== "new") return item;
+      count += 1;
+      return triageGrowthInboxItem(item, {
+        aiTriage: {
+          mode: "rule_assisted_batch",
+          generatedAt: now
+        }
+      }, { now });
+    });
+    const event = growthInboxEvent("growth_inbox_batch_triaged", { id: "batch", summary: `${count} Growth Inbox item(s) triaged`, riskLevel: count ? "medium" : "low" }, { count }, now);
+    const nextState = analyzeOperations(appendGrowthInboxEvent({ ...state, growthInbox: items }, event));
+    await store.writeState(nextState);
+    return { state: nextState, count, message: count ? `${count} Growth Inbox item(s) triaged.` : "No new Growth Inbox items to triage." };
   });
 }
 
@@ -15472,6 +15505,10 @@ function htmlShell() {
           <p class="muted">\${esc(item.rawText || "")}</p>
           <div class="metric-table">
             <div class="metric-row"><span>Source</span><strong>\${esc(growthLabel(item.sourceType || "meeting_notes"))}</strong></div>
+            <div class="metric-row"><span>Owner</span><strong>\${esc(item.owner || "Operations")}</strong></div>
+            <div class="metric-row"><span>Decision</span><strong>\${esc(growthLabel(item.decisionNeeded || "operator_triage"))}</strong></div>
+            <div class="metric-row"><span>Operating area</span><strong>\${esc(growthLabel(item.operatingArea || "operations"))}</strong></div>
+            <div class="metric-row"><span>Due</span><strong>\${esc(item.dueDate || "Not set")}</strong></div>
             <div class="metric-row"><span>Suggested action</span><strong>\${esc(item.suggestedAction || "Triage this signal")}</strong></div>
             <div class="metric-row"><span>Suggested destination</span><strong>\${esc(growthLabel(item.suggestedDestination || "task"))}</strong></div>
             <div class="metric-row"><span>Related</span><strong>\${esc([item.relatedPartner, item.relatedCampaign, item.relatedPilot].filter(Boolean).join(" · ") || "None")}</strong></div>
@@ -15491,6 +15528,7 @@ function htmlShell() {
           <div class="simple-hero-actions">
             <span class="badge \${urgent.length ? "danger" : "good"}">\${urgent.length} urgent</span>
             <span class="badge info">\${open.length} open</span>
+            <button onclick="triageNewGrowthInbox()">Triage New</button>
           </div>
         </div>
         <div class="grid two section">
@@ -15505,7 +15543,11 @@ function htmlShell() {
               <label>Partner<input name="relatedPartner" placeholder="Optional"></label>
               <label>Campaign<input name="relatedCampaign" placeholder="Optional"></label>
             </div>
-            <label>Pilot<input name="relatedPilot" placeholder="Optional"></label>
+            <div class="grid split">
+              <label>Pilot<input name="relatedPilot" placeholder="Optional"></label>
+              <label>Owner<input name="owner" placeholder="Operations"></label>
+            </div>
+            <label>Due date<input name="dueDate" type="date"></label>
             <button class="primary">Add to Growth Inbox</button>
           </form>
           <section class="panel">
@@ -16997,6 +17039,15 @@ function htmlShell() {
         render();
         return result.message || "Growth Inbox item triaged.";
       }, "Could not triage Growth Inbox item.");
+    }
+
+    async function triageNewGrowthInbox() {
+      await cooAction(async () => {
+        const result = await api("/api/growth-inbox/triage-new", { method:"POST", body:JSON.stringify({}) });
+        state = result.state;
+        render();
+        return result.message || "Growth Inbox triaged.";
+      }, "Could not triage new Growth Inbox items.");
     }
 
     async function convertGrowthInbox(id, destination) {
@@ -18764,6 +18815,16 @@ async function handleRequest(request, response) {
       sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not create Growth Inbox item." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/growth-inbox/triage-new" && request.method === "POST") {
+    try {
+      const result = await triageNewGrowthInboxItems();
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not triage Growth Inbox items." }, 400);
     }
     return;
   }

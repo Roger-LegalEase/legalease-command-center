@@ -37,6 +37,11 @@ function compact(value = "", max = 180) {
   return text.length > max ? text.slice(0, max - 1).trimEnd() + "…" : text;
 }
 
+export function growthInboxFingerprint(rawText = "") {
+  const normalized = clean(rawText).toLowerCase().replace(/\s+/g, " ").slice(0, 500);
+  return crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 20);
+}
+
 function firstMatch(text = "", fallback = "meeting_notes") {
   for (const [sourceType, pattern] of sourceTypeRules) {
     if (pattern.test(text)) return sourceType;
@@ -73,6 +78,21 @@ function suggestedActionFor(sourceType = "meeting_notes", riskLevel = "low") {
   return actions[sourceType] || actions.meeting_notes;
 }
 
+function operatingAreaFor(sourceType = "meeting_notes") {
+  if (["partner_update", "campaign_idea", "pilot_update", "revenue_pipeline_update"].includes(sourceType)) return "growth";
+  if (["content_idea"].includes(sourceType)) return "production";
+  if (["customer_support_issue", "compliance_concern"].includes(sourceType)) return "risk";
+  if (["investor_note"].includes(sourceType)) return "leadership";
+  return "operations";
+}
+
+function decisionNeededFor(sourceType = "meeting_notes", riskLevel = "low", text = "") {
+  if (riskLevel === "high") return "human_review_required";
+  if (/\b(approve|decision|decide|sign|contract|send|publish|legal|refund|pricing|investor|follow[- ]?up|report)\b/i.test(text)) return "roger_decision";
+  if (["investor_note", "revenue_pipeline_update", "pilot_update"].includes(sourceType)) return "roger_decision";
+  return "operator_triage";
+}
+
 export function classifyGrowthInboxText(rawText = "") {
   const text = clean(rawText);
   const sourceType = firstMatch(text);
@@ -101,9 +121,14 @@ export function normalizeGrowthInboxItem(input = {}, options = {}) {
   return {
     id: input.id || `growth-inbox-${crypto.randomUUID().slice(0, 8)}`,
     rawText,
+    fingerprint: input.fingerprint || growthInboxFingerprint(rawText),
     summary: clean(input.summary) || classification.summary,
     sourceType,
     priority,
+    owner: clean(input.owner) || (riskLevel === "high" ? "Roger" : "Operations"),
+    dueDate: clean(input.dueDate),
+    operatingArea: clean(input.operatingArea) || operatingAreaFor(sourceType),
+    decisionNeeded: clean(input.decisionNeeded) || decisionNeededFor(sourceType, riskLevel, rawText),
     relatedPartner: clean(input.relatedPartner),
     relatedCampaign: clean(input.relatedCampaign),
     relatedPilot: clean(input.relatedPilot),
@@ -130,6 +155,10 @@ export function triageGrowthInboxItem(item = {}, patch = {}, options = {}) {
     sourceType: clean(patch.sourceType) || item.sourceType || classification.sourceType,
     priority: clean(patch.priority) || item.priority || classification.priority,
     riskLevel: clean(patch.riskLevel) || item.riskLevel || classification.riskLevel,
+    owner: clean(patch.owner) || item.owner || (classification.riskLevel === "high" ? "Roger" : "Operations"),
+    dueDate: clean(patch.dueDate) || item.dueDate || "",
+    operatingArea: clean(patch.operatingArea) || item.operatingArea || operatingAreaFor(clean(patch.sourceType) || item.sourceType || classification.sourceType),
+    decisionNeeded: clean(patch.decisionNeeded) || item.decisionNeeded || decisionNeededFor(clean(patch.sourceType) || item.sourceType || classification.sourceType, clean(patch.riskLevel) || item.riskLevel || classification.riskLevel, item.rawText || ""),
     suggestedAction: clean(patch.suggestedAction) || item.suggestedAction || classification.suggestedAction,
     suggestedDestination: clean(patch.suggestedDestination) || item.suggestedDestination || classification.suggestedDestination,
     aiTriage: patch.aiTriage || item.aiTriage || { mode: classification.triageMode, generatedAt: now },
@@ -158,13 +187,15 @@ function conversionRecord(item = {}, destination = "task", options = {}) {
         id: `task-${item.id}`,
         title,
         description: item.suggestedAction || item.summary || "",
-        owner: "Roger",
+        owner: item.owner || "Roger",
         priority: item.priority || "normal",
+        dueDate: item.dueDate || "",
         status: "open",
         riskLevel: item.riskLevel || "low",
         relatedPartner: item.relatedPartner || "",
         relatedCampaign: item.relatedCampaign || "",
         relatedPilot: item.relatedPilot || "",
+        nextAction: item.suggestedAction || "Review task",
         nextBestAction: item.suggestedAction || "Review task",
         ...base
       }
