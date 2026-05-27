@@ -90,7 +90,7 @@ assert.equal(ignored.state.auditHistory[0].action, "conversation note ignored", 
 assert.equal(ignored.state.activityEvents[0].eventType, "Conversation note ignored", "Ignore should create activity entry.");
 assert.equal(buildDailyOperatingLoop(ignored.state).liveGatesCount, 0, "Live gates must remain 0.");
 
-assert(serverSource.includes("Le-E Conversation Capture"), "Cockpit capture module must render.");
+assert(!serverSource.includes("Le-E Conversation Capture"), "Conversation capture should not render as a separate cockpit module.");
 assert(serverSource.includes("conversationNotesPageHtml"), "#conversation-notes route renderer must exist.");
 assert(serverSource.includes("\"conversation-notes\""), "#conversation-notes route must be registered.");
 assert(serverSource.includes("/api/conversation-notes"), "Conversation note API must exist.");

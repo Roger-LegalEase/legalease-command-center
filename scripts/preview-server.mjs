@@ -60,6 +60,7 @@ import { ensureRcapProductionActivation, rcapActivationStatus } from "./producti
 import { computeRcapPartnerJourneyHandoffReadiness, ensureRcapReviewStates, generateRcapPartnerJourneyHandoffPacket, rcapHandoffPacketKey, rcapHandoffReadinessSummary, rcapReviewArtifactDefinitions, rcapReviewQueue, transitionRcapReviewArtifact } from "./review-approval-engine.mjs";
 import { saveTodayOperatingMemory, synthesizeOperatingMemory } from "./operating-memory.mjs";
 import { buildEveningReflection, buildMorningBrief, createConversationNote, updateConversationNoteAction } from "./lee-conversation-context.mjs";
+import { createCaptureInboxItem, routeCaptureInboxItem } from "./lee-quick-capture.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -13105,7 +13106,7 @@ function htmlShell() {
       <a class="brand-lockup" href="#overview"><span>LegalEase</span><strong>Command Center</strong></a>
       <nav class="top-nav" aria-label="Primary">
         <a class="nav-top-link" href="#overview" data-nav-section="today">Today</a>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="growth">Growth</summary><div class="nav-menu-panel"><a href="#growth">Growth Home</a><a href="#growth-inbox">Growth Inbox</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a><a href="#metrics">Metrics</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="growth">Growth</summary><div class="nav-menu-panel"><a href="#growth">Growth Home</a><a href="#growth-inbox">Growth Inbox</a><a href="#capture-inbox">Capture Inbox</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a><a href="#metrics">Metrics</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="partners">Partners</summary><div class="nav-menu-panel"><a href="#partner-hub">Partners Home</a><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="production">Production</summary><div class="nav-menu-panel"><a href="#production">Production Home</a><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="proof">Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
@@ -16903,23 +16904,6 @@ function htmlShell() {
       return (state.conversationNotes || []).filter(note => note.date === today || String(note.created_at || "").startsWith(today));
     }
 
-    function cockpitConversationCaptureHtml() {
-      return \`<section class="cockpit-card conversation-capture-card" aria-label="Le-E Conversation Capture">
-        <div class="cockpit-card-head"><h2>Le-E Conversation Capture</h2><small>Internal only</small></div>
-        <p class="muted">Capture a takeaway Roger intentionally wants Le-E to remember. Needs review before it changes tomorrow's brief.</p>
-        <form class="rail-form" onsubmit="saveConversationNote(event)">
-          <label>Source label<input name="source_label" placeholder="Call, Le-E chat, meeting note"></label>
-          <label>Conversation note<textarea name="raw_note" required placeholder="Decision, blocker, risk, carry-forward, or reflection..."></textarea></label>
-          <div class="conversation-capture-grid">
-            <label>Workflow<input name="linked_workflow" placeholder="RCAP, Growth, Proof"></label>
-            <label>Partner<input name="linked_partner" placeholder="Optional"></label>
-          </div>
-          <label>Priority<select name="priority"><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option><option value="low">Low</option></select></label>
-          <button class="primary" type="submit">Save Conversation Note</button>
-        </form>
-      </section>\`;
-    }
-
     function conversationNoteStatus(note = {}) {
       return plainOperatorState(note.review_state || "review_required");
     }
@@ -16949,6 +16933,43 @@ function htmlShell() {
           <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','apply_evening_reflection')">Apply to Evening Reflection Inputs</button>
           <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','carry_forward')">Carry Forward</button>
           <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','ignore')">Ignore</button>
+        </div>
+      </article>\`;
+    }
+
+    function captureInboxToday() {
+      const today = todayOperatingMemoryDate();
+      return (state.captureInbox || []).filter(item => item.date === today || String(item.created_at || "").startsWith(today));
+    }
+
+    function captureInboxCardHtml(item = {}) {
+      const routes = (item.suggested_routes || []).map(route => plainOperatorState(route)).join(", ") || "Needs review";
+      const routed = (item.routed_to || []).map(route => plainOperatorState(route)).join(", ") || "Not routed yet";
+      return \`<article class="conversation-note-card capture-inbox-card">
+        <header>
+          <h2>\${esc(item.summary || item.raw_input || "Captured item")}</h2>
+          <span class="artifact-review-status \${esc(rcapReviewStateClass(item.review_state || "review_required"))}">\${esc(plainOperatorState(item.review_state || "review_required"))}</span>
+        </header>
+        <p class="muted">\${esc(item.raw_input || "No raw input recorded.")}</p>
+        <div class="conversation-note-meta">
+          <span>Inferred type: \${esc(plainOperatorState(item.inferred_type || "context"))}</span>
+          <span>Priority: \${esc(item.priority || "medium")}</span>
+          <span>Source: \${esc(item.source_label || "Quick Capture")}</span>
+          <span>Created: \${esc(formatDate(item.created_at) || "Not recorded")}</span>
+          <span>Partner: \${esc(item.linked_partner || "TBD")}</span>
+          <span>Workflow: \${esc(item.linked_workflow || "TBD")}</span>
+        </div>
+        <div class="artifact-review-detail"><span>Suggested routes</span><p>\${esc(routes)}</p></div>
+        <div class="artifact-review-detail"><span>Routed to</span><p>\${esc(routed)}</p></div>
+        <div class="conversation-note-actions capture-inbox-actions">
+          <button type="button" onclick="captureInboxAction('\${esc(item.id)}','mark_reviewed')">Mark Reviewed</button>
+          <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_task')">Route to Task</button>
+          <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_conversation_notes')">Route to Conversation Notes</button>
+          <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_morning_brief')">Route to Morning Brief Inputs</button>
+          <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_evening_reflection')">Route to Evening Reflection Inputs</button>
+          <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_operating_memory')">Route to Operating Memory</button>
+          <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_evidence_notes')">Route to Evidence Notes</button>
+          <button type="button" onclick="captureInboxAction('\${esc(item.id)}','ignore')">Ignore</button>
         </div>
       </article>\`;
     }
@@ -17192,6 +17213,32 @@ function htmlShell() {
       </section>\`;
     }
 
+    function captureInboxPageHtml(pageClass) {
+      const today = captureInboxToday();
+      const allItems = (state.captureInbox || []).slice(0, 80);
+      const needsReview = allItems.filter(item => item.review_state === "review_required").length;
+      return \`<section id="capture-inbox" class="\${pageClass("capture-inbox")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Le-E Quick Capture</div>
+          <h1 class="big-title">Capture Inbox</h1>
+          <p class="muted">One internal intake lane for tasks, partner updates, ideas, meeting notes, conversation takeaways, blockers, decisions, risks, carry-forward items, and reflection notes. Review required before anything changes the operating brief or memory.</p>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button type="button" onclick="location.hash='operating-memory'">Open Operating Memory</button>
+            <button type="button" onclick="location.hash='conversation-notes'">Open Conversation Notes</button>
+          </div>
+        </div>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Captured today</h2><span class="badge info">\${esc(today.length)} today · \${esc(needsReview)} need review</span></div>
+          <div class="conversation-note-grid capture-inbox-grid">\${today.map(captureInboxCardHtml).join("") || '<div class="empty">No Quick Capture items saved today.</div>'}</div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Recent capture inbox</h2><span class="badge info">\${esc(allItems.length)} total</span></div>
+          <div class="conversation-note-grid capture-inbox-grid">\${allItems.slice(0, 24).map(captureInboxCardHtml).join("") || '<div class="empty">No capture inbox items have been saved yet.</div>'}</div>
+        </section>
+      </section>\`;
+    }
+
     function commandCenterOverviewHtml(posts) {
       const nowItem = cockpitNowItem(posts);
       const intention = cockpitDailyIntention(nowItem);
@@ -17233,13 +17280,17 @@ function htmlShell() {
             \${cockpitRcapActivationHtml()}
             \${rcapReviewQueueHtml()}
             \${rcapHandoffReadinessCardHtml()}
-            \${cockpitConversationCaptureHtml()}
             <section class="cockpit-card quick-capture">
-              <div class="cockpit-card-head"><h2>Quick Capture</h2><small>No module choosing</small></div>
+              <div class="cockpit-card-head"><h2>Quick Capture</h2><small>Le-E routes it after review</small></div>
               <form class="rail-form" onsubmit="quickCapture(event)">
                 <label class="sr-only" for="cockpit-capture">Quick Capture</label>
-                <textarea id="cockpit-capture" name="rawText" required aria-label="Quick Capture" placeholder="Capture a partner update, task, idea, meeting note, or concern..."></textarea>
-                <button class="primary" type="submit">Capture</button>
+                <textarea id="cockpit-capture" name="raw_input" required aria-label="Quick Capture" placeholder="Capture a partner update, task, idea, meeting note, conversation takeaway, blocker, decision, risk, carry-forward item, or reflection..."></textarea>
+                <label>Source label<input name="source_label" placeholder="Call, Le-E chat, meeting note"></label>
+                <label>Capture type<select name="capture_type"><option value="auto_classify">Auto-classify</option><option value="task">Task</option><option value="decision">Decision</option><option value="blocker">Blocker</option><option value="risk">Risk</option><option value="conversation_note">Conversation note</option><option value="brief_input">Brief input</option><option value="reflection_input">Reflection input</option><option value="carry_forward">Carry forward</option><option value="do_not_touch">Do not touch</option><option value="partner_update">Partner update</option><option value="evidence_note">Evidence note</option><option value="idea">Idea</option></select></label>
+                <label>Priority<select name="priority"><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option><option value="low">Low</option></select></label>
+                <label>Linked partner<input name="linked_partner" placeholder="Optional"></label>
+                <label>Linked workflow<input name="linked_workflow" placeholder="RCAP, Growth, Proof"></label>
+                <div class="card-actions"><button class="primary" type="submit">Capture with Le-E</button><button type="button" onclick="location.hash='capture-inbox'">Open Capture Inbox</button></div>
               </form>
             </section>
             <section class="cockpit-card">
@@ -17624,7 +17675,7 @@ function htmlShell() {
 
     function sectionLandingConfig(section) {
       const configs = [
-        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Triage signals, move campaigns, and keep RecordShield proof visible.", links:[["Growth Inbox","growth-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"]] },
+        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Triage signals, move campaigns, and keep RecordShield proof visible.", links:[["Growth Inbox","growth-inbox"],["Capture Inbox","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"]] },
         { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Move partner programs from lead to paid onboarding, reports, and renewal proof.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"]] },
         { id:"production", eyebrow:"Production", title:"Production", copy:"Turn ideas into approved assets without losing the approval-first safety model.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
         { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
@@ -18776,7 +18827,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "tasks", "production-activation-rcap", "operating-memory", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "production-activation-rcap", "operating-memory", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -18796,6 +18847,7 @@ function htmlShell() {
         \${rcapReviewWorkspaceHtml(pageClass)}
         \${operatingMemoryPageHtml(pageClass)}
         \${conversationNotesPageHtml(pageClass)}
+        \${captureInboxPageHtml(pageClass)}
         \${partnerProgramsPageHtml(pageClass)}
         \${partnerPagesPageHtml(pageClass)}
         \${partnerDashboardsPageHtml(pageClass)}
@@ -19029,7 +19081,7 @@ function htmlShell() {
 
     function navSectionForPage(pageId = "overview") {
       if (["overview", "focus", "production-activation-rcap", "operating-memory", "conversation-notes"].includes(pageId)) return "today";
-      if (["growth", "growth-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
+      if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
       if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
       if (["proof", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
@@ -19449,22 +19501,35 @@ function htmlShell() {
 
     async function quickCapture(event) {
       event.preventDefault();
-      const rawText = String(new FormData(event.target).get("rawText") || "").trim();
-      if (!rawText) {
+      const payload = formObject(event.target);
+      const rawInput = String(payload.raw_input || payload.rawText || "").trim();
+      if (!rawInput) {
         toast("Add a note before capturing.");
         return;
       }
       await cooAction(async () => {
-        const result = await api("/api/growth-inbox", {
+        const result = await api("/api/capture-inbox", {
           method:"POST",
-          body:JSON.stringify({ rawText, sourceType:"", priority:"", owner:"Roger" })
+          body:JSON.stringify({ ...payload, raw_input: rawInput })
         });
         state = result.state;
         event.target.reset();
         focusIndex = 0;
         render();
-        return result.message || "Captured and routed to Growth Inbox.";
+        return result.message || "Captured for review.";
       }, "Could not capture item.");
+    }
+
+    async function captureInboxAction(id, action) {
+      await cooAction(async () => {
+        const result = await api("/api/capture-inbox/" + encodeURIComponent(id) + "/" + encodeURIComponent(action), {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return result.message || "Capture updated.";
+      }, "Could not update capture.");
     }
 
     async function startRcapActivation() {
@@ -21679,6 +21744,51 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not save conversation note." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/capture-inbox" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const currentState = await store.readState();
+      const result = createCaptureInboxItem(currentState, input, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: `Captured for review. Le-E classified this as ${result.item.inferred_type}.`,
+        item: result.item,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not save Quick Capture item." }, 400);
+    }
+    return;
+  }
+
+  const captureInboxActionRoute = url.pathname.match(/^\/api\/capture-inbox\/([^/]+)\/([^/]+)$/);
+  if (captureInboxActionRoute && request.method === "POST") {
+    try {
+      const [, itemId, action] = captureInboxActionRoute;
+      const currentState = await store.readState();
+      const result = routeCaptureInboxItem(currentState, decodeURIComponent(itemId), decodeURIComponent(action), { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      const messages = {
+        mark_reviewed: "Capture marked reviewed.",
+        route_task: "Routed to Task.",
+        route_conversation_notes: "Routed to Conversation Notes.",
+        route_morning_brief: "Routed to Morning Brief inputs.",
+        route_evening_reflection: "Routed to Evening Reflection inputs.",
+        route_operating_memory: "Routed to Operating Memory.",
+        route_evidence_notes: "Routed to Evidence Notes.",
+        ignore: "Ignored. This will not carry forward."
+      };
+      sendJson(response, {
+        message: messages[action] || "Capture updated.",
+        item: result.item,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update Quick Capture item." }, 400);
     }
     return;
   }

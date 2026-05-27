@@ -198,9 +198,67 @@ function noteReviewed(note = {}) {
     || note.applied_to_evening_reflection;
 }
 
+function captureClassification(item = {}) {
+  const type = item.inferred_type || item.capture_type || "context";
+  if (type === "brief_input") return ["brief_update"];
+  if (type === "reflection_input") return ["reflection"];
+  if (type === "conversation_note") return ["context"];
+  if (type === "partner_update") return ["context"];
+  if (type === "evidence_note") return ["context"];
+  if (type === "do_not_touch") return ["do_not_touch"];
+  if (allowedClassifications.includes(type)) return [type];
+  return ["context"];
+}
+
+function captureToConversationInput(item = {}) {
+  const classification = captureClassification(item);
+  const summary = item.summary || item.raw_input || "Quick Capture item";
+  const title = [item.linked_workflow, item.linked_partner].filter(Boolean).join(" / ");
+  const scopedTitle = title ? `${title}: ${summary}` : summary;
+  const context = (detail, source = "capture_inbox") => contextItem(scopedTitle, detail, {
+    source,
+    href: "capture-inbox",
+    note_id: item.id
+  });
+  const routedTo = list(item.routed_to);
+  const appliedMorning = routedTo.includes("morningBriefInputs");
+  const appliedEvening = routedTo.includes("eveningReflectionInputs");
+  return {
+    id: item.id,
+    date: item.date,
+    source_type: "manual_quick_capture",
+    source_label: item.source_label || "Quick Capture",
+    raw_note: item.raw_input || "",
+    summary,
+    classification,
+    priority: item.priority || "medium",
+    linked_workflow: item.linked_workflow || "",
+    linked_partner: item.linked_partner || "",
+    suggested_brief_updates: classification.some(value => ["decision", "task", "blocker", "brief_update", "carry_forward"].includes(value)) || appliedMorning
+      ? [context(appliedMorning ? "Routed to Morning Brief inputs." : "Needs review before it changes tomorrow's brief.")]
+      : [],
+    suggested_reflection_updates: classification.some(value => ["decision", "reflection", "carry_forward", "do_not_touch", "risk"].includes(value)) || appliedEvening
+      ? [context(appliedEvening ? "Routed to Evening Reflection inputs." : "Capture this as an evening reflection input after review.")]
+      : [],
+    carry_forward: classification.includes("carry_forward") || routedTo.includes("operatingMemory") ? [context("Carry this Quick Capture forward internally.")] : [],
+    resurface_tomorrow: /tomorrow|resurface/i.test(item.raw_input || "") ? [context("Resurface this Quick Capture tomorrow.")] : [],
+    do_not_touch: classification.includes("do_not_touch") ? [context("Do not let this distract Roger until explicitly revisited.")] : [],
+    risk_notes: classification.includes("risk") || classification.includes("blocker") ? [context("Quick Capture contains risk, blocker, or missing-detail signal.")] : [],
+    review_state: item.review_state === "routed" ? "reviewed" : item.review_state,
+    applied_to_morning_brief: appliedMorning,
+    applied_to_evening_reflection: appliedEvening,
+    ignored_at: item.review_state === "ignored" ? item.updated_at || item.created_at : "",
+    created_at: item.created_at,
+    updated_at: item.updated_at
+  };
+}
+
 export function conversationOperatingInputs(state = {}, options = {}) {
   const includeNeedsReview = Boolean(options.includeNeedsReview);
-  const notes = list(state.conversationNotes).filter(noteActive);
+  const captureNotes = list(state.captureInbox)
+    .filter(item => item.review_state !== "ignored")
+    .map(captureToConversationInput);
+  const notes = [...list(state.conversationNotes), ...captureNotes].filter(noteActive);
   const usable = notes.filter(note => noteReviewed(note) || includeNeedsReview);
   const toItems = (field, filter = () => true) => usable.filter(filter).flatMap(note => list(note[field]).map(item => ({ ...item, note_id: note.id, source: "conversation_note" })));
   return {

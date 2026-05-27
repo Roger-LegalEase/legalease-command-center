@@ -47,7 +47,8 @@ assert.doesNotMatch(server, /\.cockpit-rail\s*\{[^}]*position:absolute/s, "Right
 assert.match(server, /\.operator-v31 \.cockpit-rail\s*\{[^}]*transform:none/s, "Right rail should explicitly avoid transform positioning.");
 assert.doesNotMatch(server, /\.cockpit-rail\s*\{[^}]*margin-left:-/s, "Right rail must not use negative margins.");
 assert.match(server, /function quickCapture\(event\)/, "Quick Capture should have a dedicated submit handler.");
-assert.match(server, /api\("\/api\/growth-inbox"/, "Quick Capture should create Growth Inbox items.");
+assert.match(server, /api\("\/api\/capture-inbox"/, "Quick Capture should create Capture Inbox items.");
+assert.match(server, /Capture with Le-E/, "Quick Capture should use the unified Le-E capture action.");
 assert.match(server, /function focusPageHtml\(pageClass\)/, "Focus Mode page should render through the app shell.");
 assert.match(server, /--le-shell-bg:\s*#EEF2F6/, "Operator shell should use a cooler high-contrast page background token.");
 assert.match(server, /class="nav-top-link" href="#overview" data-nav-section="today"/, "Today top nav item should be a real link to #overview.");
