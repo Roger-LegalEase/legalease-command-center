@@ -57,6 +57,12 @@ function fillTop3(items = []) {
   ]).slice(0, 3);
 }
 
+function priorCloseoutForDate(state = {}, date = "") {
+  return list(state.dailyCloseouts)
+    .filter(item => !date || String(item.date || "") < date)
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0] || null;
+}
+
 function sourceEvidence(state = {}, date = "") {
   return [...list(state.activityEvents), ...list(state.auditHistory), ...list(state.events)]
     .filter(item => !date || String(item.createdAt || item.timestamp || item.updatedAt || item.generatedAt || "").startsWith(date))
@@ -78,6 +84,12 @@ export function buildMorningBriefRecord(state = {}, options = {}) {
   const reviewQueue = rcapReviewQueue(state);
   const handoff = computeRcapPartnerJourneyHandoffReadiness(state);
   const liveGates = liveGatesCount(state);
+  const priorCloseout = priorCloseoutForDate(state, date);
+  const priorTomorrowItems = list(priorCloseout?.tomorrow_top_3).map(item => ritualItem(
+    item.title || "Prior closeout action",
+    item.detail || "Carried from yesterday's closeout.",
+    { href: item.href || "daily-closeout", source: "daily_closeout" }
+  ));
 
   const risks = uniqueByTitle([
     ...list(leeBrief.risks).map(item => ritualItem(item.title || "Capture risk", item.detail || "Reviewed Quick Capture or conversation context flagged a risk.", { href: item.href || "capture-inbox", source: item.source || "capture_inbox" })),
@@ -89,13 +101,13 @@ export function buildMorningBriefRecord(state = {}, options = {}) {
     key: `morning-brief-${date}`,
     date,
     generated_at: generatedAt,
-    mission_today: leeBrief.mission_today || loop.top3[0]?.title || "Run the internal operating loop from reviewed Command Center state.",
-    top_3_actions: fillTop3([...list(leeBrief.top_3_actions), ...loop.top3]),
+    mission_today: priorCloseout?.tomorrow_mission || leeBrief.mission_today || loop.top3[0]?.title || "Run the internal operating loop from reviewed Command Center state.",
+    top_3_actions: fillTop3([...priorTomorrowItems, ...list(leeBrief.top_3_actions), ...loop.top3]),
     decisions_needed: uniqueByTitle([...list(leeBrief.decisions_needed), ...loop.decisionsNeeded]).slice(0, 6),
     waiting_on: uniqueByTitle([...loop.waitingOn, ...memory.still_blocked]).slice(0, 6),
     risks,
     do_not_touch: uniqueByTitle([...list(leeBrief.do_not_touch), ...loop.doNotTouchToday, ...memory.do_not_carry_forward]).slice(0, 6),
-    suggested_first_move: leeBrief.suggested_first_move || loop.top3[0]?.detail || handoff.next_manual_action || "Open the RCAP Review Workspace.",
+    suggested_first_move: priorCloseout?.tomorrow_first_move || leeBrief.suggested_first_move || loop.top3[0]?.detail || handoff.next_manual_action || "Open the RCAP Review Workspace.",
     source_evidence: sourceEvidence(state, date),
     source_counts: {
       reviewQueue: reviewQueue.length,

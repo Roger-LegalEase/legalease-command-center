@@ -63,6 +63,7 @@ import { createConversationNote, updateConversationNoteAction } from "./lee-conv
 import { createCaptureInboxItem, routeCaptureInboxItem } from "./lee-quick-capture.mjs";
 import { buildMorningBriefRecord, saveMorningBrief } from "./morning-brief.mjs";
 import { buildEveningReflectionRecord, saveEveningReflection } from "./evening-reflection.mjs";
+import { buildDailyCloseoutRecord, saveDailyCloseout } from "./daily-closeout.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -16892,6 +16893,11 @@ function htmlShell() {
       return (state.eveningReflections || []).find(item => item.date === date || item.key === "evening-reflection-" + date) || null;
     }
 
+    function savedDailyCloseoutForToday() {
+      const date = todayOperatingMemoryDate();
+      return (state.dailyCloseouts || []).find(item => item.date === date || item.key === "daily-closeout-" + date) || null;
+    }
+
     function cockpitMorningBriefRecord() {
       const saved = savedMorningBriefForToday();
       if (saved) return saved;
@@ -16932,6 +16938,30 @@ function htmlShell() {
       };
     }
 
+    function cockpitDailyCloseoutRecord() {
+      const saved = savedDailyCloseoutForToday();
+      if (saved) return saved;
+      const memory = cockpitOperatingMemoryRecord();
+      const reflection = cockpitEveningReflectionRecord();
+      const top3 = [...(reflection.carry_forward || []), ...(memory.carry_forward || []), ...(memory.still_blocked || [])].slice(0, 3);
+      return {
+        date:todayOperatingMemoryDate(),
+        moved_today:[...(reflection.what_moved_today || []), ...(memory.moved_today || [])].slice(0, 8),
+        decisions_made:[...(reflection.decisions_made || []), ...(memory.decisions_made || [])].slice(0, 8),
+        blocked_items:[...(reflection.blockers_remaining || []), ...(memory.still_blocked || [])].slice(0, 8),
+        carry_forward:[...(reflection.carry_forward || []), ...(memory.carry_forward || [])].slice(0, 8),
+        dropped_items:[...(reflection.do_not_carry_forward || []), ...(memory.do_not_carry_forward || [])].slice(0, 8),
+        risks:memory.risk_notes || [],
+        tomorrow_mission:top3[0]?.title || "Start with the highest-leverage internal blocker.",
+        tomorrow_top_3:top3,
+        tomorrow_first_move:top3[0]?.detail || "Open Morning Brief and choose the first internal move.",
+        tomorrow_waiting_on:[...(reflection.blockers_remaining || []), ...(memory.still_blocked || [])].slice(0, 8),
+        tomorrow_do_not_touch:[...(reflection.do_not_carry_forward || []), ...(memory.do_not_carry_forward || [])].slice(0, 8),
+        live_gates_count:memory.live_gates_count || 0,
+        no_external_actions_confirmation:"No emails sent, no posts published, no partner pages published, no dashboards activated, no external systems contacted."
+      };
+    }
+
     function cockpitDailyRitualsHtml() {
       const morningSaved = Boolean(savedMorningBriefForToday());
       const eveningSaved = Boolean(savedEveningReflectionForToday());
@@ -16947,6 +16977,24 @@ function htmlShell() {
         <div class="operating-memory-actions">
           <button class="primary" type="button" onclick="saveMorningBrief()">Save Morning Brief</button>
           <button type="button" onclick="saveEveningReflection()">Save Evening Reflection</button>
+        </div>
+      </section>\`;
+    }
+
+    function cockpitDailyCloseoutHtml() {
+      const saved = Boolean(savedDailyCloseoutForToday());
+      const closeout = cockpitDailyCloseoutRecord();
+      return \`<section class="cockpit-card daily-closeout-card" aria-label="Daily Closeout">
+        <div class="cockpit-card-head"><h2>Daily Closeout</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
+        <div class="daily-loop-summary"><strong>Tomorrow: \${esc(closeout.tomorrow_mission || "Plan not generated")}</strong><span>Live gates: \${esc(closeout.live_gates_count || 0)}</span><span>Internal only</span></div>
+        <div class="daily-loop-grid">
+          <section class="daily-loop-section primary"><h3>Tomorrow Top 3</h3>\${memoryListHtml(closeout.tomorrow_top_3, "No tomorrow plan yet.", 3)}</section>
+          <section class="daily-loop-section"><h3>Blocked</h3>\${memoryListHtml(closeout.blocked_items, "No blockers captured.", 3)}</section>
+        </div>
+        <div class="operating-memory-actions">
+          <button type="button" onclick="location.hash='daily-closeout'">Open Daily Closeout</button>
+          <button class="primary" type="button" onclick="saveDailyCloseout()">Save Closeout</button>
+          <button type="button" onclick="generateTomorrowPlan()">Generate Tomorrow Plan</button>
         </div>
       </section>\`;
     }
@@ -17326,6 +17374,45 @@ function htmlShell() {
       </section>\`;
     }
 
+    function dailyCloseoutPageHtml(pageClass) {
+      const closeout = cockpitDailyCloseoutRecord();
+      const saved = savedDailyCloseoutForToday();
+      return \`<section id="daily-closeout" class="\${pageClass("daily-closeout")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Daily Rituals</div>
+          <h1 class="big-title">Daily Closeout</h1>
+          <p class="muted">\${saved ? \`Daily Closeout saved at \${esc(formatDate(saved.updated_at || saved.generated_at) || "today")}.\` : "Daily Closeout not saved yet."} Internal closeout and tomorrow plan only. No emails, posts, publishing, dashboards, or external systems are triggered.</p>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button class="primary" type="button" onclick="saveDailyCloseout()">Save Closeout</button>
+            <button type="button" onclick="generateTomorrowPlan()">Generate Tomorrow Plan</button>
+          </div>
+        </div>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Closeout</h2><span class="badge info">Live gates: \${esc(closeout.live_gates_count || 0)}</span></div>
+          <p class="muted">\${esc(closeout.no_external_actions_confirmation || "No external actions were taken.")}</p>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>What moved today?</h3>\${memoryListHtml(closeout.moved_today, "No movement captured.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Decisions made</h3>\${memoryListHtml(closeout.decisions_made, "No decisions captured.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Blocked items</h3>\${memoryListHtml(closeout.blocked_items, "No blockers captured.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Carry forward</h3>\${memoryListHtml(closeout.carry_forward, "Nothing to carry forward.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Dropped items</h3>\${memoryListHtml(closeout.dropped_items, "Nothing to drop.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Risks</h3>\${memoryListHtml(closeout.risks, "No risks surfaced.", 6)}</section>
+          </div>
+        </section>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Tomorrow Plan</h2><span class="badge info">Internal only</span></div>
+          <p class="muted"><strong>Tomorrow's mission:</strong> \${esc(closeout.tomorrow_mission || "Start with the highest-leverage internal blocker.")}</p>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Tomorrow's Top 3</h3>\${memoryListHtml(closeout.tomorrow_top_3, "No tomorrow actions generated.", 3)}</section>
+            <section class="operating-memory-tile"><h3>First move</h3><ul><li>\${esc(closeout.tomorrow_first_move || "Open Morning Brief.")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Waiting on</h3>\${memoryListHtml(closeout.tomorrow_waiting_on, "Nothing waiting.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Do not touch tomorrow</h3>\${memoryListHtml(closeout.tomorrow_do_not_touch, "No distractions flagged.", 6)}</section>
+          </div>
+        </section>
+      </section>\`;
+    }
+
     function conversationNotesPageHtml(pageClass) {
       const notes = conversationNotesToday();
       const allNotes = (state.conversationNotes || []).slice(0, 50);
@@ -17412,6 +17499,7 @@ function htmlShell() {
             \${cockpitTimelineHtml(nowItem)}
             \${cockpitDailyOperatingLoopHtml()}
             \${cockpitDailyRitualsHtml()}
+            \${cockpitDailyCloseoutHtml()}
             \${cockpitOperatingMemoryHtml()}
             </main>
             <aside class="cockpit-rail">
@@ -18965,7 +19053,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -18986,6 +19074,7 @@ function htmlShell() {
         \${operatingMemoryPageHtml(pageClass)}
         \${morningBriefPageHtml(pageClass)}
         \${eveningReflectionPageHtml(pageClass)}
+        \${dailyCloseoutPageHtml(pageClass)}
         \${conversationNotesPageHtml(pageClass)}
         \${captureInboxPageHtml(pageClass)}
         \${partnerProgramsPageHtml(pageClass)}
@@ -19220,7 +19309,7 @@ function htmlShell() {
     }
 
     function navSectionForPage(pageId = "overview") {
-      if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "conversation-notes"].includes(pageId)) return "today";
+      if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "conversation-notes"].includes(pageId)) return "today";
       if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
       if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
@@ -19750,6 +19839,30 @@ function htmlShell() {
         render();
         return result.message || "Evening Reflection saved. No external action was taken.";
       }, "Could not save Evening Reflection.");
+    }
+
+    async function saveDailyCloseout() {
+      await cooAction(async () => {
+        const result = await api("/api/daily-closeout/today/save", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return result.message || "Daily Closeout saved. No external action was taken.";
+      }, "Could not save Daily Closeout.");
+    }
+
+    async function generateTomorrowPlan() {
+      await cooAction(async () => {
+        const result = await api("/api/daily-closeout/tomorrow-plan/generate", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return result.message || "Tomorrow Plan generated internally. No external action was taken.";
+      }, "Could not generate Tomorrow Plan.");
     }
 
     async function saveConversationNote(event) {
@@ -21937,6 +22050,52 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not save Evening Reflection." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/daily-closeout/today" && request.method === "GET") {
+    const currentState = await store.readState();
+    const record = buildDailyCloseoutRecord(currentState);
+    sendJson(response, { record, saved: (currentState.dailyCloseouts || []).find(item => item.key === record.key) || null });
+    return;
+  }
+
+  if (url.pathname === "/api/daily-closeout/today/save" && request.method === "POST") {
+    try {
+      const currentState = await store.readState();
+      const result = saveDailyCloseout(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Daily Closeout saved. No external action was taken.",
+        record: result.record,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not save Daily Closeout." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/daily-closeout/tomorrow-plan/generate" && request.method === "POST") {
+    try {
+      const currentState = await store.readState();
+      const result = saveDailyCloseout(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Tomorrow Plan generated internally. No external action was taken.",
+        record: result.record,
+        tomorrow_plan: {
+          tomorrow_mission: result.record.tomorrow_mission,
+          tomorrow_top_3: result.record.tomorrow_top_3,
+          tomorrow_first_move: result.record.tomorrow_first_move,
+          tomorrow_waiting_on: result.record.tomorrow_waiting_on,
+          tomorrow_do_not_touch: result.record.tomorrow_do_not_touch
+        },
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not generate Tomorrow Plan." }, 400);
     }
     return;
   }
