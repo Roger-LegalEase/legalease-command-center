@@ -193,6 +193,7 @@ function routeSideEffectState(state = {}, item = {}, route = "", options = {}) {
     return createConversationNote(state, conversationPayloadForCapture(item, route), options).state;
   }
   if (route === "tasks") {
+    const timestamp = isoNow(options);
     const task = {
       id: `task-from-${item.id}`,
       title: item.summary,
@@ -200,15 +201,24 @@ function routeSideEffectState(state = {}, item = {}, route = "", options = {}) {
       owner: "Roger",
       status: "open",
       priority: item.priority || "medium",
+      due_date: timestamp.slice(0, 10),
       sourceType: "captureInbox",
+      source: "captureInbox",
       sourceId: item.id,
+      linked_partner: item.linked_partner || "",
+      linked_workflow: item.linked_workflow || "",
       partnerId: item.linked_partner || "",
       nextAction: "Review routed Quick Capture task.",
+      risk_level: item.inferred_type === "risk" ? "medium" : "low",
       riskLevel: item.inferred_type === "risk" ? "medium" : "low",
-      createdAt: isoNow(options),
-      updatedAt: isoNow(options),
-      history: [{ at: isoNow(options), action: "created_from_quick_capture", actor: actorLabel(options) }]
+      review_state: "review_required",
+      created_at: timestamp,
+      updated_at: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      history: [{ at: timestamp, action: "created_from_quick_capture", actor: actorLabel(options) }]
     };
+    task.dueDate = task.due_date;
     return { ...state, tasks: [task, ...list(state.tasks).filter(existing => existing.id !== task.id)].slice(0, 500) };
   }
   if (route === "evidenceNotes") {

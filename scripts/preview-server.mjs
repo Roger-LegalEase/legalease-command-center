@@ -16,7 +16,7 @@ import {
   normalizeGrowthInboxItem,
   triageGrowthInboxItem
 } from "./growth-inbox.mjs";
-import { deriveAutomaticTasks, mergeAutomaticTasks, normalizeTaskRecord, updateTask } from "./tasks-engine.mjs";
+import { deriveAutomaticTasks, mergeAutomaticTasks, normalizeTaskRecord, tasksForView, taskViews, updateTask, updateTaskInState } from "./tasks-engine.mjs";
 import { normalizePartnerLifecycle, partnerFollowUpDraft, partnerLifecycleInsights } from "./partner-lifecycle.mjs";
 import {
   buildPartnerDashboardBridgeStatus,
@@ -1908,7 +1908,7 @@ function appendGrowthInboxEvent(state = {}, event = null) {
 }
 
 function taskEvent(eventType = "task_updated", task = {}, metadata = {}) {
-  const now = new Date().toISOString();
+  const now = metadata.now || new Date().toISOString();
   return {
     id: `event-${eventType}-${crypto.randomUUID().slice(0, 8)}`,
     eventType,
@@ -1965,6 +1965,28 @@ async function updateTaskRecord(id = "", action = "in_progress", patch = {}) {
     const state = await store.readState();
     const existing = (state.tasks || []).find((task) => task.id === id);
     if (!existing) throw new Error("Task not found.");
+    const internalActions = new Set(["in_progress", "waiting", "blocked", "block", "done", "reopen", "archive", "add_note", "update_priority", "update_due_date", "snooze", "assign", "dismiss"]);
+    if (internalActions.has(action)) {
+      const result = updateTaskInState(state, id, action, patch || {}, { actor: "owner_token" });
+      const nextState = analyzeOperations(result.state);
+      await store.writeState(nextState);
+      const messages = {
+        in_progress: "Task marked in progress.",
+        waiting: "Task marked waiting.",
+        blocked: "Task marked blocked.",
+        block: "Task marked blocked.",
+        done: "Task marked done.",
+        reopen: "Task reopened.",
+        archive: "Task archived.",
+        add_note: "Task note added.",
+        update_priority: "Task priority updated.",
+        update_due_date: "Task due date updated.",
+        snooze: "Task snoozed.",
+        assign: "Task assigned.",
+        dismiss: "Task archived."
+      };
+      return { state: nextState, task: result.task, message: messages[action] || "Task updated." };
+    }
     const updated = updateTask(existing, action, patch || {});
     let next = {
       ...state,
@@ -13115,7 +13137,7 @@ function htmlShell() {
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="partners">Partners</summary><div class="nav-menu-panel"><a href="#partner-hub">Partners Home</a><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="production">Production</summary><div class="nav-menu-panel"><a href="#production">Production Home</a><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="proof">Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#tasks-today">Today Tasks</a><a href="#tasks-blocked">Blocked Tasks</a><a href="#tasks-waiting">Waiting Tasks</a><a href="#tasks-this-week">This Week Tasks</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
       </nav>
       <span class="shell-marker" aria-hidden="true">nav: topnav-fixed-v1</span>
       <span class="shell-marker" aria-hidden="true">shell: app-layout-stable-v1</span>
@@ -15753,51 +15775,66 @@ function htmlShell() {
     }
 
     function taskStatusOpen(task = {}) {
-      return !["done", "dismissed"].includes(String(task.status || "").toLowerCase());
+      return !["done", "dismissed", "archived"].includes(String(task.status || "").toLowerCase());
     }
 
     function taskIsOverdue(task = {}) {
-      return taskStatusOpen(task) && task.dueDate && task.dueDate < new Date().toISOString().slice(0, 10);
+      const due = task.due_date || task.dueDate;
+      return taskStatusOpen(task) && due && due < new Date().toISOString().slice(0, 10);
     }
 
     function taskViewFilter(view = "today") {
       const today = new Date().toISOString().slice(0, 10);
+      const weekEnd = new Date();
+      weekEnd.setDate(weekEnd.getDate() + 7);
+      const weekEndIso = weekEnd.toISOString().slice(0, 10);
       return (state.tasks || []).filter(task => {
         const status = String(task.status || "open").toLowerCase();
-        if (view === "today") return taskStatusOpen(task) && (!task.dueDate || task.dueDate <= today);
+        const due = task.due_date || task.dueDate;
+        if (view === "today") return taskStatusOpen(task) && (!due || due <= today || task.priority === "critical" || task.priority === "high");
         if (view === "overdue") return taskIsOverdue(task);
-        if (view === "waiting-roger") return taskStatusOpen(task) && /roger/i.test(task.owner || "");
-        if (view === "blocked") return status === "blocked" || task.escalationReason;
-        if (view === "partner-follow-up") return taskStatusOpen(task) && task.sourceType === "partner";
-        if (view === "investor-proof") return taskStatusOpen(task) && /proof|evidence|investor|report|data_room/i.test([task.sourceType, task.title, task.description].join(" "));
-        if (view === "compliance-review") return taskStatusOpen(task) && (/compliance|legal|high/i.test([task.sourceType, task.riskLevel, task.title].join(" ")) || task.priority === "critical");
-        if (view === "content-production") return taskStatusOpen(task) && /post|content|approval|queue|image|png/i.test([task.sourceType, task.title, task.description].join(" "));
-        return taskStatusOpen(task);
+        if (view === "waiting" || view === "waiting-roger") return status === "waiting";
+        if (view === "blocked") return status === "blocked";
+        if (view === "this-week") return taskStatusOpen(task) && due && due >= today && due <= weekEndIso;
+        if (view === "partner-follow-up") return taskStatusOpen(task) && (task.sourceType === "partner" || task.source === "partner");
+        if (view === "investor-proof") return taskStatusOpen(task) && /proof|evidence|investor|report|data_room/i.test([task.sourceType, task.source, task.title, task.description].join(" "));
+        if (view === "compliance-review") return taskStatusOpen(task) && (/compliance|legal|high/i.test([task.sourceType, task.source, task.riskLevel, task.risk_level, task.title].join(" ")) || task.priority === "critical");
+        if (view === "content-production") return taskStatusOpen(task) && /post|content|approval|queue|image|png/i.test([task.sourceType, task.source, task.title, task.description].join(" "));
+        return view === "all" ? true : taskStatusOpen(task);
       }).sort((a, b) => {
         const priorityRank = { critical:4, high:3, medium:2, low:1 };
-        return (priorityRank[String(b.priority || "").toLowerCase()] || 0) - (priorityRank[String(a.priority || "").toLowerCase()] || 0) || String(a.dueDate || "").localeCompare(String(b.dueDate || ""));
+        return (priorityRank[String(b.priority || "").toLowerCase()] || 0) - (priorityRank[String(a.priority || "").toLowerCase()] || 0) || String(a.due_date || a.dueDate || "").localeCompare(String(b.due_date || b.dueDate || ""));
       });
     }
 
     function taskCardHtml(task = {}) {
       const status = String(task.status || "open").toLowerCase();
+      const due = task.due_date || task.dueDate || "";
       return \`<article class="card drawer-card">
-        <div class="row"><span class="badge \${growthTone(status)}">\${esc(growthLabel(status))}</span><span class="badge \${task.priority === "critical" ? "danger" : task.priority === "high" ? "warn" : "info"}">\${esc(growthLabel(task.priority || "medium"))}</span><span class="badge \${taskIsOverdue(task) ? "danger" : "info"}">\${taskIsOverdue(task) ? "overdue" : esc(task.dueDate || "no date")}</span></div>
+        <div class="row"><span class="badge \${growthTone(status)}">\${esc(growthLabel(status))}</span><span class="badge \${task.priority === "critical" ? "danger" : task.priority === "high" ? "warn" : "info"}">\${esc(growthLabel(task.priority || "medium"))}</span><span class="badge \${taskIsOverdue(task) ? "danger" : "info"}">\${taskIsOverdue(task) ? "overdue" : esc(due || "no date")}</span></div>
         <h2>\${esc(task.title || "Task")}</h2>
         <p class="muted">\${esc(task.description || task.nextAction || "")}</p>
         <div class="metric-table">
           <div class="metric-row"><span>Owner</span><strong>\${esc(task.owner || "Unassigned")}</strong></div>
           <div class="metric-row"><span>Next action</span><strong>\${esc(task.nextAction || "Review")}</strong></div>
-          <div class="metric-row"><span>Source</span><strong>\${esc(growthLabel(task.sourceType || task.relatedObjectType || "manual"))}</strong></div>
-          <div class="metric-row"><span>Escalation</span><strong>\${esc(task.escalationReason || "None")}</strong></div>
+          <div class="metric-row"><span>Source</span><strong>\${esc(growthLabel(task.source || task.sourceType || task.relatedObjectType || "manual"))}</strong></div>
+          <div class="metric-row"><span>Linked partner</span><strong>\${esc(task.linked_partner || task.partnerId || "None")}</strong></div>
+          <div class="metric-row"><span>Linked workflow</span><strong>\${esc(task.linked_workflow || "None")}</strong></div>
+          <div class="metric-row"><span>Blocked by</span><strong>\${esc(task.blocker_reason || task.escalation_reason || task.escalationReason || "None")}</strong></div>
+          <div class="metric-row"><span>Waiting on</span><strong>\${esc(task.waiting_on || "None")}</strong></div>
         </div>
         <div class="card-actions">
-          <button class="primary" onclick="updateTaskAction('\${task.id}', 'done')">Done</button>
-          <button onclick="snoozeTask('\${task.id}')">Snooze</button>
-          <button onclick="assignTask('\${task.id}')">Assign</button>
+          <button onclick="updateTaskAction('\${task.id}', 'in_progress')">Mark In Progress</button>
+          <button onclick="markTaskWaiting('\${task.id}')">Mark Waiting</button>
+          <button onclick="markTaskBlocked('\${task.id}')">Mark Blocked</button>
+          <button class="primary" onclick="markTaskDone('\${task.id}')">Mark Done</button>
+          <button onclick="updateTaskAction('\${task.id}', 'reopen')">Reopen</button>
+          <button onclick="archiveTask('\${task.id}')">Archive</button>
+          <button onclick="addTaskNote('\${task.id}')">Add Note</button>
+          <button onclick="updateTaskPriority('\${task.id}')">Update Priority</button>
+          <button onclick="updateTaskDueDate('\${task.id}')">Update Due Date</button>
           <button onclick="updateTaskAction('\${task.id}', 'convert-report-note')">Report Note</button>
           <button onclick="updateTaskAction('\${task.id}', 'convert-content-idea')">Content Idea</button>
-          <button onclick="dismissTask('\${task.id}')">Dismiss</button>
         </div>
         <details><summary>History</summary><div class="metric-table">\${(task.history || []).slice(0, 6).map(entry => \`<div class="metric-row"><span>\${esc(entry.action)}</span><strong>\${esc(entry.at || "")}</strong></div>\`).join("") || '<div class="empty">No task history yet.</div>'}</div></details>
       </article>\`;
@@ -17034,6 +17071,22 @@ function htmlShell() {
       </section>\`;
     }
 
+    function cockpitTasksHtml() {
+      const today = taskViewFilter("today");
+      const blocked = taskViewFilter("blocked");
+      const waiting = taskViewFilter("waiting");
+      const week = taskViewFilter("this-week");
+      return \`<section class="cockpit-card task-management-card" aria-label="Task Management">
+        <div class="cockpit-card-head"><h2>Tasks</h2><small>Internal work only</small></div>
+        <div class="daily-loop-summary"><strong>Today: \${esc(today.length)}</strong><span>Blocked: \${esc(blocked.length)}</span><span>Waiting: \${esc(waiting.length)}</span><span>This week: \${esc(week.length)}</span></div>
+        <div class="operating-memory-actions">
+          <button class="primary" type="button" onclick="location.hash='tasks'">Open Tasks</button>
+          <button type="button" onclick="location.hash='tasks-today'">Today</button>
+          <button type="button" onclick="location.hash='tasks-blocked'">Blocked</button>
+        </div>
+      </section>\`;
+    }
+
     function operatorSearchClientIndex() {
       const result = [];
       const make = (item = {}) => ({
@@ -17046,7 +17099,21 @@ function htmlShell() {
         priority:item.priority || "",
         safeActions:item.safeActions || [{ action:"open_route", label:"Open", route:item.route || "overview" }]
       });
-      (state.tasks || []).forEach(item => result.push(make({ id:item.id, type:"task", title:item.title, summary:item.description || item.nextAction || item.status, route:"tasks", status:item.status, priority:item.priority })));
+      (state.tasks || []).forEach(item => result.push(make({
+        id:item.id,
+        type:"task",
+        title:item.title,
+        summary:item.description || item.nextAction || item.status,
+        route:"tasks",
+        status:item.status,
+        priority:item.priority,
+        safeActions:[
+          { action:"open_route", label:"Open", route:"tasks" },
+          { action:"task_mark_in_progress", label:"Mark In Progress", targetId:item.id },
+          { action:"task_mark_done", label:"Mark Done", targetId:item.id },
+          { action:"task_reopen", label:"Reopen", targetId:item.id }
+        ]
+      })));
       (state.captureInbox || []).forEach(item => result.push(make({
         id:item.id,
         type:"captureInbox",
@@ -17696,6 +17763,7 @@ function htmlShell() {
             </section>
             \${cockpitTimelineHtml(nowItem)}
             \${cockpitDailyOperatingLoopHtml()}
+            \${cockpitTasksHtml()}
             \${cockpitDailyRitualsHtml()}
             \${cockpitDailyCloseoutHtml()}
             \${cockpitOsHealthHtml()}
@@ -18105,7 +18173,7 @@ function htmlShell() {
         { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Move partner programs from lead to paid onboarding, reports, and renewal proof.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"]] },
         { id:"production", eyebrow:"Production", title:"Production", copy:"Turn ideas into approved assets without losing the approval-first safety model.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
         { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
-        { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
+        { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Today Tasks","tasks-today"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
       ];
       return configs.find(item => item.id === section) || configs[0];
     }
@@ -18275,32 +18343,53 @@ function htmlShell() {
       </section>\`;
     }
 
-    function tasksPageHtml(pageClass) {
+    function taskViewForPage(page = "tasks") {
+      if (page === "tasks-today") return "today";
+      if (page === "tasks-blocked") return "blocked";
+      if (page === "tasks-waiting") return "waiting";
+      if (page === "tasks-this-week") return "this-week";
+      return taskView || "all";
+    }
+
+    function tasksPageHtml(pageClass, page = "tasks") {
       const views = [
+        ["all", "All"],
         ["today", "Today"],
         ["overdue", "Overdue"],
-        ["waiting-roger", "Waiting on Roger"],
+        ["waiting", "Waiting"],
         ["blocked", "Blocked"],
+        ["this-week", "This Week"],
         ["partner-follow-up", "Partner Follow-Up"],
         ["investor-proof", "Investor Proof"],
         ["compliance-review", "Compliance Review"],
         ["content-production", "Content Production"]
       ];
-      const activeView = taskView || "today";
+      const activeView = taskViewForPage(page);
       const tasks = taskViewFilter(activeView);
       const allOpen = (state.tasks || []).filter(taskStatusOpen);
       const overdue = allOpen.filter(taskIsOverdue);
-      const waitingRoger = allOpen.filter(task => /roger/i.test(task.owner || ""));
-      return \`<section id="tasks" class="section \${pageClass("tasks")}">
+      const today = taskViewFilter("today");
+      const blocked = taskViewFilter("blocked");
+      const waiting = taskViewFilter("waiting");
+      const week = taskViewFilter("this-week");
+      const pageTitle = page === "tasks-today" ? "Today’s Tasks" : page === "tasks-blocked" ? "Blocked Tasks" : page === "tasks-waiting" ? "Waiting Tasks" : page === "tasks-this-week" ? "This Week’s Tasks" : "Tasks";
+      return \`<section id="\${esc(page)}" class="section command-page section-page lee-bubble-safe-space \${pageClass(page)}">
         <div class="panel hero-panel">
-          <div><div class="eyebrow">Operations</div><h1 class="big-title">Tasks</h1><p class="muted">Owned work, escalation rules, and next actions Roger can actually close.</p></div>
+          <div><div class="eyebrow">Operations</div><h1 class="big-title">\${esc(pageTitle)}</h1><p class="muted">Owned work, escalation rules, and next actions Roger can actually close. All task actions are internal-only.</p></div>
           <div class="simple-hero-actions">
             <span class="badge \${overdue.length ? "danger" : "good"}">\${overdue.length} overdue</span>
-            <span class="badge info">\${waitingRoger.length} waiting on Roger</span>
+            <span class="badge info">\${waiting.length} waiting</span>
             <button class="primary" onclick="rebuildTasks()">Rebuild Tasks</button>
           </div>
         </div>
-        <div class="toolbar section">\${views.map(([id, label]) => \`<button class="\${activeView === id ? "primary" : ""}" onclick="setTaskView('\${id}')">\${esc(label)} \${taskViewFilter(id).length}</button>\`).join("")}</div>
+        <div class="toolbar section">
+          <button class="\${page === "tasks" && activeView === "all" ? "primary" : ""}" onclick="location.hash='tasks'; setTaskView('all')">All \${taskViewFilter("all").length}</button>
+          <button class="\${page === "tasks-today" ? "primary" : ""}" onclick="location.hash='tasks-today'">Today \${today.length}</button>
+          <button class="\${page === "tasks-blocked" ? "primary" : ""}" onclick="location.hash='tasks-blocked'">Blocked \${blocked.length}</button>
+          <button class="\${page === "tasks-waiting" ? "primary" : ""}" onclick="location.hash='tasks-waiting'">Waiting \${waiting.length}</button>
+          <button class="\${page === "tasks-this-week" ? "primary" : ""}" onclick="location.hash='tasks-this-week'">This Week \${week.length}</button>
+          \${views.slice(6).map(([id, label]) => \`<button class="\${activeView === id ? "primary" : ""}" onclick="setTaskView('\${id}')">\${esc(label)} \${taskViewFilter(id).length}</button>\`).join("")}
+        </div>
         <details class="panel section">
           <summary>Create task</summary>
           <form class="mini-form" style="margin-top:12px" onsubmit="createManualTask(event)">
@@ -18308,11 +18397,15 @@ function htmlShell() {
             <label>Description<textarea name="description" placeholder="What changed, why it matters, and context Roger needs."></textarea></label>
             <div class="grid split">
               <label>Owner<input name="owner" value="Roger"></label>
-              <label>Due date<input name="dueDate" type="date"></label>
+              <label>Due date<input name="due_date" type="date"></label>
             </div>
             <div class="grid split">
               <label>Priority<select name="priority"><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option><option value="low">Low</option></select></label>
-              <label>View/source<select name="sourceType"><option value="manual">Manual</option><option value="partner">Partner Follow-Up</option><option value="investor_proof">Investor Proof</option><option value="compliance">Compliance Review</option><option value="content">Content Production</option></select></label>
+              <label>View/source<select name="source"><option value="manual">Manual</option><option value="partner">Partner Follow-Up</option><option value="investor_proof">Investor Proof</option><option value="compliance">Compliance Review</option><option value="content">Content Production</option></select></label>
+            </div>
+            <div class="grid split">
+              <label>Linked partner<input name="linked_partner" placeholder="Optional"></label>
+              <label>Linked workflow<input name="linked_workflow" placeholder="Optional"></label>
             </div>
             <label>Next action<input name="nextAction" placeholder="The next concrete move"></label>
             <button class="primary">Create Task</button>
@@ -18321,7 +18414,7 @@ function htmlShell() {
         <div class="grid three section">
           <article class="readiness-card info"><div class="readiness-title">Open</div><strong>\${allOpen.length}</strong></article>
           <article class="readiness-card danger"><div class="readiness-title">Overdue</div><strong>\${overdue.length}</strong></article>
-          <article class="readiness-card warn"><div class="readiness-title">Waiting on Roger</div><strong>\${waitingRoger.length}</strong></article>
+          <article class="readiness-card warn"><div class="readiness-title">This week</div><strong>\${week.length}</strong></article>
         </div>
         <div class="grid post-grid section">\${tasks.map(taskCardHtml).join("") || '<div class="empty">No tasks in this view. Rebuild tasks to scan partners, campaigns, approvals, Growth Inbox, pilots, support, and evidence cadence.</div>'}</div>
       </section>\`;
@@ -19253,7 +19346,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -19269,7 +19362,7 @@ function htmlShell() {
         \${sectionLandingPageHtml(pageClass, "proof")}
         \${sectionLandingPageHtml(pageClass, "more")}
         \${growthInboxPageHtml(pageClass)}
-        \${tasksPageHtml(pageClass)}
+        \${["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId) ? tasksPageHtml(pageClass, pageId) : ""}
         \${rcapReviewWorkspaceHtml(pageClass)}
         \${operatingMemoryPageHtml(pageClass)}
         \${morningBriefPageHtml(pageClass)}
@@ -19512,6 +19605,7 @@ function htmlShell() {
 
     function navSectionForPage(pageId = "overview") {
       if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "operator-search", "conversation-notes"].includes(pageId)) return "today";
+      if (["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId)) return "more";
       if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
       if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
@@ -21252,6 +21346,51 @@ function htmlShell() {
       }, "Could not update task.");
     }
 
+    async function markTaskWaiting(id) {
+      const waitingOn = window.prompt("What is this waiting on?", "Waiting on Roger or an external detail.");
+      if (waitingOn === null) return;
+      await updateTaskAction(id, "waiting", { waiting_on: waitingOn || "Waiting on review." });
+    }
+
+    async function markTaskBlocked(id) {
+      const blockerReason = window.prompt("What is blocking this task?");
+      if (!blockerReason) {
+        toast("Blocked tasks require a blocker reason.");
+        return;
+      }
+      await updateTaskAction(id, "blocked", { blocker_reason: blockerReason });
+    }
+
+    async function markTaskDone(id) {
+      const completionNote = window.prompt("Completion note", "Completed internally.");
+      if (completionNote === null) return;
+      await updateTaskAction(id, "done", { completion_note: completionNote || "Completed internally." });
+    }
+
+    async function archiveTask(id) {
+      const reason = window.prompt("Archive reason", "Archived by operator.");
+      if (reason === null) return;
+      await updateTaskAction(id, "archive", { note: reason || "Archived by operator." });
+    }
+
+    async function addTaskNote(id) {
+      const note = window.prompt("Internal task note");
+      if (!note) return;
+      await updateTaskAction(id, "add_note", { note });
+    }
+
+    async function updateTaskPriority(id) {
+      const priority = window.prompt("Priority: low, medium, high, critical", "high");
+      if (!priority) return;
+      await updateTaskAction(id, "update_priority", { priority });
+    }
+
+    async function updateTaskDueDate(id) {
+      const dueDate = window.prompt("Due date YYYY-MM-DD", new Date().toISOString().slice(0, 10));
+      if (!dueDate) return;
+      await updateTaskAction(id, "update_due_date", { due_date: dueDate });
+    }
+
     async function snoozeTask(id) {
       const days = window.prompt("Snooze for how many days?", "3");
       if (days === null) return;
@@ -22659,7 +22798,7 @@ async function handleRequest(request, response) {
     return;
   }
 
-  const taskAction = url.pathname.match(/^\/api\/tasks\/([^/]+)\/(done|snooze|assign|dismiss|block|convert-report-note|convert-content-idea)$/);
+  const taskAction = url.pathname.match(/^\/api\/tasks\/([^/]+)\/(in_progress|waiting|blocked|done|reopen|archive|add_note|update_priority|update_due_date|snooze|assign|dismiss|block|convert-report-note|convert-content-idea)$/);
   if (taskAction && request.method === "POST") {
     try {
       const payload = request.headers["content-length"] === "0" ? {} : await readJson(request);

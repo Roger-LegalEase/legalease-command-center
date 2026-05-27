@@ -1,5 +1,6 @@
 import { routeCaptureInboxItem } from "./lee-quick-capture.mjs";
 import { rcapHandoffPacketKey, rcapReviewQueue } from "./review-approval-engine.mjs";
+import { updateTaskInState } from "./tasks-engine.mjs";
 
 const forbiddenActions = new Set([
   "send_email",
@@ -75,6 +76,16 @@ function captureActions(item = {}) {
   return actions;
 }
 
+function taskActions(item = {}) {
+  const actions = [{ action: "open_route", label: "Open", route: "tasks" }];
+  if (!["done", "archived"].includes(String(item.status || "").toLowerCase())) {
+    actions.push({ action: "task_mark_in_progress", label: "Mark In Progress", targetId: item.id });
+    actions.push({ action: "task_mark_done", label: "Mark Done", targetId: item.id });
+  }
+  if (String(item.status || "").toLowerCase() !== "open") actions.push({ action: "task_reopen", label: "Reopen", targetId: item.id });
+  return actions;
+}
+
 function rcapArtifactResults(state = {}) {
   const artifacts = [
     ...list(state.partnerProgramArtifacts).filter(item => /^rcap-/i.test(item.key || item.id || "") || /rcap/i.test(item.title || "")),
@@ -111,7 +122,8 @@ export function buildOperatorSearchIndex(state = {}) {
       source: "tasks",
       status: item.status,
       priority: item.priority,
-      updated_at: updatedAt(item)
+      updated_at: updatedAt(item),
+      safe_actions: taskActions(item)
     }));
   }
 
@@ -362,6 +374,18 @@ export function runOperatorSearchAction(state = {}, payload = {}, options = {}) 
   if (action === "route_capture_operating_memory") {
     const result = routeCaptureInboxItem(state, targetId, "route_operating_memory", options);
     return { ...result, route: "operating-memory", message: "Capture routed to Operating Memory." };
+  }
+  if (action === "task_mark_in_progress") {
+    const result = updateTaskInState(state, targetId, "in_progress", { note: payload.note || "Marked in progress from Operator Search." }, options);
+    return { ...result, route: "tasks", message: "Task marked in progress." };
+  }
+  if (action === "task_mark_done") {
+    const result = updateTaskInState(state, targetId, "done", { completion_note: payload.note || payload.completion_note || "Completed from Operator Search." }, options);
+    return { ...result, route: "tasks", message: "Task marked done." };
+  }
+  if (action === "task_reopen") {
+    const result = updateTaskInState(state, targetId, "reopen", { note: payload.note || "Reopened from Operator Search." }, options);
+    return { ...result, route: "tasks", message: "Task reopened." };
   }
   throw new Error("Unsupported operator search action.");
 }

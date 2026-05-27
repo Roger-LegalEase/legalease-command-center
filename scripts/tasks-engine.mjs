@@ -1,7 +1,15 @@
 import crypto from "node:crypto";
 import { partnerLifecycleTasks } from "./partner-lifecycle.mjs";
 
-const terminalStatuses = new Set(["done", "dismissed"]);
+const terminalStatuses = new Set(["done", "dismissed", "archived"]);
+export const supportedTaskStatuses = ["open", "in_progress", "waiting", "blocked", "done", "archived"];
+export const taskViews = [
+  { id: "today", label: "Today" },
+  { id: "blocked", label: "Blocked" },
+  { id: "waiting", label: "Waiting" },
+  { id: "this-week", label: "This Week" },
+  { id: "all", label: "All" }
+];
 
 function list(value) {
   return Array.isArray(value) ? value : [];
@@ -44,6 +52,22 @@ function priority(value = "medium") {
   return "medium";
 }
 
+function status(value = "open") {
+  const normalized = clean(value).toLowerCase();
+  if (supportedTaskStatuses.includes(normalized)) return normalized;
+  if (normalized === "dismissed") return "archived";
+  if (normalized === "complete" || normalized === "completed") return "done";
+  return "open";
+}
+
+function taskDueDate(input = {}, now = new Date()) {
+  return input.due_date || input.dueDate || todayIso(now);
+}
+
+function sourceValue(input = {}) {
+  return clean(input.source || input.sourceType);
+}
+
 function task(input = {}, options = {}) {
   const now = options.now || new Date().toISOString();
   const escalationKey = input.escalationKey || `${input.sourceType || "manual"}:${input.sourceId || slug(input.title)}:${slug(input.title)}`;
@@ -52,21 +76,33 @@ function task(input = {}, options = {}) {
     title: clean(input.title) || "Untitled task",
     description: clean(input.description),
     owner: clean(input.owner) || "Roger",
-    status: input.status || "open",
+    status: status(input.status || "open"),
     priority: priority(input.priority),
-    dueDate: input.dueDate || todayIso(now),
-    sourceType: clean(input.sourceType),
+    due_date: taskDueDate(input, now),
+    dueDate: taskDueDate(input, now),
+    source: sourceValue(input),
+    sourceType: sourceValue(input),
     sourceId: clean(input.sourceId),
-    partnerId: clean(input.partnerId),
+    linked_partner: clean(input.linked_partner || input.linkedPartner || input.partnerId),
+    linked_workflow: clean(input.linked_workflow || input.linkedWorkflow || input.workflow),
+    partnerId: clean(input.partnerId || input.linked_partner || input.linkedPartner),
     campaignId: clean(input.campaignId),
     pilotId: clean(input.pilotId),
-    riskLevel: clean(input.riskLevel) || "low",
+    risk_level: clean(input.risk_level || input.riskLevel) || "low",
+    riskLevel: clean(input.riskLevel || input.risk_level) || "low",
     nextAction: clean(input.nextAction) || clean(input.title) || "Review task",
-    escalationReason: clean(input.escalationReason),
+    escalation_reason: clean(input.escalation_reason || input.escalationReason),
+    escalationReason: clean(input.escalationReason || input.escalation_reason),
+    blocker_reason: clean(input.blocker_reason || input.blockerReason),
+    waiting_on: clean(input.waiting_on || input.waitingOn),
+    completion_note: clean(input.completion_note || input.completionNote),
+    review_state: clean(input.review_state || input.reviewState) || "review_required",
     escalationKey,
     history: input.history || [{ action: "created", at: now, note: input.escalationReason || "Task created." }],
-    createdAt: input.createdAt || now,
-    updatedAt: input.updatedAt || now
+    created_at: input.created_at || input.createdAt || now,
+    updated_at: input.updated_at || input.updatedAt || now,
+    createdAt: input.createdAt || input.created_at || now,
+    updatedAt: input.updatedAt || input.updated_at || now
   };
 }
 
@@ -308,11 +344,117 @@ export function mergeAutomaticTasks(state = {}, automaticTasks = [], options = {
 
 export function updateTask(existing = {}, action = "in_progress", patch = {}, options = {}) {
   const now = options.now || new Date().toISOString();
-  const history = [{ action, at: now, note: patch.note || patch.reason || "" }, ...(existing.history || [])].slice(0, 30);
-  if (action === "done") return { ...existing, status: "done", completedAt: now, updatedAt: now, history };
-  if (action === "dismiss") return { ...existing, status: "dismissed", dismissalReason: patch.reason || "Dismissed by operator.", updatedAt: now, history };
-  if (action === "snooze") return { ...existing, status: "waiting", dueDate: addDaysIso(now, Number(patch.days || 3)), updatedAt: now, history };
-  if (action === "assign") return { ...existing, owner: patch.owner || existing.owner || "Roger", updatedAt: now, history };
-  if (action === "block") return { ...existing, status: "blocked", escalationReason: patch.reason || existing.escalationReason || "Blocked.", updatedAt: now, history };
-  return { ...existing, ...patch, status: patch.status || action || existing.status, updatedAt: now, history };
+  const normalizedAction = String(action || "in_progress").replaceAll("-", "_");
+  const note = clean(patch.note || patch.reason || patch.blocker_reason || patch.waiting_on || patch.completion_note);
+  const history = [{ action: normalizedAction, at: now, actor: options.actor || "owner_token", note }, ...(existing.history || [])].slice(0, 50);
+  const base = { ...normalizeTaskRecord(existing, { now }), history, updated_at: now, updatedAt: now };
+  if (normalizedAction === "in_progress") return { ...base, status: "in_progress" };
+  if (normalizedAction === "waiting") return { ...base, status: "waiting", waiting_on: clean(patch.waiting_on || patch.waitingOn || patch.note || patch.reason), waitingOn: clean(patch.waiting_on || patch.waitingOn || patch.note || patch.reason) };
+  if (normalizedAction === "blocked" || normalizedAction === "block") {
+    const blockerReason = clean(patch.blocker_reason || patch.blockerReason || patch.reason || patch.note);
+    if (!blockerReason) throw new Error("Blocked task transition requires blocker reason.");
+    return { ...base, status: "blocked", blocker_reason: blockerReason, blockerReason, escalation_reason: blockerReason, escalationReason: blockerReason };
+  }
+  if (normalizedAction === "done") {
+    const completionNote = clean(patch.completion_note || patch.completionNote || patch.note || "Task completed.");
+    return { ...base, status: "done", completion_note: completionNote, completionNote, completed_at: now, completedAt: now };
+  }
+  if (normalizedAction === "reopen") return { ...base, status: "open", blocker_reason: "", blockerReason: "", waiting_on: "", waitingOn: "" };
+  if (normalizedAction === "archive" || normalizedAction === "dismiss") return { ...base, status: "archived", archive_reason: patch.reason || patch.note || "Archived by operator.", dismissalReason: patch.reason || patch.note || "Archived by operator." };
+  if (normalizedAction === "add_note") return base;
+  if (normalizedAction === "update_priority") return { ...base, priority: priority(patch.priority || existing.priority) };
+  if (normalizedAction === "update_due_date") {
+    const due = patch.due_date || patch.dueDate || existing.due_date || existing.dueDate || todayIso(now);
+    return { ...base, due_date: due, dueDate: due };
+  }
+  if (normalizedAction === "snooze") {
+    const due = addDaysIso(now, Number(patch.days || 3));
+    return { ...base, status: "waiting", due_date: due, dueDate: due, waiting_on: patch.waiting_on || "Snoozed by operator.", waitingOn: patch.waiting_on || "Snoozed by operator." };
+  }
+  if (normalizedAction === "assign") return { ...base, owner: patch.owner || existing.owner || "Roger" };
+  return normalizeTaskRecord({ ...base, ...patch, status: patch.status || normalizedAction || existing.status }, { now });
+}
+
+function taskUpdatedAt(task = {}) {
+  return task.updated_at || task.updatedAt || task.created_at || task.createdAt || "";
+}
+
+function isOpenTask(task = {}) {
+  return !terminalStatuses.has(String(task.status || "open").toLowerCase());
+}
+
+function withinThisWeek(dateValue = "", options = {}) {
+  const due = Date.parse(dateValue || "");
+  if (!Number.isFinite(due)) return false;
+  const start = new Date(options.now || new Date());
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  return due >= start.getTime() && due <= end.getTime();
+}
+
+export function tasksForView(state = {}, view = "all", options = {}) {
+  const today = todayIso(options.now || new Date());
+  return list(state.tasks).map(task => normalizeTaskRecord(task, options)).filter(task => {
+    const currentStatus = String(task.status || "open").toLowerCase();
+    if (view === "today") return isOpenTask(task) && (task.due_date === today || task.dueDate === today || task.priority === "critical" || task.priority === "high" || /today/i.test(task.review_state || task.source || ""));
+    if (view === "blocked") return currentStatus === "blocked";
+    if (view === "waiting") return currentStatus === "waiting";
+    if (view === "this-week") return isOpenTask(task) && (withinThisWeek(task.due_date || task.dueDate, options) || /this[_ -]?week|weekly/i.test([task.linked_workflow, task.source, task.title, task.description].join(" ")));
+    return true;
+  }).sort((a, b) => {
+    const priorityRank = { critical: 4, high: 3, medium: 2, low: 1 };
+    return (priorityRank[b.priority] || 0) - (priorityRank[a.priority] || 0)
+      || String(a.due_date || "").localeCompare(String(b.due_date || ""))
+      || String(taskUpdatedAt(b)).localeCompare(String(taskUpdatedAt(a)));
+  });
+}
+
+export function updateTaskInState(state = {}, taskId = "", action = "in_progress", patch = {}, options = {}) {
+  const tasks = list(state.tasks);
+  const existing = tasks.find(task => task.id === taskId);
+  if (!existing) throw new Error("Task not found.");
+  const beforeStatus = existing.status || "open";
+  const updated = updateTask(existing, action, patch, options);
+  const timestamp = options.now || new Date().toISOString();
+  const actor = options.actor || "owner_token";
+  const normalizedAction = String(action || "").replaceAll("-", "_");
+  const next = {
+    ...state,
+    tasks: tasks.map(task => task.id === taskId ? updated : task)
+  };
+  next.auditHistory = [{
+    id: `audit-task-${taskId}-${normalizedAction}-${Date.parse(timestamp) || Date.now()}`,
+    timestamp,
+    actor,
+    action: "task status changed",
+    resourceType: "task",
+    resourceId: taskId,
+    beforeValue: { status: beforeStatus },
+    afterValue: {
+      status: updated.status,
+      action: normalizedAction,
+      priority: updated.priority,
+      due_date: updated.due_date,
+      externalSideEffects: false
+    }
+  }, ...list(state.auditHistory)].slice(0, 1000);
+  next.activityEvents = [{
+    id: `activity-task-${taskId}-${normalizedAction}-${Date.parse(timestamp) || Date.now()}`,
+    eventType: "Task status changed",
+    title: updated.title || "Task updated",
+    summary: patch.completion_note || patch.blocker_reason || patch.waiting_on || patch.note || `Task moved from ${beforeStatus} to ${updated.status}.`,
+    relatedObjectType: "task",
+    relatedObjectId: taskId,
+    riskLevel: updated.risk_level || updated.riskLevel || "low",
+    metadata: {
+      oldStatus: beforeStatus,
+      newStatus: updated.status,
+      action: normalizedAction,
+      externalSideEffects: false,
+      noExternalSystemsContacted: true
+    },
+    createdAt: timestamp
+  }, ...list(state.activityEvents)].slice(0, 500);
+  return { state: next, task: updated };
 }
