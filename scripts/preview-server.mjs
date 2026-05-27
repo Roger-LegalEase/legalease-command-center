@@ -16558,6 +16558,11 @@ function htmlShell() {
       return plainOperatorState(rcapReviewValue(value, fallback));
     }
 
+    function rcapReviewList(value, fallback = "TBD") {
+      if (!Array.isArray(value) || !value.length) return fallback;
+      return value.join("; ");
+    }
+
     function rcapReviewArtifactCard(title, status, summary, missingDetails, nextAction) {
       return \`<article class="artifact-review-card">
         <header><h2>\${esc(title)}</h2><span class="artifact-review-status">\${esc(rcapReviewStatus(status))}</span></header>
@@ -16585,12 +16590,15 @@ function htmlShell() {
       const reportSections = weeklyReport.sections || {};
       const evidenceSummary = evidenceNote.notes || "No evidence note has been generated yet. Start RCAP Activation from Today to create the review-only artifact set.";
       const checklistItems = [
-        "Manual approval required before any external RCAP action.",
-        "Confirm missing partner contact details, stakeholders, URLs, and jurisdiction facts.",
-        "Review proposal language for unsupported claims before sharing.",
-        "Review partner page draft before any publishing decision.",
-        "Confirm dashboard readiness remains not activated.",
-        "Confirm live gates remain 0 before and after review."
+        "Verify RCAP contact details.",
+        "Confirm package/program scope.",
+        "Review proposal draft.",
+        "Review partner page draft.",
+        "Confirm dashboard requirements.",
+        "Confirm reporting cadence.",
+        "Confirm approval authority.",
+        "Decide whether to move to Partner Journey handoff.",
+        "Keep live gates at 0 until approval."
       ];
       return \`<section id="production-activation-rcap" class="\${pageClass("production-activation-rcap")} rcap-review-workspace command-page lee-bubble-safe-space">
         <div class="panel hero-panel">
@@ -16606,58 +16614,58 @@ function htmlShell() {
           \${rcapReviewArtifactCard(
             "Activation Summary",
             status.status,
-            \`RCAP production activation is \${status.status}. Proposal: \${status.proposal}. Partner page: \${status.page}. Dashboard: \${status.dashboard}. Weekly report: \${status.weeklyReport}. Evidence note: \${status.evidence}. Live gates: \${liveGates}.\`,
-            liveGates === 0 ? "External partner facts still need confirmation before anything moves outward." : "Live gates are not zero and must be closed before continuing.",
-            "Review each artifact below, then decide manually what is safe to prepare next."
+            \`What was created: partner record, proposal task, proposal draft, partner page draft, dashboard readiness record, weekly report draft, and evidence note. Current status: \${status.status}. Live gates: \${liveGates}.\`,
+            \`What still needs review: RCAP contact details, approval authority, package/program scope, proposal language, partner page language, dashboard requirements, and reporting cadence. What is blocked: emails, posts, partner page publishing, dashboard activation, and live posting.\`,
+            "Next manual decision: decide whether this package is ready for editing and handoff to the separate Partner Journey workflow."
           )}
           \${rcapReviewArtifactCard(
             "Partner Record",
             partner.status || program.status || "Not started",
-            \`Partner: \${rcapReviewValue(partner.name || program.name, "RCAP")}. Owner: \${rcapReviewValue(partner.owner || program.owner, "Roger")}. Workflow stage: \${rcapReviewValue(partner.workflow_stage || program.workflowStage, "production_activation")}.\`,
-            \`Primary contact: \${rcapReviewValue(partner.primaryContact || program.primaryContact)}. Email: \${rcapReviewValue(partner.email)}. Website: \${rcapReviewValue(partner.website)}. Stakeholders: \${rcapReviewValue(partner.stakeholders)}.\`,
-            partner.nextAction || program.nextAction || "Confirm missing external details before any manual outreach."
+            \`Known details: RCAP status is \${rcapReviewValue(partner.status || program.status, "activation_review")}; workflow stage is \${rcapReviewValue(partner.workflow_stage || program.workflowStage, "production_activation")}; source is operator cockpit; review-only is true; live enabled is false.\`,
+            \`Missing external details: \${rcapReviewList(partner.missingExternalDetailsList)}. Primary contact: \${rcapReviewValue(partner.primaryContact || program.primaryContact)}. Email: \${rcapReviewValue(partner.email)}. Website: \${rcapReviewValue(partner.website)}. Stakeholders: \${rcapReviewValue(partner.stakeholders)}.\`,
+            \`Before partner-facing use: \${rcapReviewList(partner.confirmationRequiredBeforePartnerUse, "Confirm missing external details before any manual outreach.")}\`
           )}
           \${rcapReviewArtifactCard(
             "Proposal Task",
             proposalTask.status || "Pending",
-            proposalTask.description || "Draft RCAP partner proposal task is pending creation.",
-            \`Due date: \${rcapReviewValue(proposalTask.dueDate)}. External delivery: \${proposalTask.noEmailSideEffects === true ? "not allowed from task" : "review_required"}.\`,
+            \`Owner: \${rcapReviewValue(proposalTask.owner, "Roger")}. Priority: \${rcapReviewValue(proposalTask.priority, "high")}. Task: \${proposalTask.description || "Draft RCAP partner proposal task is pending creation."}\`,
+            \`Definition of done: \${rcapReviewList(proposalTask.definitionOfDone, "Review proposal draft, mark unknown facts TBD, and confirm no external delivery happens from this task.")} Due date: \${rcapReviewValue(proposalTask.dueDate)}.\`,
             proposalTask.nextAction || "Create or review the proposal task before drafting any external message."
           )}
           \${rcapReviewArtifactCard(
             "Proposal Draft",
             proposalDraft.status || "Pending",
-            proposalSections.objective || "Proposal draft has not been generated yet.",
-            \`Pricing/package confirmation: review_required. Partner facts: review_required. Manual approval required: \${rcapReviewValue(proposalSections.manualApprovalRequired, "review_required")}.\`,
-            "Review objective, workflow, implementation outline, checklist, and compliance note before sharing manually."
+            \`Purpose of RCAP partnership: \${proposalSections.purposeOfRcapPartnership || proposalSections.objective || "Proposal draft has not been generated yet."} Proposed LegalEase support: \${rcapReviewValue(proposalSections.proposedLegalEaseSupport, "review_required")} Implementation workflow: \${rcapReviewValue(proposalSections.implementationWorkflow, "review_required")}.\`,
+            \`Review-only caveats: \${rcapReviewValue(proposalSections.reviewOnlyCaveats, "review_required")} Missing details list: \${rcapReviewList(proposalSections.missingDetailsList)}.\`,
+            \`Manual approval checklist: \${rcapReviewList(proposalSections.manualApprovalChecklist, "Review objective, workflow, implementation outline, checklist, and compliance note before sharing manually.")}\`
           )}
           \${rcapReviewArtifactCard(
             "Partner Page Draft",
             pageDraft.status || "Pending",
-            pageContent.intro || "Partner page draft has not been generated yet.",
-            \`Live URL: \${rcapReviewValue(pageDraft.liveUrl, "null")}. Published: \${rcapReviewValue(pageDraft.published, "false")}. Partner logo/colors/CTA facts: review_required.\`,
-            "Review copy and compliance disclaimer before any separate publishing workflow."
+            \`Page objective: \${rcapReviewValue(pageContent.pageObjective, "review_required")} Draft hero copy: \${rcapReviewValue(pageContent.draftHeroCopy || pageContent.headline, "review_required")} Program explanation: \${rcapReviewValue(pageContent.programExplanation || pageContent.intro, "review_required")} Participant journey overview: \${rcapReviewValue(pageContent.participantJourneyOverview, "review_required")}.\`,
+            \`partner/legal disclaimer placeholders: \${rcapReviewValue(pageContent.partnerLegalDisclaimerPlaceholders || pageContent.complianceDisclaimer, "review_required")} Missing brand/content assets: \${rcapReviewList(pageContent.missingBrandContentAssets)}. Live URL: \${rcapReviewValue(pageDraft.liveUrl, "null")}. Published: \${rcapReviewValue(pageDraft.published, "false")}.\`,
+            "Publish blocked until manual approval. Review copy and compliance disclaimer before any separate publishing workflow."
           )}
           \${rcapReviewArtifactCard(
             "Dashboard Readiness",
             dashboardReadiness.status || "Pending",
-            \`Dashboard live: \${rcapReviewValue(dashboardReadiness.dashboardLive, "false")}. Activation allowed: \${rcapReviewValue(dashboardReadiness.activationAllowed, "false")}. Checklist tracked: \${Object.keys(dashboardChecklist).length ? "yes" : "not yet"}.\`,
-            "Dashboard URL, partner credentials, and external access details remain review_required.",
-            "Keep dashboard not activated until Roger manually approves a separate activation step."
+            \`Dashboard live: \${rcapReviewValue(dashboardReadiness.dashboardLive, "false")}. Activation allowed: \${rcapReviewValue(dashboardReadiness.activationAllowed, "false")}. Data needed: \${rcapReviewList(dashboardReadiness.dataNeeded)}. Access needed: \${rcapReviewList(dashboardReadiness.accessNeeded)}.\`,
+            \`Launch blockers: \${rcapReviewList(dashboardReadiness.launchBlockers, "Dashboard URL, partner credentials, and external access details remain review_required.")} Internal review gates: \${rcapReviewList(dashboardReadiness.internalReviewGates)}.\`,
+            "Keep dashboard_live: false and activation_allowed: false until Roger manually approves a separate activation step."
           )}
           \${rcapReviewArtifactCard(
             "Weekly Report Draft",
             weeklyReport.status || "Pending",
-            reportSections.activationSummary || "Weekly report draft has not been generated yet.",
-            "Real partner metrics, page views, intake starts, and handoff counts are not verified yet.",
-            reportSections.nextManualApprovalStep || "Review the report draft as an internal artifact only."
+            \`Activation status: \${rcapReviewValue(reportSections.activationStatus || reportSections.activationSummary, "Weekly report draft has not been generated yet.")} Completed artifacts: \${rcapReviewList(reportSections.completedArtifacts)}.\`,
+            \`Open review items: \${rcapReviewList(reportSections.openReviewItems)} Blockers: \${rcapReviewList(reportSections.blockers, "Real partner metrics, page views, intake starts, and handoff counts are not verified yet.")}.\`,
+            \`Next steps: \${rcapReviewList(reportSections.nextSteps, reportSections.nextManualApprovalStep || "Review the report draft as an internal artifact only.")}. No external actions taken: \${rcapReviewValue(reportSections.noExternalActionTaken, "true")}.\`
           )}
           \${rcapReviewArtifactCard(
             "Evidence Note",
             evidenceNote.status || "Pending",
-            evidenceSummary,
-            \`Generated timestamp: \${rcapReviewValue(evidenceNote.timestamp)}. Live gates count: \${rcapReviewValue(evidenceNote.liveGatesCount, String(liveGates))}.\`,
-            "Use this as internal proof that activation artifacts were created without external side effects."
+            \`Activation key: \${rcapReviewValue(evidenceNote.activationKey, "rcap-production-activation-v1")}. Timestamp: \${rcapReviewValue(evidenceNote.timestamp)}. Artifact list: \${rcapReviewList(Object.keys(evidenceNote.artifactsCreatedOrFound || {}), "partner record; proposal task; proposal draft; partner page draft; dashboard readiness; weekly report draft; evidence note")}.\`,
+            \`Live gates count: \${rcapReviewValue(evidenceNote.liveGatesCount, String(liveGates))}. Safety confirmations: no email sent, no post published, no partner page published, no dashboard activated. Owner-token auth confirmation: \${rcapReviewValue(evidenceNote.ownerTokenAuthConfirmation, "owner-token auth unchanged")}.\`,
+            \`External action confirmation: \${rcapReviewValue(evidenceNote.externalActionConfirmation, evidenceSummary)}\`
           )}
           <article class="artifact-review-card">
             <header><h2>Manual Review Checklist</h2><span class="artifact-review-status">Review-only</span></header>

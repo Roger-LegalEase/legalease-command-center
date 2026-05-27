@@ -109,6 +109,27 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
     live_enabled: false,
     external_actions_enabled: false,
     missing_external_details: true,
+    knownDetails: {
+      status: "activation_review",
+      workflowStage: "production_activation",
+      source: "operator_cockpit",
+      reviewOnly: true,
+      liveEnabled: false,
+      externalActionsEnabled: false
+    },
+    missingExternalDetailsList: [
+      "RCAP primary contact",
+      "Partner-facing email address",
+      "Website or public landing destination",
+      "Named stakeholders and approval authority",
+      "Jurisdiction and program scope"
+    ],
+    confirmationRequiredBeforePartnerUse: [
+      "Confirm RCAP contact details",
+      "Confirm package/program scope",
+      "Confirm approval authority",
+      "Confirm whether this should move to Partner Journey handoff"
+    ],
     primaryContact: existing?.primaryContact || null,
     email: existing?.email || null,
     website: existing?.website || null,
@@ -164,6 +185,12 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
     owner: existing?.owner || "Roger",
     status: existing?.status === "done" ? "done" : "review_ready",
     priority: "high",
+    definitionOfDone: [
+      "Proposal purpose, LegalEase support, implementation workflow, and caveats are reviewed",
+      "All unknown RCAP facts are marked TBD or review_required",
+      "Compliance language contains no eligibility, filing, court, or legal outcome promises",
+      "Roger decides whether to hand off edited materials to the Partner Journey workflow"
+    ],
     dueDate: existing?.dueDate || generatedDate,
     sourceType: "production_activation",
     sourceId: rcapActivationKey,
@@ -194,6 +221,12 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
     generatedAt: existing?.generatedAt || generatedAt,
     updatedAt: generatedAt,
     sections: {
+      purposeOfRcapPartnership: "Purpose of RCAP partnership: prepare a review-only Record-Clearing Access Program activation package so Roger can decide what needs editing before anything partner-facing happens.",
+      proposedLegalEaseSupport: "Proposed LegalEase support: guided intake, Wilma plain-English guidance, RecordShield access, Expungement.ai routing where available, internal reporting drafts, and evidence capture for review.",
+      implementationWorkflow: "Implementation workflow: confirm partner facts, finalize proposal language, review partner page copy, verify dashboard requirements, prepare weekly reporting structure, then decide whether to move to Partner Journey handoff.",
+      reviewOnlyCaveats: "Review-only caveats: this draft is internal only. It does not send email, publish a page, activate a dashboard, verify payment, or represent partner approval.",
+      missingDetailsList: ["RCAP contact details", "approval authority", "jurisdiction", "program scope", "package/tier", "launch timing", "partner brand assets"],
+      manualApprovalChecklist: ["Review proposal draft", "Confirm scope and package", "Review compliance language", "Confirm missing facts", "Approve manually before any external action"],
       objective: "Create a review-only proposal for the first RCAP production workflow.",
       proposedWorkflow: "Partner intake, Wilma guidance, RecordShield access, Expungement.ai routing where available, partner dashboard tracking, weekly report draft, and final evidence-ready reporting.",
       implementationOutline: "Confirm missing external details, review proposal language, approve partner page draft, verify dashboard readiness, then decide manually whether to send or publish.",
@@ -222,6 +255,13 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
     generatedAt: existing?.generatedAt || generatedAt,
     updatedAt: generatedAt,
     draftContent: {
+      pageObjective: "Page objective: explain the RCAP workflow clearly enough for internal review before any public partner page is created.",
+      draftHeroCopy: "Draft hero copy: Start a Record-Clearing Access Program with guided intake, plain-English support, and review-ready reporting.",
+      programExplanation: "Program explanation: RCAP is intended to help partners organize record-clearing access workflows with LegalEase intake, guidance, routing, and reporting support.",
+      participantJourneyOverview: "Participant journey overview: participant starts intake, receives Wilma guidance, accesses RecordShield where appropriate, and is routed toward Expungement.ai document preparation support where available.",
+      partnerLegalDisclaimerPlaceholders: "partner/legal disclaimer placeholders: partner-specific disclaimer, jurisdiction-specific language, and LegalEase legal advice boundary must be reviewed before publishing.",
+      missingBrandContentAssets: ["partner logo", "partner colors", "approved partner name", "contact method", "jurisdiction copy", "CTA destination"],
+      publishBlockedUntilManualApproval: true,
       headline: "Record-Clearing Access Program",
       intro: "A review-only draft page for explaining RCAP access, intake, routing, reporting, and partner next steps.",
       cta: "Start with guided intake",
@@ -257,7 +297,11 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
       evidenceNoteCreated: evidenceExists || true,
       manualApprovalRequired: true,
       liveGatesRemainZero: liveGates === 0
-    }
+    },
+    dataNeeded: ["partner identity and contacts", "program scope", "target audience", "jurisdiction", "reporting cadence", "dashboard access roles"],
+    accessNeeded: ["internal dashboard reviewer", "partner-facing dashboard admin if approved later", "report reviewer", "data source owner"],
+    launchBlockers: ["dashboard_live: false", "activation_allowed: false", "payment not verified", "manual approval required", "partner facts review_required"],
+    internalReviewGates: ["Roger review", "compliance language review", "dashboard readiness review", "Partner Journey handoff decision"]
   }));
   next.partnerProgramArtifacts = dashboardResult.collection;
   summary.dashboard_readiness = dashboardResult.status;
@@ -275,9 +319,12 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
     generatedAt: existing?.generatedAt || generatedAt,
     updatedAt: generatedAt,
     sections: {
+      activationStatus: "Activation status: review-only artifacts prepared, no external actions taken.",
       activationSummary: "RCAP production activation artifacts were prepared for internal review only.",
       completedArtifacts: ["Partner record", "Proposal task", "Proposal draft", "Partner page draft", "Dashboard readiness tracking", "Weekly report draft", "Evidence note"],
-      openReviewItems: ["Confirm external partner facts", "Review proposal draft", "Review partner page draft", "Verify dashboard readiness", "Approve any external action manually"],
+      openReviewItems: ["Confirm external partner facts", "Review proposal draft", "Review partner page draft", "Verify dashboard readiness", "Confirm reporting cadence", "Confirm approval authority", "Approve any external action manually"],
+      blockers: ["No verified partner contact details", "No approved partner page", "No dashboard activation approval", "Live gates must remain 0"],
+      nextSteps: ["Roger reviews the workspace", "Edit draft language", "Confirm missing facts", "Decide whether to move to Partner Journey handoff"],
       noExternalActionTaken: true,
       nextManualApprovalStep: "Roger reviews the draft artifacts and decides what, if anything, moves outward."
     }
@@ -308,6 +355,15 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
     timestamp: generatedAt,
     artifactsCreatedOrFound,
     liveGatesCount: liveGates,
+    safetyConfirmations: {
+      noEmailSent: true,
+      noPostPublished: true,
+      noPartnerPagePublished: true,
+      noDashboardActivated: true,
+      ownerTokenAuthUnchanged: true
+    },
+    ownerTokenAuthConfirmation: "owner-token auth unchanged",
+    externalActionConfirmation: "No email sent, no post published, no partner page published, and no dashboard activated.",
     noEmailSent: true,
     noPostPublished: true,
     noPartnerPagePublished: true,
