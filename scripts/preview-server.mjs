@@ -65,6 +65,7 @@ import { buildMorningBriefRecord, saveMorningBrief } from "./morning-brief.mjs";
 import { buildEveningReflectionRecord, saveEveningReflection } from "./evening-reflection.mjs";
 import { buildDailyCloseoutRecord, saveDailyCloseout } from "./daily-closeout.mjs";
 import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
+import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex } from "./operator-search.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -17033,6 +17034,87 @@ function htmlShell() {
       </section>\`;
     }
 
+    function operatorSearchClientIndex() {
+      const result = [];
+      const make = (item = {}) => ({
+        id:String(item.id || item.key || item.title || item.type || "result"),
+        type:item.type || "record",
+        title:item.title || "Untitled",
+        summary:item.summary || "No summary recorded.",
+        route:item.route || "overview",
+        status:item.status || "available",
+        priority:item.priority || "",
+        safeActions:item.safeActions || [{ action:"open_route", label:"Open", route:item.route || "overview" }]
+      });
+      (state.tasks || []).forEach(item => result.push(make({ id:item.id, type:"task", title:item.title, summary:item.description || item.nextAction || item.status, route:"tasks", status:item.status, priority:item.priority })));
+      (state.captureInbox || []).forEach(item => result.push(make({
+        id:item.id,
+        type:"captureInbox",
+        title:item.summary || item.raw_input || "Captured item",
+        summary:item.raw_input || item.inferred_type || "Quick Capture item.",
+        route:"capture-inbox",
+        status:item.review_state || "review_required",
+        priority:item.priority,
+        safeActions:[
+          { action:"open_route", label:"Open", route:"capture-inbox" },
+          { action:"mark_capture_reviewed", label:"Mark reviewed", targetId:item.id },
+          { action:"route_capture_task", label:"Route to Task", targetId:item.id },
+          { action:"route_capture_operating_memory", label:"Route to Operating Memory", targetId:item.id }
+        ]
+      })));
+      (state.conversationNotes || []).forEach(item => result.push(make({ id:item.id, type:"conversationNotes", title:item.summary || item.source_label || "Conversation note", summary:item.raw_note || item.review_state, route:"conversation-notes", status:item.review_state, priority:item.priority })));
+      (state.morningBriefs || []).forEach(item => result.push(make({ id:item.key || item.id, type:"morningBrief", title:item.mission_today || "Morning Brief", summary:"Daily ritual input.", route:"morning-brief", status:item.status || "saved", safeActions:[{ action:"open_morning_brief", label:"Open Morning Brief", route:"morning-brief" }] })));
+      (state.eveningReflections || []).forEach(item => result.push(make({ id:item.key || item.id, type:"eveningReflection", title:item.title || "Evening Reflection", summary:(item.notes_for_tomorrow || [])[0]?.title || "Evening reflection.", route:"evening-reflection", status:item.status || "saved", safeActions:[{ action:"open_evening_reflection", label:"Open Evening Reflection", route:"evening-reflection" }] })));
+      (state.operatingMemory || []).forEach(item => result.push(make({ id:item.key || item.id, type:"operatingMemory", title:(item.moved_today || [])[0]?.title || "Operating Memory", summary:(item.carry_forward || [])[0]?.title || "Day-over-day memory.", route:"operating-memory", status:item.status || "saved" })));
+      (state.dailyCloseouts || []).forEach(item => result.push(make({ id:item.key || item.id, type:"dailyCloseout", title:item.tomorrow_mission || "Daily Closeout", summary:(item.tomorrow_top_3 || [])[0]?.title || "Closeout and tomorrow plan.", route:"daily-closeout", status:item.status || "saved", safeActions:[{ action:"open_daily_closeout", label:"Open Daily Closeout", route:"daily-closeout" }] })));
+      (state.partnerProgramArtifacts || []).filter(item => /rcap/i.test([item.key, item.title, item.partnerSlug].join(" "))).forEach(item => result.push(make({ id:item.key || item.id, type:item.key === rcapHandoffPacketArtifactKey ? "handoffPacket" : "rcapArtifact", title:item.title || item.key || "RCAP artifact", summary:item.summary?.nextManualAction || item.summary?.answer || item.status || "RCAP artifact.", route:"production-activation-rcap", status:item.review_state || item.status, priority:item.priority, safeActions:[{ action:"open_rcap_review_workspace", label:"Open RCAP Review Workspace", route:"production-activation-rcap" }] })));
+      (state.reports || []).forEach(item => result.push(make({ id:item.key || item.id, type:"report", title:item.title || item.reportTitle || "Report", summary:item.summary || item.status || "Internal report.", route:"reports", status:item.status || item.review_state })));
+      (state.evidencePackNotes || []).forEach(item => result.push(make({ id:item.key || item.id, type:"evidenceNote", title:item.title || "Evidence note", summary:item.notes || item.summary || item.status, route:"reports", status:item.status || item.review_state })));
+      (state.dataRoomItems || []).forEach(item => result.push(make({ id:item.id || item.key, type:"dataRoomItem", title:item.title || item.name || "Data Room item", summary:item.summary || item.notes || item.status, route:"dataroom", status:item.status })));
+      (state.partnerPrograms || []).forEach(item => result.push(make({ id:item.id || item.slug, type:"partnerProgram", title:item.name || item.slug || "Partner program", summary:item.nextAction || item.programGoal || item.status, route:"partner-programs", status:item.status, priority:item.priority })));
+      (state.auditHistory || []).slice(0, 30).forEach(item => result.push(make({ id:item.id, type:"auditHistory", title:item.action || "Audit event", summary:[item.resourceType, item.resourceId].filter(Boolean).join(" · ") || "Audit entry.", route:"os-health", status:"recorded", safeActions:[{ action:"open_os_health", label:"Open OS Health", route:"os-health" }] })));
+      (state.activityEvents || []).slice(0, 30).forEach(item => result.push(make({ id:item.id, type:"activityEvent", title:item.title || item.eventType || "Activity event", summary:item.summary || item.eventType || "Activity event.", route:"os-health", status:item.riskLevel || "recorded", safeActions:[{ action:"open_os_health", label:"Open OS Health", route:"os-health" }] })));
+      (state.osHealthSnapshots || []).forEach(item => result.push(make({ id:item.id, type:"osHealthSnapshot", title:"OS Health Snapshot", summary:item.summary?.next_operator_action || item.overall_health || "OS Health snapshot.", route:"os-health", status:item.overall_health, safeActions:[{ action:"open_os_health", label:"Open OS Health", route:"os-health" }] })));
+      return result.filter(item => item.id && item.title);
+    }
+
+    function operatorSearchActionButtons(result = {}) {
+      return (result.safeActions || []).slice(0, 3).map(action => {
+        if (action.action === "open_route" || /^open_/.test(action.action)) {
+          return \`<button type="button" onclick="location.hash='\${esc(action.route || result.route || "overview")}'">\${esc(action.label || "Open")}</button>\`;
+        }
+        return \`<button type="button" onclick="operatorSearchAction('\${esc(action.action)}','\${esc(action.targetId || result.id)}')">\${esc(action.label || "Apply internal action")}</button>\`;
+      }).join("");
+    }
+
+    function operatorSearchResultsHtml(query = "", type = "") {
+      const q = String(query || "").trim().toLowerCase();
+      const results = operatorSearchClientIndex().filter(item => {
+        if (type && item.type !== type) return false;
+        if (!q) return true;
+        return [item.type, item.title, item.summary, item.status, item.priority].join(" ").toLowerCase().includes(q);
+      }).slice(0, 60);
+      return results.map(item => \`<article class="memory-history-card operator-search-result" data-search-type="\${esc(item.type)}">
+        <strong>\${esc(item.title)}</strong>
+        <span class="muted">\${esc(plainOperatorState(item.type))} · \${esc(plainOperatorState(item.status || "available"))}\${item.priority ? " · " + esc(item.priority) : ""}</span>
+        <p class="muted">\${esc(item.summary)}</p>
+        <div class="card-actions">\${operatorSearchActionButtons(item)}</div>
+      </article>\`).join("") || '<div class="empty">No matching OS records found.</div>';
+    }
+
+    function cockpitOperatorSearchHtml() {
+      const index = operatorSearchClientIndex();
+      const needsReview = index.filter(item => /review_required|blocked|needs_revision/i.test(item.status || "")).length;
+      return \`<section class="cockpit-card operator-search-card" aria-label="Operator Search">
+        <div class="cockpit-card-head"><h2>Operator Search</h2><small>Internal command palette</small></div>
+        <div class="daily-loop-summary"><strong>\${esc(index.length)} indexed records</strong><span>\${esc(needsReview)} need attention</span><span>Live gates: \${esc(Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length)}</span></div>
+        <div class="operating-memory-actions">
+          <button class="primary" type="button" onclick="location.hash='operator-search'">Search OS</button>
+          <button type="button" onclick="location.hash='operator-search'">Open Command Palette</button>
+        </div>
+      </section>\`;
+    }
+
     function cockpitOperatingMemoryHtml() {
       const memory = cockpitOperatingMemoryRecord();
       const saved = Boolean(savedOperatingMemoryForToday());
@@ -17489,6 +17571,46 @@ function htmlShell() {
       </section>\`;
     }
 
+    function operatorSearchPageHtml(pageClass) {
+      const resultsHtml = operatorSearchResultsHtml();
+      const types = [...new Set(operatorSearchClientIndex().map(item => item.type))].sort();
+      return \`<section id="operator-search" class="\${pageClass("operator-search")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Operator Search</div>
+          <h1 class="big-title">Search OS</h1>
+          <p class="muted">Find and open anything in the LegalEase OS. Command Palette actions are internal-only: open routes, review captures, and route captures into internal records.</p>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button class="primary" type="button" onclick="document.getElementById('operator-search-input')?.focus()">Open Command Palette</button>
+          </div>
+        </div>
+        <section class="panel operator-search-panel">
+          <div class="simple-panel-head"><h2>Command Palette</h2><span class="badge info">No external actions</span></div>
+          <div class="toolbar">
+            <label class="search-input">Search
+              <input id="operator-search-input" aria-label="Search LegalEase OS" placeholder="Search tasks, captures, RCAP artifacts, reports, evidence, audit..." oninput="renderOperatorSearchResults()">
+            </label>
+            <label class="sort-control">Type
+              <select id="operator-search-type" aria-label="Filter operator search by type" onchange="renderOperatorSearchResults()">
+                <option value="">All types</option>
+                \${types.map(type => \`<option value="\${esc(type)}">\${esc(plainOperatorState(type))}</option>\`).join("")}
+              </select>
+            </label>
+          </div>
+          <div id="operator-search-results" class="memory-evidence-grid operator-search-results">\${resultsHtml}</div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Safe actions</h2><span class="badge info">Internal only</span></div>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Open</h3><ul><li>Open records, routes, and workspaces.</li></ul></section>
+            <section class="operating-memory-tile"><h3>Review captures</h3><ul><li>Mark Quick Capture items reviewed.</li></ul></section>
+            <section class="operating-memory-tile"><h3>Route captures</h3><ul><li>Route captures to Tasks or Operating Memory only.</li></ul></section>
+            <section class="operating-memory-tile"><h3>Blocked commands</h3><ul><li>External actions remain unavailable here. Live gates remain 0.</li></ul></section>
+          </div>
+        </section>
+      </section>\`;
+    }
+
     function conversationNotesPageHtml(pageClass) {
       const notes = conversationNotesToday();
       const allNotes = (state.conversationNotes || []).slice(0, 50);
@@ -17577,6 +17699,7 @@ function htmlShell() {
             \${cockpitDailyRitualsHtml()}
             \${cockpitDailyCloseoutHtml()}
             \${cockpitOsHealthHtml()}
+            \${cockpitOperatorSearchHtml()}
             \${cockpitOperatingMemoryHtml()}
             </main>
             <aside class="cockpit-rail">
@@ -19130,7 +19253,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -19153,6 +19276,7 @@ function htmlShell() {
         \${eveningReflectionPageHtml(pageClass)}
         \${dailyCloseoutPageHtml(pageClass)}
         \${osHealthPageHtml(pageClass)}
+        \${operatorSearchPageHtml(pageClass)}
         \${conversationNotesPageHtml(pageClass)}
         \${captureInboxPageHtml(pageClass)}
         \${partnerProgramsPageHtml(pageClass)}
@@ -19387,7 +19511,7 @@ function htmlShell() {
     }
 
     function navSectionForPage(pageId = "overview") {
-      if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "conversation-notes"].includes(pageId)) return "today";
+      if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "operator-search", "conversation-notes"].includes(pageId)) return "today";
       if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
       if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
@@ -19953,6 +20077,26 @@ function htmlShell() {
         render();
         return result.message || "OS Health Snapshot refreshed. No external action was taken.";
       }, "Could not refresh OS Health.");
+    }
+
+    function renderOperatorSearchResults() {
+      const query = document.getElementById("operator-search-input")?.value || "";
+      const type = document.getElementById("operator-search-type")?.value || "";
+      const container = document.getElementById("operator-search-results");
+      if (container) container.innerHTML = operatorSearchResultsHtml(query, type);
+    }
+
+    async function operatorSearchAction(action, targetId) {
+      await cooAction(async () => {
+        const result = await api("/api/operator-search/action", {
+          method:"POST",
+          body:JSON.stringify({ action, targetId })
+        });
+        state = result.state || state;
+        render();
+        if (result.route) location.hash = result.route;
+        return result.message || "Command applied internally.";
+      }, "Could not run operator command.");
     }
 
     async function saveConversationNote(event) {
@@ -22224,6 +22368,40 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not refresh OS Health." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/operator-search" && request.method === "GET") {
+    const currentState = await store.readState();
+    const query = url.searchParams.get("q") || "";
+    const type = url.searchParams.get("type") || "";
+    const results = searchOperatorIndex(buildOperatorSearchIndex(currentState), query, { type });
+    sendJson(response, {
+      results,
+      count: results.length,
+      live_gates_count: Object.values(currentState.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length,
+      external_actions_enabled: false
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/operator-search/action" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const currentState = await store.readState();
+      const result = runOperatorSearchAction(currentState, input, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: result.message || "Command applied internally.",
+        route: result.route || "",
+        item: result.item || null,
+        state: withPublicChannelSetup(result.state),
+        external_actions_enabled: false,
+        live_gates_count: Object.values(result.state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not run operator search action." }, 400);
     }
     return;
   }
