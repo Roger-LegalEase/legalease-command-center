@@ -64,6 +64,7 @@ import { createCaptureInboxItem, routeCaptureInboxItem } from "./lee-quick-captu
 import { buildMorningBriefRecord, saveMorningBrief } from "./morning-brief.mjs";
 import { buildEveningReflectionRecord, saveEveningReflection } from "./evening-reflection.mjs";
 import { buildDailyCloseoutRecord, saveDailyCloseout } from "./daily-closeout.mjs";
+import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -16898,6 +16899,10 @@ function htmlShell() {
       return (state.dailyCloseouts || []).find(item => item.date === date || item.key === "daily-closeout-" + date) || null;
     }
 
+    function latestOsHealthSnapshot() {
+      return (state.osHealthSnapshots || []).slice().sort((a, b) => String(b.generated_at || "").localeCompare(String(a.generated_at || "")))[0] || null;
+    }
+
     function cockpitMorningBriefRecord() {
       const saved = savedMorningBriefForToday();
       if (saved) return saved;
@@ -16995,6 +17000,35 @@ function htmlShell() {
           <button type="button" onclick="location.hash='daily-closeout'">Open Daily Closeout</button>
           <button class="primary" type="button" onclick="saveDailyCloseout()">Save Closeout</button>
           <button type="button" onclick="generateTomorrowPlan()">Generate Tomorrow Plan</button>
+        </div>
+      </section>\`;
+    }
+
+    function cockpitOsHealthRecord() {
+      const saved = latestOsHealthSnapshot();
+      if (saved) return saved;
+      return {
+        generated_at:"",
+        overall_health:"needs_attention",
+        trust_warnings:[],
+        live_gates_count:Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length,
+        summary:{ next_operator_action:"Open OS Health and refresh the snapshot." }
+      };
+    }
+
+    function cockpitOsHealthHtml() {
+      const health = cockpitOsHealthRecord();
+      const warnings = health.trust_warnings || [];
+      return \`<section class="cockpit-card os-health-card" aria-label="OS Health">
+        <div class="cockpit-card-head"><h2>OS Health</h2><small>\${esc(plainOperatorState(health.overall_health || "needs_attention"))}</small></div>
+        <div class="daily-loop-summary"><strong>Overall: \${esc(plainOperatorState(health.overall_health || "needs_attention"))}</strong><span>Last verified: \${esc(formatDateTime(health.generated_at) || "Not recorded")}</span><span>Live gates: \${esc(health.live_gates_count || 0)}</span></div>
+        <div class="daily-loop-grid">
+          <section class="daily-loop-section primary"><h3>Key warnings</h3>\${memoryListHtml(warnings, "No key warnings saved in the latest snapshot.", 3)}</section>
+          <section class="daily-loop-section"><h3>Next action</h3><ul><li>\${esc(health.summary?.next_operator_action || "Refresh OS Health Snapshot.")}</li></ul></section>
+        </div>
+        <div class="operating-memory-actions">
+          <button type="button" onclick="location.hash='os-health'">Open OS Health</button>
+          <button class="primary" type="button" onclick="refreshOsHealth()">Refresh OS Health Snapshot</button>
         </div>
       </section>\`;
     }
@@ -17413,6 +17447,48 @@ function htmlShell() {
       </section>\`;
     }
 
+    function healthStatusGridHtml(records = {}) {
+      return \`<div class="operating-memory-grid">\${Object.entries(records).map(([key, item]) => \`<section class="operating-memory-tile"><h3>\${esc(item.name || plainOperatorState(key))}</h3><ul><li><strong>\${esc(plainOperatorState(item.status || "unknown"))}</strong><br><span>\${esc(item.detail || "No detail recorded.")}</span></li></ul></section>\`).join("")}</div>\`;
+    }
+
+    function osHealthPageHtml(pageClass) {
+      const health = cockpitOsHealthRecord();
+      return \`<section id="os-health" class="\${pageClass("os-health")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Trust Center</div>
+          <h1 class="big-title">OS Health</h1>
+          <p class="muted">Internal trust center for what is connected, stale, unverified, or not safe to trust yet. This page does not run shell tests from the browser and does not trigger external actions.</p>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button class="primary" type="button" onclick="refreshOsHealth()">Refresh OS Health Snapshot</button>
+          </div>
+        </div>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Health Summary</h2><span class="badge info">Live gates: \${esc(health.live_gates_count || 0)}</span></div>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>What is safe to trust</h3>\${memoryListHtml((health.summary?.safe_to_trust || []).map(title => ({ title, detail:"Verified by current OS snapshot." })), "Nothing saved yet.", 6)}</section>
+            <section class="operating-memory-tile"><h3>What needs attention</h3>\${memoryListHtml((health.summary?.needs_attention || []).map(title => ({ title, detail:"Needs operator review." })), "No saved warnings.", 6)}</section>
+            <section class="operating-memory-tile"><h3>What should not be trusted yet</h3>\${memoryListHtml((health.summary?.do_not_trust_yet || []).map(title => ({ title, detail:"Do not rely on this until resolved." })), "Nothing flagged.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Next operator action</h3><ul><li>\${esc(health.summary?.next_operator_action || "Refresh OS Health Snapshot.")}</li></ul></section>
+          </div>
+        </section>
+        <section class="panel"><div class="simple-panel-head"><h2>Connection Health</h2><span class="badge info">\${esc(health.overall_health || "not_recorded")}</span></div>\${healthStatusGridHtml(health.connection_health || {})}</section>
+        <section class="panel"><div class="simple-panel-head"><h2>Workflow Health</h2><span class="badge info">Internal workflows</span></div>\${healthStatusGridHtml(health.workflow_health || {})}</section>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Data Freshness</h2><span class="badge info">Last saved signals</span></div>
+          <div class="operating-memory-grid">\${Object.entries(health.data_freshness || {}).map(([key, value]) => \`<section class="operating-memory-tile"><h3>\${esc(plainOperatorState(key))}</h3><ul><li>\${esc(formatDateTime(value) || "Not recorded")}</li></ul></section>\`).join("")}</div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Trust Warnings</h2><span class="badge info">\${esc((health.trust_warnings || []).length)} warning(s)</span></div>
+          <div class="memory-evidence-grid">\${(health.trust_warnings || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Warning")}</strong><span class="muted">\${esc(item.detail || "Needs attention.")}</span></article>\`).join("") || '<div class="empty">No saved trust warnings.</div>'}</div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Self-Test Status</h2><span class="badge info">\${esc(health.self_test_status?.last_known_status || "last known not recorded")}</span></div>
+          <div class="memory-evidence-grid">\${(health.self_test_status?.checklist || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.command)}</strong><span class="muted">\${esc(plainOperatorState(item.status || "last_known_not_recorded"))}</span></article>\`).join("") || '<div class="empty">No self-test checklist saved yet.</div>'}</div>
+        </section>
+      </section>\`;
+    }
+
     function conversationNotesPageHtml(pageClass) {
       const notes = conversationNotesToday();
       const allNotes = (state.conversationNotes || []).slice(0, 50);
@@ -17500,6 +17576,7 @@ function htmlShell() {
             \${cockpitDailyOperatingLoopHtml()}
             \${cockpitDailyRitualsHtml()}
             \${cockpitDailyCloseoutHtml()}
+            \${cockpitOsHealthHtml()}
             \${cockpitOperatingMemoryHtml()}
             </main>
             <aside class="cockpit-rail">
@@ -19053,7 +19130,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -19075,6 +19152,7 @@ function htmlShell() {
         \${morningBriefPageHtml(pageClass)}
         \${eveningReflectionPageHtml(pageClass)}
         \${dailyCloseoutPageHtml(pageClass)}
+        \${osHealthPageHtml(pageClass)}
         \${conversationNotesPageHtml(pageClass)}
         \${captureInboxPageHtml(pageClass)}
         \${partnerProgramsPageHtml(pageClass)}
@@ -19309,7 +19387,7 @@ function htmlShell() {
     }
 
     function navSectionForPage(pageId = "overview") {
-      if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "conversation-notes"].includes(pageId)) return "today";
+      if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "conversation-notes"].includes(pageId)) return "today";
       if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
       if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
@@ -19863,6 +19941,18 @@ function htmlShell() {
         render();
         return result.message || "Tomorrow Plan generated internally. No external action was taken.";
       }, "Could not generate Tomorrow Plan.");
+    }
+
+    async function refreshOsHealth() {
+      await cooAction(async () => {
+        const result = await api("/api/os-health/refresh", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return result.message || "OS Health Snapshot refreshed. No external action was taken.";
+      }, "Could not refresh OS Health.");
     }
 
     async function saveConversationNote(event) {
@@ -22096,6 +22186,44 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not generate Tomorrow Plan." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/os-health" && request.method === "GET") {
+    const currentState = await store.readState();
+    const health = await getSupabaseHealth();
+    const snapshot = buildOsHealthSnapshot(currentState, {
+      supabaseDbConnected: Boolean(health?.db?.ok),
+      supabaseStorageConnected: Boolean(health?.storage?.ok),
+      openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
+      ownerTokenAuthConfigured: authRequiredForEnv(),
+      localFallbackAvailable: true
+    });
+    sendJson(response, { snapshot, saved: (currentState.osHealthSnapshots || []).find(item => item.id === snapshot.id) || null });
+    return;
+  }
+
+  if (url.pathname === "/api/os-health/refresh" && request.method === "POST") {
+    try {
+      const currentState = await store.readState();
+      const health = await getSupabaseHealth();
+      const result = saveOsHealthSnapshot(currentState, {
+        actor: publicActor(accessDecision.actor)?.role || "owner_token",
+        supabaseDbConnected: Boolean(health?.db?.ok),
+        supabaseStorageConnected: Boolean(health?.storage?.ok),
+        openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
+        ownerTokenAuthConfigured: authRequiredForEnv(),
+        localFallbackAvailable: true
+      });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "OS Health Snapshot refreshed. No external action was taken.",
+        snapshot: result.snapshot,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not refresh OS Health." }, 400);
     }
     return;
   }
