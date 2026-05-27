@@ -1,3 +1,5 @@
+import { defaultReviewFields } from "./review-approval-engine.mjs";
+
 export const rcapActivationKey = "rcap-production-activation-v1";
 
 const keys = {
@@ -9,6 +11,7 @@ const keys = {
   dashboardReadiness: "rcap-dashboard-readiness-v1",
   weeklyReportDraft: "rcap-weekly-report-draft-v1",
   evidenceNote: "rcap-production-activation-evidence-v1",
+  manualReviewChecklist: "rcap-manual-review-checklist-v1",
   eventId: "event-rcap-production-activation-v1",
   auditId: "audit-rcap-production-activation-v1"
 };
@@ -184,6 +187,7 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
     description: "Prepare the RCAP partner proposal for Roger review. No email or external delivery is allowed from this task.",
     owner: existing?.owner || "Roger",
     status: existing?.status === "done" ? "done" : "review_ready",
+    ...defaultReviewFields(existing?.review_state || "review_required", { ...options, review_updated_at: existing?.review_updated_at || generatedAt, review_updated_by: existing?.review_updated_by, review_notes: existing?.review_notes || "", blocker_reason: existing?.blocker_reason || "", revision_reason: existing?.revision_reason || "" }),
     priority: "high",
     definitionOfDone: [
       "Proposal purpose, LegalEase support, implementation workflow, and caveats are reviewed",
@@ -216,6 +220,7 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
     artifactType: "proposal",
     title: "RCAP Partner Proposal Draft",
     status: "draft",
+    ...defaultReviewFields(existing?.review_state || "review_required", { ...options, review_updated_at: existing?.review_updated_at || generatedAt, review_updated_by: existing?.review_updated_by, review_notes: existing?.review_notes || "", blocker_reason: existing?.blocker_reason || "", revision_reason: existing?.revision_reason || "" }),
     reviewOnly: true,
     externalSendAllowed: false,
     generatedAt: existing?.generatedAt || generatedAt,
@@ -248,6 +253,7 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
     artifactType: "partner_page",
     title: "RCAP Partner Page Draft",
     status: "draft",
+    ...defaultReviewFields(existing?.review_state || "review_required", { ...options, review_updated_at: existing?.review_updated_at || generatedAt, review_updated_by: existing?.review_updated_by, review_notes: existing?.review_notes || "", blocker_reason: existing?.blocker_reason || "", revision_reason: existing?.revision_reason || "" }),
     reviewOnly: true,
     published: false,
     liveUrl: existing?.liveUrl || null,
@@ -284,6 +290,7 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
     artifactType: "dashboard_readiness",
     title: "RCAP Dashboard Readiness",
     status: "review_required",
+    ...defaultReviewFields(existing?.review_state || "review_required", { ...options, review_updated_at: existing?.review_updated_at || generatedAt, review_updated_by: existing?.review_updated_by, review_notes: existing?.review_notes || "", blocker_reason: existing?.blocker_reason || "", revision_reason: existing?.revision_reason || "" }),
     reviewOnly: true,
     dashboardLive: false,
     activationAllowed: false,
@@ -306,6 +313,36 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
   next.partnerProgramArtifacts = dashboardResult.collection;
   summary.dashboard_readiness = dashboardResult.status;
 
+  const checklistResult = upsertBy(next.partnerProgramArtifacts, (item) => item.key === keys.manualReviewChecklist, (existing) => ({
+    ...(existing || {}),
+    id: existing?.id || "artifact-" + keys.manualReviewChecklist,
+    key: keys.manualReviewChecklist,
+    partnerId: keys.partnerId,
+    partnerSlug: "rcap",
+    partnerProgramId: keys.partnerProgramId,
+    artifactType: "manual_review_checklist",
+    title: "RCAP Manual Review Checklist",
+    status: "review_required",
+    ...defaultReviewFields(existing?.review_state || "review_required", { ...options, review_updated_at: existing?.review_updated_at || generatedAt, review_updated_by: existing?.review_updated_by, review_notes: existing?.review_notes || "", blocker_reason: existing?.blocker_reason || "", revision_reason: existing?.revision_reason || "" }),
+    reviewOnly: true,
+    externalActionsAllowed: false,
+    generatedAt: existing?.generatedAt || generatedAt,
+    updatedAt: generatedAt,
+    checklistItems: [
+      "Verify RCAP contact details",
+      "Confirm package/program scope",
+      "Review proposal draft",
+      "Review partner page draft",
+      "Confirm dashboard requirements",
+      "Confirm reporting cadence",
+      "Confirm approval authority",
+      "Decide whether to move to Partner Journey handoff",
+      "Keep live gates at 0 until approval"
+    ]
+  }));
+  next.partnerProgramArtifacts = checklistResult.collection;
+  summary.manual_review_checklist = checklistResult.status;
+
   const weeklyReportResult = upsertBy(next.reports, (item) => item.key === keys.weeklyReportDraft, (existing) => ({
     ...(existing || {}),
     id: existing?.id || "report-" + keys.weeklyReportDraft,
@@ -315,6 +352,7 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
     reportType: "partner_weekly_activation_report",
     title: "RCAP Weekly Activation Report Draft",
     status: "draft",
+    ...defaultReviewFields(existing?.review_state || "review_required", { ...options, review_updated_at: existing?.review_updated_at || generatedAt, review_updated_by: existing?.review_updated_by, review_notes: existing?.review_notes || "", blocker_reason: existing?.blocker_reason || "", revision_reason: existing?.revision_reason || "" }),
     reviewOnly: true,
     generatedAt: existing?.generatedAt || generatedAt,
     updatedAt: generatedAt,
@@ -348,6 +386,7 @@ export function ensureRcapProductionActivation(state = {}, options = {}) {
     title: "RCAP Production Activation Evidence",
     type: "production_activation",
     status: "recorded",
+    ...defaultReviewFields(existing?.review_state || "review_required", { ...options, review_updated_at: existing?.review_updated_at || generatedAt, review_updated_by: existing?.review_updated_by, review_notes: existing?.review_notes || "", blocker_reason: existing?.blocker_reason || "", revision_reason: existing?.revision_reason || "" }),
     reviewOnly: true,
     partnerId: keys.partnerId,
     partnerSlug: "rcap",

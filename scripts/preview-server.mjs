@@ -57,6 +57,7 @@ import {
   updateLeeActionProposal
 } from "./lee-engine.mjs";
 import { ensureRcapProductionActivation, rcapActivationStatus } from "./production-activation.mjs";
+import { ensureRcapReviewStates, rcapHandoffReadinessSummary, rcapReviewArtifactDefinitions, rcapReviewQueue, transitionRcapReviewArtifact } from "./review-approval-engine.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -12898,9 +12899,24 @@ function htmlShell() {
     .artifact-review-card header { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; border-bottom:1px solid rgba(8,20,95,.08); padding-bottom:10px; }
     .artifact-review-card h2 { margin:0; font-size:17px; line-height:1.2; color:var(--ink); }
     .artifact-review-status { display:inline-flex; align-items:center; border:1px solid rgba(0,169,157,.22); background:rgba(0,169,157,.08); color:#056a63; border-radius:999px; padding:5px 8px; font-size:11px; font-weight:850; white-space:nowrap; }
+    .artifact-review-status.blocked { border-color:rgba(220,38,38,.24); background:rgba(220,38,38,.08); color:#991b1b; }
+    .artifact-review-status.needs-revision { border-color:rgba(217,119,6,.26); background:rgba(217,119,6,.1); color:#92400e; }
+    .artifact-review-status.handoff-ready, .artifact-review-status.approved { border-color:rgba(5,150,105,.24); background:rgba(5,150,105,.1); color:#065f46; }
     .artifact-review-detail { display:grid; gap:6px; }
     .artifact-review-detail span { color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
     .artifact-review-detail p { margin:0; color:var(--ink); font-size:14px; line-height:1.45; }
+    .artifact-review-controls { display:grid; gap:10px; border-top:1px solid rgba(8,20,95,.08); padding-top:10px; }
+    .artifact-review-controls textarea { min-height:70px; border-radius:12px; resize:vertical; }
+    .artifact-review-buttons { display:flex; flex-wrap:wrap; gap:8px; }
+    .artifact-review-buttons button { min-height:34px; padding:0 10px; font-size:12px; }
+    .review-queue-list { display:grid; gap:8px; }
+    .review-queue-item { width:100%; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:10px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:start; text-align:left; }
+    .review-queue-item strong { display:block; font-size:13px; line-height:1.25; color:var(--text-primary); }
+    .review-queue-item span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; }
+    .handoff-summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; }
+    .handoff-summary div { border:1px solid rgba(8,20,95,.08); border-radius:14px; background:#fff; padding:12px; display:grid; gap:4px; }
+    .handoff-summary span { color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+    .handoff-summary strong { color:var(--ink); font-size:18px; }
     .manual-checklist { display:grid; gap:8px; margin:0; padding:0; list-style:none; }
     .manual-checklist li { display:grid; grid-template-columns:22px minmax(0, 1fr); gap:8px; align-items:start; color:var(--ink); font-size:14px; line-height:1.4; }
     .manual-checklist li::before { content:""; width:10px; height:10px; border-radius:999px; margin-top:5px; background:#00A99D; box-shadow:0 0 0 4px rgba(0,169,157,.12); }
@@ -13118,6 +13134,15 @@ function htmlShell() {
     let leeAdvanced = false;
     let leeBubbleOpen = false;
     let rcapActivationClientStatus = null;
+    const rcapReviewDefinitions = [
+      { key:"rcap-proposal-task-v1", title:"Proposal Task", collection:"tasks", id:"task-rcap-proposal-draft-v1", priority:"high" },
+      { key:"rcap-proposal-draft-v1", title:"Proposal Draft", collection:"partnerProgramArtifacts", artifactKey:"rcap-proposal-draft-v1", priority:"high" },
+      { key:"rcap-partner-page-draft-v1", title:"Partner Page Draft", collection:"partnerProgramArtifacts", artifactKey:"rcap-partner-page-draft-v1", priority:"high" },
+      { key:"rcap-dashboard-readiness-v1", title:"Dashboard Readiness", collection:"partnerProgramArtifacts", artifactKey:"rcap-dashboard-readiness-v1", priority:"critical" },
+      { key:"rcap-weekly-report-draft-v1", title:"Weekly Report Draft", collection:"reports", artifactKey:"rcap-weekly-report-draft-v1", priority:"medium" },
+      { key:"rcap-production-activation-evidence-v1", title:"Evidence Note", collection:"evidencePackNotes", artifactKey:"rcap-production-activation-evidence-v1", priority:"medium" },
+      { key:"rcap-manual-review-checklist-v1", title:"Manual Review Checklist", collection:"partnerProgramArtifacts", artifactKey:"rcap-manual-review-checklist-v1", priority:"high" }
+    ];
     const focusModes = [
       { id:"inbox-triage", label:"Inbox Triage" },
       { id:"partner-follow-up", label:"Partner Follow-Up" },
@@ -16563,12 +16588,83 @@ function htmlShell() {
       return value.join("; ");
     }
 
+    function rcapReviewStateClass(value = "") {
+      return String(value || "review_required").replace(/_/g, "-");
+    }
+
+    function rcapReviewArtifactFor(def) {
+      const items = state?.[def.collection] || [];
+      return items.find(item => def.id ? item.id === def.id : item.key === def.artifactKey) || {};
+    }
+
+    function rcapReviewQueueItems() {
+      return rcapReviewDefinitions.map(def => {
+        const artifact = rcapReviewArtifactFor(def);
+        if (!artifact.id && !artifact.key) return null;
+        const reviewState = artifact.review_state || "review_required";
+        return {
+          ...def,
+          artifact,
+          reviewState,
+          lastUpdated: artifact.review_updated_at || artifact.updatedAt || artifact.createdAt || "",
+          nextAction: reviewState === "blocked"
+            ? "Resolve blocker before review can continue."
+            : reviewState === "needs_revision"
+              ? "Revise and resubmit for review."
+              : "Review and choose an approval state."
+        };
+      }).filter(Boolean).filter(item => ["review_required", "blocked", "needs_revision"].includes(item.reviewState));
+    }
+
+    function rcapHandoffReadinessClientSummary() {
+      const items = rcapReviewDefinitions.map(def => ({ def, artifact: rcapReviewArtifactFor(def) }));
+      const byState = stateName => items.filter(item => (item.artifact.review_state || "review_required") === stateName).map(item => item.def.title);
+      const blocked = byState("blocked");
+      const needsRevision = byState("needs_revision");
+      const handoffReady = byState("handoff_ready");
+      const approved = byState("approved");
+      const stillOpen = items.filter(item => ["review_required", "in_review"].includes(item.artifact.review_state || "review_required")).map(item => item.def.title);
+      const readyForPartnerJourneyHandoff = items.length > 0 && items.every(item => ["approved", "handoff_ready"].includes(item.artifact.review_state || "review_required")) && !blocked.length && !needsRevision.length;
+      return { approved, blocked, needsRevision, handoffReady, stillOpen, readyForPartnerJourneyHandoff };
+    }
+
+    function rcapReviewQueueHtml() {
+      const items = rcapReviewQueueItems();
+      return \`<section class="cockpit-card review-queue-card">
+        <div class="cockpit-card-head"><h2>RCAP Review Queue</h2><small>No external actions</small></div>
+        <div class="review-queue-list">\${items.map(item => \`<button class="review-queue-item" type="button" onclick="location.hash='production-activation-rcap'">
+          <span><strong>\${esc(item.title)}</strong><span>RCAP · \${esc(rcapReviewStatus(item.reviewState))} · \${esc(item.nextAction)}</span><span>Updated \${esc(formatDate(item.lastUpdated) || "TBD")}</span></span>
+          <span class="artifact-review-status \${esc(rcapReviewStateClass(item.reviewState))}">\${esc(item.priority)}</span>
+        </button>\`).join("") || '<div class="empty-calm">No RCAP artifacts are blocked, revision-needed, or waiting for review.</div>'}</div>
+      </section>\`;
+    }
+
+    function rcapReviewControlsHtml(def, artifact = {}) {
+      const noteId = "rcap-review-notes-" + def.key;
+      const reasonId = "rcap-review-reason-" + def.key;
+      return \`<div class="artifact-review-controls">
+        <label class="artifact-review-detail"><span>Operator review notes</span><textarea id="\${esc(noteId)}" aria-label="\${esc(def.title)} review notes" placeholder="Internal-only review notes...">\${esc(artifact.review_notes || "")}</textarea></label>
+        <label class="artifact-review-detail"><span>Blocker or revision notes</span><textarea id="\${esc(reasonId)}" aria-label="\${esc(def.title)} blocker or revision notes" placeholder="Required when blocking or requesting revision...">\${esc(artifact.blocker_reason || artifact.revision_reason || "")}</textarea></label>
+        <div class="artifact-review-buttons">
+          <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','in_review')">Mark In Review</button>
+          <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','approved')">Approve</button>
+          <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','needs_revision')">Needs Revision</button>
+          <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','blocked')">Block</button>
+          <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','handoff_ready')">Mark Handoff Ready</button>
+        </div>
+      </div>\`;
+    }
+
     function rcapReviewArtifactCard(title, status, summary, missingDetails, nextAction) {
+      const def = rcapReviewDefinitions.find(item => item.title === title);
+      const artifact = def ? rcapReviewArtifactFor(def) : {};
+      const reviewState = artifact.review_state || status || "review_required";
       return \`<article class="artifact-review-card">
-        <header><h2>\${esc(title)}</h2><span class="artifact-review-status">\${esc(rcapReviewStatus(status))}</span></header>
+        <header><h2>\${esc(title)}</h2><span class="artifact-review-status \${esc(rcapReviewStateClass(reviewState))}">\${esc(rcapReviewStatus(reviewState))}</span></header>
         <div class="artifact-review-detail"><span>Content summary</span><p>\${esc(summary)}</p></div>
         <div class="artifact-review-detail"><span>Missing details</span><p>\${esc(missingDetails)}</p></div>
         <div class="artifact-review-detail"><span>Next manual action</span><p>\${esc(nextAction)}</p></div>
+        \${def ? rcapReviewControlsHtml(def, artifact) : ""}
       </article>\`;
     }
 
@@ -16589,6 +16685,7 @@ function htmlShell() {
       const dashboardChecklist = dashboardReadiness.checklist || {};
       const reportSections = weeklyReport.sections || {};
       const evidenceSummary = evidenceNote.notes || "No evidence note has been generated yet. Start RCAP Activation from Today to create the review-only artifact set.";
+      const handoffSummary = rcapHandoffReadinessClientSummary();
       const checklistItems = [
         "Verify RCAP contact details.",
         "Confirm package/program scope.",
@@ -16610,6 +16707,16 @@ function htmlShell() {
             <button class="primary" type="button" onclick="startRcapActivation()">Refresh RCAP Artifacts</button>
           </div>
         </div>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Handoff Readiness Summary</h2><span class="artifact-review-status \${handoffSummary.readyForPartnerJourneyHandoff ? "handoff-ready" : "blocked"}">\${handoffSummary.readyForPartnerJourneyHandoff ? "Handoff ready" : "Not handoff ready"}</span></div>
+          <p class="muted">No handoff is triggered automatically. This summary only tells Roger whether internal review states support a manual Partner Journey handoff decision.</p>
+          <div class="handoff-summary">
+            <div><span>Approved</span><strong>\${esc(handoffSummary.approved.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.approved, "None"))}</small></div>
+            <div><span>Blocked</span><strong>\${esc(handoffSummary.blocked.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.blocked, "None"))}</small></div>
+            <div><span>Needs Revision</span><strong>\${esc(handoffSummary.needsRevision.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.needsRevision, "None"))}</small></div>
+            <div><span>Handoff Ready</span><strong>\${esc(handoffSummary.handoffReady.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.handoffReady, "None"))}</small></div>
+          </div>
+        </section>
         <div class="artifact-review-grid">
           \${rcapReviewArtifactCard(
             "Activation Summary",
@@ -16668,9 +16775,10 @@ function htmlShell() {
             \`External action confirmation: \${rcapReviewValue(evidenceNote.externalActionConfirmation, evidenceSummary)}\`
           )}
           <article class="artifact-review-card">
-            <header><h2>Manual Review Checklist</h2><span class="artifact-review-status">Review-only</span></header>
+            <header><h2>Manual Review Checklist</h2><span class="artifact-review-status \${esc(rcapReviewStateClass(rcapReviewArtifactFor(rcapReviewDefinitions.find(item => item.key === "rcap-manual-review-checklist-v1") || {}).review_state || "review_required"))}">\${esc(rcapReviewStatus(rcapReviewArtifactFor(rcapReviewDefinitions.find(item => item.key === "rcap-manual-review-checklist-v1") || {}).review_state || "review_required"))}</span></header>
             <div class="artifact-review-detail"><span>Manual approval required</span><p>No send, publish, dashboard activation, or live posting action is available from this workspace.</p></div>
             <ul class="manual-checklist">\${checklistItems.map(item => \`<li>\${esc(item)}</li>\`).join("")}</ul>
+            \${rcapReviewControlsHtml(rcapReviewDefinitions.find(item => item.key === "rcap-manual-review-checklist-v1"), rcapReviewArtifactFor(rcapReviewDefinitions.find(item => item.key === "rcap-manual-review-checklist-v1") || {}))}
           </article>
         </div>
       </section>\`;
@@ -16713,6 +16821,7 @@ function htmlShell() {
             </main>
             <aside class="cockpit-rail">
             \${cockpitRcapActivationHtml()}
+            \${rcapReviewQueueHtml()}
             <section class="cockpit-card quick-capture">
               <div class="cockpit-card-head"><h2>Quick Capture</h2><small>No module choosing</small></div>
               <form class="rail-form" onsubmit="quickCapture(event)">
@@ -18956,6 +19065,26 @@ function htmlShell() {
       }, "Could not start RCAP activation.");
     }
 
+    async function markRcapReviewState(artifactKey, reviewState) {
+      const notes = document.getElementById("rcap-review-notes-" + artifactKey)?.value || "";
+      const reason = document.getElementById("rcap-review-reason-" + artifactKey)?.value || "";
+      await cooAction(async () => {
+        const result = await api("/api/production-activation/rcap/review-state", {
+          method:"POST",
+          body:JSON.stringify({
+            artifactKey,
+            review_state: reviewState,
+            notes,
+            blocker_reason: reviewState === "blocked" ? reason : "",
+            revision_reason: reviewState === "needs_revision" ? reason : ""
+          })
+        });
+        state = result.state;
+        render();
+        return result.message || "RCAP review state updated. No external action was taken.";
+      }, "Could not update RCAP review state.");
+    }
+
     async function sendLeeMessage(event) {
       event.preventDefault();
       const message = String(new FormData(event.target).get("message") || "").trim();
@@ -20997,6 +21126,36 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not start RCAP production activation." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/production-activation/rcap/review-state" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const currentState = await store.readState();
+      const activated = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      const result = transitionRcapReviewArtifact(
+        activated.state,
+        input.artifactKey || input.artifact_key || "",
+        input.review_state || input.reviewState || "",
+        {
+          actor: publicActor(accessDecision.actor)?.role || "owner_token",
+          notes: input.notes || input.review_notes || "",
+          blocker_reason: input.blocker_reason || "",
+          revision_reason: input.revision_reason || ""
+        }
+      );
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "RCAP review state updated. No external action was taken.",
+        artifact: result.artifact,
+        review_queue: result.queue,
+        handoff_readiness: result.handoffReadiness,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update RCAP review state." }, 400);
     }
     return;
   }
