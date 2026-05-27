@@ -56,6 +56,7 @@ import {
   searchLeeKnowledge,
   updateLeeActionProposal
 } from "./lee-engine.mjs";
+import { ensureRcapProductionActivation, rcapActivationStatus } from "./production-activation.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -12885,6 +12886,10 @@ function htmlShell() {
     .rail-form { display:grid; gap:10px; }
     .rail-form textarea { min-height:92px; resize:vertical; border-radius:14px; background:#fbfefd; border-color:var(--border-default); }
     .rail-form button.primary { background:var(--text-primary); color:white; border-color:var(--text-primary); }
+    .activation-rows { display:grid; gap:7px; margin:0 0 10px; }
+    .activation-rows div { display:flex; justify-content:space-between; gap:12px; align-items:center; border-bottom:1px solid var(--border-light); padding-bottom:7px; }
+    .activation-rows span { color:var(--text-tertiary); font-size:12px; }
+    .activation-rows strong { color:var(--text-primary); font-size:12px; text-align:right; }
     .empty-calm { border:1px dashed var(--border-emphasis); border-radius:14px; padding:14px; color:var(--text-tertiary); background:#fbfefd; font-size:13px; line-height:1.45; }
     .app-footer { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; border:1px solid var(--border-default); border-radius:18px; background:var(--bg-footer); padding:12px 14px; color:var(--text-tertiary); font-size:12px; }
     .footer-gates { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
@@ -16366,6 +16371,42 @@ function htmlShell() {
       ];
     }
 
+    function cockpitRcapActivationStatus() {
+      const partner = (state.partners || []).find(item => item.slug === "rcap" || item.id === "partner-rcap");
+      const artifact = (key) => (state.partnerProgramArtifacts || []).find(item => item.key === key);
+      const report = (state.reports || []).find(item => item.key === "rcap-weekly-report-draft-v1");
+      const evidence = (state.evidencePackNotes || []).find(item => item.key === "rcap-production-activation-evidence-v1");
+      const liveGates = Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length;
+      return {
+        partner: partner?.name || "RCAP",
+        status: partner ? "Review-only" : "Not started",
+        proposal: artifact("rcap-proposal-draft-v1") ? "Draft created" : "Draft pending",
+        page: artifact("rcap-partner-page-draft-v1") ? "Draft created" : "Draft pending",
+        dashboard: artifact("rcap-dashboard-readiness-v1") ? "Readiness tracked" : "Readiness pending",
+        weeklyReport: report ? "Draft created" : "Draft pending",
+        evidence: evidence ? "Created" : "Pending",
+        liveGates
+      };
+    }
+
+    function cockpitRcapActivationHtml() {
+      const status = cockpitRcapActivationStatus();
+      return \`<section class="cockpit-card production-activation-card">
+        <div class="cockpit-card-head"><h2>RCAP Production Activation</h2><small>\${esc(status.status)}</small></div>
+        <div class="activation-rows">
+          <div><span>Partner</span><strong>\${esc(status.partner)}</strong></div>
+          <div><span>Proposal</span><strong>\${esc(status.proposal)}</strong></div>
+          <div><span>Partner page</span><strong>\${esc(status.page)}</strong></div>
+          <div><span>Dashboard</span><strong>\${esc(status.dashboard)}</strong></div>
+          <div><span>Weekly report</span><strong>\${esc(status.weeklyReport)}</strong></div>
+          <div><span>Evidence note</span><strong>\${esc(status.evidence)}</strong></div>
+          <div><span>Live gates</span><strong>\${esc(status.liveGates)}</strong></div>
+        </div>
+        <p class="muted">Review-only. No emails, posts, partner pages, or dashboards are activated.</p>
+        <button class="primary wide" type="button" onclick="startRcapActivation()">Start RCAP Activation</button>
+      </section>\`;
+    }
+
     function commandCenterOverviewHtml(posts) {
       const nowItem = cockpitNowItem(posts);
       const intention = cockpitDailyIntention(nowItem);
@@ -16402,6 +16443,7 @@ function htmlShell() {
             \${cockpitTimelineHtml(nowItem)}
             </main>
             <aside class="cockpit-rail">
+            \${cockpitRcapActivationHtml()}
             <section class="cockpit-card quick-capture">
               <div class="cockpit-card-head"><h2>Quick Capture</h2><small>No module choosing</small></div>
               <form class="rail-form" onsubmit="quickCapture(event)">
@@ -18630,6 +18672,18 @@ function htmlShell() {
       }, "Could not capture item.");
     }
 
+    async function startRcapActivation() {
+      await cooAction(async () => {
+        const result = await api("/api/production-activation/rcap/start", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return "RCAP activation prepared for review only. No external action was taken.";
+      }, "Could not start RCAP activation.");
+    }
+
     async function sendLeeMessage(event) {
       event.preventDefault();
       const message = String(new FormData(event.target).get("message") || "").trim();
@@ -20649,6 +20703,24 @@ async function handleRequest(request, response) {
 
 	  if (url.pathname === "/api/state" && request.method === "GET") {
     sendJson(response, withPublicChannelSetup(await store.readState()));
+    return;
+  }
+
+  if (url.pathname === "/api/production-activation/rcap" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, rcapActivationStatus(currentState));
+    return;
+  }
+
+  if (url.pathname === "/api/production-activation/rcap/start" && request.method === "POST") {
+    try {
+      const currentState = await store.readState();
+      const result = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      sendJson(response, { ...result.summary, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not start RCAP production activation." }, 400);
+    }
     return;
   }
 
