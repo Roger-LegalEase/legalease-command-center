@@ -12890,6 +12890,20 @@ function htmlShell() {
     .activation-rows div { display:flex; justify-content:space-between; gap:12px; align-items:center; border-bottom:1px solid var(--border-light); padding-bottom:7px; }
     .activation-rows span { color:var(--text-tertiary); font-size:12px; }
     .activation-rows strong { color:var(--text-primary); font-size:12px; text-align:right; }
+    .activation-card-actions { display:grid; gap:8px; }
+    .rcap-review-workspace { display:grid; gap:16px; }
+    .rcap-review-workspace .hero-panel { display:grid; gap:10px; }
+    .artifact-review-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; align-items:start; width:100%; }
+    .artifact-review-card { width:100%; min-width:0; max-width:100%; border:1px solid rgba(8,20,95,.08); border-radius:18px; background:#fff; padding:16px; display:grid; gap:10px; box-sizing:border-box; overflow-wrap:break-word; }
+    .artifact-review-card header { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; border-bottom:1px solid rgba(8,20,95,.08); padding-bottom:10px; }
+    .artifact-review-card h2 { margin:0; font-size:17px; line-height:1.2; color:var(--ink); }
+    .artifact-review-status { display:inline-flex; align-items:center; border:1px solid rgba(0,169,157,.22); background:rgba(0,169,157,.08); color:#056a63; border-radius:999px; padding:5px 8px; font-size:11px; font-weight:850; white-space:nowrap; }
+    .artifact-review-detail { display:grid; gap:6px; }
+    .artifact-review-detail span { color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+    .artifact-review-detail p { margin:0; color:var(--ink); font-size:14px; line-height:1.45; }
+    .manual-checklist { display:grid; gap:8px; margin:0; padding:0; list-style:none; }
+    .manual-checklist li { display:grid; grid-template-columns:22px minmax(0, 1fr); gap:8px; align-items:start; color:var(--ink); font-size:14px; line-height:1.4; }
+    .manual-checklist li::before { content:""; width:10px; height:10px; border-radius:999px; margin-top:5px; background:#00A99D; box-shadow:0 0 0 4px rgba(0,169,157,.12); }
     .empty-calm { border:1px dashed var(--border-emphasis); border-radius:14px; padding:14px; color:var(--text-tertiary); background:#fbfefd; font-size:13px; line-height:1.45; }
     .app-footer { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; border:1px solid var(--border-default); border-radius:18px; background:var(--bg-footer); padding:12px 14px; color:var(--text-tertiary); font-size:12px; }
     .footer-gates { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
@@ -16526,7 +16540,131 @@ function htmlShell() {
           <div><span>Live gates</span><strong>\${esc(status.liveGates)}</strong></div>
         </div>
         <p class="muted">Review-only. No emails, posts, partner pages, or dashboards are activated.</p>
-        <button class="primary wide" type="button" onclick="startRcapActivation()">Start RCAP Activation</button>
+        <div class="activation-card-actions">
+          <button class="primary wide" type="button" onclick="startRcapActivation()">Start RCAP Activation</button>
+          <button class="wide" type="button" onclick="location.hash='production-activation-rcap'">Review RCAP Artifacts</button>
+        </div>
+      </section>\`;
+    }
+
+    function rcapReviewValue(value, fallback = "TBD") {
+      if (value === null || value === undefined || value === "") return fallback;
+      if (Array.isArray(value)) return value.length ? value.join(", ") : fallback;
+      if (typeof value === "boolean") return value ? "Yes" : "No";
+      return String(value);
+    }
+
+    function rcapReviewStatus(value, fallback = "Review required") {
+      return plainOperatorState(rcapReviewValue(value, fallback));
+    }
+
+    function rcapReviewArtifactCard(title, status, summary, missingDetails, nextAction) {
+      return \`<article class="artifact-review-card">
+        <header><h2>\${esc(title)}</h2><span class="artifact-review-status">\${esc(rcapReviewStatus(status))}</span></header>
+        <div class="artifact-review-detail"><span>Content summary</span><p>\${esc(summary)}</p></div>
+        <div class="artifact-review-detail"><span>Missing details</span><p>\${esc(missingDetails)}</p></div>
+        <div class="artifact-review-detail"><span>Next manual action</span><p>\${esc(nextAction)}</p></div>
+      </article>\`;
+    }
+
+    function rcapReviewWorkspaceHtml(pageClass) {
+      const status = cockpitRcapActivationStatus();
+      const liveGates = Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length;
+      const partner = (state.partners || []).find(item => item.slug === "rcap" || item.id === "partner-rcap") || {};
+      const program = (state.partnerPrograms || []).find(item => item.slug === "rcap" || item.id === "partner-program-rcap") || {};
+      const artifact = key => (state.partnerProgramArtifacts || []).find(item => item.key === key) || {};
+      const proposalDraft = artifact("rcap-proposal-draft-v1");
+      const pageDraft = artifact("rcap-partner-page-draft-v1");
+      const dashboardReadiness = artifact("rcap-dashboard-readiness-v1");
+      const proposalTask = (state.tasks || []).find(item => item.id === "task-rcap-proposal-draft-v1") || {};
+      const weeklyReport = (state.reports || []).find(item => item.key === "rcap-weekly-report-draft-v1") || {};
+      const evidenceNote = (state.evidencePackNotes || []).find(item => item.key === "rcap-production-activation-evidence-v1") || {};
+      const proposalSections = proposalDraft.sections || {};
+      const pageContent = pageDraft.draftContent || {};
+      const dashboardChecklist = dashboardReadiness.checklist || {};
+      const reportSections = weeklyReport.sections || {};
+      const evidenceSummary = evidenceNote.notes || "No evidence note has been generated yet. Start RCAP Activation from Today to create the review-only artifact set.";
+      const checklistItems = [
+        "Manual approval required before any external RCAP action.",
+        "Confirm missing partner contact details, stakeholders, URLs, and jurisdiction facts.",
+        "Review proposal language for unsupported claims before sharing.",
+        "Review partner page draft before any publishing decision.",
+        "Confirm dashboard readiness remains not activated.",
+        "Confirm live gates remain 0 before and after review."
+      ];
+      return \`<section id="production-activation-rcap" class="\${pageClass("production-activation-rcap")} rcap-review-workspace command-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Production Activation</div>
+          <h1 class="big-title">RCAP Review Workspace</h1>
+          <p class="muted">Review-only internal workspace. Manual approval required before any external action. No emails, posts, partner pages, or dashboards are activated from this page.</p>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button class="primary" type="button" onclick="startRcapActivation()">Refresh RCAP Artifacts</button>
+          </div>
+        </div>
+        <div class="artifact-review-grid">
+          \${rcapReviewArtifactCard(
+            "Activation Summary",
+            status.status,
+            \`RCAP production activation is \${status.status}. Proposal: \${status.proposal}. Partner page: \${status.page}. Dashboard: \${status.dashboard}. Weekly report: \${status.weeklyReport}. Evidence note: \${status.evidence}. Live gates: \${liveGates}.\`,
+            liveGates === 0 ? "External partner facts still need confirmation before anything moves outward." : "Live gates are not zero and must be closed before continuing.",
+            "Review each artifact below, then decide manually what is safe to prepare next."
+          )}
+          \${rcapReviewArtifactCard(
+            "Partner Record",
+            partner.status || program.status || "Not started",
+            \`Partner: \${rcapReviewValue(partner.name || program.name, "RCAP")}. Owner: \${rcapReviewValue(partner.owner || program.owner, "Roger")}. Workflow stage: \${rcapReviewValue(partner.workflow_stage || program.workflowStage, "production_activation")}.\`,
+            \`Primary contact: \${rcapReviewValue(partner.primaryContact || program.primaryContact)}. Email: \${rcapReviewValue(partner.email)}. Website: \${rcapReviewValue(partner.website)}. Stakeholders: \${rcapReviewValue(partner.stakeholders)}.\`,
+            partner.nextAction || program.nextAction || "Confirm missing external details before any manual outreach."
+          )}
+          \${rcapReviewArtifactCard(
+            "Proposal Task",
+            proposalTask.status || "Pending",
+            proposalTask.description || "Draft RCAP partner proposal task is pending creation.",
+            \`Due date: \${rcapReviewValue(proposalTask.dueDate)}. External delivery: \${proposalTask.noEmailSideEffects === true ? "not allowed from task" : "review_required"}.\`,
+            proposalTask.nextAction || "Create or review the proposal task before drafting any external message."
+          )}
+          \${rcapReviewArtifactCard(
+            "Proposal Draft",
+            proposalDraft.status || "Pending",
+            proposalSections.objective || "Proposal draft has not been generated yet.",
+            \`Pricing/package confirmation: review_required. Partner facts: review_required. Manual approval required: \${rcapReviewValue(proposalSections.manualApprovalRequired, "review_required")}.\`,
+            "Review objective, workflow, implementation outline, checklist, and compliance note before sharing manually."
+          )}
+          \${rcapReviewArtifactCard(
+            "Partner Page Draft",
+            pageDraft.status || "Pending",
+            pageContent.intro || "Partner page draft has not been generated yet.",
+            \`Live URL: \${rcapReviewValue(pageDraft.liveUrl, "null")}. Published: \${rcapReviewValue(pageDraft.published, "false")}. Partner logo/colors/CTA facts: review_required.\`,
+            "Review copy and compliance disclaimer before any separate publishing workflow."
+          )}
+          \${rcapReviewArtifactCard(
+            "Dashboard Readiness",
+            dashboardReadiness.status || "Pending",
+            \`Dashboard live: \${rcapReviewValue(dashboardReadiness.dashboardLive, "false")}. Activation allowed: \${rcapReviewValue(dashboardReadiness.activationAllowed, "false")}. Checklist tracked: \${Object.keys(dashboardChecklist).length ? "yes" : "not yet"}.\`,
+            "Dashboard URL, partner credentials, and external access details remain review_required.",
+            "Keep dashboard not activated until Roger manually approves a separate activation step."
+          )}
+          \${rcapReviewArtifactCard(
+            "Weekly Report Draft",
+            weeklyReport.status || "Pending",
+            reportSections.activationSummary || "Weekly report draft has not been generated yet.",
+            "Real partner metrics, page views, intake starts, and handoff counts are not verified yet.",
+            reportSections.nextManualApprovalStep || "Review the report draft as an internal artifact only."
+          )}
+          \${rcapReviewArtifactCard(
+            "Evidence Note",
+            evidenceNote.status || "Pending",
+            evidenceSummary,
+            \`Generated timestamp: \${rcapReviewValue(evidenceNote.timestamp)}. Live gates count: \${rcapReviewValue(evidenceNote.liveGatesCount, String(liveGates))}.\`,
+            "Use this as internal proof that activation artifacts were created without external side effects."
+          )}
+          <article class="artifact-review-card">
+            <header><h2>Manual Review Checklist</h2><span class="artifact-review-status">Review-only</span></header>
+            <div class="artifact-review-detail"><span>Manual approval required</span><p>No send, publish, dashboard activation, or live posting action is available from this workspace.</p></div>
+            <ul class="manual-checklist">\${checklistItems.map(item => \`<li>\${esc(item)}</li>\`).join("")}</ul>
+          </article>
+        </div>
       </section>\`;
     }
 
@@ -18109,7 +18247,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "tasks", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "tasks", "production-activation-rcap", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -18126,6 +18264,7 @@ function htmlShell() {
         \${sectionLandingPageHtml(pageClass, "more")}
         \${growthInboxPageHtml(pageClass)}
         \${tasksPageHtml(pageClass)}
+        \${rcapReviewWorkspaceHtml(pageClass)}
         \${partnerProgramsPageHtml(pageClass)}
         \${partnerPagesPageHtml(pageClass)}
         \${partnerDashboardsPageHtml(pageClass)}
@@ -18358,7 +18497,7 @@ function htmlShell() {
     }
 
     function navSectionForPage(pageId = "overview") {
-      if (["overview", "focus"].includes(pageId)) return "today";
+      if (["overview", "focus", "production-activation-rcap"].includes(pageId)) return "today";
       if (["growth", "growth-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
       if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
