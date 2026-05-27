@@ -59,8 +59,10 @@ import {
 import { ensureRcapProductionActivation, rcapActivationStatus } from "./production-activation.mjs";
 import { computeRcapPartnerJourneyHandoffReadiness, ensureRcapReviewStates, generateRcapPartnerJourneyHandoffPacket, rcapHandoffPacketKey, rcapHandoffReadinessSummary, rcapReviewArtifactDefinitions, rcapReviewQueue, transitionRcapReviewArtifact } from "./review-approval-engine.mjs";
 import { saveTodayOperatingMemory, synthesizeOperatingMemory } from "./operating-memory.mjs";
-import { buildEveningReflection, buildMorningBrief, createConversationNote, updateConversationNoteAction } from "./lee-conversation-context.mjs";
+import { createConversationNote, updateConversationNoteAction } from "./lee-conversation-context.mjs";
 import { createCaptureInboxItem, routeCaptureInboxItem } from "./lee-quick-capture.mjs";
+import { buildMorningBriefRecord, saveMorningBrief } from "./morning-brief.mjs";
+import { buildEveningReflectionRecord, saveEveningReflection } from "./evening-reflection.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -16880,6 +16882,75 @@ function htmlShell() {
       return \`<ul>\${rows.length ? rows.map(item => \`<li><strong>\${esc(item.title || "Memory item")}</strong><br><span>\${esc(item.detail || "Internal operating memory.")}</span></li>\`).join("") : \`<li>\${esc(emptyText)}</li>\`}</ul>\`;
     }
 
+    function savedMorningBriefForToday() {
+      const date = todayOperatingMemoryDate();
+      return (state.morningBriefs || []).find(item => item.date === date || item.key === "morning-brief-" + date) || null;
+    }
+
+    function savedEveningReflectionForToday() {
+      const date = todayOperatingMemoryDate();
+      return (state.eveningReflections || []).find(item => item.date === date || item.key === "evening-reflection-" + date) || null;
+    }
+
+    function cockpitMorningBriefRecord() {
+      const saved = savedMorningBriefForToday();
+      if (saved) return saved;
+      const loop = cockpitDailyOperatingLoop();
+      const memory = cockpitOperatingMemoryRecord();
+      return {
+        date:todayOperatingMemoryDate(),
+        mission_today:loop.top3[0]?.title || "Run the internal operating loop from reviewed Command Center state.",
+        top_3_actions:loop.top3.slice(0, 3),
+        decisions_needed:loop.decisionsNeeded,
+        waiting_on:loop.waitingOn,
+        risks:memory.risk_notes || [],
+        do_not_touch:[...loop.doNotTouchToday, ...(memory.do_not_carry_forward || [])],
+        suggested_first_move:loop.top3[0]?.detail || "Open the highest leverage internal review item.",
+        source_evidence:[...loop.momentum, ...(memory.moved_today || [])].slice(0, 8),
+        live_gates_count:loop.liveGates,
+        external_actions_confirmation:"No emails sent, no posts published, no partner pages published, no dashboards activated, no external systems contacted."
+      };
+    }
+
+    function cockpitEveningReflectionRecord() {
+      const saved = savedEveningReflectionForToday();
+      if (saved) return saved;
+      const memory = cockpitOperatingMemoryRecord();
+      return {
+        date:todayOperatingMemoryDate(),
+        what_moved_today:memory.moved_today || [],
+        decisions_made:memory.decisions_made || [],
+        state_changes:[...(memory.moved_today || []), ...(memory.decisions_made || [])].slice(0, 8),
+        blockers_remaining:memory.still_blocked || [],
+        carry_forward:memory.carry_forward || [],
+        resurface_tomorrow:memory.resurface_tomorrow || [],
+        do_not_carry_forward:memory.do_not_carry_forward || [],
+        notes_for_tomorrow:[...(memory.carry_forward || []), ...(memory.resurface_tomorrow || [])].slice(0, 8),
+        source_evidence:memory.moved_today || [],
+        live_gates_count:memory.live_gates_count || 0,
+        external_actions_confirmation:"No emails sent, no posts published, no partner pages published, no dashboards activated, no external systems contacted."
+      };
+    }
+
+    function cockpitDailyRitualsHtml() {
+      const morningSaved = Boolean(savedMorningBriefForToday());
+      const eveningSaved = Boolean(savedEveningReflectionForToday());
+      const morning = cockpitMorningBriefRecord();
+      const evening = cockpitEveningReflectionRecord();
+      return \`<section class="cockpit-card daily-rituals-card" aria-label="Daily Rituals">
+        <div class="cockpit-card-head"><h2>Daily Rituals</h2><small>Internal only</small></div>
+        <div class="daily-loop-summary"><strong>Morning Brief: \${morningSaved ? "Saved" : "Not saved"}</strong><span>Evening Reflection: \${eveningSaved ? "Saved" : "Not saved"}</span><span>Live gates: \${esc(morning.live_gates_count || evening.live_gates_count || 0)}</span></div>
+        <div class="daily-loop-grid">
+          <section class="daily-loop-section primary"><h3>Morning Brief</h3><p>\${esc(morning.mission_today || "Run the internal operating loop.")}</p><a href="#morning-brief">Open Morning Brief</a></section>
+          <section class="daily-loop-section"><h3>Evening Reflection</h3><p>\${esc((evening.carry_forward || [])[0]?.title || "No reflection saved yet.")}</p><a href="#evening-reflection">Open Evening Reflection</a></section>
+        </div>
+        <div class="operating-memory-actions">
+          <button class="primary" type="button" onclick="saveMorningBrief()">Save Morning Brief</button>
+          <button type="button" onclick="saveEveningReflection()">Save Evening Reflection</button>
+        </div>
+      </section>\`;
+    }
+
     function cockpitOperatingMemoryHtml() {
       const memory = cockpitOperatingMemoryRecord();
       const saved = Boolean(savedOperatingMemoryForToday());
@@ -17189,6 +17260,72 @@ function htmlShell() {
       </section>\`;
     }
 
+    function morningBriefPageHtml(pageClass) {
+      const brief = cockpitMorningBriefRecord();
+      const saved = savedMorningBriefForToday();
+      return \`<section id="morning-brief" class="\${pageClass("morning-brief")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Daily Rituals</div>
+          <h1 class="big-title">Morning Brief</h1>
+          <p class="muted">\${saved ? \`Morning Brief saved at \${esc(formatDate(saved.generated_at) || "today")}.\` : "Morning Brief not saved yet."} Internal guidance only. No emails, posts, publishing, dashboards, or external systems are triggered.</p>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button class="primary" type="button" onclick="saveMorningBrief()">Save Morning Brief</button>
+          </div>
+        </div>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Mission Today</h2><span class="badge info">Live gates: \${esc(brief.live_gates_count || 0)}</span></div>
+          <p class="muted">\${esc(brief.mission_today || "Run the internal operating loop from reviewed Command Center state.")}</p>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Top 3 Actions</h3>\${memoryListHtml(brief.top_3_actions, "No actions surfaced.", 3)}</section>
+            <section class="operating-memory-tile"><h3>Decisions Needed</h3>\${memoryListHtml(brief.decisions_needed, "No decisions waiting.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Waiting On</h3>\${memoryListHtml(brief.waiting_on, "Nothing waiting.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Risks</h3>\${memoryListHtml(brief.risks, "No risks surfaced.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Do Not Touch</h3>\${memoryListHtml(brief.do_not_touch, "No distractions flagged.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Suggested First Move</h3><ul><li>\${esc(brief.suggested_first_move || "Open Today.")}</li></ul></section>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Source Evidence</h2><span class="badge info">\${esc((brief.source_evidence || []).length)} records</span></div>
+          <div class="memory-evidence-grid">\${(brief.source_evidence || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Evidence")}</strong><span class="muted">\${esc(item.detail || "Internal evidence.")}</span></article>\`).join("") || '<div class="empty">No source evidence yet.</div>'}</div>
+        </section>
+      </section>\`;
+    }
+
+    function eveningReflectionPageHtml(pageClass) {
+      const reflection = cockpitEveningReflectionRecord();
+      const saved = savedEveningReflectionForToday();
+      return \`<section id="evening-reflection" class="\${pageClass("evening-reflection")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Daily Rituals</div>
+          <h1 class="big-title">Evening Reflection</h1>
+          <p class="muted">\${saved ? \`Evening Reflection saved at \${esc(formatDate(saved.generated_at) || "today")}.\` : "Evening Reflection not saved yet."} Internal memory only. No emails, posts, publishing, dashboards, or external systems are triggered.</p>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button class="primary" type="button" onclick="saveEveningReflection()">Save Evening Reflection</button>
+          </div>
+        </div>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Today Closing Review</h2><span class="badge info">Live gates: \${esc(reflection.live_gates_count || 0)}</span></div>
+          <p class="muted">\${esc(reflection.external_actions_confirmation || "No external actions were taken.")}</p>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>What moved today</h3>\${memoryListHtml(reflection.what_moved_today, "No movement captured.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Decisions made</h3>\${memoryListHtml(reflection.decisions_made, "No decisions captured.", 6)}</section>
+            <section class="operating-memory-tile"><h3>State changes</h3>\${memoryListHtml(reflection.state_changes, "No state changes captured.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Blockers remaining</h3>\${memoryListHtml(reflection.blockers_remaining, "No blockers remaining.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Carry forward</h3>\${memoryListHtml(reflection.carry_forward, "Nothing to carry forward.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Resurface tomorrow</h3>\${memoryListHtml(reflection.resurface_tomorrow, "Nothing to resurface.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Do not carry forward</h3>\${memoryListHtml(reflection.do_not_carry_forward, "No distractions flagged.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Notes for tomorrow</h3>\${memoryListHtml(reflection.notes_for_tomorrow, "No notes for tomorrow.", 6)}</section>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Source Evidence</h2><span class="badge info">\${esc((reflection.source_evidence || []).length)} records</span></div>
+          <div class="memory-evidence-grid">\${(reflection.source_evidence || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Evidence")}</strong><span class="muted">\${esc(item.detail || "Internal evidence.")}</span></article>\`).join("") || '<div class="empty">No source evidence yet.</div>'}</div>
+        </section>
+      </section>\`;
+    }
+
     function conversationNotesPageHtml(pageClass) {
       const notes = conversationNotesToday();
       const allNotes = (state.conversationNotes || []).slice(0, 50);
@@ -17274,6 +17411,7 @@ function htmlShell() {
             </section>
             \${cockpitTimelineHtml(nowItem)}
             \${cockpitDailyOperatingLoopHtml()}
+            \${cockpitDailyRitualsHtml()}
             \${cockpitOperatingMemoryHtml()}
             </main>
             <aside class="cockpit-rail">
@@ -18827,7 +18965,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "production-activation-rcap", "operating-memory", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -18846,6 +18984,8 @@ function htmlShell() {
         \${tasksPageHtml(pageClass)}
         \${rcapReviewWorkspaceHtml(pageClass)}
         \${operatingMemoryPageHtml(pageClass)}
+        \${morningBriefPageHtml(pageClass)}
+        \${eveningReflectionPageHtml(pageClass)}
         \${conversationNotesPageHtml(pageClass)}
         \${captureInboxPageHtml(pageClass)}
         \${partnerProgramsPageHtml(pageClass)}
@@ -19080,7 +19220,7 @@ function htmlShell() {
     }
 
     function navSectionForPage(pageId = "overview") {
-      if (["overview", "focus", "production-activation-rcap", "operating-memory", "conversation-notes"].includes(pageId)) return "today";
+      if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "conversation-notes"].includes(pageId)) return "today";
       if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
       if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
@@ -19586,6 +19726,30 @@ function htmlShell() {
         render();
         return result.message || "Operating memory saved. No external action was taken.";
       }, "Could not save operating memory.");
+    }
+
+    async function saveMorningBrief() {
+      await cooAction(async () => {
+        const result = await api("/api/morning-brief/today/save", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return result.message || "Morning Brief saved. No external action was taken.";
+      }, "Could not save Morning Brief.");
+    }
+
+    async function saveEveningReflection() {
+      await cooAction(async () => {
+        const result = await api("/api/evening-reflection/today/save", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return result.message || "Evening Reflection saved. No external action was taken.";
+      }, "Could not save Evening Reflection.");
     }
 
     async function saveConversationNote(event) {
@@ -21727,6 +21891,52 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not save operating memory." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/morning-brief/today" && request.method === "GET") {
+    const currentState = await store.readState();
+    const record = buildMorningBriefRecord(currentState);
+    sendJson(response, { record, saved: (currentState.morningBriefs || []).find(item => item.key === record.key) || null });
+    return;
+  }
+
+  if (url.pathname === "/api/morning-brief/today/save" && request.method === "POST") {
+    try {
+      const currentState = await store.readState();
+      const result = saveMorningBrief(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Morning Brief saved. No external action was taken.",
+        record: result.record,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not save Morning Brief." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/evening-reflection/today" && request.method === "GET") {
+    const currentState = await store.readState();
+    const record = buildEveningReflectionRecord(currentState);
+    sendJson(response, { record, saved: (currentState.eveningReflections || []).find(item => item.key === record.key) || null });
+    return;
+  }
+
+  if (url.pathname === "/api/evening-reflection/today/save" && request.method === "POST") {
+    try {
+      const currentState = await store.readState();
+      const result = saveEveningReflection(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Evening Reflection saved. No external action was taken.",
+        record: result.record,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not save Evening Reflection." }, 400);
     }
     return;
   }
