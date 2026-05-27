@@ -1,4 +1,5 @@
 import { buildDailyOperatingLoop } from "./daily-operating-loop.mjs";
+import { conversationOperatingInputs } from "./lee-conversation-context.mjs";
 import { computeRcapPartnerJourneyHandoffReadiness, rcapReviewQueue } from "./review-approval-engine.mjs";
 
 const externalActionsConfirmation = "No emails sent, no posts published, no partner pages published, no dashboards activated, no external systems contacted.";
@@ -57,6 +58,7 @@ export function synthesizeOperatingMemory(state = {}, options = {}) {
   const generatedAt = isoNow(options);
   const date = dayKey({ ...options, now: generatedAt });
   const loop = buildDailyOperatingLoop(state);
+  const conversation = conversationOperatingInputs(state);
   const reviewQueue = rcapReviewQueue(state);
   const handoff = computeRcapPartnerJourneyHandoffReadiness(state);
   const todayEvents = [...list(state.activityEvents), ...list(state.auditHistory), ...list(state.events)]
@@ -67,19 +69,33 @@ export function synthesizeOperatingMemory(state = {}, options = {}) {
   const openTasks = list(state.tasks).filter(openTask);
   const liveGates = liveGatesCount(state);
 
-  const movedToday = uniqueByTitle(todayEvents.map(event => memoryItem(
-    event.title || event.eventType || event.action || "Operating event captured",
-    event.summary || event.action || event.eventType || "Internal operating state changed.",
-    { source: "activity", href: "reports" }
-  ))).slice(0, 8);
+  const movedToday = uniqueByTitle([
+    ...todayEvents.map(event => memoryItem(
+      event.title || event.eventType || event.action || "Operating event captured",
+      event.summary || event.action || event.eventType || "Internal operating state changed.",
+      { source: "activity", href: "reports" }
+    )),
+    ...conversation.reflectionItems.map(item => memoryItem(
+      item.title || "Conversation movement",
+      item.detail || "Reviewed conversation context moved today.",
+      { source: "conversation_note", href: "conversation-notes" }
+    ))
+  ]).slice(0, 8);
 
-  const decisionsMade = uniqueByTitle(todayEvents
-    .filter(event => /review state changed|approved|blocked|needs_revision|handoff packet|decision/i.test([event.eventType, event.title, event.action].join(" ")))
-    .map(event => memoryItem(
-      event.title || event.action || "Decision captured",
-      event.summary || event.action || event.eventType || "A review or handoff state changed today.",
-      { source: "audit", href: "production-activation-rcap" }
-    ))).slice(0, 8);
+  const decisionsMade = uniqueByTitle([
+    ...todayEvents
+      .filter(event => /review state changed|approved|blocked|needs_revision|handoff packet|decision/i.test([event.eventType, event.title, event.action].join(" ")))
+      .map(event => memoryItem(
+        event.title || event.action || "Decision captured",
+        event.summary || event.action || event.eventType || "A review or handoff state changed today.",
+        { source: "audit", href: "production-activation-rcap" }
+      )),
+    ...conversation.reviewedOrApplied.filter(note => note.classification.includes("decision")).map(note => memoryItem(
+      note.summary,
+      "Conversation-derived decision input.",
+      { source: "conversation_note", href: "conversation-notes" }
+    ))
+  ]).slice(0, 8);
 
   const stillBlocked = uniqueByTitle([
     ...blockedArtifacts.map(item => memoryItem(
@@ -96,6 +112,11 @@ export function synthesizeOperatingMemory(state = {}, options = {}) {
       task.title || "Blocked task",
       task.escalationReason || task.nextAction || task.description || "Task remains blocked.",
       { source: "task", href: "tasks" }
+    )),
+    ...conversation.riskNotes.map(item => memoryItem(
+      item.title || "Conversation risk",
+      item.detail || "Reviewed conversation context contains a risk or blocker.",
+      { source: "conversation_note", href: "conversation-notes" }
     ))
   ]).slice(0, 8);
 
@@ -110,6 +131,11 @@ export function synthesizeOperatingMemory(state = {}, options = {}) {
       task.title || "Open task",
       task.nextAction || task.description || "Open task should carry forward.",
       { source: "task", href: "tasks" }
+    )),
+    ...conversation.carryForward.map(item => memoryItem(
+      item.title || "Conversation carry-forward",
+      item.detail || "Reviewed conversation context should carry forward.",
+      { source: "conversation_note", href: "conversation-notes" }
     ))
   ]).slice(0, 8);
 
@@ -120,14 +146,23 @@ export function synthesizeOperatingMemory(state = {}, options = {}) {
       "RCAP handoff readiness",
       handoff.handoff_ready ? "Ready for Roger's manual handoff decision." : handoff.next_manual_action,
       { source: "handoff", href: "production-activation-rcap" }
-    )
+    ),
+    ...conversation.resurfaceTomorrow.map(item => memoryItem(
+      item.title || "Conversation resurfacing item",
+      item.detail || "Reviewed conversation context should resurface tomorrow.",
+      { source: "conversation_note", href: "conversation-notes" }
+    ))
   ]).slice(0, 8);
 
   const doNotCarryForward = uniqueByTitle(loop.doNotTouchToday.map(item => memoryItem(
     item.title,
     item.detail || "Do not let this distract tomorrow.",
     { source: "safety", href: item.href }
-  ))).slice(0, 6);
+  )).concat(conversation.doNotTouch.map(item => memoryItem(
+    item.title || "Conversation do-not-carry item",
+    item.detail || "Reviewed conversation context should not carry forward.",
+    { source: "conversation_note", href: "conversation-notes" }
+  )))).slice(0, 6);
 
   const riskNotes = uniqueByTitle([
     liveGates > 0 ? memoryItem("Live gate risk", `${liveGates} live gate(s) are enabled and need review.`, { source: "safety", href: "settings" }) : memoryItem("Live gates remain 0", "No live publishing gate is enabled.", { source: "safety", href: "settings" }),

@@ -1,4 +1,5 @@
 import { computeRcapPartnerJourneyHandoffReadiness, rcapReviewQueue } from "./review-approval-engine.mjs";
+import { conversationOperatingInputs } from "./lee-conversation-context.mjs";
 
 function list(value) {
   return Array.isArray(value) ? value : [];
@@ -74,6 +75,7 @@ function summarizeMomentum(state = {}) {
 export function buildDailyOperatingLoop(state = {}) {
   const reviewQueue = rcapReviewQueue(state);
   const handoff = computeRcapPartnerJourneyHandoffReadiness(state);
+  const conversation = conversationOperatingInputs(state);
   const liveGates = liveGatesCount(state);
   const openTasks = list(state.tasks).filter(openTask);
   const blocked = reviewQueue.filter(entry => entry.review_state === "blocked");
@@ -116,6 +118,13 @@ export function buildDailyOperatingLoop(state = {}) {
       { action: "Open Tasks", href: "tasks", source: "tasks" }
     ));
   }
+  for (const noteItem of conversation.briefItems.slice(0, 2)) {
+    topCandidates.push(item(
+      noteItem.title || "Conversation input needs action",
+      noteItem.detail || "Reviewed conversation context should shape today's operating loop.",
+      { action: "Open Conversation Notes", href: "conversation-notes", source: "conversation_note" }
+    ));
+  }
 
   const waitingOn = uniqueByTitle([
     ...handoff.missing_partner_details.map(detail => item(
@@ -127,6 +136,11 @@ export function buildDailyOperatingLoop(state = {}) {
       entry.artifact,
       entry.next_required_action || "Blocked pending operator review.",
       { action: "Open RCAP review", href: "production-activation-rcap", source: "blocked_artifact" }
+    )),
+    ...conversation.needsReview.map(note => item(
+      note.summary,
+      "Needs review before it changes tomorrow's brief.",
+      { action: "Review Note", href: "conversation-notes", source: "conversation_note" }
     ))
   ]).slice(0, 5);
 
@@ -145,7 +159,12 @@ export function buildDailyOperatingLoop(state = {}) {
       "RCAP Partner Journey handoff",
       handoff.handoff_ready ? "Ready for a manual handoff decision. No external system is contacted." : handoff.next_manual_action,
       { action: "Open RCAP review", href: "production-activation-rcap", source: "handoff" }
-    )
+    ),
+    ...conversation.briefItems.map(noteItem => item(
+      noteItem.title || "Conversation-derived decision",
+      noteItem.detail || "Conversation context has been reviewed or applied.",
+      { action: "Open Conversation Notes", href: "conversation-notes", source: "conversation_note" }
+    ))
   ]).slice(0, 5);
 
   const doNotTouchToday = [
@@ -163,7 +182,12 @@ export function buildDailyOperatingLoop(state = {}) {
       "Email, page, and dashboard actions",
       "Keep all artifacts draft or review-only until Roger manually approves a separate external step.",
       { action: "Keep review-only", href: "production-activation-rcap", source: "safety" }
-    )
+    ),
+    ...conversation.doNotTouch.map(noteItem => item(
+      noteItem.title || "Conversation do-not-touch item",
+      noteItem.detail || "Do not let this distract Roger today.",
+      { action: "Open Conversation Notes", href: "conversation-notes", source: "conversation_note" }
+    ))
   ];
 
   return {

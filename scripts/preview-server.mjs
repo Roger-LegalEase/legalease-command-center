@@ -59,6 +59,7 @@ import {
 import { ensureRcapProductionActivation, rcapActivationStatus } from "./production-activation.mjs";
 import { computeRcapPartnerJourneyHandoffReadiness, ensureRcapReviewStates, generateRcapPartnerJourneyHandoffPacket, rcapHandoffPacketKey, rcapHandoffReadinessSummary, rcapReviewArtifactDefinitions, rcapReviewQueue, transitionRcapReviewArtifact } from "./review-approval-engine.mjs";
 import { saveTodayOperatingMemory, synthesizeOperatingMemory } from "./operating-memory.mjs";
+import { buildEveningReflection, buildMorningBrief, createConversationNote, updateConversationNoteAction } from "./lee-conversation-context.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -12939,6 +12940,16 @@ function htmlShell() {
     .memory-history-list { display:grid; gap:10px; }
     .memory-history-card { border:1px solid rgba(8,20,95,.08); border-radius:16px; background:#fff; padding:14px; display:grid; gap:8px; }
     .memory-evidence-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
+    .conversation-capture-card { display:grid; gap:10px; }
+    .conversation-capture-card textarea { min-height:90px; border-radius:14px; resize:vertical; }
+    .conversation-capture-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+    .conversation-note-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; }
+    .conversation-note-card { width:100%; min-width:0; border:1px solid rgba(8,20,95,.08); border-radius:18px; background:#fff; padding:15px; display:grid; gap:10px; overflow-wrap:break-word; }
+    .conversation-note-card header { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; border-bottom:1px solid rgba(8,20,95,.08); padding-bottom:9px; }
+    .conversation-note-card h2 { margin:0; font-size:16px; line-height:1.25; color:var(--ink); }
+    .conversation-note-meta { display:flex; flex-wrap:wrap; gap:6px; color:var(--muted); font-size:12px; }
+    .conversation-note-actions { display:flex; flex-wrap:wrap; gap:8px; border-top:1px solid rgba(8,20,95,.08); padding-top:10px; }
+    .conversation-note-actions button { min-height:34px; padding:0 10px; font-size:12px; }
     .handoff-summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; }
     .handoff-summary div { border:1px solid rgba(8,20,95,.08); border-radius:14px; background:#fff; padding:12px; display:grid; gap:4px; }
     .handoff-summary span { color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
@@ -12964,6 +12975,7 @@ function htmlShell() {
       .operator-v31 .cockpit-rail { max-width:100%; }
       .daily-loop-grid { grid-template-columns:1fr; }
       .operating-memory-grid { grid-template-columns:1fr; }
+      .conversation-capture-grid { grid-template-columns:1fr; }
       .app-intention p { font-size:clamp(28px,7vw,42px); }
       .now-block { padding:18px; border-radius:18px; }
     }
@@ -16864,6 +16876,61 @@ function htmlShell() {
       </section>\`;
     }
 
+    function conversationNotesToday() {
+      const today = todayOperatingMemoryDate();
+      return (state.conversationNotes || []).filter(note => note.date === today || String(note.created_at || "").startsWith(today));
+    }
+
+    function cockpitConversationCaptureHtml() {
+      return \`<section class="cockpit-card conversation-capture-card" aria-label="Le-E Conversation Capture">
+        <div class="cockpit-card-head"><h2>Le-E Conversation Capture</h2><small>Internal only</small></div>
+        <p class="muted">Capture a takeaway Roger intentionally wants Le-E to remember. Needs review before it changes tomorrow's brief.</p>
+        <form class="rail-form" onsubmit="saveConversationNote(event)">
+          <label>Source label<input name="source_label" placeholder="Call, Le-E chat, meeting note"></label>
+          <label>Conversation note<textarea name="raw_note" required placeholder="Decision, blocker, risk, carry-forward, or reflection..."></textarea></label>
+          <div class="conversation-capture-grid">
+            <label>Workflow<input name="linked_workflow" placeholder="RCAP, Growth, Proof"></label>
+            <label>Partner<input name="linked_partner" placeholder="Optional"></label>
+          </div>
+          <label>Priority<select name="priority"><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option><option value="low">Low</option></select></label>
+          <button class="primary" type="submit">Save Conversation Note</button>
+        </form>
+      </section>\`;
+    }
+
+    function conversationNoteStatus(note = {}) {
+      return plainOperatorState(note.review_state || "review_required");
+    }
+
+    function conversationNoteCardHtml(note = {}) {
+      return \`<article class="conversation-note-card">
+        <header>
+          <h2>\${esc(note.source_label || "Conversation note")}</h2>
+          <span class="artifact-review-status \${esc(rcapReviewStateClass(note.review_state || "review_required"))}">\${esc(conversationNoteStatus(note))}</span>
+        </header>
+        <p class="muted">\${esc(note.summary || note.raw_note || "No summary yet.")}</p>
+        <div class="conversation-note-meta">
+          <span>Classification: \${esc((note.classification || []).join(", ") || "context")}</span>
+          <span>Priority: \${esc(note.priority || "medium")}</span>
+          <span>Workflow: \${esc(note.linked_workflow || "TBD")}</span>
+          <span>Partner: \${esc(note.linked_partner || "TBD")}</span>
+        </div>
+        <div class="artifact-review-detail"><span>Suggested Morning Brief updates</span><p>\${esc(rcapReviewList((note.suggested_brief_updates || []).map(item => item.title || item.detail), "None"))}</p></div>
+        <div class="artifact-review-detail"><span>Suggested Evening Reflection updates</span><p>\${esc(rcapReviewList((note.suggested_reflection_updates || []).map(item => item.title || item.detail), "None"))}</p></div>
+        <div class="artifact-review-detail"><span>Carry forward</span><p>\${esc(rcapReviewList((note.carry_forward || []).map(item => item.title || item.detail), "None"))}</p></div>
+        <div class="artifact-review-detail"><span>Resurface tomorrow</span><p>\${esc(rcapReviewList((note.resurface_tomorrow || []).map(item => item.title || item.detail), "None"))}</p></div>
+        <div class="artifact-review-detail"><span>Risks</span><p>\${esc(rcapReviewList((note.risk_notes || []).map(item => item.title || item.detail), "None"))}</p></div>
+        <div class="artifact-review-detail"><span>Do not touch</span><p>\${esc(rcapReviewList((note.do_not_touch || []).map(item => item.title || item.detail), "None"))}</p></div>
+        <div class="conversation-note-actions">
+          <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','mark_reviewed')">Mark Reviewed</button>
+          <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','apply_morning_brief')">Apply to Today's Brief Inputs</button>
+          <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','apply_evening_reflection')">Apply to Evening Reflection Inputs</button>
+          <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','carry_forward')">Carry Forward</button>
+          <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','ignore')">Ignore</button>
+        </div>
+      </article>\`;
+    }
+
     function rcapReviewQueueHtml() {
       const items = rcapReviewQueueItems();
       return \`<section class="cockpit-card review-queue-card">
@@ -17079,6 +17146,30 @@ function htmlShell() {
       </section>\`;
     }
 
+    function conversationNotesPageHtml(pageClass) {
+      const notes = conversationNotesToday();
+      const allNotes = (state.conversationNotes || []).slice(0, 50);
+      return \`<section id="conversation-notes" class="\${pageClass("conversation-notes")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Le-E Context</div>
+          <h1 class="big-title">Conversation Notes</h1>
+          <p class="muted">Manual conversation capture only. Notes are internal, reviewable inputs for Morning Brief, Evening Reflection, Daily Operating Loop, and Operating Memory. No external conversations are read automatically.</p>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button type="button" onclick="location.hash='operating-memory'">Open Operating Memory</button>
+          </div>
+        </div>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Today's captured notes</h2><span class="badge info">\${esc(notes.length)} today</span></div>
+          <div class="conversation-note-grid">\${notes.map(conversationNoteCardHtml).join("") || '<div class="empty">No conversation notes captured today.</div>'}</div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Recent source evidence</h2><span class="badge info">\${esc(allNotes.length)} total</span></div>
+          <div class="conversation-note-grid">\${allNotes.slice(0, 12).map(conversationNoteCardHtml).join("") || '<div class="empty">No conversation context has been saved yet.</div>'}</div>
+        </section>
+      </section>\`;
+    }
+
     function commandCenterOverviewHtml(posts) {
       const nowItem = cockpitNowItem(posts);
       const intention = cockpitDailyIntention(nowItem);
@@ -17120,6 +17211,7 @@ function htmlShell() {
             \${cockpitRcapActivationHtml()}
             \${rcapReviewQueueHtml()}
             \${rcapHandoffReadinessCardHtml()}
+            \${cockpitConversationCaptureHtml()}
             <section class="cockpit-card quick-capture">
               <div class="cockpit-card-head"><h2>Quick Capture</h2><small>No module choosing</small></div>
               <form class="rail-form" onsubmit="quickCapture(event)">
@@ -18662,7 +18754,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "tasks", "production-activation-rcap", "operating-memory", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "tasks", "production-activation-rcap", "operating-memory", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -18681,6 +18773,7 @@ function htmlShell() {
         \${tasksPageHtml(pageClass)}
         \${rcapReviewWorkspaceHtml(pageClass)}
         \${operatingMemoryPageHtml(pageClass)}
+        \${conversationNotesPageHtml(pageClass)}
         \${partnerProgramsPageHtml(pageClass)}
         \${partnerPagesPageHtml(pageClass)}
         \${partnerDashboardsPageHtml(pageClass)}
@@ -18913,7 +19006,7 @@ function htmlShell() {
     }
 
     function navSectionForPage(pageId = "overview") {
-      if (["overview", "focus", "production-activation-rcap", "operating-memory"].includes(pageId)) return "today";
+      if (["overview", "focus", "production-activation-rcap", "operating-memory", "conversation-notes"].includes(pageId)) return "today";
       if (["growth", "growth-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
       if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
@@ -19406,6 +19499,33 @@ function htmlShell() {
         render();
         return result.message || "Operating memory saved. No external action was taken.";
       }, "Could not save operating memory.");
+    }
+
+    async function saveConversationNote(event) {
+      event.preventDefault();
+      const payload = formObject(event.target);
+      await cooAction(async () => {
+        const result = await api("/api/conversation-notes", {
+          method:"POST",
+          body:JSON.stringify(payload)
+        });
+        state = result.state;
+        event.target.reset();
+        render();
+        return result.message || "Captured for review.";
+      }, "Could not save conversation note.");
+    }
+
+    async function conversationNoteAction(id, action) {
+      await cooAction(async () => {
+        const result = await api("/api/conversation-notes/" + encodeURIComponent(id) + "/" + encodeURIComponent(action), {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return result.message || "Conversation note updated.";
+      }, "Could not update conversation note.");
     }
 
     async function sendLeeMessage(event) {
@@ -21520,6 +21640,48 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not save operating memory." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/conversation-notes" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const currentState = await store.readState();
+      const result = createConversationNote(currentState, input, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Captured for review.",
+        note: result.note,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not save conversation note." }, 400);
+    }
+    return;
+  }
+
+  const conversationNoteActionRoute = url.pathname.match(/^\/api\/conversation-notes\/([^/]+)\/([^/]+)$/);
+  if (conversationNoteActionRoute && request.method === "POST") {
+    try {
+      const [, noteId, action] = conversationNoteActionRoute;
+      const currentState = await store.readState();
+      const result = updateConversationNoteAction(currentState, decodeURIComponent(noteId), decodeURIComponent(action), { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      const messages = {
+        mark_reviewed: "Captured for review.",
+        apply_morning_brief: "Applied to Morning Brief inputs.",
+        apply_evening_reflection: "Applied to Evening Reflection inputs.",
+        carry_forward: "Captured for tomorrow.",
+        ignore: "Ignored. This will not carry forward."
+      };
+      sendJson(response, {
+        message: messages[action] || "Conversation note updated.",
+        note: result.note,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update conversation note." }, 400);
     }
     return;
   }
