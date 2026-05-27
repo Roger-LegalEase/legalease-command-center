@@ -10,6 +10,17 @@ export const rcapReviewArtifactDefinitions = [
   { key: "rcap-manual-review-checklist-v1", title: "Manual Review Checklist", collection: "partnerProgramArtifacts", match: item => item.key === "rcap-manual-review-checklist-v1", priority: "high" }
 ];
 
+export const rcapRequiredHandoffArtifactKeys = [
+  "rcap-proposal-draft-v1",
+  "rcap-partner-page-draft-v1",
+  "rcap-dashboard-readiness-v1",
+  "rcap-weekly-report-draft-v1",
+  "rcap-production-activation-evidence-v1",
+  "rcap-manual-review-checklist-v1"
+];
+
+export const rcapHandoffPacketKey = "rcap-partner-journey-handoff-packet-v1";
+
 function list(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -105,6 +116,144 @@ export function rcapHandoffReadinessSummary(state = {}) {
     && blocked.length === 0
     && needsRevision.length === 0;
   return { approved, blocked, needsRevision, handoffReady, stillOpen, readyForPartnerJourneyHandoff };
+}
+
+function missingPartnerDetailsForRcap(state = {}) {
+  const partner = list(state.partners).find(item => item.slug === "rcap" || item.id === "partner-rcap") || {};
+  const program = list(state.partnerPrograms).find(item => item.slug === "rcap" || item.id === "partner-program-rcap") || {};
+  const missing = new Set();
+  for (const item of list(partner.missingExternalDetailsList)) missing.add(item);
+  if (partner.missing_external_details || program.missingExternalDetails) {
+    missing.add("partner details marked missing");
+  }
+  if (!partner.primaryContact && !program.primaryContact) missing.add("RCAP primary contact");
+  if (!partner.email) missing.add("partner-facing email address");
+  if (!partner.website && !program.partnerLandingPageUrl) missing.add("website or partner landing destination");
+  if (!list(partner.stakeholders).length) missing.add("named stakeholders and approval authority");
+  if (!program.jurisdiction || program.jurisdiction === "TBD") missing.add("jurisdiction");
+  if (!program.targetAudience || program.targetAudience === "TBD") missing.add("target audience");
+  if (!program.packageTier || program.packageTier === "TBD") missing.add("package/program scope");
+  return [...missing];
+}
+
+export function computeRcapPartnerJourneyHandoffReadiness(state = {}) {
+  const current = ensureRcapReviewStates(state);
+  const required = rcapRequiredHandoffArtifactKeys.map(key => {
+    const found = findRcapReviewArtifact(current, key);
+    const def = rcapReviewArtifactDefinitions.find(item => item.key === key);
+    return {
+      key,
+      title: def?.title || key,
+      review_state: found?.artifact?.review_state || "missing",
+      artifact: found?.artifact || null
+    };
+  });
+  const byState = stateName => required.filter(item => item.review_state === stateName).map(item => item.title);
+  const approved_artifacts = byState("approved");
+  const handoff_ready_artifacts = byState("handoff_ready");
+  const blocked_artifacts = byState("blocked");
+  const revision_required_artifacts = byState("needs_revision");
+  const review_required_artifacts = required.filter(item => ["review_required", "in_review", "missing"].includes(item.review_state)).map(item => item.title);
+  const missing_partner_details = missingPartnerDetailsForRcap(current);
+  const required_manual_approvals = [];
+  if (review_required_artifacts.length) required_manual_approvals.push("Complete review states for required artifacts");
+  if (revision_required_artifacts.length) required_manual_approvals.push("Resolve revision requests");
+  if (blocked_artifacts.length) required_manual_approvals.push("Resolve blockers");
+  if (missing_partner_details.length) required_manual_approvals.push("Confirm missing partner details");
+  const readyCount = required.filter(item => ["approved", "handoff_ready"].includes(item.review_state)).length;
+  const handoff_ready = readyCount === required.length && !blocked_artifacts.length && !revision_required_artifacts.length && !review_required_artifacts.length && !missing_partner_details.length;
+  const next_manual_action = handoff_ready
+    ? "Roger can manually decide whether to hand this packet to the separate Partner Journey OS."
+    : blocked_artifacts.length
+      ? "Resolve blocked artifacts before considering handoff."
+      : missing_partner_details.length
+        ? "Confirm missing RCAP partner details before handoff."
+        : revision_required_artifacts.length
+          ? "Revise requested artifacts and re-run review."
+          : "Finish artifact review and mark each required artifact approved or handoff_ready.";
+  return {
+    handoff_ready,
+    readiness_score: Math.round((readyCount / required.length) * 100),
+    readiness_count: { ready: readyCount, total: required.length },
+    approved_artifacts,
+    handoff_ready_artifacts,
+    blocked_artifacts,
+    revision_required_artifacts,
+    review_required_artifacts,
+    missing_partner_details,
+    required_manual_approvals,
+    next_manual_action,
+    no_external_system_contacted: true,
+    live_gates: Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length
+  };
+}
+
+export function generateRcapPartnerJourneyHandoffPacket(state = {}, options = {}) {
+  const current = ensureRcapReviewStates(state, options);
+  const timestamp = nowIso(options);
+  const actor = actorLabel(options.actor);
+  const readiness = computeRcapPartnerJourneyHandoffReadiness(current);
+  const packet = {
+    id: "artifact-" + rcapHandoffPacketKey,
+    key: rcapHandoffPacketKey,
+    partnerId: "partner-rcap",
+    partnerSlug: "rcap",
+    partnerProgramId: "partner-program-rcap",
+    artifactType: "internal_handoff_packet",
+    title: "RCAP Partner Journey Handoff Packet",
+    status: readiness.handoff_ready ? "handoff_ready" : "not_ready",
+    reviewOnly: true,
+    internalOnly: true,
+    externalActionsAllowed: false,
+    noExternalSystemContacted: true,
+    generatedAt: timestamp,
+    updatedAt: timestamp,
+    readiness,
+    summary: {
+      question: "Is RCAP ready for Partner Journey handoff?",
+      answer: readiness.handoff_ready ? "Ready for Roger's manual handoff decision." : "Not ready for handoff.",
+      nextManualAction: readiness.next_manual_action
+    }
+  };
+  const artifacts = list(current.partnerProgramArtifacts).filter(item => item.key !== rcapHandoffPacketKey);
+  const next = {
+    ...current,
+    partnerProgramArtifacts: [packet, ...artifacts]
+  };
+  const auditId = `audit-rcap-handoff-packet-${Date.parse(timestamp) || Date.now()}`;
+  const eventId = `activity-rcap-handoff-packet-${Date.parse(timestamp) || Date.now()}`;
+  next.auditHistory = [{
+    id: auditId,
+    timestamp,
+    actor,
+    action: "rcap internal handoff packet generated",
+    resourceType: "internal_handoff_packet",
+    resourceId: rcapHandoffPacketKey,
+    beforeValue: null,
+    afterValue: {
+      handoff_ready: readiness.handoff_ready,
+      blockers_count: readiness.blocked_artifacts.length,
+      missing_details_count: readiness.missing_partner_details.length,
+      no_external_action: true
+    }
+  }, ...list(current.auditHistory)].slice(0, 1000);
+  next.activityEvents = [{
+    id: eventId,
+    eventType: "RCAP internal handoff packet generated",
+    title: readiness.handoff_ready ? "RCAP handoff packet ready for manual decision" : "RCAP handoff packet generated but not ready",
+    relatedObjectType: "internal_handoff_packet",
+    relatedObjectId: rcapHandoffPacketKey,
+    riskLevel: readiness.handoff_ready ? "medium" : "high",
+    metadata: {
+      handoff_ready: readiness.handoff_ready,
+      blockersCount: readiness.blocked_artifacts.length,
+      missingDetailsCount: readiness.missing_partner_details.length,
+      noExternalSystemContacted: true,
+      externalSideEffects: false
+    },
+    createdAt: timestamp
+  }, ...list(current.activityEvents)].slice(0, 500);
+  return { state: next, packet, readiness };
 }
 
 export function transitionRcapReviewArtifact(state = {}, artifactKey = "", nextReviewState = "", options = {}) {

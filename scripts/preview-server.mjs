@@ -57,7 +57,7 @@ import {
   updateLeeActionProposal
 } from "./lee-engine.mjs";
 import { ensureRcapProductionActivation, rcapActivationStatus } from "./production-activation.mjs";
-import { ensureRcapReviewStates, rcapHandoffReadinessSummary, rcapReviewArtifactDefinitions, rcapReviewQueue, transitionRcapReviewArtifact } from "./review-approval-engine.mjs";
+import { computeRcapPartnerJourneyHandoffReadiness, ensureRcapReviewStates, generateRcapPartnerJourneyHandoffPacket, rcapHandoffPacketKey, rcapHandoffReadinessSummary, rcapReviewArtifactDefinitions, rcapReviewQueue, transitionRcapReviewArtifact } from "./review-approval-engine.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -13143,6 +13143,8 @@ function htmlShell() {
       { key:"rcap-production-activation-evidence-v1", title:"Evidence Note", collection:"evidencePackNotes", artifactKey:"rcap-production-activation-evidence-v1", priority:"medium" },
       { key:"rcap-manual-review-checklist-v1", title:"Manual Review Checklist", collection:"partnerProgramArtifacts", artifactKey:"rcap-manual-review-checklist-v1", priority:"high" }
     ];
+    const rcapRequiredHandoffKeys = ["rcap-proposal-draft-v1", "rcap-partner-page-draft-v1", "rcap-dashboard-readiness-v1", "rcap-weekly-report-draft-v1", "rcap-production-activation-evidence-v1", "rcap-manual-review-checklist-v1"];
+    const rcapHandoffPacketArtifactKey = "rcap-partner-journey-handoff-packet-v1";
     const focusModes = [
       { id:"inbox-triage", label:"Inbox Triage" },
       { id:"partner-follow-up", label:"Partner Follow-Up" },
@@ -16628,6 +16630,59 @@ function htmlShell() {
       return { approved, blocked, needsRevision, handoffReady, stillOpen, readyForPartnerJourneyHandoff };
     }
 
+    function rcapMissingPartnerDetailsClient() {
+      const partner = (state.partners || []).find(item => item.slug === "rcap" || item.id === "partner-rcap") || {};
+      const program = (state.partnerPrograms || []).find(item => item.slug === "rcap" || item.id === "partner-program-rcap") || {};
+      const missing = new Set(partner.missingExternalDetailsList || []);
+      if (partner.missing_external_details || program.missingExternalDetails) missing.add("partner details marked missing");
+      if (!partner.primaryContact && !program.primaryContact) missing.add("RCAP primary contact");
+      if (!partner.email) missing.add("partner-facing email address");
+      if (!partner.website && !program.partnerLandingPageUrl) missing.add("website or partner landing destination");
+      if (!(partner.stakeholders || []).length) missing.add("named stakeholders and approval authority");
+      if (!program.jurisdiction || program.jurisdiction === "TBD") missing.add("jurisdiction");
+      if (!program.targetAudience || program.targetAudience === "TBD") missing.add("target audience");
+      if (!program.packageTier || program.packageTier === "TBD") missing.add("package/program scope");
+      return [...missing];
+    }
+
+    function rcapPartnerJourneyHandoffReadinessClient() {
+      const required = rcapRequiredHandoffKeys.map(key => {
+        const def = rcapReviewDefinitions.find(item => item.key === key);
+        const artifact = def ? rcapReviewArtifactFor(def) : {};
+        return { key, title:def?.title || key, reviewState:artifact.review_state || "missing" };
+      });
+      const byState = stateName => required.filter(item => item.reviewState === stateName).map(item => item.title);
+      const approved = byState("approved");
+      const handoffReady = byState("handoff_ready");
+      const blocked = byState("blocked");
+      const revisions = byState("needs_revision");
+      const open = required.filter(item => ["review_required", "in_review", "missing"].includes(item.reviewState)).map(item => item.title);
+      const missing = rcapMissingPartnerDetailsClient();
+      const readyCount = required.filter(item => ["approved", "handoff_ready"].includes(item.reviewState)).length;
+      const ready = readyCount === required.length && !blocked.length && !revisions.length && !open.length && !missing.length;
+      const next = ready ? "Roger can manually decide whether to hand this packet to the separate Partner Journey OS." : blocked.length ? "Resolve blocked artifacts before considering handoff." : missing.length ? "Confirm missing RCAP partner details before handoff." : revisions.length ? "Revise requested artifacts and re-run review." : "Finish artifact review and mark each required artifact approved or handoff_ready.";
+      return { ready, readinessScore:Math.round((readyCount / required.length) * 100), readyCount, total:required.length, approved, handoffReady, blocked, revisions, open, missing, next };
+    }
+
+    function rcapHandoffPacketForState() {
+      return (state.partnerProgramArtifacts || []).find(item => item.key === rcapHandoffPacketArtifactKey) || {};
+    }
+
+    function rcapHandoffReadinessCardHtml() {
+      const readiness = rcapPartnerJourneyHandoffReadinessClient();
+      return \`<section class="cockpit-card">
+        <div class="cockpit-card-head"><h2>RCAP Handoff Readiness</h2><small>\${readiness.ready ? "Ready" : "Not Ready"}</small></div>
+        <div class="activation-rows">
+          <div><span>Readiness</span><strong>\${esc(readiness.readyCount)}/\${esc(readiness.total)}</strong></div>
+          <div><span>Blockers</span><strong>\${esc(readiness.blocked.length)}</strong></div>
+          <div><span>Revisions</span><strong>\${esc(readiness.revisions.length)}</strong></div>
+          <div><span>Missing details</span><strong>\${esc(readiness.missing.length)}</strong></div>
+        </div>
+        <p class="muted">\${esc(readiness.next)}</p>
+        <button class="wide" type="button" onclick="location.hash='production-activation-rcap'">Open RCAP Review Workspace</button>
+      </section>\`;
+    }
+
     function rcapReviewQueueHtml() {
       const items = rcapReviewQueueItems();
       return \`<section class="cockpit-card review-queue-card">
@@ -16686,6 +16741,8 @@ function htmlShell() {
       const reportSections = weeklyReport.sections || {};
       const evidenceSummary = evidenceNote.notes || "No evidence note has been generated yet. Start RCAP Activation from Today to create the review-only artifact set.";
       const handoffSummary = rcapHandoffReadinessClientSummary();
+      const handoffReadiness = rcapPartnerJourneyHandoffReadinessClient();
+      const handoffPacket = rcapHandoffPacketForState();
       const checklistItems = [
         "Verify RCAP contact details.",
         "Confirm package/program scope.",
@@ -16716,6 +16773,22 @@ function htmlShell() {
             <div><span>Needs Revision</span><strong>\${esc(handoffSummary.needsRevision.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.needsRevision, "None"))}</small></div>
             <div><span>Handoff Ready</span><strong>\${esc(handoffSummary.handoffReady.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.handoffReady, "None"))}</small></div>
           </div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Handoff Packet</h2><span class="artifact-review-status \${handoffReadiness.ready ? "handoff-ready" : "blocked"}">\${handoffReadiness.ready ? "Ready" : "Not Ready"}</span></div>
+          <p class="muted">Internal handoff packet only. No external system contacted. This does not call Partner Journey APIs, send email, publish pages, or activate dashboards.</p>
+          <div class="handoff-summary">
+            <div><span>Readiness score</span><strong>\${esc(handoffReadiness.readinessScore)}%</strong><small>\${esc(handoffReadiness.readyCount)}/\${esc(handoffReadiness.total)} required artifacts ready</small></div>
+            <div><span>Approved artifacts</span><strong>\${esc(handoffReadiness.approved.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.approved, "None"))}</small></div>
+            <div><span>Handoff ready artifacts</span><strong>\${esc(handoffReadiness.handoffReady.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.handoffReady, "None"))}</small></div>
+            <div><span>Blocked artifacts</span><strong>\${esc(handoffReadiness.blocked.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.blocked, "None"))}</small></div>
+            <div><span>Needs revision</span><strong>\${esc(handoffReadiness.revisions.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.revisions, "None"))}</small></div>
+            <div><span>Missing details</span><strong>\${esc(handoffReadiness.missing.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.missing, "None"))}</small></div>
+          </div>
+          <div class="artifact-review-detail" style="margin-top:12px"><span>Required approvals</span><p>\${esc(rcapReviewList(handoffReadiness.open, "All required artifact approvals are complete."))}</p></div>
+          <div class="artifact-review-detail"><span>Next manual action</span><p>\${esc(handoffReadiness.next)}</p></div>
+          <div class="artifact-review-detail"><span>Packet artifact</span><p>\${handoffPacket.key ? \`Last generated: \${esc(formatDate(handoffPacket.updatedAt || handoffPacket.generatedAt) || "TBD")}. Status: \${esc(rcapReviewStatus(handoffPacket.status || "not_ready"))}.\` : "No internal handoff packet generated yet."}</p></div>
+          <div class="card-actions"><button class="primary" type="button" onclick="generateRcapHandoffPacket()">Generate Internal Handoff Packet</button></div>
         </section>
         <div class="artifact-review-grid">
           \${rcapReviewArtifactCard(
@@ -16822,6 +16895,7 @@ function htmlShell() {
             <aside class="cockpit-rail">
             \${cockpitRcapActivationHtml()}
             \${rcapReviewQueueHtml()}
+            \${rcapHandoffReadinessCardHtml()}
             <section class="cockpit-card quick-capture">
               <div class="cockpit-card-head"><h2>Quick Capture</h2><small>No module choosing</small></div>
               <form class="rail-form" onsubmit="quickCapture(event)">
@@ -19085,6 +19159,18 @@ function htmlShell() {
       }, "Could not update RCAP review state.");
     }
 
+    async function generateRcapHandoffPacket() {
+      await cooAction(async () => {
+        const result = await api("/api/production-activation/rcap/handoff-packet", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return result.message || "Internal handoff packet generated. No external system contacted.";
+      }, "Could not generate RCAP handoff packet.");
+    }
+
     async function sendLeeMessage(event) {
       event.preventDefault();
       const message = String(new FormData(event.target).get("message") || "").trim();
@@ -21156,6 +21242,24 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update RCAP review state." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/production-activation/rcap/handoff-packet" && request.method === "POST") {
+    try {
+      const currentState = await store.readState();
+      const activated = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      const result = generateRcapPartnerJourneyHandoffPacket(activated.state, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Internal handoff packet generated. No external system contacted.",
+        packet: result.packet,
+        handoff_readiness: result.readiness,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not generate RCAP handoff packet." }, 400);
     }
     return;
   }
