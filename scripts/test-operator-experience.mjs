@@ -28,9 +28,12 @@ assert.match(server, /class="app-footer"/, "Today should render the v3.1 footer 
 assert.match(server, /MADE FOR ROGER/, "Footer should keep the made-for-Roger signature.");
 assert.match(server, /tickCockpitClock/, "Clock should update on an interval.");
 assert.match(server, /setInterval\(tickCockpitClock, 30000\)/, "Clock should refresh every 30 seconds.");
-assert.match(server, /font-family:\s*"Sora", Inter/, "v3.1 cockpit should use Sora as the only primary font family.");
-assert.match(server, /--bg-primary:\s*#faf6ec/, "v3.1 palette should define warm cream app background.");
-assert.match(server, /--accent:\s*#b8501f/, "v3.1 palette should define terracotta accent.");
+assert.match(server, /family=Geist:wght@400;500;600;700;800/, "Today should load Geist Sans for the refined operator cockpit.");
+assert.match(server, /font-family:\s*"Geist", Inter/, "Today cockpit should use Geist as the primary font family.");
+assert.match(server, /--bg-primary:\s*#f6f8f8/, "Refined Today palette should use a calm LegalEase shell background.");
+assert.match(server, /--accent:\s*#00A99D/i, "Today accent should use LegalEase teal instead of burnt orange.");
+assert.match(server, /--accent-hover:\s*#047A72/i, "Today accent hover should stay in the LegalEase teal family.");
+assert.doesNotMatch(server, /--accent:\s*#b8501f/i, "Today accent should no longer use burnt orange.");
 assert.match(server, /function quickCapture\(event\)/, "Quick Capture should have a dedicated submit handler.");
 assert.match(server, /api\("\/api\/growth-inbox"/, "Quick Capture should create Growth Inbox items.");
 assert.match(server, /function focusPageHtml\(pageClass\)/, "Focus Mode page should render through the app shell.");
