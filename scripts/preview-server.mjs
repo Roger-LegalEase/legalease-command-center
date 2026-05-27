@@ -12913,6 +12913,20 @@ function htmlShell() {
     .review-queue-item { width:100%; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:10px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:start; text-align:left; }
     .review-queue-item strong { display:block; font-size:13px; line-height:1.25; color:var(--text-primary); }
     .review-queue-item span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; }
+    .daily-operating-loop { display:grid; gap:14px; overflow:visible; }
+    .daily-loop-summary { display:flex; flex-wrap:wrap; gap:8px; align-items:center; color:var(--text-tertiary); font-size:12px; line-height:1.4; }
+    .daily-loop-summary strong { color:var(--text-primary); }
+    .daily-loop-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+    .daily-loop-section { min-width:0; border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:12px; display:grid; gap:9px; }
+    .daily-loop-section.primary { grid-column:1 / -1; background:var(--bg-now); border-color:var(--border-emphasis); }
+    .daily-loop-section h3 { margin:0; font-size:13px; line-height:1.2; color:var(--text-primary); font-weight:760; }
+    .daily-loop-list { display:grid; gap:8px; margin:0; padding:0; list-style:none; }
+    .daily-loop-list li { min-width:0; display:grid; gap:3px; border-top:1px solid rgba(0,169,157,.1); padding-top:8px; }
+    .daily-loop-list li:first-child { border-top:0; padding-top:0; }
+    .daily-loop-list strong { color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
+    .daily-loop-list span { color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
+    .daily-loop-list a { color:var(--accent); font-size:12px; font-weight:800; text-decoration:none; width:max-content; max-width:100%; }
+    .daily-loop-list a:hover { text-decoration:underline; }
     .handoff-summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; }
     .handoff-summary div { border:1px solid rgba(8,20,95,.08); border-radius:14px; background:#fff; padding:12px; display:grid; gap:4px; }
     .handoff-summary span { color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
@@ -12936,6 +12950,7 @@ function htmlShell() {
       .operator-v31 .cockpit-page { padding:0 20px; }
       .operator-v31 .cockpit-layout { grid-template-columns:1fr; }
       .operator-v31 .cockpit-rail { max-width:100%; }
+      .daily-loop-grid { grid-template-columns:1fr; }
       .app-intention p { font-size:clamp(28px,7vw,42px); }
       .now-block { padding:18px; border-radius:18px; }
     }
@@ -16683,6 +16698,107 @@ function htmlShell() {
       </section>\`;
     }
 
+    function cockpitOpenTasks() {
+      return (state.tasks || []).filter(task => !["done", "complete", "completed", "dismissed", "archived"].includes(String(task.status || "").toLowerCase()));
+    }
+
+    function cockpitRecentOperatingEvents() {
+      const timeValue = item => {
+        const time = new Date(item.createdAt || item.timestamp || item.updatedAt || item.generatedAt || "").getTime();
+        return Number.isFinite(time) ? time : 0;
+      };
+      return [...(state.activityEvents || []), ...(state.auditHistory || []), ...(state.events || [])]
+        .sort((a, b) => timeValue(b) - timeValue(a))
+        .slice(0, 4)
+        .map(item => ({
+          title:item.title || item.eventType || item.action || "Operating event captured",
+          detail:item.summary || item.action || item.eventType || "Internal operating state changed.",
+          href:"reports"
+        }));
+    }
+
+    function cockpitLoopItem(title, detail, href = "production-activation-rcap", action = "Open") {
+      return { title, detail, href, action };
+    }
+
+    function cockpitUniqueByTitle(items) {
+      const seen = new Set();
+      return items.filter(item => {
+        const title = String(item?.title || "").trim();
+        if (!title || seen.has(title)) return false;
+        seen.add(title);
+        return true;
+      });
+    }
+
+    function cockpitDailyOperatingLoop() {
+      const queue = rcapReviewQueueItems();
+      const readiness = rcapPartnerJourneyHandoffReadinessClient();
+      const openTasks = cockpitOpenTasks();
+      const liveGates = Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length;
+      const blocked = queue.filter(item => item.reviewState === "blocked");
+      const revisions = queue.filter(item => item.reviewState === "needs_revision");
+      const reviewRequired = queue.filter(item => item.reviewState === "review_required");
+      const topCandidates = [];
+      if (blocked.length) topCandidates.push(cockpitLoopItem(\`Resolve blocked RCAP artifact: \${blocked[0].title}\`, blocked[0].nextAction || "Blocked artifacts stop handoff readiness.", "production-activation-rcap", "Review"));
+      if (revisions.length) topCandidates.push(cockpitLoopItem(\`Revise RCAP artifact: \${revisions[0].title}\`, revisions[0].nextAction || "Revision-required artifacts need a clear operator pass.", "production-activation-rcap", "Review"));
+      if (!readiness.ready) topCandidates.push(cockpitLoopItem("Move RCAP toward handoff readiness", readiness.next, "production-activation-rcap", "Review"));
+      if (reviewRequired.length) topCandidates.push(cockpitLoopItem(\`Review RCAP artifact: \${reviewRequired[0].title}\`, reviewRequired[0].nextAction || "This artifact still needs Roger's review state.", "production-activation-rcap", "Review"));
+      if (openTasks.length) topCandidates.push(cockpitLoopItem(openTasks[0].title || "Open task needs attention", openTasks[0].nextAction || openTasks[0].description || "An internal task is still open.", "tasks", "Open Tasks"));
+
+      const top3 = cockpitUniqueByTitle([
+        ...topCandidates,
+        cockpitLoopItem("Review RCAP handoff packet", "Use the internal packet to decide what still needs Roger before any Partner Journey handoff.", "production-activation-rcap", "Review"),
+        cockpitLoopItem("Clear one open task", "Pick the highest leverage internal task and move it to a clear next state.", "tasks", "Open Tasks"),
+        cockpitLoopItem("Capture missing context", "If the next move is unclear, capture the missing detail instead of switching modules.", "growth-inbox", "Open Inbox")
+      ]).slice(0, 3);
+
+      const waitingOn = cockpitUniqueByTitle([
+        ...readiness.missing.map(detail => cockpitLoopItem(detail, "Missing RCAP partner detail blocks handoff readiness.", "production-activation-rcap", "Review")),
+        ...blocked.map(item => cockpitLoopItem(item.title, item.nextAction || "Blocked pending operator review.", "production-activation-rcap", "Review"))
+      ]).slice(0, 5);
+
+      const decisionsNeeded = cockpitUniqueByTitle([
+        ...reviewRequired.map(item => cockpitLoopItem(item.title, "Choose an internal review state before handoff can be evaluated.", "production-activation-rcap", "Review")),
+        ...revisions.map(item => cockpitLoopItem(item.title, "Decide what revision is needed, then update the review state.", "production-activation-rcap", "Review")),
+        cockpitLoopItem("RCAP Partner Journey handoff", readiness.ready ? "Ready for a manual handoff decision. No external system is contacted." : readiness.next, "production-activation-rcap", "Review")
+      ]).slice(0, 5);
+
+      const doNotTouchToday = [
+        cockpitLoopItem("Live posting gates", liveGates === 0 ? "Leave live gates at 0 until explicit approval." : \`\${liveGates} live gate(s) need immediate review.\`, "settings", "Check"),
+        cockpitLoopItem("External Partner Journey handoff", "Do not contact external systems from this OS. Use the internal packet only.", "production-activation-rcap", "Review"),
+        cockpitLoopItem("Email, page, and dashboard actions", "Keep all artifacts draft or review-only until Roger manually approves a separate external step.", "production-activation-rcap", "Review")
+      ];
+
+      return {
+        top3,
+        waitingOn,
+        decisionsNeeded,
+        doNotTouchToday,
+        momentum:cockpitRecentOperatingEvents(),
+        liveGates
+      };
+    }
+
+    function cockpitLoopListHtml(items, emptyText) {
+      return \`<ul class="daily-loop-list">\${items.length ? items.map(item => \`<li><strong>\${esc(item.title)}</strong><span>\${esc(item.detail)}</span><a href="#\${esc(item.href)}">\${esc(item.action || "Open")}</a></li>\`).join("") : \`<li><span>\${esc(emptyText)}</span></li>\`}</ul>\`;
+    }
+
+    function cockpitDailyOperatingLoopHtml() {
+      const loop = cockpitDailyOperatingLoop();
+      return \`<section class="cockpit-card daily-operating-loop" aria-label="Daily Operating Loop">
+        <div class="cockpit-card-head"><h2>Daily Operating Loop</h2><small>Le-E operating brief</small></div>
+        <div class="daily-loop-summary"><strong>Read-only guidance.</strong><span>No external side effects.</span><span>Live gates: \${esc(loop.liveGates)}</span></div>
+        <div class="daily-loop-grid">
+          <section class="daily-loop-section primary"><h3>Today's Top 3</h3>\${cockpitLoopListHtml(loop.top3, "No top actions available yet.")}</section>
+          <section class="daily-loop-section"><h3>Waiting On</h3>\${cockpitLoopListHtml(loop.waitingOn, "Nothing is waiting on missing details right now.")}</section>
+          <section class="daily-loop-section"><h3>Decisions Needed</h3>\${cockpitLoopListHtml(loop.decisionsNeeded, "No operator decisions are waiting.")}</section>
+          <section class="daily-loop-section"><h3>Do Not Touch Today</h3>\${cockpitLoopListHtml(loop.doNotTouchToday, "No distractions flagged.")}</section>
+          <section class="daily-loop-section"><h3>Momentum</h3>\${cockpitLoopListHtml(loop.momentum, "No recent operating movement logged yet.")}</section>
+        </div>
+      </section>\`;
+    }
+
     function rcapReviewQueueHtml() {
       const items = rcapReviewQueueItems();
       return \`<section class="cockpit-card review-queue-card">
@@ -16891,6 +17007,7 @@ function htmlShell() {
               </div>
             </section>
             \${cockpitTimelineHtml(nowItem)}
+            \${cockpitDailyOperatingLoopHtml()}
             </main>
             <aside class="cockpit-rail">
             \${cockpitRcapActivationHtml()}
