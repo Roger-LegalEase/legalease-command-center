@@ -58,6 +58,7 @@ import {
 } from "./lee-engine.mjs";
 import { ensureRcapProductionActivation, rcapActivationStatus } from "./production-activation.mjs";
 import { computeRcapPartnerJourneyHandoffReadiness, ensureRcapReviewStates, generateRcapPartnerJourneyHandoffPacket, rcapHandoffPacketKey, rcapHandoffReadinessSummary, rcapReviewArtifactDefinitions, rcapReviewQueue, transitionRcapReviewArtifact } from "./review-approval-engine.mjs";
+import { saveTodayOperatingMemory, synthesizeOperatingMemory } from "./operating-memory.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -12927,6 +12928,17 @@ function htmlShell() {
     .daily-loop-list span { color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
     .daily-loop-list a { color:var(--accent); font-size:12px; font-weight:800; text-decoration:none; width:max-content; max-width:100%; }
     .daily-loop-list a:hover { text-decoration:underline; }
+    .operating-memory-card { display:grid; gap:12px; overflow:visible; }
+    .operating-memory-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
+    .operating-memory-tile { min-width:0; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:11px; display:grid; gap:7px; }
+    .operating-memory-tile h3 { margin:0; font-size:13px; line-height:1.2; color:var(--text-primary); }
+    .operating-memory-tile ul { margin:0; padding:0; list-style:none; display:grid; gap:6px; }
+    .operating-memory-tile li { color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
+    .operating-memory-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .operating-memory-actions button { min-height:34px; padding:0 12px; font-size:12px; }
+    .memory-history-list { display:grid; gap:10px; }
+    .memory-history-card { border:1px solid rgba(8,20,95,.08); border-radius:16px; background:#fff; padding:14px; display:grid; gap:8px; }
+    .memory-evidence-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
     .handoff-summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; }
     .handoff-summary div { border:1px solid rgba(8,20,95,.08); border-radius:14px; background:#fff; padding:12px; display:grid; gap:4px; }
     .handoff-summary span { color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
@@ -12951,6 +12963,7 @@ function htmlShell() {
       .operator-v31 .cockpit-layout { grid-template-columns:1fr; }
       .operator-v31 .cockpit-rail { max-width:100%; }
       .daily-loop-grid { grid-template-columns:1fr; }
+      .operating-memory-grid { grid-template-columns:1fr; }
       .app-intention p { font-size:clamp(28px,7vw,42px); }
       .now-block { padding:18px; border-radius:18px; }
     }
@@ -16799,6 +16812,58 @@ function htmlShell() {
       </section>\`;
     }
 
+    function todayOperatingMemoryDate() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function savedOperatingMemoryForToday() {
+      const date = todayOperatingMemoryDate();
+      return (state.operatingMemory || []).find(item => item.date === date || item.key === "operating-memory-" + date) || null;
+    }
+
+    function cockpitOperatingMemoryRecord() {
+      const saved = savedOperatingMemoryForToday();
+      if (saved) return saved;
+      const loop = cockpitDailyOperatingLoop();
+      return {
+        date:todayOperatingMemoryDate(),
+        generated_at:"",
+        moved_today:loop.momentum.map(item => ({ title:item.title, detail:item.detail, href:item.href })),
+        decisions_made:loop.decisionsNeeded.map(item => ({ title:item.title, detail:item.detail, href:item.href })).slice(0, 4),
+        still_blocked:loop.waitingOn.map(item => ({ title:item.title, detail:item.detail, href:item.href })).slice(0, 4),
+        carry_forward:loop.top3.map(item => ({ title:item.title, detail:item.detail, href:item.href })),
+        resurface_tomorrow:[...loop.waitingOn, ...loop.decisionsNeeded].map(item => ({ title:item.title, detail:item.detail, href:item.href })).slice(0, 5),
+        do_not_carry_forward:loop.doNotTouchToday.map(item => ({ title:item.title, detail:item.detail, href:item.href })),
+        risk_notes:[{ title:"Live gates remain " + loop.liveGates, detail:"No external action should happen from Operating Memory.", href:"settings" }],
+        live_gates_count:loop.liveGates,
+        external_actions_confirmation:"No emails sent, no posts published, no partner pages published, no dashboards activated, no external systems contacted."
+      };
+    }
+
+    function memoryListHtml(items, emptyText, limit = 3) {
+      const rows = (items || []).slice(0, limit);
+      return \`<ul>\${rows.length ? rows.map(item => \`<li><strong>\${esc(item.title || "Memory item")}</strong><br><span>\${esc(item.detail || "Internal operating memory.")}</span></li>\`).join("") : \`<li>\${esc(emptyText)}</li>\`}</ul>\`;
+    }
+
+    function cockpitOperatingMemoryHtml() {
+      const memory = cockpitOperatingMemoryRecord();
+      const saved = Boolean(savedOperatingMemoryForToday());
+      return \`<section class="cockpit-card operating-memory-card" aria-label="Operating Memory">
+        <div class="cockpit-card-head"><h2>Operating Memory</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
+        <p class="muted">\${saved ? "Today's memory is saved. Use it to carry forward the right work tomorrow." : "No operating memory saved for today yet."}</p>
+        <div class="operating-memory-grid">
+          <section class="operating-memory-tile"><h3>Moved Today</h3>\${memoryListHtml(memory.moved_today, "No movement captured yet.")}</section>
+          <section class="operating-memory-tile"><h3>Carry Forward</h3>\${memoryListHtml(memory.carry_forward, "Nothing needs carry-forward yet.")}</section>
+          <section class="operating-memory-tile"><h3>Resurface Tomorrow</h3>\${memoryListHtml(memory.resurface_tomorrow, "No resurfacing list yet.")}</section>
+          <section class="operating-memory-tile"><h3>Still Blocked</h3>\${memoryListHtml(memory.still_blocked, "No blockers carried in memory.")}</section>
+        </div>
+        <div class="operating-memory-actions">
+          <button class="primary" type="button" onclick="saveOperatingMemory()">Save Today's Operating Memory</button>
+          <button type="button" onclick="location.hash='operating-memory'">Open Memory</button>
+        </div>
+      </section>\`;
+    }
+
     function rcapReviewQueueHtml() {
       const items = rcapReviewQueueItems();
       return \`<section class="cockpit-card review-queue-card">
@@ -16973,6 +17038,47 @@ function htmlShell() {
       </section>\`;
     }
 
+    function operatingMemoryPageHtml(pageClass) {
+      const memory = cockpitOperatingMemoryRecord();
+      const saved = savedOperatingMemoryForToday();
+      const history = (state.operatingMemory || []).slice(0, 10);
+      const evidence = [...(state.activityEvents || []), ...(state.auditHistory || []), ...(state.events || [])]
+        .slice()
+        .sort((a, b) => new Date(b.createdAt || b.timestamp || b.updatedAt || 0).getTime() - new Date(a.createdAt || a.timestamp || a.updatedAt || 0).getTime())
+        .slice(0, 8);
+      return \`<section id="operating-memory" class="\${pageClass("operating-memory")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Internal OS</div>
+          <h1 class="big-title">Operating Memory</h1>
+          <p class="muted">\${saved ? \`Today's memory record was saved at \${esc(formatDate(saved.generated_at) || "today")}.\` : "No operating memory saved for today yet."} This is internal memory only. It does not send, publish, activate, or contact external systems.</p>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button class="primary" type="button" onclick="saveOperatingMemory()">Save Today's Operating Memory</button>
+          </div>
+        </div>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Today's Memory Record</h2><span class="badge info">Live gates: \${esc(memory.live_gates_count || 0)}</span></div>
+          <p class="muted">\${esc(memory.external_actions_confirmation || "No external action confirmation available.")}</p>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Moved Today</h3>\${memoryListHtml(memory.moved_today, "No movement captured today.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Carry Forward</h3>\${memoryListHtml(memory.carry_forward, "Nothing needs carry-forward yet.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Resurface Tomorrow</h3>\${memoryListHtml(memory.resurface_tomorrow, "Nothing is scheduled to resurface tomorrow.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Still Blocked</h3>\${memoryListHtml(memory.still_blocked, "No blockers are carried forward.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Decisions Made</h3>\${memoryListHtml(memory.decisions_made, "No review decisions captured today.", 6)}</section>
+            <section class="operating-memory-tile"><h3>Do Not Carry Forward</h3>\${memoryListHtml(memory.do_not_carry_forward, "No distractions flagged.", 6)}</section>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Evidence Behind Memory</h2><span class="badge info">\${esc(evidence.length)} records</span></div>
+          <div class="memory-evidence-grid">\${evidence.map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || item.eventType || item.action || "Operating record")}</strong><span class="muted">\${esc(formatDate(item.createdAt || item.timestamp || item.updatedAt) || "No timestamp")} · \${esc(item.summary || item.action || item.eventType || "Internal record")}</span></article>\`).join("") || '<div class="empty">No activity or audit evidence yet.</div>'}</div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Recent Memory History</h2><span class="badge info">\${esc(history.length)} saved</span></div>
+          <div class="memory-history-list">\${history.map(item => \`<article class="memory-history-card"><strong>\${esc(item.date || item.key)}</strong><span class="muted">\${esc(formatDate(item.generated_at) || "No timestamp")} · Carry forward: \${esc((item.carry_forward || []).length)} · Still blocked: \${esc((item.still_blocked || []).length)}</span></article>\`).join("") || '<div class="empty">No operating memory history saved yet.</div>'}</div>
+        </section>
+      </section>\`;
+    }
+
     function commandCenterOverviewHtml(posts) {
       const nowItem = cockpitNowItem(posts);
       const intention = cockpitDailyIntention(nowItem);
@@ -17008,6 +17114,7 @@ function htmlShell() {
             </section>
             \${cockpitTimelineHtml(nowItem)}
             \${cockpitDailyOperatingLoopHtml()}
+            \${cockpitOperatingMemoryHtml()}
             </main>
             <aside class="cockpit-rail">
             \${cockpitRcapActivationHtml()}
@@ -18555,7 +18662,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "tasks", "production-activation-rcap", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "tasks", "production-activation-rcap", "operating-memory", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -18573,6 +18680,7 @@ function htmlShell() {
         \${growthInboxPageHtml(pageClass)}
         \${tasksPageHtml(pageClass)}
         \${rcapReviewWorkspaceHtml(pageClass)}
+        \${operatingMemoryPageHtml(pageClass)}
         \${partnerProgramsPageHtml(pageClass)}
         \${partnerPagesPageHtml(pageClass)}
         \${partnerDashboardsPageHtml(pageClass)}
@@ -18805,7 +18913,7 @@ function htmlShell() {
     }
 
     function navSectionForPage(pageId = "overview") {
-      if (["overview", "focus", "production-activation-rcap"].includes(pageId)) return "today";
+      if (["overview", "focus", "production-activation-rcap", "operating-memory"].includes(pageId)) return "today";
       if (["growth", "growth-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
       if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
@@ -19286,6 +19394,18 @@ function htmlShell() {
         render();
         return result.message || "Internal handoff packet generated. No external system contacted.";
       }, "Could not generate RCAP handoff packet.");
+    }
+
+    async function saveOperatingMemory() {
+      await cooAction(async () => {
+        const result = await api("/api/operating-memory/today/save", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return result.message || "Operating memory saved. No external action was taken.";
+      }, "Could not save operating memory.");
     }
 
     async function sendLeeMessage(event) {
@@ -21377,6 +21497,29 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not generate RCAP handoff packet." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/operating-memory/today" && request.method === "GET") {
+    const currentState = await store.readState();
+    const record = synthesizeOperatingMemory(currentState);
+    sendJson(response, { record, saved: (currentState.operatingMemory || []).find(item => item.key === record.key) || null });
+    return;
+  }
+
+  if (url.pathname === "/api/operating-memory/today/save" && request.method === "POST") {
+    try {
+      const currentState = await store.readState();
+      const result = saveTodayOperatingMemory(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Operating memory saved. No external action was taken.",
+        record: result.record,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not save operating memory." }, 400);
     }
     return;
   }
