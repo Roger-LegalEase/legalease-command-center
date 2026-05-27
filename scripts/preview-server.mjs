@@ -12812,23 +12812,24 @@ function htmlShell() {
     .panel,.card { border-color:var(--border-default); box-shadow:0 10px 26px rgba(0,38,36,.045); }
     button,.button { font-family:inherit; letter-spacing:0; text-transform:none; border-radius:999px; }
     button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline:3px solid rgba(0,169,157,.24); outline-offset:2px; }
-    .operator-v31 { display:grid; gap:16px; width:100%; max-width:100%; color:var(--text-primary); }
-    .operator-v31 * { word-break:normal; }
+    .operator-v31 { display:grid; gap:16px; width:min(100%, 1240px); max-width:1240px; margin:0 auto; padding:0; overflow-x:hidden; color:var(--text-primary); box-sizing:border-box; }
+    .operator-v31 * { min-width:0; word-break:normal; box-sizing:border-box; }
     .app-header { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; color:var(--text-tertiary); }
     .app-date { font-size:13px; font-weight:650; letter-spacing:.01em; }
     .app-time { font-size:22px; line-height:1; color:var(--text-primary); font-weight:700; font-variant-numeric:tabular-nums; }
-    .app-intention { max-width:900px; padding:6px 0 0; }
-    .app-intention p { margin:0; font-size:clamp(28px,4.4vw,54px); line-height:1.04; letter-spacing:-.025em; font-weight:620; color:var(--text-primary); }
+    .app-intention { max-width:860px; padding:4px 0 0; }
+    .app-intention p { margin:0; font-size:clamp(26px,3.4vw,44px); line-height:1.08; letter-spacing:-.02em; font-weight:620; color:var(--text-primary); white-space:normal; overflow-wrap:break-word; }
     .intention-accent { color:var(--accent); }
     .intention-meta { margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; color:var(--text-tertiary); font-size:12px; }
     .intention-meta button { min-height:30px; padding:0 10px; background:transparent; border-color:var(--border-default); color:var(--accent); }
-    .cockpit-layout { display:grid; grid-template-columns:minmax(0,1.16fr) minmax(300px,.84fr); gap:16px; align-items:start; }
-    .cockpit-main,.cockpit-rail { display:grid; gap:14px; min-width:0; }
-    .now-block { border:1px solid var(--border-emphasis); border-radius:20px; background:var(--bg-now); padding:22px; display:grid; gap:16px; box-shadow:0 18px 44px rgba(0,38,36,.07); }
+    .cockpit-layout { display:grid; grid-template-columns:minmax(0, 1fr) clamp(340px, 32vw, 400px); gap:24px; align-items:start; width:100%; max-width:100%; overflow:hidden; }
+    .cockpit-main,.cockpit-rail { display:grid; gap:14px; min-width:0; max-width:100%; }
+    .cockpit-rail { width:100%; align-content:start; }
+    .now-block { min-width:0; max-width:100%; overflow:hidden; border:1px solid var(--border-emphasis); border-radius:20px; background:var(--bg-now); padding:22px; display:grid; gap:16px; box-shadow:0 18px 44px rgba(0,38,36,.07); }
     .now-kicker { display:flex; justify-content:space-between; gap:12px; align-items:center; color:var(--accent-hover); font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; }
-    .now-block h1 { margin:0; font-size:clamp(28px,4.1vw,48px); line-height:1.04; letter-spacing:-.02em; color:var(--text-primary); font-weight:720; }
-    .now-block p { margin:0; color:var(--text-secondary); font-size:15px; line-height:1.55; max-width:780px; }
-    .now-first { border:1px solid var(--border-default); border-radius:16px; background:var(--bg-cue); padding:14px; display:grid; gap:10px; }
+    .now-block h1 { margin:0; max-width:100%; font-size:clamp(24px,3vw,38px); line-height:1.08; letter-spacing:-.018em; color:var(--text-primary); font-weight:720; white-space:normal; overflow-wrap:break-word; }
+    .now-block p { margin:0; max-width:100%; color:var(--text-secondary); font-size:15px; line-height:1.5; white-space:normal; overflow-wrap:break-word; }
+    .now-first { min-width:0; max-width:100%; border:1px solid var(--border-default); border-radius:16px; background:var(--bg-cue); padding:14px; display:grid; gap:10px; }
     .now-first strong { color:var(--text-primary); font-size:12px; letter-spacing:.1em; text-transform:uppercase; }
     .now-steps { display:grid; gap:8px; margin:0; padding:0; list-style:none; counter-reset:step; }
     .now-steps li { counter-increment:step; display:grid; grid-template-columns:24px 1fr; gap:9px; align-items:start; color:var(--text-secondary); font-size:13px; line-height:1.4; }
@@ -12837,7 +12838,7 @@ function htmlShell() {
     .now-actions button { min-height:42px; padding:0 16px; }
     .now-actions .primary { background:var(--accent); color:white; border-color:var(--accent); }
     .now-actions .primary:hover { background:var(--accent-hover); }
-    .timeline-card,.cockpit-card { border:1px solid var(--border-default); border-radius:18px; background:var(--bg-card); padding:15px; box-shadow:0 12px 30px rgba(0,38,36,.045); }
+    .timeline-card,.cockpit-card { min-width:0; max-width:100%; overflow:hidden; border:1px solid var(--border-default); border-radius:18px; background:var(--bg-card); padding:15px; box-shadow:0 12px 30px rgba(0,38,36,.045); }
     .cockpit-card h2,.timeline-card h2 { margin:0; font-size:15px; line-height:1.2; color:var(--text-primary); font-weight:720; letter-spacing:-.01em; }
     .cockpit-card-head { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:12px; }
     .cockpit-card-head small { color:var(--text-tertiary); font-size:12px; }
@@ -12853,7 +12854,7 @@ function htmlShell() {
     .timeline-now { position:absolute; top:26px; bottom:14px; width:2px; background:var(--accent-pulse); box-shadow:0 0 0 4px rgba(0,169,157,.16); }
     .timeline-now-label { position:absolute; top:8px; transform:translateX(-45%); color:var(--accent); font-size:10px; font-weight:800; white-space:nowrap; }
     .thread-list,.parked-list,.moved-list { display:grid; gap:9px; }
-    .thread,.parked-item,.moved-row { width:100%; text-align:left; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:12px; display:grid; gap:5px; color:var(--text-primary); }
+    .thread,.parked-item,.moved-row { width:100%; max-width:100%; text-align:left; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:12px; display:grid; gap:5px; color:var(--text-primary); overflow:hidden; }
     .thread:hover,.parked-item:hover,.moved-row:hover { border-color:var(--border-emphasis); background:#f4fbfa; }
     .thread strong,.parked-item strong,.moved-row strong { font-size:14px; line-height:1.25; }
     .thread span,.parked-item span,.moved-row span { color:var(--text-tertiary); font-size:12px; line-height:1.4; }
@@ -12870,10 +12871,10 @@ function htmlShell() {
     .gate.warn::before { background:var(--accent); }
     .gate.danger::before { background:#dc2626; }
     .made-for-roger { color:var(--text-quaternary); font-weight:800; letter-spacing:.08em; }
-    @media (max-width:980px) {
+    @media (max-width:1040px) {
       .cockpit-layout { grid-template-columns:1fr; }
-      .app-intention p { font-size:clamp(32px,10vw,52px); }
-      .now-block { padding:18px; border-radius:22px; }
+      .app-intention p { font-size:clamp(28px,7vw,42px); }
+      .now-block { padding:18px; border-radius:18px; }
     }
     @media (max-width:640px) {
       main { padding-left:14px; padding-right:14px; }
@@ -16347,7 +16348,7 @@ function htmlShell() {
           <div class="intention-meta"><span>\${esc(intention.source)}</span><button type="button" onclick="askLeePrompt('Rewrite today\\'s intention from current open work.')">Rewrite with Le-E</button></div>
         </section>
         <div class="cockpit-layout">
-          <main class="cockpit-main">
+          <div class="cockpit-main">
             <section class="now-block" aria-label="Now">
               <div class="now-kicker"><span>NOW · \${esc(nowItem.range)}</span><span>\${esc(plainOperatorState(nowItem.type === "planning" ? "ready" : "needs_review"))}</span></div>
               <h1>\${esc(nowItem.title)}</h1>
@@ -16367,7 +16368,7 @@ function htmlShell() {
               <div class="cockpit-card-head"><h2>This Week Moved</h2><small>Outcomes, not outputs</small></div>
               <div class="moved-list">\${moved.map(item => \`<button class="moved-row" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(item.title)}</strong><span>\${esc(item.detail)}</span><span>\${esc(item.day)}</span></button>\`).join("") || '<div class="empty-calm">No proof-worthy movement logged this week yet.</div>'}</div>
             </section>
-          </main>
+          </div>
           <aside class="cockpit-rail">
             <section class="cockpit-card">
               <div class="cockpit-card-head"><h2>Quick Capture</h2><small>No module choosing</small></div>

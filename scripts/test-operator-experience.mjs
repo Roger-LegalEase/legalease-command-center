@@ -34,6 +34,13 @@ assert.match(server, /--bg-primary:\s*#f6f8f8/, "Refined Today palette should us
 assert.match(server, /--accent:\s*#00A99D/i, "Today accent should use LegalEase teal instead of burnt orange.");
 assert.match(server, /--accent-hover:\s*#047A72/i, "Today accent hover should stay in the LegalEase teal family.");
 assert.doesNotMatch(server, /--accent:\s*#b8501f/i, "Today accent should no longer use burnt orange.");
+assert.match(server, /\.operator-v31\s*\{[^}]*max-width:\s*12[0-8]0px[^}]*margin:0 auto/s, "Today cockpit should be centered in a max-width container.");
+assert.match(server, /\.cockpit-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*clamp\(340px,\s*32vw,\s*400px\)/s, "Today grid should use a flexible main column and sane fixed right rail.");
+assert.match(server, /\.cockpit-main,\.cockpit-rail\s*\{[^}]*min-width:0/s, "Cockpit grid children should allow shrinking without overflow.");
+assert.match(server, /\.now-block\s*\{[^}]*min-width:0/s, "Now card should not force the main column wider than the grid.");
+assert.match(server, /\.now-block h1\s*\{[^}]*white-space:normal[^}]*overflow-wrap:break-word/s, "Now title should wrap instead of clipping.");
+assert.match(server, /\.thread,\.parked-item,\.moved-row\s*\{[^}]*max-width:100%/s, "Right rail rows should stay inside their card column.");
+assert.doesNotMatch(server, /<main class="cockpit-main">/, "Cockpit should not nest a main element that inherits global main layout styles.");
 assert.match(server, /function quickCapture\(event\)/, "Quick Capture should have a dedicated submit handler.");
 assert.match(server, /api\("\/api\/growth-inbox"/, "Quick Capture should create Growth Inbox items.");
 assert.match(server, /function focusPageHtml\(pageClass\)/, "Focus Mode page should render through the app shell.");
