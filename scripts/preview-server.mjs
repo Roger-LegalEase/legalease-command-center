@@ -12394,7 +12394,7 @@ function htmlShell() {
     .setup-item.warn { border-color:rgba(184,136,59,.32); background:rgba(184,136,59,.08); }
     .section { margin-top:18px; scroll-margin-top:90px; }
     .page-section { display:none; }
-    .page-section.active { display:grid; }
+    .page-section.active { display:block; }
     .secondary details { background:white; border:1px solid var(--line); border-radius:8px; padding:14px 16px; }
     .secondary summary { cursor:pointer; font-weight:850; }
     .calendar { grid-template-columns:repeat(7,minmax(130px,1fr)); }
@@ -12925,6 +12925,108 @@ function htmlShell() {
     }
     @media (max-width:1100px) { .landing-grid { grid-template-columns:1fr; } .operator-command-strip { grid-template-columns:1fr; } }
 
+    /* Production shell QA guardrails */
+    html, body, .shell, #app { width:100%; max-width:100%; overflow-x:hidden; }
+    #app { padding-bottom:96px; }
+    .app-section,
+    .page-section,
+    .command-page,
+    .section-page {
+      width:100%;
+      max-width:1240px;
+      margin:0 auto;
+      padding:24px 32px 96px;
+      box-sizing:border-box;
+      overflow-x:hidden;
+      min-width:0;
+    }
+    .page-section > *,
+    .section-page > *,
+    .command-page > *,
+    .grid > *,
+    .layout > *,
+    .two > *,
+    .three > *,
+    .post-grid > *,
+    .split > * { min-width:0; }
+    .stable-two-column {
+      display:grid;
+      grid-template-columns:minmax(0, 1fr) minmax(280px, 420px);
+      gap:24px;
+      align-items:start;
+      width:100%;
+    }
+    .panel,
+    .card,
+    .drawer-card,
+    .metric-row,
+    .coo-row,
+    .content-idea-row,
+    .report-export-row,
+    .channel-card,
+    .connector-card {
+      width:100%;
+      max-width:100%;
+      min-width:0;
+      overflow-wrap:break-word;
+      box-sizing:border-box;
+    }
+    .metric-row,
+    .coo-row,
+    .report-export-row { min-width:0; }
+    .metric-row > *,
+    .coo-row > *,
+    .report-export-row > *,
+    .row > *,
+    .toprow > * { min-width:0; }
+    .row,
+    .toprow,
+    .card-actions,
+    .toolbar,
+    .tabs,
+    .queue-filter,
+    .source-filter,
+    .simple-hero-actions { max-width:100%; min-width:0; }
+    .connector-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:12px; }
+    .connector-card { display:grid; gap:8px; border:1px solid rgba(8,20,95,.08); border-radius:16px; background:#fff; padding:12px; }
+    .connector-card .badge,
+    .channel-card .badge,
+    .content-idea-row small { max-width:100%; white-space:normal; overflow-wrap:break-word; }
+    .content-filter-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:end; max-width:100%; }
+    .content-filter-bar label { flex:1 1 160px; min-width:min(180px, 100%); }
+    .content-filter-bar button { flex:0 0 auto; }
+    .content-bank-list { display:grid; gap:10px; width:100%; max-width:100%; }
+    .content-idea-row { border:1px solid rgba(8,20,95,.08); border-radius:16px; background:#fff; padding:14px; display:grid; gap:8px; }
+    .content-idea-row label { display:flex; align-items:flex-start; gap:10px; min-width:0; }
+    .content-idea-row input[type="checkbox"] { width:auto; flex:0 0 auto; margin-top:3px; }
+    .content-idea-row strong,
+    .content-idea-row p,
+    .content-idea-row small,
+    .content-idea-row em { min-width:0; max-width:100%; overflow-wrap:break-word; white-space:normal; }
+    .settings-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; align-items:start; }
+    .channel-grid { grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); }
+    .channel-card .toprow { align-items:flex-start; }
+    .channel-actions { align-items:center; }
+    .review-only-action { opacity:.62; cursor:not-allowed; border-style:dashed; }
+    .control-status { min-height:20px; color:var(--muted); font-size:12px; font-weight:750; }
+    .lee-bubble-safe-space { padding-bottom:112px; }
+    .app-markers { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; padding:0 24px 12px; color:#98a2b3; font-size:11px; font-weight:750; }
+    @media (max-width:980px) {
+      .app-section,
+      .page-section,
+      .command-page,
+      .section-page { padding:20px 20px 96px; }
+      .stable-two-column { grid-template-columns:1fr; }
+    }
+    @media (max-width:640px) {
+      .app-section,
+      .page-section,
+      .command-page,
+      .section-page { padding:16px 16px 96px; }
+      .content-filter-bar label { flex-basis:100%; }
+      .lee-bubble-wrap { right:14px; bottom:14px; }
+    }
+
   </style>
 </head>
 <body>
@@ -12940,6 +13042,8 @@ function htmlShell() {
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
       </nav>
       <span class="shell-marker" aria-hidden="true">nav: topnav-fixed-v1</span>
+      <span class="shell-marker" aria-hidden="true">shell: app-layout-stable-v1</span>
+      <span class="shell-marker" aria-hidden="true">controls: button-audit-v1</span>
     </header>
     <div>
       <header>
@@ -13112,6 +13216,9 @@ function htmlShell() {
       el.classList.add("show");
       setTimeout(() => el.classList.remove("show"), 1800);
     };
+    function safeControlToast(message) {
+      toast(message || "Safe local action complete.");
+    }
     const sectionClass = id => \`page-section \${id === currentPageId ? "active" : ""}\`;
 
     async function api(path, options = {}) {
@@ -13841,11 +13948,12 @@ function htmlShell() {
 	          </div>
 	          <p class="muted">\${esc(message)}</p>
 	          \${metaNote}
-	          <p class="muted">Live posting: <strong>\${liveEnabled ? "Enabled" : "Disabled"}</strong> · Dry run: <strong>\${esc(account.lastTestStatus || "not run")}</strong></p>
+          <p class="muted">Live posting: <strong>\${liveEnabled ? "Enabled" : "Disabled"}</strong> · Dry run: <strong>\${esc(account.lastTestStatus || "not run")}</strong></p>
 	          <div class="channel-actions">
-	            <button class="primary" \${connectDisabled ? "disabled" : ""} onclick="connectChannel('\${account.platform}')">Connect</button>
-	            <button \${testDisabled ? "disabled" : ""} onclick="testChannel('\${account.platform}')">Run Dry Test</button>
-	            <button \${disconnectDisabled ? "disabled" : ""} onclick="disconnectChannel('\${account.platform}')">Disconnect</button>
+	            <button type="button" class="primary" \${connectDisabled ? "disabled" : ""} onclick="connectChannel('\${account.platform}')">Connect</button>
+	            <button type="button" \${testDisabled ? "disabled" : ""} onclick="testChannel('\${account.platform}')">Run Dry Test</button>
+	            <button type="button" \${disconnectDisabled ? "disabled" : ""} onclick="disconnectChannel('\${account.platform}')">Disconnect</button>
+              <button class="review-only-action" disabled aria-disabled="true" title="Manual approval required before live publishing can be enabled.">Enable live publishing</button>
 	          </div>
 	          <details>
 	            <summary class="muted">Admin details</summary>
@@ -14486,10 +14594,10 @@ function htmlShell() {
         </div>
         <div class="metric-table" style="margin-top:14px">\${checks.map(([label, ok, detail]) => \`<div class="metric-row"><span>\${esc(label)}<br><small class="muted">\${esc(detail)}</small></span><span class="badge \${ok ? "good" : "warn"}">\${ok ? "Ready" : "Blocked"}</span></div>\`).join("")}</div>
         <div class="card-actions" style="margin-top:14px">
-          <button class="primary" onclick="connectGoogle()">\${connected ? "Reconnect Google" : "Connect Google"}</button>
-          <button \${connected || gmail.configured ? "" : "disabled"} onclick="syncGmail()">Sync Gmail</button>
-          <button \${connected || calendar.configured ? "" : "disabled"} onclick="syncCalendar()">Sync Calendar</button>
-          <button \${connected ? "" : "disabled"} onclick="disconnectGoogleWorkspace()">Disconnect</button>
+          <button type="button" class="primary" onclick="connectGoogle()">\${connected ? "Reconnect Google" : "Connect Google"}</button>
+          <button type="button" \${connected || gmail.configured ? "" : "disabled"} onclick="syncGmail()">Sync Gmail</button>
+          <button type="button" \${connected || calendar.configured ? "" : "disabled"} onclick="syncCalendar()">Sync Calendar</button>
+          <button type="button" \${connected ? "" : "disabled"} onclick="disconnectGoogleWorkspace()">Disconnect</button>
         </div>
         <details style="margin-top:12px">
           <summary class="muted">Diagnostics</summary>
@@ -17273,7 +17381,7 @@ function htmlShell() {
           </article>\`).join("")}</div>
         </section>\` : ""}
         <section class="panel section">
-          <div class="simple-panel-head"><h2>Ideas</h2><button onclick="selectAllContentIdeas()">Select all</button></div>
+          <div class="simple-panel-head"><h2>Ideas</h2><button type="button" onclick="selectAllContentIdeas()">Select all</button></div>
           <div class="content-filter-bar">
             <label>Status<select onchange="setContentBankFilter('status', this.value)">\${optionHtml(["idea", "ready_to_generate", "generated", "queued", "approved", "posted", "archived"], contentBankFilters.status, growthLabel)}</select></label>
             <label>Campaign<select onchange="setContentBankFilter('campaign', this.value)">\${optionHtml(unique("campaign"), contentBankFilters.campaign)}</select></label>
@@ -17281,8 +17389,8 @@ function htmlShell() {
             <label>Platform<select onchange="setContentBankFilter('platform', this.value)">\${optionHtml(uniquePlatforms, contentBankFilters.platform, value => platformLabels[value] || value)}</select></label>
             <label>Wilma<select onchange="setContentBankFilter('wilma', this.value)">\${optionHtml(["yes", "no", "optional"], contentBankFilters.wilma)}</select></label>
             <label>Risk<select onchange="setContentBankFilter('risk', this.value)">\${optionHtml(["low", "medium", "high"], contentBankFilters.risk)}</select></label>
-            <button class="\${contentBankFilters.thisWeek ? "primary" : ""}" onclick="toggleContentBankThisWeek()">This Week</button>
-            <button onclick="clearContentBankFilters()">Clear</button>
+            <button type="button" class="\${contentBankFilters.thisWeek ? "primary" : ""}" onclick="toggleContentBankThisWeek()">This Week</button>
+            <button type="button" onclick="clearContentBankFilters()">Clear</button>
           </div>
           <div class="content-bank-list">\${filteredIdeas.map(idea => \`<article class="content-idea-row">
             <label><input type="checkbox" class="content-idea-select" value="\${esc(idea.id)}"> <strong>\${esc(idea.title)}</strong></label>
@@ -17681,21 +17789,22 @@ function htmlShell() {
       const importCopy = hostedProductionMode
         ? "Connect Google read-only, sync Gmail or Calendar, or paste JSON events from another system. Google sync never sends email or creates calendar events."
         : "Use Demo sync for investor demos, connect Google read-only, or paste JSON events from another system. Google sync never sends email or creates calendar events.";
-      const demoSyncButton = hostedProductionMode ? "" : '<button class="primary" onclick="runAutomationDemoSync()">Run Demo Sync</button>';
+      const demoSyncButton = hostedProductionMode ? "" : '<button type="button" class="primary" onclick="runAutomationDemoSync()">Run Demo Sync</button>';
       const automationEmptyCopy = hostedProductionMode
         ? "No automation suggestions for this filter. Connect a read-only source or import JSON events to create human-reviewed suggestions."
         : "No automation suggestions for this filter. Run Demo Sync or import JSON events to create human-reviewed suggestions.";
       return growthHero(pageClass, "automation", "Human-approved automation", "Automation Inbox", "Capture signals from email, calendar, Stripe, Drive, website, Supabase, and manual imports, then approve suggested updates.") + \`
-        <div class="grid two section">
+        <div class="stable-two-column section automation-controls">
           <section class="panel">
             <h3>Connector status</h3>
             <p class="muted">\${connectorCopy}</p>
-            <div class="metric-table">\${connectorItems().map(item => \`<div class="metric-row"><span>\${esc(growthLabel(item.connector))}</span><span class="badge \${item.configured ? "good" : "warn"}">\${item.configured ? "configured/available" : "not connected"}</span><span class="muted">\${esc(item.lastSyncAt || item.lastSyncStatus || "never")}</span></div>\`).join("")}</div>
+            <div class="connector-grid">\${connectorItems().map(item => \`<div class="connector-card"><strong>\${esc(growthLabel(item.connector))}</strong><span class="badge \${item.configured ? "good" : "warn"}">\${item.configured ? "configured/available" : "not connected"}</span><span class="muted">\${esc(item.lastSyncAt || item.lastSyncStatus || "never")}</span></div>\`).join("")}</div>
           </section>
           <section class="panel">
             <h3>Import controls</h3>
             <p class="muted">\${importCopy}</p>
-            <div class="card-actions">\${demoSyncButton}<button onclick="connectGoogle()">\${googleConnected ? "Reconnect Google" : "Connect Google"}</button><button onclick="syncGmail()">Sync Gmail</button><button onclick="syncCalendar()">Sync Calendar</button><button onclick="markSelectedSuggestionsReviewed()">Mark reviewed</button></div>
+            <div class="card-actions">\${demoSyncButton}<button type="button" onclick="connectGoogle()">\${googleConnected ? "Reconnect Google" : "Connect Google"}</button><button type="button" onclick="syncGmail()">Sync Gmail</button><button type="button" onclick="syncCalendar()">Sync Calendar</button><button type="button" onclick="markSelectedSuggestionsReviewed()">Mark reviewed</button></div>
+            <div class="control-status" aria-live="polite">Review-only automation. No email is sent and no external record changes happen without approval.</div>
             <p class="muted">Google: \${googleConnected ? "connected as " + esc(googleAccount.accountName || "Google account") : "not connected"} · Scopes: Gmail readonly, Calendar readonly.</p>
             <p class="muted">Scheduled sync placeholder: run these manually for now. Cron can call the same server endpoints later.</p>
             <details style="margin-top:12px"><summary>Manual JSON import</summary>
@@ -17706,8 +17815,8 @@ function htmlShell() {
             </details>
           </section>
         </div>
-        <div class="toolbar section">\${filters.map(([id, label]) => \`<button class="\${automationFilter === id ? "primary" : ""}" onclick="setAutomationFilter('\${id}')">\${esc(label)}</button>\`).join("")}</div>
-        <div class="toolbar"><button onclick="approveSelectedHighConfidence()">Approve selected high-confidence suggestions</button><button onclick="ignoreSelectedSuggestions()">Ignore selected</button><button onclick="markSelectedSuggestionsReviewed()">Mark reviewed</button></div>
+        <div class="toolbar section">\${filters.map(([id, label]) => \`<button type="button" class="\${automationFilter === id ? "primary" : ""}" onclick="setAutomationFilter('\${id}')">\${esc(label)}</button>\`).join("")}</div>
+        <div class="toolbar"><button type="button" onclick="approveSelectedHighConfidence()">Approve selected high-confidence suggestions</button><button type="button" onclick="ignoreSelectedSuggestions()">Ignore selected</button><button type="button" onclick="markSelectedSuggestionsReviewed()">Mark reviewed</button></div>
         <div class="grid post-grid section">\${suggestions.map(suggestion => {
           const event = automationEventById(suggestion.eventId) || {};
           const checked = selectedSuggestions.has(suggestion.id) ? "checked" : "";
@@ -18156,7 +18265,7 @@ function htmlShell() {
         \${reportsPageHtml(pageClass)}
         \${dataRoomPageHtml(pageClass)}
         \${metricsDashboardHtml(pageClass)}
-        <section id="settings" class="section secondary \${pageClass("settings")}">
+        <section id="settings" class="section secondary section-page lee-bubble-safe-space \${pageClass("settings")}">
           <details>
             <summary>Launch setup</summary>
             <div style="margin-top:14px">\${productionReadinessSettingsHtml()}</div>
@@ -18165,7 +18274,7 @@ function htmlShell() {
             <div style="margin-top:14px">\${storageDiagnosticsHtml()}</div>
             <div style="margin-top:14px">\${linkedInDryTestChecklistHtml()}</div>
             <div style="margin-top:14px">\${dailyRhythmHtml()}</div>
-            <div class="grid two" style="margin-top:14px">\${credentialReadinessHtml()}</div>
+            <div class="settings-card-grid" style="margin-top:14px">\${credentialReadinessHtml()}</div>
           </details>
           <details>
             <summary>Launch readiness</summary>
@@ -18189,11 +18298,11 @@ function htmlShell() {
           <details>
             <summary>Channels</summary>
             <p class="muted">Connect once. After that, approved scheduled posts can publish without you touching platform settings.</p>
-            <div class="grid channel-grid" style="margin-top:14px">\${channelCards()}</div>
+            <div class="grid channel-grid settings-card-grid" style="margin-top:14px">\${channelCards()}</div>
           </details>
           <details>
             <summary>System status</summary>
-            <div class="grid three" style="margin-top:14px">
+            <div class="settings-card-grid" style="margin-top:14px">
               <div class="panel"><h2>OpenAI Images</h2><p><span class="badge \${imageStatusTone}">\${imageStatusLabel}</span></p><p class="muted">\${imageStatusDetail}</p></div>
               <div class="panel"><h2>Storage</h2><p><span class="badge info">\${state.persistence === "supabase" ? "Supabase" : "local JSON fallback"}</span></p></div>
               <div class="panel"><h2>Supabase</h2><p><span class="badge \${healthTone}">\${schemaStale ? "Schema update needed" : supabaseHealth?.connected ? "Connected" : "Not connected"}</span></p><p class="muted">\${esc(state.schemaStatus?.detail || supabaseHealth?.error || "No connection errors.")}</p></div>
@@ -18202,7 +18311,7 @@ function htmlShell() {
           <details style="margin-top:12px">
             <summary>Production setup checklist</summary>
             <p class="muted">Production readiness status for hosted operations. It shows status only, never secret values.</p>
-            <div class="grid two" style="margin-top:14px">\${setupChecklistHtml()}</div>
+            <div class="settings-card-grid" style="margin-top:14px">\${setupChecklistHtml()}</div>
           </details>
           <details style="margin-top:12px">
             <summary>Content intelligence</summary>
@@ -18233,6 +18342,7 @@ function htmlShell() {
             <div id="brandTab"></div>
           </details>
         </section>
+        <div class="app-markers" aria-hidden="true"><span>shell: app-layout-stable-v1</span><span>controls: button-audit-v1</span></div>
         \${leeBubbleHtml()}\`;
       document.querySelectorAll("nav a").forEach(link => {
         link.classList.toggle("active", link.getAttribute("href") === "#" + pageId);
