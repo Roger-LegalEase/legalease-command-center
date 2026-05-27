@@ -66,6 +66,12 @@ assert.equal(second.state.evidencePackNotes.find((item) => item.key === "rcap-pr
 
 assert.match(server, /\/api\/production-activation\/rcap/, "RCAP activation endpoint should be registered.");
 assert.match(server, /authorizeRequest\(request, url, process\.env\)/, "Hosted auth should still run before endpoints.");
+const startRouteIndex = server.indexOf('url.pathname === "/api/production-activation/rcap/start"');
+assert.notEqual(startRouteIndex, -1, "Activation start route should exist.");
+const startRouteSnippet = server.slice(startRouteIndex, startRouteIndex + 900);
+assert.doesNotMatch(startRouteSnippet, /state:\s*withPublicChannelSetup/, "Activation start endpoint must return a compact summary, not the full app state.");
+assert.match(startRouteSnippet, /activation_status:\s*rcapActivationStatus/, "Activation start endpoint should return compact activation status.");
+assert.match(server, /rcapActivationClientStatus/, "Cockpit should keep a compact activation status for UI refreshes.");
 assert.match(server, /layout: cockpit-grid-fixed-v1/, "Fixed cockpit marker should remain present.");
 assert.match(server, /nav: topnav-fixed-v1/, "Fixed top nav marker should remain present.");
 assert.match(server, /liveGatesCount:\s*Object\.values/, "Health endpoint should still report live gates.");

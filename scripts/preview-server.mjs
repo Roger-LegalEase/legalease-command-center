@@ -12999,6 +12999,7 @@ function htmlShell() {
     let leeBusy = false;
     let leeAdvanced = false;
     let leeBubbleOpen = false;
+    let rcapActivationClientStatus = null;
     const focusModes = [
       { id:"inbox-triage", label:"Inbox Triage" },
       { id:"partner-follow-up", label:"Partner Follow-Up" },
@@ -16372,6 +16373,20 @@ function htmlShell() {
     }
 
     function cockpitRcapActivationStatus() {
+      if (rcapActivationClientStatus) {
+        const compact = rcapActivationClientStatus;
+        const humanStatus = value => value === "created" || value === "exists" ? "Created" : value === "missing" ? "Pending" : value || "Pending";
+        return {
+          partner: compact.partner || "RCAP",
+          status: compact.review_only ? "Review-only" : "Review required",
+          proposal: humanStatus(compact.proposal_draft?.status || compact.proposal_draft),
+          page: humanStatus(compact.partner_page_draft?.status || compact.partner_page_draft),
+          dashboard: compact.dashboard_readiness?.status === "exists" || compact.dashboard_readiness === "created" || compact.dashboard_readiness === "exists" ? "Readiness tracked" : humanStatus(compact.dashboard_readiness?.status || compact.dashboard_readiness),
+          weeklyReport: humanStatus(compact.weekly_report_draft?.status || compact.weekly_report_draft),
+          evidence: humanStatus(compact.evidence_note?.status || compact.evidence_note),
+          liveGates: compact.live_gates ?? 0
+        };
+      }
       const partner = (state.partners || []).find(item => item.slug === "rcap" || item.id === "partner-rcap");
       const artifact = (key) => (state.partnerProgramArtifacts || []).find(item => item.key === key);
       const report = (state.reports || []).find(item => item.key === "rcap-weekly-report-draft-v1");
@@ -18678,9 +18693,9 @@ function htmlShell() {
           method:"POST",
           body:JSON.stringify({})
         });
-        state = result.state;
+        rcapActivationClientStatus = result.activation_status || result;
         render();
-        return "RCAP activation prepared for review only. No external action was taken.";
+        return result.message || "RCAP activation prepared for review only. No external action was taken.";
       }, "Could not start RCAP activation.");
     }
 
@@ -20717,7 +20732,12 @@ async function handleRequest(request, response) {
       const currentState = await store.readState();
       const result = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
       await store.writeState(result.state);
-      sendJson(response, { ...result.summary, state: withPublicChannelSetup(result.state) });
+      sendJson(response, {
+        ...result.summary,
+        activation_status: rcapActivationStatus(result.state),
+        state_updated: true,
+        message: "RCAP activation prepared for review only. No external action was taken."
+      });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not start RCAP production activation." }, 400);
     }
