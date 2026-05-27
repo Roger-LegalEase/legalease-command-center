@@ -12270,6 +12270,9 @@ function htmlShell() {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>LegalEase Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
     :root { --ink:#020D66; --paper:#E5EBEB; --line:#B8D8D8; --moss:#536b4e; --steel:#3040BF; --rust:#F04800; --gold:#F98C30; }
     * { box-sizing:border-box; }
@@ -12494,7 +12497,7 @@ function htmlShell() {
     .operator-status-label.safe { border-color:rgba(0,169,157,.22); color:#047A72; }
     .operator-status-label.warn { border-color:rgba(217,119,6,.24); color:#92400E; }
     .operator-status-label.danger { border-color:rgba(220,38,38,.24); color:var(--le-red); }
-    .operator-cockpit-grid { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(280px,.75fr); gap:14px; align-items:start; margin-top:14px; }
+    .operator-legacy-grid { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(280px,.75fr); gap:14px; align-items:start; margin-top:14px; }
     .operator-main-stack,.operator-side-rail { display:grid; gap:12px; min-width:0; }
     .section-band { border:1px solid rgba(15,31,92,.12); border-radius:18px; padding:12px; background:var(--le-canvas); box-shadow:0 8px 22px rgba(15,31,92,.045); }
     .section-band.work-queue { background:linear-gradient(180deg,#FFFFFF,#F4F7FB); border-left:4px solid var(--le-orange); }
@@ -12590,23 +12593,33 @@ function htmlShell() {
     .lee-simple-proposal p { margin:0; color:#667085; font-size:14px; }
     .lee-advanced { display:grid; gap:16px; }
     .lee-advanced[hidden] { display:none; }
-    .lee-bubble-root { position:fixed; right:22px; bottom:22px; z-index:60; display:grid; justify-items:end; gap:12px; pointer-events:none; }
-    .lee-bubble-button { pointer-events:auto; min-width:72px; min-height:52px; border:0; border-radius:999px; background:var(--le-navy); color:white; box-shadow:0 18px 48px rgba(15,31,92,.24); font-family:inherit; font-size:15px; text-transform:none; letter-spacing:0; }
-    .lee-bubble-button:hover, .lee-bubble-button:focus-visible { background:var(--le-navy-mid); outline:3px solid rgba(27,43,128,.22); }
-    .lee-bubble-panel { pointer-events:auto; width:min(420px,calc(100vw - 28px)); max-height:80vh; overflow:auto; border:1px solid var(--le-border); border-radius:22px; background:white; box-shadow:0 28px 90px rgba(15,31,92,.22); padding:16px; display:grid; gap:12px; }
-    .lee-bubble-panel[hidden] { display:none; }
-    .lee-bubble-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
-    .lee-bubble-head h2 { margin:0; color:var(--le-navy); font-size:22px; }
-    .lee-bubble-close { width:36px; height:36px; border-radius:999px; padding:0; }
-    .lee-bubble-panel .lee-simple-input textarea { min-height:112px; font-size:15px; }
-    .lee-bubble-panel .lee-latest-answer { box-shadow:none; padding:14px; border-radius:16px; }
-    .lee-bubble-panel .lee-advanced { max-height:48vh; overflow:auto; }
-    .lee-bubble-panel .lee-shell { grid-template-columns:1fr; }
-    .lee-bubble-panel .lee-message { max-width:100%; }
+    .lee-bubble-wrap { position:fixed; right:24px; bottom:22px; z-index:60; display:grid; justify-items:end; gap:12px; pointer-events:none; }
+    .lee-pill { pointer-events:auto; display:inline-flex; align-items:center; gap:10px; min-width:90px; min-height:48px; border:0; border-radius:999px; background:#16130f; color:#fffaf0; box-shadow:0 18px 48px rgba(26,24,20,.24); font-family:inherit; font-size:15px; font-weight:800; text-transform:none; letter-spacing:0; padding:0 18px; }
+    .lee-pill:hover, .lee-pill:focus-visible { background:#241f18; outline:3px solid rgba(184,80,31,.22); }
+    .lee-pill-dot { width:9px; height:9px; border-radius:999px; background:var(--accent-pulse); box-shadow:0 0 0 0 rgba(245,160,74,.52); animation:leePulse 2.4s infinite; }
+    @keyframes leePulse { 0% { box-shadow:0 0 0 0 rgba(245,160,74,.52); } 72% { box-shadow:0 0 0 12px rgba(245,160,74,0); } 100% { box-shadow:0 0 0 0 rgba(245,160,74,0); } }
+    .lee-panel { pointer-events:auto; width:min(420px,calc(100vw - 28px)); max-height:80vh; overflow:auto; border:1px solid rgba(255,250,240,.12); border-radius:22px; background:#fffaf0; box-shadow:0 28px 90px rgba(26,24,20,.24); display:grid; gap:0; }
+    .lee-panel[hidden] { display:none; }
+    .lee-panel-head { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px 16px; background:#16130f; color:#fffaf0; }
+    .lee-panel-head h2 { margin:0; font-size:16px; color:#fffaf0; }
+    .lee-panel-status { display:inline-flex; align-items:center; gap:8px; color:#dfd2ba; font-size:12px; font-weight:750; }
+    .lee-panel-close { width:34px; height:34px; border-radius:999px; padding:0; border-color:rgba(255,250,240,.18); background:rgba(255,250,240,.08); color:#fffaf0; }
+    .lee-panel-body { display:grid; gap:12px; padding:14px; }
+    .lee-context { border:1px solid var(--border-default); border-radius:16px; padding:12px; background:var(--bg-cue); color:var(--text-secondary); font-size:13px; line-height:1.45; }
+    .lee-panel .lee-latest-answer { box-shadow:none; padding:12px; border-radius:16px; border-color:var(--border-default); }
+    .lee-panel .lee-latest-answer pre { color:var(--text-primary); font-size:13px; }
+    .lee-panel .lee-quick { gap:7px; }
+    .lee-panel .lee-quick button { min-height:32px; border-radius:999px; background:var(--accent-tint); border-color:var(--border-light); color:var(--accent); text-transform:none; }
+    .lee-input-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; }
+    .lee-input-row textarea { min-height:50px; max-height:120px; resize:vertical; border-radius:16px; font-size:14px; }
+    .lee-input-row button { min-height:42px; border-radius:999px; }
+    .lee-panel .lee-advanced { max-height:48vh; overflow:auto; }
+    .lee-panel .lee-shell { grid-template-columns:1fr; }
+    .lee-panel .lee-message { max-width:100%; }
     @media (max-width:640px) {
-      .lee-bubble-root { inset:0; right:0; bottom:0; justify-items:stretch; align-items:end; padding:0; }
-      .lee-bubble-button { position:fixed; right:16px; bottom:16px; justify-self:end; }
-      .lee-bubble-panel { width:100vw; max-height:100vh; min-height:100vh; border-radius:0; border:0; }
+      .lee-bubble-wrap { inset:0; right:0; bottom:0; justify-items:stretch; align-items:end; padding:0; }
+      .lee-pill { position:fixed; right:16px; bottom:16px; justify-self:end; }
+      .lee-panel { width:100vw; max-height:100vh; min-height:100vh; border-radius:0; border:0; }
     }
     .landing-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(260px,.75fr); gap:14px; align-items:start; }
     .landing-actions { display:grid; gap:9px; }
@@ -12769,25 +12782,108 @@ function htmlShell() {
     .mini-form button { align-self:end; }
     .funnel-stage { display:grid; gap:6px; padding:12px; border-radius:14px; background:#F4F7F6; border:1px solid rgba(8,20,95,.08); }
     .funnel-stage strong { color:var(--ink); font-size:20px; }
-    @media (max-width:1100px) { .layout,.command,.post-grid,.three,.two,.calendar,.queue-card,.operator-review,.wilma-grid,.export-grid,.archive-grid,.executive-grid,.ops-row,.operator-cockpit-grid,.landing-grid { grid-template-columns:1fr; } aside { position:static; min-height:auto; align-items:flex-start; flex-direction:column; padding:14px 18px; } nav { width:100%; overflow:auto; align-items:flex-start; } .nav-menu,.nav-top-link { flex:0 0 auto; } header,main { padding-left:18px; padding-right:18px; } .image-stage { position:static; order:-1; } .operator-preview .image-preview { min-height:300px; } .operator-command-strip { grid-template-columns:1fr; } .operator-strip-status { justify-content:flex-start; } }
+    @media (max-width:1100px) { .layout,.command,.post-grid,.three,.two,.calendar,.queue-card,.operator-review,.wilma-grid,.export-grid,.archive-grid,.executive-grid,.ops-row,.operator-legacy-grid,.landing-grid { grid-template-columns:1fr; } aside { position:static; min-height:auto; align-items:flex-start; flex-direction:column; padding:14px 18px; } nav { width:100%; overflow:auto; align-items:flex-start; } .nav-menu,.nav-top-link { flex:0 0 auto; } header,main { padding-left:18px; padding-right:18px; } .image-stage { position:static; order:-1; } .operator-preview .image-preview { min-height:300px; } .operator-command-strip { grid-template-columns:1fr; } .operator-strip-status { justify-content:flex-start; } }
     @media (max-width:1100px) { .mission-grid,.readiness-strip,.pipeline-board,.health-grid,.metric-table,.asset-library-grid,.modal-grid,.lee-shell { grid-template-columns:1fr; } .readiness-strip,.pipeline-board { overflow:visible; } .lee-message { max-width:100%; } }
 
     ${designSystem.interfaceCss}
 
-    /* Operator shell final overrides. Keep these after legacy design CSS so the COO cockpit stays compact. */
-    body { background:var(--le-shell-bg); color:var(--le-text); }
-    aside { background:rgba(255,255,255,.94); border-bottom:1px solid rgba(15,31,92,.12); box-shadow:0 8px 24px rgba(15,31,92,.06); }
+    /* v3.1 LegalEase Operator Cockpit */
+    :root {
+      --bg-primary: #faf6ec;
+      --bg-now: #fdf9ef;
+      --bg-footer: #f5efde;
+      --bg-card: #ffffff;
+      --bg-cue: #f3ecd9;
+      --text-primary: #1a1814;
+      --text-secondary: #4d473d;
+      --text-tertiary: #6b6359;
+      --text-quaternary: #9c9384;
+      --accent: #b8501f;
+      --accent-hover: #9d4317;
+      --accent-pulse: #f5a04a;
+      --accent-tint: #fbf0e3;
+      --border-default: #ebe3d1;
+      --border-emphasis: #d8cfb9;
+      --border-light: #f0e8d4;
+    }
+    body { background:var(--bg-primary); color:var(--text-primary); font-family:"Sora", Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    aside { background:rgba(250,246,236,.92); border-bottom:1px solid var(--border-default); box-shadow:0 8px 24px rgba(26,24,20,.045); }
     main { max-width:1180px; padding-top:18px; }
-    .panel,.card { border-color:rgba(15,31,92,.12); box-shadow:0 10px 26px rgba(15,31,92,.055); }
-    .operator-cockpit-grid { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(280px,.75fr); gap:14px; align-items:start; margin-top:14px; }
-    .operator-main-stack,.operator-side-rail { display:grid; gap:12px; min-width:0; }
-    .section-band { border:1px solid rgba(15,31,92,.12); border-radius:18px; padding:12px; background:var(--le-canvas); box-shadow:0 8px 22px rgba(15,31,92,.045); }
-    .compact-card,.today-card { padding:12px 13px; border-radius:12px; box-shadow:0 4px 14px rgba(15,31,92,.04); }
-    .compact-card h3,.today-card h3 { font-size:16px; line-height:1.25; word-break:normal; white-space:normal; }
-    .compact-card p,.today-card p { font-size:13px; line-height:1.42; }
+    .panel,.card { border-color:var(--border-default); box-shadow:0 10px 26px rgba(26,24,20,.055); }
+    button,.button { font-family:inherit; letter-spacing:0; text-transform:none; border-radius:999px; }
+    button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline:3px solid rgba(184,80,31,.24); outline-offset:2px; }
+    .operator-v31 { display:grid; gap:18px; width:100%; max-width:100%; color:var(--text-primary); }
+    .operator-v31 * { word-break:normal; }
+    .app-header { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; color:var(--text-tertiary); }
+    .app-date { font-size:13px; font-weight:650; letter-spacing:.01em; }
+    .app-time { font-size:24px; line-height:1; color:var(--text-primary); font-weight:750; font-variant-numeric:tabular-nums; }
+    .app-intention { max-width:900px; padding:8px 0 2px; }
+    .app-intention p { margin:0; font-size:clamp(30px,5.2vw,66px); line-height:1.02; letter-spacing:-.03em; font-weight:650; color:var(--text-primary); }
+    .intention-accent { color:var(--accent); }
+    .intention-meta { margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; color:var(--text-tertiary); font-size:12px; }
+    .intention-meta button { min-height:30px; padding:0 10px; background:transparent; border-color:var(--border-default); color:var(--accent); }
+    .cockpit-layout { display:grid; grid-template-columns:minmax(0,1.18fr) minmax(300px,.82fr); gap:18px; align-items:start; }
+    .cockpit-main,.cockpit-rail { display:grid; gap:16px; min-width:0; }
+    .now-block { border:1px solid var(--border-emphasis); border-radius:26px; background:var(--bg-now); padding:24px; display:grid; gap:18px; box-shadow:0 22px 54px rgba(65,48,30,.08); }
+    .now-kicker { display:flex; justify-content:space-between; gap:12px; align-items:center; color:var(--accent); font-size:12px; font-weight:800; letter-spacing:.11em; text-transform:uppercase; }
+    .now-block h1 { margin:0; font-size:clamp(30px,4.8vw,58px); line-height:1.02; letter-spacing:-.025em; color:var(--text-primary); }
+    .now-block p { margin:0; color:var(--text-secondary); font-size:15px; line-height:1.55; max-width:780px; }
+    .now-first { border:1px solid var(--border-default); border-radius:20px; background:var(--bg-cue); padding:14px; display:grid; gap:10px; }
+    .now-first strong { color:var(--text-primary); font-size:12px; letter-spacing:.1em; text-transform:uppercase; }
+    .now-steps { display:grid; gap:8px; margin:0; padding:0; list-style:none; counter-reset:step; }
+    .now-steps li { counter-increment:step; display:grid; grid-template-columns:24px 1fr; gap:9px; align-items:start; color:var(--text-secondary); font-size:13px; line-height:1.4; }
+    .now-steps li::before { content:counter(step); display:grid; place-items:center; width:24px; height:24px; border-radius:999px; background:var(--accent); color:white; font-size:11px; font-weight:800; }
+    .now-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    .now-actions button { min-height:42px; padding:0 16px; }
+    .now-actions .primary { background:var(--accent); color:white; border-color:var(--accent); }
+    .now-actions .primary:hover { background:var(--accent-hover); }
+    .timeline-card,.cockpit-card { border:1px solid var(--border-default); border-radius:22px; background:var(--bg-card); padding:16px; box-shadow:0 12px 34px rgba(65,48,30,.055); }
+    .cockpit-card h2,.timeline-card h2 { margin:0; font-size:15px; line-height:1.2; color:var(--text-primary); }
+    .cockpit-card-head { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:12px; }
+    .cockpit-card-head small { color:var(--text-tertiary); font-size:12px; }
+    .timeline-track { position:relative; height:108px; border-radius:18px; background:linear-gradient(180deg,#fbf7ee,#f4eddf); border:1px solid var(--border-light); overflow:hidden; margin-top:12px; }
+    .timeline-axis { position:absolute; inset:0; display:grid; grid-template-columns:repeat(10,1fr); color:var(--text-quaternary); font-size:10px; }
+    .timeline-axis span { border-left:1px solid rgba(216,207,185,.45); padding:8px 0 0 6px; }
+    .timeline-block { position:absolute; top:38px; height:42px; min-width:34px; border-radius:999px; display:flex; align-items:center; padding:0 12px; color:white; font-size:12px; font-weight:750; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; box-shadow:0 10px 22px rgba(26,24,20,.12); }
+    .timeline-block.focus { background:var(--accent); }
+    .timeline-block.meeting { background:#0f1f5c; }
+    .timeline-block.personal { background:#d97706; }
+    .timeline-block.past { opacity:.34; }
+    .timeline-block.current { outline:3px solid rgba(245,160,74,.38); }
+    .timeline-now { position:absolute; top:26px; bottom:14px; width:2px; background:var(--accent-pulse); box-shadow:0 0 0 4px rgba(245,160,74,.18); }
+    .timeline-now-label { position:absolute; top:8px; transform:translateX(-45%); color:var(--accent); font-size:10px; font-weight:800; white-space:nowrap; }
+    .thread-list,.parked-list,.moved-list { display:grid; gap:9px; }
+    .thread,.parked-item,.moved-row { width:100%; text-align:left; border:1px solid var(--border-light); border-radius:16px; background:#fffdf7; padding:12px; display:grid; gap:5px; color:var(--text-primary); }
+    .thread:hover,.parked-item:hover,.moved-row:hover { border-color:var(--border-emphasis); background:#fffaf0; }
+    .thread strong,.parked-item strong,.moved-row strong { font-size:14px; line-height:1.25; }
+    .thread span,.parked-item span,.moved-row span { color:var(--text-tertiary); font-size:12px; line-height:1.4; }
+    .thread-age { color:var(--accent); font-weight:800; }
+    .rail-form { display:grid; gap:10px; }
+    .rail-form textarea { min-height:92px; resize:vertical; border-radius:16px; background:#fffdf7; border-color:var(--border-default); }
+    .rail-form button.primary { background:var(--text-primary); color:white; border-color:var(--text-primary); }
+    .empty-calm { border:1px dashed var(--border-emphasis); border-radius:16px; padding:14px; color:var(--text-tertiary); background:#fffdf7; font-size:13px; line-height:1.45; }
+    .app-footer { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; border:1px solid var(--border-default); border-radius:20px; background:var(--bg-footer); padding:12px 14px; color:var(--text-tertiary); font-size:12px; }
+    .footer-gates { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .gate { display:inline-flex; align-items:center; gap:7px; padding:5px 9px; border-radius:999px; border:1px solid var(--border-default); background:rgba(255,255,255,.48); color:var(--text-secondary); font-weight:700; }
+    .gate::before { content:""; width:7px; height:7px; border-radius:999px; background:#d97706; }
+    .gate.good::before { background:#059669; }
+    .gate.warn::before { background:#d97706; }
+    .gate.danger::before { background:#dc2626; }
+    .made-for-roger { color:var(--text-quaternary); font-weight:800; letter-spacing:.08em; }
+    @media (max-width:980px) {
+      .cockpit-layout { grid-template-columns:1fr; }
+      .app-intention p { font-size:clamp(32px,10vw,52px); }
+      .now-block { padding:18px; border-radius:22px; }
+    }
+    @media (max-width:640px) {
+      main { padding-left:14px; padding-right:14px; }
+      .app-header { align-items:flex-start; }
+      .cockpit-card,.timeline-card,.now-block { border-radius:18px; }
+      .timeline-track { overflow-x:auto; }
+    }
     .nav-top-link { display:inline-flex; align-items:center; min-height:38px; border-radius:999px; padding:10px 14px; color:#475467; font-weight:850; font-size:14px; text-decoration:none; }
     .nav-top-link:hover,.nav-top-link:focus-visible,.nav-top-link.active { background:var(--le-navy-mid); color:white; }
-    @media (max-width:1100px) { .operator-cockpit-grid,.landing-grid { grid-template-columns:1fr; } .operator-command-strip { grid-template-columns:1fr; } }
+    @media (max-width:1100px) { .landing-grid { grid-template-columns:1fr; } .operator-command-strip { grid-template-columns:1fr; } }
 
   </style>
 </head>
@@ -15975,151 +16071,326 @@ function htmlShell() {
       });
     }
 
-    function commandCenterOverviewHtml(posts) {
-      const brief = state.cooBrief || {};
-      const approvalItems = state.approvalQueue || [];
-      const activeApprovals = approvalItems.filter((item) => !["approved", "archived", "ignored"].includes(String(item.status || "").toLowerCase()));
-      const inboxBrief = brief.growthInbox || {};
-      const partnerBrief = brief.partnerLifecycle || {};
+    function cockpitLongDate(date = new Date()) {
+      return date.toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric", year:"numeric" });
+    }
+
+    function cockpitClockText(date = new Date()) {
+      return date.toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit" });
+    }
+
+    function cockpitDayLabel(value = "") {
+      if (!value) return "Today";
+      const time = new Date(value).getTime();
+      if (!Number.isFinite(time)) return "Recent";
+      const delta = Math.floor((Date.now() - time) / 86400000);
+      if (delta <= 0) return "Today";
+      if (delta === 1) return "Yesterday";
+      if (delta < 7) return delta + " days ago";
+      return new Date(value).toLocaleDateString(undefined, { month:"short", day:"numeric" });
+    }
+
+    function cockpitRelativeAge(value = "") {
+      if (!value) return "new";
+      const days = daysSince(value);
+      if (!Number.isFinite(days)) return "recent";
+      if (days <= 0) return "today";
+      if (days === 1) return "1 day";
+      return days + " days";
+    }
+
+    function cockpitFocusRange(date = new Date()) {
+      const start = new Date(date);
+      const minutes = start.getMinutes();
+      start.setMinutes(minutes < 30 ? 0 : 30, 0, 0);
+      const end = new Date(start.getTime() + 90 * 60000);
+      const label = value => value.toLocaleTimeString(undefined, { hour:"numeric", minute:value.getMinutes() ? "2-digit" : undefined }).replace(":00", "");
+      return label(start) + " to " + label(end);
+    }
+
+    function cockpitNowItem(posts = []) {
       const openTasks = (state.tasks || []).filter(taskStatusOpen);
-      const overdueTasks = openTasks.filter(taskIsOverdue);
-      const waitingRogerTasks = openTasks.filter(task => /roger/i.test(task.owner || ""));
-      const allItems = operatorItems(posts);
-      const nowItems = allItems.filter(item => operatingPhaseFor(item) === "Now").slice(0, 5);
-      const waitingItems = [
-        ...activeApprovals.slice(0, 1).map(() => ({
-          title:\`\${activeApprovals.length} item\${activeApprovals.length === 1 ? "" : "s"} need review\`,
-          whyItMatters:"This is content, proof, or operating work waiting on your decision.",
-          nextAction:"Open Queue and approve, block, or move forward.",
-          status:"needs_review",
+      const rankedTasks = openTasks.slice().sort((a, b) => {
+        const rank = { critical:5, high:4, medium:3, low:2 };
+        return (taskIsOverdue(b) ? 10 : 0) - (taskIsOverdue(a) ? 10 : 0)
+          || (rank[String(b.priority || "").toLowerCase()] || 1) - (rank[String(a.priority || "").toLowerCase()] || 1)
+          || String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31"));
+      });
+      const activeApprovals = (state.approvalQueue || []).filter(item => !["approved", "archived", "ignored"].includes(String(item.status || "").toLowerCase()));
+      const urgentInbox = (state.growthInbox || []).filter(item => !["converted", "ignored"].includes(String(item.status || "").toLowerCase())).sort((a, b) => String(b.priority || "").localeCompare(String(a.priority || "")));
+      const stalledProgram = (state.partnerPrograms || []).find(program => ["stalled", "paid", "onboarding", "proposal_sent"].includes(String(program.status || "").toLowerCase()));
+      if (rankedTasks[0]) {
+        const task = rankedTasks[0];
+        return {
+          type:"task",
+          id:task.id,
+          title:task.title || "Move the highest-leverage task",
+          context:task.escalationReason || task.description || task.nextAction || "This is the clearest owned work due now. Finishing it lowers the operating load for the rest of the day.",
+          href:"focus",
+          primaryLabel:"Start Focus Mode",
+          secondaryLabel:"Open task",
+          snoozeLabel:"Snooze",
+          range:cockpitFocusRange(),
+          steps:[
+            task.nextAction || "Open the task and confirm the next concrete move.",
+            "Decide whether this needs action, a snooze, or a clean dismissal.",
+            "Log the outcome so Le-E can update the operating memory."
+          ]
+        };
+      }
+      if (activeApprovals.length) {
+        return {
+          type:"approval",
+          id:activeApprovals[0].id,
+          title:activeApprovals.length + " approval item" + (activeApprovals.length === 1 ? "" : "s") + " need your decision",
+          context:"These items are already prepared. A short approval pass can unblock production, proof, and partner movement without digging through the full queue.",
           href:"queue",
-          button:"Open Queue"
-        })),
-        ...waitingRogerTasks.slice(0, 2).map(task => ({
-          title:task.title,
-          whyItMatters:task.escalationReason || task.description || "This is assigned to Roger.",
-          nextAction:task.nextAction || "Decide the next step.",
-          status:task.status,
-          href:"tasks",
-          button:"Open task"
-        })),
-        ...(partnerBrief.stalledPartners || []).slice(0, 1).map(partner => ({
-          title:\`\${partner.name} is waiting\`,
-          whyItMatters:"A stalled partner can become proof, revenue, or a clean close.",
-          nextAction:partner.nextAction || "Revive, reframe, or close.",
-          status:"stalled",
-          href:"partners",
-          button:"Open partner"
-        }))
-      ].slice(0, 3);
-      const blockedItems = allItems.filter(item => item.blocked || String(item.status || "").toLowerCase().includes("blocked")).slice(0, 3);
-      const growthSignals = (state.growthSignals || []).slice(0, 3);
-      const proofEvents = [
-        ...(state.activityEvents || []).filter(event => /proof|report|pilot|partner|evidence|public|conversion/i.test([event.eventType, event.title].join(" "))),
-        ...(state.events || []).filter(event => /proof|report|pilot|partner|evidence|public|conversion/i.test([event.eventType, event.title].join(" ")))
-      ].slice().sort((a, b) => String(b.createdAt || b.timestamp || "").localeCompare(String(a.createdAt || a.timestamp || ""))).slice(0, 3);
-      const readyChannels = platforms.filter(platform => state.runtime?.livePostingGates?.[platform]?.enabled).length;
-      const pngReady = posts.filter(post => finalPngReady(post, imageForPost(post.id))).length;
-      const publicUrlReady = credentialPresent("PUBLIC_APP_BASE_URL");
-      const setupIssues = readyChannels + (publicUrlReady ? 0 : 1) === 0 ? 1 : Math.max(0, 1 - readyChannels) + (publicUrlReady ? 0 : 1);
-      const partnerPrograms = state.partnerPrograms || [];
-      const paidPrograms = partnerPrograms.filter(program => program.paymentStatus === "paid").length;
-      const stalledPrograms = partnerPrograms.filter(program => String(program.status || "").toLowerCase() === "stalled").length;
-      const readyContent = posts.filter(post => ["approved", "scheduled", "retry_ready"].includes(post.status)).length;
-      const todaysDate = new Date().toLocaleDateString(undefined, { weekday:"long", month:"short", day:"numeric" });
-      return \`<section class="page-section active operator-today">
-        <section class="operator-command-strip">
-          <div>
-            <div class="eyebrow">Today · \${esc(todaysDate)}</div>
-            <h1>Run the day from here.</h1>
-            <p>\${esc(brief.recommendedMove || "Capture what changed, clear decisions, and move proof forward.")}</p>
-          </div>
-          <div class="operator-strip-status">
-            <span class="operator-status-label safe">Le-E ready</span>
-            <span class="operator-status-label \${setupIssues ? "warn" : "safe"}">\${setupIssues ? setupIssues + " setup issue" + (setupIssues === 1 ? "" : "s") : "Systems ready"}</span>
-            <span class="operator-status-label \${readyChannels ? "danger" : "safe"}">Live gates: \${readyChannels}</span>
-            <button class="primary" onclick="location.hash='focus'">Start Focus Mode</button>
-          </div>
+          primaryLabel:"Review approvals",
+          secondaryLabel:"Open Queue",
+          snoozeLabel:"Later",
+          range:cockpitFocusRange(),
+          steps:["Open the approval queue.", "Approve what is safe and block anything unclear.", "Send ready work forward only after review."]
+        };
+      }
+      if (urgentInbox[0]) {
+        const item = urgentInbox[0];
+        return {
+          type:"growth_inbox",
+          id:item.id,
+          title:item.summary || item.rawText || "Triage the newest company signal",
+          context:item.suggestedAction || "This signal should be routed before it becomes founder memory.",
+          href:"growth-inbox",
+          primaryLabel:"Triage signal",
+          secondaryLabel:"Open Inbox",
+          snoozeLabel:"Later",
+          range:cockpitFocusRange(),
+          steps:["Read the raw note once.", "Choose task, partner update, content idea, or evidence note.", "Let Le-E create the draft destination."]
+        };
+      }
+      if (stalledProgram) {
+        return {
+          type:"partner_program",
+          id:stalledProgram.id,
+          title:(stalledProgram.name || "Partner program") + " needs the next move",
+          context:stalledProgram.nextAction || "Partner program movement creates revenue, proof, and a cleaner operating rhythm.",
+          href:"partner-programs",
+          primaryLabel:"Open program",
+          secondaryLabel:"Ask Le-E",
+          snoozeLabel:"Later",
+          range:cockpitFocusRange(),
+          steps:["Review the partner status.", "Choose the next action or follow-up draft.", "Create the task before switching context."]
+        };
+      }
+      return {
+        type:"planning",
+        id:"daily-planning",
+        title:"Choose the one move that makes today easier",
+        context:"No urgent item is currently demanding action. Use this window to capture loose signals, generate proof, or move the strongest partner thread.",
+        href:"growth-inbox",
+        primaryLabel:"Capture a signal",
+        secondaryLabel:"Ask Le-E",
+        snoozeLabel:"Done for now",
+        range:cockpitFocusRange(),
+        steps:["Capture any loose partner, investor, or support signal.", "Ask Le-E what needs Roger next.", "Start one focus session and stop there."]
+      };
+    }
+
+    function cockpitDailyIntention(nowItem = cockpitNowItem()) {
+      const partnerCount = (state.partnerPrograms || []).filter(program => ["paid", "onboarding", "active", "reporting"].includes(String(program.status || "").toLowerCase())).length;
+      const inboxCount = (state.growthInbox || []).filter(item => !["converted", "ignored"].includes(String(item.status || "").toLowerCase())).length;
+      const proofCount = cockpitThisWeekMoved().length;
+      const accent = nowItem.type === "task" ? "protect the main thread" : nowItem.type === "approval" ? "clear decisions" : nowItem.type === "growth_inbox" ? "route the signal" : partnerCount ? "move partner proof" : "make the day lighter";
+      return {
+        prefix:"Today is for ",
+        accent,
+        suffix:proofCount ? ", then turning movement into proof." : inboxCount ? ", then clearing loose intake before it spreads." : ", with only the next useful move in view.",
+        source:"Le-E read open tasks, inbox signals, partner programs, and weekly proof."
+      };
+    }
+
+    function cockpitTimelineBlocks(nowItem = cockpitNowItem()) {
+      const now = new Date();
+      const hour = now.getHours();
+      const currentStart = Math.min(16.5, Math.max(8, hour + (now.getMinutes() / 60)));
+      const calendarItems = (state.calendarSignals || state.googleCalendarSignals || state.automationEvents || [])
+        .filter(item => /calendar|meeting|call/i.test([item.sourceType, item.eventType, item.title, item.summary].join(" ")))
+        .slice(0, 3);
+      const blocks = [
+        { label:nowItem.title || "Focus", type:"focus", start:Math.max(8, currentStart), end:Math.min(18, currentStart + 1.5) },
+        ...calendarItems.map((item, index) => ({ label:item.title || item.summary || "Meeting", type:"meeting", start:10 + index * 2, end:11 + index * 2 })),
+        { label:"Family window", type:"personal", start:17, end:18 }
+      ];
+      return blocks.filter(block => block.end > 8 && block.start < 18).slice(0, 5);
+    }
+
+    function cockpitTimelineHtml(nowItem = cockpitNowItem()) {
+      const now = new Date();
+      const nowHour = now.getHours() + now.getMinutes() / 60;
+      const nowLeft = Math.max(0, Math.min(100, ((nowHour - 8) / 10) * 100));
+      const ticks = ["8a", "9a", "10a", "11a", "12p", "1p", "2p", "3p", "4p", "5p"];
+      const blocks = cockpitTimelineBlocks(nowItem).map(block => {
+        const left = Math.max(0, Math.min(100, ((block.start - 8) / 10) * 100));
+        const width = Math.max(8, Math.min(100 - left, ((block.end - block.start) / 10) * 100));
+        const past = block.end < nowHour ? " past" : "";
+        const current = block.start <= nowHour && block.end >= nowHour ? " current" : "";
+        return \`<button class="timeline-block \${esc(block.type)}\${past}\${current}" style="left:\${left}%;width:\${width}%;" onclick="location.hash='\${block.type === "focus" ? "focus" : "tasks"}'">\${esc(block.label)}</button>\`;
+      }).join("");
+      return \`<section class="timeline-card">
+        <div class="cockpit-card-head"><h2>Today's Flow</h2><small>8a to 6p</small></div>
+        <div class="timeline-track">
+          <div class="timeline-axis">\${ticks.map(tick => \`<span>\${tick}</span>\`).join("")}</div>
+          \${blocks}
+          <div id="tl-now-marker" class="timeline-now" style="left:\${nowLeft}%"></div>
+          <div id="tl-now-label" class="timeline-now-label" style="left:\${nowLeft}%">now</div>
+        </div>
+      </section>\`;
+    }
+
+    function cockpitThreadsOpen() {
+      const waitingTasks = (state.tasks || []).filter(task => taskStatusOpen(task) && /roger|partner|investor|follow/i.test([task.owner, task.title, task.description, task.sourceType].join(" "))).map(task => ({
+        name:task.title || "Open task",
+        context:task.sourceType || task.owner || "Task",
+        need:task.nextAction || task.description || "Waiting on Roger.",
+        age:cockpitRelativeAge(task.updatedAt || task.createdAt || task.dueDate),
+        href:"tasks"
+      }));
+      const partnerThreads = [...(state.partners || []), ...(state.partnerPrograms || [])].filter(item => {
+        const status = String(item.status || item.stage || "").toLowerCase();
+        return status === "stalled" || isOlderThan(item.lastTouchDate || item.updatedAt || item.createdAt, 7);
+      }).map(item => ({
+        name:item.name || item.partnerName || "Partner",
+        context:item.affiliation || item.partnerType || item.packageTier || "Partner",
+        need:item.nextAction || "Needs a clean next touch.",
+        age:cockpitRelativeAge(item.lastTouchDate || item.updatedAt || item.createdAt),
+        href:item.packageTier ? "partner-programs" : "partners"
+      }));
+      const inboxThreads = (state.growthInbox || []).filter(item => !["converted", "ignored"].includes(String(item.status || "").toLowerCase()) && /partner|investor|customer|support|proposal|meeting/i.test([item.sourceType, item.rawText, item.summary].join(" "))).map(item => ({
+        name:item.relatedPartner || item.relatedCampaign || item.summary || "New signal",
+        context:growthLabel(item.sourceType || "Growth Inbox"),
+        need:item.suggestedAction || item.rawText || "Needs routing.",
+        age:cockpitRelativeAge(item.createdAt),
+        href:"growth-inbox"
+      }));
+      return [...waitingTasks, ...partnerThreads, ...inboxThreads].slice(0, 5);
+    }
+
+    function cockpitParkedItems() {
+      const blockedTasks = (state.tasks || []).filter(task => taskStatusOpen(task) && (String(task.status || "").toLowerCase() === "blocked" || task.escalationReason)).map(task => ({
+        title:task.title || "Blocked task",
+        reason:task.escalationReason || task.nextAction || "Waiting on a dependency.",
+        href:"tasks"
+      }));
+      const blockers = (state.blockers || []).map(item => ({
+        title:item.whatIsBlocked || item.title || "Blocked item",
+        reason:item.whyBlocked || item.reason || item.fix || "Waiting on a fix.",
+        href:item.sourceType === "settings" ? "settings" : "tasks"
+      }));
+      const parkedPrograms = (state.partnerPrograms || []).filter(program => ["stalled", "lost", "checkout_started"].includes(String(program.status || "").toLowerCase())).map(program => ({
+        title:program.name || "Partner program",
+        reason:program.nextAction || (program.paymentStatus === "paid" ? "Needs onboarding path." : "Waiting on partner or payment confirmation."),
+        href:"partner-programs"
+      }));
+      return [...blockedTasks, ...blockers, ...parkedPrograms].slice(0, 4);
+    }
+
+    function cockpitThisWeekMoved() {
+      const weekAgo = Date.now() - 7 * 86400000;
+      const recent = value => {
+        const time = new Date(value || "").getTime();
+        return Number.isFinite(time) && time >= weekAgo;
+      };
+      const eventRows = [...(state.activityEvents || []), ...(state.events || [])]
+        .filter(event => recent(event.createdAt || event.timestamp || event.generatedAt))
+        .filter(event => /proof|report|partner|proposal|campaign|funnel|evidence|public|uploaded|generated|paid/i.test([event.eventType, event.title, event.summary, event.objectType].join(" ")))
+        .map(event => ({
+          title:event.title || event.eventType || "Movement captured",
+          detail:event.summary || event.nextAction || event.objectType || "Proof-worthy activity was logged.",
+          day:cockpitDayLabel(event.createdAt || event.timestamp || event.generatedAt),
+          href:event.objectType === "partner_program" ? "partner-programs" : /report|evidence/i.test([event.eventType, event.objectType].join(" ")) ? "reports" : "growth"
+        }));
+      const programRows = (state.partnerPrograms || []).filter(program => recent(program.updatedAt || program.createdAt)).map(program => ({
+        title:program.name || "Partner program moved",
+        detail:plainOperatorState(program.status || "updated") + ". " + (program.nextAction || "Next action is tracked."),
+        day:cockpitDayLabel(program.updatedAt || program.createdAt),
+        href:"partner-programs"
+      }));
+      return [...eventRows, ...programRows].slice(0, 5);
+    }
+
+    function cockpitFooterGates() {
+      const liveGates = Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length;
+      const dbConnected = state.persistence === "supabase" || Boolean(supabaseHealth?.connected);
+      const storageConnected = Boolean(state.runtime?.supabaseStorage?.configured || supabaseHealth?.storageConnected || credentialPresent("SUPABASE_STORAGE_BUCKET"));
+      return [
+        { label:"Le-E ready", ok:true },
+        { label:dbConnected ? "Supabase DB connected" : "Local fallback active", ok:dbConnected },
+        { label:storageConnected ? "Supabase Storage connected" : "Storage check needed", ok:storageConnected },
+        { label:state.runtime?.openAIConfigured ? "OpenAI configured" : "OpenAI not configured", ok:Boolean(state.runtime?.openAIConfigured) },
+        { label:"Live gates off: " + liveGates, ok:liveGates === 0, danger:liveGates > 0 }
+      ];
+    }
+
+    function commandCenterOverviewHtml(posts) {
+      const nowItem = cockpitNowItem(posts);
+      const intention = cockpitDailyIntention(nowItem);
+      const threads = cockpitThreadsOpen();
+      const parked = cockpitParkedItems();
+      const moved = cockpitThisWeekMoved();
+      const gates = cockpitFooterGates();
+      return \`<section class="operator-v31">
+        <header class="app-header">
+          <div class="app-date">\${esc(cockpitLongDate())}</div>
+          <div id="cockpit-clock" class="app-time">\${esc(cockpitClockText())}</div>
+        </header>
+        <section class="app-intention" aria-label="Daily intention">
+          <p>\${esc(intention.prefix)}<span class="intention-accent">\${esc(intention.accent)}</span>\${esc(intention.suffix)}</p>
+          <div class="intention-meta"><span>\${esc(intention.source)}</span><button type="button" onclick="askLeePrompt('Rewrite today\\'s intention from current open work.')">Rewrite with Le-E</button></div>
         </section>
-        <div class="operator-cockpit-grid">
-          <div class="operator-main-stack">
-            <section class="section-band today-command-band">
-              <div class="simple-panel-head"><h2>Today’s 3 Priorities</h2><button onclick="rebuildPriorities()">Refresh</button></div>
-              <div class="compact-list">\${nowItems.slice(0, 3).map(item => operatorItemCard(item)).join("") || '<div class="done-state">No Now items. Growth Inbox clear for today.</div>'}</div>
-            </section>
-            <section class="section-band work-queue">
-              <div class="simple-panel-head"><h2>Waiting on Roger</h2><button onclick="location.hash='focus'">Focus</button></div>
-              <div class="compact-list">\${waitingItems.slice(0, 3).map(item => operatorItemCard(item)).join("") || '<div class="done-state">No high-risk items waiting.</div>'}</div>
-            </section>
-            <section class="section-band blocked-band">
-              <div class="simple-panel-head"><h2>Blocked</h2><button onclick="location.hash='focus'; focusMode='clear-blockers'; focusIndex=0; setTimeout(render,0)">Clear blockers</button></div>
-              <div class="compact-list">\${blockedItems.slice(0, 3).map(item => operatorItemCard(item)).join("") || '<div class="done-state">No urgent partner follow-ups or blocked operating work.</div>'}</div>
-            </section>
-          </div>
-          <aside class="operator-side-rail">
-            <section class="section-band quick-capture">
-              <div><h2>Quick Capture</h2><p class="muted">Drop the signal here. The system classifies and routes it.</p></div>
-              <form class="quick-capture" onsubmit="quickCapture(event)">
-                <textarea name="rawText" required aria-label="Quick capture" placeholder="Capture a partner update, task, idea, meeting note, or concern…"></textarea>
-                <div class="card-actions"><button class="primary" type="submit">Capture</button><button type="button" onclick="openLeeBubble()">Ask Le-E</button></div>
-              </form>
-            </section>
-            <section class="section-band">
-              <div class="simple-panel-head"><h2>Focus Launcher</h2><button class="primary" onclick="location.hash='focus'">Start</button></div>
-              <div class="focus-launcher">
-                \${focusModes.slice(0, 5).map(mode => \`<button onclick="setFocusMode('\${mode.id}')">\${esc(mode.label)}</button>\`).join("")}
+        <div class="cockpit-layout">
+          <main class="cockpit-main">
+            <section class="now-block" aria-label="Now">
+              <div class="now-kicker"><span>NOW · \${esc(nowItem.range)}</span><span>\${esc(plainOperatorState(nowItem.type === "planning" ? "ready" : "needs_review"))}</span></div>
+              <h1>\${esc(nowItem.title)}</h1>
+              <p>\${esc(nowItem.context)}</p>
+              <div class="now-first">
+                <strong>START WITH</strong>
+                <ol class="now-steps">\${nowItem.steps.slice(0, 3).map(step => \`<li>\${esc(step)}</li>\`).join("")}</ol>
+              </div>
+              <div class="now-actions">
+                <button class="primary" type="button" onclick="location.hash='\${esc(nowItem.href)}'">\${esc(nowItem.primaryLabel)}</button>
+                <button type="button" onclick="\${nowItem.secondaryLabel === "Ask Le-E" ? "openLeeBubble()" : "location.hash='" + esc(nowItem.href) + "'"}">\${esc(nowItem.secondaryLabel)}</button>
+                <button type="button" onclick="cockpitSnoozeNow('\${esc(nowItem.type)}','\${esc(nowItem.id)}')">\${esc(nowItem.snoozeLabel)}</button>
               </div>
             </section>
-            <section class="section-band proof-band">
-              <div class="simple-panel-head"><h2>Proof Created This Week</h2><button onclick="createWeeklyEvidencePack()">Build</button></div>
-              <div class="compact-list">\${proofEvents.slice(0, 3).map(event => operatorItemCard({
-                title:event.title || event.eventType || "Proof event",
-                whyItMatters:event.summary || "This can become investor, partner, or diligence evidence.",
-                nextAction:"Capture this in the weekly evidence pack.",
-                priority:"medium",
-                status:"ready",
-                href:"reports",
-                button:"Open"
-              })).join("") || '<div class="done-state">Weekly proof captured.</div>'}</div>
+            \${cockpitTimelineHtml(nowItem)}
+            <section class="cockpit-card">
+              <div class="cockpit-card-head"><h2>This Week Moved</h2><small>Outcomes, not outputs</small></div>
+              <div class="moved-list">\${moved.map(item => \`<button class="moved-row" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(item.title)}</strong><span>\${esc(item.detail)}</span><span>\${esc(item.day)}</span></button>\`).join("") || '<div class="empty-calm">No proof-worthy movement logged this week yet.</div>'}</div>
+            </section>
+          </main>
+          <aside class="cockpit-rail">
+            <section class="cockpit-card">
+              <div class="cockpit-card-head"><h2>Quick Capture</h2><small>No module choosing</small></div>
+              <form class="rail-form" onsubmit="quickCapture(event)">
+                <label class="sr-only" for="cockpit-capture">Quick Capture</label>
+                <textarea id="cockpit-capture" name="rawText" required aria-label="Quick Capture" placeholder="Capture a partner update, task, idea, meeting note, or concern..."></textarea>
+                <button class="primary" type="submit">Capture</button>
+              </form>
+            </section>
+            <section class="cockpit-card">
+              <div class="cockpit-card-head"><h2>Threads Open</h2><small>Waiting on Roger</small></div>
+              <div class="thread-list">\${threads.map(thread => \`<button class="thread" type="button" onclick="location.hash='\${esc(thread.href)}'"><strong>\${esc(thread.name)}</strong><span>\${esc(thread.context)}. \${esc(thread.need)}</span><span class="thread-age">\${esc(thread.age)}</span></button>\`).join("") || '<div class="empty-calm">No open people threads need attention right now.</div>'}</div>
+            </section>
+            <section class="cockpit-card">
+              <div class="cockpit-card-head"><h2>Parked</h2><small>Do not carry these mentally</small></div>
+              <div class="parked-list">\${parked.map(item => \`<button class="parked-item" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(item.title)}</strong><span>\${esc(item.reason)}</span></button>\`).join("") || '<div class="empty-calm">Nothing is parked. No blocked work needs mental space.</div>'}</div>
             </section>
           </aside>
         </div>
-        <div class="operator-cockpit-grid">
-          <section class="section-band growth-band">
-            <div class="simple-panel-head"><h2>Growth Movement</h2><button onclick="location.hash='growth'">Open Growth</button></div>
-            <div class="today-summary-grid">
-              <div class="today-summary-card"><span>Inbox</span><strong>\${Number(inboxBrief.untriagedCount || 0)}</strong><small>Untriaged signals</small></div>
-              <div class="today-summary-card"><span>Overdue</span><strong>\${overdueTasks.length}</strong><small>Owned tasks</small></div>
-              <div class="today-summary-card"><span>Ready content</span><strong>\${readyContent}</strong><small>Can move forward</small></div>
-            </div>
-            <div class="compact-list" style="margin-top:10px">\${growthSignals.slice(0, 3).map(signal => operatorItemCard({
-              title:signal.title || signal.summary || "Growth signal",
-              whyItMatters:signal.whyItMatters || signal.summary || "This is traction worth turning into proof.",
-              nextAction:signal.strength === "strong" ? "Turn into investor proof." : "Monitor and keep attribution clean.",
-              priority:signal.strength === "strong" ? "high" : "medium",
-              status:"ready",
-              href:signal.sourceType === "partner" ? "partners" : signal.sourceType === "pilot" ? "pilots" : "campaigns",
-              button:"Open"
-            })).join("") || '<div class="done-state">No new growth movement yet.</div>'}</div>
-          </section>
-          <section class="section-band proof-band">
-            <div class="simple-panel-head"><h2>Partner + Production Snapshot</h2><button onclick="location.hash='partner-hub'">Open</button></div>
-            <div class="today-summary-grid">
-              <div class="today-summary-card"><span>Paid programs</span><strong>\${paidPrograms}</strong><small>Need clean execution</small></div>
-              <div class="today-summary-card"><span>Stalled partners</span><strong>\${stalledPrograms}</strong><small>Need a decision</small></div>
-              <div class="today-summary-card"><span>Final PNGs</span><strong>\${pngReady}</strong><small>Ready assets</small></div>
-            </div>
-          </section>
-        </div>
-        <details class="panel section coo-health">
-          <summary>\${setupIssues ? setupIssues + " setup issue" + (setupIssues === 1 ? "" : "s") : "All systems ready"}</summary>
-          <div class="metric-table" style="margin-top:12px">
-            <div class="metric-row"><span>Live channel gates enabled</span><strong>\${readyChannels}</strong></div>
-            <div class="metric-row"><span>Final PNGs ready</span><strong>\${pngReady}</strong></div>
-            <div class="metric-row"><span>Public image URL</span><strong>\${publicUrlReady ? "configured" : "missing"}</strong></div>
-            <div class="metric-row"><span>TikTok</span><strong>diagnostic only</strong></div>
-          </div>
-        </details>
+        <footer class="app-footer">
+          <div class="footer-gates">\${gates.map(gate => \`<span class="gate \${gate.danger ? "danger" : gate.ok ? "good" : "warn"}">\${esc(gate.label)}</span>\`).join("")}</div>
+          <div class="made-for-roger">MADE FOR ROGER</div>
+        </footer>
       </section>\`;
     }
 
@@ -16417,66 +16688,66 @@ function htmlShell() {
         pendingProposedActions:(state.leeActionProposals || []).filter(item => item.status === "proposed").length,
         liveGatesCount:Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length
       };
-      return \`<div class="lee-bubble-root" aria-live="polite">
-        <section class="lee-bubble-panel" \${leeBubbleOpen ? "" : "hidden"} aria-label="Le-E chat panel">
-          <div class="lee-bubble-head">
+      return \`<div class="lee-bubble-wrap" aria-live="polite">
+        <section class="lee-panel" \${leeBubbleOpen ? "" : "hidden"} aria-label="Le-E chat panel">
+          <div class="lee-panel-head">
             <div>
               <h2>Le-E</h2>
-              <p class="lee-simple-help">Ask what matters, create a task, or find something in LegalEase.</p>
+              <div class="lee-panel-status"><span class="lee-pill-dot"></span>\${status.openAIConfigured ? "ready" : "safe local mode"}</div>
             </div>
-            <button class="lee-bubble-close" type="button" onclick="closeLeeBubble()" aria-label="Close Le-E">×</button>
+            <button class="lee-panel-close" type="button" onclick="closeLeeBubble()" aria-label="Close Le-E">×</button>
           </div>
-          <form class="lee-simple-input" onsubmit="sendLeeMessage(event)">
-            <textarea name="message" required aria-label="Ask Le-E" placeholder="Ask Le-E...">\${esc(leeDraft)}</textarea>
-            <div class="lee-simple-actions">
-              <div class="lee-quick">\${quickPrompts.map(([label, prompt]) => \`<button type="button" onclick='askLeePrompt(\${JSON.stringify(prompt)})'>\${esc(label)}</button>\`).join("")}</div>
-              <button class="primary" type="submit" \${leeBusy ? "disabled" : ""}>\${leeBusy ? "Thinking..." : "Send"}</button>
-            </div>
-          </form>
-          \${leeBusy ? '<section class="lee-latest-answer"><pre>Checking Command Center memory and safety rules...</pre></section>' : latest ? \`<section class="lee-latest-answer">
-            <div class="eyebrow">Latest answer</div>
-            <pre>\${leeFormat(answer.short)}</pre>
-            \${answer.truncated ? \`<details><summary>Show details</summary><pre>\${leeFormat(answer.full)}</pre></details>\` : ""}
-            <div class="lee-collapsed-row">
-              <details><summary>Sources: \${(latest.sourceRefs || []).length}</summary>\${leeSourceChips(latest.sourceRefs || []) || '<p class="muted">No source references attached.</p>'}</details>
-            </div>
-          </section>\` : '<section class="lee-latest-answer"><pre>Ask Le-E what matters today.</pre></section>'}
-          \${leeSimpleProposalSummary(proposals)}
-          <details class="lee-advanced">
-            <summary>Advanced</summary>
-            <div class="lee-shell" style="margin-top:12px">
-              <section class="lee-chat">
-                <div class="simple-panel-head">
-                  <h2>Conversation</h2>
-                  <div class="card-actions"><button onclick="newLeeThread()">New</button><button onclick="clearLeeThread()">Clear</button><button type="button" onclick="rebuildLeeIndex()">Rebuild index</button></div>
-                </div>
-                <div class="lee-messages">
-                  \${messages.length ? messages.map(message => \`<article class="lee-message \${message.role === "user" ? "user" : "assistant"}">
-                    <div class="today-meta"><span>\${esc(message.role === "assistant" ? "Le-E" : "Roger")}</span><span>\${esc(message.createdAt || "")}</span></div>
-                    <pre>\${leeFormat(message.content || "")}</pre>
-                    \${leeSourceChips(message.sourceRefs || [])}
-                  </article>\`).join("") : '<div class="done-state">No conversation history yet.</div>'}
-                </div>
-              </section>
-              <aside class="lee-side">
-                <section class="panel">
-                  <h2>Status</h2>
-                  <div class="lee-status-grid">
-                    <div><span>OpenAI</span><strong>\${status.openAIConfigured ? "yes" : "no"}</strong></div>
-                    <div><span>Index</span><strong>\${status.knowledgeIndexRecords}</strong></div>
-                    <div><span>Pending</span><strong>\${status.pendingProposedActions}</strong></div>
-                    <div><span>Live gates</span><strong>\${status.liveGatesCount}</strong></div>
+          <div class="lee-panel-body">
+            <div class="lee-context">Ask what matters, create a task, or find something in LegalEase.</div>
+            \${leeBusy ? '<section class="lee-latest-answer"><pre>Checking Command Center memory and safety rules...</pre></section>' : latest ? \`<section class="lee-latest-answer">
+              <pre>\${leeFormat(answer.short)}</pre>
+              \${answer.truncated ? \`<details><summary>Show details</summary><pre>\${leeFormat(answer.full)}</pre></details>\` : ""}
+              <div class="lee-collapsed-row">
+                <details><summary>Sources: \${(latest.sourceRefs || []).length}</summary>\${leeSourceChips(latest.sourceRefs || []) || '<p class="muted">No source references attached.</p>'}</details>
+              </div>
+            </section>\` : '<section class="lee-latest-answer"><pre>Ask Le-E what matters today.</pre></section>'}
+            \${leeSimpleProposalSummary(proposals)}
+            <div class="lee-quick">\${quickPrompts.map(([label, prompt]) => \`<button type="button" onclick='askLeePrompt(\${JSON.stringify(prompt)})'>\${esc(label)}</button>\`).join("")}</div>
+            <form class="lee-input-row" onsubmit="sendLeeMessage(event)">
+              <textarea name="message" required aria-label="Ask Le-E" placeholder="Ask Le-E...">\${esc(leeDraft)}</textarea>
+              <button class="primary" type="submit" \${leeBusy ? "disabled" : ""}>\${leeBusy ? "Thinking" : "Send"}</button>
+            </form>
+            <details class="lee-advanced">
+              <summary>Advanced</summary>
+              <div class="lee-shell" style="margin-top:12px">
+                <section class="lee-chat">
+                  <div class="simple-panel-head">
+                    <h2>Conversation</h2>
+                    <div class="card-actions"><button onclick="newLeeThread()">New</button><button onclick="clearLeeThread()">Clear</button><button type="button" onclick="rebuildLeeIndex()">Rebuild index</button></div>
+                  </div>
+                  <div class="lee-messages">
+                    \${messages.length ? messages.map(message => \`<article class="lee-message \${message.role === "user" ? "user" : "assistant"}">
+                      <div class="today-meta"><span>\${esc(message.role === "assistant" ? "Le-E" : "Roger")}</span><span>\${esc(message.createdAt || "")}</span></div>
+                      <pre>\${leeFormat(message.content || "")}</pre>
+                      \${leeSourceChips(message.sourceRefs || [])}
+                    </article>\`).join("") : '<div class="done-state">No conversation history yet.</div>'}
                   </div>
                 </section>
-                <section class="panel">
-                  <div class="simple-panel-head"><h2>Proposed changes</h2><button onclick="applyAllSafeLeeActions()">Apply all safe</button></div>
-                  <div class="grid">\${proposals.map(leeProposalCard).join("") || '<div class="done-state">No proposed actions.</div>'}</div>
-                </section>
-              </aside>
-            </div>
-          </details>
+                <aside class="lee-side">
+                  <section class="panel">
+                    <h2>Status</h2>
+                    <div class="lee-status-grid">
+                      <div><span>OpenAI</span><strong>\${status.openAIConfigured ? "yes" : "no"}</strong></div>
+                      <div><span>Index</span><strong>\${status.knowledgeIndexRecords}</strong></div>
+                      <div><span>Pending</span><strong>\${status.pendingProposedActions}</strong></div>
+                      <div><span>Live gates</span><strong>\${status.liveGatesCount}</strong></div>
+                    </div>
+                  </section>
+                  <section class="panel">
+                    <div class="simple-panel-head"><h2>Proposed changes</h2><button onclick="applyAllSafeLeeActions()">Apply all safe</button></div>
+                    <div class="grid">\${proposals.map(leeProposalCard).join("") || '<div class="done-state">No proposed actions.</div>'}</div>
+                  </section>
+                </aside>
+              </div>
+            </details>
+          </div>
         </section>
-        <button class="lee-bubble-button" type="button" onclick="openLeeBubble()" aria-label="Ask Le-E" \${leeBubbleOpen ? "hidden" : ""}>Le-E</button>
+        <button class="lee-pill" type="button" onclick="openLeeBubble()" aria-label="Ask Le-E" \${leeBubbleOpen ? "hidden" : ""}><span class="lee-pill-dot"></span><span>Le-E</span></button>
       </div>\`;
     }
 
@@ -17877,6 +18148,7 @@ function htmlShell() {
         link.classList.toggle("active", link.dataset.navSection === navSectionForPage(pageId));
       });
       renderBrandTab("assets");
+      tickCockpitClock();
     }
 
     function navSectionForPage(pageId = "overview") {
@@ -18376,6 +18648,28 @@ function htmlShell() {
     function closeLeeBubble() {
       leeBubbleOpen = false;
       render();
+    }
+
+    function cockpitSnoozeNow(type = "", id = "") {
+      if (type === "task" && id) {
+        snoozeTask(id);
+        return;
+      }
+      toast("Parked for now. Le-E will keep the thread available.");
+    }
+
+    function tickCockpitClock() {
+      const clock = document.querySelector("#cockpit-clock");
+      if (clock) clock.textContent = cockpitClockText();
+      const marker = document.querySelector("#tl-now-marker");
+      const label = document.querySelector("#tl-now-label");
+      if (marker || label) {
+        const now = new Date();
+        const hour = now.getHours() + now.getMinutes() / 60;
+        const left = Math.max(0, Math.min(100, ((hour - 8) / 10) * 100));
+        if (marker) marker.style.left = left + "%";
+        if (label) label.style.left = left + "%";
+      }
     }
 
     async function newLeeThread() {
@@ -20203,8 +20497,10 @@ function htmlShell() {
       if (event.key === "Escape") {
         document.querySelector("#commandPaletteRoot").innerHTML = "";
         if (pendingPublishId) closePublishDialog();
+        if (leeBubbleOpen) closeLeeBubble();
       }
     });
+    setInterval(tickCockpitClock, 30000);
     load();
   </script>
 </body>
