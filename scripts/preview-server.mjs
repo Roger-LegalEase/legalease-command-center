@@ -12656,23 +12656,29 @@ function htmlShell() {
       --shadow:0 18px 45px rgba(16,24,40,.08);
     }
     body { background:var(--le-shell-bg); color:var(--text); }
-    aside { min-height:64px; padding:0 26px; background:rgba(255,255,255,.94); backdrop-filter:blur(18px); border-bottom:1px solid rgba(15,31,92,.12); box-shadow:0 8px 24px rgba(15,31,92,.06); }
-    .brand h1 { color:var(--ink); font-size:18px; letter-spacing:0; }
-    .brand small, .eyebrow { color:var(--accent); letter-spacing:.12em; }
-    nav { gap:6px; flex-wrap:nowrap; overflow:visible; }
-    .nav-top-link { display:inline-flex; align-items:center; min-height:38px; border-radius:999px; padding:10px 14px; color:#475467; font-weight:850; font-size:14px; text-decoration:none; }
-    .nav-top-link:hover, .nav-top-link:focus-visible, .nav-top-link.active { background:var(--le-navy-mid); color:white; }
-    .nav-menu { position:relative; }
-    .nav-menu summary { list-style:none; cursor:pointer; display:inline-flex; align-items:center; min-height:38px; gap:7px; border-radius:999px; padding:10px 14px; color:#475467; font-weight:850; font-size:14px; outline:none; }
-    .nav-menu summary::-webkit-details-marker { display:none; }
-    .nav-menu summary::after { content:""; width:6px; height:6px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; transform:rotate(45deg) translateY(-2px); opacity:.55; }
-    .nav-menu summary:hover, .nav-menu summary:focus-visible, .nav-menu.active summary { background:var(--le-navy-mid); color:white; }
-    .nav-menu-panel { position:absolute; top:44px; left:0; min-width:230px; z-index:20; display:grid; gap:5px; padding:8px; border:1px solid var(--le-border); border-radius:14px; background:white; box-shadow:0 24px 70px rgba(15,31,92,.16); }
-    .nav-menu-panel a { display:flex; justify-content:space-between; gap:12px; border-radius:10px; padding:10px 11px; color:#344054; text-decoration:none; font-size:13px; font-weight:750; }
-    .nav-menu-panel a:hover, .nav-menu-panel a.active { background:#F4F5F7; color:var(--le-navy); }
-    .nav-menu-panel a.active::after { content:"Selected"; color:var(--le-muted); font-size:11px; font-weight:800; }
-    nav a { border-radius:999px; padding:10px 14px; color:#475467; font-weight:750; }
-    nav a.active, nav a:hover { background:var(--le-navy-mid); color:white; }
+    .app-topbar { position:sticky; top:0; z-index:100; overflow:visible; min-height:64px; padding:0 26px; background:rgba(255,255,255,.94); backdrop-filter:blur(18px); border-bottom:1px solid rgba(15,31,92,.12); box-shadow:0 8px 24px rgba(15,31,92,.06); display:flex; align-items:center; justify-content:space-between; gap:18px; }
+    .brand-lockup { display:grid; gap:2px; min-width:220px; color:var(--ink); text-decoration:none; }
+    .brand-lockup span, .eyebrow { color:var(--accent); letter-spacing:.12em; text-transform:uppercase; font-size:11px; font-weight:850; }
+    .brand-lockup strong { color:var(--ink); font-size:18px; letter-spacing:0; }
+    .top-nav { display:flex; align-items:center; gap:10px; overflow:visible; flex-wrap:nowrap; }
+    .nav-top-link,
+    .nav-menu-summary { appearance:none; border:0; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 16px; border-radius:999px; font:inherit; font-weight:800; line-height:1; text-decoration:none; white-space:nowrap; color:var(--shell-muted, #475569); background:transparent; }
+    .nav-top-link:hover,
+    .nav-menu-summary:hover { background:rgba(0,169,157,.1); color:#0f172a; }
+    .nav-top-link:focus-visible,
+    .nav-menu-summary:focus-visible { background:rgba(0,169,157,.1); color:#0f172a; }
+    .nav-top-link.active,
+    .nav-menu-summary.active,
+    .nav-menu[open] > .nav-menu-summary { background:#020D66; color:#fff; }
+    .nav-menu { position:relative; display:inline-flex; overflow:visible; }
+    .nav-menu-summary { list-style:none; }
+    .nav-menu-summary::-webkit-details-marker { display:none; }
+    .nav-menu-panel { position:absolute; top:calc(100% + 10px); right:0; min-width:240px; max-width:min(320px, calc(100vw - 32px)); z-index:200; border-radius:18px; border:1px solid rgba(15,23,42,.12); background:#fff; box-shadow:0 24px 60px rgba(15,23,42,.16); padding:10px; display:grid; gap:4px; }
+    .nav-menu-panel a { display:block; padding:12px 14px; border-radius:12px; text-decoration:none; color:#0f172a; font-weight:700; font-size:13px; }
+    .nav-menu-panel a:hover,
+    .nav-menu-panel a.active { background:rgba(0,169,157,.1); color:#0f172a; }
+    .nav-menu-panel a.active::after { content:"Selected"; display:block; color:var(--le-muted); font-size:11px; font-weight:800; margin-top:2px; }
+    .shell-marker { color:#98a2b3; font-size:11px; font-weight:750; white-space:nowrap; }
     main { max-width:100%; padding-top:18px; }
     .panel,.card { border-color:rgba(15,31,92,.12); border-radius:14px; box-shadow:0 10px 26px rgba(15,31,92,.055); background:rgba(255,255,255,.97); }
     .panel,.card { padding:14px; }
@@ -12726,7 +12732,7 @@ function htmlShell() {
     code { color:#344054; background:#F2F4F7; border-radius:6px; padding:1px 4px; }
     .empty { border:1px dashed rgba(8,20,95,.14); border-radius:16px; background:#fff; color:var(--muted); padding:24px; text-align:center; }
     input,textarea,select { border-radius:10px; border-color:rgba(8,20,95,.12); }
-    input:focus,textarea:focus,select:focus,button:focus-visible,a:focus-visible,summary:focus-visible { outline:3px solid rgba(241,90,36,.22); outline-offset:2px; }
+    input:focus,textarea:focus,select:focus,button:focus-visible,a:focus-visible,summary:focus-visible { outline:3px solid rgba(0,169,157,.24); outline-offset:2px; }
     .toast { border-radius:12px; background:var(--le-navy); box-shadow:0 18px 44px rgba(8,20,95,.2); }
     .loading-panel { display:grid; gap:14px; box-shadow:none; border:0; background:transparent; }
     .loading-line, .loading-card { position:relative; overflow:hidden; border-radius:999px; background:#E6ECEB; }
@@ -12782,7 +12788,7 @@ function htmlShell() {
     .mini-form button { align-self:end; }
     .funnel-stage { display:grid; gap:6px; padding:12px; border-radius:14px; background:#F4F7F6; border:1px solid rgba(8,20,95,.08); }
     .funnel-stage strong { color:var(--ink); font-size:20px; }
-    @media (max-width:1100px) { .layout,.command,.post-grid,.three,.two,.calendar,.queue-card,.operator-review,.wilma-grid,.export-grid,.archive-grid,.executive-grid,.ops-row,.operator-legacy-grid,.landing-grid { grid-template-columns:1fr; } aside { position:static; min-height:auto; align-items:flex-start; flex-direction:column; padding:14px 18px; } nav { width:100%; overflow:auto; align-items:flex-start; } .nav-menu,.nav-top-link { flex:0 0 auto; } header,main { padding-left:18px; padding-right:18px; } .image-stage { position:static; order:-1; } .operator-preview .image-preview { min-height:300px; } .operator-command-strip { grid-template-columns:1fr; } .operator-strip-status { justify-content:flex-start; } }
+    @media (max-width:1100px) { .layout,.command,.post-grid,.three,.two,.calendar,.queue-card,.operator-review,.wilma-grid,.export-grid,.archive-grid,.executive-grid,.ops-row,.operator-legacy-grid,.landing-grid { grid-template-columns:1fr; } .app-topbar { min-height:auto; align-items:flex-start; flex-direction:column; padding:14px 18px; } .top-nav { width:100%; overflow:visible; align-items:flex-start; flex-wrap:wrap; justify-content:flex-start; } .nav-menu,.nav-top-link { flex:0 0 auto; } header,main { padding-left:18px; padding-right:18px; } .image-stage { position:static; order:-1; } .operator-preview .image-preview { min-height:300px; } .operator-command-strip { grid-template-columns:1fr; } .operator-strip-status { justify-content:flex-start; } }
     @media (max-width:1100px) { .mission-grid,.readiness-strip,.pipeline-board,.health-grid,.metric-table,.asset-library-grid,.modal-grid,.lee-shell { grid-template-columns:1fr; } .readiness-strip,.pipeline-board { overflow:visible; } .lee-message { max-width:100%; } }
 
     ${designSystem.interfaceCss}
@@ -12807,28 +12813,38 @@ function htmlShell() {
       --border-light: #e8f0ef;
     }
     body { background:var(--bg-primary); color:var(--text-primary); font-family:"Geist", Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    aside { background:rgba(246,248,248,.94); border-bottom:1px solid var(--border-default); box-shadow:0 8px 24px rgba(0,38,36,.045); }
     main { max-width:1180px; padding-top:18px; }
     .panel,.card { border-color:var(--border-default); box-shadow:0 10px 26px rgba(0,38,36,.045); }
     button,.button { font-family:inherit; letter-spacing:0; text-transform:none; border-radius:999px; }
     button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline:3px solid rgba(0,169,157,.24); outline-offset:2px; }
-    .operator-v31 { display:grid; width:100%; max-width:1240px; margin:0 auto; padding:0 32px; overflow-x:hidden; gap:0; color:var(--text-primary); box-sizing:border-box; }
-    .operator-v31 * { min-width:0; word-break:normal; box-sizing:border-box; }
+    .operator-v31 { width:100%; max-width:100vw; overflow-x:hidden; color:var(--text-primary); box-sizing:border-box; }
+    .operator-v31 *, .operator-v31 *::before, .operator-v31 *::after { box-sizing:border-box; }
+    .operator-v31 .operator-page,
+    .operator-v31 .app-page,
+    .operator-v31 .cockpit-page { width:100%; max-width:1240px; margin:0 auto; padding:0 32px; overflow-x:hidden; }
     .app-header { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; color:var(--text-tertiary); }
     .app-date { font-size:13px; font-weight:650; letter-spacing:.01em; }
     .app-time { font-size:22px; line-height:1; color:var(--text-primary); font-weight:700; font-variant-numeric:tabular-nums; }
-    .app-intention { width:100%; max-width:960px; padding:4px 0 0; margin-bottom:32px; }
-    .app-intention p { margin:0; font-size:clamp(42px,4.5vw,64px); line-height:1; letter-spacing:-.02em; font-weight:620; color:var(--text-primary); white-space:normal; overflow-wrap:anywhere; word-break:normal; }
+    .operator-v31 .app-intention { width:100%; max-width:960px; padding:4px 0 0; margin-bottom:32px; }
+    .operator-v31 .app-intention h1,
+    .operator-v31 .app-intention p { margin:0; font-size:clamp(40px,4.4vw,64px); line-height:1.02; letter-spacing:-.02em; font-weight:620; color:var(--text-primary); white-space:normal; overflow:visible; overflow-wrap:break-word; word-break:normal; }
     .intention-accent { color:var(--accent); }
     .intention-meta { margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; color:var(--text-tertiary); font-size:12px; }
     .intention-meta button { min-height:30px; padding:0 10px; background:transparent; border-color:var(--border-default); color:var(--accent); }
-    .cockpit-layout { display:grid; grid-template-columns:minmax(0, 1fr) 380px; gap:24px; align-items:start; width:100%; max-width:100%; overflow:visible; }
-    .cockpit-main,.cockpit-rail { display:grid; gap:14px; min-width:0; max-width:100%; overflow:visible; }
-    .cockpit-rail { width:380px; min-width:0; max-width:100%; position:static; align-content:start; }
-    .now-block { width:100%; max-width:100%; min-width:0; overflow:visible; border:1px solid var(--border-emphasis); border-radius:20px; background:var(--bg-now); padding:22px; display:grid; gap:16px; box-shadow:0 18px 44px rgba(0,38,36,.07); }
+    .operator-v31 .cockpit-layout { display:grid; grid-template-columns:minmax(0, 1fr) 380px; gap:24px; align-items:start; width:100%; }
+    .operator-v31 .cockpit-main { display:grid; gap:14px; min-width:0; width:100%; max-width:100%; overflow:visible; padding:0; margin:0; }
+    .operator-v31 .cockpit-rail { display:grid; gap:14px; position:static; transform:none; width:100%; max-width:380px; min-width:0; margin:0; padding:0; border:0; background:transparent; box-shadow:none; align-content:start; overflow:visible; }
+    .operator-v31 .now-block { border:1px solid var(--border-emphasis); border-radius:20px; background:var(--bg-now); padding:22px; display:grid; gap:16px; box-shadow:0 18px 44px rgba(0,38,36,.07); overflow:visible; }
     .now-kicker { display:flex; justify-content:space-between; gap:12px; align-items:center; color:var(--accent-hover); font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; }
-    .now-block h1 { margin:0; max-width:100%; font-size:clamp(24px,3vw,38px); line-height:1.08; letter-spacing:-.018em; color:var(--text-primary); font-weight:720; white-space:normal; overflow-wrap:anywhere; word-break:normal; }
-    .now-block p { margin:0; max-width:100%; color:var(--text-secondary); font-size:15px; line-height:1.5; white-space:normal; overflow-wrap:anywhere; word-break:normal; }
+    .operator-v31 .now-block h1,
+    .operator-v31 .now-block h2,
+    .operator-v31 .now-block h3,
+    .operator-v31 .now-title,
+    .operator-v31 .now-headline { margin:0; max-width:100%; font-size:clamp(34px,3.4vw,48px); line-height:1.05; letter-spacing:-.018em; color:var(--text-primary); font-weight:720; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; word-break:normal; }
+    .operator-v31 .now-block p,
+    .operator-v31 .now-block .muted,
+    .operator-v31 .now-copy,
+    .operator-v31 .now-description { margin:0; max-width:100%; color:var(--text-secondary); font-size:15px; line-height:1.5; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; word-break:normal; }
     .now-first { width:100%; min-width:0; max-width:100%; border:1px solid var(--border-default); border-radius:16px; background:var(--bg-cue); padding:14px; display:grid; gap:10px; }
     .now-first strong { color:var(--text-primary); font-size:12px; letter-spacing:.1em; text-transform:uppercase; }
     .now-steps { display:grid; gap:8px; margin:0; padding:0; list-style:none; counter-reset:step; }
@@ -12838,6 +12854,13 @@ function htmlShell() {
     .now-actions button { min-height:42px; padding:0 16px; }
     .now-actions .primary { background:var(--accent); color:white; border-color:var(--accent); }
     .now-actions .primary:hover { background:var(--accent-hover); }
+    .operator-v31 .now-block,
+    .operator-v31 .timeline-card,
+    .operator-v31 .quick-capture,
+    .operator-v31 .thread,
+    .operator-v31 .parked-item,
+    .operator-v31 .moved-row,
+    .operator-v31 .app-footer { width:100%; max-width:100%; min-width:0; }
     .timeline-card,.cockpit-card { width:100%; min-width:0; max-width:100%; overflow:hidden; border:1px solid var(--border-default); border-radius:18px; background:var(--bg-card); padding:15px; box-shadow:0 12px 30px rgba(0,38,36,.045); }
     .cockpit-card h2,.timeline-card h2 { margin:0; font-size:15px; line-height:1.2; color:var(--text-primary); font-weight:720; letter-spacing:-.01em; }
     .cockpit-card-head { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:12px; }
@@ -12873,38 +12896,46 @@ function htmlShell() {
     .made-for-roger,.layout-marker { color:var(--text-quaternary); font-weight:800; letter-spacing:.08em; }
     .layout-marker { font-size:11px; text-transform:none; letter-spacing:.02em; }
     @media (max-width:980px) {
-      .operator-v31 { padding:0 20px; }
-      .cockpit-layout { grid-template-columns:1fr; }
-      .cockpit-rail { width:100%; }
+      .operator-v31 .operator-page,
+      .operator-v31 .app-page,
+      .operator-v31 .cockpit-page { padding:0 20px; }
+      .operator-v31 .cockpit-layout { grid-template-columns:1fr; }
+      .operator-v31 .cockpit-rail { max-width:100%; }
       .app-intention p { font-size:clamp(28px,7vw,42px); }
       .now-block { padding:18px; border-radius:18px; }
     }
     @media (max-width:640px) {
-      .operator-v31 { padding:0 16px; }
+      .operator-v31 .operator-page,
+      .operator-v31 .app-page,
+      .operator-v31 .cockpit-page { padding:0 16px; }
       main { padding-left:14px; padding-right:14px; }
       .app-header { align-items:flex-start; }
       .cockpit-card,.timeline-card,.now-block { border-radius:18px; }
       .timeline-track { overflow-x:auto; }
     }
-    .nav-top-link { display:inline-flex; align-items:center; min-height:38px; border-radius:999px; padding:10px 14px; color:#475467; font-weight:850; font-size:14px; text-decoration:none; }
-    .nav-top-link:hover,.nav-top-link:focus-visible,.nav-top-link.active { background:var(--le-navy-mid); color:white; }
+    @media (max-width:900px) {
+      .app-topbar { position:sticky; }
+      .top-nav { flex-wrap:wrap; justify-content:flex-start; }
+      .nav-menu-panel { left:0; right:auto; }
+    }
     @media (max-width:1100px) { .landing-grid { grid-template-columns:1fr; } .operator-command-strip { grid-template-columns:1fr; } }
 
   </style>
 </head>
 <body>
   <div class="shell">
-    <aside>
-      <div class="brand"><small>LegalEase</small><h1>Command Center</h1></div>
-      <nav>
+    <header class="app-topbar">
+      <a class="brand-lockup" href="#overview"><span>LegalEase</span><strong>Command Center</strong></a>
+      <nav class="top-nav" aria-label="Primary">
         <a class="nav-top-link" href="#overview" data-nav-section="today">Today</a>
-        <details class="nav-menu" data-nav-section="growth"><summary>Growth</summary><div class="nav-menu-panel"><a href="#growth">Growth Home</a><a href="#growth-inbox">Growth Inbox</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a><a href="#metrics">Metrics</a></div></details>
-        <details class="nav-menu" data-nav-section="partners"><summary>Partners</summary><div class="nav-menu-panel"><a href="#partner-hub">Partners Home</a><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
-        <details class="nav-menu" data-nav-section="production"><summary>Production</summary><div class="nav-menu-panel"><a href="#production">Production Home</a><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
-        <details class="nav-menu" data-nav-section="proof"><summary>Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
-        <details class="nav-menu" data-nav-section="more"><summary>More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="growth">Growth</summary><div class="nav-menu-panel"><a href="#growth">Growth Home</a><a href="#growth-inbox">Growth Inbox</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a><a href="#metrics">Metrics</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="partners">Partners</summary><div class="nav-menu-panel"><a href="#partner-hub">Partners Home</a><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="production">Production</summary><div class="nav-menu-panel"><a href="#production">Production Home</a><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="proof">Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
       </nav>
-    </aside>
+      <span class="shell-marker" aria-hidden="true">nav: topnav-fixed-v1</span>
+    </header>
     <div>
       <header>
         <div><div class="eyebrow">Operator cockpit</div><h2>LegalEase OS</h2></div>
@@ -16343,16 +16374,17 @@ function htmlShell() {
       const moved = cockpitThisWeekMoved();
       const gates = cockpitFooterGates();
       return \`<section class="operator-v31">
-        <header class="app-header">
-          <div class="app-date">\${esc(cockpitLongDate())}</div>
-          <div id="cockpit-clock" class="app-time">\${esc(cockpitClockText())}</div>
-        </header>
-        <section class="app-intention" aria-label="Daily intention">
-          <p>\${esc(intention.prefix)}<span class="intention-accent">\${esc(intention.accent)}</span>\${esc(intention.suffix)}</p>
-          <div class="intention-meta"><span>\${esc(intention.source)}</span><button type="button" onclick="askLeePrompt('Rewrite today\\'s intention from current open work.')">Rewrite with Le-E</button></div>
-        </section>
-        <div class="cockpit-layout">
-          <div class="cockpit-main">
+        <div class="cockpit-page">
+          <header class="app-header">
+            <div class="app-date">\${esc(cockpitLongDate())}</div>
+            <div id="cockpit-clock" class="app-time">\${esc(cockpitClockText())}</div>
+          </header>
+          <section class="app-intention" aria-label="Daily intention">
+            <h1>\${esc(intention.prefix)}<span class="intention-accent">\${esc(intention.accent)}</span>\${esc(intention.suffix)}</h1>
+            <div class="intention-meta"><span>\${esc(intention.source)}</span><button type="button" onclick="askLeePrompt('Rewrite today\\'s intention from current open work.')">Rewrite with Le-E</button></div>
+          </section>
+          <section class="cockpit-layout">
+            <main class="cockpit-main">
             <section class="now-block" aria-label="Now">
               <div class="now-kicker"><span>NOW · \${esc(nowItem.range)}</span><span>\${esc(plainOperatorState(nowItem.type === "planning" ? "ready" : "needs_review"))}</span></div>
               <h1>\${esc(nowItem.title)}</h1>
@@ -16368,13 +16400,9 @@ function htmlShell() {
               </div>
             </section>
             \${cockpitTimelineHtml(nowItem)}
-            <section class="cockpit-card">
-              <div class="cockpit-card-head"><h2>This Week Moved</h2><small>Outcomes, not outputs</small></div>
-              <div class="moved-list">\${moved.map(item => \`<button class="moved-row" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(item.title)}</strong><span>\${esc(item.detail)}</span><span>\${esc(item.day)}</span></button>\`).join("") || '<div class="empty-calm">No proof-worthy movement logged this week yet.</div>'}</div>
-            </section>
-          </div>
-          <aside class="cockpit-rail">
-            <section class="cockpit-card">
+            </main>
+            <aside class="cockpit-rail">
+            <section class="cockpit-card quick-capture">
               <div class="cockpit-card-head"><h2>Quick Capture</h2><small>No module choosing</small></div>
               <form class="rail-form" onsubmit="quickCapture(event)">
                 <label class="sr-only" for="cockpit-capture">Quick Capture</label>
@@ -16390,13 +16418,18 @@ function htmlShell() {
               <div class="cockpit-card-head"><h2>Parked</h2><small>Do not carry these mentally</small></div>
               <div class="parked-list">\${parked.map(item => \`<button class="parked-item" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(item.title)}</strong><span>\${esc(item.reason)}</span></button>\`).join("") || '<div class="empty-calm">Nothing is parked. No blocked work needs mental space.</div>'}</div>
             </section>
-          </aside>
+            <section class="cockpit-card">
+              <div class="cockpit-card-head"><h2>This Week Moved</h2><small>Outcomes, not outputs</small></div>
+              <div class="moved-list">\${moved.map(item => \`<button class="moved-row" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(item.title)}</strong><span>\${esc(item.detail)}</span><span>\${esc(item.day)}</span></button>\`).join("") || '<div class="empty-calm">No proof-worthy movement logged this week yet.</div>'}</div>
+            </section>
+            </aside>
+          </section>
+          <footer class="app-footer">
+            <div class="footer-gates">\${gates.map(gate => \`<span class="gate \${gate.danger ? "danger" : gate.ok ? "good" : "warn"}">\${esc(gate.label)}</span>\`).join("")}</div>
+            <div class="layout-marker">layout: cockpit-grid-fixed-v1</div>
+            <div class="made-for-roger">MADE FOR ROGER</div>
+          </footer>
         </div>
-        <footer class="app-footer">
-          <div class="footer-gates">\${gates.map(gate => \`<span class="gate \${gate.danger ? "danger" : gate.ok ? "good" : "warn"}">\${esc(gate.label)}</span>\`).join("")}</div>
-          <div class="layout-marker">layout: cockpit-grid-v2</div>
-          <div class="made-for-roger">MADE FOR ROGER</div>
-        </footer>
       </section>\`;
     }
 
@@ -18147,8 +18180,8 @@ function htmlShell() {
       document.querySelectorAll("nav a").forEach(link => {
         link.classList.toggle("active", link.getAttribute("href") === "#" + pageId);
       });
-      document.querySelectorAll(".nav-menu").forEach(menu => {
-        menu.classList.toggle("active", menu.dataset.navSection === navSectionForPage(pageId));
+      document.querySelectorAll(".nav-menu-summary").forEach(summary => {
+        summary.classList.toggle("active", summary.dataset.navSection === navSectionForPage(pageId));
       });
       document.querySelectorAll(".nav-top-link").forEach(link => {
         link.classList.toggle("active", link.dataset.navSection === navSectionForPage(pageId));
@@ -18167,8 +18200,9 @@ function htmlShell() {
     }
 
     function closeNavMenus(event) {
+      const activeMenu = event?.target?.closest?.(".nav-menu");
       document.querySelectorAll(".nav-menu[open]").forEach(menu => {
-        if (!event || !menu.contains(event.target)) menu.removeAttribute("open");
+        if (menu !== activeMenu) menu.removeAttribute("open");
       });
     }
 
@@ -20494,7 +20528,19 @@ function htmlShell() {
         showRenderFailure(error.message || "Route render failed.", "route-render");
       }
     });
-    window.addEventListener("click", closeNavMenus);
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest(".nav-menu")) {
+        document.querySelectorAll(".nav-menu[open]").forEach((menu) => menu.removeAttribute("open"));
+      }
+    });
+    document.querySelectorAll(".nav-menu-summary").forEach((summary) => {
+      summary.addEventListener("click", () => {
+        const current = summary.closest(".nav-menu");
+        document.querySelectorAll(".nav-menu[open]").forEach((menu) => {
+          if (menu !== current) menu.removeAttribute("open");
+        });
+      });
+    });
     window.addEventListener("keydown", event => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
