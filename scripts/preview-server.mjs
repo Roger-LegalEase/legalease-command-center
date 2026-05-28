@@ -66,6 +66,7 @@ import { buildEveningReflectionRecord, saveEveningReflection } from "./evening-r
 import { buildDailyCloseoutRecord, saveDailyCloseout } from "./daily-closeout.mjs";
 import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
 import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex } from "./operator-search.mjs";
+import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegritySnapshot } from "./state-integrity.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -17071,6 +17072,25 @@ function htmlShell() {
       </section>\`;
     }
 
+    function cockpitDataIntegrityRecord() {
+      return (state.dataIntegritySnapshots || []).slice().sort((a, b) => String(b.generated_at || "").localeCompare(String(a.generated_at || "")))[0]
+        || buildDataIntegritySnapshot(state);
+    }
+
+    function cockpitDataIntegrityHtml() {
+      const integrity = cockpitDataIntegrityRecord();
+      const warningCount = (integrity.errors || []).length + (integrity.warnings || []).length;
+      return \`<section class="cockpit-card data-integrity-card" aria-label="Data Integrity">
+        <div class="cockpit-card-head"><h2>Data Integrity</h2><small>\${esc(plainOperatorState(integrity.integrity_status || "needs_attention"))}</small></div>
+        <p>\${esc(warningCount ? warningCount + " integrity warning(s) need review." : "Collections are structurally healthy.")}</p>
+        <div class="mini-metrics">
+          <span>Warnings <strong>\${esc(warningCount)}</strong></span>
+          <span>Live gates <strong>\${esc(integrity.live_gates_count || 0)}</strong></span>
+        </div>
+        <div class="card-actions"><button type="button" onclick="location.hash='data-integrity'">Open Data Integrity</button></div>
+      </section>\`;
+    }
+
     function cockpitTasksHtml() {
       const today = taskViewFilter("today");
       const blocked = taskViewFilter("blocked");
@@ -17638,6 +17658,61 @@ function htmlShell() {
       </section>\`;
     }
 
+    function dataIntegrityIssueHtml(items = [], emptyText = "No warnings recorded.") {
+      return \`<div class="memory-evidence-grid">\${items.map(item => \`<article class="memory-history-card"><strong>\${esc(item.collection || "state")}: \${esc(item.severity || "warning")}</strong><span class="muted">\${esc(item.message || "Needs review.")}</span></article>\`).join("") || \`<div class="empty">\${esc(emptyText)}</div>\`}</div>\`;
+    }
+
+    function dataIntegrityPageHtml(pageClass) {
+      const snapshot = cockpitDataIntegrityRecord();
+      const inventory = snapshot.inventory || buildDataModelInventory();
+      const latestExport = snapshot.latest_export_snapshot;
+      return \`<section id="data-integrity" class="\${pageClass("data-integrity")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Persistence Trust Center</div>
+          <h1 class="big-title">Data Integrity</h1>
+          <p class="muted">Internal inventory, integrity checks, duplicate warnings, and backup readiness for the LegalEase OS state model. This page is review-only and does not restore or mutate production data unless Roger refreshes the internal snapshot.</p>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button class="primary" type="button" onclick="refreshDataIntegrity()">Refresh Data Integrity</button>
+          </div>
+        </div>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Integrity Status</h2><span class="badge info">Live gates: \${esc(snapshot.live_gates_count || 0)}</span></div>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Status</h3><ul><li><strong>\${esc(plainOperatorState(snapshot.integrity_status || "needs_attention"))}</strong><br><span>\${esc((snapshot.errors || []).length)} error(s), \${esc((snapshot.warnings || []).length)} warning(s)</span></li></ul></section>
+            <section class="operating-memory-tile"><h3>Last integrity check time</h3><ul><li>\${esc(formatDateTime(snapshot.last_integrity_check_time || snapshot.generated_at) || "Not recorded")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>No external actions</h3><ul><li>\${esc(snapshot.no_external_actions_confirmation || "No external actions confirmed.")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Latest Export Snapshot</h3><ul><li>\${esc(latestExport?.filePath || latestExport?.generated_at || "No export snapshot recorded in app state yet.")}</li></ul></section>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Duplicate Warnings</h2><span class="badge info">\${esc((snapshot.duplicate_warnings || []).length)} duplicate issue(s)</span></div>
+          \${dataIntegrityIssueHtml(snapshot.duplicate_warnings || [], "No duplicate stable keys detected.")}
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Missing Field Warnings</h2><span class="badge info">\${esc((snapshot.missing_field_warnings || []).length)} missing field issue(s)</span></div>
+          \${dataIntegrityIssueHtml(snapshot.missing_field_warnings || [], "No missing required fields detected.")}
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>All Integrity Findings</h2><span class="badge info">\${esc((snapshot.errors || []).length + (snapshot.warnings || []).length)} total</span></div>
+          \${dataIntegrityIssueHtml([...(snapshot.errors || []), ...(snapshot.warnings || [])], "No integrity findings recorded.")}
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Collection Counts</h2><span class="badge info">Current state</span></div>
+          <div class="operating-memory-grid">\${Object.entries(snapshot.collection_counts || {}).map(([key, value]) => \`<section class="operating-memory-tile"><h3>\${esc(plainOperatorState(key))}</h3><ul><li>\${esc(value)} record(s)</li></ul></section>\`).join("")}</div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Data Model Inventory</h2><span class="badge info">\${esc(inventory.length)} collection(s)</span></div>
+          <div class="memory-evidence-grid">\${inventory.map(item => \`<article class="memory-history-card">
+            <strong>\${esc(item.collection)}</strong>
+            <span class="muted">\${esc(item.purpose)}</span>
+            <span class="muted">Storage: \${esc(item.storage_mode)} · Keys: \${esc((item.stable_key_fields || []).join(", ") || "none")}</span>
+            <span class="muted">Risk if duplicated: \${esc(item.duplicate_risk_level || "unknown")}</span>
+          </article>\`).join("")}</div>
+        </section>
+      </section>\`;
+    }
+
     function operatorSearchPageHtml(pageClass) {
       const resultsHtml = operatorSearchResultsHtml();
       const types = [...new Set(operatorSearchClientIndex().map(item => item.type))].sort();
@@ -17767,6 +17842,7 @@ function htmlShell() {
             \${cockpitDailyRitualsHtml()}
             \${cockpitDailyCloseoutHtml()}
             \${cockpitOsHealthHtml()}
+            \${cockpitDataIntegrityHtml()}
             \${cockpitOperatorSearchHtml()}
             \${cockpitOperatingMemoryHtml()}
             </main>
@@ -18173,7 +18249,7 @@ function htmlShell() {
         { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Move partner programs from lead to paid onboarding, reports, and renewal proof.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"]] },
         { id:"production", eyebrow:"Production", title:"Production", copy:"Turn ideas into approved assets without losing the approval-first safety model.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
         { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
-        { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Today Tasks","tasks-today"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
+        { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Today Tasks","tasks-today"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Data Integrity","data-integrity"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
       ];
       return configs.find(item => item.id === section) || configs[0];
     }
@@ -19346,7 +19422,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -19369,6 +19445,7 @@ function htmlShell() {
         \${eveningReflectionPageHtml(pageClass)}
         \${dailyCloseoutPageHtml(pageClass)}
         \${osHealthPageHtml(pageClass)}
+        \${dataIntegrityPageHtml(pageClass)}
         \${operatorSearchPageHtml(pageClass)}
         \${conversationNotesPageHtml(pageClass)}
         \${captureInboxPageHtml(pageClass)}
@@ -19605,6 +19682,7 @@ function htmlShell() {
 
     function navSectionForPage(pageId = "overview") {
       if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "operator-search", "conversation-notes"].includes(pageId)) return "today";
+      if (pageId === "data-integrity") return "more";
       if (["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId)) return "more";
       if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
@@ -20171,6 +20249,18 @@ function htmlShell() {
         render();
         return result.message || "OS Health Snapshot refreshed. No external action was taken.";
       }, "Could not refresh OS Health.");
+    }
+
+    async function refreshDataIntegrity() {
+      await cooAction(async () => {
+        const result = await api("/api/data-integrity/refresh", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        return result.message || "Data Integrity Snapshot refreshed. No external action was taken.";
+      }, "Could not refresh Data Integrity.");
     }
 
     function renderOperatorSearchResults() {
@@ -22507,6 +22597,31 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not refresh OS Health." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/data-integrity" && request.method === "GET") {
+    const currentState = await store.readState();
+    const snapshot = buildDataIntegritySnapshot(currentState);
+    sendJson(response, { snapshot, inventory: buildDataModelInventory(), saved: (currentState.dataIntegritySnapshots || []).find(item => item.id === snapshot.id) || null });
+    return;
+  }
+
+  if (url.pathname === "/api/data-integrity/refresh" && request.method === "POST") {
+    try {
+      const currentState = await store.readState();
+      const result = saveDataIntegritySnapshot(currentState, {
+        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Data Integrity Snapshot refreshed. No external action was taken.",
+        snapshot: result.snapshot,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not refresh Data Integrity." }, 400);
     }
     return;
   }
