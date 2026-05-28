@@ -1,5 +1,6 @@
 import { buildDailyOperatingLoop } from "./daily-operating-loop.mjs";
 import { computeRcapPartnerJourneyHandoffReadiness, rcapReviewQueue } from "./review-approval-engine.mjs";
+import { safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
 
 const noExternalActionsConfirmation = "No emails sent, no posts published, no partner pages published, no dashboards activated, no Partner Journey calls, no external systems contacted beyond existing internal health checks.";
 
@@ -74,6 +75,7 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
   const loop = buildDailyOperatingLoop(state);
   const reviewQueue = rcapReviewQueue(state);
   const handoff = computeRcapPartnerJourneyHandoffReadiness(state);
+  const authHardening = options.authHardening || safeAuthHardeningSummary({ state, source: options.endpointInventorySource || "" });
   const morning = sameDayRecord(state.morningBriefs, date, "morning-brief");
   const memory = sameDayRecord(state.operatingMemory, date, "operating-memory");
   const evening = sameDayRecord(state.eveningReflections, date, "evening-reflection");
@@ -119,7 +121,10 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
     !handoff.handoff_ready ? warning("Handoff readiness blocked", handoff.next_manual_action || "RCAP is not handoff ready.", { href: "production-activation-rcap" }) : null,
     liveGates !== 0 ? warning("Live gates are not 0", `${liveGates} live gate(s) are enabled.`, { severity: "critical", href: "settings" }) : null,
     !connectionHealth.openai.ok ? warning("OpenAI unavailable", "Le-E may fall back to local state only.", { href: "os-health" }) : null,
-    !connectionHealth.supabase_db.ok ? warning("Supabase unavailable", "Hosted durable backend is unavailable or unverified.", { href: "os-health" }) : null
+    !connectionHealth.supabase_db.ok ? warning("Supabase unavailable", "Hosted durable backend is unavailable or unverified.", { href: "os-health" }) : null,
+    authHardening.endpoint_protection?.status !== "protected" ? warning("Endpoint protection needs review", "One or more API endpoints are unexpectedly public or unverified.", { href: "os-health" }) : null,
+    authHardening.secret_leakage?.status === "leak_detected" ? warning("Secret leakage check failed", "A hardening scan detected a secret-like response value.", { severity: "critical", href: "os-health" }) : null,
+    authHardening.forbidden_action_guard?.status !== "blocked" ? warning("Forbidden action guard needs review", "External action guard is not in the expected blocked state.", { href: "os-health" }) : null
   ].filter(Boolean);
   const overallHealth = liveGates !== 0 || !connectionHealth.supabase_db.ok
     ? "critical"
@@ -139,6 +144,7 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
       last_known_status: state.verificationStatus?.overall || "last_known_not_recorded",
       checklist: verificationChecklist(state)
     },
+    auth_hardening: authHardening,
     summary: {
       safe_to_trust: [
         "Internal state synthesis is available.",

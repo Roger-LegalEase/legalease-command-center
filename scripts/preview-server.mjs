@@ -67,6 +67,7 @@ import { buildDailyCloseoutRecord, saveDailyCloseout } from "./daily-closeout.mj
 import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
 import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex } from "./operator-search.mjs";
 import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegritySnapshot } from "./state-integrity.mjs";
+import { buildEndpointInventory, guardForbiddenEndpoint, safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -79,6 +80,7 @@ function productionBindHost() {
 const host = productionBindHost();
 const assetCache = new Map();
 const designSystem = loadDesignSystem();
+const endpointInventorySource = readFileSync(new URL("./preview-server.mjs", import.meta.url), "utf8");
 
 function assetDataUri(relativePath, mimeType = "image/png") {
   if (assetCache.has(relativePath)) return assetCache.get(relativePath);
@@ -6456,12 +6458,26 @@ function parseMultipartForm(buffer, contentType = "") {
   return { fields, files };
 }
 
+function sanitizeOutboundText(value = "") {
+  return String(value || "")
+    .replace(/SUPABASE_SERVICE_ROLE_KEY/g, "Supabase server credential")
+    .replace(/OPENAI_API_KEY/g, "OpenAI server key")
+    .replace(/COMMAND_CENTER_OWNER_TOKEN/g, "owner access token")
+    .replace(/OWNER_TOKEN/g, "owner access token")
+    .replace(/OAUTH_TOKEN_ENCRYPTION_KEY/g, "OAuth token encryption setting")
+    .replace(/STRIPE_SECRET_KEY/g, "Stripe server key")
+    .replace(/service_role/gi, "server role")
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}/g, "[redacted-secret]")
+    .replace(/\bwhsec_[A-Za-z0-9_-]{8,}/g, "[redacted-webhook-secret]")
+    .replace(/Bearer\s+[A-Za-z0-9._~+/-]{16,}/gi, "Bearer [redacted]");
+}
+
 function sendJson(response, payload, status = 200) {
   response.writeHead(status, {
     "content-type": "application/json",
     "cache-control": "no-store, max-age=0"
   });
-  response.end(JSON.stringify(payload));
+  response.end(sanitizeOutboundText(JSON.stringify(payload)));
 }
 
 function authDiagnosticsForRequest(request = {}) {
@@ -17622,6 +17638,7 @@ function htmlShell() {
 
     function osHealthPageHtml(pageClass) {
       const health = cockpitOsHealthRecord();
+      const hardening = health.auth_hardening || {};
       return \`<section id="os-health" class="\${pageClass("os-health")} command-page section-page lee-bubble-safe-space">
         <div class="panel hero-panel">
           <div class="eyebrow">Trust Center</div>
@@ -17642,6 +17659,15 @@ function htmlShell() {
           </div>
         </section>
         <section class="panel"><div class="simple-panel-head"><h2>Connection Health</h2><span class="badge info">\${esc(health.overall_health || "not_recorded")}</span></div>\${healthStatusGridHtml(health.connection_health || {})}</section>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Auth + Endpoint Hardening</h2><span class="badge info">\${esc(plainOperatorState(hardening.endpoint_protection?.status || "not_checked"))}</span></div>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Endpoint protection status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.endpoint_protection?.status || "not_checked"))}</strong><br><span>\${esc(hardening.endpoint_protection?.protected_count || 0)} protected endpoint(s), \${esc(hardening.endpoint_protection?.public_safe_count || 0)} public-safe endpoint(s).</span></li></ul></section>
+            <section class="operating-memory-tile"><h3>Secret leakage status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.secret_leakage?.status || "clean"))}</strong><br><span>\${esc(hardening.secret_leakage?.note || "No secret response values are exposed by hardening checks.")}</span></li></ul></section>
+            <section class="operating-memory-tile"><h3>Forbidden action guard status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.forbidden_action_guard?.status || "blocked"))}</strong><br><span>\${esc(hardening.forbidden_action_guard?.no_external_actions_confirmation || "Forbidden external actions remain blocked.")}</span></li></ul></section>
+            <section class="operating-memory-tile"><h3>Last auth hardening check</h3><ul><li>\${esc(formatDateTime(hardening.last_auth_hardening_check) || "Not recorded")}</li></ul></section>
+          </div>
+        </section>
         <section class="panel"><div class="simple-panel-head"><h2>Workflow Health</h2><span class="badge info">Internal workflows</span></div>\${healthStatusGridHtml(health.workflow_health || {})}</section>
         <section class="panel operating-memory-card">
           <div class="simple-panel-head"><h2>Data Freshness</h2><span class="badge info">Last saved signals</span></div>
@@ -22294,6 +22320,14 @@ async function handleRequest(request, response) {
     return;
   }
 
+  const forbiddenEndpoint = guardForbiddenEndpoint({ method: request.method, pathname: url.pathname });
+  if (!forbiddenEndpoint.ok) {
+    let currentState = {};
+    try { currentState = await store.readState(); } catch { currentState = {}; }
+    sendJson(response, guardForbiddenEndpoint({ method: request.method, pathname: url.pathname, state: currentState }), forbiddenEndpoint.status || 403);
+    return;
+  }
+
   if (url.pathname === "/api/auth/diagnostics" && request.method === "GET") {
     sendJson(response, authDiagnosticsForRequest(request));
     return;
@@ -22567,6 +22601,7 @@ async function handleRequest(request, response) {
     const currentState = await store.readState();
     const health = await getSupabaseHealth();
     const snapshot = buildOsHealthSnapshot(currentState, {
+      endpointInventorySource,
       supabaseDbConnected: Boolean(health?.db?.ok),
       supabaseStorageConnected: Boolean(health?.storage?.ok),
       openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
@@ -22583,6 +22618,7 @@ async function handleRequest(request, response) {
       const health = await getSupabaseHealth();
       const result = saveOsHealthSnapshot(currentState, {
         actor: publicActor(accessDecision.actor)?.role || "owner_token",
+        endpointInventorySource,
         supabaseDbConnected: Boolean(health?.db?.ok),
         supabaseStorageConnected: Boolean(health?.storage?.ok),
         openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
@@ -22623,6 +22659,16 @@ async function handleRequest(request, response) {
     } catch (error) {
       sendJson(response, { error: error.message || "Could not refresh Data Integrity." }, 400);
     }
+    return;
+  }
+
+  if (url.pathname === "/api/auth-hardening/endpoints" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, {
+      inventory: buildEndpointInventory(endpointInventorySource),
+      summary: safeAuthHardeningSummary({ state: currentState, source: endpointInventorySource }),
+      live_gates_count: Object.values(currentState.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length
+    });
     return;
   }
 
@@ -24182,7 +24228,7 @@ async function handleRequest(request, response) {
     return;
   }
 
-  const html = htmlShell();
+  const html = sanitizeOutboundText(htmlShell());
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
   response.end(html);
 }

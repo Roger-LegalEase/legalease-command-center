@@ -74,6 +74,10 @@ assert(snapshot.self_test_status.checklist.some(item => item.command === "npm ru
 assert(snapshot.self_test_status.checklist.some(item => item.command === "npm run verify:production"), "Self-test checklist should include production verification.");
 assert(snapshot.self_test_status.checklist.some(item => item.command === "npm audit --audit-level=high"), "Self-test checklist should include npm audit.");
 assert(snapshot.self_test_status.checklist.some(item => item.command === "npm test"), "Self-test checklist should include npm test.");
+assert(snapshot.auth_hardening.endpoint_protection.status, "OS Health should include endpoint protection status.");
+assert(snapshot.auth_hardening.secret_leakage.status, "OS Health should include secret leakage status.");
+assert(snapshot.auth_hardening.forbidden_action_guard.status, "OS Health should include forbidden action guard status.");
+assert(snapshot.auth_hardening.last_auth_hardening_check, "OS Health should include last auth hardening check.");
 assert(snapshot.summary.safe_to_trust.length > 0, "Health summary should say what is safe to trust.");
 assert(snapshot.summary.needs_attention.length > 0, "Health summary should say what needs attention.");
 assert(snapshot.summary.do_not_trust_yet.length > 0, "Health summary should say what not to trust yet.");
@@ -115,6 +119,10 @@ assert(serverSource.includes("Workflow Health"), "Workflow Health section must r
 assert(serverSource.includes("Data Freshness"), "Data Freshness section must render.");
 assert(serverSource.includes("Trust Warnings"), "Trust Warnings section must render.");
 assert(serverSource.includes("Self-Test Status"), "Self-Test Status section must render.");
+assert(serverSource.includes("Auth + Endpoint Hardening"), "Auth hardening section must render in OS Health.");
+assert(serverSource.includes("Endpoint protection status"), "Endpoint protection status must render.");
+assert(serverSource.includes("Secret leakage status"), "Secret leakage status must render.");
+assert(serverSource.includes("Forbidden action guard status"), "Forbidden action guard status must render.");
 assert(serverSource.includes("Refresh OS Health Snapshot"), "Refresh OS Health Snapshot action must render.");
 assert(serverSource.includes("/api/os-health/refresh"), "OS Health refresh endpoint must exist.");
 assert(!/os-health[\s\S]{0,2600}(send email|publish page|activate dashboard|enable live)/i.test(serverSource), "OS Health must not enable external controls.");
