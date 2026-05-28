@@ -13156,7 +13156,7 @@ function htmlShell() {
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="partners">Partners</summary><div class="nav-menu-panel"><a href="#partner-hub">Partners Home</a><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="production">Production</summary><div class="nav-menu-panel"><a href="#production">Production Home</a><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="proof">Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#evidence-room">Evidence Room</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#tasks-today">Today Tasks</a><a href="#tasks-blocked">Blocked Tasks</a><a href="#tasks-waiting">Waiting Tasks</a><a href="#tasks-this-week">This Week Tasks</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#tasks-today">Today Tasks</a><a href="#tasks-blocked">Blocked Tasks</a><a href="#tasks-waiting">Waiting Tasks</a><a href="#tasks-this-week">This Week Tasks</a><a href="#operator-manual">Operator Manual</a><a href="#data-integrity">Data Integrity</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
       </nav>
       <span class="shell-marker" aria-hidden="true">nav: topnav-fixed-v1</span>
       <span class="shell-marker" aria-hidden="true">shell: app-layout-stable-v1</span>
@@ -17121,6 +17121,21 @@ function htmlShell() {
       </section>\`;
     }
 
+    function cockpitOperatorManualHtml() {
+      return \`<section class="cockpit-card operator-manual-card" aria-label="Operator Manual">
+        <div class="cockpit-card-head"><h2>Operator Manual</h2><small>Internal source of truth</small></div>
+        <div class="daily-loop-summary">
+          <strong>Manual status: Current</strong>
+          <span>Last updated: May 28, 2026</span>
+          <span>Scope: LegalEase OS only</span>
+        </div>
+        <p class="muted">Practical operating guide for safe daily use, deploy checks, RCAP review, evidence handling, and break/fix response.</p>
+        <div class="operating-memory-actions">
+          <button class="primary" type="button" onclick="location.hash='operator-manual'">Open Operator Manual</button>
+        </div>
+      </section>\`;
+    }
+
     function cockpitDataIntegrityRecord() {
       return (state.dataIntegritySnapshots || []).slice().sort((a, b) => String(b.generated_at || "").localeCompare(String(a.generated_at || "")))[0]
         || buildDataIntegritySnapshot(state);
@@ -17883,6 +17898,179 @@ function htmlShell() {
       </section>\`;
     }
 
+    function operatorManualPageHtml(pageClass) {
+      const manualSections = [
+        {
+          title:"What the LegalEase OS is",
+          items:[
+            "LegalEase OS is the internal operating system Roger uses to run the company. It is not the Partner Journey app.",
+            "It combines the Operator Cockpit, memory layer, review system, proof layer, and controlled autonomy layer.",
+            "Its job is to reduce context switching, keep work review-only until approved, and make the next internal action clear."
+          ]
+        },
+        {
+          title:"Core Operating Loop",
+          items:[
+            "Capture &rarr; Review &rarr; Route &rarr; Act internally &rarr; Reflect &rarr; Remember &rarr; Plan tomorrow.",
+            "Quick Capture starts the loop. Review state and internal routing keep work from silently changing the system.",
+            "Daily Closeout and Tomorrow Plan carry only the useful parts forward."
+          ]
+        },
+        {
+          title:"Le-E",
+          items:[
+            "Le-E can summarize OS state, answer operational questions, draft internal artifacts, propose safe internal changes, and point Roger to the next review surface.",
+            "Le-E cannot perform email sending, move pages into publication, perform dashboard activation, change live gates, expose secrets, provide legal advice, promise eligibility, or promise court outcomes.",
+            "No emails. No publishing. No dashboard activation. No legal promises. No secret exposure.",
+            "Le-E is internal-only by design. Any external action must stay blocked until Roger manually approves it outside this OS."
+          ]
+        },
+        {
+          title:"Quick Capture + Capture Inbox",
+          items:[
+            "Capture tasks, partner updates, ideas, meeting notes, conversation takeaways, blockers, decisions, risks, carry-forward items, and reflection notes.",
+            "Le-E classifies the capture into a review_required lane. Classification is a routing suggestion, not a final decision.",
+            "Reviewed captures can route to tasks, conversation notes, Morning Brief inputs, Evening Reflection inputs, Operating Memory, evidence notes, partner updates, or ideas.",
+            "Ignored means the capture should not influence briefs, memory, tasks, evidence, or future planning."
+          ]
+        },
+        {
+          title:"Tasks",
+          items:[
+            "Task statuses are open, in_progress, waiting, blocked, done, and archived.",
+            "Blocked tasks require a blocker reason. Waiting tasks should name what Roger is waiting on. Done tasks should include a completion note when useful.",
+            "Task movement feeds Daily Operating Loop, Morning Brief, Evening Reflection, Daily Closeout, Operator Search, and OS Health."
+          ]
+        },
+        {
+          title:"Daily Rituals",
+          items:[
+            "Morning Brief turns tasks, captures, review state, blockers, and yesterday context into a direct start-of-day plan.",
+            "Daily Operating Loop keeps the cockpit focused on Top 3, Waiting On, Decisions Needed, Do Not Touch Today, and Momentum.",
+            "Evening Reflection, Operating Memory, Daily Closeout, and Tomorrow Plan record what changed and decide what should resurface tomorrow."
+          ]
+        },
+        {
+          title:"Search + Command Palette",
+          items:[
+            "Operator Search can find tasks, captures, rituals, memory, closeouts, RCAP artifacts, handoff packets, reports, evidence notes, Data Room items, audit history, activity events, and OS Health snapshots.",
+            "Safe internal actions include opening routes, marking captures reviewed, and routing captures internally.",
+            "Forbidden external actions are not available from search: email sending, page publication, content posting, dashboard activation, live gate changes, Partner Journey calls, or secret exposure."
+          ]
+        },
+        {
+          title:"OS Health + Smoke Test Center",
+          items:[
+            "Use OS Health to check connections, workflow health, freshness, auth hardening, evidence status, smoke test status, and trust warnings.",
+            "After each deploy, run Smoke Test Center as a manual checklist. If a smoke test fails, record the failed step and do not assume the hosted OS is ready.",
+            "Health warnings mean Roger should trust only the verified parts of the OS until the warning is resolved."
+          ]
+        },
+        {
+          title:"Data Integrity",
+          items:[
+            "Data Integrity documents major collections, stable keys, idempotency rules, audit behavior, related routes, and risk if missing or duplicated.",
+            "Integrity checks look for missing fields, duplicate stable keys, invalid states, invalid task statuses, routed capture problems, and secret-like fields.",
+            "Exports create redacted snapshots. Restore dry-run validates a snapshot without overwriting live state. No destructive restore is available."
+          ]
+        },
+        {
+          title:"Evidence Room / Data Room",
+          items:[
+            "Evidence Room gathers evidence notes, reports, audit-backed proof, Data Room artifacts, RCAP artifacts, partner program artifacts, and SOC 2 Readiness evidence.",
+            "Generate Evidence Summary creates an internal review-only summary. It does not send, publish, expose secrets, or contact external systems.",
+            "Use only SOC 2 Readiness, readiness evidence, and readiness artifact language. Do not claim certification or compliance status."
+          ]
+        },
+        {
+          title:"RCAP Workflow",
+          items:[
+            "RCAP Production Activation creates review-only artifacts for the first internal RCAP workflow package.",
+            "RCAP Review Workspace, Approval Engine, Handoff Readiness, and Handoff Packet help Roger decide whether the package is ready for manual Partner Journey handoff.",
+            "No external action happens until manual approval. The OS does not send proposals, move pages into publication, perform dashboard activation, or call Partner Journey."
+          ]
+        },
+        {
+          title:"Safety Gates",
+          items:[
+            "Live gates remain 0.",
+            "No emails. No posts. No publishing. No dashboard activation.",
+            "No Partner Journey calls. No destructive actions. No secrets exposed.",
+            "No legal promises, no eligibility promises, no court outcome promises, and no automatic external side effects."
+          ]
+        },
+        {
+          title:"Deployment Checklist",
+          items:[
+            "Deploy latest commit.",
+            "Hard refresh the hosted app.",
+            "Open Operator Cockpit.",
+            "Run Smoke Test.",
+            "Check OS Health.",
+            "Check live gates.",
+            "Verify no external actions occurred."
+          ]
+        },
+        {
+          title:"Break/Fix Guide",
+          items:[
+            "If the render error screen appears, capture the failed module and error text before changing anything.",
+            "If there are broken buttons, identify whether the control is a route, safe internal action, review-only disabled action, or accidental placeholder.",
+            "For auth failure, verify owner-token login, lock/sign out behavior, and protected API requests without exposing the token.",
+            "For stale state, refresh OS Health, check Data Integrity, and inspect latest audit/activity events.",
+            "For route not loading, confirm the hash route is registered in the active renderer.",
+            "For a health warning or data integrity warning, do not clear it unless the underlying state has been verified.",
+            "During a failure, do not turn live gates on, perform external sending, publish, perform dashboard activation, run destructive restore, or make Partner Journey calls."
+          ]
+        },
+        {
+          title:"Glossary",
+          items:[
+            "Live gates: the internal count of enabled live external behaviors. It should remain 0 until Roger explicitly changes the safety model.",
+            "Review-only: internal artifact or state that can be inspected and edited but not sent or published.",
+            "Handoff-ready: internally approved for manual handoff consideration. It does not trigger handoff.",
+            "Evidence note: audit-friendly record of proof, movement, or safety confirmation.",
+            "Operating memory: day-over-day memory of what moved, what stayed blocked, and what should resurface.",
+            "Capture inbox: review lane for raw Quick Capture inputs before routing.",
+            "Smoke test: manual post-deploy checklist for hosted usability and safety.",
+            "Data integrity: inventory and checks for collections, fields, stable keys, duplicate risk, and backups.",
+            "SOC 2 Readiness: internal readiness evidence and preparation status."
+          ]
+        }
+      ];
+      return \`<section id="operator-manual" class="\${pageClass("operator-manual")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div>
+            <div class="eyebrow">Internal Source of Truth</div>
+            <h1 class="big-title">Operator Manual</h1>
+            <p class="muted">Practical operating guide for the LegalEase OS. Internal-only. This is not Partner Journey documentation and it does not enable external actions.</p>
+          </div>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button class="primary" type="button" onclick="location.hash='smoke-test'">Run Smoke Test</button>
+          </div>
+        </div>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Manual Status</h2><span class="badge info">Live gates: \${esc(Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length)}</span></div>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Status</h3><ul><li>Current internal operating guide.</li></ul></section>
+            <section class="operating-memory-tile"><h3>Last updated</h3><ul><li>May 28, 2026</li></ul></section>
+            <section class="operating-memory-tile"><h3>Scope</h3><ul><li>LegalEase OS only. Partner Journey belongs in the separate repo.</li></ul></section>
+            <section class="operating-memory-tile"><h3>Safety</h3><ul><li>Review-only guidance. No external action controls are enabled here.</li></ul></section>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Manual Sections</h2><span class="badge info">\${esc(manualSections.length)} section(s)</span></div>
+          <div class="memory-evidence-grid">
+            \${manualSections.map(section => \`<article class="memory-history-card operator-manual-section">
+              <strong>\${esc(section.title)}</strong>
+              <ul>\${section.items.map(item => \`<li>\${item.includes("&rarr;") ? item : esc(item)}</li>\`).join("")}</ul>
+            </article>\`).join("")}
+          </div>
+        </section>
+      </section>\`;
+    }
+
     function dataIntegrityIssueHtml(items = [], emptyText = "No warnings recorded.") {
       return \`<div class="memory-evidence-grid">\${items.map(item => \`<article class="memory-history-card"><strong>\${esc(item.collection || "state")}: \${esc(item.severity || "warning")}</strong><span class="muted">\${esc(item.message || "Needs review.")}</span></article>\`).join("") || \`<div class="empty">\${esc(emptyText)}</div>\`}</div>\`;
     }
@@ -18069,6 +18257,7 @@ function htmlShell() {
             \${cockpitOsHealthHtml()}
             \${cockpitSmokeTestHtml()}
             \${cockpitEvidenceRoomHtml()}
+            \${cockpitOperatorManualHtml()}
             \${cockpitDataIntegrityHtml()}
             \${cockpitOperatorSearchHtml()}
             \${cockpitOperatingMemoryHtml()}
@@ -18476,7 +18665,7 @@ function htmlShell() {
         { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Move partner programs from lead to paid onboarding, reports, and renewal proof.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"]] },
         { id:"production", eyebrow:"Production", title:"Production", copy:"Turn ideas into approved assets without losing the approval-first safety model.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
         { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Evidence Room","evidence-room"],["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
-        { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Today Tasks","tasks-today"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Data Integrity","data-integrity"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
+        { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Today Tasks","tasks-today"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Operator Manual","operator-manual"],["Data Integrity","data-integrity"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
       ];
       return configs.find(item => item.id === section) || configs[0];
     }
@@ -19650,7 +19839,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "operator-manual", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -19675,6 +19864,7 @@ function htmlShell() {
         \${osHealthPageHtml(pageClass)}
         \${smokeTestPageHtml(pageClass)}
         \${evidenceRoomPageHtml(pageClass)}
+        \${operatorManualPageHtml(pageClass)}
         \${dataIntegrityPageHtml(pageClass)}
         \${operatorSearchPageHtml(pageClass)}
         \${conversationNotesPageHtml(pageClass)}
@@ -19912,7 +20102,7 @@ function htmlShell() {
 
     function navSectionForPage(pageId = "overview") {
       if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "operator-search", "conversation-notes"].includes(pageId)) return "today";
-      if (pageId === "data-integrity") return "more";
+      if (["data-integrity", "operator-manual"].includes(pageId)) return "more";
       if (["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId)) return "more";
       if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
