@@ -16,6 +16,11 @@ const endpointPurpose = [
   [/^POST \/api\/operator-search\/action$/, "Run internal command palette safe actions."],
   [/^GET \/api\/os-health$/, "Read OS Health snapshot."],
   [/^POST \/api\/os-health\/refresh$/, "Refresh internal OS Health snapshot."],
+  [/^GET \/api\/smoke-test$/, "Read internal post-deploy Smoke Test Center status."],
+  [/^POST \/api\/smoke-test\/start$/, "Start an internal smoke test run."],
+  [/^POST \/api\/smoke-test\/[^/]+\/item$/, "Update an internal smoke test checklist item."],
+  [/^POST \/api\/smoke-test\/[^/]+\/save$/, "Save an internal smoke test run."],
+  [/^POST \/api\/smoke-test\/[^/]+\/finish$/, "Finish an internal smoke test run."],
   [/^GET \/api\/data-integrity$/, "Read Data Integrity snapshot and inventory."],
   [/^POST \/api\/data-integrity\/refresh$/, "Refresh internal Data Integrity snapshot."],
   [/^GET \/api\/operating-memory\/today$/, "Read today's Operating Memory."],
@@ -148,7 +153,10 @@ export function buildEndpointInventoryFromSource(source = "") {
   for (const item of [
     { method:"POST", path:"/api/posts/:id/publish-now" },
     { method:"POST", path:"/api/publishing/run" },
-    { method:"POST", path:"/api/backups/restore" }
+    { method:"POST", path:"/api/backups/restore" },
+    { method:"POST", path:"/api/smoke-test/:id/item" },
+    { method:"POST", path:"/api/smoke-test/:id/save" },
+    { method:"POST", path:"/api/smoke-test/:id/finish" }
   ]) {
     const key = `${item.method} ${item.path}`;
     if (!seen.has(key)) {

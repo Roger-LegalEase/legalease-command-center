@@ -253,6 +253,19 @@ export function buildDataModelInventory() {
       duplicate_risk_level: "medium"
     },
     {
+      collection: "smokeTestRuns",
+      purpose: "Internal post-deploy smoke test checklist runs for validating hosted usability after Render deploys.",
+      storage_mode: "hybrid",
+      required_fields: ["id", "overall_status", "started_at", "groups", "live_gates_count"],
+      optional_fields: ["commit_hash", "environment", "completed_at", "checklist_items", "passed_count", "failed_count", "not_tested_count", "notes", "updated_at"],
+      stable_key_fields: ["id"],
+      idempotency_rules: "Smoke test runs are idempotent by run id so multiple deploy checks can happen on the same date.",
+      audit_behavior: "Start, item updates, save, and finish create auditHistory and activityEvents entries.",
+      related_routes: ["#smoke-test", "#os-health"],
+      related_tests: ["scripts/test-smoke-test-center.mjs", "scripts/test-state-integrity.mjs"],
+      duplicate_risk_level: "medium"
+    },
+    {
       collection: "handoffPackets",
       purpose: "Internal Partner Journey handoff packet records. No external handoff is triggered here.",
       storage_mode: "hybrid",

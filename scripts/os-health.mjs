@@ -1,6 +1,7 @@
 import { buildDailyOperatingLoop } from "./daily-operating-loop.mjs";
 import { computeRcapPartnerJourneyHandoffReadiness, rcapReviewQueue } from "./review-approval-engine.mjs";
 import { safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
+import { buildSmokeTestStatus } from "./smoke-test-center.mjs";
 
 const noExternalActionsConfirmation = "No emails sent, no posts published, no partner pages published, no dashboards activated, no Partner Journey calls, no external systems contacted beyond existing internal health checks.";
 
@@ -76,6 +77,7 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
   const reviewQueue = rcapReviewQueue(state);
   const handoff = computeRcapPartnerJourneyHandoffReadiness(state);
   const authHardening = options.authHardening || safeAuthHardeningSummary({ state, source: options.endpointInventorySource || "" });
+  const smokeTestStatus = buildSmokeTestStatus(state, { commit_hash: options.commit_hash || options.commitHash || state.runtime?.commitHash || state.runtime?.commit_hash || "" });
   const morning = sameDayRecord(state.morningBriefs, date, "morning-brief");
   const memory = sameDayRecord(state.operatingMemory, date, "operating-memory");
   const evening = sameDayRecord(state.eveningReflections, date, "evening-reflection");
@@ -100,7 +102,8 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
     rcap_activation: status("RCAP Activation", list(state.partnerPrograms).some(item => item.slug === "rcap") || list(state.partners).some(item => item.slug === "rcap"), "RCAP activation records are tracked internally."),
     rcap_review_workspace: status("RCAP Review Workspace", reviewQueue.length > 0, `${reviewQueue.length} review artifact(s) tracked.`),
     approval_engine: status("Approval Engine", reviewQueue.every(item => Boolean(item.review_state)), "Review states are available for tracked artifacts."),
-    handoff_readiness: status("Handoff Readiness", Boolean(handoff), handoff.handoff_ready ? "Handoff readiness is ready for manual decision." : handoff.next_manual_action || "Handoff readiness needs attention.")
+    handoff_readiness: status("Handoff Readiness", Boolean(handoff), handoff.handoff_ready ? "Handoff readiness is ready for manual decision." : handoff.next_manual_action || "Handoff readiness needs attention."),
+    smoke_test_center: status("Smoke Test Center", smokeTestStatus.last_status !== "not_started", smokeTestStatus.last_status === "not_started" ? "No post-deploy smoke test run has been saved yet." : `Last smoke test status: ${smokeTestStatus.last_status}.`)
   };
   const dataFreshness = {
     last_capture_time: latestTime(state.captureInbox, ["created_at", "updated_at"]),
@@ -110,6 +113,7 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
     last_closeout_save: closeout?.updated_at || closeout?.generated_at || "",
     last_rcap_activation: latestTime([...list(state.partnerPrograms), ...list(state.partnerProgramArtifacts)], ["updatedAt", "createdAt", "review_updated_at"]),
     last_review_state_change: latestTime(reviewQueue, ["review_updated_at", "updatedAt", "createdAt"]),
+    last_smoke_test_run: smokeTestStatus.last_run_timestamp || "",
     last_audit_activity_event: lastAuditActivity
   };
   const trustWarnings = [
@@ -124,7 +128,9 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
     !connectionHealth.supabase_db.ok ? warning("Supabase unavailable", "Hosted durable backend is unavailable or unverified.", { href: "os-health" }) : null,
     authHardening.endpoint_protection?.status !== "protected" ? warning("Endpoint protection needs review", "One or more API endpoints are unexpectedly public or unverified.", { href: "os-health" }) : null,
     authHardening.secret_leakage?.status === "leak_detected" ? warning("Secret leakage check failed", "A hardening scan detected a secret-like response value.", { severity: "critical", href: "os-health" }) : null,
-    authHardening.forbidden_action_guard?.status !== "blocked" ? warning("Forbidden action guard needs review", "External action guard is not in the expected blocked state.", { href: "os-health" }) : null
+    authHardening.forbidden_action_guard?.status !== "blocked" ? warning("Forbidden action guard needs review", "External action guard is not in the expected blocked state.", { href: "os-health" }) : null,
+    smokeTestStatus.last_status === "fail" ? warning("Last smoke test failed", `${smokeTestStatus.failed_count} smoke test step(s) failed.`, { href: "smoke-test" }) : null,
+    smokeTestStatus.warning ? warning("Smoke test not run for latest deploy", smokeTestStatus.warning, { href: "smoke-test" }) : null
   ].filter(Boolean);
   const overallHealth = liveGates !== 0 || !connectionHealth.supabase_db.ok
     ? "critical"
@@ -145,6 +151,7 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
       checklist: verificationChecklist(state)
     },
     auth_hardening: authHardening,
+    smoke_test_status: smokeTestStatus,
     summary: {
       safe_to_trust: [
         "Internal state synthesis is available.",

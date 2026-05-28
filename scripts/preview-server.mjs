@@ -68,6 +68,7 @@ import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
 import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex } from "./operator-search.mjs";
 import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegritySnapshot } from "./state-integrity.mjs";
 import { buildEndpointInventory, guardForbiddenEndpoint, safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
+import { buildSmokeTestChecklist, buildSmokeTestStatus, finishSmokeTestRun, markSmokeTestItem, saveSmokeTestRun, startSmokeTestRun } from "./smoke-test-center.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -17088,6 +17089,21 @@ function htmlShell() {
       </section>\`;
     }
 
+    function latestSmokeTestRun() {
+      return (state.smokeTestRuns || []).slice().sort((a, b) => String(b.updated_at || b.completed_at || b.started_at || "").localeCompare(String(a.updated_at || a.completed_at || a.started_at || "")))[0] || null;
+    }
+
+    function cockpitSmokeTestHtml() {
+      const status = buildSmokeTestStatus(state, { commit_hash: state.runtime?.commitHash || "" });
+      return \`<section class="cockpit-card smoke-test-card" aria-label="Smoke Test">
+        <div class="cockpit-card-head"><h2>Smoke Test</h2><small>Post-deploy checklist</small></div>
+        <div class="daily-loop-summary"><strong>Last smoke test status: \${esc(plainOperatorState(status.last_status))}</strong><span>Last run: \${esc(formatDateTime(status.last_run_timestamp) || "Not recorded")}</span><span>Failed: \${esc(status.failed_count || 0)}</span></div>
+        <div class="operating-memory-actions">
+          <button class="primary" type="button" onclick="location.hash='smoke-test'">Open Smoke Test Center</button>
+        </div>
+      </section>\`;
+    }
+
     function cockpitDataIntegrityRecord() {
       return (state.dataIntegritySnapshots || []).slice().sort((a, b) => String(b.generated_at || "").localeCompare(String(a.generated_at || "")))[0]
         || buildDataIntegritySnapshot(state);
@@ -17639,6 +17655,7 @@ function htmlShell() {
     function osHealthPageHtml(pageClass) {
       const health = cockpitOsHealthRecord();
       const hardening = health.auth_hardening || {};
+      const smoke = health.smoke_test_status || buildSmokeTestStatus(state, { commit_hash: state.runtime?.commitHash || "" });
       return \`<section id="os-health" class="\${pageClass("os-health")} command-page section-page lee-bubble-safe-space">
         <div class="panel hero-panel">
           <div class="eyebrow">Trust Center</div>
@@ -17668,6 +17685,15 @@ function htmlShell() {
             <section class="operating-memory-tile"><h3>Last auth hardening check</h3><ul><li>\${esc(formatDateTime(hardening.last_auth_hardening_check) || "Not recorded")}</li></ul></section>
           </div>
         </section>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Smoke Test Status</h2><span class="badge info">\${esc(plainOperatorState(smoke.last_status || "not_started"))}</span></div>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Last smoke test status</h3><ul><li><strong>\${esc(plainOperatorState(smoke.last_status || "not_started"))}</strong><br><span>\${esc(formatDateTime(smoke.last_run_timestamp) || "Not recorded")}</span></li></ul></section>
+            <section class="operating-memory-tile"><h3>Failed smoke test count</h3><ul><li>\${esc(smoke.failed_count || 0)} failed step(s)</li></ul></section>
+            <section class="operating-memory-tile"><h3>Deploy coverage</h3><ul><li>\${esc(smoke.warning || "Smoke test is current for the latest known commit or no commit is recorded.")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Next action</h3><ul><li><a href="#smoke-test">Open Smoke Test Center</a></li></ul></section>
+          </div>
+        </section>
         <section class="panel"><div class="simple-panel-head"><h2>Workflow Health</h2><span class="badge info">Internal workflows</span></div>\${healthStatusGridHtml(health.workflow_health || {})}</section>
         <section class="panel operating-memory-card">
           <div class="simple-panel-head"><h2>Data Freshness</h2><span class="badge info">Last saved signals</span></div>
@@ -17680,6 +17706,61 @@ function htmlShell() {
         <section class="panel">
           <div class="simple-panel-head"><h2>Self-Test Status</h2><span class="badge info">\${esc(health.self_test_status?.last_known_status || "last known not recorded")}</span></div>
           <div class="memory-evidence-grid">\${(health.self_test_status?.checklist || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.command)}</strong><span class="muted">\${esc(plainOperatorState(item.status || "last_known_not_recorded"))}</span></article>\`).join("") || '<div class="empty">No self-test checklist saved yet.</div>'}</div>
+        </section>
+      </section>\`;
+    }
+
+    function smokeTestPageHtml(pageClass) {
+      const run = latestSmokeTestRun();
+      const groups = run?.groups || buildSmokeTestChecklist();
+      const status = buildSmokeTestStatus(state, { commit_hash: state.runtime?.commitHash || "" });
+      const runId = run?.id || "";
+      const itemButtons = (item) => \`
+        <div class="card-actions smoke-test-item-actions">
+          <button type="button" \${runId ? "" : "disabled"} onclick="markSmokeTestItem(\${JSON.stringify(runId)}, \${JSON.stringify(item.id)}, 'pass')">Mark Item Passed</button>
+          <button type="button" \${runId ? "" : "disabled"} onclick="markSmokeTestItem(\${JSON.stringify(runId)}, \${JSON.stringify(item.id)}, 'fail')">Mark Item Failed</button>
+          <button type="button" \${runId ? "" : "disabled"} onclick="markSmokeTestItem(\${JSON.stringify(runId)}, \${JSON.stringify(item.id)}, 'not_tested')">Mark Item Not Tested</button>
+        </div>\`;
+      return \`<section id="smoke-test" class="\${pageClass("smoke-test")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div>
+            <div class="eyebrow">Deployment QA</div>
+            <h1 class="big-title">Smoke Test Center</h1>
+            <p class="muted">Internal post-deploy checklist for confirming the hosted LegalEase OS is usable. This page records manual checks only. It does not execute shell commands from the browser and does not trigger external actions.</p>
+          </div>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button class="primary" type="button" onclick="startSmokeTestRun()">Start Smoke Test Run</button>
+            <button type="button" \${runId ? "" : "disabled"} onclick="saveSmokeTestRun(\${JSON.stringify(runId)})">Save Smoke Test Run</button>
+            <button type="button" \${runId ? "" : "disabled"} onclick="finishSmokeTestRun(\${JSON.stringify(runId)})">Finish Smoke Test Run</button>
+          </div>
+        </div>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Run Summary</h2><span class="badge info">Live gates: \${esc(run?.live_gates_count ?? 0)}</span></div>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Last smoke test status</h3><ul><li><strong>\${esc(plainOperatorState(status.last_status || "not_started"))}</strong><br><span>\${esc(formatDateTime(status.last_run_timestamp) || "Not recorded")}</span></li></ul></section>
+            <section class="operating-memory-tile"><h3>Run ID</h3><ul><li>\${esc(runId || "No smoke test run started yet.")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Counts</h3><ul><li>\${esc(run?.passed_count || 0)} passed · \${esc(run?.failed_count || 0)} failed · \${esc(run?.not_tested_count ?? groups.reduce((count, group) => count + (group.items?.length || 0), 0))} not tested</li></ul></section>
+            <section class="operating-memory-tile"><h3>Safety</h3><ul><li>\${esc(run?.no_external_actions_confirmation || "No emails sent, no posts published, no partner pages published, no dashboards activated, no Partner Journey calls, no destructive restore, no live gates enabled.")}</li></ul></section>
+          </div>
+          <label class="field-label" for="smoke-test-notes">Run notes</label>
+          <textarea id="smoke-test-notes" rows="3" placeholder="Add deployment smoke test notes...">\${esc(run?.notes || "")}</textarea>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Deployment Checklist</h2><span class="badge info">\${esc(groups.length)} groups</span></div>
+          <div class="smoke-test-groups">\${groups.map(group => \`
+            <article class="operating-memory-card smoke-test-group">
+              <div class="simple-panel-head"><h3>\${esc(group.name)}</h3><span class="badge info">\${esc((group.items || []).length)} checks</span></div>
+              <div class="memory-evidence-grid">\${(group.items || []).map(item => \`
+                <section class="memory-history-card smoke-test-item">
+                  <div class="simple-panel-head"><strong>\${esc(item.label)}</strong><span class="badge info">\${esc(plainOperatorState(item.status || "not_tested"))}</span></div>
+                  <p class="muted">\${esc(item.expected || "Manual check required.")}</p>
+                  <p class="muted">Route: <a href="#\${esc(item.route || "overview")}">#\${esc(item.route || "overview")}</a></p>
+                  <label class="field-label" for="smoke-note-\${esc(item.id)}">Notes</label>
+                  <textarea id="smoke-note-\${esc(item.id)}" rows="2" \${runId ? "" : "disabled"} placeholder="Notes for this check...">\${esc(item.notes || "")}</textarea>
+                  \${itemButtons(item)}
+                </section>\`).join("")}</div>
+            </article>\`).join("")}</div>
         </section>
       </section>\`;
     }
@@ -17868,6 +17949,7 @@ function htmlShell() {
             \${cockpitDailyRitualsHtml()}
             \${cockpitDailyCloseoutHtml()}
             \${cockpitOsHealthHtml()}
+            \${cockpitSmokeTestHtml()}
             \${cockpitDataIntegrityHtml()}
             \${cockpitOperatorSearchHtml()}
             \${cockpitOperatingMemoryHtml()}
@@ -19448,7 +19530,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -19471,6 +19553,7 @@ function htmlShell() {
         \${eveningReflectionPageHtml(pageClass)}
         \${dailyCloseoutPageHtml(pageClass)}
         \${osHealthPageHtml(pageClass)}
+        \${smokeTestPageHtml(pageClass)}
         \${dataIntegrityPageHtml(pageClass)}
         \${operatorSearchPageHtml(pageClass)}
         \${conversationNotesPageHtml(pageClass)}
@@ -19707,7 +19790,7 @@ function htmlShell() {
     }
 
     function navSectionForPage(pageId = "overview") {
-      if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "operator-search", "conversation-notes"].includes(pageId)) return "today";
+      if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "operator-search", "conversation-notes"].includes(pageId)) return "today";
       if (pageId === "data-integrity") return "more";
       if (["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId)) return "more";
       if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
@@ -20275,6 +20358,63 @@ function htmlShell() {
         render();
         return result.message || "OS Health Snapshot refreshed. No external action was taken.";
       }, "Could not refresh OS Health.");
+    }
+
+    async function startSmokeTestRun() {
+      await cooAction(async () => {
+        const result = await api("/api/smoke-test/start", {
+          method:"POST",
+          body:JSON.stringify({
+            environment: location.hostname.includes("onrender.com") ? "hosted" : "local",
+            commit_hash: state.runtime?.commitHash || ""
+          })
+        });
+        state = result.state;
+        render();
+        location.hash = "smoke-test";
+        return result.message || "Smoke Test Run started. No external action was taken.";
+      }, "Could not start Smoke Test Run.");
+    }
+
+    async function markSmokeTestItem(runId, itemId, status) {
+      const notes = document.getElementById("smoke-note-" + itemId)?.value || "";
+      await cooAction(async () => {
+        const result = await api("/api/smoke-test/" + encodeURIComponent(runId) + "/item", {
+          method:"POST",
+          body:JSON.stringify({ itemId, status, notes })
+        });
+        state = result.state;
+        render();
+        location.hash = "smoke-test";
+        return result.message || "Smoke test item updated.";
+      }, "Could not update smoke test item.");
+    }
+
+    async function saveSmokeTestRun(runId) {
+      const notes = document.getElementById("smoke-test-notes")?.value || "";
+      await cooAction(async () => {
+        const result = await api("/api/smoke-test/" + encodeURIComponent(runId) + "/save", {
+          method:"POST",
+          body:JSON.stringify({ notes })
+        });
+        state = result.state;
+        render();
+        location.hash = "smoke-test";
+        return result.message || "Smoke Test Run saved. No external action was taken.";
+      }, "Could not save Smoke Test Run.");
+    }
+
+    async function finishSmokeTestRun(runId) {
+      await cooAction(async () => {
+        const result = await api("/api/smoke-test/" + encodeURIComponent(runId) + "/finish", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        location.hash = "smoke-test";
+        return result.message || "Smoke Test Run finished. No external action was taken.";
+      }, "Could not finish Smoke Test Run.");
     }
 
     async function refreshDataIntegrity() {
@@ -22633,6 +22773,94 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not refresh OS Health." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/smoke-test" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, {
+      checklist: buildSmokeTestChecklist(),
+      status: buildSmokeTestStatus(currentState, { commit_hash: currentState.runtime?.commitHash || "" }),
+      runs: (currentState.smokeTestRuns || []).slice(0, 10)
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/smoke-test/start" && request.method === "POST") {
+    try {
+      const body = await readJson(request);
+      const currentState = await store.readState();
+      const result = startSmokeTestRun(currentState, body, {
+        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Smoke Test Run started. No external action was taken.",
+        run: result.run,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not start Smoke Test Run." }, 400);
+    }
+    return;
+  }
+
+  const smokeItemMatch = url.pathname.match(/^\/api\/smoke-test\/([^/]+)\/item$/);
+  if (smokeItemMatch && request.method === "POST") {
+    try {
+      const body = await readJson(request);
+      const currentState = await store.readState();
+      const result = markSmokeTestItem(currentState, decodeURIComponent(smokeItemMatch[1]), body.itemId, body.status, body.notes || "", {
+        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Smoke test item updated internally. No external action was taken.",
+        run: result.run,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update smoke test item." }, 400);
+    }
+    return;
+  }
+
+  const smokeSaveMatch = url.pathname.match(/^\/api\/smoke-test\/([^/]+)\/save$/);
+  if (smokeSaveMatch && request.method === "POST") {
+    try {
+      const body = await readJson(request);
+      const currentState = await store.readState();
+      const result = saveSmokeTestRun(currentState, decodeURIComponent(smokeSaveMatch[1]), body, {
+        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Smoke Test Run saved. No external action was taken.",
+        run: result.run,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not save Smoke Test Run." }, 400);
+    }
+    return;
+  }
+
+  const smokeFinishMatch = url.pathname.match(/^\/api\/smoke-test\/([^/]+)\/finish$/);
+  if (smokeFinishMatch && request.method === "POST") {
+    try {
+      const currentState = await store.readState();
+      const result = finishSmokeTestRun(currentState, decodeURIComponent(smokeFinishMatch[1]), {
+        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Smoke Test Run finished. No external action was taken.",
+        run: result.run,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not finish Smoke Test Run." }, 400);
     }
     return;
   }

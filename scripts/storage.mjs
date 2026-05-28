@@ -44,6 +44,7 @@ const coreStateCollections = [
   "dailyCloseouts",
   "reviewStates",
   "osHealthSnapshots",
+  "smokeTestRuns",
   "dataIntegritySnapshots",
   "handoffPackets",
   "productionActivationRuns",
