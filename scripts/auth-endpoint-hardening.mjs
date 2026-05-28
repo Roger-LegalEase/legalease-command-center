@@ -21,6 +21,8 @@ const endpointPurpose = [
   [/^POST \/api\/smoke-test\/[^/]+\/item$/, "Update an internal smoke test checklist item."],
   [/^POST \/api\/smoke-test\/[^/]+\/save$/, "Save an internal smoke test run."],
   [/^POST \/api\/smoke-test\/[^/]+\/finish$/, "Finish an internal smoke test run."],
+  [/^GET \/api\/evidence-room$/, "Read internal Evidence Room index and summary."],
+  [/^POST \/api\/evidence-room\/summary$/, "Generate an internal review-only Evidence Summary."],
   [/^GET \/api\/data-integrity$/, "Read Data Integrity snapshot and inventory."],
   [/^POST \/api\/data-integrity\/refresh$/, "Refresh internal Data Integrity snapshot."],
   [/^GET \/api\/operating-memory\/today$/, "Read today's Operating Memory."],

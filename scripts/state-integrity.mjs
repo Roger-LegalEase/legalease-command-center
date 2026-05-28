@@ -266,6 +266,19 @@ export function buildDataModelInventory() {
       duplicate_risk_level: "medium"
     },
     {
+      collection: "evidenceSummaries",
+      purpose: "Review-only internal proof room summaries generated from evidence notes, reports, Data Room artifacts, SOC 2 readiness evidence, audit history, and activity events.",
+      storage_mode: "hybrid",
+      required_fields: ["key", "title", "status", "generated_at", "live_gates_count"],
+      optional_fields: ["overview", "evidence_sources", "data_room_index", "top_evidence_items", "missing_proof_warnings", "stale_evidence_warnings", "updated_at"],
+      stable_key_fields: ["key", "id"],
+      idempotency_rules: "Evidence summaries are idempotent per date. Stable key format evidence-summary-YYYY-MM-DD.",
+      audit_behavior: "Generate Evidence Summary creates auditHistory and activityEvents entries.",
+      related_routes: ["#evidence-room", "#os-health", "#dataroom"],
+      related_tests: ["scripts/test-evidence-room.mjs", "scripts/test-state-integrity.mjs"],
+      duplicate_risk_level: "medium"
+    },
+    {
       collection: "handoffPackets",
       purpose: "Internal Partner Journey handoff packet records. No external handoff is triggered here.",
       storage_mode: "hybrid",

@@ -2,6 +2,7 @@ import { buildDailyOperatingLoop } from "./daily-operating-loop.mjs";
 import { computeRcapPartnerJourneyHandoffReadiness, rcapReviewQueue } from "./review-approval-engine.mjs";
 import { safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
 import { buildSmokeTestStatus } from "./smoke-test-center.mjs";
+import { buildEvidenceOverview, latestEvidenceSummary } from "./evidence-room.mjs";
 
 const noExternalActionsConfirmation = "No emails sent, no posts published, no partner pages published, no dashboards activated, no Partner Journey calls, no external systems contacted beyond existing internal health checks.";
 
@@ -78,6 +79,8 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
   const handoff = computeRcapPartnerJourneyHandoffReadiness(state);
   const authHardening = options.authHardening || safeAuthHardeningSummary({ state, source: options.endpointInventorySource || "" });
   const smokeTestStatus = buildSmokeTestStatus(state, { commit_hash: options.commit_hash || options.commitHash || state.runtime?.commitHash || state.runtime?.commit_hash || "" });
+  const evidenceOverview = buildEvidenceOverview(state, options);
+  const evidenceSummary = latestEvidenceSummary(state);
   const morning = sameDayRecord(state.morningBriefs, date, "morning-brief");
   const memory = sameDayRecord(state.operatingMemory, date, "operating-memory");
   const evening = sameDayRecord(state.eveningReflections, date, "evening-reflection");
@@ -103,7 +106,8 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
     rcap_review_workspace: status("RCAP Review Workspace", reviewQueue.length > 0, `${reviewQueue.length} review artifact(s) tracked.`),
     approval_engine: status("Approval Engine", reviewQueue.every(item => Boolean(item.review_state)), "Review states are available for tracked artifacts."),
     handoff_readiness: status("Handoff Readiness", Boolean(handoff), handoff.handoff_ready ? "Handoff readiness is ready for manual decision." : handoff.next_manual_action || "Handoff readiness needs attention."),
-    smoke_test_center: status("Smoke Test Center", smokeTestStatus.last_status !== "not_started", smokeTestStatus.last_status === "not_started" ? "No post-deploy smoke test run has been saved yet." : `Last smoke test status: ${smokeTestStatus.last_status}.`)
+    smoke_test_center: status("Smoke Test Center", smokeTestStatus.last_status !== "not_started", smokeTestStatus.last_status === "not_started" ? "No post-deploy smoke test run has been saved yet." : `Last smoke test status: ${smokeTestStatus.last_status}.`),
+    evidence_room: status("Evidence Room", evidenceOverview.total_evidence_items > 0, evidenceOverview.total_evidence_items ? `${evidenceOverview.total_evidence_items} evidence item(s) indexed. ${evidenceOverview.open_review_items} open review item(s).` : "No evidence items are indexed yet.")
   };
   const dataFreshness = {
     last_capture_time: latestTime(state.captureInbox, ["created_at", "updated_at"]),
@@ -114,6 +118,8 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
     last_rcap_activation: latestTime([...list(state.partnerPrograms), ...list(state.partnerProgramArtifacts)], ["updatedAt", "createdAt", "review_updated_at"]),
     last_review_state_change: latestTime(reviewQueue, ["review_updated_at", "updatedAt", "createdAt"]),
     last_smoke_test_run: smokeTestStatus.last_run_timestamp || "",
+    latest_evidence_summary_timestamp: evidenceSummary?.updated_at || evidenceSummary?.generated_at || "",
+    last_evidence_update: evidenceOverview.last_evidence_update || "",
     last_audit_activity_event: lastAuditActivity
   };
   const trustWarnings = [
@@ -130,7 +136,9 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
     authHardening.secret_leakage?.status === "leak_detected" ? warning("Secret leakage check failed", "A hardening scan detected a secret-like response value.", { severity: "critical", href: "os-health" }) : null,
     authHardening.forbidden_action_guard?.status !== "blocked" ? warning("Forbidden action guard needs review", "External action guard is not in the expected blocked state.", { href: "os-health" }) : null,
     smokeTestStatus.last_status === "fail" ? warning("Last smoke test failed", `${smokeTestStatus.failed_count} smoke test step(s) failed.`, { href: "smoke-test" }) : null,
-    smokeTestStatus.warning ? warning("Smoke test not run for latest deploy", smokeTestStatus.warning, { href: "smoke-test" }) : null
+    smokeTestStatus.warning ? warning("Smoke test not run for latest deploy", smokeTestStatus.warning, { href: "smoke-test" }) : null,
+    evidenceOverview.missing_proof_warnings.length ? warning("Evidence Room needs review", evidenceOverview.missing_proof_warnings[0], { href: "evidence-room" }) : null,
+    evidenceOverview.stale_evidence_warnings.length ? warning("Evidence may be stale", evidenceOverview.stale_evidence_warnings[0], { href: "evidence-room" }) : null
   ].filter(Boolean);
   const overallHealth = liveGates !== 0 || !connectionHealth.supabase_db.ok
     ? "critical"
@@ -152,6 +160,15 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
     },
     auth_hardening: authHardening,
     smoke_test_status: smokeTestStatus,
+    evidence_room_status: {
+      total_evidence_items: evidenceOverview.total_evidence_items,
+      recent_evidence_items: evidenceOverview.recent_evidence_items,
+      open_review_items: evidenceOverview.open_review_items,
+      latest_evidence_summary_timestamp: evidenceSummary?.updated_at || evidenceSummary?.generated_at || "",
+      last_evidence_update: evidenceOverview.last_evidence_update || ""
+    },
+    missing_evidence_warnings: evidenceOverview.missing_proof_warnings,
+    stale_evidence_warnings: evidenceOverview.stale_evidence_warnings,
     summary: {
       safe_to_trust: [
         "Internal state synthesis is available.",

@@ -69,6 +69,7 @@ import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex 
 import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegritySnapshot } from "./state-integrity.mjs";
 import { buildEndpointInventory, guardForbiddenEndpoint, safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
 import { buildSmokeTestChecklist, buildSmokeTestStatus, finishSmokeTestRun, markSmokeTestItem, saveSmokeTestRun, startSmokeTestRun } from "./smoke-test-center.mjs";
+import { buildEvidenceIndex, buildEvidenceOverview, generateEvidenceSummary, latestEvidenceSummary } from "./evidence-room.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -13154,7 +13155,7 @@ function htmlShell() {
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="growth">Growth</summary><div class="nav-menu-panel"><a href="#growth">Growth Home</a><a href="#growth-inbox">Growth Inbox</a><a href="#capture-inbox">Capture Inbox</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a><a href="#metrics">Metrics</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="partners">Partners</summary><div class="nav-menu-panel"><a href="#partner-hub">Partners Home</a><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="production">Production</summary><div class="nav-menu-panel"><a href="#production">Production Home</a><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="proof">Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="proof">Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#evidence-room">Evidence Room</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#tasks-today">Today Tasks</a><a href="#tasks-blocked">Blocked Tasks</a><a href="#tasks-waiting">Waiting Tasks</a><a href="#tasks-this-week">This Week Tasks</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
       </nav>
       <span class="shell-marker" aria-hidden="true">nav: topnav-fixed-v1</span>
@@ -17104,6 +17105,22 @@ function htmlShell() {
       </section>\`;
     }
 
+    function cockpitEvidenceRoomHtml() {
+      const overview = buildEvidenceOverview(state);
+      return \`<section class="cockpit-card evidence-room-card" aria-label="Evidence Room">
+        <div class="cockpit-card-head"><h2>Evidence Room</h2><small>Internal proof room</small></div>
+        <div class="daily-loop-summary">
+          <strong>Evidence count: \${esc(overview.total_evidence_items || 0)}</strong>
+          <span>Recent: \${esc(overview.recent_evidence_items || 0)}</span>
+          <span>Open review: \${esc(overview.open_review_items || 0)}</span>
+          <span>Last update: \${esc(formatDateTime(overview.last_evidence_update) || "Not recorded")}</span>
+        </div>
+        <div class="operating-memory-actions">
+          <button class="primary" type="button" onclick="location.hash='evidence-room'">Open Evidence Room</button>
+        </div>
+      </section>\`;
+    }
+
     function cockpitDataIntegrityRecord() {
       return (state.dataIntegritySnapshots || []).slice().sort((a, b) => String(b.generated_at || "").localeCompare(String(a.generated_at || "")))[0]
         || buildDataIntegritySnapshot(state);
@@ -17694,6 +17711,15 @@ function htmlShell() {
             <section class="operating-memory-tile"><h3>Next action</h3><ul><li><a href="#smoke-test">Open Smoke Test Center</a></li></ul></section>
           </div>
         </section>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Evidence Room Status</h2><span class="badge info">\${esc(health.evidence_room_status?.open_review_items || 0)} open review</span></div>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Evidence room status</h3><ul><li><strong>\${esc(health.evidence_room_status?.total_evidence_items || 0)} evidence item(s)</strong><br><span>\${esc(health.evidence_room_status?.recent_evidence_items || 0)} recent item(s)</span></li></ul></section>
+            <section class="operating-memory-tile"><h3>Latest evidence summary timestamp</h3><ul><li>\${esc(formatDateTime(health.evidence_room_status?.latest_evidence_summary_timestamp) || "Not recorded")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Missing evidence warnings</h3>\${memoryListHtml((health.missing_evidence_warnings || []).map(title => ({ title, detail:"Review in Evidence Room." })), "No missing evidence warnings.", 4)}</section>
+            <section class="operating-memory-tile"><h3>Stale evidence warnings</h3>\${memoryListHtml((health.stale_evidence_warnings || []).map(title => ({ title, detail:"Refresh proof when work moves." })), "No stale evidence warnings.", 4)}</section>
+          </div>
+        </section>
         <section class="panel"><div class="simple-panel-head"><h2>Workflow Health</h2><span class="badge info">Internal workflows</span></div>\${healthStatusGridHtml(health.workflow_health || {})}</section>
         <section class="panel operating-memory-card">
           <div class="simple-panel-head"><h2>Data Freshness</h2><span class="badge info">Last saved signals</span></div>
@@ -17761,6 +17787,98 @@ function htmlShell() {
                   \${itemButtons(item)}
                 </section>\`).join("")}</div>
             </article>\`).join("")}</div>
+        </section>
+      </section>\`;
+    }
+
+    function evidenceMetricCard(label, value, detail = "") {
+      return \`<section class="operating-memory-tile"><h3>\${esc(label)}</h3><ul><li><strong>\${esc(value)}</strong>\${detail ? \`<br><span>\${esc(detail)}</span>\` : ""}</li></ul></section>\`;
+    }
+
+    function evidenceRoomPageHtml(pageClass) {
+      const overview = buildEvidenceOverview(state);
+      const index = buildEvidenceIndex(state);
+      const latestSummary = latestEvidenceSummary(state);
+      const detail = index.items[0] || null;
+      const optionList = (items = []) => ['<option value="">All</option>', ...items.map(item => \`<option value="\${esc(item)}">\${esc(plainOperatorState(item))}</option>\`)].join("");
+      return \`<section id="evidence-room" class="\${pageClass("evidence-room")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div>
+            <div class="eyebrow">Proof Room</div>
+            <h1 class="big-title">Evidence Room</h1>
+            <p class="muted">Internal proof room for inspecting, organizing, filtering, and summarizing evidence. Review-only. Nothing here sends, publishes, exposes secrets, or contacts external systems.</p>
+          </div>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button class="primary" type="button" onclick="generateEvidenceSummary()">Generate Evidence Summary</button>
+          </div>
+        </div>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Evidence Overview</h2><span class="badge info">Live gates: \${esc(Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length)}</span></div>
+          <div class="operating-memory-grid">
+            \${evidenceMetricCard("Total evidence items", overview.total_evidence_items)}
+            \${evidenceMetricCard("Recent evidence items", overview.recent_evidence_items, "Updated in the last 7 days")}
+            \${evidenceMetricCard("RCAP evidence count", overview.rcap_evidence_count)}
+            \${evidenceMetricCard("Partner evidence count", overview.partner_evidence_count)}
+            \${evidenceMetricCard("SOC 2 Readiness evidence count", overview.soc2_readiness_evidence_count)}
+            \${evidenceMetricCard("Data Room item count", overview.data_room_item_count)}
+            \${evidenceMetricCard("Report count", overview.report_count)}
+            \${evidenceMetricCard("Open review items", overview.open_review_items)}
+          </div>
+          <div class="memory-evidence-grid">\${(overview.missing_proof_warnings || []).map(item => \`<article class="memory-history-card"><strong>Missing proof warning</strong><span class="muted">\${esc(item)}</span></article>\`).join("") || '<div class="empty">No missing proof warnings.</div>'}</div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Evidence Sources</h2><span class="badge info">\${esc(index.sources.length)} sources</span></div>
+          <div class="operating-memory-grid">\${index.sources.map(source => evidenceMetricCard(source.source, source.count, "Evidence item(s) indexed")).join("")}</div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Filters</h2><span class="badge info">Simple internal filters</span></div>
+          <div class="filter-row">
+            <label>Type<select id="evidence-filter-type" onchange="filterEvidenceRoom()">\${optionList(index.filters.types)}</select></label>
+            <label>Source<select id="evidence-filter-source" onchange="filterEvidenceRoom()">\${optionList(index.filters.sources)}</select></label>
+            <label>Status<select id="evidence-filter-status" onchange="filterEvidenceRoom()">\${optionList(index.filters.statuses)}</select></label>
+            <label>Review state<select id="evidence-filter-review" onchange="filterEvidenceRoom()">\${optionList(index.filters.review_states)}</select></label>
+            <label>Partner/program<select id="evidence-filter-partner" onchange="filterEvidenceRoom()">\${optionList(index.filters.partner_programs)}</select></label>
+            <label>Proof category<select id="evidence-filter-category" onchange="filterEvidenceRoom()">\${optionList(index.filters.proof_categories)}</select></label>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Evidence List</h2><span class="badge info">\${esc(index.items.length)} item(s)</span></div>
+          <div class="memory-evidence-grid" id="evidence-room-list">\${index.items.map(item => \`
+            <article class="memory-history-card evidence-room-item" data-type="\${esc(item.type)}" data-source="\${esc(item.source)}" data-status="\${esc(item.status)}" data-review="\${esc(item.review_state)}" data-partner="\${esc(item.linked_partner_program)}" data-category="\${esc(item.proof_category)}">
+              <div class="simple-panel-head"><strong>\${esc(item.title)}</strong><span class="badge info">\${esc(plainOperatorState(item.proof_category))}</span></div>
+              <span class="muted">Type: \${esc(plainOperatorState(item.type))} · Source: \${esc(item.source)} · Date: \${esc(formatDate(item.date) || "Not recorded")}</span>
+              <span class="muted">Status: \${esc(plainOperatorState(item.status))} · Review: \${esc(plainOperatorState(item.review_state || "not recorded"))} · Proof value: \${esc(String(item.proof_value || "not recorded"))}</span>
+              <span class="muted">Linked workflow: \${esc(item.linked_workflow || "Not linked")} · Partner/program: \${esc(item.linked_partner_program || "Not linked")}</span>
+              <span class="muted">Tags: \${esc((item.tags || []).join(", ") || "None")}</span>
+              <a href="#\${esc(item.route)}">Open source</a>
+            </article>\`).join("") || '<div class="empty">No evidence has been indexed yet.</div>'}</div>
+        </section>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Evidence Detail View</h2><span class="badge info">Inline review</span></div>
+          \${detail ? \`<div class="operating-memory-grid">
+            \${evidenceMetricCard("Title", detail.title)}
+            \${evidenceMetricCard("Generated date", formatDateTime(detail.date) || "Not recorded")}
+            \${evidenceMetricCard("Reviewer status", plainOperatorState(detail.review_state || detail.status || "not recorded"))}
+            \${evidenceMetricCard("Export eligibility", plainOperatorState(detail.export_eligibility || "review only"))}
+            <section class="operating-memory-tile"><h3>Summary</h3><ul><li>\${esc(detail.summary || "No summary recorded.")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Source evidence</h3><ul><li>\${esc(detail.source)} · <a href="#\${esc(detail.route)}">Open source route</a></li></ul></section>
+            <section class="operating-memory-tile"><h3>Linked audit/activity entries</h3><ul><li>\${esc((state.auditHistory || []).length)} audit entry(s), \${esc((state.activityEvents || []).length)} activity event(s) available.</li></ul></section>
+            <section class="operating-memory-tile"><h3>Missing details</h3>\${memoryListHtml((detail.missing_details || []).map(title => ({ title })), "No missing details recorded.", 5)}</section>
+            <section class="operating-memory-tile"><h3>Next manual action</h3><ul><li>\${esc(detail.next_manual_action || "Review internally before external use.")}</li></ul></section>
+          </div>\` : '<div class="empty">No evidence detail available yet.</div>'}
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Data Room Index</h2><span class="badge info">Grouped proof</span></div>
+          <div class="operating-memory-grid">\${index.data_room_index.map(group => evidenceMetricCard(group.category, group.count, group.items.map(item => item.title).slice(0, 3).join(" · ") || "No artifacts yet")).join("")}</div>
+        </section>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Exportable Proof Summary</h2><span class="badge info">\${esc(latestSummary?.status ? plainOperatorState(latestSummary.status) : "not generated")}</span></div>
+          <p class="muted">Generate Evidence Summary creates or updates an internal review-only artifact. It does not send anywhere, publish anything, expose secrets, or contact external systems.</p>
+          <div class="operating-memory-grid">
+            \${evidenceMetricCard("Latest summary", latestSummary?.title || "No summary generated yet", formatDateTime(latestSummary?.updated_at || latestSummary?.generated_at) || "Not recorded")}
+            \${evidenceMetricCard("External actions", latestSummary?.no_external_actions_confirmation || "No external action has been taken.")}
+          </div>
         </section>
       </section>\`;
     }
@@ -17950,6 +18068,7 @@ function htmlShell() {
             \${cockpitDailyCloseoutHtml()}
             \${cockpitOsHealthHtml()}
             \${cockpitSmokeTestHtml()}
+            \${cockpitEvidenceRoomHtml()}
             \${cockpitDataIntegrityHtml()}
             \${cockpitOperatorSearchHtml()}
             \${cockpitOperatingMemoryHtml()}
@@ -18356,7 +18475,7 @@ function htmlShell() {
         { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Triage signals, move campaigns, and keep RecordShield proof visible.", links:[["Growth Inbox","growth-inbox"],["Capture Inbox","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"]] },
         { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Move partner programs from lead to paid onboarding, reports, and renewal proof.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"]] },
         { id:"production", eyebrow:"Production", title:"Production", copy:"Turn ideas into approved assets without losing the approval-first safety model.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
-        { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
+        { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Evidence Room","evidence-room"],["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
         { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Today Tasks","tasks-today"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Data Integrity","data-integrity"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
       ];
       return configs.find(item => item.id === section) || configs[0];
@@ -18385,6 +18504,7 @@ function htmlShell() {
           ["Posted", (state.posts || []).filter(post => /posted|manually/i.test(String(post.status || ""))).length, "Published/manual"]
         ],
         proof:[
+          ["Evidence", buildEvidenceOverview(state).total_evidence_items, "Indexed proof"],
           ["Reports", (state.reports || []).length, "Artifacts"],
           ["Data Room", (state.dataRoomItems || []).length, "Items"],
           ["SOC 2", (state.soc2Evidence || []).length, "Evidence records"]
@@ -19530,7 +19650,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -19554,6 +19674,7 @@ function htmlShell() {
         \${dailyCloseoutPageHtml(pageClass)}
         \${osHealthPageHtml(pageClass)}
         \${smokeTestPageHtml(pageClass)}
+        \${evidenceRoomPageHtml(pageClass)}
         \${dataIntegrityPageHtml(pageClass)}
         \${operatorSearchPageHtml(pageClass)}
         \${conversationNotesPageHtml(pageClass)}
@@ -19796,7 +19917,7 @@ function htmlShell() {
       if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
       if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
-      if (["proof", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
+      if (["proof", "evidence-room", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
       return "more";
     }
 
@@ -20415,6 +20536,34 @@ function htmlShell() {
         location.hash = "smoke-test";
         return result.message || "Smoke Test Run finished. No external action was taken.";
       }, "Could not finish Smoke Test Run.");
+    }
+
+    function filterEvidenceRoom() {
+      const filters = {
+        type: document.getElementById("evidence-filter-type")?.value || "",
+        source: document.getElementById("evidence-filter-source")?.value || "",
+        status: document.getElementById("evidence-filter-status")?.value || "",
+        review: document.getElementById("evidence-filter-review")?.value || "",
+        partner: document.getElementById("evidence-filter-partner")?.value || "",
+        category: document.getElementById("evidence-filter-category")?.value || ""
+      };
+      document.querySelectorAll(".evidence-room-item").forEach((item) => {
+        const visible = Object.entries(filters).every(([key, value]) => !value || item.dataset[key] === value);
+        item.style.display = visible ? "" : "none";
+      });
+    }
+
+    async function generateEvidenceSummary() {
+      await cooAction(async () => {
+        const result = await api("/api/evidence-room/summary", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        location.hash = "evidence-room";
+        return result.message || "Evidence Summary generated. No external action was taken.";
+      }, "Could not generate Evidence Summary.");
     }
 
     async function refreshDataIntegrity() {
@@ -22861,6 +23010,35 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not finish Smoke Test Run." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/evidence-room" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, {
+      overview: buildEvidenceOverview(currentState),
+      index: buildEvidenceIndex(currentState),
+      latestSummary: latestEvidenceSummary(currentState)
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/evidence-room/summary" && request.method === "POST") {
+    try {
+      const currentState = await store.readState();
+      const result = generateEvidenceSummary(currentState, {
+        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Evidence Summary generated. No external action was taken.",
+        summary: result.summary,
+        overview: result.overview,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not generate Evidence Summary." }, 400);
     }
     return;
   }
