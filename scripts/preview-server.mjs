@@ -70,6 +70,7 @@ import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegrityS
 import { buildEndpointInventory, guardForbiddenEndpoint, safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
 import { buildSmokeTestChecklist, buildSmokeTestStatus, finishSmokeTestRun, markSmokeTestItem, saveSmokeTestRun, startSmokeTestRun } from "./smoke-test-center.mjs";
 import { buildEvidenceIndex, buildEvidenceOverview, generateEvidenceSummary, latestEvidenceSummary } from "./evidence-room.mjs";
+import { buildPartnerJourneyHandoffContractPacket, generatePartnerJourneyHandoffContractPreview, handoffContractRequiredArtifactTypes, handoffContractRequiredPartnerFields, handoffContractRequiredTopLevelFields, handoffContractStatus, handoffContractVersion, latestHandoffContractPreview, redactHandoffContractJson, validatePartnerJourneyHandoffContract } from "./partner-journey-handoff-contract.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -6315,6 +6316,7 @@ const initialState = {
   partnerPrograms: defaultPartnerProgramSeeds({ now: "2026-05-26T00:00:00.000Z" }),
   partnerProgramArtifacts: [],
   reports: [],
+  handoffContractPreviews: [],
   soc2AccessReviews: [{ id: "access-review-supabase-admin", userName: "Roger Roman", role: "Owner", system: "Supabase", accessLevel: "Service role admin", owner: "Roger", dateGranted: "2026-05-22", lastReviewedDate: "2026-05-22", reviewStatus: "Needs Review", notes: "Confirm service role usage remains server-side only." }],
   soc2AuditLogs: [{ id: "soc2-audit-seed", timestamp: "2026-05-22T00:00:00.000Z", actor: "system", action: "SOC 2 readiness module initialized", resourceType: "soc2", resourceId: "readiness", beforeValue: null, afterValue: { status: "In Progress" }, ip: "", userAgent: "" }],
   soc2Changes: [{ id: "change-openai-image-generation", title: "OpenAI image generation reliability pass", description: "Server-side env loading, safer error reporting, and final PNG workflow updates.", changeType: "AI workflow", owner: "Engineering", riskLevel: "Medium", approvalStatus: "Approved", deploymentDate: "2026-05-22", rollbackPlan: "Use latest checkpoint and disable AI/image mode with env flags.", evidenceLink: "data/exports/reports/", status: "Deployed" }],
@@ -13156,7 +13158,7 @@ function htmlShell() {
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="partners">Partners</summary><div class="nav-menu-panel"><a href="#partner-hub">Partners Home</a><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="production">Production</summary><div class="nav-menu-panel"><a href="#production">Production Home</a><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="proof">Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#evidence-room">Evidence Room</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#tasks-today">Today Tasks</a><a href="#tasks-blocked">Blocked Tasks</a><a href="#tasks-waiting">Waiting Tasks</a><a href="#tasks-this-week">This Week Tasks</a><a href="#operator-manual">Operator Manual</a><a href="#data-integrity">Data Integrity</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#tasks-today">Today Tasks</a><a href="#tasks-blocked">Blocked Tasks</a><a href="#tasks-waiting">Waiting Tasks</a><a href="#tasks-this-week">This Week Tasks</a><a href="#handoff-contract">Handoff Contract</a><a href="#operator-manual">Operator Manual</a><a href="#data-integrity">Data Integrity</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
       </nav>
       <span class="shell-marker" aria-hidden="true">nav: topnav-fixed-v1</span>
       <span class="shell-marker" aria-hidden="true">shell: app-layout-stable-v1</span>
@@ -17136,6 +17138,23 @@ function htmlShell() {
       </section>\`;
     }
 
+    function cockpitHandoffContractHtml() {
+      const status = handoffContractStatus(state);
+      return \`<section class="cockpit-card handoff-contract-card" aria-label="Handoff Contract">
+        <div class="cockpit-card-head"><h2>Handoff Contract</h2><small>Contract only</small></div>
+        <div class="daily-loop-summary">
+          <strong>Contract status: \${esc(plainOperatorState(status.contract_status || "not_generated"))}</strong>
+          <span>Required fields: \${esc(status.required_fields_count || 0)}</span>
+          <span>Missing fields: \${esc(status.missing_fields_count || 0)}</span>
+          <span>Latest validation: \${esc(plainOperatorState(status.latest_validation_result || "not_recorded"))}</span>
+        </div>
+        <p class="muted">Internal schema and validation layer for a future Partner Journey OS handoff. No external system contacted.</p>
+        <div class="operating-memory-actions">
+          <button class="primary" type="button" onclick="location.hash='handoff-contract'">Open Handoff Contract</button>
+        </div>
+      </section>\`;
+    }
+
     function cockpitDataIntegrityRecord() {
       return (state.dataIntegritySnapshots || []).slice().sort((a, b) => String(b.generated_at || "").localeCompare(String(a.generated_at || "")))[0]
         || buildDataIntegritySnapshot(state);
@@ -18071,6 +18090,85 @@ function htmlShell() {
       </section>\`;
     }
 
+    function handoffContractPageHtml(pageClass) {
+      const status = handoffContractStatus(state);
+      const packet = buildPartnerJourneyHandoffContractPacket(state);
+      const validation = validatePartnerJourneyHandoffContract(packet);
+      const latestPreview = latestHandoffContractPreview(state);
+      const jsonPreview = JSON.stringify(redactHandoffContractJson(latestPreview?.packet || packet), null, 2);
+      const listItems = items => (items || []).map(item => \`<li>\${esc(item)}</li>\`).join("") || "<li>None recorded.</li>";
+      const fieldPill = field => \`<span class="badge info">\${esc(field)}</span>\`;
+      const artifactRows = (packet.artifacts || []).map(item => \`
+        <article class="memory-history-card">
+          <strong>\${esc(item.title || item.artifact_type)}</strong>
+          <span class="muted">Type: \${esc(plainOperatorState(item.artifact_type))} · Review: \${esc(plainOperatorState(item.review_state || "missing"))} · Approval: \${esc(plainOperatorState(item.approval_status || "not_approved"))}</span>
+          <span class="muted">Approved: \${esc(item.approved_by || "Not approved")} · \${esc(formatDateTime(item.approved_at) || "No approval timestamp")}</span>
+          <span class="muted">\${esc(item.summary || "No summary recorded.")}</span>
+          <span class="muted">Missing details: \${esc((item.missing_details || []).join(", ") || "None")}</span>
+          <a href="#\${esc(item.route || "production-activation-rcap")}">Open source</a>
+        </article>\`).join("");
+      return \`<section id="handoff-contract" class="\${pageClass("handoff-contract")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div>
+            <div class="eyebrow">Partner Journey Handoff Contract</div>
+            <h1 class="big-title">Handoff Contract</h1>
+            <p class="muted">Contract only — no external system contacted. This page defines and validates the internal packet LegalEase OS may later hand off to the separate Partner Journey OS.</p>
+          </div>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button class="primary" type="button" onclick="generateHandoffContractPreview()">Generate Handoff Contract Preview</button>
+          </div>
+        </div>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Validation Status</h2><span class="badge \${validation.valid ? "good" : "warn"}">\${esc(validation.valid ? "Valid" : "Needs review")}</span></div>
+          <p class="muted">Target system: Partner Journey OS. Source system: LegalEase OS. Internal-only and review-only.</p>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Contract version</h3><ul><li>\${esc(handoffContractVersion)}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Required fields count</h3><ul><li>\${esc(status.required_fields_count || validation.required_fields_count)}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Missing fields count</h3><ul><li>\${esc(status.missing_fields_count || validation.missing_fields_count)}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Latest packet validation status</h3><ul><li>\${esc(plainOperatorState(status.latest_validation_result || validation.status))}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Live gates</h3><ul><li>\${esc(packet.live_gates_count)}</li></ul></section>
+            <section class="operating-memory-tile"><h3>No external actions</h3><ul><li>\${esc(packet.no_external_actions_confirmation ? "Confirmed" : "Not confirmed")}</li></ul></section>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Required Schema Fields</h2><span class="badge info">Top level, partner data, artifacts</span></div>
+          <div class="memory-evidence-grid">
+            <article class="memory-history-card"><strong>Handoff Packet Schema</strong><p>\${handoffContractRequiredTopLevelFields.map(fieldPill).join(" ")}</p></article>
+            <article class="memory-history-card"><strong>Partner Data</strong><p>\${handoffContractRequiredPartnerFields.map(fieldPill).join(" ")}</p><span class="muted">Unknown fields must stay null, TBD, or review_required. Contract validation fails until required partner data is confirmed.</span></article>
+            <article class="memory-history-card"><strong>Approved Artifacts</strong><p>\${handoffContractRequiredArtifactTypes.map(fieldPill).join(" ")}</p></article>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Current RCAP Packet Preview</h2><span class="badge info">\${esc(packet.partner_name || "RCAP")}</span></div>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Partner</h3><ul><li>\${esc(packet.partner_name)} · \${esc(packet.partner_slug)}</li><li>Organization type: \${esc(packet.partner_data?.organization_type || "TBD")}</li><li>Primary contact: \${esc(packet.partner_data?.primary_contact_name || "review_required")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Readiness and Blockers</h3><ul><li>Approved artifacts: \${esc((packet.approved_artifacts || []).length)}</li><li>Handoff ready artifacts: \${esc((packet.handoff_ready_artifacts || []).length)}</li><li>Blocked artifacts: \${esc((packet.blocked_artifacts || []).length)}</li><li>Needs revision: \${esc((packet.revision_required_artifacts || []).length)}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Next manual action</h3><ul><li>\${esc(packet.next_manual_action || "Review validation results.")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Manual approval</h3><ul><li>Status: \${esc(plainOperatorState(packet.manual_approval_status || "missing"))}</li><li>Approved by: \${esc(packet.approved_by || "Not approved")}</li><li>Approved at: \${esc(formatDateTime(packet.approved_at) || "Not approved")}</li></ul></section>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Validation Findings</h2><span class="badge \${validation.valid ? "good" : "warn"}">\${esc(validation.status)}</span></div>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Missing fields</h3><ul>\${listItems(validation.missing_fields)}</ul></section>
+            <section class="operating-memory-tile"><h3>Blockers</h3><ul>\${listItems(validation.blockers)}</ul></section>
+            <section class="operating-memory-tile"><h3>Required approvals</h3><ul>\${listItems(validation.required_approvals)}</ul></section>
+            <section class="operating-memory-tile"><h3>Safety failures</h3><ul>\${listItems(validation.safety_failures)}</ul></section>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Approved Artifacts</h2><span class="badge info">\${esc((packet.artifacts || []).length)} artifact(s)</span></div>
+          <div class="memory-evidence-grid">\${artifactRows || '<div class="empty">No contract artifacts available yet.</div>'}</div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Read-only JSON Preview</h2><span class="badge info">Redacted</span></div>
+          <p class="muted">Internal-only preview. Contains no tokens, API keys, service role keys, or external send action.</p>
+          <pre class="json-preview"><code>\${esc(jsonPreview)}</code></pre>
+        </section>
+      </section>\`;
+    }
+
     function dataIntegrityIssueHtml(items = [], emptyText = "No warnings recorded.") {
       return \`<div class="memory-evidence-grid">\${items.map(item => \`<article class="memory-history-card"><strong>\${esc(item.collection || "state")}: \${esc(item.severity || "warning")}</strong><span class="muted">\${esc(item.message || "Needs review.")}</span></article>\`).join("") || \`<div class="empty">\${esc(emptyText)}</div>\`}</div>\`;
     }
@@ -18257,6 +18355,7 @@ function htmlShell() {
             \${cockpitOsHealthHtml()}
             \${cockpitSmokeTestHtml()}
             \${cockpitEvidenceRoomHtml()}
+            \${cockpitHandoffContractHtml()}
             \${cockpitOperatorManualHtml()}
             \${cockpitDataIntegrityHtml()}
             \${cockpitOperatorSearchHtml()}
@@ -18665,7 +18764,7 @@ function htmlShell() {
         { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Move partner programs from lead to paid onboarding, reports, and renewal proof.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"]] },
         { id:"production", eyebrow:"Production", title:"Production", copy:"Turn ideas into approved assets without losing the approval-first safety model.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
         { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Evidence Room","evidence-room"],["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
-        { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Today Tasks","tasks-today"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Operator Manual","operator-manual"],["Data Integrity","data-integrity"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
+        { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Today Tasks","tasks-today"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Handoff Contract","handoff-contract"],["Operator Manual","operator-manual"],["Data Integrity","data-integrity"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
       ];
       return configs.find(item => item.id === section) || configs[0];
     }
@@ -19839,7 +19938,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "operator-manual", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -19864,6 +19963,7 @@ function htmlShell() {
         \${osHealthPageHtml(pageClass)}
         \${smokeTestPageHtml(pageClass)}
         \${evidenceRoomPageHtml(pageClass)}
+        \${handoffContractPageHtml(pageClass)}
         \${operatorManualPageHtml(pageClass)}
         \${dataIntegrityPageHtml(pageClass)}
         \${operatorSearchPageHtml(pageClass)}
@@ -20102,7 +20202,7 @@ function htmlShell() {
 
     function navSectionForPage(pageId = "overview") {
       if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "operator-search", "conversation-notes"].includes(pageId)) return "today";
-      if (["data-integrity", "operator-manual"].includes(pageId)) return "more";
+      if (["data-integrity", "operator-manual", "handoff-contract"].includes(pageId)) return "more";
       if (["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId)) return "more";
       if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
@@ -20597,6 +20697,19 @@ function htmlShell() {
         render();
         return result.message || "Internal handoff packet generated. No external system contacted.";
       }, "Could not generate RCAP handoff packet.");
+    }
+
+    async function generateHandoffContractPreview() {
+      await cooAction(async () => {
+        const result = await api("/api/production-activation/rcap/handoff-contract-preview", {
+          method:"POST",
+          body:JSON.stringify({})
+        });
+        state = result.state;
+        render();
+        location.hash = "handoff-contract";
+        return result.message || "Handoff contract preview generated. No external system contacted.";
+      }, "Could not generate Handoff Contract Preview.");
     }
 
     async function saveOperatingMemory() {
@@ -22957,6 +23070,24 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not generate RCAP handoff packet." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/production-activation/rcap/handoff-contract-preview" && request.method === "POST") {
+    try {
+      const currentState = await store.readState();
+      const activated = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      const result = generatePartnerJourneyHandoffContractPreview(activated.state, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Handoff contract preview generated. No external system contacted.",
+        preview: result.preview,
+        validation: result.validation,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not generate Handoff Contract Preview." }, 400);
     }
     return;
   }
