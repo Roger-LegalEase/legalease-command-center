@@ -13334,6 +13334,9 @@ function htmlShell() {
     let state = null;
     let supabaseHealth = null;
     let backups = [];
+    let safeBootActive = false;
+    let fullStateLoaded = false;
+    let stateFetchDiagnostics = null;
     let reviewIndex = 0;
     let queueOriginFilter = "all";
     let queueReadinessFilter = "all";
@@ -13394,6 +13397,124 @@ function htmlShell() {
       if (!app) return;
       const safeMessage = String(message || "Refresh the app and try again.").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[char]));
       app.innerHTML = '<div class="panel empty"><div class="eyebrow">Render issue</div><h1 class="big-title">The app did not finish rendering.</h1><p class="big-copy">' + safeMessage + '</p><div class="card-actions" style="justify-content:center;margin-top:14px"><button class="primary" onclick="location.reload()">Reload app</button><button onclick="window.load && window.load()">Retry data load</button><a class="button-link" href="#queue">Open Queue</a></div></div>';
+    }
+    function safeBootFallbackState(reason = "state_unavailable") {
+      return hydrateStatePayload({
+        persistence:"safe_boot",
+        settings:{},
+        runtime:{ livePostingGates:{ linkedin:{ enabled:false }, facebook:{ enabled:false }, instagram:{ enabled:false }, x:{ enabled:false } } },
+        safeBoot:{ active:true, reason, generatedAt:new Date().toISOString() },
+        liveGatesCount:0
+      }, "safe-boot");
+    }
+    function safeDiagnosticRows(details = {}) {
+      const rows = [
+        ["Failed module", details.module || "state-fetch"],
+        ["Endpoint", details.endpoint || "unknown"],
+        ["Status", details.status || "unknown"],
+        ["Content type", details.contentType || "unknown"],
+        ["Auth token present", details.authTokenPresent ? "Yes" : "No"],
+        ["Fell back to safe shell", details.fellBackToSafeShell ? "Yes" : "No"],
+        ["Live gates", "0"]
+      ];
+      if (details.bodyPreview) rows.push(["Body preview", String(details.bodyPreview).slice(0, 180)]);
+      return rows.map(([label, value]) => \`<div class="metric-row"><span>\${esc(label)}</span><strong>\${esc(value)}</strong></div>\`).join("");
+    }
+    function renderSafeBootShell(details = {}) {
+      safeBootActive = true;
+      fullStateLoaded = false;
+      stateFetchDiagnostics = { ...(stateFetchDiagnostics || {}), ...(details || {}), fellBackToSafeShell:true };
+      state = safeBootFallbackState(details.reason || details.module || "state_fetch_failed");
+      const app = document.querySelector("#app");
+      if (!app) return;
+      const message = details.message || "Full state did not load. The OS is running in Safe Mode so you can verify auth, health, and live gates without enabling actions.";
+      app.innerHTML = \`
+        <section id="safe-mode" class="page-section active">
+          <div class="panel hero-panel">
+            <div class="eyebrow">Safe Mode</div>
+            <h1 class="big-title">LegalEase loaded a safe shell.</h1>
+            <p class="big-copy">\${esc(message)}</p>
+            <div class="metric-table" style="margin-top:14px">\${safeDiagnosticRows(stateFetchDiagnostics)}</div>
+            <div class="card-actions" style="margin-top:14px">
+              <button class="primary" type="button" onclick="retryFullStateLoad()">Retry Full Load</button>
+              <button type="button" onclick="location.hash='safe-mode'; fetchSafeModeHealth()">Refresh Server Health</button>
+              <button type="button" onclick="lockCommandCenter()">Sign Out / Clear Session</button>
+            </div>
+          </div>
+          <div class="grid two section">
+            <section class="panel">
+              <div class="eyebrow">Owner/auth status</div>
+              <h2>Protected shell is available</h2>
+              <p class="muted">If you can see this page in hosted mode, the shell request passed owner-token protection. Mutating actions stay unavailable until the full state loads.</p>
+              <div class="metric-table">
+                <div class="metric-row"><span>Auth token present</span><strong>\${stateFetchDiagnostics.authTokenPresent ? "Yes" : "No"}</strong></div>
+                <div class="metric-row"><span>Protected actions</span><strong>Disabled in Safe Mode</strong></div>
+                <div class="metric-row"><span>Live gates: 0</span><strong>Confirmed safe default</strong></div>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="eyebrow">Server health</div>
+              <h2>Public-safe health check</h2>
+              <div id="safeModeHealth" class="metric-table"><div class="metric-row"><span>/api/health</span><strong>Checking...</strong></div></div>
+              <div class="card-actions" style="margin-top:12px">
+                <a class="button-link" href="#os-health">OS Health link</a>
+                <a class="button-link" href="#smoke-test">Open Smoke Test</a>
+                <a class="button-link" href="#queue">Open Queue</a>
+              </div>
+            </section>
+          </div>
+          <section class="panel section">
+            <div class="eyebrow">Diagnostic</div>
+            <h2>State load failed without taking the app down</h2>
+            <p class="muted">Use Retry Full Load after Render finishes deploying or after clearing a stale session. Optional boot requests cannot crash this shell.</p>
+            <pre class="code-block">\${esc(JSON.stringify(stateFetchDiagnostics, null, 2))}</pre>
+          </section>
+        </section>
+      \`;
+      fetchSafeModeHealth();
+    }
+    function showSafeBootShell(message, moduleName = "state-fetch", error = {}) {
+      const details = {
+        module:moduleName,
+        message:String(message || error.message || "State fetch failed."),
+        endpoint:error.endpoint || "/api/state",
+        status:error.status || "unknown",
+        contentType:error.contentType || "unknown",
+        bodyPreview:error.bodyPreview || "",
+        authTokenPresent:Boolean(error.authTokenPresent || authSessionPresent()),
+        fellBackToSafeShell:true,
+        reason:moduleName
+      };
+      if (window.__LE_BOOT.timeout) clearTimeout(window.__LE_BOOT.timeout);
+      window.__LE_BOOT.ready = true;
+      window.__LE_BOOT.stage = "safe-mode";
+      renderSafeBootShell(details);
+    }
+    async function fetchSafeModeHealth() {
+      const target = document.querySelector("#safeModeHealth");
+      if (!target) return;
+      try {
+        const response = await fetch("/api/health", { credentials:"same-origin" });
+        const contentType = response.headers?.get?.("content-type") || "";
+        const text = await response.text();
+        const payload = contentType.includes("json") && text ? JSON.parse(text) : {};
+        const liveGates = Number.isFinite(Number(payload.liveGatesCount)) ? Number(payload.liveGatesCount) : 0;
+        target.innerHTML = [
+          ["Status", response.ok ? "Reachable" : "HTTP " + response.status],
+          ["Supabase DB", payload.supabaseDbConnected ? "Connected" : payload.supabaseDbConfigured ? "Configured, not connected" : "Not configured"],
+          ["Supabase Storage", payload.supabaseStorageConnected ? "Connected" : payload.supabaseStorageConfigured ? "Configured, not connected" : "Not configured"],
+          ["OpenAI", payload.openAIConfigured ? "Configured" : "Not configured"],
+          ["Live gates", String(liveGates)]
+        ].map(([label, value]) => \`<div class="metric-row"><span>\${esc(label)}</span><strong>\${esc(value)}</strong></div>\`).join("");
+      } catch (error) {
+        target.innerHTML = \`<div class="metric-row"><span>/api/health</span><strong>\${esc(error.message || "Unavailable")}</strong></div><div class="metric-row"><span>Live gates</span><strong>0</strong></div>\`;
+      }
+    }
+    function retryFullStateLoad() {
+      safeBootActive = false;
+      fullStateLoaded = false;
+      stateFetchDiagnostics = null;
+      window.load && window.load();
     }
     const platforms = ${JSON.stringify(platforms)};
     const visualBuckets = ${JSON.stringify(visualBuckets)};
@@ -13484,7 +13605,9 @@ function htmlShell() {
         error.message || "State fetch failed.",
         "Endpoint: " + (error.endpoint || "unknown"),
         "Status: " + (error.status || "unknown"),
-        "Content type: " + (error.contentType || "unknown")
+        "Content type: " + (error.contentType || "unknown"),
+        "Auth token present: " + (error.authTokenPresent ? "yes" : "no"),
+        "Fell back to safe shell: " + (error.fellBackToSafeShell ? "yes" : "no")
       ];
       if (error.parseError) parts.push("JSON parse error: " + error.parseError);
       if (error.payload?.missingField) parts.push("Missing field: " + error.payload.missingField);
@@ -13543,6 +13666,13 @@ function htmlShell() {
         return "";
       }
     }
+    function authSessionPresent() {
+      try {
+        return Boolean(storedOwnerToken() || /(?:^|;\\s*)leos_session=/.test(document.cookie || ""));
+      } catch {
+        return Boolean(storedOwnerToken());
+      }
+    }
     function clearOwnerToken() {
       try { localStorage.removeItem(ownerTokenStorageKey); } catch {}
       try { sessionStorage.removeItem(ownerTokenStorageKey); } catch {}
@@ -13573,9 +13703,9 @@ function htmlShell() {
         const controller = typeof AbortController === "function" ? new AbortController() : null;
         const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
         let response;
+        const token = storedOwnerToken();
         try {
           const headers = { "content-type": "application/json", ...(requestOptions.headers || {}) };
-          const token = storedOwnerToken();
           if (token && !headers.Authorization && !headers.authorization) headers.Authorization = "Bearer " + token;
           requestOptions.headers = headers;
           response = await fetch(path, { credentials:"same-origin", ...requestOptions, signal: controller?.signal });
@@ -13591,6 +13721,7 @@ function htmlShell() {
             error.status = response.status;
             error.endpoint = path;
             error.contentType = contentType;
+            error.authTokenPresent = Boolean(token || authSessionPresent());
             error.payload = parsed;
             throw error;
           } catch (parseError) {
@@ -13599,6 +13730,7 @@ function htmlShell() {
             error.status = response.status;
             error.endpoint = path;
             error.contentType = contentType;
+            error.authTokenPresent = Boolean(token || authSessionPresent());
             error.bodyPreview = text.slice(0, 240);
             throw error;
           }
@@ -13610,6 +13742,7 @@ function htmlShell() {
           error.status = response.status;
           error.endpoint = path;
           error.contentType = contentType;
+          error.authTokenPresent = Boolean(token || authSessionPresent());
           error.parseError = parseError.message || String(parseError);
           error.bodyPreview = text.slice(0, 240);
           throw error;
@@ -13628,6 +13761,7 @@ function htmlShell() {
             error.status = xhr.status;
             error.endpoint = path;
             error.contentType = xhr.getResponseHeader("content-type") || "";
+            error.authTokenPresent = Boolean(token || authSessionPresent());
             error.bodyPreview = String(xhr.responseText || "").slice(0, 240);
             reject(error);
             return;
@@ -13638,6 +13772,7 @@ function htmlShell() {
             error.status = xhr.status;
             error.endpoint = path;
             error.contentType = xhr.getResponseHeader("content-type") || "";
+            error.authTokenPresent = Boolean(token || authSessionPresent());
             error.parseError = error.message || String(error);
             error.bodyPreview = String(xhr.responseText || "").slice(0, 240);
             reject(error);
@@ -13646,11 +13781,13 @@ function htmlShell() {
         xhr.onerror = () => {
           const error = new Error("Network request failed");
           error.endpoint = path;
+          error.authTokenPresent = Boolean(token || authSessionPresent());
           reject(error);
         };
         xhr.ontimeout = () => {
           const error = new Error("Request timed out");
           error.endpoint = path;
+          error.authTokenPresent = Boolean(token || authSessionPresent());
           reject(error);
         };
         xhr.send(requestOptions.body || null);
@@ -13679,16 +13816,35 @@ function htmlShell() {
     }
 
     async function load() {
+      if (String(location.hash || "").replace("#", "") === "safe-mode") {
+        renderSafeBootShell({
+          module:"safe-mode",
+          endpoint:"/api/health",
+          status:"not_requested",
+          contentType:"application/json",
+          authTokenPresent:Boolean(authSessionPresent()),
+          message:"Safe Mode opened without requiring full app state.",
+          fellBackToSafeShell:true,
+          reason:"manual_safe_mode"
+        });
+        if (window.__LE_BOOT.timeout) clearTimeout(window.__LE_BOOT.timeout);
+        window.__LE_BOOT.ready = true;
+        return;
+      }
       window.__LE_BOOT.stage = "state-fetch";
       try {
         state = hydrateStatePayload(await api("/api/state", { timeoutMs: 5000 }), "state-fetch");
+        safeBootActive = false;
+        fullStateLoaded = true;
+        stateFetchDiagnostics = null;
         window.__LE_BOOT.stage = "first-render";
         try { render(); } catch (renderError) { showRenderFailure(renderError.message || "Unknown render error", "first-render"); throw renderError; }
         window.__LE_BOOT.ready = true;
         if (window.__LE_BOOT.timeout) clearTimeout(window.__LE_BOOT.timeout);
       } catch (error) {
         if (handleStateFetchAuthFailure(error)) return;
-        showRenderFailure(formatStateFetchError(error), "state-fetch");
+        error.fellBackToSafeShell = true;
+        showSafeBootShell(formatStateFetchError(error), "state-fetch", error);
         return;
       }
       Promise.all([
@@ -20335,7 +20491,21 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = normalizedPage === "safe-mode" || ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      if (pageId === "safe-mode") {
+        renderSafeBootShell({
+          ...(stateFetchDiagnostics || {}),
+          module:"safe-mode",
+          endpoint:"/api/health",
+          status:"not_requested",
+          contentType:"application/json",
+          authTokenPresent:Boolean(authSessionPresent()),
+          message:"Safe Mode opened without requiring full app state.",
+          fellBackToSafeShell:true,
+          reason:"manual_safe_mode"
+        });
+        return;
+      }
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -23303,6 +23473,15 @@ function htmlShell() {
     window.addEventListener("hashchange", () => {
       try {
         closeNavMenus();
+        if (String(location.hash || "").replace("#", "") === "safe-mode" || (safeBootActive && !fullStateLoaded)) {
+          renderSafeBootShell({
+            ...(stateFetchDiagnostics || {}),
+            module:String(location.hash || "").replace("#", "") || "safe-mode",
+            message:"Safe Mode is active until the full state loads.",
+            fellBackToSafeShell:true
+          });
+          return;
+        }
         window.__LE_BOOT.stage = "route-render";
         render();
       } catch (error) {

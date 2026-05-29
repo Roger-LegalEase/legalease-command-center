@@ -104,7 +104,7 @@ try {
   assert.match(unlocked.text, /error\.status === 401 \|\| error\.status === 403/, "Optional boot 401/403 should be treated as auth-required, not fatal.");
   assert.match(unlocked.text, /Endpoint: /, "State-fetch diagnostics should include endpoint.");
   assert.match(unlocked.text, /Status: /, "State-fetch diagnostics should include status.");
-  assert.match(unlocked.text, /showRenderFailure\(formatStateFetchError\(error\), "state-fetch"\)/, "Unexpected state-fetch failures should show detailed diagnostics.");
+  assert.match(unlocked.text, /showSafeBootShell\(formatStateFetchError\(error\), "state-fetch", error\)/, "Unexpected state-fetch failures should show detailed diagnostics and fall back to safe shell.");
   assert.match(unlocked.text, /<button onclick="window\.load && window\.load\(\)">Retry data load<\/button>/, "Retry data load should call the same load/api path.");
   assert.match(unlocked.text, /<a class="button-link" href="#queue">Open Queue<\/a>/, "Open Queue should remain a hash link and not issue a protected fetch by itself.");
 } finally {

@@ -13,7 +13,7 @@ assert.match(server, /function rcapReviewWorkspaceHtml\(pageClass\)/, "RCAP revi
 assert.match(server, /Review RCAP Artifacts/, "Cockpit should link to the RCAP review workspace.");
 assert.match(server, /location\.hash='production-activation-rcap'/, "Cockpit review button should navigate to the workspace.");
 
-const routeList = server.match(/const pageId = \[[\s\S]*?\]\.includes\(normalizedPage\)/)?.[0] || "";
+const routeList = server.match(/const pageId = [\s\S]*?\]\.includes\(normalizedPage\)/)?.[0] || "";
 assert.match(routeList, /"production-activation-rcap"/, "RCAP review workspace should be included in the app route allow-list.");
 
 assert.match(server, /\$\{rcapReviewWorkspaceHtml\(pageClass\)\}/, "RCAP review workspace should render from the app shell.");
