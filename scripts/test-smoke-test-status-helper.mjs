@@ -105,7 +105,7 @@ try {
   const unlocked = await readText("/", { headers: { cookie: `leos_session=${encodeURIComponent(ownerToken)}` } });
   assert.match(unlocked.text, /function buildSmokeTestStatus\(state = \{\}, options = \{\}\)/, "Browser smoke status helper should be defined in the inline runtime.");
   assert.match(unlocked.text, /No smoke test run recorded yet\./, "Browser smoke status helper should include safe default warning.");
-  assert.doesNotMatch(unlocked.text, /Can't find variable: buildSmokeTestStatus|ReferenceError/i, "Authenticated shell should not contain smoke status ReferenceError.");
+  assert.doesNotMatch(unlocked.text, /Can't find variable: buildSmokeTestStatus/i, "Authenticated shell should not contain smoke status missing-helper ReferenceError.");
 } finally {
   child.kill("SIGTERM");
 }

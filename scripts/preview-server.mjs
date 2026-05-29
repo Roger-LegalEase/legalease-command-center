@@ -17754,6 +17754,427 @@ function htmlShell() {
       };
     }
 
+    const noExternalActionsConfirmation = "No emails sent, no posts published, no partner pages published, no dashboards activated, no Partner Journey calls, no external systems contacted.";
+    const handoffContractVersion = "partner-journey-handoff-contract-v1";
+    const handoffContractRequiredTopLevelFields = ["handoff_packet_id","handoff_contract_version","generated_at","generated_by","source_system","target_system","partner_id","partner_slug","partner_name","program_id","workflow_key","review_status","handoff_ready","manual_approval_status","approved_by","approved_at","live_gates_count","no_external_actions_confirmation"];
+    const handoffContractRequiredPartnerFields = ["partner_id","partner_slug","partner_name","organization_type","primary_contact_name","primary_contact_email","program_geography","package_or_program_tier","missing_partner_details"];
+    const handoffContractRequiredArtifactTypes = ["proposal_draft","partner_page_draft","dashboard_readiness","weekly_report_draft","evidence_note","manual_review_checklist","internal_handoff_packet"];
+
+    function list(value) {
+      return Array.isArray(value) ? value : [];
+    }
+
+    function clientLiveGatesCount(inputState = state) {
+      return Object.values(inputState.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length;
+    }
+
+    function firstPresent(item = {}, fields = []) {
+      for (const field of fields) {
+        const value = item?.[field];
+        if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+      }
+      return "";
+    }
+
+    function latestRecordDate(item = {}) {
+      return firstPresent(item, ["updated_at", "updatedAt", "generated_at", "generatedAt", "created_at", "createdAt", "timestamp", "collectionDate", "lastUpdated", "date"]);
+    }
+
+    function normalizeRecordStatus(value = "") {
+      return String(value || "not_recorded").toLowerCase().replace(/\s+/g, "_");
+    }
+
+    function daysBetweenDates(leftValue = "", rightValue = "") {
+      const left = new Date(leftValue || new Date().toISOString()).getTime();
+      const right = new Date(rightValue || "").getTime();
+      if (Number.isNaN(left) || Number.isNaN(right)) return Number.POSITIVE_INFINITY;
+      return Math.floor((left - right) / 86400000);
+    }
+
+    function stableClientId(prefix = "item", value = "", index = 0) {
+      return prefix + "-" + String(value || index).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 90);
+    }
+
+    function clientEvidenceSource(item = {}, fallback = "Operating Proof") {
+      const text = [item.title, item.reportTitle, item.evidenceTitle, item.key, item.id, item.source, item.section, item.category, item.type, item.artifactType].filter(Boolean).join(" ");
+      if (/rcap.*production|production.*activation/i.test(text)) return "RCAP Production Activation";
+      if (/rcap.*review|review.*workspace/i.test(text)) return "RCAP Review Workspace";
+      if (/approval|review_state|needs_revision|handoff_ready/i.test(text)) return "Review Approval Engine";
+      if (/handoff/i.test(text)) return "Handoff Readiness";
+      if (/daily operating loop/i.test(text)) return "Daily Operating Loop";
+      if (/operating memory/i.test(text)) return "Operating Memory";
+      if (/daily closeout|tomorrow plan/i.test(text)) return "Daily Closeout";
+      if (/task/i.test(text)) return "Task Management";
+      if (/partner program|proposal|partner page|dashboard|weekly report|final report/i.test(text)) return "Partner Program Engine";
+      if (/soc ?2|readiness/i.test(text)) return "SOC 2 Readiness";
+      return fallback;
+    }
+
+    function clientProofCategory(item = {}, source = "") {
+      const text = [source, item.title, item.reportTitle, item.evidenceTitle, item.section, item.category, item.itemType, item.reportType, item.type, item.notes].filter(Boolean).join(" ").toLowerCase();
+      if (/soc ?2|readiness|compliance|control|audit/.test(text)) return /audit/.test(text) ? "audit" : "compliance";
+      if (/investor|diligence|data room|traction|revenue|pipeline/.test(text)) return "investor";
+      if (/partner|rcap|proposal|dashboard|weekly report|final report|handoff/.test(text)) return "partner";
+      if (/audit|activity|event|history/.test(text)) return "audit";
+      return "operating";
+    }
+
+    function clientRouteForEvidenceSource(source = "", item = {}) {
+      if (/RCAP|Handoff|Review Approval/i.test(source)) return "production-activation-rcap";
+      if (/Data Room/i.test(source)) return "dataroom";
+      if (/Reports/i.test(source) || /report/i.test(item.reportType || item.type || "")) return "reports";
+      if (/SOC 2/i.test(source)) return "soc2-evidence";
+      if (/Task/i.test(source)) return "tasks";
+      if (/Operating Memory/i.test(source)) return "operating-memory";
+      if (/Daily Closeout/i.test(source)) return "daily-closeout";
+      return "evidence-room";
+    }
+
+    function clientEvidenceItem(raw = {}, defaults = {}, index = 0) {
+      const source = defaults.source || clientEvidenceSource(raw, defaults.fallbackSource || "Operating Proof");
+      const title = firstPresent(raw, ["title", "reportTitle", "evidenceTitle", "artifactName", "action", "eventType"]) || defaults.title || "Evidence item";
+      const id = String(firstPresent(raw, ["id", "key"]) || stableClientId(defaults.type || "evidence", title, index));
+      const category = defaults.proof_category || clientProofCategory(raw, source);
+      return {
+        id,
+        title,
+        type:normalizeRecordStatus(defaults.type || firstPresent(raw, ["type", "itemType", "reportType", "artifactType", "resourceType"]) || "evidence"),
+        source,
+        linked_workflow:defaults.linked_workflow || raw.linked_workflow || raw.workflow || raw.activationKey || raw.reportType || "",
+        linked_partner_program:raw.partnerSlug || raw.partnerId || raw.programSlug || raw.programId || defaults.linked_partner_program || "",
+        date:latestRecordDate(raw),
+        status:normalizeRecordStatus(firstPresent(raw, ["status", "evidenceStatus", "overall_status"]) || defaults.status || "recorded"),
+        review_state:normalizeRecordStatus(raw.review_state || raw.reviewState || ""),
+        proof_value:raw.proofValue || raw.diligenceValue || raw.proofScore || defaults.proof_value || category,
+        route:defaults.route || clientRouteForEvidenceSource(source, raw),
+        tags:[...new Set(list(raw.tags).concat([category, raw.status, raw.review_state, raw.section, raw.category, raw.controlArea].filter(Boolean).map(String)))],
+        proof_category:category,
+        summary:firstPresent(raw, ["summary", "notes", "reviewNotes", "nextAction", "detail", "description"]) || defaults.summary || "",
+        missing_details:list(raw.missing_details || raw.missingDetails || raw.missingExternalDetailsList),
+        next_manual_action:firstPresent(raw, ["nextManualAction", "nextAction", "suggestedAction"]) || defaults.next_manual_action || "Review internally before using externally.",
+        export_eligibility:defaults.export_eligibility || (category === "audit" ? "internal_review_only" : "review_only")
+      };
+    }
+
+    function groupEvidenceItems(items = [], field = "source") {
+      const map = new Map();
+      for (const item of list(items)) {
+        const key = item[field] || "Uncategorized";
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(item);
+      }
+      return [...map.entries()].map(([key, values]) => ({ [field]:key, count:values.length, items:values }));
+    }
+
+    function clientDataRoomCategory(item = {}) {
+      const text = [item.section, item.category, item.itemType, item.title, item.notes, item.proof_category].filter(Boolean).join(" ").toLowerCase();
+      if (/rcap/.test(text)) return "RCAP proof";
+      if (/soc ?2|readiness|compliance|security/.test(text)) return "SOC 2 readiness";
+      if (/partner|pilot|campaign|proposal|dashboard/.test(text)) return "partner proof";
+      if (/investor|diligence|traction|revenue|pipeline|acquisition/.test(text)) return "investor proof";
+      return "operating proof";
+    }
+
+    function buildEvidenceIndex(inputState = state, options = {}) {
+      let index = 0;
+      const items = [];
+      const add = (collection, defaults) => list(collection).forEach(item => items.push(clientEvidenceItem(item, defaults, index++)));
+      add(inputState.evidencePackNotes, { source:"RCAP Production Activation", type:"evidence_note", route:"reports" });
+      add(inputState.reports, { type:"report", route:"reports" });
+      add([...(list(inputState.dataRoomItems)), ...(list(inputState.dataRoom))], { source:"Data Room", type:"data_room_item", route:"dataroom" });
+      add(inputState.soc2Evidence, { source:"SOC 2 Readiness", type:"readiness_artifact", route:"soc2-evidence", proof_category:"compliance" });
+      add(inputState.partnerProgramArtifacts, { type:"partner_program_artifact" });
+      add(inputState.handoffContractPreviews, { source:"Partner Journey Handoff Contract", type:"handoff_contract_preview", route:"handoff-contract", proof_category:"operating" });
+      add(inputState.handoffPackets, { source:"Handoff Readiness", type:"handoff_packet", route:"production-activation-rcap", proof_category:"partner" });
+      add(inputState.productionActivationRuns, { source:"RCAP Production Activation", type:"production_activation_run", route:"production-activation-rcap", proof_category:"partner" });
+      add(inputState.operatingMemory, { source:"Operating Memory", type:"operating_memory", route:"operating-memory", proof_category:"operating" });
+      add(inputState.dailyCloseouts, { source:"Daily Closeout", type:"daily_closeout", route:"daily-closeout", proof_category:"operating" });
+      add(inputState.tasks, { source:"Task Management", type:"task", route:"tasks", proof_category:"operating" });
+      add(list(inputState.auditHistory).slice(0, 80), { source:"Audit History", type:"audit_history", route:"os-health", proof_category:"audit" });
+      add(list(inputState.activityEvents).slice(0, 80), { source:"Activity Events", type:"activity_event", route:"os-health", proof_category:"audit" });
+      const seen = new Set();
+      const unique = items.filter(item => {
+        const key = item.source + ":" + item.id;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+      const filters = key => [...new Set(unique.map(item => item[key]).filter(Boolean))].sort();
+      const dataRoomItems = unique.filter(item => item.source === "Data Room");
+      const dataRoomIndex = ["investor proof", "partner proof", "SOC 2 readiness", "operating proof", "RCAP proof"].map(category => {
+        const grouped = dataRoomItems.filter(item => clientDataRoomCategory(item).toLowerCase() === category.toLowerCase());
+        return { category, items:grouped, count:grouped.length };
+      });
+      return {
+        generated_at:options.now || new Date().toISOString(),
+        items:unique,
+        sources:groupEvidenceItems(unique, "source"),
+        data_room_index:dataRoomIndex,
+        filters:{ types:filters("type"), sources:filters("source"), statuses:filters("status"), review_states:filters("review_state"), partner_programs:filters("linked_partner_program"), proof_categories:filters("proof_category") }
+      };
+    }
+
+    function buildEvidenceOverview(inputState = state, options = {}) {
+      try {
+        const now = options.now || new Date().toISOString();
+        const index = buildEvidenceIndex(inputState, options);
+        const items = list(index.items);
+        const recent = items.filter(item => item.date && daysBetweenDates(now, item.date) <= 7);
+        const openReview = items.filter(item => ["review_required", "needs_revision", "blocked", "in_review"].includes(item.review_state) || ["draft", "ready_for_review"].includes(item.status));
+        const rcapCount = items.filter(item => /rcap/i.test([item.title, item.source, item.linked_partner_program, item.linked_workflow].join(" "))).length;
+        const partnerCount = items.filter(item => item.proof_category === "partner").length;
+        const soc2Count = items.filter(item => item.source === "SOC 2 Readiness" || /soc ?2/i.test(item.title)).length;
+        const warnings = [
+          !rcapCount ? "No RCAP proof has been indexed yet." : "",
+          !partnerCount ? "No partner proof has been indexed yet." : "",
+          !soc2Count ? "No SOC 2 readiness evidence has been indexed yet." : "",
+          !list(inputState.dataRoomItems).length ? "No Data Room artifacts are indexed yet." : "",
+          !recent.length ? "No evidence has been updated in the last 7 days." : "",
+          openReview.length ? openReview.length + " evidence item(s) still need review or revision." : ""
+        ].filter(Boolean);
+        const lastUpdate = items.map(item => item.date).filter(Boolean).sort().at(-1) || "";
+        return {
+          total_evidence_items:items.length,
+          totalEvidenceItems:items.length,
+          recent_evidence_items:recent.length,
+          recentEvidenceItems:recent.length,
+          open_review_items:openReview.length,
+          rcap_evidence_count:rcapCount,
+          rcapEvidenceCount:rcapCount,
+          partner_evidence_count:partnerCount,
+          partnerEvidenceCount:partnerCount,
+          soc2_readiness_evidence_count:soc2Count,
+          soc2ReadinessEvidenceCount:soc2Count,
+          data_room_item_count:list(inputState.dataRoomItems).length,
+          dataRoomItemCount:list(inputState.dataRoomItems).length,
+          report_count:list(inputState.reports).length,
+          reportCount:list(inputState.reports).length,
+          last_evidence_update:lastUpdate,
+          missing_proof_warnings:warnings,
+          missingProofWarnings:warnings,
+          stale_evidence_warnings:recent.length ? [] : ["Evidence has not been updated in the last 7 days."]
+        };
+      } catch (error) {
+        return {
+          total_evidence_items:0,
+          totalEvidenceItems:0,
+          recent_evidence_items:0,
+          recentEvidenceItems:0,
+          open_review_items:0,
+          rcap_evidence_count:0,
+          rcapEvidenceCount:0,
+          partner_evidence_count:0,
+          partnerEvidenceCount:0,
+          soc2_readiness_evidence_count:0,
+          soc2ReadinessEvidenceCount:0,
+          data_room_item_count:0,
+          dataRoomItemCount:0,
+          report_count:0,
+          reportCount:0,
+          last_evidence_update:"",
+          missing_proof_warnings:["Evidence overview unavailable or not generated yet."],
+          missingProofWarnings:["Evidence overview unavailable or not generated yet."],
+          stale_evidence_warnings:["Evidence overview unavailable or not generated yet."]
+        };
+      }
+    }
+
+    function latestEvidenceSummary(inputState = state) {
+      return list(inputState.evidenceSummaries).slice().sort((a, b) => String(b.updated_at || b.generated_at || "").localeCompare(String(a.updated_at || a.generated_at || "")))[0] || null;
+    }
+
+    function buildSmokeTestChecklist() {
+      const item = (group, label, route, expected) => ({ id:(group + "-" + label).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), label, route, expected, status:"not_tested", notes:"" });
+      const group = (name, rows) => ({ id:name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), name, items:rows.map(row => item(name, ...row)) });
+      return [
+        group("App Shell", [["Open Operator Cockpit","overview","Overview loads without render errors."],["Top nav works","overview","Top navigation opens usable sections."],["More menu works","more","More menu opens internal pages."],["No render-error screen","overview","No render-error fallback is visible."],["No horizontal overflow","overview","Page content fits viewport."],["Le-E pill/panel opens","overview","Bottom-right Le-E panel opens."],["Live gates show 0","os-health","Live gates count remains 0."]]),
+        group("Auth + Endpoint Safety", [["Owner-token auth active","os-health","Hosted owner-token protection remains active."],["Lock/sign out available","overview","Lock/sign out clears token."],["Protected APIs require owner token","os-health","Protected APIs reject missing and wrong token."],["/api/health is public-safe and scrubbed","os-health","Health response is public-safe and scrubbed."],["Forbidden actions remain blocked","os-health","External action guard blocks forbidden work."],["No secrets exposed","os-health","No secrets appear in HTML or API responses."]]),
+        group("Quick Capture + Capture Inbox", [["Quick Capture card renders","overview","Quick Capture is visible in cockpit."],["Capture with Le-E works","capture-inbox","Quick Capture saves internal review item."],["Capture Inbox route opens","capture-inbox","Capture Inbox renders."],["Capture can be marked reviewed","capture-inbox","Mark reviewed updates internal state."],["Capture can route to task","capture-inbox","Capture routes to Task internally."],["Capture can route to Operating Memory","capture-inbox","Capture routes to Operating Memory internally."],["Ignored capture does not influence rituals","capture-inbox","Ignored capture stays out of rituals."]]),
+        group("Tasks", [["#tasks opens","tasks","All Tasks page opens."],["#tasks-today opens","tasks-today","Today task view opens."],["#tasks-blocked opens","tasks-blocked","Blocked task view opens."],["#tasks-waiting opens","tasks-waiting","Waiting task view opens."],["#tasks-this-week opens","tasks-this-week","This Week task view opens."],["Task status actions are internal-only","tasks","Task updates do not call external systems."],["Blocked task requires blocker reason","tasks-blocked","Blocked status requires a reason."]]),
+        group("Daily Rituals", [["#morning-brief opens","morning-brief","Morning Brief route renders."],["Save Morning Brief works","morning-brief","Morning Brief saves internally."],["#evening-reflection opens","evening-reflection","Evening Reflection route renders."],["Save Evening Reflection works","evening-reflection","Evening Reflection saves internally."],["Source evidence renders","morning-brief","Source evidence appears in ritual pages."]]),
+        group("Operating Memory + Closeout", [["#operating-memory opens","operating-memory","Operating Memory route renders."],["Save Today's Operating Memory works","operating-memory","Operating Memory saves internally."],["#daily-closeout opens","daily-closeout","Daily Closeout route renders."],["Save Closeout works","daily-closeout","Daily Closeout saves internally."],["Generate Tomorrow Plan works","daily-closeout","Tomorrow Plan generates internally."],["Tomorrow Plan renders","daily-closeout","Tomorrow Plan is visible."]]),
+        group("Search + Health + Integrity", [["#operator-search opens","operator-search","Operator Search route renders."],["Search finds tasks/captures/RCAP artifacts","operator-search","Search index includes core records."],["Safe search actions appear","operator-search","Internal-only safe actions appear."],["Forbidden search actions do not appear","operator-search","External actions do not appear."],["#os-health opens","os-health","OS Health route renders."],["Refresh OS Health Snapshot works","os-health","OS Health refresh saves internally."],["#data-integrity opens","data-integrity","Data Integrity route renders."],["Integrity status renders","data-integrity","Integrity status is visible."],["No secret fields appear","data-integrity","Secret-like fields are scrubbed."]]),
+        group("RCAP Workflow", [["RCAP Production Activation card renders","overview","RCAP activation card is visible."],["#production-activation-rcap opens","production-activation-rcap","RCAP Review Workspace opens."],["Review Queue renders","production-activation-rcap","Review Queue is visible."],["Approval controls are internal-only","production-activation-rcap","Approval controls only update internal state."],["Handoff Readiness renders","production-activation-rcap","Handoff Readiness section is visible."],["Generate Internal Handoff Packet works internally only","production-activation-rcap","Internal packet generation does not contact external systems."],["No Partner Journey system is contacted","production-activation-rcap","Partner Journey systems are not called."]]),
+        group("Safety Confirmation", [["No emails sent","os-health","Email sending remains unavailable."],["No posts published","queue","Publishing remains blocked unless explicitly approved outside this smoke test."],["No partner pages published","partner-pages","Partner pages remain draft/review-only."],["No dashboards activated","partner-dashboards","Dashboards are not activated."],["No destructive restore","data-integrity","Restore dry-run only; destructive restore remains blocked."],["No live gates enabled","settings","Live gates are not enabled."],["Live gates remain 0","os-health","Live gates count is 0."]])
+      ];
+    }
+
+    function buildDataModelInventory() {
+      return ["captureInbox","tasks","conversationNotes","morningBriefs","eveningReflections","operatingMemory","dailyCloseouts","reviewStates","auditHistory","activityEvents","partnerPrograms","partnerProgramArtifacts","evidencePackNotes","reports","dataRoomItems","osHealthSnapshots","smokeTestRuns","roleAssignments","handoffPackets"].map(collection => ({
+        collection,
+        purpose:"Internal LegalEase OS state collection.",
+        storage_mode:"hybrid",
+        required_fields:["id"],
+        optional_fields:[],
+        stable_key_fields:["id","key"],
+        idempotency_rules:"Stable identifiers should not duplicate.",
+        audit_behavior:"Mutations should create auditHistory and activityEvents entries.",
+        related_routes:["#overview"],
+        related_tests:["scripts/test-state-integrity.mjs"],
+        duplicate_risk_level:"medium"
+      }));
+    }
+
+    function buildDataIntegritySnapshot(inputState = state, options = {}) {
+      const inventory = buildDataModelInventory();
+      const warnings = [];
+      for (const item of list(inputState.captureInbox)) {
+        for (const route of list(item.routed_to)) {
+          if (!["tasks", "conversationNotes", "operatingMemory", "morningBriefInputs", "eveningReflectionInputs", "evidenceNotes", "partnerUpdates", "ideas"].includes(route)) warnings.push({ severity:"warning", collection:"captureInbox", message:"Capture has unknown routed destination.", itemId:item.id || "" });
+        }
+      }
+      const liveGates = clientLiveGatesCount(inputState);
+      if (liveGates !== 0) warnings.push({ severity:"critical", collection:"runtime", message:"Live gates are not 0.", itemId:"livePostingGates" });
+      return {
+        id:"data-integrity-client-fallback",
+        generated_at:options.now || new Date().toISOString(),
+        last_integrity_check_time:options.now || new Date().toISOString(),
+        integrity_status:warnings.length ? "needs_attention" : "pass",
+        inventory,
+        errors:warnings.filter(item => item.severity === "critical"),
+        warnings,
+        duplicate_warnings:[],
+        missing_field_warnings:[],
+        latest_export_snapshot:null,
+        live_gates_count:liveGates,
+        no_external_actions_confirmation:noExternalActionsConfirmation
+      };
+    }
+
+    function clientArtifactTypeForKey(key = "") {
+      return {
+        "rcap-proposal-draft-v1":"proposal_draft",
+        "rcap-partner-page-draft-v1":"partner_page_draft",
+        "rcap-dashboard-readiness-v1":"dashboard_readiness",
+        "rcap-weekly-report-draft-v1":"weekly_report_draft",
+        "rcap-production-activation-evidence-v1":"evidence_note",
+        "rcap-manual-review-checklist-v1":"manual_review_checklist",
+        [rcapHandoffPacketArtifactKey]:"internal_handoff_packet"
+      }[key] || key;
+    }
+
+    function clientContractArtifact(def = {}, artifact = {}) {
+      const reviewState = artifact.review_state || "missing";
+      return {
+        artifact_id:artifact.id || artifact.key || def.key,
+        artifact_key:def.key,
+        artifact_type:clientArtifactTypeForKey(def.key),
+        title:artifact.title || def.title || def.key,
+        review_state:reviewState,
+        approval_status:reviewState === "approved" || reviewState === "handoff_ready" ? reviewState : reviewState === "blocked" || reviewState === "needs_revision" ? reviewState : "not_approved",
+        approved_at:["approved", "handoff_ready"].includes(reviewState) ? artifact.review_updated_at || artifact.updatedAt || artifact.generatedAt || null : null,
+        approved_by:["approved", "handoff_ready"].includes(reviewState) ? artifact.review_updated_by || null : null,
+        route:["weekly_report_draft", "evidence_note"].includes(clientArtifactTypeForKey(def.key)) ? "reports" : "production-activation-rcap",
+        summary:artifact.summary?.answer || artifact.summary || artifact.description || artifact.notes || "Internal RCAP handoff contract artifact.",
+        missing_details:[...list(artifact.missingDetails), ...list(artifact.missing_details), ...list(artifact.sections?.missingDetailsList), ...list(artifact.draftContent?.missingBrandContentAssets), ...list(artifact.launchBlockers)].filter(Boolean),
+        blocker_reason:artifact.blocker_reason || "",
+        revision_reason:artifact.revision_reason || ""
+      };
+    }
+
+    function buildPartnerJourneyHandoffContractPacket(inputState = state, options = {}) {
+      const partner = list(inputState.partners).find(item => item.slug === "rcap" || item.id === "partner-rcap") || {};
+      const program = list(inputState.partnerPrograms).find(item => item.slug === "rcap" || item.id === "partner-program-rcap") || {};
+      const readiness = rcapPartnerJourneyHandoffReadinessClient();
+      const missingPartnerDetails = rcapMissingPartnerDetailsClient();
+      const artifacts = rcapRequiredHandoffKeys.map(key => {
+        const def = rcapReviewDefinitions.find(item => item.key === key) || { key, title:key };
+        return clientContractArtifact(def, def ? rcapReviewArtifactFor(def) : {});
+      });
+      artifacts.push(clientContractArtifact({ key:rcapHandoffPacketArtifactKey, title:"Internal Handoff Packet" }, rcapHandoffPacketForState()));
+      return {
+        handoff_packet_id:"rcap-partner-journey-handoff-contract-preview-v1",
+        handoff_contract_version:handoffContractVersion,
+        generated_at:options.now || new Date().toISOString(),
+        generated_by:options.actor || "owner_token",
+        source_system:"legalease_os",
+        target_system:"partner_journey_os",
+        partner_id:partner.id || "partner-rcap",
+        partner_slug:partner.slug || "rcap",
+        partner_name:partner.name || "RCAP",
+        program_id:program.id || "partner-program-rcap",
+        workflow_key:"rcap-production-activation-v1",
+        review_status:readiness.ready ? "ready_for_manual_approval" : "not_ready",
+        handoff_ready:readiness.ready,
+        manual_approval_status:options.manual_approval_status || "missing",
+        approved_by:options.approved_by || null,
+        approved_at:options.approved_at || null,
+        live_gates_count:clientLiveGatesCount(inputState),
+        no_external_actions_confirmation:true,
+        partner_data:{
+          partner_id:partner.id || "partner-rcap",
+          partner_slug:partner.slug || "rcap",
+          partner_name:partner.name || "RCAP",
+          organization_type:partner.organization_type || partner.type || partner.partnerType || "TBD",
+          primary_contact_name:partner.primary_contact_name || partner.primaryContact || program.primaryContact || null,
+          primary_contact_email:partner.primary_contact_email || partner.email || null,
+          program_geography:program.jurisdiction || partner.program_geography || "TBD",
+          package_or_program_tier:program.packageTier || partner.package_or_program_tier || "TBD",
+          missing_partner_details:missingPartnerDetails
+        },
+        artifacts,
+        approved_artifacts:artifacts.filter(item => item.review_state === "approved").map(item => item.title),
+        handoff_ready_artifacts:artifacts.filter(item => item.review_state === "handoff_ready").map(item => item.title),
+        blocked_artifacts:artifacts.filter(item => item.review_state === "blocked").map(item => item.title),
+        revision_required_artifacts:artifacts.filter(item => item.review_state === "needs_revision").map(item => item.title),
+        review_required_artifacts:artifacts.filter(item => ["review_required", "in_review", "missing"].includes(item.review_state)).map(item => item.title),
+        missing_partner_details:missingPartnerDetails,
+        required_manual_approvals:["Roger manual approval"],
+        next_manual_action:readiness.next || "Review validation results."
+      };
+    }
+
+    function validatePartnerJourneyHandoffContract(packet = {}) {
+      const missingFields = handoffContractRequiredTopLevelFields.filter(field => packet[field] === undefined || packet[field] === null || packet[field] === "" || packet[field] === "TBD" || packet[field] === "review_required");
+      const missingPartner = handoffContractRequiredPartnerFields.filter(field => {
+        const value = packet.partner_data?.[field] ?? packet[field];
+        return value === undefined || value === null || value === "" || value === "TBD" || value === "review_required" || (Array.isArray(value) && field !== "missing_partner_details" && !value.length);
+      });
+      const blockers = [...list(packet.blocked_artifacts), ...list(packet.missing_partner_details)];
+      const revisions = list(packet.revision_required_artifacts);
+      const reviewRequired = list(packet.review_required_artifacts);
+      const approvals = packet.manual_approval_status === "approved" ? [] : ["Manual approval is missing."];
+      const safetyFailures = [];
+      if (Number(packet.live_gates_count || 0) !== 0) safetyFailures.push("Live gates count is not 0.");
+      if (packet.no_external_actions_confirmation !== true) safetyFailures.push("No external actions confirmation is false.");
+      const valid = !missingFields.length && !missingPartner.length && !blockers.length && !revisions.length && !reviewRequired.length && !approvals.length && !safetyFailures.length;
+      return { valid, status:valid ? "valid" : "invalid", missing_fields:[...missingFields, ...missingPartner.map(field => "partner_data." + field)], blockers, required_approvals:approvals, safety_failures:safetyFailures, required_fields_count:handoffContractRequiredTopLevelFields.length + handoffContractRequiredPartnerFields.length, missing_fields_count:missingFields.length + missingPartner.length };
+    }
+
+    function latestHandoffContractPreview(inputState = state) {
+      return list(inputState.handoffContractPreviews).slice().sort((a, b) => String(b.updated_at || b.generated_at || "").localeCompare(String(a.updated_at || a.generated_at || "")))[0] || null;
+    }
+
+    function redactHandoffContractJson(value) {
+      return JSON.parse(JSON.stringify(value || {}, (key, currentValue) => /secret|token|api[_-]?key|password|authorization|service[_-]?role/i.test(key) ? "[redacted]" : currentValue));
+    }
+
+    function handoffContractStatus(inputState = state) {
+      const latest = latestHandoffContractPreview(inputState);
+      const packet = latest?.packet || buildPartnerJourneyHandoffContractPacket(inputState);
+      const validation = latest?.validation || validatePartnerJourneyHandoffContract(packet);
+      return {
+        contract_status:latest ? "preview_generated" : "not_generated",
+        required_fields_count:validation.required_fields_count || handoffContractRequiredTopLevelFields.length + handoffContractRequiredPartnerFields.length,
+        missing_fields_count:validation.missing_fields_count || 0,
+        latest_validation_result:validation.status || (validation.valid ? "valid" : "invalid")
+      };
+    }
+
+    function renderModuleFallbackHtml(moduleName = "module", error = {}) {
+      const message = error?.message || "Module unavailable. Safe fallback used.";
+      return \`<section class="panel module-fallback" data-module-fallback="\${esc(moduleName)}"><div class="eyebrow">Module fallback</div><h2>\${esc(moduleName)}</h2><p class="muted">\${esc(message)}</p><div class="metric-table"><div class="metric-row"><span>Function</span><strong>\${esc(error?.name === "ReferenceError" ? message : "No missing helper detected")}</strong></div><div class="metric-row"><span>Safe fallback used</span><strong>Yes</strong></div><div class="metric-row"><span>Live gates</span><strong>0</strong></div></div></section>\`;
+    }
+
+    function safeRenderModule(moduleName = "module", renderer = () => "") {
+      try {
+        return renderer();
+      } catch (error) {
+        console.warn("LegalEase module render fallback", { module:moduleName, errorName:error?.name, errorMessage:error?.message, route:currentPageId, endpoint:stateFetchDiagnostics?.endpoint || "/api/boot-state" });
+        return renderModuleFallbackHtml(moduleName, error);
+      }
+    }
+
     function cockpitSmokeTestHtml() {
       const status = buildSmokeTestStatus(state, { commit_hash: state.runtime?.commitHash || "" });
       return \`<section class="cockpit-card smoke-test-card" aria-label="Smoke Test">
@@ -20701,51 +21122,51 @@ function htmlShell() {
         : \`Current store: \${state.persistence === "supabase" ? "Supabase" : "local JSON fallback"}\`;
       const healthTone = schemaStale ? "danger" : supabaseHealth?.connected ? "good" : supabaseHealth?.configured ? "warn" : "danger";
       document.querySelector("#app").innerHTML = \`
-        \${pageId === "overview" ? commandCenterOverviewHtml(reviewPosts) : ""}
-        \${focusPageHtml(pageClass)}
-        \${leePageHtml(pageClass)}
-        \${sectionLandingPageHtml(pageClass, "growth")}
-        \${sectionLandingPageHtml(pageClass, "partner-hub")}
-        \${sectionLandingPageHtml(pageClass, "production")}
-        \${sectionLandingPageHtml(pageClass, "proof")}
-        \${sectionLandingPageHtml(pageClass, "more")}
-        \${growthInboxPageHtml(pageClass)}
-        \${["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId) ? tasksPageHtml(pageClass, pageId) : ""}
-        \${rcapReviewWorkspaceHtml(pageClass)}
-        \${operatingMemoryPageHtml(pageClass)}
-        \${morningBriefPageHtml(pageClass)}
-        \${eveningReflectionPageHtml(pageClass)}
-        \${dailyCloseoutPageHtml(pageClass)}
-        \${osHealthPageHtml(pageClass)}
-        \${smokeTestPageHtml(pageClass)}
-        \${evidenceRoomPageHtml(pageClass)}
-        \${handoffContractPageHtml(pageClass)}
-        \${operatorManualPageHtml(pageClass)}
-        \${rolesPageHtml(pageClass)}
-        \${dataIntegrityPageHtml(pageClass)}
-        \${operatorSearchPageHtml(pageClass)}
-        \${conversationNotesPageHtml(pageClass)}
-        \${captureInboxPageHtml(pageClass)}
-        \${partnerProgramsPageHtml(pageClass)}
-        \${partnerPagesPageHtml(pageClass)}
-        \${partnerDashboardsPageHtml(pageClass)}
-        \${partnerReportsPageHtml(pageClass)}
-        \${partnerProposalsPageHtml(pageClass)}
-        \${milestonesPageHtml(pageClass)}
-        \${partnersPageHtml(pageClass)}
-        \${campaignsPageHtml(pageClass)}
-        \${funnelPageHtml(pageClass)}
-        \${contentBankPageHtml(pageClass)}
-        \${pageId === "autonomy" ? autonomyPageHtml(pageClass) : ""}
-        \${pageId === "automation" ? automationInboxPageHtml(pageClass) : ""}
-        \${soc2DashboardPageHtml(pageClass)}
-        \${soc2AccessReviewsPageHtml(pageClass)}
-        \${soc2AuditLogsPageHtml(pageClass)}
-        \${soc2ChangesPageHtml(pageClass)}
-        \${soc2VendorsPageHtml(pageClass)}
-        \${soc2IncidentsPageHtml(pageClass)}
-        \${soc2EvidencePageHtml(pageClass)}
-        \${soc2PoliciesPageHtml(pageClass)}
+        \${safeRenderModule("overview", () => pageId === "overview" ? commandCenterOverviewHtml(reviewPosts) : "")}
+        \${safeRenderModule("focus", () => focusPageHtml(pageClass))}
+        \${safeRenderModule("lee", () => leePageHtml(pageClass))}
+        \${safeRenderModule("growth", () => sectionLandingPageHtml(pageClass, "growth"))}
+        \${safeRenderModule("partner-hub", () => sectionLandingPageHtml(pageClass, "partner-hub"))}
+        \${safeRenderModule("production", () => sectionLandingPageHtml(pageClass, "production"))}
+        \${safeRenderModule("proof", () => sectionLandingPageHtml(pageClass, "proof"))}
+        \${safeRenderModule("more", () => sectionLandingPageHtml(pageClass, "more"))}
+        \${safeRenderModule("growth-inbox", () => growthInboxPageHtml(pageClass))}
+        \${safeRenderModule("tasks", () => ["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId) ? tasksPageHtml(pageClass, pageId) : "")}
+        \${safeRenderModule("production-activation-rcap", () => rcapReviewWorkspaceHtml(pageClass))}
+        \${safeRenderModule("operating-memory", () => operatingMemoryPageHtml(pageClass))}
+        \${safeRenderModule("morning-brief", () => morningBriefPageHtml(pageClass))}
+        \${safeRenderModule("evening-reflection", () => eveningReflectionPageHtml(pageClass))}
+        \${safeRenderModule("daily-closeout", () => dailyCloseoutPageHtml(pageClass))}
+        \${safeRenderModule("os-health", () => osHealthPageHtml(pageClass))}
+        \${safeRenderModule("smoke-test", () => smokeTestPageHtml(pageClass))}
+        \${safeRenderModule("evidence-room", () => evidenceRoomPageHtml(pageClass))}
+        \${safeRenderModule("handoff-contract", () => handoffContractPageHtml(pageClass))}
+        \${safeRenderModule("operator-manual", () => operatorManualPageHtml(pageClass))}
+        \${safeRenderModule("roles", () => rolesPageHtml(pageClass))}
+        \${safeRenderModule("data-integrity", () => dataIntegrityPageHtml(pageClass))}
+        \${safeRenderModule("operator-search", () => operatorSearchPageHtml(pageClass))}
+        \${safeRenderModule("conversation-notes", () => conversationNotesPageHtml(pageClass))}
+        \${safeRenderModule("capture-inbox", () => captureInboxPageHtml(pageClass))}
+        \${safeRenderModule("partner-programs", () => partnerProgramsPageHtml(pageClass))}
+        \${safeRenderModule("partner-pages", () => partnerPagesPageHtml(pageClass))}
+        \${safeRenderModule("partner-dashboards", () => partnerDashboardsPageHtml(pageClass))}
+        \${safeRenderModule("partner-reports", () => partnerReportsPageHtml(pageClass))}
+        \${safeRenderModule("partner-proposals", () => partnerProposalsPageHtml(pageClass))}
+        \${safeRenderModule("milestones", () => milestonesPageHtml(pageClass))}
+        \${safeRenderModule("partners", () => partnersPageHtml(pageClass))}
+        \${safeRenderModule("campaigns", () => campaignsPageHtml(pageClass))}
+        \${safeRenderModule("funnel", () => funnelPageHtml(pageClass))}
+        \${safeRenderModule("content-bank", () => contentBankPageHtml(pageClass))}
+        \${safeRenderModule("autonomy", () => pageId === "autonomy" ? autonomyPageHtml(pageClass) : "")}
+        \${safeRenderModule("automation", () => pageId === "automation" ? automationInboxPageHtml(pageClass) : "")}
+        \${safeRenderModule("soc2", () => soc2DashboardPageHtml(pageClass))}
+        \${safeRenderModule("soc2-access", () => soc2AccessReviewsPageHtml(pageClass))}
+        \${safeRenderModule("soc2-audit", () => soc2AuditLogsPageHtml(pageClass))}
+        \${safeRenderModule("soc2-changes", () => soc2ChangesPageHtml(pageClass))}
+        \${safeRenderModule("soc2-vendors", () => soc2VendorsPageHtml(pageClass))}
+        \${safeRenderModule("soc2-incidents", () => soc2IncidentsPageHtml(pageClass))}
+        \${safeRenderModule("soc2-evidence", () => soc2EvidencePageHtml(pageClass))}
+        \${safeRenderModule("soc2-policies", () => soc2PoliciesPageHtml(pageClass))}
         <section id="queue" class="grid command \${pageClass("queue")}">
           <div class="panel hero-panel">
             <div>

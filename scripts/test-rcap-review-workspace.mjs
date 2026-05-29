@@ -16,7 +16,7 @@ assert.match(server, /location\.hash='production-activation-rcap'/, "Cockpit rev
 const routeList = server.match(/const pageId = [\s\S]*?\]\.includes\(normalizedPage\)/)?.[0] || "";
 assert.match(routeList, /"production-activation-rcap"/, "RCAP review workspace should be included in the app route allow-list.");
 
-assert.match(server, /\$\{rcapReviewWorkspaceHtml\(pageClass\)\}/, "RCAP review workspace should render from the app shell.");
+assert.match(server, /safeRenderModule\("production-activation-rcap", \(\) => rcapReviewWorkspaceHtml\(pageClass\)\)/, "RCAP review workspace should render from the app shell with module-level fallback protection.");
 
 const workspaceMatch = server.match(/function rcapReviewWorkspaceHtml\(pageClass\) \{[\s\S]*?function [a-zA-Z0-9_]+\(pageClass\)/);
 assert.ok(workspaceMatch, "RCAP review workspace function should be discoverable.");
