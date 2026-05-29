@@ -502,6 +502,136 @@ function liveGateSummary(channel) {
   };
 }
 
+const clientStateArrayCollections = [
+  "posts",
+  "library",
+  "brandAssets",
+  "brandRules",
+  "generationProfiles",
+  "assetBundles",
+  "socialAccounts",
+  "postImages",
+  "publishEvents",
+  "contentBank",
+  "growthInbox",
+  "approvalQueue",
+  "priorities",
+  "blockers",
+  "campaigns",
+  "partners",
+  "pilots",
+  "dataRoomItems",
+  "dataRoom",
+  "soc2AuditLogs",
+  "auditHistory",
+  "events",
+  "tasks",
+  "supportIssues",
+  "evidencePackNotes",
+  "autonomyActions",
+  "autonomyDecisions",
+  "autonomyRuns",
+  "activityEvents",
+  "reports",
+  "funnelSnapshots",
+  "captureInbox",
+  "conversationNotes",
+  "morningBriefs",
+  "eveningReflections",
+  "operatingMemory",
+  "dailyCloseouts",
+  "reviewStates",
+  "osHealthSnapshots",
+  "smokeTestRuns",
+  "evidenceSummaries",
+  "dataIntegritySnapshots",
+  "roleAssignments",
+  "handoffPackets",
+  "handoffContractPreviews",
+  "productionActivationRuns",
+  "partnerPrograms",
+  "partnerProgramArtifacts",
+  "campaignKits",
+  "complianceItems",
+  "soc2AccessReviews",
+  "soc2Changes",
+  "soc2Vendors",
+  "soc2Incidents",
+  "soc2Evidence",
+  "soc2Policies",
+  "automationEvents",
+  "automationSuggestions",
+  "connectorStatus",
+  "syncRuns",
+  "leeThreads",
+  "leeMessages",
+  "leeActionProposals",
+  "leeKnowledgeSources",
+  "leeKnowledgeChunks",
+  "leeRuns"
+];
+
+const clientStateObjectCollections = [
+  "settings",
+  "runtime",
+  "metrics",
+  "systemHealth",
+  "schemaStatus",
+  "leeMemory"
+];
+
+function liveGatesCountForState(state = {}) {
+  const gates = state && typeof state === "object" && !Array.isArray(state)
+    ? state.runtime?.livePostingGates
+    : null;
+  const safeGates = gates && typeof gates === "object" && !Array.isArray(gates)
+    ? gates
+    : Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]));
+  return Object.values(safeGates).filter((gate) => gate?.enabled).length;
+}
+
+function normalizeStateForClient(rawState = {}, options = {}) {
+  const source = rawState && typeof rawState === "object" && !Array.isArray(rawState) ? rawState : {};
+  const next = { ...source };
+  const existingWarnings = Array.isArray(source.stateShapeWarnings) ? source.stateShapeWarnings : [];
+  const warnings = [...existingWarnings];
+  for (const collection of clientStateArrayCollections) {
+    if (!Array.isArray(next[collection])) {
+      if (next[collection] !== undefined && next[collection] !== null) {
+        warnings.push({
+          collection,
+          expected: "array",
+          received: Array.isArray(next[collection]) ? "array" : typeof next[collection],
+          action: "defaulted_to_empty_array",
+          source: options.source || "state"
+        });
+      }
+      next[collection] = [];
+    }
+  }
+  for (const collection of clientStateObjectCollections) {
+    if (!next[collection] || typeof next[collection] !== "object" || Array.isArray(next[collection])) {
+      if (next[collection] !== undefined && next[collection] !== null) {
+        warnings.push({
+          collection,
+          expected: "object",
+          received: Array.isArray(next[collection]) ? "array" : typeof next[collection],
+          action: "defaulted_to_empty_object",
+          source: options.source || "state"
+        });
+      }
+      next[collection] = {};
+    }
+  }
+  if (!next.dataRoomItems.length && next.dataRoom.length) next.dataRoomItems = next.dataRoom;
+  if (!next.dataRoom.length && next.dataRoomItems.length) next.dataRoom = next.dataRoomItems;
+  next.settings = { ...(initialState?.settings || {}), ...(next.settings || {}) };
+  next.runtime = { ...(initialState?.runtime || {}), ...(next.runtime || {}) };
+  next.liveGatesCount = liveGatesCountForState(next);
+  next.stateShapeWarnings = warnings.slice(-50);
+  return next;
+}
+
 function graphApiVersion() {
   return process.env.META_GRAPH_VERSION || "v24.0";
 }
@@ -1104,11 +1234,12 @@ function publicPostImage(image = {}) {
 }
 
 function withPublicChannelSetup(state) {
+  state = normalizeStateForClient(state, { source: "server-public-setup-input" });
   state = analyzeOperations(state);
   const hostingConfig = storageRuntimeConfig();
   const autonomy = buildAutonomyReport(state);
   const autonomyGovernance = buildAutonomyGovernance(state);
-  return {
+  return normalizeStateForClient({
     ...state,
     autonomyActions: autonomy.actions,
     autonomySummary: autonomy.summary,
@@ -1182,10 +1313,10 @@ function withPublicChannelSetup(state) {
 	        hasStoredToken: safe.hasStoredToken,
 	        oauthConfigured: safe.configured,
 	        livePostingEnabled: safe.livePostingEnabled,
-	        liveGateEnvVars: safe.liveGateEnvVars
+        liveGateEnvVars: safe.liveGateEnvVars
 	      };
     })
-  };
+  }, { source: "server-public-setup-output" });
 }
 
 function productionReadinessCheck(id, label, ok, detail = "", owner = "Operations") {
@@ -13294,6 +13425,50 @@ function htmlShell() {
     };
 
     const esc = (value = "") => String(value).replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[char]));
+    const clientStateArrayCollections = ${JSON.stringify(clientStateArrayCollections)};
+    const clientStateObjectCollections = ${JSON.stringify(clientStateObjectCollections)};
+    function liveGatesCountFromState(payload = {}) {
+      const gates = payload && typeof payload === "object" && !Array.isArray(payload) ? payload.runtime?.livePostingGates : null;
+      return Object.values(gates && typeof gates === "object" && !Array.isArray(gates) ? gates : {}).filter(gate => gate?.enabled).length;
+    }
+    function hydrateStatePayload(payload = {}, source = "client") {
+      const sourceState = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+      const hydrated = { ...sourceState };
+      const warnings = Array.isArray(sourceState.stateShapeWarnings) ? [...sourceState.stateShapeWarnings] : [];
+      for (const collection of clientStateArrayCollections) {
+        if (!Array.isArray(hydrated[collection])) {
+          if (hydrated[collection] !== undefined && hydrated[collection] !== null) {
+            warnings.push({
+              collection,
+              expected:"array",
+              received:Array.isArray(hydrated[collection]) ? "array" : typeof hydrated[collection],
+              action:"client_defaulted_to_empty_array",
+              source
+            });
+          }
+          hydrated[collection] = [];
+        }
+      }
+      for (const collection of clientStateObjectCollections) {
+        if (!hydrated[collection] || typeof hydrated[collection] !== "object" || Array.isArray(hydrated[collection])) {
+          if (hydrated[collection] !== undefined && hydrated[collection] !== null) {
+            warnings.push({
+              collection,
+              expected:"object",
+              received:Array.isArray(hydrated[collection]) ? "array" : typeof hydrated[collection],
+              action:"client_defaulted_to_empty_object",
+              source
+            });
+          }
+          hydrated[collection] = {};
+        }
+      }
+      if (!hydrated.dataRoomItems.length && hydrated.dataRoom.length) hydrated.dataRoomItems = hydrated.dataRoom;
+      if (!hydrated.dataRoom.length && hydrated.dataRoomItems.length) hydrated.dataRoom = hydrated.dataRoomItems;
+      hydrated.liveGatesCount = Number.isFinite(Number(hydrated.liveGatesCount)) ? Number(hydrated.liveGatesCount) : liveGatesCountFromState(hydrated);
+      hydrated.stateShapeWarnings = warnings.slice(-50);
+      return hydrated;
+    }
     function formatDate(value) {
       if (!value) return "Not recorded";
       const date = new Date(value);
@@ -13303,6 +13478,18 @@ function htmlShell() {
         day: "numeric",
         year: "numeric"
       });
+    }
+    function formatStateFetchError(error = {}) {
+      const parts = [
+        error.message || "State fetch failed.",
+        "Status: " + (error.status || "unknown"),
+        "Content type: " + (error.contentType || "unknown")
+      ];
+      if (error.parseError) parts.push("JSON parse error: " + error.parseError);
+      if (error.payload?.missingField) parts.push("Missing field: " + error.payload.missingField);
+      if (error.payload?.failingCollection) parts.push("Failing collection: " + error.payload.failingCollection);
+      if (error.bodyPreview) parts.push("Body preview: " + String(error.bodyPreview).slice(0, 180));
+      return parts.join(" | ");
     }
     function formatDateTime(value) {
       if (!value) return "Not recorded";
@@ -13394,22 +13581,35 @@ function htmlShell() {
         } finally {
           if (timeout) clearTimeout(timeout);
         }
+        const contentType = response.headers?.get?.("content-type") || "";
+        const text = await response.text();
         if (!response.ok) {
-          const text = await response.text();
           try {
             const parsed = JSON.parse(text || "{}");
             const error = new Error(parsed.safeMessage || parsed.error || parsed.message || "Request failed.");
             error.status = response.status;
+            error.contentType = contentType;
             error.payload = parsed;
             throw error;
           } catch (parseError) {
             if (parseError?.message && parseError.message !== "Unexpected end of JSON input") throw parseError;
             const error = new Error(text || "Request failed.");
             error.status = response.status;
+            error.contentType = contentType;
+            error.bodyPreview = text.slice(0, 240);
             throw error;
           }
         }
-        return response.json();
+        try {
+          return text ? JSON.parse(text) : {};
+        } catch (parseError) {
+          const error = new Error("Response was not valid JSON.");
+          error.status = response.status;
+          error.contentType = contentType;
+          error.parseError = parseError.message || String(parseError);
+          error.bodyPreview = text.slice(0, 240);
+          throw error;
+        }
       }
       return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -13422,12 +13622,18 @@ function htmlShell() {
           if (xhr.status < 200 || xhr.status >= 300) {
             const error = new Error(xhr.responseText || "Request failed");
             error.status = xhr.status;
+            error.contentType = xhr.getResponseHeader("content-type") || "";
+            error.bodyPreview = String(xhr.responseText || "").slice(0, 240);
             reject(error);
             return;
           }
           try {
             resolve(xhr.responseText ? JSON.parse(xhr.responseText) : {});
           } catch (error) {
+            error.status = xhr.status;
+            error.contentType = xhr.getResponseHeader("content-type") || "";
+            error.parseError = error.message || String(error);
+            error.bodyPreview = String(xhr.responseText || "").slice(0, 240);
             reject(error);
           }
         };
@@ -13450,14 +13656,14 @@ function htmlShell() {
     async function load() {
       window.__LE_BOOT.stage = "state-fetch";
       try {
-        state = await api("/api/state", { timeoutMs: 5000 });
+        state = hydrateStatePayload(await api("/api/state", { timeoutMs: 5000 }), "state-fetch");
         window.__LE_BOOT.stage = "first-render";
         try { render(); } catch (renderError) { showRenderFailure(renderError.message || "Unknown render error", "first-render"); throw renderError; }
         window.__LE_BOOT.ready = true;
         if (window.__LE_BOOT.timeout) clearTimeout(window.__LE_BOOT.timeout);
       } catch (error) {
         if (handleStateFetchAuthFailure(error)) return;
-        showRenderFailure(error.message || "Refresh and try again.", "state-fetch");
+        showRenderFailure(formatStateFetchError(error), "state-fetch");
         return;
       }
       Promise.allSettled([
@@ -22939,7 +23145,7 @@ function htmlShell() {
       const ok = window.confirm("Restore replaces current local data and generated assets. A safety backup will be created first. Continue?");
       if (!ok) return;
       const result = await api("/api/backups/restore", { method:"POST", body:JSON.stringify({ backupPath }) });
-      state = await api("/api/state");
+      state = hydrateStatePayload(await api("/api/state"), "backup-restore-state-fetch");
       backups = (await api("/api/backups")).backups || [];
       render();
       toast(result.message || "Backup restored");
