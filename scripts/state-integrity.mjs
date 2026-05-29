@@ -58,6 +58,19 @@ export function buildDataModelInventory() {
       duplicate_risk_level: "high"
     },
     {
+      collection: "roleAssignments",
+      purpose: "Internal role assignments for owner, admin, operator, and viewer access after hosted owner-token auth.",
+      storage_mode: "hybrid",
+      required_fields: ["id", "actor_id", "display_name", "role", "status", "created_at", "updated_at", "created_by"],
+      optional_fields: ["email", "notes"],
+      stable_key_fields: ["actor_id"],
+      idempotency_rules: "One active assignment per actor_id. The default owner assignment must remain active.",
+      audit_behavior: "Every role change creates auditHistory and activityEvents entries.",
+      related_routes: ["#roles", "#os-health"],
+      related_tests: ["scripts/test-role-system.mjs", "scripts/test-state-integrity.mjs"],
+      duplicate_risk_level: "critical"
+    },
+    {
       collection: "tasks",
       purpose: "Internal work Roger can view, filter, and transition without external side effects.",
       storage_mode: "hybrid",

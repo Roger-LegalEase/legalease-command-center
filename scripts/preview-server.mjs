@@ -71,6 +71,7 @@ import { buildEndpointInventory, guardForbiddenEndpoint, safeAuthHardeningSummar
 import { buildSmokeTestChecklist, buildSmokeTestStatus, finishSmokeTestRun, markSmokeTestItem, saveSmokeTestRun, startSmokeTestRun } from "./smoke-test-center.mjs";
 import { buildEvidenceIndex, buildEvidenceOverview, generateEvidenceSummary, latestEvidenceSummary } from "./evidence-room.mjs";
 import { buildPartnerJourneyHandoffContractPacket, generatePartnerJourneyHandoffContractPreview, handoffContractRequiredArtifactTypes, handoffContractRequiredPartnerFields, handoffContractRequiredTopLevelFields, handoffContractStatus, handoffContractVersion, latestHandoffContractPreview, redactHandoffContractJson, validatePartnerJourneyHandoffContract } from "./partner-journey-handoff-contract.mjs";
+import { applyRoleAssignmentChange, buildRoleSystemStatus, canPerformEndpoint, ensureRoleAssignments, roleCapabilities } from "./roles.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -6324,6 +6325,7 @@ const initialState = {
   soc2Incidents: [{ id: "incident-image-generation-failure", incidentTitle: "Image generation failures surfaced as generic UI errors", severity: "Medium", owner: "Engineering", dateOpened: "2026-05-22", dateResolved: "2026-05-22", affectedSystems: "OpenAI image generation, Queue", summary: "The UI did not show useful safe failure details when OpenAI image generation failed.", rootCause: "Server-side env/debug surface was incomplete.", remediation: "Added env loading, safe debug endpoints, and structured image errors.", customerImpact: "Internal operator friction only.", evidenceLink: "", status: "Resolved" }],
   soc2Evidence: [{ id: "evidence-rls-security-fix", evidenceTitle: "Supabase RLS security fix", controlArea: "Security", sourceSystem: "Supabase", owner: "Engineering", collectionDate: "2026-05-22", auditPeriod: "2026-05", link: "supabase/migrations/", notes: "RLS enabled on public app tables with no broad anon policies." }],
   soc2Policies: [{ id: "policy-information-security", policyName: "Information Security Policy", owner: "Roger", version: "0.1", status: "In Progress", lastReviewedDate: "2026-05-22", nextReviewDate: "2026-06-22", approvalStatus: "Needs Review", link: "", summary: "LegalEase protects operational, partner, and sensitive legal workflow data by limiting access, keeping secrets server-side, reviewing vendors, and logging sensitive changes." },{ id: "policy-access-control", policyName: "Access Control Policy", owner: "Engineering", version: "0.1", status: "In Progress", lastReviewedDate: "2026-05-22", nextReviewDate: "2026-06-22", approvalStatus: "Needs Review", link: "", summary: "Access is granted by business need, reviewed regularly, and removed when no longer required. Service keys stay server-side." },{ id: "policy-ai-governance", policyName: "AI Governance Policy", owner: "Product", version: "0.1", status: "In Progress", lastReviewedDate: "2026-05-22", nextReviewDate: "2026-06-22", approvalStatus: "Needs Review", link: "", summary: "AI drafts, prompts, outputs, and automation suggestions require human approval before external use; high-risk legal content routes through compliance review." }],
+  roleAssignments: [],
   campaignKits: [],
   activityEvents: [
     {
@@ -13158,7 +13160,7 @@ function htmlShell() {
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="partners">Partners</summary><div class="nav-menu-panel"><a href="#partner-hub">Partners Home</a><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="production">Production</summary><div class="nav-menu-panel"><a href="#production">Production Home</a><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="proof">Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#evidence-room">Evidence Room</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#tasks-today">Today Tasks</a><a href="#tasks-blocked">Blocked Tasks</a><a href="#tasks-waiting">Waiting Tasks</a><a href="#tasks-this-week">This Week Tasks</a><a href="#handoff-contract">Handoff Contract</a><a href="#operator-manual">Operator Manual</a><a href="#data-integrity">Data Integrity</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#tasks-today">Today Tasks</a><a href="#tasks-blocked">Blocked Tasks</a><a href="#tasks-waiting">Waiting Tasks</a><a href="#tasks-this-week">This Week Tasks</a><a href="#handoff-contract">Handoff Contract</a><a href="#operator-manual">Operator Manual</a><a href="#roles">Roles</a><a href="#data-integrity">Data Integrity</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
       </nav>
       <span class="shell-marker" aria-hidden="true">nav: topnav-fixed-v1</span>
       <span class="shell-marker" aria-hidden="true">shell: app-layout-stable-v1</span>
@@ -13234,6 +13236,8 @@ function htmlShell() {
     ];
     const rcapRequiredHandoffKeys = ["rcap-proposal-draft-v1", "rcap-partner-page-draft-v1", "rcap-dashboard-readiness-v1", "rcap-weekly-report-draft-v1", "rcap-production-activation-evidence-v1", "rcap-manual-review-checklist-v1"];
     const rcapHandoffPacketArtifactKey = "rcap-partner-journey-handoff-packet-v1";
+    const clientRoleCapabilities = ${JSON.stringify(roleCapabilities)};
+    const clientRoles = ["owner", "admin", "operator", "viewer"];
     const focusModes = [
       { id:"inbox-triage", label:"Inbox Triage" },
       { id:"partner-follow-up", label:"Partner Follow-Up" },
@@ -17092,6 +17096,66 @@ function htmlShell() {
       </section>\`;
     }
 
+    function normalizedClientRole(role = "") {
+      const normalized = String(role || "").toLowerCase();
+      return clientRoles.includes(normalized) ? normalized : normalized === "local_operator" || normalized === "owner_token" ? "owner" : normalized === "marketing" || normalized === "reviewer" || normalized === "compliance_reviewer" ? "operator" : "viewer";
+    }
+
+    function clientRoleAssignments() {
+      const assignments = Array.isArray(state.roleAssignments) ? state.roleAssignments : [];
+      const hasOwner = assignments.some(item => item.actor_id === "owner" && normalizedClientRole(item.role) === "owner" && item.status !== "inactive");
+      const ownerAssignment = {
+        id:"role-owner-default",
+        actor_id:"owner",
+        display_name:"Roger Roman",
+        email:null,
+        role:"owner",
+        status:"active",
+        created_at:"",
+        updated_at:"",
+        created_by:"system",
+        notes:"Default hosted owner-token actor. Partner access belongs to Partner Journey OS, not this internal OS."
+      };
+      return hasOwner ? assignments : [ownerAssignment, ...assignments];
+    }
+
+    function clientRoleStatus() {
+      const currentRole = normalizedClientRole(state.runtime?.currentRole || state.runtime?.accessControl?.role || "owner");
+      const assignments = clientRoleAssignments();
+      const viewerCanMutate = Boolean((clientRoleCapabilities.viewer || []).some(capability => capability !== "read_internal"));
+      const nonOwnerCanManageRoles = clientRoles.filter(role => role !== "owner").some(role => (clientRoleCapabilities[role] || []).includes("manage_roles"));
+      const liveGates = Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length;
+      const warnings = [
+        viewerCanMutate ? { title:"Viewer can mutate state", detail:"Viewer role unexpectedly has mutation capability." } : null,
+        nonOwnerCanManageRoles ? { title:"Non-owner can manage roles", detail:"Role management must stay owner-only." } : null,
+        liveGates !== 0 ? { title:"Live gates are not 0", detail:liveGates + " live gate(s) are enabled." } : null
+      ].filter(Boolean);
+      return {
+        status:warnings.length ? "needs_attention" : "protected",
+        current_role:currentRole,
+        protected_mode:true,
+        role_protection_status:warnings.length ? "needs_attention" : "enforced",
+        role_warnings_count:warnings.length,
+        assignments,
+        warnings,
+        live_gates_count:liveGates
+      };
+    }
+
+    function cockpitRoleProtectionHtml() {
+      const roleStatus = clientRoleStatus();
+      return \`<section class="cockpit-card role-protection-card" aria-label="Role Protection">
+        <div class="cockpit-card-head"><h2>Role Protection</h2><small>\${esc(plainOperatorState(roleStatus.status))}</small></div>
+        <div class="daily-loop-summary">
+          <strong>Current role: \${esc(plainOperatorState(roleStatus.current_role))}</strong>
+          <span>Protected mode: \${roleStatus.protected_mode ? "On" : "Needs review"}</span>
+          <span>Warnings: \${esc(roleStatus.role_warnings_count || 0)}</span>
+        </div>
+        <p class="muted">Owner-token auth still protects hosted mode. Roles control internal safe actions after access is granted.</p>
+        <div class="operating-memory-actions"><button class="primary" type="button" onclick="location.hash='roles'">Open Roles</button></div>
+      </section>\`;
+    }
+
     function latestSmokeTestRun() {
       return (state.smokeTestRuns || []).slice().sort((a, b) => String(b.updated_at || b.completed_at || b.started_at || "").localeCompare(String(a.updated_at || a.completed_at || a.started_at || "")))[0] || null;
     }
@@ -17737,6 +17801,15 @@ function htmlShell() {
           </div>
         </section>
         <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Role System</h2><span class="badge info">\${esc(plainOperatorState(health.role_system_status?.status || "protected"))}</span></div>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Role system status</h3><ul><li><strong>\${esc(plainOperatorState(health.role_system_status?.status || "protected"))}</strong><br><span>\${esc(health.role_system_status?.role_protection_status || "enforced")}</span></li></ul></section>
+            <section class="operating-memory-tile"><h3>Current role</h3><ul><li>\${esc(plainOperatorState(health.role_system_status?.current_role || "owner"))}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Role protection status</h3><ul><li>\${esc(health.role_system_status?.protected_mode === false ? "Needs review" : "Owner-token auth plus role capabilities are enforced.")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Warnings</h3>\${memoryListHtml((health.role_system_status?.warnings || []).map(item => ({ title:item.title, detail:item.detail })), "No role warnings.", 4)}</section>
+          </div>
+        </section>
+        <section class="panel operating-memory-card">
           <div class="simple-panel-head"><h2>Smoke Test Status</h2><span class="badge info">\${esc(plainOperatorState(smoke.last_status || "not_started"))}</span></div>
           <div class="operating-memory-grid">
             <section class="operating-memory-tile"><h3>Last smoke test status</h3><ul><li><strong>\${esc(plainOperatorState(smoke.last_status || "not_started"))}</strong><br><span>\${esc(formatDateTime(smoke.last_run_timestamp) || "Not recorded")}</span></li></ul></section>
@@ -18090,6 +18163,80 @@ function htmlShell() {
       </section>\`;
     }
 
+    function roleCapabilityLabel(capability = "") {
+      return plainOperatorState(capability);
+    }
+
+    function roleAssignmentCardHtml(item = {}) {
+      return \`<article class="memory-history-card role-assignment-card">
+        <div class="simple-panel-head"><strong>\${esc(item.display_name || item.actor_id || "Internal actor")}</strong><span class="badge info">\${esc(plainOperatorState(item.role || "viewer"))}</span></div>
+        <p class="muted">\${esc(item.notes || "Internal OS access only.")}</p>
+        <div class="artifact-review-detail"><span>Actor ID</span><p>\${esc(item.actor_id || item.id || "Not recorded")}</p></div>
+        <div class="artifact-review-detail"><span>Status</span><p>\${esc(plainOperatorState(item.status || "active"))}</p></div>
+        <div class="artifact-review-detail"><span>Email</span><p>\${esc(item.email || "Not recorded")}</p></div>
+        <div class="card-actions">
+          <button type="button" onclick="prefillRoleAssignment('\${esc(item.actor_id || "")}')">Edit</button>
+          <button type="button" \${item.actor_id === "owner" ? "disabled" : ""} onclick="deactivateRoleAssignment('\${esc(item.actor_id || "")}')">Deactivate</button>
+        </div>
+      </article>\`;
+    }
+
+    function rolesPageHtml(pageClass) {
+      const roleStatus = clientRoleStatus();
+      const roleEvents = [...(state.auditHistory || []), ...(state.activityEvents || [])].filter(item => /role/i.test([item.action, item.eventType, item.title, item.resourceType].join(" "))).slice(0, 12);
+      return \`<section id="roles" class="\${pageClass("roles")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div>
+            <div class="eyebrow">Internal access</div>
+            <h1 class="big-title">Roles</h1>
+            <p class="muted">Simple internal role-based access layered on top of hosted owner-token auth. Partner access belongs to Partner Journey OS, not this internal OS.</p>
+          </div>
+          <div class="card-actions">
+            <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            <button class="primary" type="button" onclick="document.getElementById('actor-id')?.focus?.()">Manage Assignments</button>
+          </div>
+        </div>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Current Protection</h2><span class="badge info">\${esc(plainOperatorState(roleStatus.status))}</span></div>
+          <div class="operating-memory-grid">
+            <section class="operating-memory-tile"><h3>Current actor role</h3><ul><li><strong>\${esc(plainOperatorState(roleStatus.current_role))}</strong><br><span>Default hosted owner resolves to owner.</span></li></ul></section>
+            <section class="operating-memory-tile"><h3>Protected mode</h3><ul><li>\${roleStatus.protected_mode ? "Owner-token auth remains required in hosted mode." : "Needs review."}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Role warnings</h3><ul><li>\${esc(roleStatus.role_warnings_count || 0)} warning(s)</li></ul></section>
+            <section class="operating-memory-tile"><h3>Live gates</h3><ul><li>\${esc(roleStatus.live_gates_count || 0)}</li></ul></section>
+          </div>
+        </section>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Role Assignments</h2><span class="badge info">\${esc(roleStatus.assignments.length)} assignment(s)</span></div>
+          <div class="memory-evidence-grid">\${roleStatus.assignments.map(roleAssignmentCardHtml).join("")}</div>
+        </section>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Manage Role Assignment</h2><span class="badge warn">Owner only</span></div>
+          <form id="role-assignment-form" class="rail-form" onsubmit="saveRoleAssignment(event)">
+            <label>Actor ID<input name="actor_id" id="actor-id" required placeholder="operator-1"></label>
+            <label>Display name<input name="display_name" required placeholder="Internal operator"></label>
+            <label>Email<input name="email" placeholder="Optional"></label>
+            <label>Role<select name="role"><option value="viewer">Viewer</option><option value="operator">Operator</option><option value="admin">Admin</option><option value="owner">Owner</option></select></label>
+            <label>Status<select name="status"><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+            <label>Notes<textarea name="notes" placeholder="Internal access reason."></textarea></label>
+            <div class="card-actions"><button class="primary" type="submit">Save Role Assignment</button><button type="button" onclick="document.getElementById('role-assignment-form').reset()">Clear</button></div>
+            <p class="muted">Only owner can mutate roles. Admin, operator, and viewer role changes are blocked by endpoint capabilities.</p>
+          </form>
+        </section>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Capability Matrix</h2><span class="badge info">Internal OS only</span></div>
+          <div class="memory-evidence-grid">\${clientRoles.map(role => \`<article class="memory-history-card"><strong>\${esc(plainOperatorState(role))}</strong><p>\${(clientRoleCapabilities[role] || []).map(cap => \`<span class="badge info">\${esc(roleCapabilityLabel(cap))}</span>\`).join(" ")}</p></article>\`).join("")}</div>
+        </section>
+        <section class="panel operating-memory-card">
+          <div class="simple-panel-head"><h2>Recent role/audit events</h2><span class="badge info">\${esc(roleEvents.length)} event(s)</span></div>
+          <div class="memory-evidence-grid">\${roleEvents.map(item => \`<article class="memory-history-card"><strong>\${esc(item.action || item.eventType || item.title || "Role event")}</strong><span class="muted">\${esc(formatDateTime(item.timestamp || item.createdAt) || "Not recorded")}</span><p class="muted">\${esc(item.summary || item.resourceType || "Internal role audit event.")}</p></article>\`).join("") || '<div class="empty">No role events recorded yet.</div>'}</div>
+        </section>
+        <section class="panel">
+          <div class="simple-panel-head"><h2>Safety note</h2><span class="badge good">Internal only</span></div>
+          <p class="muted">Partner access belongs to Partner Journey OS, not this internal OS. Roles here do not create partner users, do not call Partner Journey APIs, and leave live gates at 0.</p>
+        </section>
+      </section>\`;
+    }
+
     function handoffContractPageHtml(pageClass) {
       const status = handoffContractStatus(state);
       const packet = buildPartnerJourneyHandoffContractPacket(state);
@@ -18353,6 +18500,7 @@ function htmlShell() {
             \${cockpitDailyRitualsHtml()}
             \${cockpitDailyCloseoutHtml()}
             \${cockpitOsHealthHtml()}
+            \${cockpitRoleProtectionHtml()}
             \${cockpitSmokeTestHtml()}
             \${cockpitEvidenceRoomHtml()}
             \${cockpitHandoffContractHtml()}
@@ -18764,7 +18912,7 @@ function htmlShell() {
         { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Move partner programs from lead to paid onboarding, reports, and renewal proof.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"]] },
         { id:"production", eyebrow:"Production", title:"Production", copy:"Turn ideas into approved assets without losing the approval-first safety model.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
         { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Evidence Room","evidence-room"],["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
-        { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Today Tasks","tasks-today"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Handoff Contract","handoff-contract"],["Operator Manual","operator-manual"],["Data Integrity","data-integrity"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
+        { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Today Tasks","tasks-today"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Handoff Contract","handoff-contract"],["Operator Manual","operator-manual"],["Roles","roles"],["Data Integrity","data-integrity"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
       ];
       return configs.find(item => item.id === section) || configs[0];
     }
@@ -19938,7 +20086,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
       const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const pageId = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       const pageClass = id => \`page-section \${id === pageId ? "active" : ""}\`;
       document.querySelector("#storeStatus").textContent = schemaStale
         ? "Current store: Supabase schema needs update"
@@ -19965,6 +20113,7 @@ function htmlShell() {
         \${evidenceRoomPageHtml(pageClass)}
         \${handoffContractPageHtml(pageClass)}
         \${operatorManualPageHtml(pageClass)}
+        \${rolesPageHtml(pageClass)}
         \${dataIntegrityPageHtml(pageClass)}
         \${operatorSearchPageHtml(pageClass)}
         \${conversationNotesPageHtml(pageClass)}
@@ -20202,7 +20351,7 @@ function htmlShell() {
 
     function navSectionForPage(pageId = "overview") {
       if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "operator-search", "conversation-notes"].includes(pageId)) return "today";
-      if (["data-integrity", "operator-manual", "handoff-contract"].includes(pageId)) return "more";
+      if (["data-integrity", "operator-manual", "handoff-contract", "roles"].includes(pageId)) return "more";
       if (["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId)) return "more";
       if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
@@ -20782,6 +20931,46 @@ function htmlShell() {
         render();
         return result.message || "OS Health Snapshot refreshed. No external action was taken.";
       }, "Could not refresh OS Health.");
+    }
+
+    function prefillRoleAssignment(actorId = "") {
+      const assignment = clientRoleAssignments().find(item => item.actor_id === actorId);
+      const form = document.getElementById("role-assignment-form");
+      if (!assignment || !form) return;
+      form.actor_id.value = assignment.actor_id || "";
+      form.display_name.value = assignment.display_name || "";
+      form.email.value = assignment.email || "";
+      form.role.value = normalizedClientRole(assignment.role || "viewer");
+      form.status.value = assignment.status || "active";
+      form.notes.value = assignment.notes || "";
+      form.actor_id.focus();
+    }
+
+    async function saveRoleAssignment(event) {
+      event.preventDefault();
+      const payload = formObject(event.target);
+      await cooAction(async () => {
+        const result = await api("/api/roles/assignments", {
+          method:"POST",
+          body:JSON.stringify(payload)
+        });
+        state = result.state;
+        render();
+        return result.message || "Role assignment updated. No external action was taken.";
+      }, "Could not update role assignment.");
+    }
+
+    async function deactivateRoleAssignment(actorId = "") {
+      if (!actorId) return;
+      await cooAction(async () => {
+        const result = await api("/api/roles/assignments/deactivate", {
+          method:"POST",
+          body:JSON.stringify({ actor_id:actorId })
+        });
+        state = result.state;
+        render();
+        return result.message || "Role assignment deactivated. No external action was taken.";
+      }, "Could not deactivate role assignment.");
     }
 
     async function startSmokeTestRun() {
@@ -23029,6 +23218,11 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/production-activation/rcap/review-state" && request.method === "POST") {
     try {
       const input = await readJson(request);
+      const bodyRoleDecision = canPerformEndpoint(publicActor(accessDecision.actor)?.role || "viewer", request.method, url.pathname, input);
+      if (!bodyRoleDecision.ok) {
+        sendJson(response, { error: bodyRoleDecision.reason, requiredCapabilities: bodyRoleDecision.requiredCapabilities, actor: publicActor(accessDecision.actor) }, 403);
+        return;
+      }
       const currentState = await store.readState();
       const activated = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
       const result = transitionRcapReviewArtifact(
@@ -23396,6 +23590,59 @@ async function handleRequest(request, response) {
       summary: safeAuthHardeningSummary({ state: currentState, source: endpointInventorySource }),
       live_gates_count: Object.values(currentState.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length
     });
+    return;
+  }
+
+  if (url.pathname === "/api/roles" && request.method === "GET") {
+    const currentState = await store.readState();
+    const actor = publicActor(accessDecision.actor);
+    sendJson(response, {
+      current_role: actor.role || "owner",
+      assignments: ensureRoleAssignments(currentState),
+      capability_matrix: Object.entries(roleCapabilities).map(([role, capabilities]) => ({ role, capabilities })),
+      status: buildRoleSystemStatus(currentState, { currentActor: actor }),
+      live_gates_count: Object.values(currentState.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length,
+      partner_journey_access_excluded: true
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/roles/assignments" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const currentState = await store.readState();
+      const result = applyRoleAssignmentChange(currentState, input, {
+        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Role assignment updated. No external action was taken.",
+        assignment: result.assignment,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update role assignment." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/roles/assignments/deactivate" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const currentState = await store.readState();
+      const result = applyRoleAssignmentChange(currentState, input, {
+        actor: publicActor(accessDecision.actor)?.role || "owner_token",
+        action: "deactivate"
+      });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Role assignment deactivated. No external action was taken.",
+        assignment: result.assignment,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not deactivate role assignment." }, 400);
+    }
     return;
   }
 

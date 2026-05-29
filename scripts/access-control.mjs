@@ -1,3 +1,5 @@
+import { canPerformEndpoint, normalizeRole, requiredCapabilitiesForEndpoint, roleDefinitions } from "./roles.mjs";
+
 const clean = (value = "") => String(value || "").trim();
 const lower = (value = "") => clean(value).toLowerCase();
 
@@ -11,37 +13,6 @@ function normalizeToken(value = "") {
   }
   return token;
 }
-
-const roleDefinitions = {
-  owner: {
-    label: "Owner",
-    can: ["read", "write", "admin", "approve", "publish_review", "compliance_review", "view_investor", "view_partner"]
-  },
-  admin: {
-    label: "Admin",
-    can: ["read", "write", "admin", "approve", "compliance_review", "view_investor", "view_partner"]
-  },
-  marketing: {
-    label: "Marketing",
-    can: ["read", "write", "approve"]
-  },
-  reviewer: {
-    label: "Reviewer",
-    can: ["read", "approve"]
-  },
-  partner: {
-    label: "Partner",
-    can: ["read", "view_partner"]
-  },
-  investor_readonly: {
-    label: "Investor Readonly",
-    can: ["read", "view_investor"]
-  },
-  compliance_reviewer: {
-    label: "Compliance Reviewer",
-    can: ["read", "compliance_review", "approve"]
-  }
-};
 
 const publicPaths = [
   "/api/health",
@@ -67,11 +38,8 @@ export function tokenRegistryFromEnv(env = process.env) {
   return [
     ["owner", env.COMMAND_CENTER_OWNER_TOKEN || env.COMMAND_CENTER_ACCESS_TOKEN],
     ["admin", env.COMMAND_CENTER_ADMIN_TOKEN],
-    ["marketing", env.COMMAND_CENTER_MARKETING_TOKEN],
-    ["reviewer", env.COMMAND_CENTER_REVIEWER_TOKEN],
-    ["partner", env.COMMAND_CENTER_PARTNER_TOKEN],
-    ["investor_readonly", env.COMMAND_CENTER_INVESTOR_TOKEN],
-    ["compliance_reviewer", env.COMMAND_CENTER_COMPLIANCE_TOKEN]
+    ["operator", env.COMMAND_CENTER_OPERATOR_TOKEN || env.COMMAND_CENTER_MARKETING_TOKEN || env.COMMAND_CENTER_REVIEWER_TOKEN || env.COMMAND_CENTER_COMPLIANCE_TOKEN],
+    ["viewer", env.COMMAND_CENTER_VIEWER_TOKEN || env.COMMAND_CENTER_INVESTOR_TOKEN]
   ].map(([role, token]) => [role, normalizeToken(token)]).filter(([, token]) => token.length >= 16);
 }
 
@@ -106,7 +74,8 @@ export function actorFromRequest(request = {}, env = process.env) {
     return { id:"anonymous", role:"anonymous", label:"Anonymous", authenticated:false, authRequired:required, permissions:[] };
   }
   const [role] = match;
-  return { id:role, role, label:roleDefinitions[role]?.label || role, authenticated:true, authRequired:required, permissions:roleDefinitions[role]?.can || [] };
+  const normalizedRole = normalizeRole(role);
+  return { id:normalizedRole, role:normalizedRole, label:roleDefinitions[normalizedRole]?.label || normalizedRole, authenticated:true, authRequired:required, permissions:roleDefinitions[normalizedRole]?.can || [] };
 }
 
 export function permissionForRequest(method = "GET", pathname = "/") {
@@ -139,7 +108,18 @@ export function authorizeRequest(request = {}, urlLike = null, env = process.env
   if (!actor.permissions.includes(requiredPermission) && !actor.permissions.includes("admin")) {
     return { ok:false, status:403, actor, requiredPermission, reason:`Role ${actor.role} cannot perform ${requiredPermission}.` };
   }
-  return { ok:true, actor, requiredPermission };
+  const roleDecision = canPerformEndpoint(actor.role, request.method || "GET", pathname);
+  if (!roleDecision.ok) {
+    return {
+      ok:false,
+      status:403,
+      actor,
+      requiredPermission,
+      requiredCapabilities: roleDecision.requiredCapabilities,
+      reason: roleDecision.reason
+    };
+  }
+  return { ok:true, actor, requiredPermission, requiredCapabilities: requiredCapabilitiesForEndpoint(request.method || "GET", pathname) };
 }
 
 export function publicActor(actor = {}) {

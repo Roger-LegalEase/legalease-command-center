@@ -8,8 +8,8 @@ const env = {
   STORAGE_BACKEND: "supabase",
   LOCAL_DEMO_MODE: "false",
   COMMAND_CENTER_OWNER_TOKEN: "owner-token-1234567890",
-  COMMAND_CENTER_INVESTOR_TOKEN: "investor-token-1234567890",
-  COMMAND_CENTER_COMPLIANCE_TOKEN: "compliance-token-1234567890"
+  COMMAND_CENTER_VIEWER_TOKEN: "viewer-token-1234567890",
+  COMMAND_CENTER_OPERATOR_TOKEN: "operator-token-1234567890"
 };
 
 const anonymous = authorizeRequest({ method:"GET", url:"/api/state", headers:{} }, new URL("http://local/api/state"), env);
@@ -25,7 +25,7 @@ assert.equal(owner.ok, true);
 assert.equal(owner.actor.role, "owner");
 
 const investorWrite = authorizeRequest(
-  { method:"POST", url:"/api/approval/item/approve", headers:{ "x-command-center-token":"investor-token-1234567890" } },
+  { method:"POST", url:"/api/approval/item/approve", headers:{ "x-command-center-token":"viewer-token-1234567890" } },
   new URL("http://local/api/approval/item/approve"),
   env
 );
@@ -33,17 +33,16 @@ assert.equal(investorWrite.ok, false);
 assert.equal(investorWrite.status, 403);
 
 const investorRead = authorizeRequest(
-  { method:"GET", url:"/api/state", headers:{ authorization:"Bearer investor-token-1234567890" } },
+  { method:"GET", url:"/api/state", headers:{ authorization:"Bearer viewer-token-1234567890" } },
   new URL("http://local/api/state"),
   env
 );
 assert.equal(investorRead.ok, true);
-assert.equal(investorRead.actor.role, "investor_readonly");
+assert.equal(investorRead.actor.role, "viewer");
 
-const compliance = actorFromRequest({ headers:{ "x-command-center-token":"compliance-token-1234567890" } }, env);
+const compliance = actorFromRequest({ headers:{ "x-command-center-token":"operator-token-1234567890" } }, env);
 assert.equal(compliance.permissions.includes("compliance_review"), true);
 assert.equal(permissionForRequest("POST", "/api/channels/linkedin/test"), "admin");
 assert.equal(roleDefinitions.owner.can.includes("admin"), true);
 
 console.log("access control tests passed");
-

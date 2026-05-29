@@ -4,6 +4,7 @@ import { safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
 import { buildSmokeTestStatus } from "./smoke-test-center.mjs";
 import { buildEvidenceOverview, latestEvidenceSummary } from "./evidence-room.mjs";
 import { handoffContractStatus } from "./partner-journey-handoff-contract.mjs";
+import { buildRoleSystemStatus } from "./roles.mjs";
 
 const noExternalActionsConfirmation = "No emails sent, no posts published, no partner pages published, no dashboards activated, no Partner Journey calls, no external systems contacted beyond existing internal health checks.";
 
@@ -83,6 +84,10 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
   const evidenceOverview = buildEvidenceOverview(state, options);
   const evidenceSummary = latestEvidenceSummary(state);
   const contractStatus = handoffContractStatus(state, options);
+  const roleSystemStatus = buildRoleSystemStatus(state, {
+    currentActor: options.currentActor || { role: options.currentRole || "owner", authenticated: true },
+    hostedMode: Boolean(options.ownerTokenAuthConfigured ?? state.runtime?.accessControl?.authRequired)
+  });
   const morning = sameDayRecord(state.morningBriefs, date, "morning-brief");
   const memory = sameDayRecord(state.operatingMemory, date, "operating-memory");
   const evening = sameDayRecord(state.eveningReflections, date, "evening-reflection");
@@ -109,6 +114,7 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
     approval_engine: status("Approval Engine", reviewQueue.every(item => Boolean(item.review_state)), "Review states are available for tracked artifacts."),
     handoff_readiness: status("Handoff Readiness", Boolean(handoff), handoff.handoff_ready ? "Handoff readiness is ready for manual decision." : handoff.next_manual_action || "Handoff readiness needs attention."),
     handoff_contract: status("Partner Journey Handoff Contract", contractStatus.latest_validation_result === "valid", contractStatus.latest_validation_result === "valid" ? "Handoff contract validates internally." : `${contractStatus.missing_fields_count} handoff contract field(s) need review.`),
+    role_system: status("Role System", roleSystemStatus.status === "protected", roleSystemStatus.status === "protected" ? `Current role: ${roleSystemStatus.current_role}. Role protection enforced.` : `${roleSystemStatus.warnings.length} role warning(s) need review.`),
     smoke_test_center: status("Smoke Test Center", smokeTestStatus.last_status !== "not_started", smokeTestStatus.last_status === "not_started" ? "No post-deploy smoke test run has been saved yet." : `Last smoke test status: ${smokeTestStatus.last_status}.`),
     evidence_room: status("Evidence Room", evidenceOverview.total_evidence_items > 0, evidenceOverview.total_evidence_items ? `${evidenceOverview.total_evidence_items} evidence item(s) indexed. ${evidenceOverview.open_review_items} open review item(s).` : "No evidence items are indexed yet.")
   };
@@ -140,6 +146,7 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
     authHardening.forbidden_action_guard?.status !== "blocked" ? warning("Forbidden action guard needs review", "External action guard is not in the expected blocked state.", { href: "os-health" }) : null,
     contractStatus.warning ? warning("Handoff contract validation mismatch", contractStatus.warning, { href: "handoff-contract" }) : null,
     contractStatus.latest_validation_result !== "valid" ? warning("Handoff contract needs review", `${contractStatus.missing_fields_count} required handoff field(s) are missing or invalid.`, { href: "handoff-contract" }) : null,
+    ...roleSystemStatus.warnings.map(item => warning(item.title || "Role system warning", item.detail || "Role protection needs review.", { severity: item.severity || "warning", href: "roles" })),
     smokeTestStatus.last_status === "fail" ? warning("Last smoke test failed", `${smokeTestStatus.failed_count} smoke test step(s) failed.`, { href: "smoke-test" }) : null,
     smokeTestStatus.warning ? warning("Smoke test not run for latest deploy", smokeTestStatus.warning, { href: "smoke-test" }) : null,
     evidenceOverview.missing_proof_warnings.length ? warning("Evidence Room needs review", evidenceOverview.missing_proof_warnings[0], { href: "evidence-room" }) : null,
@@ -164,6 +171,7 @@ export function buildOsHealthSnapshot(state = {}, options = {}) {
       checklist: verificationChecklist(state)
     },
     auth_hardening: authHardening,
+    role_system_status: roleSystemStatus,
     smoke_test_status: smokeTestStatus,
     evidence_room_status: {
       total_evidence_items: evidenceOverview.total_evidence_items,

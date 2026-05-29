@@ -47,6 +47,7 @@ const coreStateCollections = [
   "smokeTestRuns",
   "evidenceSummaries",
   "dataIntegritySnapshots",
+  "roleAssignments",
   "handoffPackets",
   "productionActivationRuns",
   "partnerPrograms",
