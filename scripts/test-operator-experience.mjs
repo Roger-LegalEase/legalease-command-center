@@ -21,9 +21,8 @@ assert.match(server, /class="now-block"/, "Today should render the dominant Now 
 assert.match(server, /class="now-first"/, "Today should render the Start-with cue.");
 assert.match(server, /START WITH/, "Start-with cue should be explicit.");
 assert.match(server, /class="timeline-card"/, "Today should render the timeline card.");
-assert.match(server, /class="thread"/, "Today should render Threads Open rows.");
-assert.match(server, /class="parked-item"/, "Today should render Parked rows.");
-assert.match(server, /class="moved-row"/, "Today should render This Week Moved rows.");
+assert.match(server, /Waiting \/ Blocked/, "Today should collapse open threads and parked work into a Waiting / Blocked signal.");
+assert.match(server, /What Moved/, "Today should show a compact What Moved signal.");
 assert.match(server, /class="app-footer"/, "Today should render the v3.1 footer gates.");
 assert.match(server, /MADE FOR ROGER/, "Footer should keep the made-for-Roger signature.");
 assert.match(server, /tickCockpitClock/, "Clock should update on an interval.");
@@ -34,7 +33,7 @@ assert.match(server, /--bg-primary:\s*#f6f8f8/, "Refined Today palette should us
 assert.match(server, /--accent:\s*#00A99D/i, "Today accent should use LegalEase teal instead of burnt orange.");
 assert.match(server, /--accent-hover:\s*#047A72/i, "Today accent hover should stay in the LegalEase teal family.");
 assert.doesNotMatch(server, /--accent:\s*#b8501f/i, "Today accent should no longer use burnt orange.");
-assert.match(server, /layout: cockpit-grid-fixed-v1/, "Today footer should expose the cockpit-grid-fixed-v1 layout marker.");
+assert.match(server, /layout: cockpit-grid-fixed-v1/, "Diagnostic pages should retain the cockpit-grid-fixed-v1 layout marker.");
 assert.match(server, /\.operator-v31 \.operator-page,[\s\S]*?\.operator-v31 \.cockpit-page\s*\{[^}]*width:\s*100%[^}]*max-width:\s*1240px[^}]*margin:0 auto[^}]*padding:0 32px[^}]*overflow-x:hidden/s, "Today cockpit should be a centered max-width page container with desktop side padding and no horizontal overflow.");
 assert.match(server, /\.operator-v31 \.cockpit-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*380px/s, "Today grid should use the specified flexible main column and 380px right rail.");
 assert.match(server, /\.operator-v31 \.cockpit-main\s*\{[^}]*min-width:0/s, "Cockpit main should allow shrinking without overflow.");
