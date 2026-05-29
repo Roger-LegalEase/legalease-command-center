@@ -13328,7 +13328,7 @@ function htmlShell() {
     });
     window.__LE_BOOT.timeout = setTimeout(() => {
       if (!window.__LE_BOOT.ready) window.__LE_FAIL_BOOT(window.__LE_BOOT.stage || "boot-timeout", "The client did not finish booting. Check the browser console and server logs, then retry.");
-    }, 4500);
+    }, 12000);
   </script>
   <script>
     let state = null;
@@ -13482,6 +13482,7 @@ function htmlShell() {
     function formatStateFetchError(error = {}) {
       const parts = [
         error.message || "State fetch failed.",
+        "Endpoint: " + (error.endpoint || "unknown"),
         "Status: " + (error.status || "unknown"),
         "Content type: " + (error.contentType || "unknown")
       ];
@@ -13577,7 +13578,7 @@ function htmlShell() {
           const token = storedOwnerToken();
           if (token && !headers.Authorization && !headers.authorization) headers.Authorization = "Bearer " + token;
           requestOptions.headers = headers;
-          response = await fetch(path, { ...requestOptions, signal: controller?.signal });
+          response = await fetch(path, { credentials:"same-origin", ...requestOptions, signal: controller?.signal });
         } finally {
           if (timeout) clearTimeout(timeout);
         }
@@ -13588,6 +13589,7 @@ function htmlShell() {
             const parsed = JSON.parse(text || "{}");
             const error = new Error(parsed.safeMessage || parsed.error || parsed.message || "Request failed.");
             error.status = response.status;
+            error.endpoint = path;
             error.contentType = contentType;
             error.payload = parsed;
             throw error;
@@ -13595,6 +13597,7 @@ function htmlShell() {
             if (parseError?.message && parseError.message !== "Unexpected end of JSON input") throw parseError;
             const error = new Error(text || "Request failed.");
             error.status = response.status;
+            error.endpoint = path;
             error.contentType = contentType;
             error.bodyPreview = text.slice(0, 240);
             throw error;
@@ -13605,6 +13608,7 @@ function htmlShell() {
         } catch (parseError) {
           const error = new Error("Response was not valid JSON.");
           error.status = response.status;
+          error.endpoint = path;
           error.contentType = contentType;
           error.parseError = parseError.message || String(parseError);
           error.bodyPreview = text.slice(0, 240);
@@ -13622,6 +13626,7 @@ function htmlShell() {
           if (xhr.status < 200 || xhr.status >= 300) {
             const error = new Error(xhr.responseText || "Request failed");
             error.status = xhr.status;
+            error.endpoint = path;
             error.contentType = xhr.getResponseHeader("content-type") || "";
             error.bodyPreview = String(xhr.responseText || "").slice(0, 240);
             reject(error);
@@ -13631,16 +13636,36 @@ function htmlShell() {
             resolve(xhr.responseText ? JSON.parse(xhr.responseText) : {});
           } catch (error) {
             error.status = xhr.status;
+            error.endpoint = path;
             error.contentType = xhr.getResponseHeader("content-type") || "";
             error.parseError = error.message || String(error);
             error.bodyPreview = String(xhr.responseText || "").slice(0, 240);
             reject(error);
           }
         };
-        xhr.onerror = () => reject(new Error("Network request failed"));
-        xhr.ontimeout = () => reject(new Error("Request timed out"));
+        xhr.onerror = () => {
+          const error = new Error("Network request failed");
+          error.endpoint = path;
+          reject(error);
+        };
+        xhr.ontimeout = () => {
+          const error = new Error("Request timed out");
+          error.endpoint = path;
+          reject(error);
+        };
         xhr.send(requestOptions.body || null);
       });
+    }
+
+    async function optionalBootApi(path, options = {}) {
+      try {
+        return { status:"fulfilled", value:await api(path, options), endpoint:path };
+      } catch (error) {
+        if (error.status === 401 || error.status === 403) {
+          return { status:"auth_required", endpoint:path, statusCode:error.status, error:formatStateFetchError(error) };
+        }
+        return { status:"rejected", endpoint:path, statusCode:error?.status || 0, error:formatStateFetchError(error) };
+      }
     }
 
     function handleStateFetchAuthFailure(error = {}) {
@@ -13666,9 +13691,9 @@ function htmlShell() {
         showRenderFailure(formatStateFetchError(error), "state-fetch");
         return;
       }
-      Promise.allSettled([
-        api("/api/health/supabase", { timeoutMs: 2500 }),
-        api("/api/backups", { timeoutMs: 2500 })
+      Promise.all([
+        optionalBootApi("/api/health/supabase", { timeoutMs: 2500 }),
+        optionalBootApi("/api/backups", { timeoutMs: 2500 })
       ]).then(results => {
         if (results[0].status === "fulfilled") supabaseHealth = results[0].value;
         if (results[1].status === "fulfilled") backups = results[1].value.backups || [];
