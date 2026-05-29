@@ -13398,10 +13398,15 @@ function htmlShell() {
           const text = await response.text();
           try {
             const parsed = JSON.parse(text || "{}");
-            throw new Error(parsed.safeMessage || parsed.error || parsed.message || "Request failed.");
+            const error = new Error(parsed.safeMessage || parsed.error || parsed.message || "Request failed.");
+            error.status = response.status;
+            error.payload = parsed;
+            throw error;
           } catch (parseError) {
             if (parseError?.message && parseError.message !== "Unexpected end of JSON input") throw parseError;
-            throw new Error(text || "Request failed.");
+            const error = new Error(text || "Request failed.");
+            error.status = response.status;
+            throw error;
           }
         }
         return response.json();
@@ -13415,7 +13420,9 @@ function htmlShell() {
         if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
         xhr.onload = () => {
           if (xhr.status < 200 || xhr.status >= 300) {
-            reject(new Error(xhr.responseText || "Request failed"));
+            const error = new Error(xhr.responseText || "Request failed");
+            error.status = xhr.status;
+            reject(error);
             return;
           }
           try {
@@ -13430,6 +13437,16 @@ function htmlShell() {
       });
     }
 
+    function handleStateFetchAuthFailure(error = {}) {
+      if (error.status !== 401 && error.status !== 403) return false;
+      try { clearOwnerToken(); } catch {}
+      if (window.__LE_BOOT.timeout) clearTimeout(window.__LE_BOOT.timeout);
+      window.__LE_BOOT.ready = true;
+      window.__LE_BOOT.stage = "auth-required";
+      location.href = "/";
+      return true;
+    }
+
     async function load() {
       window.__LE_BOOT.stage = "state-fetch";
       try {
@@ -13439,6 +13456,7 @@ function htmlShell() {
         window.__LE_BOOT.ready = true;
         if (window.__LE_BOOT.timeout) clearTimeout(window.__LE_BOOT.timeout);
       } catch (error) {
+        if (handleStateFetchAuthFailure(error)) return;
         showRenderFailure(error.message || "Refresh and try again.", "state-fetch");
         return;
       }
