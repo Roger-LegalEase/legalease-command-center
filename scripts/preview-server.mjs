@@ -17730,6 +17730,30 @@ function htmlShell() {
       return (state.smokeTestRuns || []).slice().sort((a, b) => String(b.updated_at || b.completed_at || b.started_at || "").localeCompare(String(a.updated_at || a.completed_at || a.started_at || "")))[0] || null;
     }
 
+    function buildSmokeTestStatus(state = {}, options = {}) {
+      const runs = (Array.isArray(state.smokeTestRuns) ? state.smokeTestRuns : []).slice().sort((a, b) => String(b.updated_at || b.completed_at || b.started_at || "").localeCompare(String(a.updated_at || a.completed_at || a.started_at || "")));
+      const last = runs[0] || null;
+      const latestCommit = options.commit_hash || options.commitHash || "";
+      if (!last) {
+        return { status:"not_started", last_status:"not_started", last_run_at:null, last_run_timestamp:"", failed_count:0, passed_count:0, not_tested_count:0, latest_run_id:"", latest_commit_hash:latestCommit, smoke_test_after_latest_commit:!latestCommit, warning:"No smoke test run recorded yet." };
+      }
+      const lastRunAt = last.completed_at || last.updated_at || last.started_at || null;
+      const stale = Boolean(latestCommit && (!last.commit_hash || last.commit_hash !== latestCommit));
+      return {
+        status:last.overall_status || "not_started",
+        last_status:last.overall_status || "not_started",
+        last_run_at:lastRunAt,
+        last_run_timestamp:lastRunAt || "",
+        failed_count:Number(last.failed_count || 0),
+        passed_count:Number(last.passed_count || 0),
+        not_tested_count:Number(last.not_tested_count || 0),
+        latest_run_id:last.id || "",
+        latest_commit_hash:latestCommit,
+        smoke_test_after_latest_commit:!stale,
+        warning:stale ? "No smoke test has been run after the latest known deploy commit." : ""
+      };
+    }
+
     function cockpitSmokeTestHtml() {
       const status = buildSmokeTestStatus(state, { commit_hash: state.runtime?.commitHash || "" });
       return \`<section class="cockpit-card smoke-test-card" aria-label="Smoke Test">
