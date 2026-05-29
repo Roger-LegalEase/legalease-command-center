@@ -95,7 +95,7 @@ try {
 assert(source.includes("function renderSafeBootShell"), "Safe boot shell renderer should exist.");
 assert(source.includes('normalizedPage === "safe-mode"'), "#safe-mode should bypass full state rendering.");
 assert(source.includes("safeBootFallbackState"), "Bad or missing state should hydrate a limited safe fallback state.");
-assert(source.includes("showSafeBootShell(formatStateFetchError(error), \"state-fetch\", error)"), "State fetch failures should fall back to safe shell.");
+assert(source.includes("showSafeBootShell(formatStateFetchError(error), \"boot-state-fetch\", error)"), "Boot state failures should fall back to safe shell.");
 assert(source.includes("stateFetchDiagnostics"), "Safe shell should store state-fetch diagnostics.");
 assert(source.includes("Auth token present:"), "State-fetch diagnostics should include whether an auth token was present.");
 assert(source.includes("Fell back to safe shell:"), "State-fetch diagnostics should include fallback status.");

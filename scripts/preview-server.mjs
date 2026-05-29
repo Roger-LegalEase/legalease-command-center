@@ -632,6 +632,73 @@ function normalizeStateForClient(rawState = {}, options = {}) {
   return next;
 }
 
+function compactRecent(items = [], limit = 8) {
+  return (Array.isArray(items) ? items : [])
+    .slice()
+    .sort((a, b) => String(b.updated_at || b.updatedAt || b.created_at || b.createdAt || b.generated_at || "").localeCompare(String(a.updated_at || a.updatedAt || a.created_at || a.createdAt || a.generated_at || "")))
+    .slice(0, limit);
+}
+
+function buildCompactBootState(rawState = {}, actor = {}) {
+  const source = rawState && typeof rawState === "object" && !Array.isArray(rawState) ? rawState : {};
+  const liveGatesCount = liveGatesCountForState(source);
+  const tasks = compactRecent(source.tasks, 12);
+  const captureInbox = compactRecent(source.captureInbox, 8);
+  const morningBriefs = compactRecent(source.morningBriefs, 3);
+  const eveningReflections = compactRecent(source.eveningReflections, 3);
+  const operatingMemory = compactRecent(source.operatingMemory, 3);
+  const dailyCloseouts = compactRecent(source.dailyCloseouts, 3);
+  const osHealthSnapshots = compactRecent(source.osHealthSnapshots, 2);
+  const smokeTestRuns = compactRecent(source.smokeTestRuns, 2);
+  const dataIntegritySnapshots = compactRecent(source.dataIntegritySnapshots, 2);
+  const roleAssignments = compactRecent(source.roleAssignments, 8);
+  const partnerPrograms = compactRecent(source.partnerPrograms, 8);
+  const handoffPackets = compactRecent(source.handoffPackets, 3);
+  const handoffContractPreviews = compactRecent(source.handoffContractPreviews, 3);
+  return {
+    settings: source.settings || {},
+    runtime: source.runtime || {},
+    metrics: source.metrics || {},
+    systemHealth: source.systemHealth || {},
+    schemaStatus: source.schemaStatus || {},
+    currentUser: publicActor(actor),
+    tasks,
+    captureInbox,
+    morningBriefs,
+    eveningReflections,
+    operatingMemory,
+    dailyCloseouts,
+    osHealthSnapshots,
+    smokeTestRuns,
+    dataIntegritySnapshots,
+    roleAssignments,
+    partnerPrograms,
+    handoffPackets,
+    handoffContractPreviews,
+    bootSummary: {
+      tasksCount: Array.isArray(source.tasks) ? source.tasks.length : 0,
+      captureInboxCount: Array.isArray(source.captureInbox) ? source.captureInbox.length : 0,
+      unreviewedCaptureCount: (Array.isArray(source.captureInbox) ? source.captureInbox : []).filter(item => item.review_state === "review_required").length,
+      openTasksCount: (Array.isArray(source.tasks) ? source.tasks : []).filter(item => !["done", "archived"].includes(item.status)).length,
+      osHealthSnapshotCount: Array.isArray(source.osHealthSnapshots) ? source.osHealthSnapshots.length : 0
+    },
+    bootState: {
+      status: "loaded",
+      endpoint: "/api/boot-state",
+      generatedAt: new Date().toISOString()
+    },
+    fullStateStatus: {
+      status: "deferred",
+      endpoint: "/api/state",
+      message: "Full state will load after the cockpit renders."
+    },
+    safeModeAvailable: true,
+    heavyCollectionsDeferred: true,
+    liveGatesCount,
+    persistence: source.persistence || "boot"
+  };
+}
+
 function graphApiVersion() {
   return process.env.META_GRAPH_VERSION || "v24.0";
 }
@@ -13337,6 +13404,8 @@ function htmlShell() {
     let safeBootActive = false;
     let fullStateLoaded = false;
     let stateFetchDiagnostics = null;
+    let bootStateDiagnostics = null;
+    let fullStateDiagnostics = null;
     let reviewIndex = 0;
     let queueOriginFilter = "all";
     let queueReadinessFilter = "all";
@@ -13413,6 +13482,13 @@ function htmlShell() {
         ["Endpoint", details.endpoint || "unknown"],
         ["Status", details.status || "unknown"],
         ["Content type", details.contentType || "unknown"],
+        ["Error name", details.errorName || "unknown"],
+        ["Error message", details.errorMessage || details.message || "unknown"],
+        ["Timeout ms", details.timeoutMs || "unknown"],
+        ["Request aborted", details.aborted ? "Yes" : "No"],
+        ["Boot-state status", details.bootStateStatus || bootStateDiagnostics?.status || "unknown"],
+        ["Full-state status", details.fullStateStatus || fullStateDiagnostics?.status || "unknown"],
+        ["Heavy collections deferred", details.heavyCollectionsDeferred ? "Yes" : "No"],
         ["Auth token present", details.authTokenPresent ? "Yes" : "No"],
         ["Fell back to safe shell", details.fellBackToSafeShell ? "Yes" : "No"],
         ["Live gates", "0"]
@@ -13433,10 +13509,11 @@ function htmlShell() {
           <div class="panel hero-panel">
             <div class="eyebrow">Safe Mode</div>
             <h1 class="big-title">LegalEase loaded a safe shell.</h1>
-            <p class="big-copy">\${esc(message)}</p>
-            <div class="metric-table" style="margin-top:14px">\${safeDiagnosticRows(stateFetchDiagnostics)}</div>
-            <div class="card-actions" style="margin-top:14px">
-              <button class="primary" type="button" onclick="retryFullStateLoad()">Retry Full Load</button>
+              <p class="big-copy">\${esc(message)}</p>
+              <div class="metric-table" style="margin-top:14px">\${safeDiagnosticRows(stateFetchDiagnostics)}</div>
+              <div class="card-actions" style="margin-top:14px">
+              <button class="primary" type="button" onclick="retryBootStateLoad()">Retry Boot State</button>
+              <button type="button" onclick="retryFullStateLoad()">Retry Full State</button>
               <button type="button" onclick="location.hash='safe-mode'; fetchSafeModeHealth()">Refresh Server Health</button>
               <button type="button" onclick="lockCommandCenter()">Sign Out / Clear Session</button>
             </div>
@@ -13480,8 +13557,15 @@ function htmlShell() {
         endpoint:error.endpoint || "/api/state",
         status:error.status || "unknown",
         contentType:error.contentType || "unknown",
+        errorName:error.name || "Error",
+        errorMessage:error.message || "",
+        timeoutMs:error.timeoutMs || "",
+        aborted:Boolean(error.aborted || error.name === "AbortError"),
         bodyPreview:error.bodyPreview || "",
         authTokenPresent:Boolean(error.authTokenPresent || authSessionPresent()),
+        bootStateStatus:bootStateDiagnostics?.status || "unknown",
+        fullStateStatus:fullStateDiagnostics?.status || "unknown",
+        heavyCollectionsDeferred:Boolean(state?.heavyCollectionsDeferred || error.heavyCollectionsDeferred),
         fellBackToSafeShell:true,
         reason:moduleName
       };
@@ -13511,9 +13595,15 @@ function htmlShell() {
       }
     }
     function retryFullStateLoad() {
+      if (!state) state = safeBootFallbackState("retry_full_state");
+      loadFullStateInBackground({ forceRender:true });
+    }
+    function retryBootStateLoad() {
       safeBootActive = false;
       fullStateLoaded = false;
       stateFetchDiagnostics = null;
+      bootStateDiagnostics = null;
+      fullStateDiagnostics = null;
       window.load && window.load();
     }
     const platforms = ${JSON.stringify(platforms)};
@@ -13606,6 +13696,10 @@ function htmlShell() {
         "Endpoint: " + (error.endpoint || "unknown"),
         "Status: " + (error.status || "unknown"),
         "Content type: " + (error.contentType || "unknown"),
+        "Error name: " + (error.name || "Error"),
+        "Error message: " + (error.message || "unknown"),
+        "Timeout ms: " + (error.timeoutMs || "unknown"),
+        "Request aborted: " + (error.aborted || error.name === "AbortError" ? "yes" : "no"),
         "Auth token present: " + (error.authTokenPresent ? "yes" : "no"),
         "Fell back to safe shell: " + (error.fellBackToSafeShell ? "yes" : "no")
       ];
@@ -13709,6 +13803,12 @@ function htmlShell() {
           if (token && !headers.Authorization && !headers.authorization) headers.Authorization = "Bearer " + token;
           requestOptions.headers = headers;
           response = await fetch(path, { credentials:"same-origin", ...requestOptions, signal: controller?.signal });
+        } catch (error) {
+          error.endpoint = path;
+          error.authTokenPresent = Boolean(token || authSessionPresent());
+          error.timeoutMs = timeoutMs;
+          error.aborted = error.name === "AbortError";
+          throw error;
         } finally {
           if (timeout) clearTimeout(timeout);
         }
@@ -13722,6 +13822,7 @@ function htmlShell() {
             error.endpoint = path;
             error.contentType = contentType;
             error.authTokenPresent = Boolean(token || authSessionPresent());
+            error.timeoutMs = timeoutMs;
             error.payload = parsed;
             throw error;
           } catch (parseError) {
@@ -13731,6 +13832,7 @@ function htmlShell() {
             error.endpoint = path;
             error.contentType = contentType;
             error.authTokenPresent = Boolean(token || authSessionPresent());
+            error.timeoutMs = timeoutMs;
             error.bodyPreview = text.slice(0, 240);
             throw error;
           }
@@ -13743,6 +13845,7 @@ function htmlShell() {
           error.endpoint = path;
           error.contentType = contentType;
           error.authTokenPresent = Boolean(token || authSessionPresent());
+          error.timeoutMs = timeoutMs;
           error.parseError = parseError.message || String(parseError);
           error.bodyPreview = text.slice(0, 240);
           throw error;
@@ -13762,6 +13865,7 @@ function htmlShell() {
             error.endpoint = path;
             error.contentType = xhr.getResponseHeader("content-type") || "";
             error.authTokenPresent = Boolean(token || authSessionPresent());
+            error.timeoutMs = timeoutMs;
             error.bodyPreview = String(xhr.responseText || "").slice(0, 240);
             reject(error);
             return;
@@ -13773,6 +13877,7 @@ function htmlShell() {
             error.endpoint = path;
             error.contentType = xhr.getResponseHeader("content-type") || "";
             error.authTokenPresent = Boolean(token || authSessionPresent());
+            error.timeoutMs = timeoutMs;
             error.parseError = error.message || String(error);
             error.bodyPreview = String(xhr.responseText || "").slice(0, 240);
             reject(error);
@@ -13782,12 +13887,15 @@ function htmlShell() {
           const error = new Error("Network request failed");
           error.endpoint = path;
           error.authTokenPresent = Boolean(token || authSessionPresent());
+          error.timeoutMs = timeoutMs;
           reject(error);
         };
         xhr.ontimeout = () => {
           const error = new Error("Request timed out");
           error.endpoint = path;
           error.authTokenPresent = Boolean(token || authSessionPresent());
+          error.timeoutMs = timeoutMs;
+          error.aborted = true;
           reject(error);
         };
         xhr.send(requestOptions.body || null);
@@ -13802,6 +13910,48 @@ function htmlShell() {
           return { status:"auth_required", endpoint:path, statusCode:error.status, error:formatStateFetchError(error) };
         }
         return { status:"rejected", endpoint:path, statusCode:error?.status || 0, error:formatStateFetchError(error) };
+      }
+    }
+
+    async function loadFullStateInBackground({ forceRender = false } = {}) {
+      fullStateDiagnostics = { status:"loading", endpoint:"/api/state", startedAt:new Date().toISOString() };
+      try {
+        const fullPayload = await api("/api/state", { timeoutMs: 20000 });
+        state = hydrateStatePayload(fullPayload, "lazy-full-state");
+        fullStateLoaded = true;
+        safeBootActive = false;
+        fullStateDiagnostics = { status:"loaded", endpoint:"/api/state", loadedAt:new Date().toISOString() };
+        state.fullStateStatus = fullStateDiagnostics;
+        render();
+        return true;
+      } catch (error) {
+        if (handleStateFetchAuthFailure(error)) return false;
+        error.fellBackToSafeShell = false;
+        fullStateLoaded = false;
+        fullStateDiagnostics = {
+          status:"unavailable",
+          endpoint:error.endpoint || "/api/state",
+          errorName:error.name || "Error",
+          errorMessage:error.message || "Full state unavailable.",
+          statusCode:error.status || "unknown",
+          contentType:error.contentType || "unknown",
+          timeoutMs:error.timeoutMs || 20000,
+          aborted:Boolean(error.aborted || error.name === "AbortError"),
+          authTokenPresent:Boolean(error.authTokenPresent || authSessionPresent()),
+          checkedAt:new Date().toISOString()
+        };
+        state = hydrateStatePayload({
+          ...(state || safeBootFallbackState("full_state_unavailable")),
+          fullStateStatus: fullStateDiagnostics,
+          safeModeAvailable:true,
+          heavyCollectionsDeferred:true
+        }, "lazy-full-state-failed");
+        if (forceRender) render();
+        else {
+          try { render(); } catch (renderError) { console.error(renderError); }
+        }
+        try { toast("Full state unavailable. Safe boot state loaded."); } catch {}
+        return false;
       }
     }
 
@@ -13833,9 +13983,11 @@ function htmlShell() {
       }
       window.__LE_BOOT.stage = "state-fetch";
       try {
-        state = hydrateStatePayload(await api("/api/state", { timeoutMs: 5000 }), "state-fetch");
+        window.__LE_BOOT.stage = "boot-state-fetch";
+        state = hydrateStatePayload(await api("/api/boot-state", { timeoutMs: 5000 }), "boot-state-fetch");
         safeBootActive = false;
-        fullStateLoaded = true;
+        fullStateLoaded = false;
+        bootStateDiagnostics = { status:"loaded", endpoint:"/api/boot-state", loadedAt:new Date().toISOString(), heavyCollectionsDeferred:Boolean(state.heavyCollectionsDeferred) };
         stateFetchDiagnostics = null;
         window.__LE_BOOT.stage = "first-render";
         try { render(); } catch (renderError) { showRenderFailure(renderError.message || "Unknown render error", "first-render"); throw renderError; }
@@ -13844,9 +13996,22 @@ function htmlShell() {
       } catch (error) {
         if (handleStateFetchAuthFailure(error)) return;
         error.fellBackToSafeShell = true;
-        showSafeBootShell(formatStateFetchError(error), "state-fetch", error);
+        bootStateDiagnostics = {
+          status:"failed",
+          endpoint:error.endpoint || "/api/boot-state",
+          errorName:error.name || "Error",
+          errorMessage:error.message || "Boot state failed.",
+          statusCode:error.status || "unknown",
+          contentType:error.contentType || "unknown",
+          timeoutMs:error.timeoutMs || 5000,
+          aborted:Boolean(error.aborted || error.name === "AbortError"),
+          authTokenPresent:Boolean(error.authTokenPresent || authSessionPresent()),
+          checkedAt:new Date().toISOString()
+        };
+        showSafeBootShell(formatStateFetchError(error), "boot-state-fetch", error);
         return;
       }
+      loadFullStateInBackground();
       Promise.all([
         optionalBootApi("/api/health/supabase", { timeoutMs: 2500 }),
         optionalBootApi("/api/backups", { timeoutMs: 2500 })
@@ -23607,6 +23772,12 @@ async function handleRequest(request, response) {
       openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
       liveGatesCount: Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length
     });
+    return;
+  }
+
+	  if (url.pathname === "/api/boot-state" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, buildCompactBootState(currentState, accessDecision.actor));
     return;
   }
 
