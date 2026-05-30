@@ -179,10 +179,10 @@ assert(serverSource.includes("function cockpitDataIntegrityHtml"), "Cockpit Data
 assert(serverSource.includes("dataIntegrityPageHtml"), "#data-integrity route renderer must exist.");
 assert(serverSource.includes("\"data-integrity\""), "#data-integrity route must be registered.");
 assert(serverSource.includes("Data Model Inventory"), "Data Integrity page should render inventory.");
-assert(serverSource.includes("Integrity Status"), "Data Integrity page should render integrity status.");
+assert(serverSource.includes("Check Status"), "Data Check page should render integrity status.");
 assert(serverSource.includes("Duplicate Warnings"), "Data Integrity page should render duplicate warnings.");
 assert(serverSource.includes("Latest Export Snapshot"), "Data Integrity page should render latest export snapshot.");
-assert(serverSource.includes("Refresh Data Integrity"), "Data Integrity page should expose internal refresh action.");
+assert(serverSource.includes("Refresh data check"), "Data Check page should expose internal refresh action.");
 assert(!/data-integrity[\s\S]{0,2800}(send email|publish page|activate dashboard|enable live|Partner Journey API)/i.test(serverSource), "Data Integrity must not expose external controls.");
 
 console.log("State Integrity tests passed.");

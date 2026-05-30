@@ -72,7 +72,7 @@ function captureActions(item = {}) {
     actions.push({ action: "mark_capture_reviewed", label: "Mark reviewed", targetId: item.id });
   }
   actions.push({ action: "route_capture_task", label: "Route to Task", targetId: item.id });
-  actions.push({ action: "route_capture_operating_memory", label: "Route to Operating Memory", targetId: item.id });
+  actions.push({ action: "route_capture_operating_memory", label: "Route to Notes & Decisions", targetId: item.id });
   return actions;
 }
 
@@ -96,15 +96,15 @@ function rcapArtifactResults(state = {}) {
     const isPacket = item.key === rcapHandoffPacketKey || item.artifactType === "internal_handoff_packet";
     return result({
       id: item.key || item.id,
-      type: isPacket ? "handoffPacket" : "rcapArtifact",
-      title: item.title || item.key || "RCAP artifact",
-      summary: item.summary?.nextManualAction || item.summary?.answer || item.notes || item.description || item.status || "RCAP internal artifact.",
+      type: isPacket ? "handoffPacket" : "recoveryPlanArtifact",
+      title: String(item.title || item.key || "Recovery plan artifact").replace(/\bRCAP\b/g, "Recovery plan").replace(/Production Activation/g, "Launch checklist"),
+      summary: String(item.summary?.nextManualAction || item.summary?.answer || item.notes || item.description || item.status || "Recovery plan artifact.").replace(/\bRCAP\b/g, "Recovery plan").replace(/Production Activation/g, "Launch checklist"),
       route: "production-activation-rcap",
-      source: isPacket ? "handoff packet" : "RCAP review workspace",
+      source: isPacket ? "handoff packet" : "Launch checklist",
       status: item.review_state || item.status || "review_required",
       priority: item.priority || "",
       updated_at: updatedAt(item),
-      safe_actions: [{ action: "open_rcap_review_workspace", label: "Open RCAP Review Workspace", route: "production-activation-rcap" }]
+      safe_actions: [{ action: "open_rcap_review_workspace", label: "Open Launch Checklist", route: "production-activation-rcap" }]
     });
   });
 }
@@ -188,7 +188,7 @@ export function buildOperatorSearchIndex(state = {}) {
     items.push(result({
       id: item.key || item.id,
       type: "operatingMemory",
-      title: list(item.moved_today)[0]?.title || "Operating Memory",
+      title: list(item.moved_today)[0]?.title || "Notes & Decisions",
       summary: list(item.carry_forward)[0]?.title || list(item.still_blocked)[0]?.title || "Day-over-day operating memory.",
       route: "operating-memory",
       source: "operating memory",
@@ -222,7 +222,7 @@ export function buildOperatorSearchIndex(state = {}) {
       status: item.review_state,
       priority: item.priority,
       updated_at: item.last_updated,
-      safe_actions: [{ action: "open_rcap_review_workspace", label: "Open RCAP Review Workspace", route: "production-activation-rcap" }]
+      safe_actions: [{ action: "open_rcap_review_workspace", label: "Open Launch Checklist", route: "production-activation-rcap" }]
     }));
   }
 
@@ -238,7 +238,7 @@ export function buildOperatorSearchIndex(state = {}) {
       source: "handoff packets",
       status: item.status || (item.handoff_ready ? "ready" : "not_ready"),
       updated_at: updatedAt(item),
-      safe_actions: [{ action: "open_rcap_review_workspace", label: "Open RCAP Review Workspace", route: "production-activation-rcap" }]
+      safe_actions: [{ action: "open_rcap_review_workspace", label: "Open Launch Checklist", route: "production-activation-rcap" }]
     }));
   }
 
@@ -305,7 +305,7 @@ export function buildOperatorSearchIndex(state = {}) {
       source: "audit history",
       status: "recorded",
       updated_at: updatedAt(item),
-      safe_actions: [{ action: "open_os_health", label: "Open OS Health", route: "os-health" }]
+      safe_actions: [{ action: "open_os_health", label: "Open App Status", route: "os-health" }]
     }));
   }
 
@@ -319,7 +319,7 @@ export function buildOperatorSearchIndex(state = {}) {
       source: "activity events",
       status: item.riskLevel || "recorded",
       updated_at: updatedAt(item),
-      safe_actions: [{ action: "open_os_health", label: "Open OS Health", route: "os-health" }]
+      safe_actions: [{ action: "open_os_health", label: "Open App Status", route: "os-health" }]
     }));
   }
 
@@ -327,13 +327,13 @@ export function buildOperatorSearchIndex(state = {}) {
     items.push(result({
       id: item.id,
       type: "osHealthSnapshot",
-      title: "OS Health Snapshot",
-      summary: item.summary?.next_operator_action || item.overall_health || "OS Health Snapshot.",
+      title: "App Status Snapshot",
+      summary: item.summary?.next_operator_action || item.overall_health || "App status snapshot.",
       route: "os-health",
       source: "OS health",
       status: item.overall_health,
       updated_at: updatedAt(item),
-      safe_actions: [{ action: "open_os_health", label: "Open OS Health", route: "os-health" }]
+      safe_actions: [{ action: "open_os_health", label: "Open App Status", route: "os-health" }]
     }));
   }
 
@@ -358,8 +358,8 @@ export function runOperatorSearchAction(state = {}, payload = {}, options = {}) 
   const targetId = String(payload.targetId || payload.id || "");
   if (forbiddenActions.has(action)) throw new Error("Forbidden operator search action blocked.");
   if (action === "open_route") return { state, route: payload.route || "", message: "Route opened." };
-  if (action === "open_rcap_review_workspace") return { state, route: "production-activation-rcap", message: "RCAP Review Workspace opened." };
-  if (action === "open_os_health") return { state, route: "os-health", message: "OS Health opened." };
+  if (action === "open_rcap_review_workspace") return { state, route: "production-activation-rcap", message: "Launch checklist opened." };
+  if (action === "open_os_health") return { state, route: "os-health", message: "App status opened." };
   if (action === "open_morning_brief") return { state, route: "morning-brief", message: "Morning Brief opened." };
   if (action === "open_evening_reflection") return { state, route: "evening-reflection", message: "Evening Reflection opened." };
   if (action === "open_daily_closeout") return { state, route: "daily-closeout", message: "Daily Closeout opened." };
@@ -373,18 +373,18 @@ export function runOperatorSearchAction(state = {}, payload = {}, options = {}) 
   }
   if (action === "route_capture_operating_memory") {
     const result = routeCaptureInboxItem(state, targetId, "route_operating_memory", options);
-    return { ...result, route: "operating-memory", message: "Capture routed to Operating Memory." };
+    return { ...result, route: "operating-memory", message: "Capture routed to Notes & Decisions." };
   }
   if (action === "task_mark_in_progress") {
-    const result = updateTaskInState(state, targetId, "in_progress", { note: payload.note || "Marked in progress from Operator Search." }, options);
+    const result = updateTaskInState(state, targetId, "in_progress", { note: payload.note || "Marked in progress from Search." }, options);
     return { ...result, route: "tasks", message: "Task marked in progress." };
   }
   if (action === "task_mark_done") {
-    const result = updateTaskInState(state, targetId, "done", { completion_note: payload.note || payload.completion_note || "Completed from Operator Search." }, options);
+    const result = updateTaskInState(state, targetId, "done", { completion_note: payload.note || payload.completion_note || "Completed from Search." }, options);
     return { ...result, route: "tasks", message: "Task marked done." };
   }
   if (action === "task_reopen") {
-    const result = updateTaskInState(state, targetId, "reopen", { note: payload.note || "Reopened from Operator Search." }, options);
+    const result = updateTaskInState(state, targetId, "reopen", { note: payload.note || "Reopened from Search." }, options);
     return { ...result, route: "tasks", message: "Task reopened." };
   }
   throw new Error("Unsupported operator search action.");

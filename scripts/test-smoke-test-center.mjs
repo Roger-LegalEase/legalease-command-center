@@ -102,8 +102,8 @@ assert.equal(finished.run.no_external_actions_confirmation, "No emails sent, no 
 assert(serverSource.includes("function cockpitSmokeTestHtml"), "Cockpit Smoke Test card must render.");
 assert(serverSource.includes("smokeTestPageHtml"), "#smoke-test route renderer must exist.");
 assert(serverSource.includes("\"smoke-test\""), "#smoke-test route must be registered.");
-assert(serverSource.includes("Start Smoke Test Run"), "Start Smoke Test Run action must render.");
-assert(serverSource.includes("Finish Smoke Test Run"), "Finish Smoke Test Run action must render.");
+assert(serverSource.includes("Start self-check"), "Start self-check action must render.");
+assert(serverSource.includes("Finish self-check"), "Finish self-check action must render.");
 assert(serverSource.includes("buildSmokeTestChecklist"), "Smoke test checklist groups must render from the shared checklist helper.");
 assert(serverSource.includes("group.name"), "Smoke test page must render checklist group names.");
 assert(serverSource.includes("/api/smoke-test/start"), "Smoke test start API must exist.");

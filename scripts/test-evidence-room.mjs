@@ -183,11 +183,11 @@ assert("stale_evidence_warnings" in health, "OS Health should include stale evid
 assert(serverSource.includes("function cockpitEvidenceRoomHtml"), "Cockpit Evidence Room card must render.");
 assert(serverSource.includes("evidenceRoomPageHtml"), "#evidence-room route renderer must exist.");
 assert(serverSource.includes("\"evidence-room\""), "#evidence-room route must be registered.");
-assert(serverSource.includes("Evidence Overview"), "Evidence overview must render.");
+assert(serverSource.includes("Proof Overview"), "Proof overview must render.");
 assert(serverSource.includes("Evidence Sources"), "Evidence sources must render.");
 assert(serverSource.includes("Evidence List"), "Evidence list must render.");
 assert(serverSource.includes("Data Room Index"), "Data Room index must render.");
-assert(serverSource.includes("Generate Evidence Summary"), "Generate Evidence Summary action must render.");
+assert(serverSource.includes("Generate proof summary"), "Generate proof summary action must render.");
 assert(serverSource.includes("/api/evidence-room/summary"), "Evidence Summary endpoint must exist.");
 assert(!/evidence-room[\s\S]{0,5000}(send email|publish page|activate dashboard|Partner Journey API|child_process|execCommand|spawn\()/i.test(serverSource), "Evidence Room must not expose external controls or browser shell execution.");
 const evidenceRoomSource = serverSource.match(/function evidenceRoomPageHtml[\s\S]*?function [a-zA-Z0-9]+PageHtml/)?.[0] || "";

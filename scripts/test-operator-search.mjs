@@ -74,7 +74,7 @@ assert(index.some(item => item.type === "morningBrief"), "Search should include 
 assert(index.some(item => item.type === "eveningReflection"), "Search should include Evening Reflection records.");
 assert(index.some(item => item.type === "operatingMemory"), "Search should include Operating Memory.");
 assert(index.some(item => item.type === "dailyCloseout"), "Search should include Daily Closeouts.");
-assert(index.some(item => item.type === "rcapArtifact"), "Search should include RCAP artifacts.");
+assert(index.some(item => item.type === "recoveryPlanArtifact"), "Search should include recovery plan artifacts.");
 assert(index.some(item => item.type === "handoffPacket"), "Search should include handoff packets.");
 assert(index.some(item => item.type === "partnerProgram"), "Search should include partner programs.");
 assert(index.some(item => item.type === "report"), "Search should include reports.");
@@ -84,9 +84,9 @@ assert(index.some(item => item.type === "auditHistory"), "Search should include 
 assert(index.some(item => item.type === "activityEvent"), "Search should include activity events.");
 assert(index.some(item => item.type === "osHealthSnapshot"), "Search should include OS health snapshots.");
 
-const rcapResults = searchOperatorIndex(index, "RCAP");
-assert(rcapResults.length > 0, "Search should return RCAP results.");
-assert(rcapResults.every(item => item.safe_actions?.length), "Each result should include safe actions.");
+const recoveryResults = searchOperatorIndex(index, "recovery plan");
+assert(recoveryResults.length > 0, "Search should return recovery plan results.");
+assert(recoveryResults.every(item => item.safe_actions?.length), "Each result should include safe actions.");
 
 const actionNames = new Set(index.flatMap(item => (item.safe_actions || []).map(action => action.action)));
 for (const action of ["open_route", "mark_capture_reviewed", "route_capture_task", "route_capture_operating_memory", "open_rcap_review_workspace", "open_os_health", "open_morning_brief", "open_evening_reflection", "open_daily_closeout"]) {

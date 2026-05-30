@@ -642,7 +642,7 @@ function applyVisibleReplaceCommand(state = {}, input = {}, threadId = "", optio
         captureInbox:[capture, ...list(state.captureInbox)].slice(0, 500),
         auditHistory:[audit("lee capture fallback", `No visible match for ${from}; saved capture for review.`, capture.id), ...list(state.auditHistory)].slice(0, 1000)
       },
-      message:`I couldn’t find ${from} in the current focus. I saved this as a capture for review.`,
+      message:`I could not find ‘${from}’ on this page, so I saved your request as a note.`,
       proposals:[],
       events:[leeEvent("Le-E capture fallback", { title:`Le-E saved unmatched change for review`, objectType:"capture_inbox", objectId:capture.id, metadata:{ from, to } }, { now })]
     };
@@ -665,7 +665,7 @@ function applyVisibleReplaceCommand(state = {}, input = {}, threadId = "", optio
     }, { now });
     return {
       state,
-      message:`I found ${records.length} places with ${from}. I created proposed changes so Roger can apply the right one.`,
+      message:`I found ${records.length} places with ‘${from}.’ Choose which one to update.`,
       proposals:[proposal],
       events:[leeEvent("lee_visible_update_proposed", { title:proposal.title, objectType:"lee_action", objectId:proposal.id, metadata:{ from, to, targets:records.length } }, { now })]
     };
@@ -681,7 +681,7 @@ function applyVisibleReplaceCommand(state = {}, input = {}, threadId = "", optio
       [target.collection]:nextCollection,
       auditHistory:[audit("lee visible update", `Updated current focus from ${from} to ${to}.`, target.id), ...list(state.auditHistory)].slice(0, 1000)
     },
-    message:`Updated the current focus from ${from} to ${to}.`,
+    message:`Updated ‘${from}’ to ‘${to}.’`,
     proposals:[],
     events:[leeEvent("Le-E visible update", { title:`Updated current focus from ${from} to ${to}`, objectType:target.collection, objectId:target.id, metadata:{ from, to, fields:target.fields } }, { now })]
   };

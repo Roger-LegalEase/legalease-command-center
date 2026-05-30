@@ -95,8 +95,8 @@ function baseState() {
 
 assert.match(server, /handoff-contract/, "#handoff-contract route renders.");
 assert.match(server, /cockpitHandoffContractHtml/, "Cockpit Handoff Contract card renders.");
-assert.match(server, /Generate Handoff Contract Preview/, "Generate Handoff Contract Preview action renders.");
-assert.match(server, /Contract only/, "Contract page should label itself contract-only.");
+assert.match(server, /Generate handoff notes preview/, "Founder-facing handoff notes preview action renders.");
+assert.match(server, /Notes only/, "Handoff page should label itself notes-only.");
 assert.match(server, /no external system contacted/i, "Contract page should state no external system contacted.");
 
 assert.equal(handoffContractVersion, "partner-journey-handoff-contract-v1");

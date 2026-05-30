@@ -39,6 +39,7 @@ for (const helper of [
   "buildSmokeTestChecklist",
   "buildDataIntegritySnapshot",
   "buildDataModelInventory",
+  "priorityWeight",
   "buildPartnerJourneyHandoffContractPacket",
   "validatePartnerJourneyHandoffContract",
   "handoffContractStatus",

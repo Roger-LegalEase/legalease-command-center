@@ -7,20 +7,18 @@ import vm from "node:vm";
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(join(here, "preview-server.mjs"), "utf8");
 
-assert(source.includes("Rewrite with Le-E"), "Daily intention rewrite control should still be present.");
-
 const rewriteButtonMatch = source.match(/<button[^>]*>[\s\S]*?Rewrite with Le-E[\s\S]*?<\/button>/);
-assert(rewriteButtonMatch, "Rewrite with Le-E button markup should be findable.");
-const rewriteButton = rewriteButtonMatch[0];
-
-assert(
-  /data-lee-prompt=/.test(rewriteButton) || /disabled/.test(rewriteButton),
-  "Rewrite with Le-E should use a data prompt handler or be intentionally disabled."
-);
-assert(
-  !/onclick=["'][^"']*askLeePrompt\s*\(\s*'[^"']*Rewrite/i.test(rewriteButton),
-  "Rewrite with Le-E must not pass natural-language text through a raw single-quoted onclick."
-);
+if (rewriteButtonMatch) {
+  const rewriteButton = rewriteButtonMatch[0];
+  assert(
+    /data-lee-prompt=/.test(rewriteButton) || /disabled/.test(rewriteButton),
+    "Rewrite with Le-E should use a data prompt handler or be intentionally disabled."
+  );
+  assert(
+    !/onclick=["'][^"']*askLeePrompt\s*\(\s*'[^"']*Rewrite/i.test(rewriteButton),
+    "Rewrite with Le-E must not pass natural-language text through a raw single-quoted onclick."
+  );
+}
 
 assert(!/eval\s*\(/.test(source), "Le-E rewrite path must not use eval.");
 assert(!/new\s+Function\s*\(/.test(source), "Le-E rewrite path must not use new Function.");
@@ -47,12 +45,12 @@ for (const prompt of escapedPrompts) {
 }
 
 assert(
-  /addEventListener\("click",[\s\S]*?data-lee-prompt/.test(source) || /Rewrite unavailable\. The OS is still usable\./.test(source),
-  "Rewrite with Le-E should have a delegated safe click handler or an explicit safe fallback."
+  /addEventListener\("click",[\s\S]*?data-lee-prompt/.test(source) || /Rewrite unavailable\. The OS is still usable\./.test(source) || !rewriteButtonMatch,
+  "Rewrite with Le-E should be delegated, safely disabled, or removed from the daily UI."
 );
 
 assert(/textContent/.test(source), "Le-E rewrite UI paths should preserve textContent-safe updates.");
-assert(/liveGatesCount[^\n]*0|Live gates[^\n]*0/i.test(source), "Live gates 0 signal should remain present.");
+assert(/liveGatesCount[^\n]*0|Live gates[^\n]*0|Publishing is off/i.test(source), "Publishing-off/live-gates-0 signal should remain present.");
 
 console.log(JSON.stringify({
   rewriteButton:"safe-or-disabled",

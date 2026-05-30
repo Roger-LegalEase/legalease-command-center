@@ -14,6 +14,7 @@ const source = readFileSync(join(here, "preview-server.mjs"), "utf8");
 
 const routes = [
   "#overview",
+  "#work",
   "#safe-mode",
   "#growth",
   "#partners",
@@ -120,13 +121,14 @@ function staticUnsafeHandlerChecks() {
   }
 
   const rewriteButtonMatch = source.match(/<button[^>]*>Rewrite with Le-E<\/button>/);
-  assert(rewriteButtonMatch, "Generated source should include the Rewrite with Le-E button.");
-  assert(!/onclick=/.test(rewriteButtonMatch[0]), "Rewrite with Le-E must not use inline onclick JavaScript.");
-  assert(/data-lee-prompt=/.test(rewriteButtonMatch[0]), "Rewrite with Le-E should store prompt text in a data attribute.");
-  assert(
-    /addEventListener\("click",[\s\S]*?data-lee-prompt[\s\S]*?askLeePromptFromButton/.test(source),
-    "Rewrite with Le-E should be handled by delegated data-attribute click handling."
-  );
+  if (rewriteButtonMatch) {
+    assert(!/onclick=/.test(rewriteButtonMatch[0]), "Rewrite with Le-E must not use inline onclick JavaScript.");
+    assert(/data-lee-prompt=/.test(rewriteButtonMatch[0]), "Rewrite with Le-E should store prompt text in a data attribute.");
+    assert(
+      /addEventListener\("click",[\s\S]*?data-lee-prompt[\s\S]*?askLeePromptFromButton/.test(source),
+      "Rewrite with Le-E should be handled by delegated data-attribute click handling."
+    );
+  }
 }
 
 function apostropheRegressionSelfCheck() {
@@ -188,7 +190,7 @@ try {
     totalScripts += parseInlineScripts(html, route);
     totalHandlers += parseInlineHandlers(html, route);
     assert.doesNotMatch(html, /SyntaxError:\s*Unexpected identifier 's'|Failed module:\s*client-error/i, `${route} should not ship a client syntax error fallback.`);
-    assert(/liveGatesCount[^,\n]*0|Live Gates: 0|Live gates[^<]*0/i.test(html), `${route} should preserve the live gates 0 signal.`);
+    assert(/liveGatesCount[^,\n]*0|Live Gates: 0|Live gates[^<]*0|Publishing is off/i.test(html), `${route} should preserve the publishing-off/live-gates-0 signal.`);
   }
 } finally {
   child.kill("SIGTERM");

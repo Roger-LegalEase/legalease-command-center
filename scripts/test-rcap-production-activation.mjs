@@ -72,8 +72,9 @@ const startRouteSnippet = server.slice(startRouteIndex, startRouteIndex + 900);
 assert.doesNotMatch(startRouteSnippet, /state:\s*withPublicChannelSetup/, "Activation start endpoint must return a compact summary, not the full app state.");
 assert.match(startRouteSnippet, /activation_status:\s*rcapActivationStatus/, "Activation start endpoint should return compact activation status.");
 assert.match(server, /rcapActivationClientStatus/, "Cockpit should keep a compact activation status for UI refreshes.");
-assert.match(server, /layout: cockpit-grid-fixed-v1/, "Fixed cockpit marker should remain present.");
-assert.match(server, /nav: topnav-fixed-v1/, "Fixed top nav marker should remain present.");
+assert.match(server, /class="founder-today/, "Founder cockpit should remain the stable daily shell.");
+assert.match(server, /href="#production-activation-rcap"[\s\S]*Launch Checklist/, "Recovery plan link should route to the RCAP launch checklist.");
+assert.doesNotMatch(server, /layout: cockpit-grid-fixed-v1|nav: topnav-fixed-v1/, "Normal UI should not expose deprecated debug markers.");
 assert.match(server, /liveGatesCount:\s*Object\.values/, "Health endpoint should still report live gates.");
 
 console.log("RCAP production activation tests passed");

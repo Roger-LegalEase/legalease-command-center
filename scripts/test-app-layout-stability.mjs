@@ -16,7 +16,10 @@ function assertContains(source, pattern, message) {
   assert.match(source, pattern, message);
 }
 
-assertContains(server, /shell:\s*app-layout-stable-v1/, "Global shell layout marker should render in hosted mode.");
+assertContains(server, /<header class="app-topbar">/, "Global shell topbar should render in hosted mode.");
+assertContains(server, /class="top-nav"[\s\S]*Today[\s\S]*Work[\s\S]*Proof[\s\S]*Search[\s\S]*Settings/, "Founder-facing top navigation should remain stable.");
+assertContains(server, /id="app"/, "Route host should remain available for client rendering.");
+assert.doesNotMatch(server, /shell:\s*app-layout-stable-v1|controls:\s*button-audit-v1|nav:\s*topnav-fixed-v1/, "Normal shell should not expose old debug markers.");
 assertContains(server, /\.app-section,\s*\.page-section,\s*\.command-page,\s*\.section-page/, "Stable page container CSS should exist.");
 assertContains(server, /padding:\s*24px 32px 96px/, "Stable page container should reserve bottom padding for Le-E.");
 assertContains(server, /@media\s*\(max-width:980px\)[\s\S]*padding:\s*20px 20px 96px/, "Tablet page padding should be stable.");
