@@ -25,7 +25,7 @@ assert.match(server, /<button class="review-only-action" disabled aria-disabled=
 assert.match(server, /onclick="startRcapActivation\(\)"/, "RCAP activation button should still be wired.");
 assert.match(server, /href="#capture-inbox"/, "Work dropdown inbox link should still exist.");
 assert.match(server, /href="#tasks"/, "Work dropdown task link should still exist.");
-assert.match(server, /href="#settings"/, "Settings navigation should still exist.");
+assert.match(server, /href="#settings"/, "Settings navigation should still exist as a secondary control.");
 
 const automationControls = snippetAround("Import controls");
 assert.match(automationControls, /type="button" onclick="connectGoogle\(\)"/, "Automation Connect Google control should be explicit.");

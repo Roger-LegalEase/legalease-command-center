@@ -17,6 +17,8 @@ assert.match(overview, /class="founder-card" aria-label="Top 3"/, "Today should 
 assert.match(overview, /class="founder-card quick-capture" aria-label="Quick Capture"/, "Today should render one Quick Capture card.");
 assert.match(overview, /class="founder-card" aria-label="Tasks"/, "Today should render one Tasks card.");
 assert.match(overview, /class="founder-card" aria-label="Decisions and Blockers"/, "Today should render one decisions/blockers card.");
+assert.match(overview, /socialContentCardHtml\(\)/, "Today should render one compact Social / Content card.");
+assert.match(server, /class="founder-card social-content-card" aria-label="Social \/ Content"/, "Social / Content card markup should exist.");
 assert.match(overview, /class="founder-card" aria-label="What Moved"/, "Today should render movement summary.");
 assert.match(overview, /class="founder-card" aria-label="Tomorrow Plan"/, "Today should render Tomorrow Plan.");
 assert.match(overview, /class="founder-card" aria-label="Tiny App Status"/, "Today should render a small app status card.");

@@ -3832,6 +3832,98 @@ async function markPostManuallyPosted(postId) {
   return { state: nextState, message: "Post archived as manually posted." };
 }
 
+async function createInternalSocialRecord(input = {}) {
+  const now = new Date().toISOString();
+  const body = String(input.body || input.raw_input || "").trim();
+  if (!body) throw new Error("Post text is required.");
+  const type = ["idea", "draft", "ready", "manually_published"].includes(String(input.type || "")) ? input.type : "draft";
+  const status = String(input.status || type || "draft");
+  const post = {
+    id: `social-${crypto.randomUUID().slice(0, 8)}`,
+    type,
+    status,
+    platform: input.channel || input.platform || "manual",
+    channel: input.channel || input.platform || "manual",
+    title: String(input.title || body.slice(0, 80) || "Social post").trim(),
+    hook: "",
+    body,
+    cta: "",
+    hashtags: [],
+    source: input.source || "manual",
+    sourceId: input.sourceId || "",
+    planned_date: input.planned_date || "",
+    scheduledFor: input.scheduledFor || input.planned_date || "",
+    created_at: now,
+    updated_at: now,
+    createdAt: now,
+    updatedAt: now,
+    publishingStatus: "manual_only",
+    externalActionConfirmation: "Publishing is off. Nothing has been published by the OS."
+  };
+  const state = await store.readState();
+  const nextState = analyzeOperations({
+    ...state,
+    posts: [post, ...(state.posts || [])],
+    auditHistory: [{
+      id: `audit-social-${crypto.randomUUID().slice(0, 8)}`,
+      action: "social_record_created",
+      resourceType: "social",
+      resourceId: post.id,
+      actor: "owner_token",
+      timestamp: now,
+      summary: `Social ${type} created internally. Nothing published.`
+    }, ...(state.auditHistory || [])].slice(0, 1000),
+    activityEvents: [{
+      id: `activity-social-${crypto.randomUUID().slice(0, 8)}`,
+      eventType: "Social item saved",
+      title: post.title,
+      summary: "Internal social item saved. Nothing has been published by the OS.",
+      relatedObjectType: "social",
+      relatedObjectId: post.id,
+      createdAt: now
+    }, ...(state.activityEvents || [])].slice(0, 500)
+  });
+  await store.writeState(nextState);
+  return { state: nextState, post, message: type === "idea" ? "Idea saved." : "Draft saved." };
+}
+
+async function updateInternalSocialRecord(id = "", patch = {}, action = "social_record_updated") {
+  const state = await store.readState();
+  const current = (state.posts || []).find((post) => post.id === id);
+  if (!current) throw new Error("Social item not found.");
+  const now = new Date().toISOString();
+  const nextPost = {
+    ...current,
+    ...patch,
+    updated_at: now,
+    updatedAt: now
+  };
+  const nextState = analyzeOperations({
+    ...state,
+    posts: (state.posts || []).map((post) => post.id === id ? nextPost : post),
+    auditHistory: [{
+      id: `audit-social-${crypto.randomUUID().slice(0, 8)}`,
+      action,
+      resourceType: "social",
+      resourceId: id,
+      actor: "owner_token",
+      timestamp: now,
+      summary: "Social item updated internally. Nothing published by the OS."
+    }, ...(state.auditHistory || [])].slice(0, 1000),
+    activityEvents: [{
+      id: `activity-social-${crypto.randomUUID().slice(0, 8)}`,
+      eventType: "Social item updated",
+      title: nextPost.title || "Social item",
+      summary: "Internal social item updated. Nothing has been published by the OS.",
+      relatedObjectType: "social",
+      relatedObjectId: id,
+      createdAt: now
+    }, ...(state.activityEvents || [])].slice(0, 500)
+  });
+  await store.writeState(nextState);
+  return { state: nextState, post: nextPost, message: "Social item updated." };
+}
+
 async function updateManualPerformance(postId, performancePatch = {}) {
   const state = await store.readState();
   const post = state.posts.find((item) => item.id === postId);
@@ -13398,15 +13490,15 @@ function htmlShell() {
       <nav class="top-nav" aria-label="Primary">
         <a class="nav-top-link" href="#overview" data-nav-section="today">Today</a>
         <a class="nav-top-link" href="#work" data-nav-section="work">Work</a>
+        <a class="nav-top-link" href="#social" data-nav-section="social">Social</a>
         <a class="nav-top-link" href="#proof" data-nav-section="proof">Proof</a>
         <a class="nav-top-link" href="#operator-search" data-nav-section="search">Search</a>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="settings">Settings</summary><div class="nav-menu-panel"><strong>Daily</strong><a href="#morning-brief">Morning Brief</a><a href="#daily-closeout">Daily Closeout</a><a href="#operating-memory">Notes &amp; Decisions</a><strong>Work</strong><a href="#tasks">Tasks</a><a href="#capture-inbox">Inbox</a><strong>Proof</strong><a href="#evidence-room">Proof</a><a href="#dataroom">Data Room</a><strong>Advanced</strong><a href="#settings">Settings Home</a><a href="#os-health">App Status</a><a href="#data-integrity">Data Check</a><a href="#smoke-test">Self-Check</a><a href="#roles">Team Roles</a><a href="#operator-manual">Guide</a><a href="#safe-mode">Recovery Mode</a><a href="#production-activation-rcap">Launch Checklist</a><a href="#handoff-contract">Handoff Notes</a></div></details>
       </nav>
     </header>
     <div>
       <header>
         <div><div class="eyebrow">Founder workspace</div><h2>LegalEase</h2></div>
-        <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><button type="button" onclick="location.hash='operator-search'">Search</button><button type="button" onclick="lockCommandCenter()">Lock</button></div>
+        <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><details class="nav-menu utility-menu"><summary class="nav-menu-summary">Settings</summary><div class="nav-menu-panel"><strong>Daily</strong><a href="#morning-brief">Morning Brief</a><a href="#daily-closeout">Daily Closeout</a><a href="#operating-memory">Notes &amp; Decisions</a><strong>Work</strong><a href="#tasks">Tasks</a><a href="#capture-inbox">Inbox</a><strong>Settings</strong><a href="#settings">Settings Home</a><a href="#os-health">App Status</a><a href="#data-integrity">Data Check</a><a href="#smoke-test">Self-Check</a><a href="#roles">Team Roles</a><a href="#operator-manual">Guide</a><a href="#safe-mode">Recovery Mode</a><a href="#production-activation-rcap">Launch Checklist</a><a href="#handoff-contract">Handoff Notes</a></div></details><button type="button" onclick="location.hash='operator-search'">Search</button><button type="button" onclick="lockCommandCenter()">Lock</button></div>
       </header>
       <main id="app"><div class="panel loading-panel"><div class="eyebrow">Starting command center</div><h1 class="big-title">Loading LegalEase...</h1><p class="big-copy">If this stays here, the browser could not finish the app render. The server is still serving a visible fallback so you are not staring at a blank screen.</p><div class="loading-line wide"></div><div class="loading-line"></div><div class="loading-card"></div><div class="card-actions"><button class="primary" onclick="location.reload()">Reload app</button><a class="button-link" href="#queue">Open Queue</a></div></div></main>
     </div>
@@ -19691,6 +19783,70 @@ function htmlShell() {
       );
     }
 
+    function socialRecords() {
+      return Array.isArray(state.posts) ? state.posts : [];
+    }
+
+    function socialText(post = {}) {
+      return [post.hook, post.body, post.cta, Array.isArray(post.hashtags) ? post.hashtags.join(" ") : ""]
+        .filter(Boolean)
+        .join("\\n\\n")
+        .trim() || post.summary || post.title || "";
+    }
+
+    function socialStatus(post = {}) {
+      return String(post.status || post.type || "draft").toLowerCase();
+    }
+
+    function socialIdeas() {
+      return socialRecords().filter(post => post.type === "idea" || ["idea", "post_idea"].includes(socialStatus(post)));
+    }
+
+    function socialDrafts() {
+      return socialRecords().filter(post => ["draft", "needs_edit", "needs_review"].includes(socialStatus(post)) && post.type !== "idea");
+    }
+
+    function socialPlannedPosts() {
+      return socialRecords()
+        .filter(post => post.planned_date || post.scheduledFor)
+        .slice()
+        .sort((a, b) => String(a.planned_date || a.scheduledFor || "").localeCompare(String(b.planned_date || b.scheduledFor || "")));
+    }
+
+    function socialReadyPosts() {
+      return socialRecords().filter(post => ["ready", "ready_to_publish", "approved"].includes(socialStatus(post)));
+    }
+
+    function socialManuallyPublishedPosts() {
+      return socialRecords().filter(post => ["manually_published", "manually_posted"].includes(socialStatus(post)) || post.manually_published_at || post.manuallyPostedAt);
+    }
+
+    function socialSummary() {
+      const planned = socialPlannedPosts();
+      const ready = socialReadyPosts();
+      return {
+        nextPlanned: planned[0] || null,
+        readyCount: ready.length,
+        suggestedAction: ready.length ? "Copy the next ready post and publish it manually." : "Create one useful post from today’s work."
+      };
+    }
+
+    function socialContentCardHtml() {
+      const summary = socialSummary();
+      const plannedText = summary.nextPlanned
+        ? \`\${summary.nextPlanned.title || "Planned post"} · \${formatDate(summary.nextPlanned.planned_date || summary.nextPlanned.scheduledFor)}\`
+        : "No planned post yet.";
+      return \`<section class="founder-card social-content-card" aria-label="Social / Content">
+        <header><h2>Social / Content</h2><a class="button-link" href="#social">Open Social</a></header>
+        <div class="founder-snapshot-grid">
+          <div class="founder-metric"><span>Next planned post</span><strong>\${esc(plannedText)}</strong></div>
+          <div class="founder-metric"><span>Ready posts</span><strong>\${esc(summary.readyCount)}</strong></div>
+        </div>
+        <p>\${esc(summary.suggestedAction)}</p>
+        <div class="founder-actions"><button class="primary" type="button" onclick="createSocialPost()">Create post</button><button type="button" onclick="location.hash='social'">Open Social</button></div>
+      </section>\`;
+    }
+
     function commandCenterOverviewHtml(posts) {
       const focus = founderTodayFocus();
       const priorities = founderPriorityItems();
@@ -19756,6 +19912,8 @@ function htmlShell() {
           <header><h2>Decisions &amp; Blockers</h2><div class="founder-actions"><button type="button" onclick="founderAddDecision()">Add decision</button><button type="button" onclick="founderAddBlocker()">Add blocker</button></div></header>
           <div class="founder-list">\${decisions.map(item => founderRowHtml(item, \`<button type="button" onclick="\${item.action}">Resolve</button>\`)).join("") || '<div class="founder-empty">No decisions or blockers need attention.</div>'}</div>
         </section>
+
+        \${socialContentCardHtml()}
 
         <section class="founder-card" aria-label="What Moved">
           <header><h2>What Moved</h2><button type="button" onclick="founderAddUpdate()">Add update</button></header>
@@ -20162,8 +20320,81 @@ function htmlShell() {
       </section>\`;
     }
 
+    function socialPostCard(post = {}, actions = "") {
+      return \`<article class="founder-row">
+        <div class="founder-row-top"><strong>\${esc(post.title || "Untitled post")}</strong><span class="badge info">\${esc(post.channel || post.platform || "manual")}</span></div>
+        <span>\${esc(socialText(post) || "No post text yet.")}</span>
+        \${post.planned_date || post.scheduledFor ? \`<span class="muted">Planned: \${esc(formatDate(post.planned_date || post.scheduledFor))}</span>\` : ""}
+        <div class="founder-row-actions">\${actions}</div>
+      </article>\`;
+    }
+
+    function socialPageHtml(pageClass) {
+      const ideas = socialIdeas().slice(0, 4);
+      const drafts = socialDrafts().slice(0, 4);
+      const planned = socialPlannedPosts().slice(0, 4);
+      const ready = socialReadyPosts().slice(0, 4);
+      const published = socialManuallyPublishedPosts().length;
+      const proofItems = proofToShareItems().slice(0, 4);
+      return \`<section id="social" class="\${pageClass("social")} founder-hub lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Social</div>
+          <h1 class="big-title">Social</h1>
+          <p class="muted">Create, preview, and organize posts. Publishing is off until you connect accounts later.</p>
+          <p class="muted"><strong>Manual publishing only.</strong> Nothing has been published by the OS.</p>
+        </div>
+
+        <section class="founder-card" aria-label="Post Ideas">
+          <header><h2>Post Ideas</h2><div class="founder-actions"><button class="primary" type="button" onclick="addSocialIdea()">Add idea</button><button type="button" onclick="turnSocialIdeaIntoDraft()">Turn into draft</button></div></header>
+          <div class="founder-list">\${ideas.map(post => socialPostCard(post, \`<button type="button" onclick="turnSocialIdeaIntoDraft('\${esc(post.id)}')">Turn into draft</button>\`)).join("") || '<div class="founder-empty">No ideas yet. Add one from a win, note, or founder thought.</div>'}</div>
+        </section>
+
+        <section class="founder-card" aria-label="Draft Posts">
+          <header><h2>Draft Posts</h2><div class="founder-actions"><button class="primary" type="button" onclick="createSocialPost()">Create post</button><button type="button" onclick="previewSocialPost()">Preview</button><button type="button" onclick="editSocialPost()">Edit</button></div></header>
+          <div class="founder-list">\${drafts.map(post => socialPostCard(post, \`<button type="button" onclick="previewSocialPost('\${esc(post.id)}')">Preview</button><button type="button" onclick="editSocialPost('\${esc(post.id)}')">Edit</button>\`)).join("") || '<div class="founder-empty">No drafts yet. Create one when you have something useful to say.</div>'}</div>
+        </section>
+
+        <section class="founder-card" aria-label="Content Calendar">
+          <header><h2>Content Calendar</h2><div class="founder-actions"><button class="primary" type="button" onclick="addPlannedPost()">Add planned post</button><button type="button" onclick="movePlannedPostDate()">Move date</button></div></header>
+          <p class="muted">Internal planning only. This does not connect to an external calendar.</p>
+          <div class="founder-list">\${planned.map(post => socialPostCard(post, \`<button type="button" onclick="movePlannedPostDate('\${esc(post.id)}')">Move date</button>\`)).join("") || '<div class="founder-empty">No planned posts yet.</div>'}</div>
+        </section>
+
+        <section class="founder-card" aria-label="Ready to Publish">
+          <header><h2>Ready to Publish</h2><span class="founder-pill">Publishing is off</span></header>
+          <div class="founder-list">\${ready.map(post => socialPostCard(post, \`<button type="button" onclick="copySocialPost('\${esc(post.id)}')">Copy post</button><button type="button" onclick="openManualPublishChecklist('\${esc(post.id)}')">Publish manually</button><button type="button" onclick="markSocialPostManuallyPublished('\${esc(post.id)}')">Mark published manually</button>\`)).join("") || '<div class="founder-empty">No posts are ready yet. Nothing has been published by the OS.</div>'}</div>
+          <p class="muted">\${esc(published)} post\${published === 1 ? "" : "s"} marked published manually.</p>
+        </section>
+
+        <section class="founder-card" aria-label="Proof to Share">
+          <header><h2>Proof to Share</h2><a class="button-link" href="#proof">Open Proof</a></header>
+          <div class="founder-list">\${proofItems.map(item => founderRowHtml(item, \`<button type="button" onclick="turnProofIntoPost('\${esc(item.id)}')">Turn into post</button><button type="button" onclick="saveProofAsPostIdea('\${esc(item.id)}')">Save as idea</button>\`)).join("") || '<div class="founder-empty">No proof items ready to turn into content.</div>'}</div>
+        </section>
+
+        <section class="founder-card manual-publishing-checklist" aria-label="Manual Publishing Checklist">
+          <header><h2>Manual Publishing Checklist</h2><span class="founder-pill">Nothing has been published by the OS</span></header>
+          <ol class="manual-checklist"><li>Copy post</li><li>Open social platform</li><li>Paste post</li><li>Review</li><li>Publish manually</li><li>Come back and mark as published manually</li></ol>
+        </section>
+      </section>\`;
+    }
+
+    function proofToShareItems() {
+      const raw = [
+        ...(state.evidencePackNotes || []),
+        ...(state.reports || []),
+        ...(state.dataRoomItems || []),
+        ...(state.activityEvents || []).filter(item => /win|proof|customer|testimonial|evidence/i.test([item.title, item.eventType, item.summary].join(" ")))
+      ];
+      return raw.slice(0, 8).map((item, index) => ({
+        id:item.id || item.key || \`proof-\${index}\`,
+        title:item.title || item.reportTitle || item.name || item.eventType || "Proof item",
+        detail:item.summary || item.description || item.detail || item.notes || "Useful proof for future content."
+      }));
+    }
+
     function proofPageHtml(pageClass) {
       const overview = buildEvidenceOverview(state);
+      const proofItems = proofToShareItems().slice(0, 3);
       return \`<section id="proof" class="\${pageClass("proof")} founder-hub lee-bubble-safe-space">
         <div class="panel hero-panel">
           <div class="eyebrow">Proof</div>
@@ -20183,6 +20414,10 @@ function htmlShell() {
           \${founderHubCard("Wins", "Progress worth remembering.", "evidence-room")}
           \${founderHubCard("Claims support", "Check proof before making a claim.", "evidence-room")}
         </div>
+        <section class="founder-card" aria-label="Proof to Social">
+          <header><h2>Proof to Share</h2><button type="button" onclick="location.hash='social'">Open Social</button></header>
+          <div class="founder-list">\${proofItems.map(item => founderRowHtml(item, \`<button type="button" onclick="turnProofIntoPost('\${esc(item.id)}')">Turn into post</button><button type="button" onclick="saveProofAsPostIdea('\${esc(item.id)}')">Save as post idea</button>\`)).join("") || '<div class="founder-empty">No proof items ready yet.</div>'}</div>
+        </section>
       </section>\`;
     }
 
@@ -21365,8 +21600,8 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage === "today" ? "overview" : requestedPage;
-      const pageId = normalizedPage === "safe-mode" || ["overview", "work", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage === "today" ? "overview" : ["social-media", "content-calendar", "posts"].includes(requestedPage) ? "social" : requestedPage;
+      const pageId = normalizedPage === "safe-mode" || ["overview", "work", "social", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       if (pageId === "safe-mode") {
         renderSafeBootShell({
           ...(stateFetchDiagnostics || {}),
@@ -21395,6 +21630,7 @@ function htmlShell() {
         \${safeRenderModule("partner-hub", () => sectionLandingPageHtml(pageClass, "partner-hub"))}
         \${safeRenderModule("production", () => sectionLandingPageHtml(pageClass, "production"))}
         \${safeRenderModule("proof", () => proofPageHtml(pageClass))}
+        \${safeRenderModule("social", () => socialPageHtml(pageClass))}
         \${safeRenderModule("more", () => sectionLandingPageHtml(pageClass, "more"))}
         \${safeRenderModule("growth-inbox", () => growthInboxPageHtml(pageClass))}
         \${safeRenderModule("tasks", () => ["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId) ? tasksPageHtml(pageClass, pageId) : "")}
@@ -21646,6 +21882,7 @@ function htmlShell() {
     function navSectionForPage(pageId = "overview") {
       if (["overview", "focus", "lee", "conversation-notes"].includes(pageId)) return "today";
       if (["work", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics", "production", "content-bank", "queue", "sources", "assets", "posted", "morning-brief", "evening-reflection", "daily-closeout", "operating-memory"].includes(pageId)) return "work";
+      if (["social", "social-media", "content-calendar", "posts"].includes(pageId)) return "social";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports", "production-activation-rcap", "handoff-contract", "milestones"].includes(pageId)) return "settings";
       if (["proof", "evidence-room", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
       if (["os-health", "data-integrity", "smoke-test", "operator-manual", "roles", "safe-mode", "settings", "compliance", "autonomy"].includes(pageId)) return "settings";
@@ -24359,6 +24596,154 @@ function htmlShell() {
       toast("Post copied");
     }
 
+    function selectedSocialPost(id = "") {
+      if (id) return (state.posts || []).find(item => item.id === id);
+      return socialDrafts()[0] || socialIdeas()[0] || socialReadyPosts()[0] || socialRecords()[0];
+    }
+
+    async function createSocialRecord(input = {}) {
+      const result = await api("/api/social/create", {
+        method:"POST",
+        body:JSON.stringify(input)
+      });
+      state = result.state;
+      render();
+      toast(result.message || "Saved to Social.");
+      return result.post;
+    }
+
+    async function updateSocialRecord(id, patch = {}, message = "Updated.") {
+      const result = await api("/api/social/update", {
+        method:"POST",
+        body:JSON.stringify({ id, patch:{ ...patch, updated_at:new Date().toISOString(), updatedAt:new Date().toISOString() }, action:"social_record_updated" })
+      });
+      state = result.state;
+      render();
+      toast(message);
+      return result;
+    }
+
+    function promptSocialBody(label, fallback = "") {
+      return window.prompt(label, fallback || "") || "";
+    }
+
+    function addSocialIdea() {
+      return runAction(activeActionButton(), "Add idea", async () => {
+        const body = promptSocialBody("Post idea", "");
+        if (!body.trim()) throw new Error("Add a short idea first.");
+        await createSocialRecord({ type:"idea", status:"idea", body, title:body.slice(0, 80), source:"manual" });
+      }, "Could not add idea.");
+    }
+
+    function createSocialPost() {
+      return runAction(activeActionButton(), "Create post", async () => {
+        const body = promptSocialBody("Post text", "");
+        if (!body.trim()) throw new Error("Write the post text first.");
+        await createSocialRecord({ type:"draft", status:"draft", body, title:body.slice(0, 80), source:"manual" });
+      }, "Could not create post.");
+    }
+
+    function turnSocialIdeaIntoDraft(id = "") {
+      return runAction(activeActionButton(), "Turn into draft", async () => {
+        const idea = selectedSocialPost(id);
+        if (!idea) throw new Error("No post idea is available yet.");
+        await updateSocialRecord(idea.id, { type:"draft", status:"draft", nextBestAction:"Preview and edit before manual publishing." }, "Idea turned into a draft.");
+      }, "Could not turn idea into draft.");
+    }
+
+    function previewSocialPost(id = "") {
+      const post = selectedSocialPost(id);
+      if (!post) {
+        toast("No post available to preview.");
+        return;
+      }
+      document.querySelector("#modalRoot").innerHTML = \`<div class="modal-backdrop" onclick="closeModal(event)"><div class="modal-card" role="dialog" aria-modal="true" aria-label="Post preview"><button class="modal-close" type="button" onclick="closeModal()">Close</button><div class="eyebrow">Preview</div><h2>\${esc(post.title || "Post preview")}</h2><pre style="white-space:pre-wrap">\${esc(socialText(post) || "No text yet.")}</pre><p class="muted">Publishing is off. Nothing has been published by the OS.</p><div class="card-actions"><button type="button" onclick="copySocialPost('\${esc(post.id)}')">Copy post</button><button type="button" onclick="openManualPublishChecklist('\${esc(post.id)}')">Publish manually</button></div></div></div>\`;
+    }
+
+    function editSocialPost(id = "") {
+      return runAction(activeActionButton(), "Edit", async () => {
+        const post = selectedSocialPost(id);
+        if (!post) throw new Error("No post is available to edit.");
+        const body = promptSocialBody("Edit post text", socialText(post));
+        if (!body.trim()) throw new Error("Post text cannot be empty.");
+        await updateSocialRecord(post.id, { body, title:post.title || body.slice(0, 80), status:post.status || "draft" }, "Post updated.");
+      }, "Could not edit post.");
+    }
+
+    function addPlannedPost() {
+      return runAction(activeActionButton(), "Add planned post", async () => {
+        const body = promptSocialBody("Planned post text", "");
+        if (!body.trim()) throw new Error("Write the planned post first.");
+        const plannedDate = window.prompt("Planned date (YYYY-MM-DD)", new Date().toISOString().slice(0, 10)) || "";
+        await createSocialRecord({ type:"draft", status:"draft", body, title:body.slice(0, 80), planned_date:plannedDate, scheduledFor:plannedDate, source:"manual" });
+      }, "Could not add planned post.");
+    }
+
+    function movePlannedPostDate(id = "") {
+      return runAction(activeActionButton(), "Move date", async () => {
+        const post = selectedSocialPost(id) || socialPlannedPosts()[0];
+        if (!post) throw new Error("No planned post is available.");
+        const plannedDate = window.prompt("New planned date (YYYY-MM-DD)", (post.planned_date || post.scheduledFor || "").slice(0, 10)) || "";
+        if (!plannedDate.trim()) throw new Error("Choose a planned date.");
+        await updateSocialRecord(post.id, { planned_date:plannedDate, scheduledFor:plannedDate }, "Planned date moved.");
+      }, "Could not move date.");
+    }
+
+    function copySocialPost(id = "") {
+      const post = selectedSocialPost(id);
+      if (!post) {
+        toast("No post available to copy.");
+        return;
+      }
+      const text = socialText(post);
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).then(() => toast("Post copied.")).catch(() => toast("Copy unavailable. Preview the post and copy it manually."));
+      } else {
+        toast("Copy unavailable. Preview the post and copy it manually.");
+      }
+    }
+
+    function openManualPublishChecklist(id = "") {
+      const post = selectedSocialPost(id);
+      document.querySelector("#modalRoot").innerHTML = \`<div class="modal-backdrop" onclick="closeModal(event)"><div class="modal-card" role="dialog" aria-modal="true" aria-label="Manual publishing checklist"><button class="modal-close" type="button" onclick="closeModal()">Close</button><div class="eyebrow">Manual publishing</div><h2>Publish manually</h2><pre style="white-space:pre-wrap">\${esc(socialText(post) || "No post selected.")}</pre><ol class="manual-checklist"><li>Copy post</li><li>Open social platform</li><li>Paste post</li><li>Review</li><li>Publish manually</li><li>Come back and mark as published manually</li></ol><p class="muted"><strong>Nothing has been published by the OS.</strong></p><div class="card-actions"><button type="button" onclick="copySocialPost('\${esc(post?.id || "")}')">Copy post</button><button class="primary" type="button" onclick="markSocialPostManuallyPublished('\${esc(post?.id || "")}')">Mark published manually</button></div></div></div>\`;
+    }
+
+    function markSocialPostManuallyPublished(id = "") {
+      return runAction(activeActionButton(), "Mark published manually", async () => {
+        const post = selectedSocialPost(id);
+        if (!post) throw new Error("No post is selected.");
+        const url = window.prompt("Optional URL after you publish manually", post.published_url || "") || "";
+        await updateSocialRecord(post.id, {
+          status:"manually_published",
+          manually_published_at:new Date().toISOString(),
+          manuallyPostedAt:new Date().toISOString(),
+          published_url:url,
+          publishingStatus:"manual_only"
+        }, "Marked published manually. Nothing was published by the OS.");
+      }, "Could not record manual publish.");
+    }
+
+    function proofItemById(id = "") {
+      return proofToShareItems().find(item => item.id === id) || proofToShareItems()[0];
+    }
+
+    function turnProofIntoPost(id = "") {
+      return runAction(activeActionButton(), "Turn into post", async () => {
+        const item = proofItemById(id);
+        if (!item) throw new Error("No proof item is available.");
+        const body = \`\${item.title}\\n\\n\${item.detail || "A useful LegalEase proof point."}\`;
+        await createSocialRecord({ type:"draft", status:"draft", title:item.title, body, source:"proof", sourceId:item.id });
+      }, "Could not turn proof into post.");
+    }
+
+    function saveProofAsPostIdea(id = "") {
+      return runAction(activeActionButton(), "Save as idea", async () => {
+        const item = proofItemById(id);
+        if (!item) throw new Error("No proof item is available.");
+        await createSocialRecord({ type:"idea", status:"idea", title:item.title, body:item.detail || item.title, source:"proof", sourceId:item.id });
+      }, "Could not save idea.");
+    }
+
     function copyChannelText(id, channel) {
       const post = state.posts.find(item => item.id === id);
       const text = post?.channelAdaptations?.[channel]?.text || composePreviewText(post);
@@ -26044,6 +26429,27 @@ async function handleRequest(request, response) {
     const { postId } = await readJson(request);
     const result = await markPostManuallyPosted(postId);
     sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    return;
+  }
+
+  if (url.pathname === "/api/social/create" && request.method === "POST") {
+    try {
+      const result = await createInternalSocialRecord(await readJson(request));
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not save social item." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/social/update" && request.method === "POST") {
+    try {
+      const { id, patch, action } = await readJson(request);
+      const result = await updateInternalSocialRecord(id, patch || {}, action || "social_record_updated");
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update social item." }, 400);
+    }
     return;
   }
 

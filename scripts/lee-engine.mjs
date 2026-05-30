@@ -687,6 +687,80 @@ function applyVisibleReplaceCommand(state = {}, input = {}, threadId = "", optio
   };
 }
 
+function socialRequestType(prompt = "") {
+  const q = lower(prompt);
+  if (!/(post|linkedin|social|content)/i.test(q)) return "";
+  if (/publish|post it|send it live|go live/.test(q)) return "publish_requested";
+  if (/save .*idea|post idea|idea/.test(q)) return "idea";
+  if (/ready/.test(q)) return "ready";
+  if (/shorter|shorten|tighten|edit/.test(q)) return "edit";
+  if (/turn .* into .*post|create .*post|linkedin post|social post|draft/.test(q)) return "draft";
+  return "";
+}
+
+function socialDraftFromPrompt(prompt = "", type = "draft", options = {}) {
+  const now = options.now || nowIso();
+  const cleaned = text(prompt)
+    .replace(/^le-e,?\s*/i, "")
+    .replace(/\b(turn this into a|turn this into|create a|create|save this as a|save this as|make this|mark this)\b/ig, "")
+    .replace(/\b(linkedin|social|post|idea|ready|shorter|draft)\b/ig, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const body = cleaned || "Draft a useful LegalEase social post from the current context.";
+  return {
+    id: uid("social"),
+    type: type === "idea" ? "idea" : "draft",
+    status: type === "ready" ? "ready" : type === "idea" ? "idea" : "draft",
+    platform: /linkedin/i.test(prompt) ? "linkedin" : "manual",
+    channel: /linkedin/i.test(prompt) ? "linkedin" : "manual",
+    title: body.slice(0, 80),
+    hook: "",
+    body,
+    cta: "",
+    hashtags: [],
+    source: "Le-E",
+    created_at: now,
+    updated_at: now,
+    createdAt: now,
+    updatedAt: now,
+    publishingStatus: "manual_only",
+    externalActionConfirmation: "Publishing is off. Nothing has been published by the OS."
+  };
+}
+
+function applySocialCommand(state = {}, input = {}, threadId = "", options = {}) {
+  const now = options.now || nowIso();
+  const kind = socialRequestType(input.message || "");
+  if (!kind) return null;
+  const post = socialDraftFromPrompt(input.message || "", kind === "publish_requested" ? "draft" : kind, { now });
+  const message = kind === "publish_requested"
+    ? "I prepared the post, but publishing is off. You can publish it manually when ready."
+    : kind === "idea"
+      ? "Saved as a post idea."
+      : kind === "ready"
+        ? "Marked this post ready inside Social. Publishing is off."
+        : "Created a draft post inside Social.";
+  return {
+    state:{
+      ...state,
+      posts:[post, ...list(state.posts)].slice(0, 1000),
+      auditHistory:[{
+        id: uid("audit-lee-social"),
+        action: "lee_social_item_created",
+        actor: "Le-E",
+        resourceType: "social",
+        resourceId: post.id,
+        note: message,
+        timestamp: now,
+        createdAt: now
+      }, ...list(state.auditHistory)].slice(0, 1000)
+    },
+    message,
+    proposals:[],
+    events:[leeEvent("Le-E social item saved", { title:post.title, objectType:"social", objectId:post.id, metadata:{ kind, externalActions:false } }, { now })]
+  };
+}
+
 export function leeChat(state = {}, input = {}, options = {}) {
   const now = options.now || nowIso();
   const threadId = input.threadId || list(state.leeThreads)[0]?.id || uid("lee-thread");
@@ -702,6 +776,46 @@ export function leeChat(state = {}, input = {}, options = {}) {
     proposedActions:[],
     status:"sent"
   };
+  const socialAction = applySocialCommand(state, input, threadId, { now });
+  if (socialAction) {
+    const assistant = {
+      id: uid("lee-msg"),
+      threadId,
+      role:"assistant",
+      content:socialAction.message,
+      createdAt:now,
+      sourceRefs:[],
+      proposedActions:[],
+      status:"complete"
+    };
+    const run = {
+      id: uid("lee-run"),
+      threadId,
+      status:"complete",
+      mode:"local_social_action",
+      inputSummary:text(input.message).slice(0, 180),
+      sourcesUsed:0,
+      proposedActions:0,
+      createdAt:now,
+      completedAt:now
+    };
+    const nextState = appendEvents({
+      ...socialAction.state,
+      leeThreads:[{ ...thread, updatedAt:now }, ...list(socialAction.state.leeThreads).filter((item) => item.id !== threadId)].slice(0, 100),
+      leeMessages:[userMessage, assistant, ...list(socialAction.state.leeMessages)].slice(0, 1000),
+      leeRuns:[run, ...list(socialAction.state.leeRuns)].slice(0, 300),
+      leeMemory:{
+        ...(socialAction.state.leeMemory || {}),
+        lastThreadId:threadId,
+        lastPrompt:text(input.message).slice(0, 240),
+        updatedAt:now
+      }
+    }, [
+      leeEvent("lee_question_asked", { title:"Le-E question asked", objectType:"lee_thread", objectId:threadId, metadata:{ socialAction:true } }, { now }),
+      ...socialAction.events
+    ]);
+    return { state:nextState, thread:{ ...thread, updatedAt:now }, messages:[userMessage, assistant], assistant, proposals:[], sources:[], run, search:{ query:input.message || "", results:[] } };
+  }
   const visibleAction = applyVisibleReplaceCommand(state, input, threadId, { now });
   if (visibleAction) {
     const assistant = {

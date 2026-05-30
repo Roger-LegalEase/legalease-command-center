@@ -13,10 +13,11 @@ const overview = overviewMatch[0];
 assert.match(server, /<nav class="top-nav" aria-label="Primary">/, "Primary navigation should exist.");
 assert.match(server, /href="#overview" data-nav-section="today">Today/, "Today top nav item should be a real route.");
 assert.match(server, /href="#work" data-nav-section="work">Work/, "Work top nav item should be a real route.");
+assert.match(server, /href="#social" data-nav-section="social">Social/, "Social top nav item should be a real route.");
 assert.match(server, /href="#proof" data-nav-section="proof">Proof/, "Proof top nav item should be a real route.");
 assert.match(server, /href="#operator-search" data-nav-section="search">Search/, "Search top nav item should be a real route.");
-assert.match(server, /data-nav-section="settings">Settings/, "Settings top nav item should group advanced pages.");
-assert.equal((server.match(/data-nav-section="/g) || []).length, 5, "Top navigation should expose exactly five founder-facing sections.");
+assert.doesNotMatch(server.match(/<nav class="top-nav"[\s\S]*?<\/nav>/)?.[0] || "", /Settings/, "Settings should not be a primary nav item.");
+assert.match(server, /href="#settings"/, "Settings should remain reachable secondarily.");
 
 for (const label of [
   "Today",
@@ -39,6 +40,8 @@ for (const label of [
 }
 
 assert.match(server, /function workPageHtml\(pageClass\)/, "Work hub should exist.");
+assert.match(server, /function socialPageHtml\(pageClass\)/, "Social workspace should exist.");
+assert.match(server, /aria-label="Social \/ Content"/, "Today should include a compact Social / Content card.");
 assert.match(server, /function proofPageHtml\(pageClass\)/, "Proof hub should exist.");
 assert.match(server, /function founderText/, "Founder-facing copy sanitizer should exist.");
 assert.match(server, /function quickCapture\(event\)/, "Quick Capture should have a submit handler.");

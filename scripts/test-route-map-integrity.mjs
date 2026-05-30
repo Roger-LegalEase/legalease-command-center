@@ -21,6 +21,7 @@ const routes = {
   "handoff-contract": { renderer: "handoffContractPageHtml", title: /Handoff Notes/, forbidden: /RCAP Review Workspace|Production Activation/ },
   "production-activation-rcap": { renderer: "rcapReviewWorkspaceHtml", title: /Launch Checklist|Recovery plan/, forbidden: null },
   work: { renderer: "workPageHtml", title: /<h1 class="big-title">Work<\/h1>/, forbidden: /Production Activation/ },
+  social: { renderer: "socialPageHtml", title: /<h1 class="big-title">Social<\/h1>/, forbidden: /Launch Checklist|Production Activation|Settings|<h1 class="big-title">Proof<\/h1>/ },
   proof: { renderer: "proofPageHtml", title: /<h1 class="big-title">Proof<\/h1>/, forbidden: /Production Activation/ }
 };
 
@@ -41,18 +42,22 @@ for (const [route, expected] of Object.entries(routes)) {
   }
 }
 
+for (const alias of ["social-media", "content-calendar", "posts"]) {
+  assert(source.includes(`"${alias}"`), `#${alias} should be registered as a Social alias.`);
+}
+assert.match(source, /\["social-media", "content-calendar", "posts"\]\.includes\(requestedPage\) \? "social"/, "Social aliases should normalize to #social.");
+
 assert.match(source, /normalizedPage\) \? normalizedPage : "overview"/, "Unknown routes should fall back to Today, not Launch Checklist.");
 assert.match(source, /requestedPage === "today" \? "overview"/, "#today should alias to the Today page.");
 
 const navBlock = source.match(/<nav class="top-nav"[\s\S]*?<\/nav>/)?.[0] || "";
-for (const route of ["morning-brief", "daily-closeout", "operating-memory", "tasks", "capture-inbox", "operator-search", "production-activation-rcap", "handoff-contract", "evidence-room", "dataroom", "os-health", "data-integrity", "smoke-test", "roles", "safe-mode", "operator-manual"]) {
-  assert(navBlock.includes(`href="#${route}"`), `Navigation should link to #${route}.`);
-}
 assert(navBlock.includes('href="#overview"'), "Top nav should link Today to #overview.");
 assert(navBlock.includes('href="#work"'), "Top nav should expose Work.");
+assert(navBlock.includes('href="#social"'), "Top nav should expose Social.");
 assert(navBlock.includes('href="#proof"'), "Top nav should expose Proof.");
 assert(navBlock.includes('href="#operator-search"'), "Top nav should expose Search.");
-assert(navBlock.includes('data-nav-section="settings"'), "Top nav should expose Settings.");
+assert(!navBlock.includes('data-nav-section="settings"'), "Settings should not replace Social as a primary nav item.");
+assert(source.includes('href="#settings"'), "Settings should remain available from a secondary control.");
 assert(!navBlock.includes(">Partners<"), "Partners should not be a top-level nav item.");
 assert(!navBlock.includes(">System<"), "System should not be a top-level nav item.");
 assert(!navBlock.includes("RCAP Review"), "Navigation should use founder-facing recovery language.");

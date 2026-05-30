@@ -13,8 +13,10 @@ function blockBetween(startPattern, endPattern) {
 }
 
 const nav = source.match(/<nav class="top-nav"[\s\S]*?<\/nav>/)?.[0] || "";
+const todaySocialCard = blockBetween(/function socialContentCardHtml\(\)/, /function commandCenterOverviewHtml/);
 const today = blockBetween(/function commandCenterOverviewHtml\(posts\)/, /function focusItemsForMode/);
 const work = blockBetween(/function workPageHtml\(pageClass\)/, /function proofPageHtml/);
+const social = blockBetween(/function socialPageHtml\(pageClass\)/, /function proofToShareItems/);
 const proof = blockBetween(/function proofPageHtml\(pageClass\)/, /function sectionLandingConfig/);
 const search = blockBetween(/function operatorSearchPageHtml\(pageClass\)/, /function conversationNotesPageHtml/);
 const morning = blockBetween(/function morningBriefPageHtml\(pageClass\)/, /function eveningReflectionPageHtml/);
@@ -54,7 +56,7 @@ for (const term of forbidden) {
 }
 
 const navLabels = [...nav.matchAll(/data-nav-section="[^"]+"[^>]*>([^<]+)/g)].map(match => match[1].trim());
-assert.deepEqual(navLabels, ["Today", "Work", "Proof", "Search", "Settings"], "Top nav labels should be founder-simple.");
+assert.deepEqual(navLabels, ["Today", "Work", "Social", "Proof", "Search"], "Top nav labels should be founder-simple.");
 assert.equal(navLabels.length, 5, "Top nav should have no more than five primary items.");
 
 for (const label of [
@@ -77,10 +79,31 @@ for (const label of [
 assert.equal((today.match(/class="founder-card quick-capture"/g) || []).length, 1, "Today should have one visible Quick Capture card.");
 assert.equal((today.match(/Ask Le-E/g) || []).length, 0, "Today should not duplicate Le-E chat panels.");
 assert.equal((today.match(/aria-label="Tasks"/g) || []).length, 1, "Today should have one task section.");
+assert.equal((today.match(/socialContentCardHtml\(\)/g) || []).length, 1, "Today should have one compact Social / Content card.");
+assert(todaySocialCard.includes('aria-label="Social / Content"'), "Today should render the Social / Content card.");
+assert(todaySocialCard.includes("Create post"), "Today should include Create post for Social.");
+assert(todaySocialCard.includes("Open Social"), "Today should include Open Social.");
 assert(today.includes("Publishing is off"), "Normal UI should say Publishing is off.");
 assert(!today.includes("Live gates"), "Today should not expose live gate terminology.");
 assert(!today.includes("cockpitRcapSignalHtml"), "Today should not render deep recovery workflow cards.");
 assert(!today.includes("cockpitDataIntegrityHtml"), "Today should not render data check detail cards.");
 assert(!today.includes("cockpitSmokeTestHtml"), "Today should not render self-check detail cards.");
+
+for (const forbiddenSocialTerm of [
+  "API status",
+  "OAuth",
+  "token",
+  "webhook",
+  "compliance score",
+  "risk score",
+  "campaign complexity",
+  "boost",
+  "ads",
+  "live gate",
+  "RCAP",
+  "Production Activation"
+]) {
+  assert(!social.includes(forbiddenSocialTerm), `Social normal UI should not show ${forbiddenSocialTerm}.`);
+}
 
 console.log("founder language and clutter tests passed");

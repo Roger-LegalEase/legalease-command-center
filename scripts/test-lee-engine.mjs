@@ -110,6 +110,20 @@ const dangerousChat = leeChat(state, {
 assert.ok(dangerousChat.proposals.some((proposal) => proposal.requiredApproval));
 assert.match(dangerousChat.assistant.content, /approval-required|required approval workflow/i);
 
+const socialChat = leeChat(state, {
+  threadId: thread.id,
+  message: "Le-E, turn this into a LinkedIn post: LegalEase made the intake checklist easier to understand."
+}, { now });
+assert.ok(socialChat.state.posts.some((post) => post.source === "Le-E" && post.status === "draft"), "Le-E social requests should create internal drafts.");
+assert.match(socialChat.assistant.content, /draft post inside Social/i);
+
+const publishChat = leeChat(state, {
+  threadId: thread.id,
+  message: "Le-E, publish this social post."
+}, { now });
+assert.ok(publishChat.state.posts.some((post) => post.source === "Le-E"), "Publish requests should prepare an internal post only.");
+assert.match(publishChat.assistant.content, /publishing is off/i);
+
 const status = buildLeeStatus(state, { now, openAIConfigured:true });
 assert.equal(status.openAIConfigured, true);
 assert.equal(status.safeModeActive, true);

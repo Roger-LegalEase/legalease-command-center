@@ -13,6 +13,7 @@ function blockBetween(startPattern, endPattern) {
 }
 
 const today = blockBetween(/function commandCenterOverviewHtml\(posts\)/, /function focusItemsForMode/);
+const social = blockBetween(/function socialPageHtml\(pageClass\)/, /function proofToShareItems/);
 const actionBlock = blockBetween(/function setFounderCaptureType/, /async function captureInboxAction/);
 
 assert(source.includes("function runAction("), "Shared runAction helper should exist.");
@@ -34,6 +35,8 @@ for (const label of [
   "Add decision",
   "Add blocker",
   "Resolve",
+  "Create post",
+  "Open Social",
   "Add update",
   "Plan tomorrow",
   "Start daily closeout",
@@ -82,5 +85,42 @@ assert(/data-capture-type="decision"/.test(today), "Save as decision should have
 assert(/data-capture-type="blocker"/.test(today), "Save as blocker should have a real capture type.");
 assert(/route_task/.test(source), "Save as task should route captured item to a task.");
 assert(/location\.hash='daily-closeout'/.test(source), "Plan tomorrow should open Daily Closeout.");
+
+for (const label of [
+  "Add idea",
+  "Turn into draft",
+  "Create post",
+  "Preview",
+  "Edit",
+  "Add planned post",
+  "Move date",
+  "Copy post",
+  "Publish manually",
+  "Mark published manually",
+  "Turn into post",
+  "Save as idea"
+]) {
+  assert(social.includes(label), `Social button should exist: ${label}`);
+}
+
+for (const fn of [
+  "addSocialIdea",
+  "turnSocialIdeaIntoDraft",
+  "createSocialPost",
+  "previewSocialPost",
+  "editSocialPost",
+  "addPlannedPost",
+  "movePlannedPostDate",
+  "copySocialPost",
+  "openManualPublishChecklist",
+  "markSocialPostManuallyPublished",
+  "turnProofIntoPost",
+  "saveProofAsPostIdea"
+]) {
+  assert(source.includes(`function ${fn}`) || source.includes(`async function ${fn}`), `${fn} should be wired.`);
+}
+
+assert(!/onclick="[^"]*(?:todo|noop|placeholder|comingSoon|undefined|null)/i.test(social), "Social should not include placeholder onclick handlers.");
+assert(!/publishNow|runPublishingWorker/.test(social), "Social founder UI should not expose live publishing actions.");
 
 console.log("every visible button works tests passed");
