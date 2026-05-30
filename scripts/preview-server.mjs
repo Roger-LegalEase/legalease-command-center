@@ -72,6 +72,7 @@ import { buildSmokeTestChecklist, buildSmokeTestStatus, finishSmokeTestRun, mark
 import { buildEvidenceIndex, buildEvidenceOverview, generateEvidenceSummary, latestEvidenceSummary } from "./evidence-room.mjs";
 import { buildPartnerJourneyHandoffContractPacket, generatePartnerJourneyHandoffContractPreview, handoffContractRequiredArtifactTypes, handoffContractRequiredPartnerFields, handoffContractRequiredTopLevelFields, handoffContractStatus, handoffContractVersion, latestHandoffContractPreview, redactHandoffContractJson, validatePartnerJourneyHandoffContract } from "./partner-journey-handoff-contract.mjs";
 import { applyRoleAssignmentChange, buildRoleSystemStatus, canPerformEndpoint, ensureRoleAssignments, roleCapabilities } from "./roles.mjs";
+import { databaseReadiness } from "../lib/storage/index.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -6949,6 +6950,52 @@ function sendAuthRequired(response, decision = {}) {
 </html>`);
 }
 
+function privacyPolicyHtml() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Privacy Policy - LegalEase Command Center</title>
+  <style>
+    body{font-family:Geist,Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:#f7faf9;color:#102a2a;line-height:1.55}
+    main{max-width:860px;margin:0 auto;padding:48px 20px 72px}
+    a{color:#0f766e} h1{font-size:42px;margin:0 0 8px} h2{margin-top:28px}
+    .card{background:white;border:1px solid #dfe8e6;border-radius:14px;padding:22px;box-shadow:0 8px 24px rgba(15,45,45,.06)}
+    .muted{color:#667}
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="/#settings">Back to Settings</a></p>
+    <section class="card">
+      <h1>Privacy Policy</h1>
+      <p class="muted">Last updated: May 30, 2026</p>
+      <p>LegalEase Command Center is currently owner-access only. It helps Roger capture work, manage tasks, organize Social drafts, track proof, and plan the day.</p>
+      <h2>Data collected</h2>
+      <p>The app stores captures, tasks, notes, decisions, blockers, closeouts, tomorrow plans, proof items, wins, customer notes, and internal activity records.</p>
+      <h2>How data is used</h2>
+      <p>Data is used to run the internal operating workflow, prepare founder decisions, organize proof, and plan manual Social content.</p>
+      <h2>Social workspace data</h2>
+      <p>The app stores Social ideas, draft posts, planned posts, ready-to-publish posts, manually published records, proof-to-social links, Le-E-created Social drafts or ideas, and manually entered published URLs. The OS does not currently publish to social platforms.</p>
+      <h2>Storage and providers</h2>
+      <p>Production data should be stored in a durable Postgres database configured through server-side environment variables. Render may host the app. A database provider such as Neon, Supabase, or Render Postgres may store app data. Email, social publishing, calendar writes, and payment providers are not active unless separately configured in a future build.</p>
+      <h2>AI</h2>
+      <p>If AI features are enabled, they must run through protected server-side routes. Browser code must not receive an OpenAI API key.</p>
+      <h2>Retention</h2>
+      <p>Internal records are retained until Roger deletes, exports, or migrates them. Temporary exports are not the source of truth.</p>
+      <h2>Access and deletion</h2>
+      <p>For access, correction, or deletion requests, contact LegalEase / Roger through the business contact channel currently used with LegalEase.</p>
+      <h2>Security</h2>
+      <p>Hosted access is protected by owner-token authentication and role checks. Secrets and provider tokens must stay server-side.</p>
+      <h2>Cookies and analytics</h2>
+      <p>The app may use a session cookie or browser storage to keep the owner signed in. Analytics are not claimed as active unless separately configured.</p>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
 async function logAccessDecision(decision = {}, url = {}) {
   if (decision.ok) return;
   try {
@@ -13498,7 +13545,7 @@ function htmlShell() {
     <div>
       <header>
         <div><div class="eyebrow">Founder workspace</div><h2>LegalEase</h2></div>
-        <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><details class="nav-menu utility-menu"><summary class="nav-menu-summary">Settings</summary><div class="nav-menu-panel"><strong>Daily</strong><a href="#morning-brief">Morning Brief</a><a href="#daily-closeout">Daily Closeout</a><a href="#operating-memory">Notes &amp; Decisions</a><strong>Work</strong><a href="#tasks">Tasks</a><a href="#capture-inbox">Inbox</a><strong>Settings</strong><a href="#settings">Settings Home</a><a href="#os-health">App Status</a><a href="#data-integrity">Data Check</a><a href="#smoke-test">Self-Check</a><a href="#roles">Team Roles</a><a href="#operator-manual">Guide</a><a href="#safe-mode">Recovery Mode</a><a href="#production-activation-rcap">Launch Checklist</a><a href="#handoff-contract">Handoff Notes</a></div></details><button type="button" onclick="location.hash='operator-search'">Search</button><button type="button" onclick="lockCommandCenter()">Lock</button></div>
+        <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><details class="nav-menu utility-menu"><summary class="nav-menu-summary">Settings</summary><div class="nav-menu-panel"><strong>Daily</strong><a href="#morning-brief">Morning Brief</a><a href="#daily-closeout">Daily Closeout</a><a href="#operating-memory">Notes &amp; Decisions</a><strong>Work</strong><a href="#tasks">Tasks</a><a href="#capture-inbox">Inbox</a><strong>Settings</strong><a href="#settings">Settings Home</a><a href="#os-health">App Status</a><a href="#data-integrity">Data Check</a><a href="#smoke-test">Self-Check</a><a href="#roles">Team Roles</a><a href="#operator-manual">Guide</a><a href="#safe-mode">Recovery Mode</a><a href="/privacy">Privacy</a><a href="#production-activation-rcap">Launch Checklist</a><a href="#handoff-contract">Handoff Notes</a></div></details><button type="button" onclick="location.hash='operator-search'">Search</button><button type="button" onclick="lockCommandCenter()">Lock</button></div>
       </header>
       <main id="app"><div class="panel loading-panel"><div class="eyebrow">Starting command center</div><h1 class="big-title">Loading LegalEase...</h1><p class="big-copy">If this stays here, the browser could not finish the app render. The server is still serving a visible fallback so you are not staring at a blank screen.</p><div class="loading-line wide"></div><div class="loading-line"></div><div class="loading-card"></div><div class="card-actions"><button class="primary" onclick="location.reload()">Reload app</button><a class="button-link" href="#queue">Open Queue</a></div></div></main>
     </div>
@@ -15324,7 +15371,7 @@ function htmlShell() {
           ok: linkedinConfigured,
           body: linkedinConfigured
             ? "Server-side LinkedIn OAuth configuration is present."
-            : \`Missing env vars: \${linkedinMissing.join(", ") || "LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET, LINKEDIN_REDIRECT_URI"}.\`,
+            : \`Missing server-side LinkedIn credentials: \${linkedinMissing.length || 3} setting(s).\`,
           detail: "Add credentials to .env.local. Values are never shown in the browser."
         },
         {
@@ -15411,7 +15458,7 @@ function htmlShell() {
       const finalCount = (state.postImages || []).filter(image => finalPngReady((state.posts || []).find(post => post.id === image.postId), image)).length;
       const publicCount = (state.posts || []).filter(post => publicHttpsUrlReady(publicImageUrlForPost(post, imageForPost(post.id)))).length;
       const checks = [
-        ["Storage configured", Boolean(storage.configured), storage.message || "Add SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and SUPABASE_STORAGE_BUCKET."],
+        ["Storage configured", Boolean(storage.configured), storage.message || "Add server-side database and storage credentials."],
         ["Bucket", Boolean(storage.bucket), storage.bucket || "social-assets"],
         ["Final PNGs", finalCount > 0, finalCount + " local final PNG" + (finalCount === 1 ? "" : "s") + " ready to upload."],
         ["Public URLs", publicCount > 0, publicCount + " post" + (publicCount === 1 ? "" : "s") + " already have public image URLs."]
@@ -15499,7 +15546,7 @@ function htmlShell() {
       const connected = Boolean(diagnostics.connected);
       const checks = [
         ["OAuth configured", Boolean(diagnostics.oauthConfigured), (diagnostics.missingEnvVars || []).length ? "Missing: " + diagnostics.missingEnvVars.join(", ") : "Ready"],
-        ["Token encryption", Boolean(diagnostics.tokenEncryptionConfigured), diagnostics.tokenEncryptionConfigured ? "Encrypted server-side token storage is available." : "Set OAUTH_TOKEN_ENCRYPTION_KEY."],
+        ["Token encryption", Boolean(diagnostics.tokenEncryptionConfigured), diagnostics.tokenEncryptionConfigured ? "Encrypted server-side token storage is available." : "Set the server-side token encryption secret."],
         ["Connected account", connected, connected ? "Connected as " + (diagnostics.accountName || "Google account") : "No Google account connected."],
         ["Gmail readonly", Boolean(gmail.configured), gmail.lastSyncAt || gmail.lastSyncStatus || "Not synced yet."],
         ["Calendar readonly", Boolean(calendar.configured), calendar.lastSyncAt || calendar.lastSyncStatus || "Not synced yet."]
@@ -15577,8 +15624,8 @@ function htmlShell() {
         {
           title: "OpenAI content and image key",
           ok: Boolean(state.runtime?.openAIConfigured),
-          body: state.runtime?.openAIConfigured ? \`OpenAI key detected. Image model: \${state.runtime?.imageModel || "gpt-image-1.5"}.\` : "OPENAI_API_KEY is missing.",
-          action: "Add OPENAI_API_KEY in production and confirm billing limits."
+          body: state.runtime?.openAIConfigured ? \`AI server key detected. Image model: \${state.runtime?.imageModel || "gpt-image-1.5"}.\` : "AI server key is missing.",
+          action: "Add the AI server key in production and confirm billing limits."
         },
         {
           title: "Final image composer",
@@ -15589,8 +15636,8 @@ function htmlShell() {
 	        {
 	          title: "Token encryption",
           ok: Boolean(state.runtime?.oauthTokenEncryptionConfigured),
-          body: state.runtime?.oauthTokenEncryptionConfigured ? "OAuth token encryption key is configured." : "OAUTH_TOKEN_ENCRYPTION_KEY is missing.",
-          action: "Set a long random OAUTH_TOKEN_ENCRYPTION_KEY before real OAuth."
+          body: state.runtime?.oauthTokenEncryptionConfigured ? "Token encryption is configured." : "Token encryption is missing.",
+          action: "Set a long random server-side token encryption secret before real account connections."
         },
 	        ...channelLaunchChecks,
 	        {
@@ -20853,7 +20900,7 @@ function htmlShell() {
               <button class="\${contentBankDraftMode === "local" ? "primary" : ""}" onclick="setContentBankDraftMode('local')">\${localDraftLabel}</button>
               <button class="\${contentBankDraftMode === "ai" ? "primary" : ""}" onclick="setContentBankDraftMode('ai')">AI Draft Mode</button>
             </div>
-            <p class="muted">\${contentBankDraftMode === "ai" ? (aiReady ? "AI Draft Mode uses OPENAI_API_KEY on the server only. Drafts still go to Approval Queue." : "AI Draft Mode selected, but OPENAI_API_KEY is missing. The server will fall back to local generation.") : localDraftCopy}</p>
+            <p class="muted">\${contentBankDraftMode === "ai" ? (aiReady ? "AI Draft Mode uses the server-side AI key only. Drafts still go to Approval Queue." : "AI Draft Mode selected, but the server-side AI key is missing. The server will fall back to local generation.") : localDraftCopy}</p>
             <div class="card-actions">
               <button class="primary" onclick="generateSelectedContentBank()">Generate selected</button>
               <button onclick="generateContentBank({limit:10})">Generate this week</button>
@@ -24870,6 +24917,11 @@ function htmlShell() {
 
 async function handleRequest(request, response) {
   const url = new URL(request.url ?? "/", `http://${request.headers.host}`);
+  if (url.pathname === "/privacy" && request.method === "GET") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store, max-age=0" });
+    response.end(sanitizeOutboundText(privacyPolicyHtml()));
+    return;
+  }
   const accessDecision = authorizeRequest(request, url, process.env);
   if (!accessDecision.ok) {
     await logAccessDecision(accessDecision, url);
@@ -24936,13 +24988,29 @@ async function handleRequest(request, response) {
     const supabaseDb = await getSupabaseHealth();
     const storageDiagnostics = await diagnoseSupabaseStorage({ testUpload: false });
     const hostingConfig = storageRuntimeConfig();
+    const dbReadiness = databaseReadiness(process.env);
+    const liveGatesCount = Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length;
     sendJson(response, {
+      appStatus: "running",
       appRunning: true,
       timestamp: new Date().toISOString(),
       storageBackend: hostingConfig.activeStorageBackend,
       requestedStorageBackend: hostingConfig.requestedStorageBackend,
+      storageMode: dbReadiness.storageMode,
       localDemoMode: hostingConfig.localDemoMode,
       appBaseUrl: appBaseUrl(),
+      databaseConfigured: Boolean(dbReadiness.configured || supabaseDb.configured),
+      databaseReachable: Boolean(supabaseDb.connected) || dbReadiness.storageMode === "postgres",
+      databaseStatus: dbReadiness.configured ? "configured" : "not_configured",
+      secretsStatus: "server_only",
+      privacyRouteEnabled: true,
+      ownerAuthEnabled: authRequiredForEnv(process.env),
+      roleChecksEnabled: true,
+      externalActionsEnabled: false,
+      socialWorkspaceEnabled: true,
+      socialLivePostingEnabled: false,
+      emailEnabled: false,
+      calendarWritesEnabled: false,
       supabaseDbConfigured: Boolean(supabaseDb.configured),
       supabaseDbConnected: Boolean(supabaseDb.connected),
       supabaseDbMode: supabaseDb.mode || "unknown",
@@ -24954,7 +25022,7 @@ async function handleRequest(request, response) {
       supabaseStoragePublic: storageDiagnostics.bucketPublic,
       supabaseStorageError: storageDiagnostics.bucketReachable ? "" : String(storageDiagnostics.error || "").slice(0, 300),
       openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
-      liveGatesCount: Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length
+      liveGatesCount
     });
     return;
   }

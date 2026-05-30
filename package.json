@@ -39,7 +39,16 @@
     "test:compact-boot-state": "node scripts/test-compact-boot-state.mjs",
     "test:smoke-test-status-helper": "node scripts/test-smoke-test-status-helper.mjs",
     "test:render-helper-scope": "node scripts/test-render-helper-scope.mjs",
-    "test:boot-auth-requests": "node scripts/test-boot-auth-requests.mjs"
+    "test:boot-auth-requests": "node scripts/test-boot-auth-requests.mjs",
+    "test:storage-durability": "node scripts/test-storage-durability.mjs",
+    "test:no-filesystem-production-db": "node scripts/test-no-filesystem-production-db.mjs",
+    "test:secret-exposure": "node scripts/test-secret-exposure.mjs",
+    "test:env-contract": "node scripts/test-env-contract.mjs",
+    "test:ai-context-contract": "node scripts/test-ai-context-contract.mjs",
+    "test:error-boundaries": "node scripts/test-error-boundaries-and-loading-states.mjs",
+    "test:no-white-screen": "node scripts/test-no-white-screen.mjs",
+    "test:privacy-route": "node scripts/test-privacy-route.mjs",
+    "test:production-hardening-health": "node scripts/test-production-hardening-health.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
