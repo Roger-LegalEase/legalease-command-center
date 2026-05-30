@@ -87,7 +87,7 @@ assert(serverSource.includes("Still Blocked"), "Still Blocked section must rende
 assert(serverSource.includes("operatingMemoryPageHtml"), "Operating Memory route renderer must exist.");
 assert(serverSource.includes("\"operating-memory\""), "#operating-memory route must be registered.");
 assert(serverSource.includes("/api/operating-memory/today/save"), "Save Today endpoint must exist.");
-assert(serverSource.includes("Save Today’s Operating Memory"), "Review-only save button must render.");
+assert(serverSource.includes("Save Today's Operating Memory"), "Review-only save button must render.");
 assert(!/operating-memory[\s\S]{0,2400}(send email|publish page|activate dashboard|enable live)/i.test(serverSource), "Operating Memory must not enable external controls.");
 
 console.log("operating memory tests passed");
