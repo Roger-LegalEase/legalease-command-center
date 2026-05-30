@@ -95,7 +95,7 @@ assert(serverSource.includes("conversationNotesPageHtml"), "#conversation-notes 
 assert(serverSource.includes("\"conversation-notes\""), "#conversation-notes route must be registered.");
 assert(serverSource.includes("/api/conversation-notes"), "Conversation note API must exist.");
 assert(serverSource.includes("Mark Reviewed"), "Review controls must render.");
-assert(serverSource.includes("Apply to Today's Brief Inputs"), "Morning Brief apply control must render.");
+assert(serverSource.includes("Apply to Today’s Brief Inputs"), "Morning Brief apply control must render.");
 assert(serverSource.includes("Apply to Evening Reflection Inputs"), "Evening Reflection apply control must render.");
 assert(!/conversation-notes[\s\S]{0,2600}(send email|publish page|activate dashboard|enable live)/i.test(serverSource), "Conversation context must not enable external controls.");
 

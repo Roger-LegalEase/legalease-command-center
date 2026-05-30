@@ -15008,10 +15008,10 @@ function htmlShell() {
       clampReviewIndex(posts);
       if (!posts.length) {
         return \`<div class="panel">
-          <div class="eyebrow">Today's Review</div>
-          <h2>Start with tomorrow's 3-post queue.</h2>
+          <div class="eyebrow">Today’s Review</div>
+          <h2>Start with tomorrow’s 3-post queue.</h2>
           <p class="muted">Manual Mode is safest for the first 24 hours. Generate, review, create final images, then copy/export manually.</p>
-          <button class="primary" onclick="createTomorrowQueue()">Create Tomorrow's 3-Post Queue</button>
+          <button class="primary" onclick="createTomorrowQueue()">Create Tomorrow’s 3-Post Queue</button>
         </div>\`;
       }
       const post = posts[reviewIndex];
@@ -15026,7 +15026,7 @@ function htmlShell() {
       return \`<div class="panel">
         <div class="review-progress">
           <div>
-            <div class="eyebrow">Today's Review</div>
+            <div class="eyebrow">Today’s Review</div>
             <strong>\${reviewIndex + 1} of \${posts.length}</strong>
           </div>
           <div class="row">
@@ -15299,7 +15299,7 @@ function htmlShell() {
             <h2 style="margin:4px 0 0">\${active ? "Manual Mode Active" : "Live gates enabled"}</h2>
             <p class="muted" style="margin:8px 0 0">\${active ? "The system can generate posts and final images. You manually copy, export, or post while live API posting remains disabled." : "At least one live gate is enabled. Use only after dry runs pass cleanly."}</p>
           </div>
-          <button onclick="createTomorrowQueue()">Create Tomorrow's 3-Post Queue</button>
+          <button onclick="createTomorrowQueue()">Create Tomorrow’s 3-Post Queue</button>
         </div>
       </div>\`;
     }
@@ -17134,7 +17134,7 @@ function htmlShell() {
         return \`<button class="timeline-block \${esc(block.type)}\${past}\${current}" style="left:\${left}%;width:\${width}%;" onclick="location.hash='\${block.type === "focus" ? "focus" : "tasks"}'">\${esc(block.label)}</button>\`;
       }).join("");
       return \`<section class="timeline-card">
-        <div class="cockpit-card-head"><h2>Today's Flow</h2><small>8a to 6p</small></div>
+        <div class="cockpit-card-head"><h2>Today’s Flow</h2><small>8a to 6p</small></div>
         <div class="timeline-track">
           <div class="timeline-axis">\${ticks.map(tick => \`<span>\${tick}</span>\`).join("")}</div>
           \${blocks}
@@ -17478,7 +17478,7 @@ function htmlShell() {
 
     function cockpitDailyOperatingLoopHtml() {
       const loop = cockpitDailyOperatingLoop();
-      return \`<section class="cockpit-card daily-operating-loop" aria-label="Today's Focus">
+      return \`<section class="cockpit-card daily-operating-loop" aria-label="Today’s Focus">
         <div class="cockpit-card-head"><h2>Today’s Focus</h2><small>Le-E operating brief</small></div>
         <div class="daily-loop-summary"><strong>Read-only guidance.</strong><span>No external side effects.</span><span>Live gates: \${esc(loop.liveGates)}</span></div>
         <div class="daily-loop-grid">
@@ -17999,7 +17999,7 @@ function htmlShell() {
         group("Quick Capture + Capture Inbox", [["Quick Capture card renders","overview","Quick Capture is visible in cockpit."],["Capture with Le-E works","capture-inbox","Quick Capture saves internal review item."],["Capture Inbox route opens","capture-inbox","Capture Inbox renders."],["Capture can be marked reviewed","capture-inbox","Mark reviewed updates internal state."],["Capture can route to task","capture-inbox","Capture routes to Task internally."],["Capture can route to Operating Memory","capture-inbox","Capture routes to Operating Memory internally."],["Ignored capture does not influence rituals","capture-inbox","Ignored capture stays out of rituals."]]),
         group("Tasks", [["#tasks opens","tasks","All Tasks page opens."],["#tasks-today opens","tasks-today","Today task view opens."],["#tasks-blocked opens","tasks-blocked","Blocked task view opens."],["#tasks-waiting opens","tasks-waiting","Waiting task view opens."],["#tasks-this-week opens","tasks-this-week","This Week task view opens."],["Task status actions are internal-only","tasks","Task updates do not call external systems."],["Blocked task requires blocker reason","tasks-blocked","Blocked status requires a reason."]]),
         group("Daily Rituals", [["#morning-brief opens","morning-brief","Morning Brief route renders."],["Save Morning Brief works","morning-brief","Morning Brief saves internally."],["#evening-reflection opens","evening-reflection","Evening Reflection route renders."],["Save Evening Reflection works","evening-reflection","Evening Reflection saves internally."],["Source evidence renders","morning-brief","Source evidence appears in ritual pages."]]),
-        group("Operating Memory + Closeout", [["#operating-memory opens","operating-memory","Operating Memory route renders."],["Save Today's Operating Memory works","operating-memory","Operating Memory saves internally."],["#daily-closeout opens","daily-closeout","Daily Closeout route renders."],["Save Closeout works","daily-closeout","Daily Closeout saves internally."],["Generate Tomorrow Plan works","daily-closeout","Tomorrow Plan generates internally."],["Tomorrow Plan renders","daily-closeout","Tomorrow Plan is visible."]]),
+        group("Operating Memory + Closeout", [["#operating-memory opens","operating-memory","Operating Memory route renders."],["Save Today’s Operating Memory works","operating-memory","Operating Memory saves internally."],["#daily-closeout opens","daily-closeout","Daily Closeout route renders."],["Save Closeout works","daily-closeout","Daily Closeout saves internally."],["Generate Tomorrow Plan works","daily-closeout","Tomorrow Plan generates internally."],["Tomorrow Plan renders","daily-closeout","Tomorrow Plan is visible."]]),
         group("Search + Health + Integrity", [["#operator-search opens","operator-search","Operator Search route renders."],["Search finds tasks/captures/RCAP artifacts","operator-search","Search index includes core records."],["Safe search actions appear","operator-search","Internal-only safe actions appear."],["Forbidden search actions do not appear","operator-search","External actions do not appear."],["#os-health opens","os-health","OS Health route renders."],["Refresh OS Health Snapshot works","os-health","OS Health refresh saves internally."],["#data-integrity opens","data-integrity","Data Integrity route renders."],["Integrity status renders","data-integrity","Integrity status is visible."],["No secret fields appear","data-integrity","Secret-like fields are scrubbed."]]),
         group("RCAP Workflow", [["RCAP Production Activation card renders","overview","RCAP activation card is visible."],["#production-activation-rcap opens","production-activation-rcap","RCAP Review Workspace opens."],["Review Queue renders","production-activation-rcap","Review Queue is visible."],["Approval controls are internal-only","production-activation-rcap","Approval controls only update internal state."],["Handoff Readiness renders","production-activation-rcap","Handoff Readiness section is visible."],["Generate Internal Handoff Packet works internally only","production-activation-rcap","Internal packet generation does not contact external systems."],["No Partner Journey system is contacted","production-activation-rcap","Partner Journey systems are not called."]]),
         group("Safety Confirmation", [["No emails sent","os-health","Email sending remains unavailable."],["No posts published","queue","Publishing remains blocked unless explicitly approved outside this smoke test."],["No partner pages published","partner-pages","Partner pages remain draft/review-only."],["No dashboards activated","partner-dashboards","Dashboards are not activated."],["No destructive restore","data-integrity","Restore dry-run only; destructive restore remains blocked."],["No live gates enabled","settings","Live gates are not enabled."],["Live gates remain 0","os-health","Live gates count is 0."]])
@@ -18376,7 +18376,7 @@ function htmlShell() {
       const saved = Boolean(savedOperatingMemoryForToday());
       return \`<section class="cockpit-card operating-memory-card" aria-label="Carry Forward">
         <div class="cockpit-card-head"><h2>Carry Forward</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
-        <p class="muted">\${saved ? "Today's memory is saved. Use it to carry forward the right work tomorrow." : "No operating memory saved for today yet."}</p>
+        <p class="muted">\${saved ? "Today’s memory is saved. Use it to carry forward the right work tomorrow." : "No operating memory saved for today yet."}</p>
         <div class="operating-memory-grid">
           <section class="operating-memory-tile"><h3>Moved Today</h3>\${memoryListHtml(memory.moved_today, "No movement captured yet.")}</section>
           <section class="operating-memory-tile"><h3>Carry Forward</h3>\${memoryListHtml(memory.carry_forward, "Nothing needs carry-forward yet.")}</section>
@@ -18384,7 +18384,7 @@ function htmlShell() {
           <section class="operating-memory-tile"><h3>Still Blocked</h3>\${memoryListHtml(memory.still_blocked, "No blockers carried in memory.")}</section>
         </div>
         <div class="operating-memory-actions">
-          <button class="primary" type="button" onclick="saveOperatingMemory()">Save Today's Operating Memory</button>
+          <button class="primary" type="button" onclick="saveOperatingMemory()">Save Today’s Operating Memory</button>
           <button type="button" onclick="location.hash='operating-memory'">Open Memory</button>
         </div>
       </section>\`;
@@ -18420,7 +18420,7 @@ function htmlShell() {
         <div class="artifact-review-detail"><span>Do not touch</span><p>\${esc(rcapReviewList((note.do_not_touch || []).map(item => item.title || item.detail), "None"))}</p></div>
         <div class="conversation-note-actions">
           <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','mark_reviewed')">Mark Reviewed</button>
-          <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','apply_morning_brief')">Apply to Today's Brief Inputs</button>
+          <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','apply_morning_brief')">Apply to Today’s Brief Inputs</button>
           <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','apply_evening_reflection')">Apply to Evening Reflection Inputs</button>
           <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','carry_forward')">Carry Forward</button>
           <button type="button" onclick="conversationNoteAction('\${esc(note.id)}','ignore')">Ignore</button>
@@ -18651,14 +18651,14 @@ function htmlShell() {
         <div class="panel hero-panel">
           <div class="eyebrow">Internal OS</div>
           <h1 class="big-title">Operating Memory</h1>
-          <p class="muted">\${saved ? \`Today's memory record was saved at \${esc(formatDate(saved.generated_at) || "today")}.\` : "No operating memory saved for today yet."} This is internal memory only. It does not send, publish, activate, or contact external systems.</p>
+          <p class="muted">\${saved ? \`Today’s memory record was saved at \${esc(formatDate(saved.generated_at) || "today")}.\` : "No operating memory saved for today yet."} This is internal memory only. It does not send, publish, activate, or contact external systems.</p>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="saveOperatingMemory()">Save Today's Operating Memory</button>
+            <button class="primary" type="button" onclick="saveOperatingMemory()">Save Today’s Operating Memory</button>
           </div>
         </div>
         <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Today's Memory Record</h2><span class="badge info">Live gates: \${esc(memory.live_gates_count || 0)}</span></div>
+          <div class="simple-panel-head"><h2>Today’s Memory Record</h2><span class="badge info">Live gates: \${esc(memory.live_gates_count || 0)}</span></div>
           <p class="muted">\${esc(memory.external_actions_confirmation || "No external action confirmation available.")}</p>
           <div class="operating-memory-grid">
             <section class="operating-memory-tile"><h3>Moved Today</h3>\${memoryListHtml(memory.moved_today, "No movement captured today.", 6)}</section>
@@ -18774,9 +18774,9 @@ function htmlShell() {
         </section>
         <section class="panel operating-memory-card">
           <div class="simple-panel-head"><h2>Tomorrow Plan</h2><span class="badge info">Internal only</span></div>
-          <p class="muted"><strong>Tomorrow's mission:</strong> \${esc(closeout.tomorrow_mission || "Start with the highest-leverage internal blocker.")}</p>
+          <p class="muted"><strong>Tomorrow’s mission:</strong> \${esc(closeout.tomorrow_mission || "Start with the highest-leverage internal blocker.")}</p>
           <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>Tomorrow's Top 3</h3>\${memoryListHtml(closeout.tomorrow_top_3, "No tomorrow actions generated.", 3)}</section>
+            <section class="operating-memory-tile"><h3>Tomorrow’s Top 3</h3>\${memoryListHtml(closeout.tomorrow_top_3, "No tomorrow actions generated.", 3)}</section>
             <section class="operating-memory-tile"><h3>First move</h3><ul><li>\${esc(closeout.tomorrow_first_move || "Open Morning Brief.")}</li></ul></section>
             <section class="operating-memory-tile"><h3>Waiting on</h3>\${memoryListHtml(closeout.tomorrow_waiting_on, "Nothing waiting.", 6)}</section>
             <section class="operating-memory-tile"><h3>Do not touch tomorrow</h3>\${memoryListHtml(closeout.tomorrow_do_not_touch, "No distractions flagged.", 6)}</section>
@@ -19447,7 +19447,7 @@ function htmlShell() {
           </div>
         </div>
         <section class="panel">
-          <div class="simple-panel-head"><h2>Today's captured notes</h2><span class="badge info">\${esc(notes.length)} today</span></div>
+          <div class="simple-panel-head"><h2>Today’s captured notes</h2><span class="badge info">\${esc(notes.length)} today</span></div>
           <div class="conversation-note-grid">\${notes.map(conversationNoteCardHtml).join("") || '<div class="empty">No conversation notes captured today.</div>'}</div>
         </section>
         <section class="panel">
@@ -21224,7 +21224,7 @@ function htmlShell() {
             </div>
             \${dailyControlBarHtml(reviewPosts)}
             <div class="toolbar">
-              <button class="primary" onclick="createTomorrowQueue()">Add tomorrow's posts</button>
+              <button class="primary" onclick="createTomorrowQueue()">Add tomorrow’s posts</button>
               <button onclick="toggleBulkMode()">\${bulkMode ? "Exit bulk mode" : "Bulk mode"}</button>
               <details class="toolbar-more">
                 <summary>Tools</summary>
@@ -21270,7 +21270,7 @@ function htmlShell() {
               <div style="margin-top:14px">\${firstDayQaChecklistHtml()}</div>
             </details>
             <details>
-              <summary>Today's Review</summary>
+              <summary>Today’s Review</summary>
               <div style="margin-top:14px">\${todayReviewHtml()}</div>
             </details>
             <details>
@@ -22993,7 +22993,7 @@ function htmlShell() {
       const result = await api("/api/queue/create-tomorrow", { method:"POST" });
       state = result.state;
       render();
-      toast(result.message || "Tomorrow's 3-post queue created");
+      toast(result.message || "Tomorrow’s 3-post queue created");
     }
 
     function selectedContentIdeaIds() {
