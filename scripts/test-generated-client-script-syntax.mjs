@@ -118,6 +118,15 @@ function staticUnsafeHandlerChecks() {
     const unsafeSingleQuotedCall = new RegExp(`\\([^\\n)]*'${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}'`, "i");
     assert(!unsafeSingleQuotedCall.test(source), `Human-facing label must not be passed as unsafe single-quoted JS: ${label}`);
   }
+
+  const rewriteButtonMatch = source.match(/<button[^>]*>Rewrite with Le-E<\/button>/);
+  assert(rewriteButtonMatch, "Generated source should include the Rewrite with Le-E button.");
+  assert(!/onclick=/.test(rewriteButtonMatch[0]), "Rewrite with Le-E must not use inline onclick JavaScript.");
+  assert(/data-lee-prompt=/.test(rewriteButtonMatch[0]), "Rewrite with Le-E should store prompt text in a data attribute.");
+  assert(
+    /addEventListener\("click",[\s\S]*?data-lee-prompt[\s\S]*?askLeePromptFromButton/.test(source),
+    "Rewrite with Le-E should be handled by delegated data-attribute click handling."
+  );
 }
 
 function apostropheRegressionSelfCheck() {

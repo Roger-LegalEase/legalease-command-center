@@ -19491,7 +19491,7 @@ function htmlShell() {
           </header>
           <section class="app-intention" aria-label="Daily intention">
             <h1>\${esc(intention.prefix)}<span class="intention-accent">\${esc(intention.accent)}</span>\${esc(intention.suffix)}</h1>
-            <div class="intention-meta"><span>\${esc(intention.source)}</span><button type="button" onclick="askLeePrompt('Rewrite today\\'s intention from current open work.')">Rewrite with Le-E</button></div>
+            <div class="intention-meta"><span>\${esc(intention.source)}</span><button type="button" data-lee-prompt="\${esc("Rewrite today's intention from current open work.")}">Rewrite with Le-E</button></div>
           </section>
           <section class="cockpit-layout">
             <main class="cockpit-main">
@@ -22196,6 +22196,22 @@ function htmlShell() {
       render();
     }
 
+    async function askLeePromptFromButton(button) {
+      const prompt = String(button?.dataset?.leePrompt || "").trim();
+      if (!prompt) {
+        toast("Rewrite unavailable. The OS is still usable.");
+        return;
+      }
+      try {
+        await askLeePrompt(prompt);
+      } catch (error) {
+        console.error(error);
+        leeBusy = false;
+        toast("Rewrite unavailable. The OS is still usable.");
+        try { render(); } catch {}
+      }
+    }
+
     function openLeeBubble() {
       leeBubbleOpen = true;
       render();
@@ -24099,6 +24115,12 @@ function htmlShell() {
       }
     });
     document.addEventListener("click", (event) => {
+      const leePromptButton = event.target.closest("[data-lee-prompt]");
+      if (leePromptButton) {
+        event.preventDefault();
+        askLeePromptFromButton(leePromptButton);
+        return;
+      }
       if (!event.target.closest(".nav-menu")) {
         document.querySelectorAll(".nav-menu[open]").forEach((menu) => menu.removeAttribute("open"));
       }
