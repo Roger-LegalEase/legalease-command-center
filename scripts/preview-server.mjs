@@ -12926,15 +12926,12 @@ function htmlShell() {
     .nav-menu { position:relative; display:inline-flex; overflow:visible; }
     .nav-menu-summary { list-style:none; }
     .nav-menu-summary::-webkit-details-marker { display:none; }
-    .nav-menu-panel { position:absolute; top:calc(100% + 10px); right:0; min-width:240px; max-width:min(360px, calc(100vw - 32px)); z-index:200; border-radius:18px; border:1px solid rgba(15,23,42,.12); background:#fff; box-shadow:0 24px 60px rgba(15,23,42,.16); padding:10px; display:grid; gap:8px; }
-    .nav-menu-group { display:grid; gap:3px; padding:4px; border-radius:14px; }
-    .nav-menu-group-title { color:#64748b; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; padding:4px 10px 2px; }
+    .nav-menu-panel { position:absolute; top:calc(100% + 10px); right:0; min-width:240px; max-width:min(320px, calc(100vw - 32px)); z-index:200; border-radius:18px; border:1px solid rgba(15,23,42,.12); background:#fff; box-shadow:0 24px 60px rgba(15,23,42,.16); padding:10px; display:grid; gap:4px; }
     .nav-menu-panel a { display:block; padding:12px 14px; border-radius:12px; text-decoration:none; color:#0f172a; font-weight:700; font-size:13px; }
     .nav-menu-panel a:hover,
     .nav-menu-panel a.active { background:rgba(0,169,157,.1); color:#0f172a; }
     .nav-menu-panel a.active::after { content:"Selected"; display:block; color:var(--le-muted); font-size:11px; font-weight:800; margin-top:2px; }
     .shell-marker { color:#98a2b3; font-size:11px; font-weight:750; white-space:nowrap; }
-    .diagnostic-markers { color:#98a2b3; font-size:11px; font-weight:750; display:flex; gap:10px; flex-wrap:wrap; }
     main { max-width:100%; padding-top:18px; }
     .panel,.card { border-color:rgba(15,31,92,.12); border-radius:14px; box-shadow:0 10px 26px rgba(15,31,92,.055); background:rgba(255,255,255,.97); }
     .panel,.card { padding:14px; }
@@ -13357,23 +13354,20 @@ function htmlShell() {
       <a class="brand-lockup" href="#overview"><span>LegalEase</span><strong>Command Center</strong></a>
       <nav class="top-nav" aria-label="Primary">
         <a class="nav-top-link" href="#overview" data-nav-section="today">Today</a>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="growth">Growth</summary><div class="nav-menu-panel"><a href="#growth">Growth Home</a><a href="#growth-inbox">Growth Inbox</a><a href="#capture-inbox">Captures</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a><a href="#metrics">Metrics</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="growth">Growth</summary><div class="nav-menu-panel"><a href="#growth">Growth Home</a><a href="#growth-inbox">Growth Inbox</a><a href="#capture-inbox">Capture Inbox</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a><a href="#metrics">Metrics</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="partners">Partners</summary><div class="nav-menu-panel"><a href="#partner-hub">Partners Home</a><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="production">Production</summary><div class="nav-menu-panel"><a href="#production">Production Home</a><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="proof">Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#evidence-room">Evidence Room</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel">
-          <div class="nav-menu-group"><div class="nav-menu-group-title">Daily Ops</div><a href="#morning-brief">Morning Brief</a><a href="#evening-reflection">End-of-Day Reflection</a><a href="#daily-closeout">Closeout</a><a href="#operating-memory">Carry Forward</a></div>
-          <div class="nav-menu-group"><div class="nav-menu-group-title">Work</div><a href="#tasks">Tasks</a><a href="#capture-inbox">Captures</a><a href="#operator-search">Search</a></div>
-          <div class="nav-menu-group"><div class="nav-menu-group-title">Partners</div><a href="#production-activation-rcap">RCAP Review</a><a href="#production-activation-rcap">Handoff Status</a><a href="#handoff-contract">Handoff Contract</a></div>
-          <div class="nav-menu-group"><div class="nav-menu-group-title">Proof</div><a href="#evidence-room">Evidence Room</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a></div>
-          <div class="nav-menu-group"><div class="nav-menu-group-title">System</div><a href="#os-health">System Health</a><a href="#data-integrity">System Checks</a><a href="#smoke-test">Smoke Test</a><a href="#roles">Roles</a><a href="#operator-manual">Operator Manual</a><a href="#settings">Settings</a><a href="#safe-mode">Safe Mode</a></div>
-        </div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#tasks-today">Today Tasks</a><a href="#tasks-blocked">Blocked Tasks</a><a href="#tasks-waiting">Waiting Tasks</a><a href="#tasks-this-week">This Week Tasks</a><a href="#handoff-contract">Handoff Contract</a><a href="#operator-manual">Operator Manual</a><a href="#roles">Roles</a><a href="#data-integrity">Data Integrity</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
       </nav>
+      <span class="shell-marker" aria-hidden="true">nav: topnav-fixed-v1</span>
+      <span class="shell-marker" aria-hidden="true">shell: app-layout-stable-v1</span>
+      <span class="shell-marker" aria-hidden="true">controls: button-audit-v1</span>
     </header>
     <div>
       <header>
         <div><div class="eyebrow">Operator cockpit</div><h2>LegalEase OS</h2></div>
-        <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><button type="button" onclick="openCommandPalette()">Search</button><button type="button" onclick="lockCommandCenter()">Lock</button><button class="primary" type="button" onclick="location.hash='os-health'">System Health</button></div>
+        <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><button onclick="openCommandPalette()">Command</button><button onclick="lockCommandCenter()">Lock</button><button class="primary" onclick="runSystemCheck()">Run System Check</button></div>
       </header>
       <main id="app"><div class="panel loading-panel"><div class="eyebrow">Starting command center</div><h1 class="big-title">Loading LegalEase...</h1><p class="big-copy">If this stays here, the browser could not finish the app render. The server is still serving a visible fallback so you are not staring at a blank screen.</p><div class="loading-line wide"></div><div class="loading-line"></div><div class="loading-card"></div><div class="card-actions"><button class="primary" onclick="location.reload()">Reload app</button><a class="button-link" href="#queue">Open Queue</a></div></div></main>
     </div>
@@ -13517,7 +13511,6 @@ function htmlShell() {
             <h1 class="big-title">LegalEase loaded a safe shell.</h1>
               <p class="big-copy">\${esc(message)}</p>
               <div class="metric-table" style="margin-top:14px">\${safeDiagnosticRows(stateFetchDiagnostics)}</div>
-              <div class="diagnostic-markers" aria-label="Diagnostic build markers"><span>nav: topnav-fixed-v1</span><span>shell: app-layout-stable-v1</span><span>controls: button-audit-v1</span><span>layout: cockpit-grid-fixed-v1</span></div>
               <div class="card-actions" style="margin-top:14px">
               <button class="primary" type="button" onclick="retryBootStateLoad()">Retry Boot State</button>
               <button type="button" onclick="retryFullStateLoad()">Retry Full State</button>
@@ -17478,15 +17471,15 @@ function htmlShell() {
 
     function cockpitDailyOperatingLoopHtml() {
       const loop = cockpitDailyOperatingLoop();
-      return \`<section class="cockpit-card daily-operating-loop" aria-label="Today's Focus">
-        <div class="cockpit-card-head"><h2>Today’s Focus</h2><small>Le-E operating brief</small></div>
+      return \`<section class="cockpit-card daily-operating-loop" aria-label="Daily Operating Loop">
+        <div class="cockpit-card-head"><h2>Daily Operating Loop</h2><small>Le-E operating brief</small></div>
         <div class="daily-loop-summary"><strong>Read-only guidance.</strong><span>No external side effects.</span><span>Live gates: \${esc(loop.liveGates)}</span></div>
         <div class="daily-loop-grid">
-          <section class="daily-loop-section primary"><h3>Today’s Top 3</h3>\${cockpitLoopListHtml(loop.top3, "No top actions available yet.")}</section>
-          <section class="daily-loop-section"><h3>Waiting / Blocked</h3>\${cockpitLoopListHtml(loop.waitingOn, "Nothing is waiting on missing details right now.")}</section>
+          <section class="daily-loop-section primary"><h3>Today's Top 3</h3>\${cockpitLoopListHtml(loop.top3, "No top actions available yet.")}</section>
+          <section class="daily-loop-section"><h3>Waiting On</h3>\${cockpitLoopListHtml(loop.waitingOn, "Nothing is waiting on missing details right now.")}</section>
           <section class="daily-loop-section"><h3>Decisions Needed</h3>\${cockpitLoopListHtml(loop.decisionsNeeded, "No operator decisions are waiting.")}</section>
           <section class="daily-loop-section"><h3>Do Not Touch Today</h3>\${cockpitLoopListHtml(loop.doNotTouchToday, "No distractions flagged.")}</section>
-          <section class="daily-loop-section"><h3>What Moved</h3>\${cockpitLoopListHtml(loop.momentum, "No recent operating movement logged yet.")}</section>
+          <section class="daily-loop-section"><h3>Momentum</h3>\${cockpitLoopListHtml(loop.momentum, "No recent operating movement logged yet.")}</section>
         </div>
       </section>\`;
     }
@@ -17617,11 +17610,11 @@ function htmlShell() {
         <div class="daily-loop-summary"><strong>Morning Brief: \${morningSaved ? "Saved" : "Not saved"}</strong><span>Evening Reflection: \${eveningSaved ? "Saved" : "Not saved"}</span><span>Live gates: \${esc(morning.live_gates_count || evening.live_gates_count || 0)}</span></div>
         <div class="daily-loop-grid">
           <section class="daily-loop-section primary"><h3>Morning Brief</h3><p>\${esc(morning.mission_today || "Run the internal operating loop.")}</p><a href="#morning-brief">Open Morning Brief</a></section>
-          <section class="daily-loop-section"><h3>End-of-Day Reflection</h3><p>\${esc((evening.carry_forward || [])[0]?.title || "No reflection saved yet.")}</p><a href="#evening-reflection">Open End-of-Day Reflection</a></section>
+          <section class="daily-loop-section"><h3>Evening Reflection</h3><p>\${esc((evening.carry_forward || [])[0]?.title || "No reflection saved yet.")}</p><a href="#evening-reflection">Open Evening Reflection</a></section>
         </div>
         <div class="operating-memory-actions">
           <button class="primary" type="button" onclick="saveMorningBrief()">Save Morning Brief</button>
-          <button type="button" onclick="saveEveningReflection()">Save End-of-Day Reflection</button>
+          <button type="button" onclick="saveEveningReflection()">Save Evening Reflection</button>
         </div>
       </section>\`;
     }
@@ -17629,8 +17622,8 @@ function htmlShell() {
     function cockpitDailyCloseoutHtml() {
       const saved = Boolean(savedDailyCloseoutForToday());
       const closeout = cockpitDailyCloseoutRecord();
-      return \`<section class="cockpit-card daily-closeout-card" aria-label="Closeout">
-        <div class="cockpit-card-head"><h2>Closeout</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
+      return \`<section class="cockpit-card daily-closeout-card" aria-label="Daily Closeout">
+        <div class="cockpit-card-head"><h2>Daily Closeout</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
         <div class="daily-loop-summary"><strong>Tomorrow: \${esc(closeout.tomorrow_mission || "Plan not generated")}</strong><span>Live gates: \${esc(closeout.live_gates_count || 0)}</span><span>Internal only</span></div>
         <div class="daily-loop-grid">
           <section class="daily-loop-section primary"><h3>Tomorrow Top 3</h3>\${memoryListHtml(closeout.tomorrow_top_3, "No tomorrow plan yet.", 3)}</section>
@@ -17659,15 +17652,15 @@ function htmlShell() {
     function cockpitOsHealthHtml() {
       const health = cockpitOsHealthRecord();
       const warnings = health.trust_warnings || [];
-      return \`<section class="cockpit-card os-health-card" aria-label="System Health">
-        <div class="cockpit-card-head"><h2>System Health</h2><small>\${esc(plainOperatorState(health.overall_health || "needs_attention"))}</small></div>
+      return \`<section class="cockpit-card os-health-card" aria-label="OS Health">
+        <div class="cockpit-card-head"><h2>OS Health</h2><small>\${esc(plainOperatorState(health.overall_health || "needs_attention"))}</small></div>
         <div class="daily-loop-summary"><strong>Overall: \${esc(plainOperatorState(health.overall_health || "needs_attention"))}</strong><span>Last verified: \${esc(formatDateTime(health.generated_at) || "Not recorded")}</span><span>Live gates: \${esc(health.live_gates_count || 0)}</span></div>
         <div class="daily-loop-grid">
           <section class="daily-loop-section primary"><h3>Key warnings</h3>\${memoryListHtml(warnings, "No key warnings saved in the latest snapshot.", 3)}</section>
           <section class="daily-loop-section"><h3>Next action</h3><ul><li>\${esc(health.summary?.next_operator_action || "Refresh OS Health Snapshot.")}</li></ul></section>
         </div>
         <div class="operating-memory-actions">
-          <button type="button" onclick="location.hash='os-health'">Open System Health</button>
+          <button type="button" onclick="location.hash='os-health'">Open OS Health</button>
           <button class="primary" type="button" onclick="refreshOsHealth()">Refresh OS Health Snapshot</button>
         </div>
       </section>\`;
@@ -18249,14 +18242,14 @@ function htmlShell() {
     function cockpitDataIntegrityHtml() {
       const integrity = cockpitDataIntegrityRecord();
       const warningCount = (integrity.errors || []).length + (integrity.warnings || []).length;
-      return \`<section class="cockpit-card data-integrity-card" aria-label="System Checks">
-        <div class="cockpit-card-head"><h2>System Checks</h2><small>\${esc(plainOperatorState(integrity.integrity_status || "needs_attention"))}</small></div>
+      return \`<section class="cockpit-card data-integrity-card" aria-label="Data Integrity">
+        <div class="cockpit-card-head"><h2>Data Integrity</h2><small>\${esc(plainOperatorState(integrity.integrity_status || "needs_attention"))}</small></div>
         <p>\${esc(warningCount ? warningCount + " integrity warning(s) need review." : "Collections are structurally healthy.")}</p>
         <div class="mini-metrics">
           <span>Warnings <strong>\${esc(warningCount)}</strong></span>
           <span>Live gates <strong>\${esc(integrity.live_gates_count || 0)}</strong></span>
         </div>
-        <div class="card-actions"><button type="button" onclick="location.hash='data-integrity'">Open System Checks</button></div>
+        <div class="card-actions"><button type="button" onclick="location.hash='data-integrity'">Open Data Integrity</button></div>
       </section>\`;
     }
 
@@ -18265,8 +18258,8 @@ function htmlShell() {
       const blocked = taskViewFilter("blocked");
       const waiting = taskViewFilter("waiting");
       const week = taskViewFilter("this-week");
-      return \`<section class="cockpit-card task-management-card" aria-label="Tasks Snapshot">
-        <div class="cockpit-card-head"><h2>Tasks Snapshot</h2><small>Internal work only</small></div>
+      return \`<section class="cockpit-card task-management-card" aria-label="Task Management">
+        <div class="cockpit-card-head"><h2>Tasks</h2><small>Internal work only</small></div>
         <div class="daily-loop-summary"><strong>Today: \${esc(today.length)}</strong><span>Blocked: \${esc(blocked.length)}</span><span>Waiting: \${esc(waiting.length)}</span><span>This week: \${esc(week.length)}</span></div>
         <div class="operating-memory-actions">
           <button class="primary" type="button" onclick="location.hash='tasks'">Open Tasks</button>
@@ -18361,11 +18354,11 @@ function htmlShell() {
     function cockpitOperatorSearchHtml() {
       const index = operatorSearchClientIndex();
       const needsReview = index.filter(item => /review_required|blocked|needs_revision/i.test(item.status || "")).length;
-      return \`<section class="cockpit-card operator-search-card" aria-label="Search">
-        <div class="cockpit-card-head"><h2>Search</h2><small>Internal command palette</small></div>
+      return \`<section class="cockpit-card operator-search-card" aria-label="Operator Search">
+        <div class="cockpit-card-head"><h2>Operator Search</h2><small>Internal command palette</small></div>
         <div class="daily-loop-summary"><strong>\${esc(index.length)} indexed records</strong><span>\${esc(needsReview)} need attention</span><span>Live gates: \${esc(Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length)}</span></div>
         <div class="operating-memory-actions">
-          <button class="primary" type="button" onclick="location.hash='operator-search'">Open Search</button>
+          <button class="primary" type="button" onclick="location.hash='operator-search'">Search OS</button>
           <button type="button" onclick="location.hash='operator-search'">Open Command Palette</button>
         </div>
       </section>\`;
@@ -18374,8 +18367,8 @@ function htmlShell() {
     function cockpitOperatingMemoryHtml() {
       const memory = cockpitOperatingMemoryRecord();
       const saved = Boolean(savedOperatingMemoryForToday());
-      return \`<section class="cockpit-card operating-memory-card" aria-label="Carry Forward">
-        <div class="cockpit-card-head"><h2>Carry Forward</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
+      return \`<section class="cockpit-card operating-memory-card" aria-label="Operating Memory">
+        <div class="cockpit-card-head"><h2>Operating Memory</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
         <p class="muted">\${saved ? "Today's memory is saved. Use it to carry forward the right work tomorrow." : "No operating memory saved for today yet."}</p>
         <div class="operating-memory-grid">
           <section class="operating-memory-tile"><h3>Moved Today</h3>\${memoryListHtml(memory.moved_today, "No movement captured yet.")}</section>
@@ -19483,69 +19476,6 @@ function htmlShell() {
       </section>\`;
     }
 
-    function cockpitCompactListHtml(items = [], emptyText = "Nothing needs attention.", limit = 4) {
-      const rows = (items || []).slice(0, limit);
-      return \`<div class="thread-list">\${rows.length ? rows.map(item => \`<button class="thread" type="button" onclick="location.hash='\${esc(item.href || item.route || "overview")}'"><strong>\${esc(item.title || item.name || "Item")}</strong><span>\${esc(item.detail || item.context || item.reason || "Open for review.")}</span>\${item.age || item.day ? \`<span class="thread-age">\${esc(item.age || item.day)}</span>\` : ""}</button>\`).join("") : \`<div class="empty-calm">\${esc(emptyText)}</div>\`}</div>\`;
-    }
-
-    function cockpitWaitingBlockedHtml(threads = [], parked = []) {
-      const loop = cockpitDailyOperatingLoop();
-      const items = [
-        ...loop.waitingOn.map(item => ({ ...item, title:item.title, detail:item.detail })),
-        ...threads.map(item => ({ title:item.name, detail:\`\${item.context}. \${item.need}\`, href:item.href, age:item.age })),
-        ...parked.map(item => ({ title:item.title, detail:item.reason, href:item.href }))
-      ].slice(0, 5);
-      return \`<section class="cockpit-card" aria-label="Waiting / Blocked">
-        <div class="cockpit-card-head"><h2>Waiting / Blocked</h2><small>What needs space cleared</small></div>
-        \${cockpitCompactListHtml(items, "No blockers or waiting items need attention right now.", 5)}
-      </section>\`;
-    }
-
-    function cockpitDecisionsNeededHtml() {
-      const loop = cockpitDailyOperatingLoop();
-      return \`<section class="cockpit-card" aria-label="Decisions Needed">
-        <div class="cockpit-card-head"><h2>Decisions Needed</h2><small>Roger choices only</small></div>
-        \${cockpitCompactListHtml(loop.decisionsNeeded, "No decisions are waiting right now.", 4)}
-      </section>\`;
-    }
-
-    function cockpitWhatMovedHtml(moved = []) {
-      const loop = cockpitDailyOperatingLoop();
-      const items = [
-        ...moved.map(item => ({ title:item.title, detail:item.detail, href:item.href, day:item.day })),
-        ...loop.momentum.map(item => ({ title:item.title, detail:item.detail, href:item.href }))
-      ].slice(0, 5);
-      return \`<section class="cockpit-card" aria-label="What Moved">
-        <div class="cockpit-card-head"><h2>What Moved</h2><small>Recent progress</small></div>
-        \${cockpitCompactListHtml(items, "No proof-worthy movement logged yet.", 5)}
-      </section>\`;
-    }
-
-    function cockpitRcapSignalHtml() {
-      const readiness = rcapPartnerJourneyHandoffReadinessClient();
-      const needsAction = readiness.blocked.length || readiness.revisions.length || readiness.open.length || readiness.missing.length;
-      return \`<section class="cockpit-card" aria-label="Handoff Status">
-        <div class="cockpit-card-head"><h2>Handoff Status</h2><small>\${readiness.ready ? "Ready for manual decision" : "Not ready"}</small></div>
-        <div class="mini-metrics">
-          <span>Blockers <strong>\${esc(readiness.blocked.length)}</strong></span>
-          <span>Revisions <strong>\${esc(readiness.revisions.length)}</strong></span>
-          <span>Missing <strong>\${esc(readiness.missing.length)}</strong></span>
-        </div>
-        <p class="muted">\${esc(needsAction ? readiness.next : "RCAP has no urgent daily action in the cockpit.")}</p>
-        <div class="card-actions"><button type="button" onclick="location.hash='production-activation-rcap'">Open RCAP Review</button></div>
-      </section>\`;
-    }
-
-    function cockpitLiveGatesHtml() {
-      const liveGates = Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length;
-      const liveGateLabel = liveGates === 0 ? "Live Gates: 0" : \`Live Gates: \${liveGates}\`;
-      return \`<section class="cockpit-card" aria-label="Live Gates">
-        <div class="cockpit-card-head"><h2>\${esc(liveGateLabel)}</h2><small>Safety signal</small></div>
-        <p class="muted">\${liveGates === 0 ? "No live publishing, posting, email, page, or dashboard gate is enabled." : "Review live gates immediately before any operating work continues."}</p>
-        <div class="card-actions"><button type="button" onclick="location.hash='os-health'">Open System Health</button></div>
-      </section>\`;
-    }
-
     function commandCenterOverviewHtml(posts) {
       const nowItem = cockpitNowItem(posts);
       const intention = cockpitDailyIntention(nowItem);
@@ -19560,7 +19490,6 @@ function htmlShell() {
             <div id="cockpit-clock" class="app-time">\${esc(cockpitClockText())}</div>
           </header>
           <section class="app-intention" aria-label="Daily intention">
-            <div class="eyebrow">Mission Today</div>
             <h1>\${esc(intention.prefix)}<span class="intention-accent">\${esc(intention.accent)}</span>\${esc(intention.suffix)}</h1>
             <div class="intention-meta"><span>\${esc(intention.source)}</span><button type="button" onclick="askLeePrompt('Rewrite today\\'s intention from current open work.')">Rewrite with Le-E</button></div>
           </section>
@@ -19580,11 +19509,25 @@ function htmlShell() {
                 <button type="button" onclick="cockpitSnoozeNow('\${esc(nowItem.type)}','\${esc(nowItem.id)}')">\${esc(nowItem.snoozeLabel)}</button>
               </div>
             </section>
+            \${cockpitTimelineHtml(nowItem)}
             \${cockpitDailyOperatingLoopHtml()}
             \${cockpitTasksHtml()}
+            \${cockpitDailyRitualsHtml()}
+            \${cockpitDailyCloseoutHtml()}
             \${cockpitOsHealthHtml()}
+            \${cockpitRoleProtectionHtml()}
+            \${cockpitSmokeTestHtml()}
+            \${cockpitEvidenceRoomHtml()}
+            \${cockpitHandoffContractHtml()}
+            \${cockpitOperatorManualHtml()}
+            \${cockpitDataIntegrityHtml()}
+            \${cockpitOperatorSearchHtml()}
+            \${cockpitOperatingMemoryHtml()}
             </main>
             <aside class="cockpit-rail">
+            \${cockpitRcapActivationHtml()}
+            \${rcapReviewQueueHtml()}
+            \${rcapHandoffReadinessCardHtml()}
             <section class="cockpit-card quick-capture">
               <div class="cockpit-card-head"><h2>Quick Capture</h2><small>Le-E routes it after review</small></div>
               <form class="rail-form" onsubmit="quickCapture(event)">
@@ -19598,15 +19541,23 @@ function htmlShell() {
                 <div class="card-actions"><button class="primary" type="submit">Capture with Le-E</button><button type="button" onclick="location.hash='capture-inbox'">Open Capture Inbox</button></div>
               </form>
             </section>
-            \${cockpitWaitingBlockedHtml(threads, parked)}
-            \${cockpitDecisionsNeededHtml()}
-            \${cockpitWhatMovedHtml(moved)}
-            \${cockpitRcapSignalHtml()}
-            \${cockpitLiveGatesHtml()}
+            <section class="cockpit-card">
+              <div class="cockpit-card-head"><h2>Threads Open</h2><small>Waiting on Roger</small></div>
+              <div class="thread-list">\${threads.map(thread => \`<button class="thread" type="button" onclick="location.hash='\${esc(thread.href)}'"><strong>\${esc(thread.name)}</strong><span>\${esc(thread.context)}. \${esc(thread.need)}</span><span class="thread-age">\${esc(thread.age)}</span></button>\`).join("") || '<div class="empty-calm">No open people threads need attention right now.</div>'}</div>
+            </section>
+            <section class="cockpit-card">
+              <div class="cockpit-card-head"><h2>Parked</h2><small>Do not carry these mentally</small></div>
+              <div class="parked-list">\${parked.map(item => \`<button class="parked-item" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(item.title)}</strong><span>\${esc(item.reason)}</span></button>\`).join("") || '<div class="empty-calm">Nothing is parked. No blocked work needs mental space.</div>'}</div>
+            </section>
+            <section class="cockpit-card">
+              <div class="cockpit-card-head"><h2>This Week Moved</h2><small>Outcomes, not outputs</small></div>
+              <div class="moved-list">\${moved.map(item => \`<button class="moved-row" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(item.title)}</strong><span>\${esc(item.detail)}</span><span>\${esc(item.day)}</span></button>\`).join("") || '<div class="empty-calm">No proof-worthy movement logged this week yet.</div>'}</div>
+            </section>
             </aside>
           </section>
           <footer class="app-footer">
             <div class="footer-gates">\${gates.map(gate => \`<span class="gate \${gate.danger ? "danger" : gate.ok ? "good" : "warn"}">\${esc(gate.label)}</span>\`).join("")}</div>
+            <div class="layout-marker">layout: cockpit-grid-fixed-v1</div>
             <div class="made-for-roger">MADE FOR ROGER</div>
           </footer>
         </div>
@@ -19972,11 +19923,11 @@ function htmlShell() {
 
     function sectionLandingConfig(section) {
       const configs = [
-        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Triage signals, move campaigns, and keep RecordShield proof visible.", links:[["Growth Inbox","growth-inbox"],["Captures","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"]] },
+        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Triage signals, move campaigns, and keep RecordShield proof visible.", links:[["Growth Inbox","growth-inbox"],["Capture Inbox","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"]] },
         { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Move partner programs from lead to paid onboarding, reports, and renewal proof.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"]] },
         { id:"production", eyebrow:"Production", title:"Production", copy:"Turn ideas into approved assets without losing the approval-first safety model.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
         { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Evidence Room","evidence-room"],["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
-        { id:"more", eyebrow:"More", title:"More", copy:"Daily rituals, work queues, proof, and system tools live here so Today stays calm.", links:[["Morning Brief","morning-brief"],["End-of-Day Reflection","evening-reflection"],["Closeout","daily-closeout"],["Carry Forward","operating-memory"],["Tasks","tasks"],["Captures","capture-inbox"],["Search","operator-search"],["RCAP Review","production-activation-rcap"],["Handoff Contract","handoff-contract"],["Evidence Room","evidence-room"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["System Health","os-health"],["System Checks","data-integrity"],["Smoke Test","smoke-test"],["Roles","roles"],["Operator Manual","operator-manual"],["Safe Mode","safe-mode"]] }
+        { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Today Tasks","tasks-today"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Handoff Contract","handoff-contract"],["Operator Manual","operator-manual"],["Roles","roles"],["Data Integrity","data-integrity"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
       ];
       return configs.find(item => item.id === section) || configs[0];
     }
@@ -21412,6 +21363,7 @@ function htmlShell() {
             <div id="brandTab"></div>
           </details>
         </section>
+        <div class="app-markers" aria-hidden="true"><span>shell: app-layout-stable-v1</span><span>controls: button-audit-v1</span></div>
         \${leeBubbleHtml()}\`;
       document.querySelectorAll("nav a").forEach(link => {
         link.classList.toggle("active", link.getAttribute("href") === "#" + pageId);

@@ -122,12 +122,12 @@ assert(loop.decisionsNeeded.some(item => /RCAP|handoff|review/i.test(item.title 
 assert(loop.doNotTouchToday.every(item => !/send|publish|activate/i.test(item.action || "")), "Do Not Touch Today must not expose external action controls.");
 
 assert(serverSource.includes("function cockpitDailyOperatingLoopHtml"), "Active cockpit must render Daily Operating Loop.");
-assert(serverSource.includes("Today’s Focus"), "Today’s Focus heading must exist.");
-assert(/Today['’]s Top 3/.test(serverSource), "Today's Top 3 section must render.");
-assert(/Waiting (?:On|\/ Blocked)/.test(serverSource), "Waiting / Blocked section must render.");
+assert(serverSource.includes("Daily Operating Loop"), "Daily Operating Loop heading must exist.");
+assert(serverSource.includes("Today's Top 3"), "Today's Top 3 section must render.");
+assert(serverSource.includes("Waiting On"), "Waiting On section must render.");
 assert(serverSource.includes("Decisions Needed"), "Decisions Needed section must render.");
 assert(serverSource.includes("Do Not Touch Today"), "Do Not Touch Today section must render.");
-assert(/Momentum|What Moved/.test(serverSource), "What Moved section must render.");
+assert(serverSource.includes("Momentum"), "Momentum section must render.");
 assert(serverSource.includes("cockpitDailyOperatingLoopHtml()"), "Overview must include the Daily Operating Loop.");
 assert(!/daily-operating-loop[\s\S]{0,2000}(send email|publish page|activate dashboard|enable live)/i.test(serverSource), "Daily Operating Loop must not enable external controls.");
 

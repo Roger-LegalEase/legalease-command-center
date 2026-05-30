@@ -21,16 +21,16 @@ assert.match(server, /\.operator-v31 \.cockpit-rail\s*\{[^}]*position:\s*static/
 const nowTitleRule = server.match(/\.operator-v31 \.now-block h1,[\s\S]*?\.operator-v31 \.now-headline\s*\{(?<body>[^}]*)\}/)?.groups?.body || "";
 assert.match(nowTitleRule, /white-space:\s*normal/, "Now block title should allow normal wrapping.");
 assert.doesNotMatch(nowTitleRule, /white-space:\s*nowrap/, "Now block title must not use nowrap.");
-assert.match(server, /layout: cockpit-grid-fixed-v1/, "Diagnostic pages should retain the cockpit-grid-fixed-v1 marker.");
+assert.match(server, /layout: cockpit-grid-fixed-v1/, "Today footer should expose the cockpit-grid-fixed-v1 marker.");
 
 const mainStart = overview.indexOf('<main class="cockpit-main">');
 const railStart = overview.indexOf('<aside class="cockpit-rail">');
 const nowStart = overview.indexOf('<section class="now-block"');
 const quickStart = overview.indexOf("Quick Capture");
-const waitingStart = overview.indexOf("cockpitWaitingBlockedHtml");
+const threadsStart = overview.indexOf("Threads Open");
 assert.ok(mainStart !== -1 && railStart !== -1, "Main and rail columns should both exist.");
 assert.ok(nowStart > mainStart && nowStart < railStart, "Now block should be inside cockpit-main before cockpit-rail.");
 assert.ok(quickStart > railStart, "Quick Capture should be inside cockpit-rail.");
-assert.ok(waitingStart > railStart, "Waiting / Blocked should collapse open threads into cockpit-rail.");
+assert.ok(threadsStart > railStart, "Threads Open should be inside cockpit-rail.");
 
 console.log("cockpit layout tests passed");
