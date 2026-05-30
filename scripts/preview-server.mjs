@@ -12927,11 +12927,12 @@ function htmlShell() {
     .nav-menu-summary { list-style:none; }
     .nav-menu-summary::-webkit-details-marker { display:none; }
     .nav-menu-panel { position:absolute; top:calc(100% + 10px); right:0; min-width:240px; max-width:min(320px, calc(100vw - 32px)); z-index:200; border-radius:18px; border:1px solid rgba(15,23,42,.12); background:#fff; box-shadow:0 24px 60px rgba(15,23,42,.16); padding:10px; display:grid; gap:4px; }
+    .nav-menu-panel strong { display:block; padding:8px 14px 4px; color:#667085; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
     .nav-menu-panel a { display:block; padding:12px 14px; border-radius:12px; text-decoration:none; color:#0f172a; font-weight:700; font-size:13px; }
     .nav-menu-panel a:hover,
     .nav-menu-panel a.active { background:rgba(0,169,157,.1); color:#0f172a; }
     .nav-menu-panel a.active::after { content:"Selected"; display:block; color:var(--le-muted); font-size:11px; font-weight:800; margin-top:2px; }
-    .shell-marker { color:#98a2b3; font-size:11px; font-weight:750; white-space:nowrap; }
+    .shell-marker { display:none; color:#98a2b3; font-size:11px; font-weight:750; white-space:nowrap; }
     main { max-width:100%; padding-top:18px; }
     .panel,.card { border-color:rgba(15,31,92,.12); border-radius:14px; box-shadow:0 10px 26px rgba(15,31,92,.055); background:rgba(255,255,255,.97); }
     .panel,.card { padding:14px; }
@@ -13328,8 +13329,10 @@ function htmlShell() {
     .channel-actions { align-items:center; }
     .review-only-action { opacity:.62; cursor:not-allowed; border-style:dashed; }
     .control-status { min-height:20px; color:var(--muted); font-size:12px; font-weight:750; }
+    .action-status-message { min-height:20px; margin:8px 0 0; color:var(--muted); font-size:12px; font-weight:800; }
+    button[data-action-pending="true"] { opacity:.72; cursor:progress; transform:none; }
     .lee-bubble-safe-space { padding-bottom:112px; }
-    .app-markers { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; padding:0 24px 12px; color:#98a2b3; font-size:11px; font-weight:750; }
+    .app-markers { display:none; gap:10px; flex-wrap:wrap; justify-content:center; padding:0 24px 12px; color:#98a2b3; font-size:11px; font-weight:750; }
     @media (max-width:980px) {
       .app-section,
       .page-section,
@@ -13354,11 +13357,11 @@ function htmlShell() {
       <a class="brand-lockup" href="#overview"><span>LegalEase</span><strong>Command Center</strong></a>
       <nav class="top-nav" aria-label="Primary">
         <a class="nav-top-link" href="#overview" data-nav-section="today">Today</a>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="growth">Growth</summary><div class="nav-menu-panel"><a href="#growth">Growth Home</a><a href="#growth-inbox">Growth Inbox</a><a href="#capture-inbox">Capture Inbox</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a><a href="#metrics">Metrics</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="partners">Partners</summary><div class="nav-menu-panel"><a href="#partner-hub">Partners Home</a><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="production">Production</summary><div class="nav-menu-panel"><a href="#production">Production Home</a><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="proof">Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#evidence-room">Evidence Room</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#tasks-today">Today Tasks</a><a href="#tasks-blocked">Blocked Tasks</a><a href="#tasks-waiting">Waiting Tasks</a><a href="#tasks-this-week">This Week Tasks</a><a href="#handoff-contract">Handoff Contract</a><a href="#operator-manual">Operator Manual</a><a href="#roles">Roles</a><a href="#data-integrity">Data Integrity</a><a href="#autonomy">Autonomy</a><a href="#automation">System Health</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Diagnostics</a><a href="#dataroom">Runbooks</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="work">Work</summary><div class="nav-menu-panel"><strong>Work</strong><a href="#tasks">Tasks</a><a href="#capture-inbox">Captures</a><a href="#growth-inbox">Growth Inbox</a><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="partners">Partners</summary><div class="nav-menu-panel"><strong>Partners</strong><a href="#partner-hub">Partners Home</a><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#production-activation-rcap">RCAP Review</a><a href="#handoff-contract">Handoff Contract</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="proof">Proof</summary><div class="nav-menu-panel"><strong>Proof</strong><a href="#proof">Proof Home</a><a href="#evidence-room">Evidence Room</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a></div></details>
+        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="system">System</summary><div class="nav-menu-panel"><strong>Daily</strong><a href="#morning-brief">Morning Brief</a><a href="#evening-reflection">End-of-Day Reflection</a><a href="#daily-closeout">Closeout</a><a href="#operating-memory">Carry Forward</a><strong>System</strong><a href="#os-health">System Health</a><a href="#data-integrity">System Checks</a><a href="#smoke-test">Smoke Test</a><a href="#roles">Roles</a><a href="#settings">Settings</a><a href="#safe-mode">Safe Mode</a><a href="#operator-manual">Operator Manual</a></div></details>
+        <a class="nav-top-link" href="#operator-search" data-nav-section="search">Search</a>
       </nav>
       <span class="shell-marker" aria-hidden="true">nav: topnav-fixed-v1</span>
       <span class="shell-marker" aria-hidden="true">shell: app-layout-stable-v1</span>
@@ -13367,7 +13370,7 @@ function htmlShell() {
     <div>
       <header>
         <div><div class="eyebrow">Operator cockpit</div><h2>LegalEase OS</h2></div>
-        <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><button onclick="openCommandPalette()">Command</button><button onclick="lockCommandCenter()">Lock</button><button class="primary" onclick="runSystemCheck()">Run System Check</button></div>
+        <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><button type="button" onclick="openCommandPalette()">Command</button><button type="button" onclick="lockCommandCenter()">Lock</button><button class="primary" type="button" onclick="runSystemCheck()">Run System Check</button></div>
       </header>
       <main id="app"><div class="panel loading-panel"><div class="eyebrow">Starting command center</div><h1 class="big-title">Loading LegalEase...</h1><p class="big-copy">If this stays here, the browser could not finish the app render. The server is still serving a visible fallback so you are not staring at a blank screen.</p><div class="loading-line wide"></div><div class="loading-line"></div><div class="loading-card"></div><div class="card-actions"><button class="primary" onclick="location.reload()">Reload app</button><a class="button-link" href="#queue">Open Queue</a></div></div></main>
     </div>
@@ -13512,8 +13515,11 @@ function htmlShell() {
               <p class="big-copy">\${esc(message)}</p>
               <div class="metric-table" style="margin-top:14px">\${safeDiagnosticRows(stateFetchDiagnostics)}</div>
               <div class="card-actions" style="margin-top:14px">
+              <button type="button" onclick="openTodayFromSafeMode()">Back to Today</button>
               <button class="primary" type="button" onclick="retryBootStateLoad()">Retry Boot State</button>
               <button type="button" onclick="retryFullStateLoad()">Retry Full State</button>
+              <button type="button" onclick="retryFullStateAndOpenToday()">Retry Full Load and Open Today</button>
+              <button type="button" onclick="location.hash='os-health'">Open System Health</button>
               <button type="button" onclick="location.hash='safe-mode'; fetchSafeModeHealth()">Refresh Server Health</button>
               <button type="button" onclick="lockCommandCenter()">Sign Out / Clear Session</button>
             </div>
@@ -13597,6 +13603,20 @@ function htmlShell() {
     function retryFullStateLoad() {
       if (!state) state = safeBootFallbackState("retry_full_state");
       loadFullStateInBackground({ forceRender:true });
+    }
+    function openTodayFromSafeMode() {
+      location.hash = "overview";
+      if (state && !safeBootActive) render();
+    }
+    async function retryFullStateAndOpenToday() {
+      const loaded = await loadFullStateInBackground({ forceRender:true });
+      if (loaded) {
+        safeBootActive = false;
+        location.hash = "overview";
+        render();
+      } else {
+        toast("Full state is still unavailable. Safe Mode is keeping the OS usable.");
+      }
     }
     function retryBootStateLoad() {
       safeBootActive = false;
@@ -13784,6 +13804,55 @@ function htmlShell() {
       el.classList.add("show");
       setTimeout(() => el.classList.remove("show"), 1800);
     };
+    const pendingActions = new Set();
+    function activeActionButton(fallback = null) {
+      if (fallback?.tagName === "BUTTON") return fallback;
+      const active = document.activeElement;
+      return active?.tagName === "BUTTON" ? active : null;
+    }
+    function actionStatusMessage(message = "", tone = "info") {
+      const existing = document.querySelector("#actionStatusMessage");
+      const target = existing || document.createElement("div");
+      target.id = "actionStatusMessage";
+      target.className = "action-status-message " + tone;
+      target.textContent = message;
+      if (!existing) document.querySelector("#app")?.prepend(target);
+      if (message) toast(message);
+    }
+    async function runAction(button, label, asyncFn) {
+      const target = activeActionButton(button);
+      const actionKey = target?.dataset?.actionKey || label || "action";
+      if (pendingActions.has(actionKey)) return null;
+      pendingActions.add(actionKey);
+      const originalLabel = target?.textContent || "";
+      if (target) {
+        target.disabled = true;
+        target.dataset.actionPending = "true";
+        target.dataset.originalLabel = originalLabel;
+        target.textContent = "Working…";
+      }
+      actionStatusMessage("Working…", "info");
+      try {
+        const message = await asyncFn();
+        actionStatusMessage(message || "Done.", "good");
+        if (target) target.textContent = "Done";
+        return message;
+      } catch (error) {
+        console.error(error);
+        actionStatusMessage(error.message || "Try again.", "danger");
+        if (target) target.textContent = "Try again";
+        return null;
+      } finally {
+        setTimeout(() => {
+          pendingActions.delete(actionKey);
+          if (target) {
+            target.disabled = false;
+            target.dataset.actionPending = "false";
+            target.textContent = target.dataset.originalLabel || originalLabel || label || "Action";
+          }
+        }, 650);
+      }
+    }
     function safeControlToast(message) {
       toast(message || "Safe local action complete.");
     }
@@ -17383,6 +17452,26 @@ function htmlShell() {
       </section>\`;
     }
 
+    function cockpitRcapSignalHtml() {
+      const readiness = rcapPartnerJourneyHandoffReadinessClient();
+      const queue = rcapReviewQueueItems();
+      const needsAttention = queue.length || !readiness.ready;
+      if (!needsAttention) return "";
+      const primary = queue[0]?.title || (readiness.blocked[0] || readiness.revisions[0] || readiness.open[0] || readiness.missing[0] || "Handoff status needs review");
+      const detail = queue[0]?.nextAction || readiness.next || "Open RCAP only when there is a review decision, blocker, or missing detail.";
+      return \`<section class="cockpit-card rcap-signal-card" aria-label="RCAP needs review">
+        <div class="cockpit-card-head"><h2>RCAP needs review</h2><small>\${readiness.ready ? "Ready for decision" : "Not ready"}</small></div>
+        <p><strong>\${esc(primary)}</strong></p>
+        <p class="muted">\${esc(detail)}</p>
+        <div class="mini-metrics">
+          <span>Blocked <strong>\${esc(readiness.blocked.length)}</strong></span>
+          <span>Revisions <strong>\${esc(readiness.revisions.length)}</strong></span>
+          <span>Missing <strong>\${esc(readiness.missing.length)}</strong></span>
+        </div>
+        <div class="card-actions"><button type="button" onclick="location.hash='production-activation-rcap'">Open RCAP</button></div>
+      </section>\`;
+    }
+
     function cockpitOpenTasks() {
       return (state.tasks || []).filter(task => !["done", "complete", "completed", "dismissed", "archived"].includes(String(task.status || "").toLowerCase()));
     }
@@ -17471,9 +17560,9 @@ function htmlShell() {
 
     function cockpitDailyOperatingLoopHtml() {
       const loop = cockpitDailyOperatingLoop();
-      return \`<section class="cockpit-card daily-operating-loop" aria-label="Daily Operating Loop">
-        <div class="cockpit-card-head"><h2>Daily Operating Loop</h2><small>Le-E operating brief</small></div>
-        <div class="daily-loop-summary"><strong>Read-only guidance.</strong><span>No external side effects.</span><span>Live gates: \${esc(loop.liveGates)}</span></div>
+      return \`<section class="cockpit-card daily-operating-loop" aria-label="Today's Focus">
+        <div class="cockpit-card-head"><h2>Today's Focus</h2><small>Le-E operating brief</small></div>
+        <div class="daily-loop-summary"><strong>Top 3 for today.</strong><span>Internal guidance only.</span><span>Live gates: \${esc(loop.liveGates)}</span></div>
         <div class="daily-loop-grid">
           <section class="daily-loop-section primary"><h3>Today's Top 3</h3>\${cockpitLoopListHtml(loop.top3, "No top actions available yet.")}</section>
           <section class="daily-loop-section"><h3>Waiting On</h3>\${cockpitLoopListHtml(loop.waitingOn, "Nothing is waiting on missing details right now.")}</section>
@@ -17622,8 +17711,8 @@ function htmlShell() {
     function cockpitDailyCloseoutHtml() {
       const saved = Boolean(savedDailyCloseoutForToday());
       const closeout = cockpitDailyCloseoutRecord();
-      return \`<section class="cockpit-card daily-closeout-card" aria-label="Daily Closeout">
-        <div class="cockpit-card-head"><h2>Daily Closeout</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
+      return \`<section class="cockpit-card daily-closeout-card" aria-label="Closeout">
+        <div class="cockpit-card-head"><h2>Closeout</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
         <div class="daily-loop-summary"><strong>Tomorrow: \${esc(closeout.tomorrow_mission || "Plan not generated")}</strong><span>Live gates: \${esc(closeout.live_gates_count || 0)}</span><span>Internal only</span></div>
         <div class="daily-loop-grid">
           <section class="daily-loop-section primary"><h3>Tomorrow Top 3</h3>\${memoryListHtml(closeout.tomorrow_top_3, "No tomorrow plan yet.", 3)}</section>
@@ -17652,16 +17741,16 @@ function htmlShell() {
     function cockpitOsHealthHtml() {
       const health = cockpitOsHealthRecord();
       const warnings = health.trust_warnings || [];
-      return \`<section class="cockpit-card os-health-card" aria-label="OS Health">
-        <div class="cockpit-card-head"><h2>OS Health</h2><small>\${esc(plainOperatorState(health.overall_health || "needs_attention"))}</small></div>
+      return \`<section class="cockpit-card os-health-card" aria-label="System Health">
+        <div class="cockpit-card-head"><h2>System Health</h2><small>\${esc(plainOperatorState(health.overall_health || "needs_attention"))}</small></div>
         <div class="daily-loop-summary"><strong>Overall: \${esc(plainOperatorState(health.overall_health || "needs_attention"))}</strong><span>Last verified: \${esc(formatDateTime(health.generated_at) || "Not recorded")}</span><span>Live gates: \${esc(health.live_gates_count || 0)}</span></div>
         <div class="daily-loop-grid">
           <section class="daily-loop-section primary"><h3>Key warnings</h3>\${memoryListHtml(warnings, "No key warnings saved in the latest snapshot.", 3)}</section>
           <section class="daily-loop-section"><h3>Next action</h3><ul><li>\${esc(health.summary?.next_operator_action || "Refresh OS Health Snapshot.")}</li></ul></section>
         </div>
         <div class="operating-memory-actions">
-          <button type="button" onclick="location.hash='os-health'">Open OS Health</button>
-          <button class="primary" type="button" onclick="refreshOsHealth()">Refresh OS Health Snapshot</button>
+          <button type="button" onclick="location.hash='os-health'">Open System Health</button>
+          <button class="primary" type="button" onclick="refreshOsHealth()">Refresh System Health</button>
         </div>
       </section>\`;
     }
@@ -18367,9 +18456,9 @@ function htmlShell() {
     function cockpitOperatingMemoryHtml() {
       const memory = cockpitOperatingMemoryRecord();
       const saved = Boolean(savedOperatingMemoryForToday());
-      return \`<section class="cockpit-card operating-memory-card" aria-label="Operating Memory">
-        <div class="cockpit-card-head"><h2>Operating Memory</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
-        <p class="muted">\${saved ? "Today's memory is saved. Use it to carry forward the right work tomorrow." : "No operating memory saved for today yet."}</p>
+      return \`<section class="cockpit-card operating-memory-card" aria-label="Carry Forward">
+        <div class="cockpit-card-head"><h2>Carry Forward</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
+        <p class="muted">\${saved ? "Today's memory is saved. Use it to carry forward the right work tomorrow." : "No carry-forward memory saved for today yet."}</p>
         <div class="operating-memory-grid">
           <section class="operating-memory-tile"><h3>Moved Today</h3>\${memoryListHtml(memory.moved_today, "No movement captured yet.")}</section>
           <section class="operating-memory-tile"><h3>Carry Forward</h3>\${memoryListHtml(memory.carry_forward, "Nothing needs carry-forward yet.")}</section>
@@ -18699,8 +18788,11 @@ function htmlShell() {
           </div>
         </section>
         <section class="panel">
-          <div class="simple-panel-head"><h2>Source Evidence</h2><span class="badge info">\${esc((brief.source_evidence || []).length)} records</span></div>
-          <div class="memory-evidence-grid">\${(brief.source_evidence || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Evidence")}</strong><span class="muted">\${esc(item.detail || "Internal evidence.")}</span></article>\`).join("") || '<div class="empty">No source evidence yet.</div>'}</div>
+          <details>
+            <summary>Show sources</summary>
+            <div class="simple-panel-head" style="margin-top:12px"><h2>Source Evidence</h2><span class="badge info">\${esc((brief.source_evidence || []).length)} records</span></div>
+            <div class="memory-evidence-grid">\${(brief.source_evidence || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Evidence")}</strong><span class="muted">\${esc(item.detail || "Internal evidence.")}</span></article>\`).join("") || '<div class="empty">No source evidence yet.</div>'}</div>
+          </details>
         </section>
       </section>\`;
     }
@@ -19509,30 +19601,19 @@ function htmlShell() {
                 <button type="button" onclick="cockpitSnoozeNow('\${esc(nowItem.type)}','\${esc(nowItem.id)}')">\${esc(nowItem.snoozeLabel)}</button>
               </div>
             </section>
-            \${cockpitTimelineHtml(nowItem)}
             \${cockpitDailyOperatingLoopHtml()}
             \${cockpitTasksHtml()}
             \${cockpitDailyRitualsHtml()}
+            \${cockpitOperatingMemoryHtml()}
             \${cockpitDailyCloseoutHtml()}
             \${cockpitOsHealthHtml()}
-            \${cockpitRoleProtectionHtml()}
-            \${cockpitSmokeTestHtml()}
-            \${cockpitEvidenceRoomHtml()}
-            \${cockpitHandoffContractHtml()}
-            \${cockpitOperatorManualHtml()}
-            \${cockpitDataIntegrityHtml()}
-            \${cockpitOperatorSearchHtml()}
-            \${cockpitOperatingMemoryHtml()}
             </main>
             <aside class="cockpit-rail">
-            \${cockpitRcapActivationHtml()}
-            \${rcapReviewQueueHtml()}
-            \${rcapHandoffReadinessCardHtml()}
             <section class="cockpit-card quick-capture">
               <div class="cockpit-card-head"><h2>Quick Capture</h2><small>Le-E routes it after review</small></div>
               <form class="rail-form" onsubmit="quickCapture(event)">
                 <label class="sr-only" for="cockpit-capture">Quick Capture</label>
-                <textarea id="cockpit-capture" name="raw_input" required aria-label="Quick Capture" placeholder="Capture a partner update, task, idea, meeting note, conversation takeaway, blocker, decision, risk, carry-forward item, or reflection..."></textarea>
+                <textarea id="cockpit-capture" name="raw_input" required aria-label="Quick Capture" placeholder="Capture a task, decision, blocker, idea, partner update, or note..."></textarea>
                 <label>Source label<input name="source_label" placeholder="Call, Le-E chat, meeting note"></label>
                 <label>Capture type<select name="capture_type"><option value="auto_classify">Auto-classify</option><option value="task">Task</option><option value="decision">Decision</option><option value="blocker">Blocker</option><option value="risk">Risk</option><option value="conversation_note">Conversation note</option><option value="brief_input">Brief input</option><option value="reflection_input">Reflection input</option><option value="carry_forward">Carry forward</option><option value="do_not_touch">Do not touch</option><option value="partner_update">Partner update</option><option value="evidence_note">Evidence note</option><option value="idea">Idea</option></select></label>
                 <label>Priority<select name="priority"><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option><option value="low">Low</option></select></label>
@@ -19541,6 +19622,7 @@ function htmlShell() {
                 <div class="card-actions"><button class="primary" type="submit">Capture with Le-E</button><button type="button" onclick="location.hash='capture-inbox'">Open Capture Inbox</button></div>
               </form>
             </section>
+            \${cockpitRcapSignalHtml()}
             <section class="cockpit-card">
               <div class="cockpit-card-head"><h2>Threads Open</h2><small>Waiting on Roger</small></div>
               <div class="thread-list">\${threads.map(thread => \`<button class="thread" type="button" onclick="location.hash='\${esc(thread.href)}'"><strong>\${esc(thread.name)}</strong><span>\${esc(thread.context)}. \${esc(thread.need)}</span><span class="thread-age">\${esc(thread.age)}</span></button>\`).join("") || '<div class="empty-calm">No open people threads need attention right now.</div>'}</div>
@@ -19923,11 +20005,11 @@ function htmlShell() {
 
     function sectionLandingConfig(section) {
       const configs = [
-        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Triage signals, move campaigns, and keep RecordShield proof visible.", links:[["Growth Inbox","growth-inbox"],["Capture Inbox","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"]] },
+        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Triage signals, move campaigns, and keep RecordShield proof visible.", links:[["Growth Inbox","growth-inbox"],["Captures","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"]] },
         { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Move partner programs from lead to paid onboarding, reports, and renewal proof.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"]] },
         { id:"production", eyebrow:"Production", title:"Production", copy:"Turn ideas into approved assets without losing the approval-first safety model.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
         { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Evidence Room","evidence-room"],["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
-        { id:"more", eyebrow:"More", title:"More", copy:"Admin, diagnostics, tasks, autonomy, and system controls live here so Today stays calm.", links:[["Tasks","tasks"],["Today Tasks","tasks-today"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Handoff Contract","handoff-contract"],["Operator Manual","operator-manual"],["Roles","roles"],["Data Integrity","data-integrity"],["Autonomy","autonomy"],["System Health","automation"],["Settings","settings"],["Admin","compliance"],["Diagnostics","metrics"],["Runbooks","dataroom"]] }
+        { id:"more", eyebrow:"System", title:"System", copy:"Health, checks, roles, and manuals live here so Today stays focused.", links:[["System Health","os-health"],["System Checks","data-integrity"],["Smoke Test","smoke-test"],["Roles","roles"],["Safe Mode","safe-mode"],["Operator Manual","operator-manual"],["Settings","settings"],["Handoff Contract","handoff-contract"]] }
       ];
       return configs.find(item => item.id === section) || configs[0];
     }
@@ -21379,14 +21461,13 @@ function htmlShell() {
     }
 
     function navSectionForPage(pageId = "overview") {
-      if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "operator-search", "conversation-notes"].includes(pageId)) return "today";
-      if (["data-integrity", "operator-manual", "handoff-contract", "roles"].includes(pageId)) return "more";
-      if (["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId)) return "more";
-      if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
-      if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
-      if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
+      if (["overview", "focus", "lee", "conversation-notes", "morning-brief", "evening-reflection", "daily-closeout", "operating-memory"].includes(pageId)) return "today";
+      if (["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics", "production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "work";
+      if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports", "production-activation-rcap", "handoff-contract", "milestones"].includes(pageId)) return "partners";
       if (["proof", "evidence-room", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
-      return "more";
+      if (["os-health", "data-integrity", "smoke-test", "operator-manual", "roles", "safe-mode", "settings", "compliance", "autonomy"].includes(pageId)) return "system";
+      if (pageId === "operator-search") return "search";
+      return "today";
     }
 
     function closeNavMenus(event) {
@@ -21802,13 +21883,14 @@ function htmlShell() {
 
     async function quickCapture(event) {
       event.preventDefault();
+      const button = event.submitter || event.target.querySelector('button[type="submit"]');
       const payload = formObject(event.target);
       const rawInput = String(payload.raw_input || payload.rawText || "").trim();
       if (!rawInput) {
         toast("Add a note before capturing.");
         return;
       }
-      await cooAction(async () => {
+      return runAction(button, "Quick Capture", async () => {
         const result = await api("/api/capture-inbox", {
           method:"POST",
           body:JSON.stringify({ ...payload, raw_input: rawInput })
@@ -21818,11 +21900,11 @@ function htmlShell() {
         focusIndex = 0;
         render();
         return result.message || "Captured for review.";
-      }, "Could not capture item.");
+      });
     }
 
     async function captureInboxAction(id, action) {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Capture action", async () => {
         const result = await api("/api/capture-inbox/" + encodeURIComponent(id) + "/" + encodeURIComponent(action), {
           method:"POST",
           body:JSON.stringify({})
@@ -21830,11 +21912,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Capture updated.";
-      }, "Could not update capture.");
+      });
     }
 
     async function startRcapActivation() {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "RCAP activation", async () => {
         const result = await api("/api/production-activation/rcap/start", {
           method:"POST",
           body:JSON.stringify({})
@@ -21842,13 +21924,13 @@ function htmlShell() {
         rcapActivationClientStatus = result.activation_status || result;
         render();
         return result.message || "RCAP activation prepared for review only. No external action was taken.";
-      }, "Could not start RCAP activation.");
+      });
     }
 
     async function markRcapReviewState(artifactKey, reviewState) {
       const notes = document.getElementById("rcap-review-notes-" + artifactKey)?.value || "";
       const reason = document.getElementById("rcap-review-reason-" + artifactKey)?.value || "";
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "RCAP review state", async () => {
         const result = await api("/api/production-activation/rcap/review-state", {
           method:"POST",
           body:JSON.stringify({
@@ -21862,11 +21944,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "RCAP review state updated. No external action was taken.";
-      }, "Could not update RCAP review state.");
+      });
     }
 
     async function generateRcapHandoffPacket() {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Handoff packet", async () => {
         const result = await api("/api/production-activation/rcap/handoff-packet", {
           method:"POST",
           body:JSON.stringify({})
@@ -21874,11 +21956,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Internal handoff packet generated. No external system contacted.";
-      }, "Could not generate RCAP handoff packet.");
+      });
     }
 
     async function generateHandoffContractPreview() {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Handoff contract", async () => {
         const result = await api("/api/production-activation/rcap/handoff-contract-preview", {
           method:"POST",
           body:JSON.stringify({})
@@ -21887,11 +21969,11 @@ function htmlShell() {
         render();
         location.hash = "handoff-contract";
         return result.message || "Handoff contract preview generated. No external system contacted.";
-      }, "Could not generate Handoff Contract Preview.");
+      });
     }
 
     async function saveOperatingMemory() {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Save Operating Memory", async () => {
         const result = await api("/api/operating-memory/today/save", {
           method:"POST",
           body:JSON.stringify({})
@@ -21899,11 +21981,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Operating memory saved. No external action was taken.";
-      }, "Could not save operating memory.");
+      });
     }
 
     async function saveMorningBrief() {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Save Morning Brief", async () => {
         const result = await api("/api/morning-brief/today/save", {
           method:"POST",
           body:JSON.stringify({})
@@ -21911,11 +21993,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Morning Brief saved. No external action was taken.";
-      }, "Could not save Morning Brief.");
+      });
     }
 
     async function saveEveningReflection() {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Save Evening Reflection", async () => {
         const result = await api("/api/evening-reflection/today/save", {
           method:"POST",
           body:JSON.stringify({})
@@ -21923,11 +22005,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Evening Reflection saved. No external action was taken.";
-      }, "Could not save Evening Reflection.");
+      });
     }
 
     async function saveDailyCloseout() {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Save Closeout", async () => {
         const result = await api("/api/daily-closeout/today/save", {
           method:"POST",
           body:JSON.stringify({})
@@ -21935,11 +22017,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Daily Closeout saved. No external action was taken.";
-      }, "Could not save Daily Closeout.");
+      });
     }
 
     async function generateTomorrowPlan() {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Generate Tomorrow Plan", async () => {
         const result = await api("/api/daily-closeout/tomorrow-plan/generate", {
           method:"POST",
           body:JSON.stringify({})
@@ -21947,11 +22029,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Tomorrow Plan generated internally. No external action was taken.";
-      }, "Could not generate Tomorrow Plan.");
+      });
     }
 
     async function refreshOsHealth() {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Refresh OS Health", async () => {
         const result = await api("/api/os-health/refresh", {
           method:"POST",
           body:JSON.stringify({})
@@ -21959,7 +22041,7 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "OS Health Snapshot refreshed. No external action was taken.";
-      }, "Could not refresh OS Health.");
+      });
     }
 
     function prefillRoleAssignment(actorId = "") {
@@ -22003,7 +22085,7 @@ function htmlShell() {
     }
 
     async function startSmokeTestRun() {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Start Smoke Test", async () => {
         const result = await api("/api/smoke-test/start", {
           method:"POST",
           body:JSON.stringify({
@@ -22015,12 +22097,12 @@ function htmlShell() {
         render();
         location.hash = "smoke-test";
         return result.message || "Smoke Test Run started. No external action was taken.";
-      }, "Could not start Smoke Test Run.");
+      });
     }
 
     async function markSmokeTestItem(runId, itemId, status) {
       const notes = document.getElementById("smoke-note-" + itemId)?.value || "";
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Smoke Test item", async () => {
         const result = await api("/api/smoke-test/" + encodeURIComponent(runId) + "/item", {
           method:"POST",
           body:JSON.stringify({ itemId, status, notes })
@@ -22029,12 +22111,12 @@ function htmlShell() {
         render();
         location.hash = "smoke-test";
         return result.message || "Smoke test item updated.";
-      }, "Could not update smoke test item.");
+      });
     }
 
     async function saveSmokeTestRun(runId) {
       const notes = document.getElementById("smoke-test-notes")?.value || "";
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Save Smoke Test", async () => {
         const result = await api("/api/smoke-test/" + encodeURIComponent(runId) + "/save", {
           method:"POST",
           body:JSON.stringify({ notes })
@@ -22043,11 +22125,11 @@ function htmlShell() {
         render();
         location.hash = "smoke-test";
         return result.message || "Smoke Test Run saved. No external action was taken.";
-      }, "Could not save Smoke Test Run.");
+      });
     }
 
     async function finishSmokeTestRun(runId) {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Finish Smoke Test", async () => {
         const result = await api("/api/smoke-test/" + encodeURIComponent(runId) + "/finish", {
           method:"POST",
           body:JSON.stringify({})
@@ -22056,7 +22138,7 @@ function htmlShell() {
         render();
         location.hash = "smoke-test";
         return result.message || "Smoke Test Run finished. No external action was taken.";
-      }, "Could not finish Smoke Test Run.");
+      });
     }
 
     function filterEvidenceRoom() {
@@ -22075,7 +22157,7 @@ function htmlShell() {
     }
 
     async function generateEvidenceSummary() {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Evidence summary", async () => {
         const result = await api("/api/evidence-room/summary", {
           method:"POST",
           body:JSON.stringify({})
@@ -22084,11 +22166,11 @@ function htmlShell() {
         render();
         location.hash = "evidence-room";
         return result.message || "Evidence Summary generated. No external action was taken.";
-      }, "Could not generate Evidence Summary.");
+      });
     }
 
     async function refreshDataIntegrity() {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Refresh Data Integrity", async () => {
         const result = await api("/api/data-integrity/refresh", {
           method:"POST",
           body:JSON.stringify({})
@@ -22096,7 +22178,7 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Data Integrity Snapshot refreshed. No external action was taken.";
-      }, "Could not refresh Data Integrity.");
+      });
     }
 
     function renderOperatorSearchResults() {
@@ -22107,7 +22189,7 @@ function htmlShell() {
     }
 
     async function operatorSearchAction(action, targetId) {
-      await cooAction(async () => {
+      return runAction(activeActionButton(), "Search action", async () => {
         const result = await api("/api/operator-search/action", {
           method:"POST",
           body:JSON.stringify({ action, targetId })
@@ -22116,7 +22198,7 @@ function htmlShell() {
         render();
         if (result.route) location.hash = result.route;
         return result.message || "Command applied internally.";
-      }, "Could not run operator command.");
+      });
     }
 
     async function saveConversationNote(event) {
@@ -22166,7 +22248,8 @@ function htmlShell() {
         state = result.state;
         leeDraft = "";
         render();
-        const messageText = result.proposals?.length ? "Le-E answered and proposed " + result.proposals.length + " action(s)." : "Le-E answered.";
+        const shortAnswer = String(result.assistant?.content || "").split("\\n").find(Boolean);
+        const messageText = shortAnswer || (result.proposals?.length ? "Le-E answered and proposed " + result.proposals.length + " action(s)." : "Le-E answered.");
         toast(messageText);
         return messageText;
       }, "Could not ask Le-E.");
@@ -22187,7 +22270,8 @@ function htmlShell() {
         });
         state = result.state;
         render();
-        const messageText = result.proposals?.length ? "Le-E answered with proposed actions." : "Le-E answered.";
+        const shortAnswer = String(result.assistant?.content || "").split("\\n").find(Boolean);
+        const messageText = shortAnswer || (result.proposals?.length ? "Le-E answered with proposed actions." : "Le-E answered.");
         toast(messageText);
         return messageText;
       }, "Could not ask Le-E.");
@@ -22202,14 +22286,10 @@ function htmlShell() {
         toast("Rewrite unavailable. The OS is still usable.");
         return;
       }
-      try {
+      return runAction(button, "Rewrite with Le-E", async () => {
         await askLeePrompt(prompt);
-      } catch (error) {
-        console.error(error);
-        leeBusy = false;
-        toast("Rewrite unavailable. The OS is still usable.");
-        try { render(); } catch {}
-      }
+        return "Done.";
+      });
     }
 
     function openLeeBubble() {
@@ -22708,9 +22788,11 @@ function htmlShell() {
     }
 
     function runSystemCheck() {
-      systemCheckRanAt = new Date().toLocaleString();
-      render();
-      toast("System check complete");
+      return runAction(activeActionButton(), "Run System Check", async () => {
+        systemCheckRanAt = new Date().toLocaleString();
+        render();
+        return "System check complete.";
+      });
     }
 
     function commandActions() {
@@ -23277,7 +23359,7 @@ function htmlShell() {
     }
 
     async function updateTaskAction(id, action, patch = {}) {
-      return cooAction(async () => {
+      return runAction(activeActionButton(), "Task action", async () => {
         const result = await api("/api/tasks/" + encodeURIComponent(id) + "/" + action, {
           method:"POST",
           body:JSON.stringify(patch || {})
@@ -23285,7 +23367,7 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Task updated.";
-      }, "Could not update task.");
+      });
     }
 
     async function markTaskWaiting(id) {
@@ -24099,10 +24181,11 @@ function htmlShell() {
     window.addEventListener("hashchange", () => {
       try {
         closeNavMenus();
-        if (String(location.hash || "").replace("#", "") === "safe-mode" || (safeBootActive && !fullStateLoaded)) {
+        const routeAfterHash = String(location.hash || "").replace("#", "") || "overview";
+        if (routeAfterHash === "safe-mode" || (safeBootActive && !fullStateLoaded && routeAfterHash !== "overview")) {
           renderSafeBootShell({
             ...(stateFetchDiagnostics || {}),
-            module:String(location.hash || "").replace("#", "") || "safe-mode",
+            module:routeAfterHash || "safe-mode",
             message:"Safe Mode is active until the full state loads.",
             fellBackToSafeShell:true
           });

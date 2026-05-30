@@ -570,6 +570,123 @@ function appendEvents(state = {}, events = []) {
   };
 }
 
+function parseVisibleReplaceCommand(prompt = "") {
+  const normalized = text(prompt).replace(/[“”]/g, "\"").replace(/[‘’]/g, "'");
+  const match = normalized.match(/\b(?:change|replace)\s+["']?(.+?)["']?\s+(?:to|with|into)\s+["']?(.+?)["']?\s*\.?$/i)
+    || normalized.match(/\bmake\s+(?:this|it|today|the current focus)\s+about\s+["']?(.+?)["']?\s+instead\s+of\s+["']?(.+?)["']?\s*\.?$/i);
+  if (!match) return null;
+  const makeInstead = /\bmake\s+/i.test(match[0]) && /\binstead of\b/i.test(match[0]);
+  const from = text(makeInstead ? match[2] : match[1]).replace(/^["']|["']$/g, "").replace(/[.?!]+$/g, "");
+  const to = text(makeInstead ? match[1] : match[2]).replace(/^["']|["']$/g, "").replace(/[.?!]+$/g, "");
+  if (!from || !to || from.toLowerCase() === to.toLowerCase()) return null;
+  return { from, to };
+}
+
+function replaceAllVisibleText(value = "", from = "", to = "") {
+  const pattern = new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  return String(value || "").replace(pattern, to);
+}
+
+function visibleReplaceRecords(state = {}, from = "") {
+  const has = value => new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(String(value || ""));
+  const records = [];
+  const add = (collection, id, fields = [], item = {}) => {
+    const matchingFields = fields.filter(field => has(item[field]));
+    if (matchingFields.length) records.push({ collection, id, item, fields:matchingFields });
+  };
+  for (const task of openTasks(state).slice(0, 8)) add("tasks", task.id, ["title", "description", "nextAction", "escalationReason", "blocker_reason"], task);
+  for (const item of list(state.growthInbox).filter(entry => !["converted", "ignored"].includes(lower(entry.status))).slice(0, 8)) add("growthInbox", item.id, ["summary", "rawText", "suggestedAction"], item);
+  for (const program of list(state.partnerPrograms).slice(0, 8)) add("partnerPrograms", program.id, ["name", "programGoal", "nextAction"], program);
+  for (const brief of list(state.morningBriefs).slice(0, 5)) add("morningBriefs", brief.id || brief.key, ["mission_today", "suggested_first_move"], brief);
+  return records;
+}
+
+function applyVisibleReplaceCommand(state = {}, input = {}, threadId = "", options = {}) {
+  const now = options.now || nowIso();
+  const command = parseVisibleReplaceCommand(input.message || "");
+  if (!command) return null;
+  const { from, to } = command;
+  const records = visibleReplaceRecords(state, from);
+  const audit = (action, note, resourceId = "") => ({
+    id: uid("audit-lee"),
+    action,
+    actor: "Le-E",
+    resourceType: "lee_visible_action",
+    resourceId,
+    note,
+    timestamp: now,
+    createdAt: now
+  });
+
+  if (!records.length) {
+    const capture = {
+      id: uid("capture-lee"),
+      date: now.slice(0, 10),
+      raw_input: input.message || `Replace ${from} with ${to}`,
+      source_label: "Le-E visible action",
+      capture_type: "auto_classify",
+      inferred_type: "task",
+      summary: `Could not find ${from}; review requested change to ${to}.`,
+      priority: "medium",
+      linked_partner: "",
+      linked_workflow: "today",
+      suggested_routes: ["tasks", "operatingMemory"],
+      review_state: "review_required",
+      routed_to: [],
+      created_at: now,
+      updated_at: now
+    };
+    return {
+      state:{
+        ...state,
+        captureInbox:[capture, ...list(state.captureInbox)].slice(0, 500),
+        auditHistory:[audit("lee capture fallback", `No visible match for ${from}; saved capture for review.`, capture.id), ...list(state.auditHistory)].slice(0, 1000)
+      },
+      message:`I couldn’t find ${from} in the current focus. I saved this as a capture for review.`,
+      proposals:[],
+      events:[leeEvent("Le-E capture fallback", { title:`Le-E saved unmatched change for review`, objectType:"capture_inbox", objectId:capture.id, metadata:{ from, to } }, { now })]
+    };
+  }
+
+  if (records.length > 1) {
+    const proposal = actionProposal({
+      threadId,
+      actionType:"update_task",
+      objectType:"visible_focus",
+      objectId:records.map(record => record.id).join(","),
+      title:`Review replacement: ${from} to ${to}`,
+      summary:`I found ${records.length} internal records containing ${from}. Review before applying broadly.`,
+      proposedChanges:{
+        from,
+        to,
+        targets:records.map(record => ({ collection:record.collection, id:record.id, fields:record.fields }))
+      },
+      riskLevel:"low"
+    }, { now });
+    return {
+      state,
+      message:`I found ${records.length} places with ${from}. I created proposed changes so Roger can apply the right one.`,
+      proposals:[proposal],
+      events:[leeEvent("lee_visible_update_proposed", { title:proposal.title, objectType:"lee_action", objectId:proposal.id, metadata:{ from, to, targets:records.length } }, { now })]
+    };
+  }
+
+  const target = records[0];
+  const updatedItem = { ...target.item, updatedAt:now };
+  for (const field of target.fields) updatedItem[field] = replaceAllVisibleText(updatedItem[field], from, to);
+  const nextCollection = list(state[target.collection]).map(item => (item.id || item.key) === target.id ? updatedItem : item);
+  return {
+    state:{
+      ...state,
+      [target.collection]:nextCollection,
+      auditHistory:[audit("lee visible update", `Updated current focus from ${from} to ${to}.`, target.id), ...list(state.auditHistory)].slice(0, 1000)
+    },
+    message:`Updated the current focus from ${from} to ${to}.`,
+    proposals:[],
+    events:[leeEvent("Le-E visible update", { title:`Updated current focus from ${from} to ${to}`, objectType:target.collection, objectId:target.id, metadata:{ from, to, fields:target.fields } }, { now })]
+  };
+}
+
 export function leeChat(state = {}, input = {}, options = {}) {
   const now = options.now || nowIso();
   const threadId = input.threadId || list(state.leeThreads)[0]?.id || uid("lee-thread");
@@ -585,6 +702,47 @@ export function leeChat(state = {}, input = {}, options = {}) {
     proposedActions:[],
     status:"sent"
   };
+  const visibleAction = applyVisibleReplaceCommand(state, input, threadId, { now });
+  if (visibleAction) {
+    const assistant = {
+      id: uid("lee-msg"),
+      threadId,
+      role:"assistant",
+      content:visibleAction.message,
+      createdAt:now,
+      sourceRefs:[],
+      proposedActions:visibleAction.proposals.map((proposal) => proposal.id),
+      status:"complete"
+    };
+    const run = {
+      id: uid("lee-run"),
+      threadId,
+      status:"complete",
+      mode:"local_visible_action",
+      inputSummary:text(input.message).slice(0, 180),
+      sourcesUsed:0,
+      proposedActions:visibleAction.proposals.length,
+      createdAt:now,
+      completedAt:now
+    };
+    const nextState = appendEvents({
+      ...visibleAction.state,
+      leeThreads:[{ ...thread, updatedAt:now }, ...list(visibleAction.state.leeThreads).filter((item) => item.id !== threadId)].slice(0, 100),
+      leeMessages:[userMessage, assistant, ...list(visibleAction.state.leeMessages)].slice(0, 1000),
+      leeActionProposals:[...visibleAction.proposals, ...list(visibleAction.state.leeActionProposals)].slice(0, 500),
+      leeRuns:[run, ...list(visibleAction.state.leeRuns)].slice(0, 300),
+      leeMemory:{
+        ...(visibleAction.state.leeMemory || {}),
+        lastThreadId:threadId,
+        lastPrompt:text(input.message).slice(0, 240),
+        updatedAt:now
+      }
+    }, [
+      leeEvent("lee_question_asked", { title:"Le-E question asked", objectType:"lee_thread", objectId:threadId, metadata:{ visibleAction:true } }, { now }),
+      ...visibleAction.events
+    ]);
+    return { state:nextState, thread:{ ...thread, updatedAt:now }, messages:[userMessage, assistant], assistant, proposals:visibleAction.proposals, sources:[], run, search:{ query:input.message || "", results:[] } };
+  }
   const index = buildLeeKnowledgeIndex(state, { now });
   const search = searchLeeKnowledge(index, input.message || "", { limit:6 });
   const proposals = proposalsForPrompt(state, input.message || "", threadId, { now });

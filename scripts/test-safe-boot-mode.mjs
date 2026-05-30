@@ -81,7 +81,10 @@ try {
   assert.equal(safeModeHtml.response.status, 200, "Safe mode route should serve the authenticated shell.");
   assert.match(safeModeHtml.text, /renderSafeBootShell/, "Authenticated shell should include the safe boot renderer.");
   assert.match(safeModeHtml.text, /Safe Mode/, "Safe mode UI copy should be present.");
+  assert.match(safeModeHtml.text, /Back to Today/, "Safe mode should offer a way back to Today without signing out.");
   assert.match(safeModeHtml.text, /Retry Full Load/, "Safe mode should offer a full-state retry.");
+  assert.match(safeModeHtml.text, /Retry Full Load and Open Today/, "Safe mode should offer a retry-and-return flow.");
+  assert.match(safeModeHtml.text, /Open System Health/, "Safe mode should link to System Health.");
   assert.match(safeModeHtml.text, /Sign Out \/ Clear Session/, "Safe mode should offer session clearing.");
   assert.match(safeModeHtml.text, /Live gates: 0/, "Safe mode should show live gates remain 0.");
   assert.match(safeModeHtml.text, /\/api\/health/, "Safe mode should fetch public-safe health.");
@@ -100,11 +103,15 @@ assert(source.includes("stateFetchDiagnostics"), "Safe shell should store state-
 assert(source.includes("Auth token present:"), "State-fetch diagnostics should include whether an auth token was present.");
 assert(source.includes("Fell back to safe shell:"), "State-fetch diagnostics should include fallback status.");
 assert(source.includes("retryFullStateLoad"), "Retry Full Load should use the normal token-aware load path.");
+assert(source.includes("function openTodayFromSafeMode()"), "Safe mode should define Back to Today behavior.");
+assert(source.includes("function retryFullStateAndOpenToday()"), "Safe mode should define retry-and-open-Today behavior.");
 assert(source.includes("lockCommandCenter()"), "Safe shell sign out should clear token/cookie through lockCommandCenter.");
 assert(source.includes("optionalBootApi"), "Optional boot requests should remain non-fatal.");
 assert(source.includes("guardForbiddenEndpoint"), "Forbidden action guard should remain wired.");
 const safeShellBlock = source.match(/function renderSafeBootShell[\s\S]*?function showSafeBootShell/)?.[0] || "";
 assert(safeShellBlock, "Safe boot shell block should be available for static checks.");
+assert.match(safeShellBlock, /onclick="openTodayFromSafeMode\(\)"/, "Back to Today should not use lockCommandCenter.");
+assert.doesNotMatch(safeShellBlock.match(/function openTodayFromSafeMode[\s\S]*?function retryFullStateAndOpenToday/)?.[0] || "", /lockCommandCenter|clearOwnerToken|localStorage\.removeItem|sessionStorage\.removeItem/, "Back to Today must not clear the session.");
 assert.doesNotMatch(safeShellBlock, /type="submit"|Send Email|Publish Page|Activate Dashboard|Enable Live Publishing/i, "Safe mode should not expose enabled mutating or external controls.");
 assert.doesNotMatch(safeShellBlock, /SUPABASE_SERVICE_ROLE_KEY|OPENAI_API_KEY|OWNER_TOKEN|OAUTH_TOKEN_ENCRYPTION_KEY|STRIPE_SECRET_KEY|sk-|whsec_|service_role/i, "Safe mode renderer should not include secret names or values.");
 
