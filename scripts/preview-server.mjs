@@ -13065,6 +13065,9 @@ function htmlShell() {
       --accent-hover: #047A72;
       --accent-pulse: #00A99D;
       --accent-tint: #e7f7f5;
+      --urgent: #F04800;
+      --urgent-soft: rgba(240,72,0,.08);
+      --urgent-border: rgba(240,72,0,.24);
       --border-default: #d9e5e4;
       --border-emphasis: #b7d5d1;
       --border-light: #e8f0ef;
@@ -13147,6 +13150,15 @@ function htmlShell() {
     .thread strong,.parked-item strong,.moved-row strong { font-size:13px; line-height:1.25; }
     .thread span,.parked-item span,.moved-row span { color:var(--text-tertiary); font-size:11.5px; line-height:1.35; }
     .thread-age { color:var(--accent); font-weight:800; }
+    .urgent,.critical,.pressing { border-color:var(--urgent-border); }
+    .status-urgent,.pill-urgent { display:inline-flex; width:max-content; max-width:100%; align-items:center; border:1px solid var(--urgent-border); border-radius:999px; background:var(--urgent-soft); color:var(--urgent); padding:3px 7px; font-size:10px; font-weight:850; line-height:1; }
+    .standup-row.urgent,.standup-row.critical,.standup-row.pressing { border-left:4px solid var(--urgent); padding-left:9px; }
+    .pressure-list { display:grid; gap:9px; }
+    .pressure-item { width:100%; max-width:100%; text-align:left; border:1px solid var(--urgent-border); border-left:4px solid var(--urgent); border-radius:14px; background:#fffaf7; padding:10px; display:grid; gap:5px; color:var(--text-primary); overflow:hidden; }
+    .pressure-item:hover { background:#fff6ef; }
+    .pressure-item strong { color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
+    .pressure-item span { color:var(--text-tertiary); font-size:11.5px; line-height:1.35; overflow-wrap:break-word; }
+    .pressure-item .pill-urgent { margin-top:2px; }
     .rail-form { display:grid; gap:10px; }
     .rail-form textarea { min-height:82px; resize:vertical; border-radius:14px; background:#fbfefd; border-color:var(--border-default); }
     .rail-form button.primary { background:var(--text-primary); color:white; border-color:var(--text-primary); }
@@ -17649,6 +17661,37 @@ function htmlShell() {
       return \`<a href="#\${esc(href)}">\${esc(action)}</a>\`;
     }
 
+    function todayIsPressing(item = {}) {
+      const text = [item.title, item.detail, item.reason, item.need, item.action, item.status, item.priority].join(" ");
+      return /critical|blocked|blocker|blocks|overdue|missing|needs review|needs decision|decision today|handoff|deadline|risk|contact missing|waiting on roger/i.test(text);
+    }
+
+    function todayUrgencyClass(item = {}) {
+      return todayIsPressing(item) ? " pressing" : "";
+    }
+
+    function todayUrgencyBadgeHtml(item = {}, label = "Pressing") {
+      return todayIsPressing(item) ? \`<span class="pill-urgent">\${esc(label)}</span>\` : "";
+    }
+
+    function cockpitPressingItems() {
+      const loop = cockpitDailyOperatingLoop();
+      const parked = cockpitParkedItems();
+      return cockpitUniqueByTitle([
+        ...parked.map(item => cockpitLoopItem(item.title, item.reason, item.href, "Review Blocker")),
+        ...loop.waitingOn.map(item => ({ ...item, action:item.action || "Resolve Blocker" })),
+        ...loop.decisionsNeeded.map(item => ({ ...item, action:item.action || "Review Decision" }))
+      ].filter(Boolean).filter(todayIsPressing)).slice(0, 3);
+    }
+
+    function cockpitPressingHtml() {
+      const items = cockpitPressingItems();
+      return \`<section class="cockpit-card pressing-card">
+        <div class="cockpit-card-head"><h2>Pressing</h2><small>Needs action today</small></div>
+        <div class="pressure-list">\${items.map(item => \`<button class="pressure-item pressing" type="button" onclick="location.hash='\${esc(item.href || "tasks")}'"><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail || item.reason || "Needs Roger before the day can move cleanly."))}</span><span class="pill-urgent">\${esc(/critical/i.test([item.title, item.detail, item.reason].join(" ")) ? "Critical" : "Pressing")}</span></button>\`).join("") || '<div class="empty-calm">Nothing critical right now.</div>'}</div>
+      </section>\`;
+    }
+
     function cockpitTop3StandupHtml() {
       const loop = cockpitDailyOperatingLoop();
       const slots = [
@@ -17685,8 +17728,8 @@ function htmlShell() {
       ].filter(Boolean)).slice(0, 6);
       return \`<section class="cockpit-card standup-card needs-attention-card">
         <div class="cockpit-card-head"><h2>Needs Attention</h2><small>Look here first</small></div>
-        <div class="standup-row-list">\${items.map(item => \`<div class="standup-row">
-          <div><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail))}</span></div>
+        <div class="standup-row-list">\${items.map(item => \`<div class="standup-row\${todayUrgencyClass(item)}">
+          <div><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail))}</span>\${todayUrgencyBadgeHtml(item)}</div>
           \${todayActionLink(item, "Review")}
         </div>\`).join("") || '<div class="empty-calm">Nothing urgent needs attention right now.</div>'}</div>
       </section>\`;
@@ -17700,8 +17743,8 @@ function htmlShell() {
       ]).slice(0, 4);
       return \`<section class="cockpit-card standup-card blockers-decisions-card">
         <div class="cockpit-card-head"><h2>Blockers & Decisions</h2><small>Waiting on Roger</small></div>
-        <div class="standup-row-list">\${items.map(item => \`<div class="standup-row">
-          <div><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail))}</span></div>
+        <div class="standup-row-list">\${items.map(item => \`<div class="standup-row\${todayUrgencyClass(item)}">
+          <div><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail))}</span>\${todayUrgencyBadgeHtml(item, "Needs decision today")}</div>
           \${todayActionLink(item, "Review")}
         </div>\`).join("") || '<div class="empty-calm">No blockers or decisions are waiting right now.</div>'}</div>
         <div class="standup-card-actions">
@@ -19814,8 +19857,6 @@ function htmlShell() {
       const nowItem = cockpitNowItem(posts);
       const intention = cockpitDailyIntention(nowItem);
       const threads = cockpitThreadsOpen();
-      const parked = cockpitParkedItems();
-      const moved = cockpitThisWeekMoved();
       const gates = cockpitFooterGates();
       return \`<section class="operator-v31">
         <div class="cockpit-page">
@@ -19860,14 +19901,7 @@ function htmlShell() {
               <div class="thread-list">\${threads.slice(0, 3).map(thread => \`<button class="thread" type="button" data-followup-category="\${esc(thread.category || "tasks")}" onclick="location.hash='\${esc(thread.href)}'"><strong>\${esc(cockpitFollowUpTitle(thread))}</strong><span>\${esc(cockpitFollowUpContext(thread))}</span><span class="follow-up-tag">\${esc(cockpitFollowUpCategoryLabel(thread))}</span><span class="thread-age">\${esc(thread.age)}</span></button>\`).join("") || '<div class="empty-calm">No open people threads need attention right now.</div>'}</div>
               <button class="follow-up-view-all" type="button" onclick="location.hash='tasks'">View all follow-ups</button>
             </section>
-            <section class="cockpit-card">
-              <div class="cockpit-card-head"><h2>Parked</h2><small>Do not carry these mentally</small></div>
-              <div class="parked-list">\${parked.map(item => \`<button class="parked-item" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(item.title)}</strong><span>\${esc(item.reason)}</span></button>\`).join("") || '<div class="empty-calm">Nothing is parked. No blocked work needs mental space.</div>'}</div>
-            </section>
-            <section class="cockpit-card">
-              <div class="cockpit-card-head"><h2>What Moved</h2><small>Outcomes, not outputs</small></div>
-              <div class="moved-list">\${moved.map(item => \`<button class="moved-row" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail))}</span><span>\${esc(item.day)}</span></button>\`).join("") || '<div class="empty-calm">No movement logged yet today.</div>'}</div>
-            </section>
+            \${cockpitPressingHtml()}
             </aside>
           </section>
           <footer class="app-footer">

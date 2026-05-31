@@ -12,6 +12,7 @@ assert.match(server, /function cockpitNowItem/, "Today should derive a dominant 
 assert.match(server, /function cockpitTimelineHtml/, "Today should render the v3.1 horizontal flow timeline.");
 assert.match(server, /function cockpitThreadsOpen/, "Today should derive open threads from tasks, inbox, partners, and programs.");
 assert.match(server, /function cockpitParkedItems/, "Today should show parked blocked or waiting items.");
+assert.match(server, /function cockpitPressingHtml/, "Today should turn urgent parked or waiting items into the Pressing rail card.");
 assert.match(server, /function cockpitThisWeekMoved/, "Today should show outcomes moved this week.");
 assert.match(server, /class="operator-v31"/, "Today should use the v3.1 operator cockpit shell.");
 assert.match(server, /class="app-header"/, "Today should include the v3.1 date and clock header.");
@@ -22,7 +23,7 @@ assert.match(server, /class="now-first"/, "Today should render the Start-with cu
 assert.match(server, /START WITH/, "Start-with cue should be explicit.");
 assert.match(server, /class="timeline-card"/, "Today should render the timeline card.");
 assert.match(server, /class="thread"/, "Today should render Threads Open rows.");
-assert.match(server, /class="parked-item"/, "Today should render Parked rows.");
+assert.match(server, /class="pressure-item pressing"/, "Today should render Pressing rows instead of a duplicate parked rail.");
 assert.match(server, /class="moved-row"/, "Today should render This Week Moved rows.");
 assert.match(server, /class="app-footer"/, "Today should render the v3.1 footer gates.");
 assert.match(server, /MADE FOR ROGER/, "Footer should keep the made-for-Roger signature.");

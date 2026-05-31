@@ -25,6 +25,8 @@ const todayHelpers = [
   "cockpitBlockersDecisionsHtml",
   "cockpitQuickCaptureHtml",
   "cockpitWhatMovedHtml",
+  "cockpitPressingHtml",
+  "todayUrgencyBadgeHtml",
   "cockpitCloseoutPlanHtml",
   "cockpitFooterGates"
 ].map(functionBlock).join("\n");
@@ -73,6 +75,13 @@ const quickCapture = functionBlock("cockpitQuickCaptureHtml");
 assert.equal((quickCapture.match(/<h2>Quick Capture<\/h2>/g) || []).length, 1, "Quick Capture card should have one visible heading");
 assert(!quickCapture.includes('<label class="sr-only" for="cockpit-capture">Quick Capture</label>'), "Quick Capture card should not repeat the same visible/screen-reader label inside the card");
 assert(quickCapture.includes("Save a thought before it becomes a loose end."), "Quick Capture should include concise helper text");
+assert.equal((todayVisibleSource.match(/<h2>What Moved<\/h2>/g) || []).length, 1, "Today should render one visible What Moved section");
+assert(!today.includes('<div class="cockpit-card-head"><h2>What Moved</h2>'), "Today right rail should not duplicate What Moved");
+assert(source.includes("--urgent: #F04800") || source.includes("--urgent:#F04800") || source.includes("--rust:#F04800"), "Today should have LegalEase orange available for urgent states");
+for (const urgencyClass of [".urgent", ".critical", ".pressing", ".status-urgent", ".pill-urgent"]) {
+  assert(source.includes(urgencyClass), `Today should define urgency class ${urgencyClass}`);
+}
+assert(todayVisibleSource.includes("Pressing"), "Today right rail should include a compact Pressing card for urgent items");
 assert(!today.includes("${cockpitOsHealthHtml()}"), "Today should not pull in the full App Status system card");
 assert(!today.includes("${cockpitDataIntegrityHtml()}"), "Today should not pull in the full Data Check system card");
 assert(!today.includes("${cockpitSmokeTestHtml()}"), "Today should not pull in the full Self-Check system card");
