@@ -13082,33 +13082,33 @@ function htmlShell() {
     .app-header { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; color:var(--text-tertiary); }
     .app-date { font-size:13px; font-weight:650; letter-spacing:.01em; }
     .app-time { font-size:22px; line-height:1; color:var(--text-primary); font-weight:700; font-variant-numeric:tabular-nums; }
-    .operator-v31 .app-intention { width:100%; max-width:960px; padding:4px 0 0; margin-bottom:32px; }
+    .operator-v31 .app-intention { width:100%; max-width:960px; padding:0; margin-bottom:18px; }
     .operator-v31 .app-intention h1,
-    .operator-v31 .app-intention p { margin:0; font-size:clamp(40px,4.4vw,64px); line-height:1.02; letter-spacing:-.02em; font-weight:620; color:var(--text-primary); white-space:normal; overflow:visible; overflow-wrap:break-word; word-break:normal; }
+    .operator-v31 .app-intention p { margin:0; font-size:clamp(34px,3.7vw,53px); line-height:1.01; letter-spacing:-.018em; font-weight:620; color:var(--text-primary); white-space:normal; overflow:visible; overflow-wrap:break-word; word-break:normal; }
     .intention-accent { color:var(--accent); }
     .intention-meta { margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; color:var(--text-tertiary); font-size:12px; }
     .intention-meta button { min-height:30px; padding:0 10px; background:transparent; border-color:var(--border-default); color:var(--accent); }
     .operator-v31 .cockpit-layout { display:grid; grid-template-columns:minmax(0, 1fr) 380px; gap:24px; align-items:start; width:100%; }
     .operator-v31 .cockpit-main { display:grid; gap:14px; min-width:0; width:100%; max-width:100%; overflow:visible; padding:0; margin:0; }
     .operator-v31 .cockpit-rail { display:grid; gap:14px; position:static; transform:none; width:100%; max-width:380px; min-width:0; margin:0; padding:0; border:0; background:transparent; box-shadow:none; align-content:start; overflow:visible; }
-    .operator-v31 .now-block { border:1px solid var(--border-emphasis); border-radius:20px; background:var(--bg-now); padding:22px; display:grid; gap:16px; box-shadow:0 18px 44px rgba(0,38,36,.07); overflow:visible; }
+    .operator-v31 .now-block { border:1px solid var(--border-emphasis); border-radius:20px; background:var(--bg-now); padding:18px; display:grid; gap:12px; box-shadow:0 18px 44px rgba(0,38,36,.07); overflow:visible; }
     .now-kicker { display:flex; justify-content:space-between; gap:12px; align-items:center; color:var(--accent-hover); font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; }
     .operator-v31 .now-block h1,
     .operator-v31 .now-block h2,
     .operator-v31 .now-block h3,
     .operator-v31 .now-title,
-    .operator-v31 .now-headline { margin:0; max-width:100%; font-size:clamp(34px,3.4vw,48px); line-height:1.05; letter-spacing:-.018em; color:var(--text-primary); font-weight:720; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; word-break:normal; }
+    .operator-v31 .now-headline { margin:0; max-width:100%; font-size:clamp(30px,3vw,42px); line-height:1.04; letter-spacing:-.016em; color:var(--text-primary); font-weight:720; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; word-break:normal; }
     .operator-v31 .now-block p,
     .operator-v31 .now-block .muted,
     .operator-v31 .now-copy,
-    .operator-v31 .now-description { margin:0; max-width:100%; color:var(--text-secondary); font-size:15px; line-height:1.5; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; word-break:normal; }
-    .now-first { width:100%; min-width:0; max-width:100%; border:1px solid var(--border-default); border-radius:16px; background:var(--bg-cue); padding:14px; display:grid; gap:10px; }
-    .now-first strong { color:var(--text-primary); font-size:12px; letter-spacing:.1em; text-transform:uppercase; }
-    .now-steps { display:grid; gap:8px; margin:0; padding:0; list-style:none; counter-reset:step; }
-    .now-steps li { counter-increment:step; display:grid; grid-template-columns:24px 1fr; gap:9px; align-items:start; color:var(--text-secondary); font-size:13px; line-height:1.4; }
-    .now-steps li::before { content:counter(step); display:grid; place-items:center; width:24px; height:24px; border-radius:999px; background:var(--accent); color:white; font-size:11px; font-weight:800; }
-    .now-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
-    .now-actions button { min-height:42px; padding:0 16px; }
+    .operator-v31 .now-description { margin:0; max-width:100%; color:var(--text-secondary); font-size:14px; line-height:1.45; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; word-break:normal; }
+    .now-first { width:100%; min-width:0; max-width:100%; border:1px solid var(--border-default); border-radius:16px; background:var(--bg-cue); padding:12px; display:grid; gap:8px; }
+    .now-first strong { color:var(--text-primary); font-size:11px; letter-spacing:.1em; text-transform:uppercase; }
+    .now-steps { display:grid; gap:6px; margin:0; padding:0; list-style:none; counter-reset:step; }
+    .now-steps li { counter-increment:step; display:grid; grid-template-columns:22px 1fr; gap:8px; align-items:start; color:var(--text-secondary); font-size:12.5px; line-height:1.35; }
+    .now-steps li::before { content:counter(step); display:grid; place-items:center; width:22px; height:22px; border-radius:999px; background:var(--accent); color:white; font-size:10px; font-weight:800; }
+    .now-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .now-actions button { min-height:38px; padding:0 14px; }
     .now-actions .primary { background:var(--accent); color:white; border-color:var(--accent); }
     .now-actions .primary:hover { background:var(--accent-hover); }
     .operator-v31 .now-block,
@@ -13122,25 +13122,33 @@ function htmlShell() {
     .cockpit-card h2,.timeline-card h2 { margin:0; font-size:15px; line-height:1.2; color:var(--text-primary); font-weight:720; letter-spacing:-.01em; }
     .cockpit-card-head { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:12px; }
     .cockpit-card-head small { color:var(--text-tertiary); font-size:12px; }
-    .timeline-track { position:relative; height:104px; border-radius:16px; background:linear-gradient(180deg,#f8fffe,#eef7f6); border:1px solid var(--border-light); overflow:hidden; margin-top:12px; }
-    .timeline-axis { position:absolute; inset:0; display:grid; grid-template-columns:repeat(10,1fr); color:var(--text-quaternary); font-size:10px; }
+    .timeline-track { position:relative; height:100px; border-radius:16px; background:linear-gradient(180deg,#f8fffe,#eef7f6); border:1px solid var(--border-light); overflow:hidden; margin-top:10px; }
+    .timeline-axis { position:absolute; inset:0; display:grid; grid-template-columns:repeat(10,1fr); color:#61707a; font-size:10px; font-weight:750; }
     .timeline-axis span { border-left:1px solid rgba(216,207,185,.45); padding:8px 0 0 6px; }
-    .timeline-block { position:absolute; top:38px; height:42px; min-width:34px; border-radius:999px; display:flex; align-items:center; padding:0 12px; color:white; font-size:12px; font-weight:750; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; box-shadow:0 10px 22px rgba(26,24,20,.12); }
+    .timeline-block { position:absolute; top:34px; height:48px; min-width:54px; border-radius:18px; display:grid; align-content:center; justify-items:center; text-align:center; gap:2px; padding:5px 9px; color:white; font-size:11.5px; line-height:1.1; font-weight:750; overflow:hidden; white-space:normal; overflow-wrap:anywhere; box-shadow:0 10px 22px rgba(26,24,20,.12); }
+    .timeline-block-title { display:block; max-width:100%; overflow-wrap:anywhere; }
+    .timeline-block-meta { display:block; color:rgba(255,255,255,.82); font-size:9px; line-height:1.05; font-weight:800; text-transform:uppercase; letter-spacing:.02em; }
     .timeline-block.focus { background:var(--accent); }
     .timeline-block.meeting { background:#0f1f5c; }
     .timeline-block.personal { background:#61707a; }
+    .timeline-block.closeout { background:#047A72; }
     .timeline-block.past { opacity:.34; }
     .timeline-block.current { outline:3px solid rgba(0,169,157,.28); }
-    .timeline-now { position:absolute; top:26px; bottom:14px; width:2px; background:var(--accent-pulse); box-shadow:0 0 0 4px rgba(0,169,157,.16); }
-    .timeline-now-label { position:absolute; top:8px; transform:translateX(-45%); color:var(--accent); font-size:10px; font-weight:800; white-space:nowrap; }
+    .timeline-now { position:absolute; top:22px; bottom:12px; width:3px; background:var(--accent-pulse); box-shadow:0 0 0 5px rgba(0,169,157,.2); border-radius:999px; }
+    .timeline-now-label { position:absolute; top:7px; transform:translateX(-45%); color:var(--accent-hover); background:rgba(255,255,255,.82); border:1px solid rgba(0,169,157,.18); border-radius:999px; padding:2px 6px; font-size:10px; font-weight:850; white-space:nowrap; }
     .thread-list,.parked-list,.moved-list { display:grid; gap:9px; }
-    .thread,.parked-item,.moved-row { width:100%; max-width:100%; text-align:left; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:12px; display:grid; gap:5px; color:var(--text-primary); overflow:hidden; }
+    .follow-up-filters { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px; }
+    .follow-up-filters button { min-height:28px; padding:0 9px; font-size:11px; border-radius:999px; }
+    .follow-up-filters button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .follow-up-tag { width:max-content; max-width:100%; border:1px solid rgba(0,169,157,.16); border-radius:999px; background:rgba(0,169,157,.08); color:var(--accent-hover); padding:2px 7px; font-size:10px; font-weight:850; }
+    .follow-up-view-all { margin-top:8px; width:100%; min-height:34px; font-size:12px; }
+    .thread,.parked-item,.moved-row { width:100%; max-width:100%; text-align:left; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:10px; display:grid; gap:4px; color:var(--text-primary); overflow:hidden; }
     .thread:hover,.parked-item:hover,.moved-row:hover { border-color:var(--border-emphasis); background:#f4fbfa; }
-    .thread strong,.parked-item strong,.moved-row strong { font-size:14px; line-height:1.25; }
-    .thread span,.parked-item span,.moved-row span { color:var(--text-tertiary); font-size:12px; line-height:1.4; }
+    .thread strong,.parked-item strong,.moved-row strong { font-size:13px; line-height:1.25; }
+    .thread span,.parked-item span,.moved-row span { color:var(--text-tertiary); font-size:11.5px; line-height:1.35; }
     .thread-age { color:var(--accent); font-weight:800; }
     .rail-form { display:grid; gap:10px; }
-    .rail-form textarea { min-height:92px; resize:vertical; border-radius:14px; background:#fbfefd; border-color:var(--border-default); }
+    .rail-form textarea { min-height:82px; resize:vertical; border-radius:14px; background:#fbfefd; border-color:var(--border-default); }
     .rail-form button.primary { background:var(--text-primary); color:white; border-color:var(--text-primary); }
     .activation-rows { display:grid; gap:7px; margin:0 0 10px; }
     .activation-rows div { display:flex; justify-content:space-between; gap:12px; align-items:center; border-bottom:1px solid var(--border-light); padding-bottom:7px; }
@@ -13241,6 +13249,37 @@ function htmlShell() {
     .daily-loop-list span { color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
     .daily-loop-list a { color:var(--accent); font-size:12px; font-weight:800; text-decoration:none; width:max-content; max-width:100%; }
     .daily-loop-list a:hover { text-decoration:underline; }
+    .today-standup-board { display:grid; gap:14px; width:100%; max-width:100%; min-width:0; }
+    .standup-two-col { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; align-items:start; width:100%; min-width:0; }
+    .standup-card { display:grid; gap:12px; overflow:visible; }
+    .standup-priority-list { display:grid; gap:9px; list-style:none; margin:0; padding:0; counter-reset:priority; }
+    .standup-priority-list li { counter-increment:priority; display:grid; gap:5px; border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:12px; min-width:0; }
+    .standup-priority-list li > span { color:var(--accent-hover); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.06em; }
+    .standup-priority-list strong { color:var(--text-primary); font-size:14px; line-height:1.25; overflow-wrap:break-word; }
+    .standup-priority-list small { color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
+    .standup-priority-list a,
+    .standup-row a { width:max-content; max-width:100%; color:var(--accent); font-size:12px; font-weight:850; text-decoration:none; }
+    .standup-priority-list a:hover,
+    .standup-row a:hover { text-decoration:underline; }
+    .standup-row-list { display:grid; gap:9px; min-width:0; }
+    .standup-row { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:12px; align-items:center; border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:12px; min-width:0; }
+    .standup-row div { display:grid; gap:4px; min-width:0; }
+    .standup-row strong { color:var(--text-primary); font-size:14px; line-height:1.25; overflow-wrap:break-word; }
+    .standup-row span { color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
+    .standup-card-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .standup-card-actions button { min-height:34px; padding:0 12px; font-size:12px; }
+    .closeout-summary { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px; }
+    .closeout-summary div { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:12px; display:grid; gap:6px; min-width:0; }
+    .closeout-summary span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .closeout-summary strong { color:var(--text-primary); font-size:13px; line-height:1.35; overflow-wrap:break-word; }
+    .today-capture-form { gap:11px; }
+    .quick-capture { padding:14px; }
+    .quick-capture .cockpit-card-head { margin-bottom:8px; }
+    .quick-capture .cockpit-card-head h2 { font-size:14px; }
+    .quick-capture .cockpit-card-head small { font-size:11px; }
+    .capture-helper { margin:0; color:var(--text-tertiary); font-size:12px; line-height:1.35; }
+    .capture-button-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .capture-button-row button { min-height:34px; padding:0 12px; font-size:12px; }
     .operating-memory-card { display:grid; gap:12px; overflow:visible; }
     .operating-memory-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
     .operating-memory-tile { min-width:0; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:11px; display:grid; gap:7px; }
@@ -13286,6 +13325,8 @@ function htmlShell() {
       .operator-v31 .cockpit-layout { grid-template-columns:1fr; }
       .operator-v31 .cockpit-rail { max-width:100%; }
       .daily-loop-grid { grid-template-columns:1fr; }
+      .standup-two-col { grid-template-columns:1fr; }
+      .closeout-summary { grid-template-columns:1fr; }
       .operating-memory-grid { grid-template-columns:1fr; }
       .conversation-capture-grid { grid-template-columns:1fr; }
       .app-intention p { font-size:clamp(28px,7vw,42px); }
@@ -17082,16 +17123,16 @@ function htmlShell() {
           type:"task",
           id:task.id,
           title:task.title || "Move the highest-leverage task",
-          context:task.escalationReason || task.description || task.nextAction || "This is the clearest owned work due now. Finishing it lowers the operating load for the rest of the day.",
+          context:task.escalationReason || task.description || task.nextAction || "This is the clearest owned work due now. Finishing it lowers the load for the rest of the day.",
           href:"focus",
-          primaryLabel:"Start Focus Mode",
+          primaryLabel:"Start Work",
           secondaryLabel:"Open task",
           snoozeLabel:"Snooze",
           range:cockpitFocusRange(),
           steps:[
             task.nextAction || "Open the task and confirm the next concrete move.",
             "Decide whether this needs action, a snooze, or a clean dismissal.",
-            "Log the outcome so Le-E can update the operating memory."
+            "Log the outcome so Le-E can update the day."
           ]
         };
       }
@@ -17114,10 +17155,10 @@ function htmlShell() {
         return {
           type:"growth_inbox",
           id:item.id,
-          title:item.summary || item.rawText || "Triage the newest company signal",
-          context:item.suggestedAction || "This signal should be routed before it becomes founder memory.",
+          title:item.summary || item.rawText || "Prioritize the newest company signal",
+          context:item.suggestedAction || "This signal should be routed before it becomes another loose thread.",
           href:"growth-inbox",
-          primaryLabel:"Triage signal",
+          primaryLabel:"Prioritize signal",
           secondaryLabel:"Open Inbox",
           snoozeLabel:"Later",
           range:cockpitFocusRange(),
@@ -17153,15 +17194,11 @@ function htmlShell() {
     }
 
     function cockpitDailyIntention(nowItem = cockpitNowItem()) {
-      const partnerCount = (state.partnerPrograms || []).filter(program => ["paid", "onboarding", "active", "reporting"].includes(String(program.status || "").toLowerCase())).length;
-      const inboxCount = (state.growthInbox || []).filter(item => !["converted", "ignored"].includes(String(item.status || "").toLowerCase())).length;
-      const proofCount = cockpitThisWeekMoved().length;
-      const accent = nowItem.type === "task" ? "protect the main thread" : nowItem.type === "approval" ? "clear decisions" : nowItem.type === "growth_inbox" ? "route the signal" : partnerCount ? "move partner proof" : "make the day lighter";
       return {
         prefix:"Today is for ",
-        accent,
-        suffix:proofCount ? ", then turning movement into proof." : inboxCount ? ", then clearing loose intake before it spreads." : ", with only the next useful move in view.",
-        source:"Le-E read open tasks, inbox signals, partner programs, and weekly proof."
+        accent:"protecting the main thread",
+        suffix:", then turning movement into proof.",
+        source:"Daily intention"
       };
     }
 
@@ -17175,9 +17212,28 @@ function htmlShell() {
       const blocks = [
         { label:nowItem.title || "Focus", type:"focus", start:Math.max(8, currentStart), end:Math.min(18, currentStart + 1.5) },
         ...calendarItems.map((item, index) => ({ label:item.title || item.summary || "Meeting", type:"meeting", start:10 + index * 2, end:11 + index * 2 })),
-        { label:"Family window", type:"personal", start:17, end:18 }
+        { label:"Closeout", type:"closeout", start:17.15, end:18 }
       ];
       return blocks.filter(block => block.end > 8 && block.start < 18).slice(0, 5);
+    }
+
+    function cockpitTimelineShortTitle(label = "") {
+      const text = String(label || "Focus");
+      if (/Harris County pilot memo/i.test(text)) return "Harris County follow-up";
+      if (text.length > 42) return text.slice(0, 39).trim() + "...";
+      return text;
+    }
+
+    function cockpitTimelineTimeLabel(hourValue = 0) {
+      const hour = Math.floor(hourValue);
+      const minutes = Math.round((hourValue - hour) * 60);
+      const normalizedHour = hour > 12 ? hour - 12 : hour;
+      const suffix = hour >= 12 ? "p" : "a";
+      return normalizedHour + (minutes ? ":" + String(minutes).padStart(2, "0") : "") + suffix;
+    }
+
+    function cockpitTimelineRangeLabel(block = {}) {
+      return cockpitTimelineTimeLabel(block.start || 8) + "–" + cockpitTimelineTimeLabel(block.end || 18);
     }
 
     function cockpitTimelineHtml(nowItem = cockpitNowItem()) {
@@ -17190,10 +17246,12 @@ function htmlShell() {
         const width = Math.max(8, Math.min(100 - left, ((block.end - block.start) / 10) * 100));
         const past = block.end < nowHour ? " past" : "";
         const current = block.start <= nowHour && block.end >= nowHour ? " current" : "";
-        return \`<button class="timeline-block \${esc(block.type)}\${past}\${current}" style="left:\${left}%;width:\${width}%;" onclick="location.hash='\${block.type === "focus" ? "focus" : "tasks"}'">\${esc(block.label)}</button>\`;
+        const href = block.type === "focus" ? "focus" : block.type === "closeout" ? "daily-closeout" : "tasks";
+        const status = current ? "now" : block.type === "closeout" ? "closeout" : block.type;
+        return \`<button class="timeline-block \${esc(block.type)}\${past}\${current}" style="left:\${left}%;width:\${width}%;" onclick="location.hash='\${href}'"><span class="timeline-block-title">\${esc(cockpitTimelineShortTitle(block.label))}</span><small class="timeline-block-meta">\${esc(cockpitTimelineRangeLabel(block))} · \${esc(status)}</small></button>\`;
       }).join("");
       return \`<section class="timeline-card">
-        <div class="cockpit-card-head"><h2>Today's Flow</h2><small>8a to 6p</small></div>
+        <div class="cockpit-card-head"><h2>Today’s Flow</h2><small>8a to 6p</small></div>
         <div class="timeline-track">
           <div class="timeline-axis">\${ticks.map(tick => \`<span>\${tick}</span>\`).join("")}</div>
           \${blocks}
@@ -17209,7 +17267,8 @@ function htmlShell() {
         context:task.sourceType || task.owner || "Task",
         need:task.nextAction || task.description || "Waiting on Roger.",
         age:cockpitRelativeAge(task.updatedAt || task.createdAt || task.dueDate),
-        href:"tasks"
+        href:"tasks",
+        category:/proof|evidence/i.test([task.title, task.description, task.sourceType].join(" ")) ? "proof" : "tasks"
       }));
       const partnerThreads = [...(state.partners || []), ...(state.partnerPrograms || [])].filter(item => {
         const status = String(item.status || item.stage || "").toLowerCase();
@@ -17219,16 +17278,37 @@ function htmlShell() {
         context:item.affiliation || item.partnerType || item.packageTier || "Partner",
         need:item.nextAction || "Needs a clean next touch.",
         age:cockpitRelativeAge(item.lastTouchDate || item.updatedAt || item.createdAt),
-        href:item.packageTier ? "partner-programs" : "partners"
+        href:item.packageTier ? "partner-programs" : "partners",
+        category:"partners"
       }));
       const inboxThreads = (state.growthInbox || []).filter(item => !["converted", "ignored"].includes(String(item.status || "").toLowerCase()) && /partner|investor|customer|support|proposal|meeting/i.test([item.sourceType, item.rawText, item.summary].join(" "))).map(item => ({
         name:item.relatedPartner || item.relatedCampaign || item.summary || "New signal",
         context:growthLabel(item.sourceType || "Growth Inbox"),
         need:item.suggestedAction || item.rawText || "Needs routing.",
         age:cockpitRelativeAge(item.createdAt),
-        href:"growth-inbox"
+        href:"growth-inbox",
+        category:/proof|evidence/i.test([item.sourceType, item.rawText, item.summary].join(" ")) ? "proof" : /partner/i.test([item.sourceType, item.rawText, item.summary].join(" ")) ? "partners" : "tasks"
       }));
       return [...waitingTasks, ...partnerThreads, ...inboxThreads].slice(0, 5);
+    }
+
+    function cockpitFollowUpTitle(thread = {}) {
+      const raw = String(thread.name || "Follow-up").trim();
+      if (/^smoke test task:\s*confirm founder-simple ui$/i.test(raw)) return "Confirm founder-simple UI";
+      const partnerProof = raw.match(/^Add partner proof note:\s*(.+)$/i);
+      if (partnerProof) return partnerProof[1].trim() + " proof note";
+      return todayFounderCopy(raw);
+    }
+
+    function cockpitFollowUpContext(thread = {}) {
+      const raw = String(thread.name || "");
+      if (/^Add partner proof note:/i.test(raw)) return "Turn partner movement into evidence.";
+      return todayFounderCopy([thread.context, thread.need].filter(Boolean).join(". "));
+    }
+
+    function cockpitFollowUpCategoryLabel(thread = {}) {
+      const value = String(thread.category || "tasks").toLowerCase();
+      return value === "partners" ? "Partners" : value === "proof" ? "Proof" : "Tasks";
     }
 
     function cockpitParkedItems() {
@@ -17279,10 +17359,10 @@ function htmlShell() {
       const dbConnected = state.persistence === "supabase" || Boolean(supabaseHealth?.connected);
       const storageConnected = Boolean(state.runtime?.supabaseStorage?.configured || supabaseHealth?.storageConnected || credentialPresent("SUPABASE_STORAGE_BUCKET"));
       return [
+        { label:"Protected", ok:true },
+        { label:dbConnected ? "Saved work connected" : "Saved work needs attention", ok:dbConnected },
+        { label:storageConnected ? "Files ready" : "Files need attention", ok:storageConnected },
         { label:"Le-E ready", ok:true },
-        { label:dbConnected ? "Supabase DB connected" : "Local fallback active", ok:dbConnected },
-        { label:storageConnected ? "Supabase Storage connected" : "Storage check needed", ok:storageConnected },
-        { label:state.runtime?.openAIConfigured ? "OpenAI configured" : "OpenAI not configured", ok:Boolean(state.runtime?.openAIConfigured) },
         { label:"Publishing is off", ok:liveGates === 0, danger:liveGates > 0 }
       ];
     }
@@ -17547,6 +17627,147 @@ function htmlShell() {
           <section class="daily-loop-section"><h3>Do Not Touch Today</h3>\${cockpitLoopListHtml(loop.doNotTouchToday, "No distractions flagged.")}</section>
           <section class="daily-loop-section"><h3>Momentum</h3>\${cockpitLoopListHtml(loop.momentum, "No recent operating movement logged yet.")}</section>
         </div>
+      </section>\`;
+    }
+
+    function todayFounderCopy(value = "") {
+      return String(value || "")
+        .replace(/Triage/gi, "Prioritize")
+        .replace(/operating memory/gi, "day")
+        .replace(/internal operating/gi, "saved")
+        .replace(/handoff packet/gi, "review packet")
+        .replace(/artifacts?/gi, "materials")
+        .replace(/audit events?/gi, "activity")
+        .replace(/internal state/gi, "saved work")
+        .replace(/generated client/gi, "app")
+        .replace(/route map/gi, "routes");
+    }
+
+    function todayActionLink(item = {}, fallback = "Review") {
+      const href = item.href || "tasks";
+      const action = item.action || fallback;
+      return \`<a href="#\${esc(href)}">\${esc(action)}</a>\`;
+    }
+
+    function cockpitTop3StandupHtml() {
+      const loop = cockpitDailyOperatingLoop();
+      const slots = [
+        ...loop.top3,
+        cockpitLoopItem("Add the first priority", "No priorities set yet. Add the first priority.", "tasks", "Add Priority"),
+        cockpitLoopItem("Choose a second priority", "Keep the day focused on the few things that matter.", "tasks", "Add Priority"),
+        cockpitLoopItem("Choose a third priority", "Leave room for one concrete finish line.", "tasks", "Add Priority")
+      ].slice(0, 3);
+      return \`<section class="cockpit-card standup-card top3-card">
+        <div class="cockpit-card-head"><h2>Top 3</h2><small>Today’s priorities</small></div>
+        <ol class="standup-priority-list">\${slots.map((item, index) => \`<li>
+          <span>Priority \${index + 1}</span>
+          <strong>\${esc(todayFounderCopy(item.title))}</strong>
+          <small>\${esc(todayFounderCopy(item.detail || item.nextAction || "Decide the next move."))}</small>
+          \${todayActionLink(item, index === 0 ? "Start" : "Review")}
+        </li>\`).join("")}</ol>
+        <div class="standup-card-actions"><button type="button" onclick="location.hash='tasks'">Add Priority</button></div>
+      </section>\`;
+    }
+
+    function cockpitNeedsAttentionHtml() {
+      const threads = cockpitThreadsOpen();
+      const parked = cockpitParkedItems();
+      const loop = cockpitDailyOperatingLoop();
+      const openTasks = cockpitOpenTasks();
+      const plannedSocial = (state.socialRecords || state.socialPosts || []).filter(item => /draft|ready|planned/i.test([item.type, item.status].join(" ")));
+      const items = cockpitUniqueByTitle([
+        parked[0] ? cockpitLoopItem(parked[0].title, parked[0].reason, parked[0].href, "Review Blocker") : null,
+        threads[0] ? cockpitLoopItem(threads[0].name, threads[0].need, threads[0].href, "Review Follow-up") : null,
+        cockpitLoopItem("RCAP Program review", "Record Clearing Access Program materials need a clear review pass before anything goes partner-facing.", "rcap", "Open RCAP Program"),
+        plannedSocial[0] ? cockpitLoopItem(plannedSocial[0].title || plannedSocial[0].body || "Marketing draft", "Manual publishing stays off until Roger handles it outside the OS.", "growth", "Open Draft") : null,
+        openTasks.length ? cockpitLoopItem(openTasks.length + " open task" + (openTasks.length === 1 ? "" : "s"), "Pick one task and move it to a clear next state.", "tasks", "Open Tasks") : null,
+        loop.decisionsNeeded[0] ? cockpitLoopItem(loop.decisionsNeeded[0].title, loop.decisionsNeeded[0].detail, loop.decisionsNeeded[0].href, "Review Decision") : null
+      ].filter(Boolean)).slice(0, 6);
+      return \`<section class="cockpit-card standup-card needs-attention-card">
+        <div class="cockpit-card-head"><h2>Needs Attention</h2><small>Look here first</small></div>
+        <div class="standup-row-list">\${items.map(item => \`<div class="standup-row">
+          <div><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail))}</span></div>
+          \${todayActionLink(item, "Review")}
+        </div>\`).join("") || '<div class="empty-calm">Nothing urgent needs attention right now.</div>'}</div>
+      </section>\`;
+    }
+
+    function cockpitBlockersDecisionsHtml() {
+      const loop = cockpitDailyOperatingLoop();
+      const items = cockpitUniqueByTitle([
+        ...loop.waitingOn.map(item => ({ ...item, action:"Resolve Blocker" })),
+        ...loop.decisionsNeeded.map(item => ({ ...item, action:"Review Decision" }))
+      ]).slice(0, 4);
+      return \`<section class="cockpit-card standup-card blockers-decisions-card">
+        <div class="cockpit-card-head"><h2>Blockers & Decisions</h2><small>Waiting on Roger</small></div>
+        <div class="standup-row-list">\${items.map(item => \`<div class="standup-row">
+          <div><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail))}</span></div>
+          \${todayActionLink(item, "Review")}
+        </div>\`).join("") || '<div class="empty-calm">No blockers or decisions are waiting right now.</div>'}</div>
+        <div class="standup-card-actions">
+          <button type="button" onclick="document.getElementById('cockpit-capture')?.focus()">Add Decision</button>
+          <button type="button" onclick="location.hash='daily-closeout'">Move to Tomorrow</button>
+        </div>
+      </section>\`;
+    }
+
+    function cockpitQuickCaptureHtml() {
+      return \`<section class="cockpit-card quick-capture">
+        <div class="cockpit-card-head"><h2>Quick Capture</h2><small>Saved for review</small></div>
+        <form class="rail-form today-capture-form" onsubmit="quickCapture(event)">
+          <p class="capture-helper">Save a thought before it becomes a loose end.</p>
+          <textarea id="cockpit-capture" name="raw_input" required aria-label="Quick Capture" placeholder="Capture a task, idea, decision, blocker, update, or post idea…"></textarea>
+          <input type="hidden" name="source_label" value="Today standup">
+          <input type="hidden" name="capture_type" value="auto_classify">
+          <input type="hidden" name="priority" value="medium">
+          <div class="capture-button-row">
+            <button class="primary" type="submit" onclick="this.form.capture_type.value='auto_classify'">Save</button>
+            <button type="submit" onclick="this.form.capture_type.value='task'">Task</button>
+            <button type="submit" onclick="this.form.capture_type.value='decision'">Decision</button>
+            <button type="submit" onclick="this.form.capture_type.value='blocker'">Blocker</button>
+            <button type="submit" onclick="this.form.capture_type.value='idea'">Post Idea</button>
+          </div>
+          <button type="button" onclick="location.hash='capture-inbox'">Open Inbox</button>
+        </form>
+      </section>\`;
+    }
+
+    function cockpitWhatMovedHtml() {
+      const moved = cockpitThisWeekMoved();
+      return \`<section class="cockpit-card standup-card what-moved-card">
+        <div class="cockpit-card-head"><h2>What Moved</h2><small>Progress worth keeping</small></div>
+        <div class="moved-list">\${moved.map(item => \`<button class="moved-row" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail))}</span><span>\${esc(item.day)}</span></button>\`).join("") || '<div class="empty-calm">No movement logged yet today.</div>'}</div>
+      </section>\`;
+    }
+
+    function cockpitCloseoutPlanHtml() {
+      const closeout = cockpitDailyCloseoutRecord();
+      return \`<section class="cockpit-card standup-card closeout-plan-card">
+        <div class="cockpit-card-head"><h2>Closeout / Tomorrow Plan</h2><small>End cleanly</small></div>
+        <div class="closeout-summary">
+          <div><span>What got done?</span><strong>\${esc(todayFounderCopy((closeout.moved_today || [])[0]?.title || "No movement logged yet today."))}</strong></div>
+          <div><span>What carries forward?</span><strong>\${esc(todayFounderCopy((closeout.carry_forward || [])[0]?.title || "Nothing selected yet."))}</strong></div>
+          <div><span>Tomorrow’s first move</span><strong>\${esc(todayFounderCopy(closeout.tomorrow_first_move || "Choose the first move before closing the day."))}</strong></div>
+        </div>
+        <div class="standup-card-actions">
+          <button class="primary" type="button" onclick="saveDailyCloseout()">Close the Day</button>
+          <button type="button" onclick="generateTomorrowPlan()">Plan Tomorrow</button>
+          <button type="button" onclick="location.hash='daily-closeout'">Open Closeout</button>
+        </div>
+      </section>\`;
+    }
+
+    function cockpitTodayStandupBoardHtml() {
+      return \`<section class="today-standup-board" aria-label="Today standup board">
+        <div class="standup-two-col">
+          \${cockpitTop3StandupHtml()}
+          \${cockpitNeedsAttentionHtml()}
+        </div>
+        <div class="standup-two-col">
+          \${cockpitBlockersDecisionsHtml()}
+          \${cockpitWhatMovedHtml()}
+        </div>
+        \${cockpitCloseoutPlanHtml()}
       </section>\`;
     }
 
@@ -19611,60 +19832,41 @@ function htmlShell() {
             <section class="now-block" aria-label="Now">
               <div class="now-kicker"><span>NOW · \${esc(nowItem.range)}</span><span>\${esc(plainOperatorState(nowItem.type === "planning" ? "ready" : "needs_review"))}</span></div>
               <h1>\${esc(nowItem.title)}</h1>
-              <p>\${esc(nowItem.context)}</p>
+              <p>\${esc(todayFounderCopy(nowItem.context))}</p>
               <div class="now-first">
-                <strong>START WITH</strong>
-                <ol class="now-steps">\${nowItem.steps.slice(0, 3).map(step => \`<li>\${esc(step)}</li>\`).join("")}</ol>
+                <strong aria-label="Start with">START WITH</strong>
+                <ol class="now-steps">\${nowItem.steps.slice(0, 3).map(step => \`<li>\${esc(todayFounderCopy(step))}</li>\`).join("")}</ol>
               </div>
               <div class="now-actions">
                 <button class="primary" type="button" onclick="location.hash='\${esc(nowItem.href)}'">\${esc(nowItem.primaryLabel)}</button>
                 <button type="button" onclick="\${nowItem.secondaryLabel === "Ask Le-E" ? "openLeeBubble()" : "location.hash='" + esc(nowItem.href) + "'"}">\${esc(nowItem.secondaryLabel)}</button>
                 <button type="button" onclick="cockpitSnoozeNow('\${esc(nowItem.type)}','\${esc(nowItem.id)}')">\${esc(nowItem.snoozeLabel)}</button>
+                <button type="button" onclick="document.getElementById('cockpit-capture')?.focus()">Add Note</button>
               </div>
             </section>
             \${cockpitTimelineHtml(nowItem)}
-            \${cockpitDailyOperatingLoopHtml()}
-            \${cockpitTasksHtml()}
-            \${cockpitDailyRitualsHtml()}
-            \${cockpitDailyCloseoutHtml()}
-            \${cockpitOsHealthHtml()}
-            \${cockpitRoleProtectionHtml()}
-            \${cockpitSmokeTestHtml()}
-            \${cockpitEvidenceRoomHtml()}
-            \${cockpitHandoffContractHtml()}
-            \${cockpitOperatorManualHtml()}
-            \${cockpitDataIntegrityHtml()}
-            \${cockpitOperatorSearchHtml()}
-            \${cockpitOperatingMemoryHtml()}
+            \${cockpitTodayStandupBoardHtml()}
             </main>
             <aside class="cockpit-rail">
-            \${cockpitRcapActivationHtml()}
-            \${rcapReviewQueueHtml()}
-            \${rcapHandoffReadinessCardHtml()}
-            <section class="cockpit-card quick-capture">
-              <div class="cockpit-card-head"><h2>Quick Capture</h2><small>Le-E routes it after review</small></div>
-              <form class="rail-form" onsubmit="quickCapture(event)">
-                <label class="sr-only" for="cockpit-capture">Quick Capture</label>
-                <textarea id="cockpit-capture" name="raw_input" required aria-label="Quick Capture" placeholder="Capture a partner update, task, idea, meeting note, conversation takeaway, blocker, decision, risk, carry-forward item, or reflection..."></textarea>
-                <label>Source label<input name="source_label" placeholder="Call, Le-E chat, meeting note"></label>
-                <label>Capture type<select name="capture_type"><option value="auto_classify">Auto-classify</option><option value="task">Task</option><option value="decision">Decision</option><option value="blocker">Blocker</option><option value="risk">Risk</option><option value="conversation_note">Conversation note</option><option value="brief_input">Brief input</option><option value="reflection_input">Reflection input</option><option value="carry_forward">Carry forward</option><option value="do_not_touch">Do not touch</option><option value="partner_update">Partner update</option><option value="evidence_note">Evidence note</option><option value="idea">Idea</option></select></label>
-                <label>Priority<select name="priority"><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option><option value="low">Low</option></select></label>
-                <label>Linked partner<input name="linked_partner" placeholder="Optional"></label>
-                <label>Linked workflow<input name="linked_workflow" placeholder="RCAP, Growth, Proof"></label>
-                <div class="card-actions"><button class="primary" type="submit">Capture with Le-E</button><button type="button" onclick="location.hash='capture-inbox'">Open Capture Inbox</button></div>
-              </form>
-            </section>
+            \${cockpitQuickCaptureHtml()}
             <section class="cockpit-card">
-              <div class="cockpit-card-head"><h2>Threads Open</h2><small>Waiting on Roger</small></div>
-              <div class="thread-list">\${threads.map(thread => \`<button class="thread" type="button" onclick="location.hash='\${esc(thread.href)}'"><strong>\${esc(thread.name)}</strong><span>\${esc(thread.context)}. \${esc(thread.need)}</span><span class="thread-age">\${esc(thread.age)}</span></button>\`).join("") || '<div class="empty-calm">No open people threads need attention right now.</div>'}</div>
+              <div class="cockpit-card-head"><h2>Needs Follow-Up</h2><small>Waiting on you</small></div>
+              <div class="follow-up-filters" aria-label="Follow-up filters">
+                <button class="active" type="button" onclick="filterTodayFollowups('all')">All</button>
+                <button type="button" onclick="filterTodayFollowups('partners')">Partners</button>
+                <button type="button" onclick="filterTodayFollowups('tasks')">Tasks</button>
+                <button type="button" onclick="filterTodayFollowups('proof')">Proof</button>
+              </div>
+              <div class="thread-list">\${threads.slice(0, 3).map(thread => \`<button class="thread" type="button" data-followup-category="\${esc(thread.category || "tasks")}" onclick="location.hash='\${esc(thread.href)}'"><strong>\${esc(cockpitFollowUpTitle(thread))}</strong><span>\${esc(cockpitFollowUpContext(thread))}</span><span class="follow-up-tag">\${esc(cockpitFollowUpCategoryLabel(thread))}</span><span class="thread-age">\${esc(thread.age)}</span></button>\`).join("") || '<div class="empty-calm">No open people threads need attention right now.</div>'}</div>
+              <button class="follow-up-view-all" type="button" onclick="location.hash='tasks'">View all follow-ups</button>
             </section>
             <section class="cockpit-card">
               <div class="cockpit-card-head"><h2>Parked</h2><small>Do not carry these mentally</small></div>
               <div class="parked-list">\${parked.map(item => \`<button class="parked-item" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(item.title)}</strong><span>\${esc(item.reason)}</span></button>\`).join("") || '<div class="empty-calm">Nothing is parked. No blocked work needs mental space.</div>'}</div>
             </section>
             <section class="cockpit-card">
-              <div class="cockpit-card-head"><h2>This Week Moved</h2><small>Outcomes, not outputs</small></div>
-              <div class="moved-list">\${moved.map(item => \`<button class="moved-row" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(item.title)}</strong><span>\${esc(item.detail)}</span><span>\${esc(item.day)}</span></button>\`).join("") || '<div class="empty-calm">No proof-worthy movement logged this week yet.</div>'}</div>
+              <div class="cockpit-card-head"><h2>What Moved</h2><small>Outcomes, not outputs</small></div>
+              <div class="moved-list">\${moved.map(item => \`<button class="moved-row" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail))}</span><span>\${esc(item.day)}</span></button>\`).join("") || '<div class="empty-calm">No movement logged yet today.</div>'}</div>
             </section>
             </aside>
           </section>
@@ -22336,6 +22538,20 @@ function htmlShell() {
         return;
       }
       toast("Parked for now. Le-E will keep the thread available.");
+    }
+
+    function filterTodayFollowups(category = "all") {
+      const normalized = String(category || "all").toLowerCase();
+      const buttons = document.querySelectorAll(".follow-up-filters button");
+      buttons.forEach(button => button.classList.toggle("active", String(button.textContent || "").toLowerCase() === normalized || (normalized === "all" && String(button.textContent || "").toLowerCase() === "all")));
+      const rows = document.querySelectorAll("[data-followup-category]");
+      let visible = 0;
+      rows.forEach(row => {
+        const show = normalized === "all" || row.dataset.followupCategory === normalized;
+        row.hidden = !show;
+        if (show) visible += 1;
+      });
+      if (!visible && rows.length) toast("No follow-ups in that lane right now.");
     }
 
     function tickCockpitClock() {

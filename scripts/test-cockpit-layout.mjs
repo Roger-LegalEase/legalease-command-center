@@ -26,11 +26,11 @@ assert.match(server, /layout: cockpit-grid-fixed-v1/, "Today footer should expos
 const mainStart = overview.indexOf('<main class="cockpit-main">');
 const railStart = overview.indexOf('<aside class="cockpit-rail">');
 const nowStart = overview.indexOf('<section class="now-block"');
-const quickStart = overview.indexOf("Quick Capture");
-const threadsStart = overview.indexOf("Threads Open");
+const quickStart = overview.indexOf("cockpitQuickCaptureHtml()");
+const threadsStart = overview.indexOf("Needs Follow-Up");
 assert.ok(mainStart !== -1 && railStart !== -1, "Main and rail columns should both exist.");
 assert.ok(nowStart > mainStart && nowStart < railStart, "Now block should be inside cockpit-main before cockpit-rail.");
 assert.ok(quickStart > railStart, "Quick Capture should be inside cockpit-rail.");
-assert.ok(threadsStart > railStart, "Threads Open should be inside cockpit-rail.");
+assert.ok(threadsStart > railStart, "Needs Follow-Up should be inside cockpit-rail.");
 
 console.log("cockpit layout tests passed");
