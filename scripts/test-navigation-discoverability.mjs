@@ -75,7 +75,7 @@ for (const block of [partnersPage, sectionConfig]) {
   assert(block.includes("RCAP Program"), "Partners/More surfaces should include RCAP Program access");
   assert(block.includes("Open RCAP Program"), "Partners/More surfaces should include Open RCAP Program button text");
 }
-assert(partnersPage.includes("Review Record Clearing Access Program partner materials before anything goes partner-facing."), "Partners page should describe the RCAP Program clearly");
+assert(partnersPage.includes("Record Clearing Access Program partner review workspace."), "Partners page should describe the RCAP Program clearly");
 assert(sectionConfig.includes("Record Clearing Access Program review workspace"), "More page should describe the RCAP Program utility row");
 
 for (const label of [

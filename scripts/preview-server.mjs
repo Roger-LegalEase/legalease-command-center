@@ -13481,6 +13481,53 @@ function htmlShell() {
     .growth-row strong { display:block; color:var(--text-primary); font-size:13px; line-height:1.25; }
     .growth-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; }
     .growth-row .pill-urgent { justify-self:start; margin-top:4px; }
+    .partners-workspace { display:grid; gap:18px; width:100%; max-width:1240px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
+    .partners-workspace * { box-sizing:border-box; min-width:0; }
+    .partners-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
+    .partners-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
+    .partners-hero p { margin:8px 0 0; max-width:760px; color:var(--text-secondary); font-size:15px; line-height:1.45; }
+    .partners-hero-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
+    .partners-hero-actions button { min-height:38px; padding:0 14px; font-size:13px; }
+    .partners-pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .partners-pill { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border-default); border-radius:999px; background:rgba(255,255,255,.72); color:var(--text-secondary); padding:6px 10px; font-size:12px; font-weight:800; }
+    .partners-pill::before { content:""; width:7px; height:7px; border-radius:999px; background:var(--accent); }
+    .partner-summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; }
+    .partner-summary-card { border:1px solid var(--border-light); border-radius:17px; background:#fff; padding:13px; display:grid; gap:5px; box-shadow:0 10px 24px rgba(0,38,36,.04); }
+    .partner-summary-card span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .partner-summary-card strong { color:var(--text-primary); font-size:26px; line-height:1; }
+    .partner-summary-card small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
+    .partner-summary-card.urgent { border-left:4px solid var(--urgent); }
+    .partner-work-grid { display:grid; grid-template-columns:minmax(0,1.28fr) minmax(320px,.82fr); gap:18px; align-items:start; }
+    .partner-stack { display:grid; gap:16px; min-width:0; }
+    .partner-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:17px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:13px; min-width:0; overflow:hidden; }
+    .partner-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .partner-card-head h2 { margin:0; color:var(--text-primary); font-size:20px; line-height:1.15; letter-spacing:-.01em; }
+    .partner-card-head small { color:var(--text-tertiary); font-size:12px; line-height:1.35; text-align:right; }
+    .partner-card-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .partner-card-actions button { min-height:32px; padding:0 10px; font-size:12px; }
+    .partner-program-card { border:1px solid rgba(0,169,157,.18); border-radius:17px; background:#fbfefd; padding:14px; display:grid; gap:11px; }
+    .partner-program-card h3 { margin:0; color:var(--text-primary); font-size:17px; line-height:1.2; }
+    .partner-facts { margin:0; padding:0; list-style:none; display:grid; gap:7px; color:var(--text-secondary); font-size:13px; line-height:1.35; }
+    .partner-facts li { display:grid; grid-template-columns:18px minmax(0,1fr); gap:7px; }
+    .partner-facts li::before { content:""; width:8px; height:8px; border-radius:999px; margin-top:5px; background:var(--accent); }
+    .partner-list { display:grid; gap:9px; }
+    .partner-row { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:11px; display:grid; grid-template-columns:minmax(0,1fr); gap:10px; align-items:start; }
+    .partner-row strong { display:block; color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
+    .partner-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
+    .partner-row .badge { justify-self:start; margin-top:4px; }
+    .partner-pipeline { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; align-items:start; }
+    .partner-stage { border:1px solid var(--border-light); border-radius:17px; background:#fbfefd; padding:12px; display:grid; gap:10px; align-content:start; min-height:150px; }
+    .partner-stage h3 { margin:0; display:flex; justify-content:space-between; gap:8px; align-items:center; color:var(--text-primary); font-size:14px; line-height:1.2; }
+    .partner-mini-card { border:1px solid var(--border-light); border-radius:13px; background:#fff; padding:11px; display:grid; gap:7px; }
+    .partner-mini-card strong { color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
+    .partner-mini-card span { color:var(--text-tertiary); font-size:11.5px; line-height:1.35; overflow-wrap:break-word; }
+    .partner-proof-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px; }
+    .add-partner-details summary { list-style:none; cursor:pointer; display:flex; justify-content:space-between; gap:12px; align-items:center; border:1px solid var(--border-light); border-radius:16px; background:#fbfefd; padding:12px 14px; }
+    .add-partner-details summary::-webkit-details-marker { display:none; }
+    .add-partner-details summary strong { display:block; color:var(--text-primary); }
+    .add-partner-details summary small { display:block; color:var(--text-tertiary); margin-top:2px; }
+    @media (max-width:1180px) { .partner-summary-grid,.partner-pipeline { grid-template-columns:repeat(3,minmax(0,1fr)); } .partner-work-grid,.partners-hero { grid-template-columns:1fr; } .partners-hero-actions { justify-content:flex-start; } }
+    @media (max-width:760px) { .partners-workspace { padding:18px 16px 96px; } .partner-summary-grid,.partner-pipeline { grid-template-columns:1fr; } .partner-row { grid-template-columns:1fr; } }
     @media (max-width:1100px) { .growth-summary-grid,.growth-board { grid-template-columns:repeat(2,minmax(0,1fr)); } .growth-main-grid,.growth-hero { grid-template-columns:1fr; } .growth-hero-actions { justify-content:flex-start; } }
     @media (max-width:640px) { .growth-workspace { padding:18px 16px 96px; } .growth-summary-grid,.growth-board { grid-template-columns:1fr; } .growth-row { grid-template-columns:1fr; } }
     .settings-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; align-items:start; }
@@ -20960,39 +21007,147 @@ function htmlShell() {
 
     function partnersPageHtml(pageClass) {
       const stages = ["lead", "qualified", "intro_scheduled", "proposal_sent", "pilot_scoped", "contract_pending", "active_pilot", "reporting", "renewal", "case_study", "expansion", "stalled", "lost"];
+      const pipelineStages = [
+        ["lead", "Lead"],
+        ["qualified", "Qualified"],
+        ["intro_scheduled", "Intro Scheduled"],
+        ["proposal_sent", "Proposal Sent"],
+        ["active", "Active"],
+        ["stalled", "Stalled"]
+      ];
       const partnerTypes = ["nonprofit", "county", "city", "funder", "workforce", "reentry", "legal_aid", "investor", "enterprise"];
       const partners = growthItems("partners").map(partner => normalizePartnerLifecycle(partner));
       const lifecycle = partnerLifecycleInsights({ ...state, partners });
-      function partnerDocuments(partner = {}) {
-        const needles = [partner.id, partner.name, partner.organizationName].filter(Boolean).map(value => String(value).toLowerCase());
-        return growthItems("dataRoomItems").filter(item => {
-          const text = [item.partnerId, item.relatedPartnerId, item.title, item.notes, item.filePath, item.link].filter(Boolean).join(" ").toLowerCase();
-          return needles.some(value => text.includes(value));
-        }).slice(0, 5);
-      }
-      function partnerReports(partner = {}) {
-        const first = String(partner.name || "").toLowerCase().split(" ")[0];
-        return growthItems("reports").filter(report => report.partnerId === partner.id || report.relatedPartnerId === partner.id || partner.relatedReports?.includes?.(report.id) || (first && String(report.reportTitle || report.title || "").toLowerCase().includes(first))).slice(0, 5);
-      }
-      function partnerTimeline(partner = {}) {
-        const events = [
-          ...(partner.history || []).map(entry => ({ at: entry.at || entry.timestamp || partner.updatedAt, title: entry.action || "Partner update", detail: entry.note || "" })),
-          ...growthItems("activityEvents").filter(event => event.relatedObjectType === "partners" && event.relatedObjectId === partner.id).map(event => ({ at:event.createdAt, title:event.eventType, detail:event.title })),
-          ...growthItems("events").filter(event => event.objectType === "partner" && event.objectId === partner.id).map(event => ({ at:event.timestamp || event.createdAt, title:event.eventType || event.action, detail:event.nextAction || "" }))
-        ].filter(event => event.title).sort((a, b) => String(b.at || "").localeCompare(String(a.at || ""))).slice(0, 8);
-        return events.length ? events.map(event => \`<div class="metric-row"><span>\${esc(event.at || "No date")}</span><strong>\${esc(event.title)}\${event.detail ? " · " + esc(event.detail) : ""}</strong></div>\`).join("") : '<div class="empty">No lifecycle history yet. Save a partner update to start the timeline.</div>';
-      }
-      return growthHero(pageClass, "partners", "Partner operations", "Partners", "Move priority organizations through owned stages, evidence, reports, and renewal paths.") + \`
-        <section class="panel section">
-          <div class="simple-panel-head"><h2>RCAP Program</h2><span class="badge warn">Needs review</span></div>
-          <p class="muted">Review Record Clearing Access Program partner materials before anything goes partner-facing.</p>
-          <div class="card-actions">
-            <button class="primary" type="button" onclick="location.hash='rcap'">Open RCAP Program</button>
-            <button type="button" onclick="document.getElementById('partner-followups')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Follow-ups</button>
-            <button type="button" onclick="location.hash='partner-reports'">Review Partner Proof</button>
+      const today = new Date().toISOString().slice(0, 10);
+      const programs = state.partnerPrograms || [];
+      const partnerName = partner => partner.organizationName || partner.name || "Unnamed partner";
+      const dueDate = partner => partner.nextActionDueDate || partner.nextFollowUpDate || "";
+      const stageKey = partner => {
+        const stage = String(partner.stage || partner.status || "lead").toLowerCase();
+        if (/stalled|lost|blocked/.test(stage)) return "stalled";
+        if (/active|pilot|reporting|renewal|case_study|expansion/.test(stage)) return "active";
+        if (/proposal|contract|scoped/.test(stage)) return "proposal_sent";
+        if (/intro|meeting|scheduled/.test(stage)) return "intro_scheduled";
+        if (/qualified|warm|fit/.test(stage)) return "qualified";
+        return "lead";
+      };
+      const isDue = partner => !dueDate(partner) || dueDate(partner) <= today || partnerFlags(partner).some(flag => /due|stalled|missing|overdue/i.test(flag.label));
+      const activePartners = partners.filter(partner => stageKey(partner) === "active");
+      const stalledPartners = partners.filter(partner => stageKey(partner) === "stalled" || partnerFlags(partner).some(flag => /stalled|blocked/i.test(flag.label)));
+      const followUps = partners.filter(isDue).slice(0, 5);
+      const proofPartners = (lifecycle.proofWorthyPartners.length ? lifecycle.proofWorthyPartners : partners.filter(partner => /high|strong|critical/i.test(String(partner.proofValue || partner.priority || "")))).slice(0, 4);
+      const programsInReview = programs.filter(program => /review|draft|not_started|needs/i.test(String(program.status || program.reviewStatus || program.readinessStatus || "")));
+      const rcapNeedsReview = true;
+      const summaryCards = [
+        ["Active Partners", activePartners.length, "Programs with real movement.", ""],
+        ["Follow-ups Due", followUps.length, "Partner next steps waiting.", followUps.length ? "urgent" : ""],
+        ["Stalled", stalledPartners.length, "Needs revive, close, or reframe.", stalledPartners.length ? "urgent" : ""],
+        ["Proof-Worthy", proofPartners.length, "Movement worth capturing.", ""],
+        ["Programs in Review", programsInReview.length || 1, "Partner programs before handoff.", programsInReview.length ? "urgent" : ""],
+        ["RCAP Status", "Needs review", "Record Clearing Access Program.", rcapNeedsReview ? "urgent" : ""]
+      ];
+      const partnerPriority = partner => {
+        if (partnerFlags(partner).some(flag => /overdue|stalled|blocked|missing/i.test(flag.label))) return "Pressing";
+        if (/high|critical|strong/i.test(String(partner.priority || partner.proofValue || partner.riskLevel || ""))) return "High";
+        return "Normal";
+      };
+      const pipelinePartners = key => partners.filter(partner => stageKey(partner) === key).slice(0, 4);
+      const defaultPartnerProof = proofPartners.length ? proofPartners : partners.slice(0, 3);
+      return \`<section id="partners" class="\${pageClass("partners")} partners-workspace">
+        <section class="partners-hero">
+          <div>
+            <div class="eyebrow">Partner command center</div>
+            <h1>Partners</h1>
+            <p>Track partner conversations, follow-ups, active programs, and proof-worthy movement.</p>
+            <div class="partners-pills"><span class="partners-pill">Manual follow-up only</span><span class="partners-pill">Publishing is off</span></div>
+          </div>
+          <div class="partners-hero-actions">
+            <button class="primary" type="button" onclick="document.getElementById('add-partner-form')?.setAttribute('open',''); document.getElementById('add-partner-form')?.scrollIntoView({ behavior:'smooth', block:'start' })">Add Partner</button>
+            <button type="button" onclick="document.getElementById('partner-followups')?.scrollIntoView({ behavior:'smooth', block:'start' })">Add Follow-Up</button>
+            <button type="button" onclick="location.hash='rcap'">Open RCAP Program</button>
           </div>
         </section>
-        <details class="panel" open><summary>Add partner</summary>
+
+        <section class="partner-card">
+          <div class="partner-card-head"><div><h2>Partner Summary</h2><small>What needs attention across the partner motion.</small></div></div>
+          <div class="partner-summary-grid">\${summaryCards.map(([label, value, sublabel, tone]) => \`<article class="partner-summary-card \${tone}"><span>\${esc(label)}</span><strong>\${esc(value)}</strong><small>\${esc(sublabel)}</small></article>\`).join("")}</div>
+        </section>
+
+        <div class="partner-work-grid">
+          <div class="partner-stack">
+            <section class="partner-card">
+              <div class="partner-card-head"><div><h2>Next Partner Move</h2><small>The next safe internal step.</small></div><span class="badge warn">Needs decision</span></div>
+              <p><strong>\${followUps.length ? "Follow up with the highest-value stalled partner before adding new outreach." : "Review the RCAP Program details, then decide whether the partner packet is ready for manual handoff."}</strong></p>
+              <p class="muted">\${followUps.length ? "Partner movement compounds when the active conversations stay warm." : "RCAP is the clearest partner program waiting on review, and nothing partner-facing has been sent."}</p>
+              <div class="partner-card-actions">
+                <button class="primary" type="button" onclick="location.hash='rcap'">Open RCAP Program</button>
+                <button type="button" onclick="document.getElementById('partner-followups')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Follow-Ups</button>
+                <button type="button" onclick="document.getElementById('partner-proof')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Partner Proof</button>
+                <button type="button" disabled title="Partner notes are saved from the partner detail form for now.">Add Partner Note</button>
+                <button type="button" disabled title="Move to Tomorrow needs a saved follow-up date first.">Move to Tomorrow</button>
+              </div>
+            </section>
+
+            <section class="partner-card">
+              <div class="partner-card-head"><div><h2>Active Programs</h2><small>Partner programs before anything goes partner-facing.</small></div></div>
+              <article class="partner-program-card">
+                <div class="row"><div><h3>RCAP Program</h3><p class="muted">Record Clearing Access Program partner review workspace.</p></div><span class="badge warn">Needs review</span></div>
+                <ul class="partner-facts">
+                  <li>Partner materials need review</li>
+                  <li>Nothing partner-facing has been sent</li>
+                  <li>Publishing is off</li>
+                </ul>
+                <div class="partner-card-actions">
+                  <button class="primary" type="button" onclick="location.hash='rcap'">Open RCAP Program</button>
+                  <button type="button" onclick="document.getElementById('partner-followups')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Follow-Ups</button>
+                  <button type="button" onclick="document.getElementById('partner-proof')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Partner Proof</button>
+                </div>
+              </article>
+            </section>
+
+            <section id="partner-followups" class="partner-card">
+              <div class="partner-card-head"><div><h2>Follow-Ups</h2><small>Partner actions waiting on Roger.</small></div></div>
+              <div class="partner-list">\${followUps.map(partner => \`<article class="partner-row">
+                <div><strong>\${esc(partnerName(partner))}</strong><span>\${esc(partnerNextAction(partner))}</span><span>\${esc(dueDate(partner) ? "Due " + dueDate(partner) : "Due date missing")} · \${esc(growthLabel(partner.stage || partner.status || "lead"))}</span><span class="badge \${partnerPriority(partner) === "Pressing" ? "warn" : "info"}">\${esc(partnerPriority(partner))}</span></div>
+                <div class="partner-card-actions"><button type="button" onclick="quickPartnerStatus('\${esc(partner.id)}', 'qualified')">Mark Contacted</button><button type="button" disabled title="Add a note from the partner detail form for now.">Add Note</button><button type="button" disabled title="Choose a new due date from the partner form first.">Move to Tomorrow</button><button type="button" onclick="document.getElementById('partner-card-\${esc(partner.id)}')?.scrollIntoView({ behavior:'smooth', block:'center' })">Open Partner</button></div>
+              </article>\`).join("") || '<div class="empty">No partner follow-ups due right now.</div>'}</div>
+            </section>
+          </div>
+
+          <aside class="partner-stack">
+            <section id="partner-proof" class="partner-card">
+              <div class="partner-card-head"><div><h2>Partner Proof</h2><small>Movement that can become proof, posts, reports, or investor updates.</small></div></div>
+              <div class="partner-list">\${defaultPartnerProof.map(partner => \`<article class="partner-row">
+                <div><strong>\${esc(partnerName(partner))}</strong><span>\${esc(partner.notes || partner.nextAction || "Partner movement worth capturing.")}</span><span>Recommended use: proof note or investor update</span></div>
+                <div class="partner-card-actions"><button type="button" onclick="location.hash='proof'">Add Partner Win</button><button type="button" onclick="location.hash='proof'">Turn into Proof</button><button type="button" onclick="location.hash='growth'">Turn into Post</button><button type="button" onclick="location.hash='more'">Add to Investor Update</button></div>
+              </article>\`).join("") || '<div class="empty">No partner proof moments yet. Capture movement when a partner creates evidence.</div>'}</div>
+            </section>
+            <section class="partner-card">
+              <div class="partner-card-head"><div><h2>Stalled Partners</h2><small>Relationships that need a revive, close, or reframe.</small></div></div>
+              <div class="partner-list">\${stalledPartners.slice(0, 4).map(partner => \`<article class="partner-row">
+                <div><strong>\${esc(partnerName(partner))}</strong><span>\${esc(partnerNextAction(partner))}</span><span class="badge warn">Needs attention</span></div>
+                <div class="partner-card-actions"><button type="button" onclick="document.getElementById('partner-card-\${esc(partner.id)}')?.scrollIntoView({ behavior:'smooth', block:'center' })">Open Partner</button><button type="button" disabled title="Move the partner from the pipeline card for now.">Move Stage</button></div>
+              </article>\`).join("") || '<div class="empty">No stalled partners right now.</div>'}</div>
+            </section>
+          </aside>
+        </div>
+
+        <section id="partner-pipeline" class="partner-card">
+          <div class="partner-card-head"><div><h2>Partner Pipeline</h2><small>Move partners through clear relationship stages.</small></div></div>
+          <div class="partner-pipeline">\${pipelineStages.map(([key, label]) => {
+            const items = pipelinePartners(key);
+            return \`<section class="partner-stage"><h3>\${esc(label)}<span class="badge info">\${items.length}</span></h3>\${items.map(partner => \`<article id="partner-card-\${esc(partner.id)}" class="partner-mini-card">
+              <strong>\${esc(partnerName(partner))}</strong>
+              <span>\${esc(growthLabel(partner.type || partner.partnerType || "partner"))} · Owner: \${esc(partner.owner || "Unassigned")}</span>
+              <span>Last touch: \${esc(partner.lastTouchDate || "TBD")} · Next: \${esc(partnerNextAction(partner))}</span>
+              <span>Proof value: \${esc(growthLabel(partner.proofValue || partner.priority || "medium"))}</span>
+              <div class="partner-card-actions"><button type="button" onclick="document.getElementById('partner-card-\${esc(partner.id)}')?.scrollIntoView({ behavior:'smooth', block:'center' })">Open Partner</button><button type="button" disabled title="Partner notes are saved from the form for now.">Add Note</button><button type="button" onclick="quickPartnerStatus('\${esc(partner.id)}', 'proposal_sent')">Move Stage</button></div>
+            </article>\`).join("") || '<div class="empty">No partners in this stage.</div>'}</section>\`;
+          }).join("")}</div>
+        </section>
+
+        <details id="add-partner-form" class="partner-card add-partner-details">
+          <summary><span><strong>Add Partner</strong><small>Add a new partner prospect or program.</small></span><span class="badge info">Open Add Partner Form</span></summary>
           <form class="mini-form" style="margin-top:12px" onsubmit="savePartner(event)">
             <label>Organization<input name="organizationName" required></label>
             <label>Type<select name="partnerType">\${partnerTypes.map(type => \`<option value="\${type}">\${growthLabel(type)}</option>\`).join("")}</select></label>
@@ -21010,45 +21165,6 @@ function htmlShell() {
             <button class="primary">Add partner</button>
           </form>
         </details>
-        <div class="grid three section">
-          <article class="card"><span class="eyebrow">Lifecycle</span><h2>\${partners.length}</h2><p class="muted">Tracked partners with owners, stages, and next actions.</p></article>
-          <article class="card"><span class="eyebrow">Stalled</span><h2>\${lifecycle.stalledPartners.length}</h2><p class="muted">Surfaced in the COO Brief until revived, closed, or reframed.</p></article>
-          <article class="card"><span class="eyebrow">Proof-worthy</span><h2>\${lifecycle.proofWorthyPartners.length}</h2><p class="muted">Partner movement ready for evidence notes, reports, or case studies.</p></article>
-        </div>
-        <div class="section board-columns">\${stages.slice(0, 10).map(stage => {
-          const items = partners.filter(item => item.stage === stage);
-          return \`<section class="board-column"><h3>\${esc(growthLabel(stage))}<span class="badge info">\${items.length}</span></h3>\${items.map(partner => {
-            const flags = partnerFlags(partner);
-            const tasks = relatedTasks("partners", partner.id).filter(taskStatusOpen);
-            const docs = partnerDocuments(partner);
-            const reports = partnerReports(partner);
-            const draft = partnerFollowUpDraft(partner);
-            return \`<article class="card compact-card">
-              \${(() => { const q = partnerQualification(partner); return \`<div class="row"><span class="badge \${partner.priority === "high" ? "warn" : "info"}">\${esc(growthLabel(partner.priority || "medium"))}</span><span class="badge \${q.score >= 75 ? "good" : q.score >= 50 ? "warn" : "danger"}">Q \${q.score}</span><span class="badge info">Proof L\${proofScoreForItem(partner, "partner")}</span>\${flags.slice(0, 2).map(flag => \`<span class="badge \${flag.tone}">\${esc(flag.label)}</span>\`).join("")}</div>\`; })()}
-              <h3>\${esc(partner.name || partner.organizationName)}</h3>
-              <p class="muted">\${esc(growthLabel(partner.type || partner.partnerType || "partner"))} · \${esc(partner.regionState || "region TBD")}<br>Owner: \${esc(partner.owner || "Unassigned")} · Last touch: \${esc(partner.lastTouchDate || "TBD")}<br>Next due: \${esc(partner.nextActionDueDate || partner.nextFollowUpDate || "Due date missing")}</p>
-              <p><strong>Next:</strong> \${esc(partnerNextAction(partner))}</p>
-              <p class="muted">Revenue: $\${Number(partner.revenuePotential || partner.expectedValue || 0).toLocaleString()} · Risk: \${esc(growthLabel(partner.riskLevel || "medium"))}</p>
-              <details><summary>Partner detail</summary>
-                <div class="metric-table">
-                  <div class="metric-row"><span>Documents/artifacts</span><strong>\${docs.length ? docs.map(doc => esc(doc.title)).join(" · ") : "No linked artifacts"}</strong></div>
-                  <div class="metric-row"><span>Reports</span><strong>\${reports.length ? reports.map(report => esc(report.reportTitle || report.title)).join(" · ") : "No linked reports"}</strong></div>
-                  <div class="metric-row"><span>Open tasks</span><strong>\${tasks.length ? tasks.map(task => esc(task.title)).join(" · ") : "No open tasks"}</strong></div>
-                </div>
-                <h3>Timeline</h3>
-                <div class="metric-table">\${partnerTimeline(partner)}</div>
-                <h3>Suggested follow-up draft</h3>
-                <p class="muted">Draft only. It requires approval before sending.</p>
-                <pre class="code-block">\${esc(draft.subject + "\\n\\n" + draft.body)}</pre>
-              </details>
-              <div class="card-actions"><button onclick="quickPartnerStatus('\${partner.id}', 'proposal_sent')">Proposal sent</button><button onclick="quickPartnerStatus('\${partner.id}', 'active_pilot')">Active pilot</button><button onclick="quickPartnerStatus('\${partner.id}', 'reporting')">Reporting</button></div>
-            </article>\`;
-          }).join("") || '<div class="empty">No partners in this stage. Add or move a partner when there is a real next step.</div>'}</section>\`;
-        }).join("")}</div>
-        <details id="partner-followups" class="panel section"><summary>Table view, due follow-ups, and stalled partners</summary><div class="ops-table" style="margin-top:12px">
-          <div class="ops-row header"><span>Partner</span><span>Stage</span><span>Owner</span><span>Next due</span><span>Flags</span><span>Next action</span></div>
-          \${partners.map(partner => \`<div class="ops-row"><strong>\${esc(partner.name || partner.organizationName)}</strong><span class="badge \${growthTone(partner.stage || partner.status)}">\${esc(growthLabel(partner.stage || partner.status))}</span><span>\${esc(partner.owner || "Unassigned")}</span><span>\${esc(partner.nextActionDueDate || partner.nextFollowUpDate || "Due date missing")}</span><span>\${partnerFlags(partner).map(flag => esc(flag.label)).join(" · ") || "Clear"}</span><span class="muted">\${esc(partnerNextAction(partner))}</span></div>\`).join("") || '<div class="empty">Add your first partner target. Start with organizations that can send users or validate infrastructure value.</div>'}
-        </div></details>
       </section>\`;
     }
 
