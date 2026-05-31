@@ -12109,8 +12109,7 @@ function soc2EvidenceReviewPatch(action = "", input = {}, now = new Date().toISO
   return patch;
 }
 
-function soc2EvidenceReviewAuditEntries(previous = {}, item = {}, now = new Date().toISOString(), action = "") {
-  const normalizedAction = String(action || "").toLowerCase().replaceAll("-", "_");
+function soc2EvidenceReviewAuditEntries(previous = {}, item = {}, now = new Date().toISOString()) {
   const entries = [];
   const add = (action) => entries.push({
     id: "soc2-audit-" + crypto.randomUUID().slice(0, 10),
@@ -12125,11 +12124,8 @@ function soc2EvidenceReviewAuditEntries(previous = {}, item = {}, now = new Date
     ip: "local",
     userAgent: "preview-server"
   });
-  if ((normalizedAction === "mark_ready" || normalizedAction === "ready") && item.evidenceStatus === "Ready for Review") {
-    add("evidence marked ready for review");
-  }
   if (previous.evidenceStatus !== item.evidenceStatus) {
-    if (item.evidenceStatus === "Ready for Review" && normalizedAction !== "mark_ready" && normalizedAction !== "ready") add("evidence marked ready for review");
+    if (item.evidenceStatus === "Ready for Review") add("evidence marked ready for review");
     if (item.evidenceStatus === "Approved") add("evidence approved");
     if (item.evidenceStatus === "Rejected") add("evidence rejected");
     if (item.evidenceStatus === "Archived") add("evidence archived");
@@ -12156,7 +12152,7 @@ async function reviewSoc2Evidence(id = "", input = {}) {
       updatedAt: now
     };
     if (item.evidenceStatus === "Approved" && !item.reviewedAt) item.reviewedAt = now;
-    const auditEntries = soc2EvidenceReviewAuditEntries(previous, normalizedSoc2Evidence(item), now, input.action);
+    const auditEntries = soc2EvidenceReviewAuditEntries(previous, normalizedSoc2Evidence(item), now);
     const nextState = {
       ...state,
       soc2Evidence: [item, ...evidence.filter((entry) => entry.id !== id)],
@@ -13428,102 +13424,6 @@ function htmlShell() {
       .founder-snapshot-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
     }
 
-    /* Commercial founder command center shell */
-    :root {
-      --command-bg:#F6F7F9;
-      --command-sidebar:#0F172A;
-      --command-sidebar-soft:#182338;
-      --command-card:#FFFFFF;
-      --command-border:#E5E7EB;
-      --command-text:#111827;
-      --command-muted:#667085;
-      --command-blue:#2563EB;
-      --command-orange:#F97316;
-      --command-green:#16A34A;
-      --command-shadow:0 18px 45px rgba(15,23,42,.08);
-    }
-    body { background:var(--command-bg); color:var(--command-text); font-family:"Geist",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-    .commercial-shell { display:grid; grid-template-columns:264px minmax(0,1fr); min-height:100vh; background:var(--command-bg); }
-    .commercial-sidebar { position:sticky; top:0; height:100vh; background:linear-gradient(180deg,#0F172A 0%,#111827 100%); color:white; padding:20px 14px; display:flex; flex-direction:column; gap:18px; z-index:20; box-shadow:12px 0 40px rgba(15,23,42,.16); }
-    .sidebar-brand { display:flex; align-items:center; gap:12px; padding:6px 8px 14px; border-bottom:1px solid rgba(255,255,255,.1); text-decoration:none; color:white; }
-    .brand-mark { width:38px; height:38px; border-radius:12px; display:grid; place-items:center; background:linear-gradient(135deg,var(--command-blue),var(--command-orange)); color:white; font-weight:900; box-shadow:0 12px 24px rgba(37,99,235,.28); }
-    .sidebar-brand strong { display:block; font-size:14px; letter-spacing:0; }
-    .sidebar-brand span:last-child { color:#CBD5E1; font-size:12px; font-weight:650; }
-    .sidebar-label { margin:6px 10px 2px; color:#94A3B8; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.12em; }
-    .sidebar-nav { display:grid; gap:5px; }
-    .sidebar-link { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:38px; border-radius:12px; padding:0 11px; color:#DDE6F3; text-decoration:none; font-size:14px; font-weight:760; border:1px solid transparent; }
-    .sidebar-link:hover { background:rgba(255,255,255,.08); color:white; }
-    .sidebar-link.active { background:white; color:#0F172A; box-shadow:0 12px 28px rgba(0,0,0,.18); }
-    .sidebar-link small { color:inherit; opacity:.66; font-weight:850; }
-    .sidebar-secondary { margin-top:auto; display:grid; gap:5px; padding-top:12px; border-top:1px solid rgba(255,255,255,.1); }
-    .sidebar-safety { display:grid; gap:8px; padding:12px; border:1px solid rgba(255,255,255,.1); border-radius:16px; background:rgba(255,255,255,.06); }
-    .sidebar-safety .founder-pill { background:rgba(22,163,74,.14); border-color:rgba(22,163,74,.26); color:#BBF7D0; width:max-content; }
-    .commercial-main { min-width:0; display:grid; grid-template-rows:auto minmax(0,1fr); }
-    .command-bar { position:sticky; top:0; z-index:15; display:flex; align-items:center; justify-content:space-between; gap:14px; min-height:72px; padding:14px 24px; background:rgba(246,247,249,.86); border-bottom:1px solid rgba(229,231,235,.86); backdrop-filter:blur(18px); }
-    .command-search { flex:1 1 auto; max-width:620px; display:flex; align-items:center; gap:10px; min-height:44px; border:1px solid var(--command-border); border-radius:999px; background:white; padding:0 14px; box-shadow:0 8px 22px rgba(15,23,42,.04); }
-    .command-search span { color:var(--command-muted); font-size:13px; font-weight:760; }
-    .command-search input { border:0; padding:0; min-height:40px; background:transparent; outline:0; }
-    .command-actions { display:flex; align-items:center; gap:9px; flex-wrap:wrap; justify-content:flex-end; }
-    .command-action { border-radius:999px; min-height:40px; padding:0 14px; border-color:var(--command-border); background:white; color:var(--command-text); box-shadow:0 8px 20px rgba(15,23,42,.04); }
-    .command-action.primary { background:var(--command-blue); color:white; border-color:var(--command-blue); }
-    .owner-pill { display:inline-flex; align-items:center; gap:8px; min-height:36px; padding:0 12px; border-radius:999px; background:#ECFDF3; color:#067647; border:1px solid #ABEFC6; font-size:12px; font-weight:850; white-space:nowrap; }
-    .app-topbar, body > .shell > div > header { display:none !important; }
-    .workspace-shell, .founder-today, .founder-hub { max-width:1360px; padding:24px 28px 112px; }
-    .workspace-hero, .standup-header { border:1px solid var(--command-border); border-radius:24px; background:linear-gradient(135deg,#fff 0%,#F8FAFC 62%,#EEF4FF 100%); padding:22px; box-shadow:var(--command-shadow); display:flex; justify-content:space-between; gap:20px; align-items:flex-start; }
-    .workspace-hero h1, .standup-header h1 { margin:0; color:var(--command-text); font-size:38px; line-height:1; letter-spacing:0; }
-    .workspace-hero p, .standup-header p { margin:8px 0 0; color:var(--command-muted); max-width:720px; }
-    .premium-card, .workspace-card, .founder-card, .department-card { border:1px solid var(--command-border); background:var(--command-card); border-radius:22px; padding:18px; box-shadow:0 14px 34px rgba(15,23,42,.055); }
-    .premium-card header, .workspace-card header, .department-card header { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
-    .premium-card h2, .workspace-card h2, .department-card h2, .founder-card h2 { margin:0; font-size:17px; color:var(--command-text); }
-    .department-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
-    .department-card { display:grid; gap:14px; text-decoration:none; color:inherit; transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease; }
-    .department-card:hover { transform:translateY(-2px); border-color:#C7D7FE; box-shadow:0 20px 42px rgba(37,99,235,.11); }
-    .department-card strong { font-size:26px; color:var(--command-text); }
-    .department-meta { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-    .department-meta div { border:1px solid #EEF2F7; border-radius:16px; padding:11px; background:#F8FAFC; }
-    .department-meta span { display:block; color:var(--command-muted); font-size:12px; font-weight:800; }
-    .standup-grid { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr); gap:16px; align-items:start; }
-    .standup-board { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; }
-    .standup-board .premium-card { min-height:146px; padding:14px; }
-    .workspace-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
-    .workspace-grid.three { grid-template-columns:repeat(3,minmax(0,1fr)); }
-    .workspace-tabs { display:flex; gap:8px; flex-wrap:wrap; margin:0; }
-    .workspace-tabs .badge { border-radius:999px; background:#F8FAFC; }
-    .premium-empty { border:1px dashed #CBD5E1; border-radius:18px; background:#F8FAFC; padding:18px; color:var(--command-muted); }
-    .lee-floating-bubble { position:fixed; right:24px; bottom:24px; z-index:60; }
-    .lee-assistant-window { position:fixed; right:24px; bottom:92px; width:min(430px,calc(100vw - 32px)); max-height:min(720px,calc(100vh - 124px)); overflow:hidden; border-radius:24px; border:1px solid rgba(15,23,42,.12); background:white; box-shadow:0 28px 80px rgba(15,23,42,.28); display:grid; grid-template-rows:auto minmax(0,1fr); }
-    .lee-assistant-window[hidden] { display:none; }
-    .lee-assistant-head { padding:18px; color:white; background:linear-gradient(135deg,#0F172A,#2563EB 72%,#F97316); display:flex; justify-content:space-between; gap:14px; align-items:flex-start; }
-    .lee-assistant-head h2 { margin:0; font-size:22px; color:white; }
-    .lee-assistant-head p { margin:4px 0 0; color:#DBEAFE; font-size:13px; }
-    .lee-window-actions { display:flex; gap:8px; }
-    .lee-window-actions button { width:34px; height:34px; min-height:34px; border-radius:999px; border-color:rgba(255,255,255,.28); background:rgba(255,255,255,.12); color:white; }
-    .lee-assistant-body { padding:16px; overflow:auto; display:grid; gap:14px; }
-    .lee-quick-actions { display:flex; flex-wrap:wrap; gap:8px; }
-    .lee-quick-actions button { border-radius:999px; min-height:34px; background:#F8FAFC; text-transform:none; font-family:inherit; font-size:12px; }
-    .lee-floating-button { min-height:54px; min-width:54px; border:0; border-radius:999px; background:linear-gradient(135deg,var(--command-blue),var(--command-orange)); color:white; box-shadow:0 18px 44px rgba(37,99,235,.32); padding:0 18px; display:flex; align-items:center; gap:9px; font-family:inherit; text-transform:none; letter-spacing:0; }
-    .lee-floating-button span:last-child { font-weight:850; }
-    .lee-status-copy { border:1px solid #DBEAFE; background:#EFF6FF; color:#1D4ED8; border-radius:16px; padding:12px; font-size:13px; line-height:1.45; }
-    @media (max-width:1100px) {
-      .commercial-shell { grid-template-columns:88px minmax(0,1fr); }
-      .sidebar-brand span:not(.brand-mark), .sidebar-label, .sidebar-link small, .sidebar-link span.label, .sidebar-safety { display:none; }
-      .sidebar-link { justify-content:center; }
-      .department-grid, .workspace-grid.three { grid-template-columns:repeat(2,minmax(0,1fr)); }
-      .standup-grid { grid-template-columns:1fr; }
-    }
-    @media (max-width:760px) {
-      .commercial-shell { grid-template-columns:1fr; }
-      .commercial-sidebar { position:relative; height:auto; padding:12px; }
-      .sidebar-nav { grid-template-columns:repeat(4,minmax(0,1fr)); }
-      .sidebar-secondary { grid-template-columns:repeat(3,minmax(0,1fr)); margin-top:0; }
-      .command-bar { position:relative; align-items:stretch; flex-direction:column; }
-      .command-search { max-width:100%; }
-      .department-grid, .workspace-grid, .workspace-grid.three, .standup-board { grid-template-columns:1fr; }
-      .workspace-hero, .standup-header { display:grid; }
-      .lee-assistant-window { right:12px; left:12px; width:auto; bottom:84px; }
-      .lee-floating-bubble { right:16px; bottom:16px; }
-    }
-
     /* Production shell QA guardrails */
     html, body, .shell, #app { width:100%; max-width:100%; overflow-x:hidden; }
     #app { padding-bottom:96px; }
@@ -13631,42 +13531,23 @@ function htmlShell() {
   </style>
 </head>
 <body>
-  <div class="shell commercial-shell">
-    <aside class="commercial-sidebar" aria-label="LegalEase navigation">
-      <a class="sidebar-brand" href="#today" data-route-target="today"><span class="brand-mark">Le</span><span><strong>LegalEase OS</strong><span>Founder command center</span></span></a>
-      <div>
-        <div class="sidebar-label">Workspaces</div>
-        <nav class="sidebar-nav top-nav" aria-label="Primary">
-          <a class="sidebar-link nav-top-link" href="#today" data-nav-section="today"><span class="label">Today</span><small>Standup</small></a>
-          <a class="sidebar-link nav-top-link" href="#work" data-nav-section="work"><span class="label">Work</span><small>Tasks</small></a>
-          <a class="sidebar-link nav-top-link" href="#marketing" data-nav-section="marketing"><span class="label">Marketing</span><small>Social</small></a>
-          <a class="sidebar-link nav-top-link" href="#data-room" data-nav-section="data-room"><span class="label">Data Room</span><small>Docs</small></a>
-          <a class="sidebar-link nav-top-link" href="#partnerships" data-nav-section="partnerships"><span class="label">Partnerships</span><small>Pipeline</small></a>
-          <a class="sidebar-link nav-top-link" href="#kpis" data-nav-section="kpis"><span class="label">KPIs</span><small>Metrics</small></a>
-          <a class="sidebar-link nav-top-link" href="#proof" data-nav-section="proof"><span class="label">Proof</span><small>Wins</small></a>
-          <a class="sidebar-link nav-top-link" href="#search" data-nav-section="search"><span class="label">Search</span><small>Find</small></a>
-        </nav>
-      </div>
-      <div class="sidebar-secondary">
-        <a class="sidebar-link nav-top-link" href="#settings" data-nav-section="settings"><span class="label">Settings</span></a>
-        <a class="sidebar-link nav-top-link" href="#os-health" data-nav-section="settings"><span class="label">App Status</span></a>
-        <a class="sidebar-link nav-top-link" href="#safe-mode" data-nav-section="settings"><span class="label">Recovery Mode</span></a>
-        <a class="sidebar-link" href="/privacy"><span class="label">Privacy</span></a>
-      </div>
-      <div class="sidebar-safety" aria-label="Safety status"><span class="founder-pill">Publishing off</span><span class="founder-pill">Protected</span></div>
-    </aside>
-    <div class="commercial-main">
-      <header class="command-bar">
-        <label class="command-search"><span>Search</span><input type="search" aria-label="Search LegalEase" placeholder="Search tasks, posts, proof, partners..." data-route-target="search"></label>
-        <div class="command-actions">
-          <button class="command-action primary" type="button" data-route-target="capture-inbox">Quick capture</button>
-          <button class="command-action" type="button" onclick="openLeeBubble()">Ask Le-E</button>
-          <span class="owner-pill">Protected access</span>
-          <button class="command-action" type="button" onclick="lockCommandCenter()">Lock</button>
-          <span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span>
-        </div>
+  <div class="shell">
+    <header class="app-topbar">
+      <a class="brand-lockup" href="#overview"><span>LegalEase</span><strong>Command Center</strong></a>
+      <nav class="top-nav" aria-label="Primary">
+        <a class="nav-top-link" href="#overview" data-nav-section="today">Today</a>
+        <a class="nav-top-link" href="#work" data-nav-section="work">Work</a>
+        <a class="nav-top-link" href="#social" data-nav-section="social">Social</a>
+        <a class="nav-top-link" href="#proof" data-nav-section="proof">Proof</a>
+        <a class="nav-top-link" href="#operator-search" data-nav-section="search">Search</a>
+      </nav>
+    </header>
+    <div>
+      <header>
+        <div><div class="eyebrow">Founder workspace</div><h2>LegalEase</h2></div>
+        <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><details class="nav-menu utility-menu"><summary class="nav-menu-summary">Settings</summary><div class="nav-menu-panel"><strong>Daily</strong><a href="#morning-brief">Morning Brief</a><a href="#daily-closeout">Daily Closeout</a><a href="#operating-memory">Notes &amp; Decisions</a><strong>Work</strong><a href="#tasks">Tasks</a><a href="#capture-inbox">Inbox</a><strong>Settings</strong><a href="#settings">Settings Home</a><a href="#os-health">App Status</a><a href="#data-integrity">Data Check</a><a href="#smoke-test">Self-Check</a><a href="#roles">Team Roles</a><a href="#operator-manual">Guide</a><a href="#safe-mode">Recovery Mode</a><a href="/privacy">Privacy</a><a href="#production-activation-rcap">Launch Checklist</a><a href="#handoff-contract">Handoff Notes</a></div></details><button type="button" onclick="location.hash='operator-search'">Search</button><button type="button" onclick="lockCommandCenter()">Lock</button></div>
       </header>
-      <main id="app"><div class="panel loading-panel"><div class="eyebrow">Starting command center</div><h1 class="big-title">Loading LegalEase...</h1><p class="big-copy">If this stays here, the browser could not finish the app render. The server is still serving a visible fallback so you are not staring at a blank screen.</p><div class="loading-line wide"></div><div class="loading-line"></div><div class="loading-card"></div><div class="card-actions"><button class="primary" onclick="location.reload()">Reload app</button><a class="button-link" href="#safe-mode">Open Recovery Mode</a></div></div></main>
+      <main id="app"><div class="panel loading-panel"><div class="eyebrow">Starting command center</div><h1 class="big-title">Loading LegalEase...</h1><p class="big-copy">If this stays here, the browser could not finish the app render. The server is still serving a visible fallback so you are not staring at a blank screen.</p><div class="loading-line wide"></div><div class="loading-line"></div><div class="loading-card"></div><div class="card-actions"><button class="primary" onclick="location.reload()">Reload app</button><a class="button-link" href="#queue">Open Queue</a></div></div></main>
     </div>
   </div>
   <div id="toast" class="toast"></div>
@@ -18916,7 +18797,6 @@ function htmlShell() {
           <h1 class="big-title">Launch Checklist</h1>
           <p class="muted">Review-only workspace. Manual approval required before anything external happens. No emails, posts, partner pages, or dashboards are activated from this page.</p>
           <div class="card-actions">
-            <a class="button-link" href="#production-activation-rcap">Launch Checklist</a>
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
             <button class="primary" type="button" onclick="startRcapActivation()">Refresh checklist</button>
           </div>
@@ -20003,23 +19883,15 @@ function htmlShell() {
       const plannedText = summary.nextPlanned
         ? \`\${summary.nextPlanned.title || "Planned post"} · \${formatDate(summary.nextPlanned.planned_date || summary.nextPlanned.scheduledFor)}\`
         : "No planned post yet.";
-      return \`<section class="premium-card social-content-card" aria-label="Marketing / Content">
-        <header><h2>Marketing / Content</h2><a class="button-link" href="#marketing">Open Marketing</a></header>
+      return \`<section class="founder-card social-content-card" aria-label="Social / Content">
+        <header><h2>Social / Content</h2><a class="button-link" href="#social">Open Social</a></header>
         <div class="founder-snapshot-grid">
           <div class="founder-metric"><span>Next planned post</span><strong>\${esc(plannedText)}</strong></div>
           <div class="founder-metric"><span>Ready posts</span><strong>\${esc(summary.readyCount)}</strong></div>
         </div>
         <p>\${esc(summary.suggestedAction)}</p>
-        <div class="founder-actions"><button class="primary" type="button" onclick="createSocialPost()">Create post</button><button type="button" data-route-target="marketing">Open Marketing</button></div>
+        <div class="founder-actions"><button class="primary" type="button" onclick="createSocialPost()">Create post</button><button type="button" onclick="location.hash='social'">Open Social</button></div>
       </section>\`;
-    }
-
-    function departmentCardHtml(label, href, status, metrics = [], nextAction = "Open workspace") {
-      return \`<a class="department-card" href="#\${esc(href)}" aria-label="\${esc(label)} department">
-        <header><h2>\${esc(label)}</h2><span class="badge good">\${esc(status)}</span></header>
-        <div class="department-meta">\${metrics.slice(0, 2).map(item => \`<div><span>\${esc(item[0])}</span><strong>\${esc(item[1])}</strong></div>\`).join("")}</div>
-        <p class="muted">\${esc(nextAction)}</p>
-      </a>\`;
     }
 
     function commandCenterOverviewHtml(posts) {
@@ -20033,62 +19905,31 @@ function htmlShell() {
       const blockedTasks = taskViewFilter("blocked").length;
       const waitingTasks = taskViewFilter("waiting").length;
       const weekTasks = taskViewFilter("this-week").length;
-      const readyPosts = socialReadyPosts().length;
-      const plannedPosts = socialPlannedPosts().length;
-      const proofOverview = buildEvidenceOverview(state);
-      const partnerPrograms = state.partnerPrograms || [];
-      const dataRoomCount = (state.dataRoomItems || []).length;
-      const metricCount = (state.metrics || state.kpis || []).length || (state.recordShieldFunnel || state.funnel || []).length || 0;
-      return \`<section id="overview" class="founder-today workspace-shell lee-bubble-safe-space">
-        <header class="standup-header">
+      return \`<section id="overview" class="founder-today lee-bubble-safe-space">
+        <header class="founder-hero">
           <div>
             <h1>Today</h1>
-            <p>Your founder standup for the day.</p>
+            <p>Focus on the few things that move the company forward.</p>
           </div>
-          <div class="founder-pills"><span class="founder-pill">Protected</span><span class="founder-pill">Publishing off</span><span class="founder-pill">Database connected</span></div>
+          <div class="founder-pills"><span class="founder-pill">Publishing is off</span><span class="founder-pill">App is protected</span></div>
         </header>
 
-        <section class="standup-grid">
-          <article class="premium-card" aria-label="Founder Focus">
-            <header><h2>Founder Focus</h2><button type="button" onclick="founderSetTodayFocus()">Set focus</button></header>
-            <h3 class="founder-focus-title">\${esc(focus.title)}</h3>
-            <p>\${esc(focus.detail)}</p>
-            <div class="founder-snapshot-grid">
-              <div class="founder-metric"><span>Blockers</span><strong>\${esc(blockedTasks)}</strong></div>
-              <div class="founder-metric"><span>Next move</span><strong>\${esc(activeTasks[0]?.title || "Choose")}</strong></div>
-            </div>
-          </article>
-          <article class="premium-card" aria-label="Top 3 priorities">
-            <header><h2>Top 3 priorities</h2><button type="button" onclick="founderEditPriorities()">Edit priorities</button></header>
-            <div class="founder-list">\${priorities.map((item, index) => founderRowHtml({ title:\`\${priorityLabels[index] || "Priority"}: \${item.title}\`, detail:item.detail }, \`<button type="button" data-route-target="\${esc(item.href || "tasks")}">Open</button>\`)).join("")}</div>
-          </article>
+        <section class="founder-card" aria-label="Today's Focus">
+          <header><h2>Today’s Focus</h2><button type="button" onclick="founderSetTodayFocus()">Set today’s focus</button></header>
+          <h3 class="founder-focus-title">\${esc(focus.title)}</h3>
+          <p>\${esc(focus.detail)}</p>
         </section>
 
-        <section class="premium-card" aria-label="Department Pulse">
-          <header><h2>Department Pulse</h2><span class="badge info">Company snapshot</span></header>
-          <div class="department-grid">
-            \${departmentCardHtml("Work", "work", blockedTasks ? "Needs attention" : "On track", [["Open tasks", activeTasks.length], ["Blocked", blockedTasks]], "Open Work")}
-            \${departmentCardHtml("Marketing", "marketing", readyPosts ? "Ready" : "Drafting", [["Ready posts", readyPosts], ["Planned", plannedPosts]], "Open Marketing")}
-            \${departmentCardHtml("Data Room", "data-room", dataRoomCount ? "Organized" : "Needs setup", [["Items", dataRoomCount], ["Updates", dataRoomCount ? "Current" : "Add docs"]], "Open Data Room")}
-            \${departmentCardHtml("Partnerships", "partnerships", partnerPrograms.length ? "Active" : "Build pipeline", [["Programs", partnerPrograms.length], ["Follow-ups", waitingTasks]], "Open Partnerships")}
-            \${departmentCardHtml("KPIs", "kpis", metricCount ? "Tracking" : "Add metrics", [["Metrics", metricCount], ["Review", "Weekly"]], "Open KPIs")}
-            \${departmentCardHtml("Proof", "proof", proofOverview.open_review_items ? "Review" : "Ready", [["Wins", proofOverview.total_evidence_items || 0], ["Reports", proofOverview.report_count || 0]], "Open Proof")}
-          </div>
+        <section class="founder-card" aria-label="Top 3">
+          <header><h2>Top 3</h2><button type="button" onclick="founderEditPriorities()">Edit priorities</button></header>
+          <div class="founder-list">\${priorities.map((item, index) => founderRowHtml({ title:\`\${priorityLabels[index] || "Priority"}: \${item.title}\`, detail:item.detail }, \`<button type="button" onclick="location.hash='\${esc(item.href || "tasks")}'">Open</button>\`)).join("")}</div>
         </section>
 
-        <section class="standup-board" aria-label="Standup Board">
-          <article class="premium-card"><h2>Carry-forward</h2><div class="founder-list">\${moved.slice(0, 1).map(item => founderRowHtml(item)).join("") || '<div class="premium-empty">Nothing carried forward yet.</div>'}</div></article>
-          <article class="premium-card"><h2>Priorities</h2><div class="founder-list">\${priorities.slice(0, 2).map(item => founderRowHtml(item)).join("")}</div></article>
-          <article class="premium-card"><h2>Blockers</h2><div class="founder-list">\${decisions.filter(item => /block/i.test(item.title || item.detail || "")).slice(0, 2).map(item => founderRowHtml(item)).join("") || '<div class="premium-empty">No blockers right now.</div>'}</div></article>
-          <article class="premium-card"><h2>Decisions</h2><div class="founder-list">\${decisions.slice(0, 2).map(item => founderRowHtml(item)).join("") || '<div class="premium-empty">No decisions waiting.</div>'}</div></article>
-          <article class="premium-card"><h2>Follow-ups</h2><div class="founder-list">\${taskViewFilter("waiting").slice(0, 2).map(founderTaskRowHtml).join("") || '<div class="premium-empty">No follow-ups due.</div>'}</div></article>
-        </section>
-
-        <section class="premium-card quick-capture" aria-label="Quick Capture">
+        <section class="founder-card quick-capture" aria-label="Quick Capture">
           <header><h2>Quick Capture</h2><a class="button-link" href="#capture-inbox">Open inbox</a></header>
           <form class="founder-capture-form" onsubmit="quickCapture(event)">
             <label class="sr-only" for="founder-capture">Quick Capture</label>
-            <textarea id="founder-capture" name="raw_input" required aria-label="Quick Capture" placeholder="Capture a task, idea, decision, blocker, update, or post idea…"></textarea>
+            <textarea id="founder-capture" name="raw_input" required aria-label="Quick Capture" placeholder="Capture a task, decision, blocker, idea, or note…"></textarea>
             <input type="hidden" id="founder-capture-type" name="capture_type" value="auto_classify">
             <input type="hidden" name="source_label" value="Today">
             <input type="hidden" name="priority" value="medium">
@@ -20096,15 +19937,14 @@ function htmlShell() {
             <input type="hidden" name="linked_workflow" value="Today">
             <div class="founder-capture-buttons">
               <button class="primary" type="submit" data-capture-type="auto_classify">Save</button>
-              <button type="submit" data-capture-type="task">Task</button>
-              <button type="submit" data-capture-type="decision">Decision</button>
-              <button type="submit" data-capture-type="blocker">Blocker</button>
-              <button type="submit" data-capture-type="post_idea">Post idea</button>
+              <button type="submit" data-capture-type="task">Save as task</button>
+              <button type="submit" data-capture-type="decision">Save as decision</button>
+              <button type="submit" data-capture-type="blocker">Save as blocker</button>
             </div>
           </form>
         </section>
 
-        <section class="premium-card" aria-label="Tasks">
+        <section class="founder-card" aria-label="Tasks">
           <header><h2>Tasks</h2><button type="button" onclick="founderAddTask()">Add task</button></header>
           <div class="founder-snapshot-grid">
             <div class="founder-metric"><span>Today</span><strong>\${esc(todayTasks)}</strong></div>
@@ -20112,24 +19952,29 @@ function htmlShell() {
             <div class="founder-metric"><span>Waiting</span><strong>\${esc(waitingTasks)}</strong></div>
             <div class="founder-metric"><span>This week</span><strong>\${esc(weekTasks)}</strong></div>
           </div>
-          <div class="founder-list">\${activeTasks.map(founderTaskRowHtml).join("") || '<div class="premium-empty">No active tasks yet. Add one with Quick Capture.</div>'}</div>
+          <div class="founder-list">\${activeTasks.map(founderTaskRowHtml).join("") || '<div class="founder-empty">No active tasks yet. Add one with Quick Capture.</div>'}</div>
         </section>
 
-        <section class="premium-card" aria-label="Decisions and Blockers">
+        <section class="founder-card" aria-label="Decisions and Blockers">
           <header><h2>Decisions &amp; Blockers</h2><div class="founder-actions"><button type="button" onclick="founderAddDecision()">Add decision</button><button type="button" onclick="founderAddBlocker()">Add blocker</button></div></header>
-          <div class="founder-list">\${decisions.map(item => founderRowHtml(item, \`<button type="button" onclick="\${item.action}">Resolve</button>\`)).join("") || '<div class="premium-empty">No decisions or blockers need attention.</div>'}</div>
+          <div class="founder-list">\${decisions.map(item => founderRowHtml(item, \`<button type="button" onclick="\${item.action}">Resolve</button>\`)).join("") || '<div class="founder-empty">No decisions or blockers need attention.</div>'}</div>
         </section>
 
         \${socialContentCardHtml()}
 
-        <section class="premium-card" aria-label="What Moved">
+        <section class="founder-card" aria-label="What Moved">
           <header><h2>What Moved</h2><button type="button" onclick="founderAddUpdate()">Add update</button></header>
-          <div class="founder-list">\${moved.map(item => founderRowHtml(item)).join("") || '<div class="premium-empty">No updates yet today.</div>'}</div>
+          <div class="founder-list">\${moved.map(item => founderRowHtml(item)).join("") || '<div class="founder-empty">No updates yet today.</div>'}</div>
         </section>
 
-        <section class="premium-card" aria-label="End of Day">
-          <header><h2>End of Day</h2><div class="founder-actions"><button type="button" onclick="founderPlanTomorrow()">Tomorrow plan</button><button type="button" data-route-target="daily-closeout">Close the day</button></div></header>
+        <section class="founder-card" aria-label="Tomorrow Plan">
+          <header><h2>Tomorrow Plan</h2><div class="founder-actions"><button type="button" onclick="founderPlanTomorrow()">Plan tomorrow</button><button type="button" onclick="location.hash='daily-closeout'">Start daily closeout</button></div></header>
           <p>Use closeout to keep what matters, drop what does not, and set tomorrow’s first move.</p>
+        </section>
+
+        <section class="founder-card" aria-label="Tiny App Status">
+          <header><h2>App Status</h2><a class="button-link" href="#os-health">View app status</a></header>
+          <p>Publishing is off. Protected access is on.</p>
         </section>
       </section>\`;
     }
@@ -20418,43 +20263,76 @@ function htmlShell() {
       const latest = assistantMessages[assistantMessages.length - 1] || null;
       const answer = leeShortAnswer(latest?.content || "");
       const quickPrompts = [
-        ["Summarize today", "Summarize today and tell me the next best action."],
-        ["Create task", "Create a task from this."],
-        ["Draft post", "Draft a social post. Publishing is off."],
-        ["Prepare PR pitch", "Prepare a PR pitch draft. Email sending is off."],
-        ["Turn proof into post", "Turn proof into a post idea."],
-        ["Summarize partner status", "Summarize partner status and next follow-ups."],
-        ["Draft investor update", "Draft an investor update bullet list."],
-        ["Find something", "Help me find something in the OS."],
-        ["What needs attention?", "What needs my attention right now?"]
+        ["Plan my day", "What should I focus on today?"],
+        ["What needs me?", "What needs my decision?"],
+        ["Create tasks", "Create tasks from Growth Inbox."]
       ];
-      return \`<div class="lee-floating-bubble" aria-live="polite">
-        <section class="lee-assistant-window" \${leeBubbleOpen ? "" : "hidden"} aria-label="Le-E assistant window">
-          <div class="lee-assistant-head">
+      const status = {
+        openAIConfigured:Boolean(state.runtime?.openAIConfigured),
+        knowledgeIndexRecords:(state.leeKnowledgeChunks || []).length || ["growthInbox", "tasks", "partnerPrograms", "partners", "campaigns", "contentBank", "approvalQueue", "reports", "dataRoomItems", "soc2Evidence", "events", "activityEvents"].reduce((sum, key) => sum + ((state[key] || []).length || 0), 0),
+        pendingProposedActions:(state.leeActionProposals || []).filter(item => item.status === "proposed").length,
+        liveGatesCount:Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length
+      };
+      return \`<div class="lee-bubble-wrap" aria-live="polite">
+        <section class="lee-panel" \${leeBubbleOpen ? "" : "hidden"} aria-label="Le-E chat panel">
+          <div class="lee-panel-head">
             <div>
               <h2>Le-E</h2>
-              <p>Your LegalEase operating assistant</p>
+              <div class="lee-panel-status"><span class="lee-pill-dot"></span>\${status.openAIConfigured ? "ready" : "safe local mode"}</div>
             </div>
-            <div class="lee-window-actions"><button type="button" onclick="closeLeeBubble()" aria-label="Minimize Le-E">−</button><button type="button" onclick="closeLeeBubble()" aria-label="Close Le-E">×</button></div>
+            <button class="lee-panel-close" type="button" onclick="closeLeeBubble()" aria-label="Close Le-E">×</button>
           </div>
-          <div class="lee-assistant-body">
-            <div class="lee-status-copy">Ask me to draft, summarize, find, rewrite, or create next steps. If I could not find text you ask me to change, I will save the request as a note. If you ask me to publish or send, I will prepare it only because live actions are off.</div>
-            \${leeBusy ? '<section class="lee-latest-answer"><pre>Le-E is working...</pre></section>' : latest ? \`<section class="lee-latest-answer">
+          <div class="lee-panel-body">
+            <div class="lee-context">Ask what matters, create a task, or find something in LegalEase.</div>
+            \${leeBusy ? '<section class="lee-latest-answer"><pre>Checking Command Center memory and safety rules...</pre></section>' : latest ? \`<section class="lee-latest-answer">
               <pre>\${leeFormat(answer.short)}</pre>
               \${answer.truncated ? \`<details><summary>Show details</summary><pre>\${leeFormat(answer.full)}</pre></details>\` : ""}
               <div class="lee-collapsed-row">
                 <details><summary>Sources: \${(latest.sourceRefs || []).length}</summary>\${leeSourceChips(latest.sourceRefs || []) || '<p class="muted">No source references attached.</p>'}</details>
               </div>
-            </section>\` : '<section class="lee-latest-answer"><pre>Ask me to draft, summarize, find, rewrite, or create next steps.</pre></section>'}
+            </section>\` : '<section class="lee-latest-answer"><pre>Ask Le-E what matters today.</pre></section>'}
             \${leeSimpleProposalSummary(proposals)}
-            <div class="lee-quick-actions">\${quickPrompts.map(([label, prompt]) => \`<button type="button" data-lee-prompt="\${esc(prompt)}">\${esc(label)}</button>\`).join("")}</div>
+            <div class="lee-quick">\${quickPrompts.map(([label, prompt]) => \`<button type="button" onclick='askLeePrompt(\${JSON.stringify(prompt)})'>\${esc(label)}</button>\`).join("")}</div>
             <form class="lee-input-row" onsubmit="sendLeeMessage(event)">
               <textarea name="message" required aria-label="Ask Le-E" placeholder="Ask Le-E...">\${esc(leeDraft)}</textarea>
-              <button class="primary" type="submit" \${leeBusy ? "disabled" : ""}>\${leeBusy ? "Working..." : "Send"}</button>
+              <button class="primary" type="submit" \${leeBusy ? "disabled" : ""}>\${leeBusy ? "Thinking" : "Send"}</button>
             </form>
+            <details class="lee-advanced">
+              <summary>Advanced</summary>
+              <div class="lee-shell" style="margin-top:12px">
+                <section class="lee-chat">
+                  <div class="simple-panel-head">
+                    <h2>Conversation</h2>
+                    <div class="card-actions"><button onclick="newLeeThread()">New</button><button onclick="clearLeeThread()">Clear</button><button type="button" onclick="rebuildLeeIndex()">Rebuild index</button></div>
+                  </div>
+                  <div class="lee-messages">
+                    \${messages.length ? messages.map(message => \`<article class="lee-message \${message.role === "user" ? "user" : "assistant"}">
+                      <div class="today-meta"><span>\${esc(message.role === "assistant" ? "Le-E" : "Roger")}</span><span>\${esc(message.createdAt || "")}</span></div>
+                      <pre>\${leeFormat(message.content || "")}</pre>
+                      \${leeSourceChips(message.sourceRefs || [])}
+                    </article>\`).join("") : '<div class="done-state">No conversation history yet.</div>'}
+                  </div>
+                </section>
+                <aside class="lee-side">
+                  <section class="panel">
+                    <h2>Status</h2>
+                    <div class="lee-status-grid">
+                      <div><span>OpenAI</span><strong>\${status.openAIConfigured ? "yes" : "no"}</strong></div>
+                      <div><span>Index</span><strong>\${status.knowledgeIndexRecords}</strong></div>
+                      <div><span>Pending</span><strong>\${status.pendingProposedActions}</strong></div>
+                      <div><span>Live gates</span><strong>\${status.liveGatesCount}</strong></div>
+                    </div>
+                  </section>
+                  <section class="panel">
+                    <div class="simple-panel-head"><h2>Proposed changes</h2><button onclick="applyAllSafeLeeActions()">Apply all safe</button></div>
+                    <div class="grid">\${proposals.map(leeProposalCard).join("") || '<div class="done-state">No proposed actions.</div>'}</div>
+                  </section>
+                </aside>
+              </div>
+            </details>
           </div>
         </section>
-        <button class="lee-floating-button" type="button" onclick="openLeeBubble()" aria-label="Ask Le-E" \${leeBubbleOpen ? "hidden" : ""}><span class="lee-pill-dot"></span><span>Le-E</span></button>
+        <button class="lee-pill" type="button" onclick="openLeeBubble()" aria-label="Ask Le-E" \${leeBubbleOpen ? "hidden" : ""}><span class="lee-pill-dot"></span><span>Le-E</span></button>
       </div>\`;
     }
 
@@ -20467,13 +20345,11 @@ function htmlShell() {
       const blocked = taskViewFilter("blocked").length;
       const waiting = taskViewFilter("waiting").length;
       const week = taskViewFilter("this-week").length;
-      return \`<section id="work" class="\${pageClass("work")} founder-hub workspace-shell lee-bubble-safe-space">
-        <div class="workspace-hero">
-          <div>
+      return \`<section id="work" class="\${pageClass("work")} founder-hub lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Work</div>
           <h1 class="big-title">Work</h1>
-            <p>Manage execution: capture, prioritize, finish tasks, resolve blockers, and close out the day.</p>
-          </div>
-          <div class="founder-actions"><button class="primary" type="button" onclick="founderAddTask()">Add task</button><button type="button" data-route-target="capture-inbox">Open inbox</button></div>
+          <p class="muted">Tasks, inbox, decisions, blockers, closeout, and tomorrow planning.</p>
         </div>
         <div class="founder-snapshot-grid">
           <div class="founder-metric"><span>Today</span><strong>\${esc(today)}</strong></div>
@@ -20481,13 +20357,12 @@ function htmlShell() {
           <div class="founder-metric"><span>Waiting</span><strong>\${esc(waiting)}</strong></div>
           <div class="founder-metric"><span>This week</span><strong>\${esc(week)}</strong></div>
         </div>
-        <div class="workspace-grid">
-          <section class="premium-card"><header><h2>My Tasks</h2><a class="button-link" href="#tasks">Open Tasks</a></header><div class="founder-list">\${founderActiveTasks().slice(0, 4).map(founderTaskRowHtml).join("") || '<div class="premium-empty">No open tasks yet.</div>'}</div></section>
-          <section class="premium-card"><header><h2>Priorities</h2><button type="button" onclick="founderEditPriorities()">Edit priorities</button></header><div class="founder-list">\${founderPriorityItems().map(item => founderRowHtml(item)).join("")}</div></section>
-          <section class="premium-card"><header><h2>Blockers</h2><button type="button" onclick="founderAddBlocker()">Add blocker</button></header><div class="founder-list">\${taskViewFilter("blocked").slice(0, 4).map(founderTaskRowHtml).join("") || '<div class="premium-empty">No blockers right now.</div>'}</div></section>
-          <section class="premium-card"><header><h2>Decisions</h2><button type="button" onclick="founderAddDecision()">Add decision</button></header><div class="founder-list">\${founderDecisionsAndBlockers().slice(0, 4).map(item => founderRowHtml(item)).join("") || '<div class="premium-empty">No decisions waiting.</div>'}</div></section>
-          <section class="premium-card"><header><h2>Daily Closeout</h2><a class="button-link" href="#daily-closeout">Close out</a></header><p class="muted">Capture what changed and decide what moves tomorrow.</p></section>
-          <section class="premium-card"><header><h2>Tomorrow Plan</h2><button type="button" onclick="founderPlanTomorrow()">Plan tomorrow</button></header><p class="muted">Set tomorrow’s first useful move before the day ends.</p></section>
+        <div class="founder-hub-grid">
+          \${founderHubCard("Tasks", "Open work you can finish.", "tasks")}
+          \${founderHubCard("Inbox", "Captured notes waiting for review.", "capture-inbox")}
+          \${founderHubCard("Decisions & Blockers", "Use Today to add or resolve what needs Roger.", "overview")}
+          \${founderHubCard("Daily Closeout", "Close the day and write tomorrow’s plan.", "daily-closeout")}
+          \${founderHubCard("Morning Brief", "Start with what needs attention.", "morning-brief")}
         </div>
       </section>\`;
     }
@@ -20501,151 +20376,53 @@ function htmlShell() {
       </article>\`;
     }
 
-    function marketingPageHtml(pageClass) {
+    function socialPageHtml(pageClass) {
       const ideas = socialIdeas().slice(0, 4);
       const drafts = socialDrafts().slice(0, 4);
       const planned = socialPlannedPosts().slice(0, 4);
       const ready = socialReadyPosts().slice(0, 4);
       const published = socialManuallyPublishedPosts().length;
       const proofItems = proofToShareItems().slice(0, 4);
-      const prFollowups = (state.tasks || []).filter(task => /pr|pitch|press|media|coverage/i.test([task.title, task.description, task.sourceType].join(" "))).slice(0, 4);
-      return \`<section id="marketing" class="\${pageClass("marketing")} founder-hub workspace-shell lee-bubble-safe-space">
-        <div class="workspace-hero">
-          <div>
-            <h1 class="big-title">Marketing</h1>
-            <p>Run content, social, PR, campaigns, and manual publishing from one place.</p>
-            <p class="muted"><strong>Publishing is off.</strong> Nothing has been published by the OS.</p>
-          </div>
-          <div class="founder-actions"><button class="primary" type="button" onclick="createSocialPost()">Create post</button><button type="button" onclick="addSocialIdea()">Add idea</button></div>
-        </div>
-        <div class="founder-snapshot-grid">
-          <div class="founder-metric"><span>Drafts ready</span><strong>\${esc(drafts.length)}</strong></div>
-          <div class="founder-metric"><span>Posts planned</span><strong>\${esc(planned.length)}</strong></div>
-          <div class="founder-metric"><span>PR follow-ups</span><strong>\${esc(prFollowups.length)}</strong></div>
-          <div class="founder-metric"><span>Manual posts</span><strong>\${esc(published)}</strong></div>
+      return \`<section id="social" class="\${pageClass("social")} founder-hub lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Social</div>
+          <h1 class="big-title">Social</h1>
+          <p class="muted">Create, preview, and organize posts. Publishing is off until you connect accounts later.</p>
+          <p class="muted"><strong>Manual publishing only.</strong> Nothing has been published by the OS.</p>
         </div>
 
-        <section class="premium-card" aria-label="Marketing Overview">
-          <header><h2>Marketing Overview</h2><span class="badge info">Manual only</span></header>
-          <p class="muted">\${ready.length ? "Copy the next ready post and publish it manually when Roger is ready." : "Create one useful post from today’s strongest proof or customer note."}</p>
-        </section>
-
-        <section class="premium-card" aria-label="Social Media Manager">
-          <header><h2>Social Media Manager</h2><span class="founder-pill">Publishing is off</span></header>
-          <p class="muted">Idea → Draft → Preview → Ready → Publish manually → Track.</p>
-        </section>
-
-        <section class="premium-card" aria-label="Post Ideas">
+        <section class="founder-card" aria-label="Post Ideas">
           <header><h2>Post Ideas</h2><div class="founder-actions"><button class="primary" type="button" onclick="addSocialIdea()">Add idea</button><button type="button" onclick="turnSocialIdeaIntoDraft()">Turn into draft</button></div></header>
           <div class="founder-list">\${ideas.map(post => socialPostCard(post, \`<button type="button" onclick="turnSocialIdeaIntoDraft('\${esc(post.id)}')">Turn into draft</button>\`)).join("") || '<div class="founder-empty">No ideas yet. Add one from a win, note, or founder thought.</div>'}</div>
         </section>
 
-        <section class="premium-card" aria-label="Draft Posts">
+        <section class="founder-card" aria-label="Draft Posts">
           <header><h2>Draft Posts</h2><div class="founder-actions"><button class="primary" type="button" onclick="createSocialPost()">Create post</button><button type="button" onclick="previewSocialPost()">Preview</button><button type="button" onclick="editSocialPost()">Edit</button></div></header>
           <div class="founder-list">\${drafts.map(post => socialPostCard(post, \`<button type="button" onclick="previewSocialPost('\${esc(post.id)}')">Preview</button><button type="button" onclick="editSocialPost('\${esc(post.id)}')">Edit</button>\`)).join("") || '<div class="founder-empty">No drafts yet. Create one when you have something useful to say.</div>'}</div>
         </section>
 
-        <section class="premium-card" aria-label="Content Calendar">
+        <section class="founder-card" aria-label="Content Calendar">
           <header><h2>Content Calendar</h2><div class="founder-actions"><button class="primary" type="button" onclick="addPlannedPost()">Add planned post</button><button type="button" onclick="movePlannedPostDate()">Move date</button></div></header>
           <p class="muted">Internal planning only. This does not connect to an external calendar.</p>
           <div class="founder-list">\${planned.map(post => socialPostCard(post, \`<button type="button" onclick="movePlannedPostDate('\${esc(post.id)}')">Move date</button>\`)).join("") || '<div class="founder-empty">No planned posts yet.</div>'}</div>
         </section>
 
-        <section class="premium-card" aria-label="Ready to Publish">
+        <section class="founder-card" aria-label="Ready to Publish">
           <header><h2>Ready to Publish</h2><span class="founder-pill">Publishing is off</span></header>
           <div class="founder-list">\${ready.map(post => socialPostCard(post, \`<button type="button" onclick="copySocialPost('\${esc(post.id)}')">Copy post</button><button type="button" onclick="openManualPublishChecklist('\${esc(post.id)}')">Publish manually</button><button type="button" onclick="markSocialPostManuallyPublished('\${esc(post.id)}')">Mark published manually</button>\`)).join("") || '<div class="founder-empty">No posts are ready yet. Nothing has been published by the OS.</div>'}</div>
           <p class="muted">\${esc(published)} post\${published === 1 ? "" : "s"} marked published manually.</p>
         </section>
 
-        <section class="premium-card" aria-label="Manually Published">
-          <header><h2>Manually Published</h2><span class="founder-pill">Internal tracking only</span></header>
-          <p class="muted">Records here mean Roger marked a post as published outside the OS. Nothing has been published by the OS.</p>
-        </section>
-
-        <section class="premium-card" aria-label="PR Outreach">
-          <header><h2>PR Outreach</h2><span class="badge warn">Email sending is off</span></header>
-          <div class="workspace-grid">
-            \${founderHubCard("Media targets", "People and outlets to research.", "marketing")}
-            \${founderHubCard("Pitch drafts", "Prepare email copy without sending.", "marketing")}
-            \${founderHubCard("Follow-ups due", \`\${prFollowups.length} follow-up(s) surfaced from tasks.\`, "tasks")}
-            \${founderHubCard("Coverage", "Turn wins into proof and posts.", "proof")}
-          </div>
-          <div class="founder-actions"><button type="button" onclick="founderAddTask()">Add target</button><button type="button" onclick='askLeePrompt("Prepare a PR pitch draft. Email sending is off.")'>Draft pitch</button><button type="button" onclick="founderAddUpdate()">Add coverage</button></div>
-        </section>
-
-        <section class="premium-card" aria-label="Campaigns">
-          <header><h2>Campaigns</h2><button type="button" onclick="addPlannedPost()">Add campaign note</button></header>
-          <p class="muted">Simple campaign objectives, channels, status, and next action. No ad buying or paid promotion controls.</p>
-        </section>
-
-        <section class="premium-card" aria-label="Marketing Stats">
-          <header><h2>Marketing Stats</h2><button type="button" onclick="founderAddUpdate()">Add stat</button></header>
-          <p class="muted">Track channel, metric, value, date, and notes manually. No fake integrations.</p>
-        </section>
-
-        <section class="premium-card" aria-label="Proof to Share">
+        <section class="founder-card" aria-label="Proof to Share">
           <header><h2>Proof to Share</h2><a class="button-link" href="#proof">Open Proof</a></header>
           <div class="founder-list">\${proofItems.map(item => founderRowHtml(item, \`<button type="button" onclick="turnProofIntoPost('\${esc(item.id)}')">Turn into post</button><button type="button" onclick="saveProofAsPostIdea('\${esc(item.id)}')">Save as idea</button>\`)).join("") || '<div class="founder-empty">No proof items ready to turn into content.</div>'}</div>
         </section>
 
-        <section class="premium-card manual-publishing-checklist" aria-label="Manual Publishing Checklist">
+        <section class="founder-card manual-publishing-checklist" aria-label="Manual Publishing Checklist">
           <header><h2>Manual Publishing Checklist</h2><span class="founder-pill">Nothing has been published by the OS</span></header>
           <ol class="manual-checklist"><li>Copy post</li><li>Open social platform</li><li>Paste post</li><li>Review</li><li>Publish manually</li><li>Come back and mark as published manually</li></ol>
         </section>
       </section>\`;
-    }
-
-    function socialPageHtml(pageClass) {
-      return marketingPageHtml(pageClass);
-    }
-
-    function dataRoomWorkspaceHtml(pageClass) {
-      const items = state.dataRoomItems || [];
-      const investor = items.filter(item => /investor|deck|memo|update|demo/i.test([item.section, item.title, item.category].join(" "))).slice(0, 4);
-      const legal = items.filter(item => /legal|formation|ein|bylaws|consent|safe|contract/i.test([item.section, item.title, item.category].join(" "))).slice(0, 4);
-      return \`<section id="data-room" class="\${pageClass("data-room")} founder-hub workspace-shell lee-bubble-safe-space">
-        <div class="workspace-hero"><div><h1 class="big-title">Data Room</h1><p>Keep investor and company materials organized without pretending unsupported documents exist.</p></div><div class="founder-actions"><button class="primary" type="button" data-route-target="dataroom">Open checklist</button><button type="button" data-route-target="dataroom">Add document</button></div></div>
-        <div class="workspace-grid">
-          <section class="premium-card"><header><h2>Investor Materials</h2><span class="badge info">\${esc(investor.length)} item(s)</span></header><div class="founder-list">\${investor.map(item => founderRowHtml({ title:item.title || item.name, detail:item.section || "Investor material" })).join("") || '<div class="premium-empty">No investor materials yet. Add deck, memo, demo link, or monthly update records.</div>'}</div></section>
-          <section class="premium-card"><header><h2>Formation &amp; Legal</h2><span class="badge info">\${esc(legal.length)} item(s)</span></header><div class="founder-list">\${legal.map(item => founderRowHtml({ title:item.title || item.name, detail:item.section || "Company document" })).join("") || '<div class="premium-empty">Track incorporation docs, EIN, bylaws, board consents, SAFEs, notes, and contracts.</div>'}</div></section>
-          <section class="premium-card"><header><h2>Cap Table</h2><button type="button" onclick="founderAddUpdate()">Add note</button></header><p class="muted">Ownership summary, instruments, option pool, and investor commitments. No fake calculations unless data exists.</p></section>
-          <section class="premium-card"><header><h2>Monthly Updates</h2><button type="button" onclick="founderAddUpdate()">Add monthly update</button></header><p class="muted">Draft update, archive, and manual sent/not sent status.</p></section>
-          <section class="premium-card"><header><h2>Diligence Checklist</h2><a class="button-link" href="#dataroom">Open checklist</a></header><p class="muted">Fundraising readiness, missing docs, and last updated status.</p></section>
-        </div>
-      </section>\`;
-    }
-
-    function partnershipsPageHtml(pageClass) {
-      const partners = growthItems("partners").slice(0, 8);
-      const programs = state.partnerPrograms || [];
-      const followups = (state.tasks || []).filter(task => /partner|follow/i.test([task.title, task.description, task.sourceType].join(" "))).slice(0, 5);
-      return \`<section id="partnerships" class="\${pageClass("partnerships")} founder-hub workspace-shell lee-bubble-safe-space">
-        <div class="workspace-hero"><div><h1 class="big-title">Partnerships</h1><p>Manage partner pipeline, active relationships, follow-ups, and partner proof inside Command Center.</p></div><div class="founder-actions"><button class="primary" type="button" onclick="founderAddTask()">Add partner</button><button type="button" onclick="founderAddTask()">Add follow-up</button></div></div>
-        <div class="workspace-grid">
-          <section class="premium-card"><header><h2>Pipeline</h2><span class="badge info">\${esc(partners.length)} tracked</span></header><div class="founder-list">\${partners.map(partner => founderRowHtml({ title:partner.name || partner.organizationName, detail:partnerNextAction(partner) })).join("") || '<div class="premium-empty">No partner prospects yet.</div>'}</div></section>
-          <section class="premium-card"><header><h2>Active Partners</h2><a class="button-link" href="#partners">Open partners</a></header><div class="founder-list">\${partners.slice(0, 4).map(partner => founderRowHtml({ title:partner.name || partner.organizationName, detail:partner.status || partner.stage || "Active relationship" })).join("") || '<div class="premium-empty">No active partners yet.</div>'}</div></section>
-          <section class="premium-card"><header><h2>Partner Programs</h2><a class="button-link" href="#partner-programs">Open programs</a></header><div class="founder-list">\${programs.slice(0, 4).map(program => founderRowHtml({ title:program.partnerName || program.name || program.title || "Partner program", detail:program.status || "Tracked" })).join("") || '<div class="premium-empty">We Must Vote, Fulton County, demo partners, and active programs appear here when present.</div>'}</div></section>
-          <section class="premium-card"><header><h2>Follow-ups</h2><button type="button" onclick="founderAddTask()">Add follow-up</button></header><div class="founder-list">\${followups.map(founderTaskRowHtml).join("") || '<div class="premium-empty">No partner follow-ups due.</div>'}</div></section>
-          <section class="premium-card"><header><h2>Partner Proof</h2><a class="button-link" href="#proof">Open Proof</a><a class="button-link" href="#production-activation-rcap">Open recovery plan</a></header><p class="muted">Reports, outcomes, testimonials, and wins tied to partner work.</p></section>
-        </div>
-      </section>\`;
-    }
-
-    function kpisPageHtml(pageClass) {
-      const metricCount = (state.metrics || state.kpis || []).length || (state.recordShieldFunnel || state.funnel || []).length || 0;
-      return \`<section id="kpis" class="\${pageClass("kpis")} founder-hub workspace-shell lee-bubble-safe-space">
-        <div class="workspace-hero"><div><h1 class="big-title">KPIs</h1><p>Track company health, weekly scorecards, stale metrics, and goals without fake numbers.</p></div><div class="founder-actions"><button class="primary" type="button" onclick="founderAddUpdate()">Add metric</button><button type="button" onclick="founderAddUpdate()">Add weekly note</button></div></div>
-        <div class="workspace-grid">
-          <section class="premium-card"><header><h2>KPI Dashboard</h2><span class="badge info">\${esc(metricCount)} metric(s)</span></header><p class="muted">Revenue, leads, conversions, CAC, petitions or cases, marketing output, partner pipeline, and runway when data exists.</p></section>
-          <section class="premium-card"><header><h2>Weekly Scorecard</h2><button type="button" onclick="founderAddUpdate()">Mark reviewed</button></header><p class="muted">This week, last week, trend, and founder notes.</p></section>
-          <section class="premium-card"><header><h2>Metrics Needing Update</h2><span class="badge warn">Manual review</span></header><div class="premium-empty">No data yet. Add the first metric.</div></section>
-          <section class="premium-card"><header><h2>Goals</h2><button type="button" onclick="founderAddUpdate()">Add goal</button></header><p class="muted">Monthly goals, quarterly goals, and fundraising milestones.</p></section>
-        </div>
-      </section>\`;
-    }
-
-    function searchPageHtml(pageClass) {
-      return operatorSearchPageHtml(pageClass).replace('id="operator-search"', 'id="search"').replace("Search across LegalEase work.", "Search tasks, marketing, data room, partnerships, KPIs, proof, and notes.");
     }
 
     function proofToShareItems() {
@@ -21870,20 +21647,8 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const normalizedPage = requestedPage === "le-e"
-        ? "lee"
-        : requestedPage === "today"
-          ? "overview"
-          : ["social", "social-media", "content-calendar", "posts"].includes(requestedPage)
-            ? "marketing"
-            : ["data-room"].includes(requestedPage)
-              ? "data-room"
-              : ["kpis", "metrics"].includes(requestedPage)
-                ? "kpis"
-                : ["search", "operator-search"].includes(requestedPage)
-                  ? "search"
-                  : requestedPage;
-      const pageId = normalizedPage === "safe-mode" || ["overview", "work", "marketing", "data-room", "partnerships", "kpis", "search", "social", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage === "today" ? "overview" : ["social-media", "content-calendar", "posts"].includes(requestedPage) ? "social" : requestedPage;
+      const pageId = normalizedPage === "safe-mode" || ["overview", "work", "social", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
       if (pageId === "safe-mode") {
         renderSafeBootShell({
           ...(stateFetchDiagnostics || {}),
@@ -21912,11 +21677,6 @@ function htmlShell() {
         \${safeRenderModule("partner-hub", () => sectionLandingPageHtml(pageClass, "partner-hub"))}
         \${safeRenderModule("production", () => sectionLandingPageHtml(pageClass, "production"))}
         \${safeRenderModule("proof", () => proofPageHtml(pageClass))}
-        \${safeRenderModule("marketing", () => marketingPageHtml(pageClass))}
-        \${safeRenderModule("data-room", () => dataRoomWorkspaceHtml(pageClass))}
-        \${safeRenderModule("partnerships", () => partnershipsPageHtml(pageClass))}
-        \${safeRenderModule("kpis", () => kpisPageHtml(pageClass))}
-        \${safeRenderModule("search", () => searchPageHtml(pageClass))}
         \${safeRenderModule("social", () => socialPageHtml(pageClass))}
         \${safeRenderModule("more", () => sectionLandingPageHtml(pageClass, "more"))}
         \${safeRenderModule("growth-inbox", () => growthInboxPageHtml(pageClass))}
@@ -22168,14 +21928,12 @@ function htmlShell() {
 
     function navSectionForPage(pageId = "overview") {
       if (["overview", "focus", "lee", "conversation-notes"].includes(pageId)) return "today";
-      if (["work", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "growth", "growth-inbox", "capture-inbox", "morning-brief", "evening-reflection", "daily-closeout", "operating-memory"].includes(pageId)) return "work";
-      if (["marketing", "social", "social-media", "content-calendar", "posts", "campaigns", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "marketing";
-      if (["data-room", "dataroom", "reports"].includes(pageId)) return "data-room";
-      if (["partnerships", "partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports", "production-activation-rcap", "handoff-contract", "milestones"].includes(pageId)) return "partnerships";
-      if (["kpis", "metrics", "funnel"].includes(pageId)) return "kpis";
-      if (["proof", "evidence-room", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
+      if (["work", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics", "production", "content-bank", "queue", "sources", "assets", "posted", "morning-brief", "evening-reflection", "daily-closeout", "operating-memory"].includes(pageId)) return "work";
+      if (["social", "social-media", "content-calendar", "posts"].includes(pageId)) return "social";
+      if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports", "production-activation-rcap", "handoff-contract", "milestones"].includes(pageId)) return "settings";
+      if (["proof", "evidence-room", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
       if (["os-health", "data-integrity", "smoke-test", "operator-manual", "roles", "safe-mode", "settings", "compliance", "autonomy"].includes(pageId)) return "settings";
-      if (["search", "operator-search"].includes(pageId)) return "search";
+      if (pageId === "operator-search") return "search";
       return "today";
     }
 
@@ -25121,15 +24879,6 @@ function htmlShell() {
       }
     });
     document.addEventListener("click", (event) => {
-      const routeButton = event.target.closest("[data-route-target]");
-      if (routeButton) {
-        const target = routeButton.getAttribute("data-route-target");
-        if (target) {
-          event.preventDefault();
-          location.hash = target;
-          return;
-        }
-      }
       const leePromptButton = event.target.closest("[data-lee-prompt]");
       if (leePromptButton) {
         event.preventDefault();

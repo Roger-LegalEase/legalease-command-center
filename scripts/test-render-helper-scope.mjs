@@ -26,7 +26,7 @@ for (const match of inlineRuntime.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w
 
 const runtimeImportReferences = [];
 for (const name of importedNames) {
-  if (name === "roleCapabilities" || name === "stat") continue; // Rendered/interpreted safely; "stat" appears as founder-facing metric copy.
+  if (name === "roleCapabilities") continue; // Rendered into clientRoleCapabilities by template interpolation.
   if (new RegExp(`\\b${name}\\b`).test(inlineRuntime) && !definedNames.has(name)) runtimeImportReferences.push(name);
 }
 assert.deepEqual(runtimeImportReferences.sort(), [], `Imported server helpers referenced in browser runtime without browser definitions: ${runtimeImportReferences.sort().join(", ")}`);
