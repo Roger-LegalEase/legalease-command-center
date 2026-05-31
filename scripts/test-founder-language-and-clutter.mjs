@@ -12,11 +12,11 @@ function blockBetween(startPattern, endPattern) {
   return rest.slice(0, end);
 }
 
-const nav = source.match(/<nav class="top-nav"[\s\S]*?<\/nav>/)?.[0] || "";
+const nav = source.match(/<nav class="sidebar-nav top-nav"[\s\S]*?<\/nav>/)?.[0] || "";
 const todaySocialCard = blockBetween(/function socialContentCardHtml\(\)/, /function commandCenterOverviewHtml/);
 const today = blockBetween(/function commandCenterOverviewHtml\(posts\)/, /function focusItemsForMode/);
 const work = blockBetween(/function workPageHtml\(pageClass\)/, /function proofPageHtml/);
-const social = blockBetween(/function socialPageHtml\(pageClass\)/, /function proofToShareItems/);
+const social = blockBetween(/function marketingPageHtml\(pageClass\)/, /function dataRoomWorkspaceHtml/);
 const proof = blockBetween(/function proofPageHtml\(pageClass\)/, /function sectionLandingConfig/);
 const search = blockBetween(/function operatorSearchPageHtml\(pageClass\)/, /function conversationNotesPageHtml/);
 const morning = blockBetween(/function morningBriefPageHtml\(pageClass\)/, /function eveningReflectionPageHtml/);
@@ -55,35 +55,35 @@ for (const term of forbidden) {
   assert(!normalUi.includes(term), `Normal founder UI should not show "${term}".`);
 }
 
-const navLabels = [...nav.matchAll(/data-nav-section="[^"]+"[^>]*>([^<]+)/g)].map(match => match[1].trim());
-assert.deepEqual(navLabels, ["Today", "Work", "Social", "Proof", "Search"], "Top nav labels should be founder-simple.");
-assert.equal(navLabels.length, 5, "Top nav should have no more than five primary items.");
+const navLabels = [...nav.matchAll(/data-nav-section="[^"]+"[\s\S]*?<span class="label">([^<]+)/g)].map(match => match[1].trim());
+assert.deepEqual(navLabels, ["Today", "Work", "Marketing", "Data Room", "Partnerships", "KPIs", "Proof", "Search"], "Primary nav labels should match the commercial founder workflow.");
+assert.equal(navLabels.length, 8, "Primary nav should expose the major founder workspaces.");
 
 for (const label of [
   "Today",
-  "Focus on the few things that move the company forward.",
-  "Publishing is off",
-  "App is protected",
-  "Today’s Focus",
-  "Top 3",
+  "Your founder standup for the day.",
+  "Publishing off",
+  "Protected",
+  "Founder Focus",
+  "Top 3 priorities",
+  "Department Pulse",
   "Quick Capture",
   "Tasks",
   "Decisions &amp; Blockers",
   "What Moved",
-  "Tomorrow Plan",
-  "App Status"
+  "End of Day"
 ]) {
   assert(today.includes(label), `Today should render ${label}.`);
 }
 
-assert.equal((today.match(/class="founder-card quick-capture"/g) || []).length, 1, "Today should have one visible Quick Capture card.");
+assert.equal((today.match(/class="premium-card quick-capture"/g) || []).length, 1, "Today should have one visible Quick Capture card.");
 assert.equal((today.match(/Ask Le-E/g) || []).length, 0, "Today should not duplicate Le-E chat panels.");
 assert.equal((today.match(/aria-label="Tasks"/g) || []).length, 1, "Today should have one task section.");
-assert.equal((today.match(/socialContentCardHtml\(\)/g) || []).length, 1, "Today should have one compact Social / Content card.");
-assert(todaySocialCard.includes('aria-label="Social / Content"'), "Today should render the Social / Content card.");
+assert.equal((today.match(/socialContentCardHtml\(\)/g) || []).length, 1, "Today should have one compact Marketing / Content card.");
+assert(todaySocialCard.includes('aria-label="Marketing / Content"'), "Today should render the Marketing / Content card.");
 assert(todaySocialCard.includes("Create post"), "Today should include Create post for Social.");
-assert(todaySocialCard.includes("Open Social"), "Today should include Open Social.");
-assert(today.includes("Publishing is off"), "Normal UI should say Publishing is off.");
+assert(todaySocialCard.includes("Open Marketing"), "Today should include Open Marketing.");
+assert(today.includes("Publishing off"), "Normal UI should say Publishing off.");
 assert(!today.includes("Live gates"), "Today should not expose live gate terminology.");
 assert(!today.includes("cockpitRcapSignalHtml"), "Today should not render deep recovery workflow cards.");
 assert(!today.includes("cockpitDataIntegrityHtml"), "Today should not render data check detail cards.");

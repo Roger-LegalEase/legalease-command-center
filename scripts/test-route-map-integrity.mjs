@@ -21,7 +21,11 @@ const routes = {
   "handoff-contract": { renderer: "handoffContractPageHtml", title: /Handoff Notes/, forbidden: /RCAP Review Workspace|Production Activation/ },
   "production-activation-rcap": { renderer: "rcapReviewWorkspaceHtml", title: /Launch Checklist|Recovery plan/, forbidden: null },
   work: { renderer: "workPageHtml", title: /<h1 class="big-title">Work<\/h1>/, forbidden: /Production Activation/ },
-  social: { renderer: "socialPageHtml", title: /<h1 class="big-title">Social<\/h1>/, forbidden: /Launch Checklist|Production Activation|Settings|<h1 class="big-title">Proof<\/h1>/ },
+  marketing: { renderer: "marketingPageHtml", title: /<h1 class="big-title">Marketing<\/h1>/, forbidden: /Launch Checklist|Production Activation|Settings|<h1 class="big-title">Proof<\/h1>/ },
+  "data-room": { renderer: "dataRoomWorkspaceHtml", title: /<h1 class="big-title">Data Room<\/h1>/, forbidden: /Launch Checklist|Production Activation|Settings|<h1 class="big-title">Proof<\/h1>/ },
+  partnerships: { renderer: "partnershipsPageHtml", title: /<h1 class="big-title">Partnerships<\/h1>/, forbidden: /Launch Checklist|Production Activation|Settings/ },
+  kpis: { renderer: "kpisPageHtml", title: /<h1 class="big-title">KPIs<\/h1>/, forbidden: /Launch Checklist|Production Activation|Settings/ },
+  search: { renderer: "searchPageHtml", title: /Search/, forbidden: /RCAP Review Workspace|Production Activation|Operator Search/ },
   proof: { renderer: "proofPageHtml", title: /<h1 class="big-title">Proof<\/h1>/, forbidden: /Production Activation/ }
 };
 
@@ -42,23 +46,25 @@ for (const [route, expected] of Object.entries(routes)) {
   }
 }
 
-for (const alias of ["social-media", "content-calendar", "posts"]) {
-  assert(source.includes(`"${alias}"`), `#${alias} should be registered as a Social alias.`);
+for (const alias of ["social", "social-media", "content-calendar", "posts"]) {
+  assert(source.includes(`"${alias}"`), `#${alias} should be registered as a Marketing alias.`);
 }
-assert.match(source, /\["social-media", "content-calendar", "posts"\]\.includes\(requestedPage\) \? "social"/, "Social aliases should normalize to #social.");
+assert.match(source, /\["social", "social-media", "content-calendar", "posts"\]\.includes\(requestedPage\)[\s\S]*?\?\s*"marketing"/, "Social aliases should normalize to Marketing.");
 
 assert.match(source, /normalizedPage\) \? normalizedPage : "overview"/, "Unknown routes should fall back to Today, not Launch Checklist.");
-assert.match(source, /requestedPage === "today" \? "overview"/, "#today should alias to the Today page.");
+assert.match(source, /requestedPage === "today"[\s\S]*?\? "overview"/, "#today should alias to the Today page.");
 
-const navBlock = source.match(/<nav class="top-nav"[\s\S]*?<\/nav>/)?.[0] || "";
-assert(navBlock.includes('href="#overview"'), "Top nav should link Today to #overview.");
+const navBlock = source.match(/<nav class="sidebar-nav top-nav"[\s\S]*?<\/nav>/)?.[0] || "";
+assert(navBlock.includes('href="#today"'), "Top nav should link Today to #today.");
 assert(navBlock.includes('href="#work"'), "Top nav should expose Work.");
-assert(navBlock.includes('href="#social"'), "Top nav should expose Social.");
+assert(navBlock.includes('href="#marketing"'), "Top nav should expose Marketing.");
+assert(navBlock.includes('href="#data-room"'), "Top nav should expose Data Room.");
+assert(navBlock.includes('href="#partnerships"'), "Top nav should expose Partnerships.");
+assert(navBlock.includes('href="#kpis"'), "Top nav should expose KPIs.");
 assert(navBlock.includes('href="#proof"'), "Top nav should expose Proof.");
-assert(navBlock.includes('href="#operator-search"'), "Top nav should expose Search.");
+assert(navBlock.includes('href="#search"'), "Top nav should expose Search.");
 assert(!navBlock.includes('data-nav-section="settings"'), "Settings should not replace Social as a primary nav item.");
 assert(source.includes('href="#settings"'), "Settings should remain available from a secondary control.");
-assert(!navBlock.includes(">Partners<"), "Partners should not be a top-level nav item.");
 assert(!navBlock.includes(">System<"), "System should not be a top-level nav item.");
 assert(!navBlock.includes("RCAP Review"), "Navigation should use founder-facing recovery language.");
 

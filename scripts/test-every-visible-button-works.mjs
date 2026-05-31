@@ -13,7 +13,7 @@ function blockBetween(startPattern, endPattern) {
 }
 
 const today = blockBetween(/function commandCenterOverviewHtml\(posts\)/, /function focusItemsForMode/);
-const social = blockBetween(/function socialPageHtml\(pageClass\)/, /function proofToShareItems/);
+const social = blockBetween(/function marketingPageHtml\(pageClass\)/, /function dataRoomWorkspaceHtml/);
 const actionBlock = blockBetween(/function setFounderCaptureType/, /async function captureInboxAction/);
 
 assert(source.includes("function runAction("), "Shared runAction helper should exist.");
@@ -23,12 +23,13 @@ assert(/Working…/.test(source), "runAction should show Working feedback.");
 assert(/actionStatusMessage/.test(source), "Actions should produce visible success/failure feedback.");
 
 for (const label of [
-  "Set today’s focus",
+  "Set focus",
   "Edit priorities",
   "Save",
-  "Save as task",
-  "Save as decision",
-  "Save as blocker",
+  "Task",
+  "Decision",
+  "Blocker",
+  "Post idea",
   "Add task",
   "Mark done",
   "Move to tomorrow",
@@ -36,11 +37,10 @@ for (const label of [
   "Add blocker",
   "Resolve",
   "Create post",
-  "Open Social",
+  "Open Marketing",
   "Add update",
-  "Plan tomorrow",
-  "Start daily closeout",
-  "View app status"
+  "Tomorrow plan",
+  "Close the day"
 ]) {
   assert((today + source).includes(label), `Today button/link should exist: ${label}`);
 }
@@ -80,11 +80,12 @@ for (const label of buttonLabels) {
 }
 
 assert(!/onclick="[^"]*(?:todo|noop|placeholder|comingSoon|undefined|null)/i.test(today), "Today should not include placeholder onclick handlers.");
-assert(/data-capture-type="task"/.test(today), "Save as task should have a real capture type.");
-assert(/data-capture-type="decision"/.test(today), "Save as decision should have a real capture type.");
-assert(/data-capture-type="blocker"/.test(today), "Save as blocker should have a real capture type.");
-assert(/route_task/.test(source), "Save as task should route captured item to a task.");
-assert(/location\.hash='daily-closeout'/.test(source), "Plan tomorrow should open Daily Closeout.");
+assert(/data-capture-type="task"/.test(today), "Task capture should have a real capture type.");
+assert(/data-capture-type="decision"/.test(today), "Decision capture should have a real capture type.");
+assert(/data-capture-type="blocker"/.test(today), "Blocker capture should have a real capture type.");
+assert(/data-capture-type="post_idea"/.test(today), "Post idea capture should have a real capture type.");
+assert(/route_task/.test(source), "Task capture should route captured item to a task.");
+assert(/data-route-target="daily-closeout"|location\.hash='daily-closeout'/.test(source), "Close the day should open Daily Closeout.");
 
 for (const label of [
   "Add idea",

@@ -16,8 +16,8 @@ function assertContains(source, pattern, message) {
   assert.match(source, pattern, message);
 }
 
-assertContains(server, /<header class="app-topbar">/, "Global shell topbar should render in hosted mode.");
-assertContains(server, /class="top-nav"[\s\S]*Today[\s\S]*Work[\s\S]*Social[\s\S]*Proof[\s\S]*Search/, "Founder-facing top navigation should remain stable.");
+assertContains(server, /<header class="command-bar">/, "Commercial command bar should render in hosted mode.");
+assertContains(server, /class="sidebar-nav top-nav"[\s\S]*Today[\s\S]*Work[\s\S]*Marketing[\s\S]*Data Room[\s\S]*Partnerships[\s\S]*KPIs[\s\S]*Proof[\s\S]*Search/, "Founder-facing sidebar navigation should remain stable.");
 assertContains(server, /href="#settings"/, "Settings should remain available outside the primary workflow nav.");
 assertContains(server, /id="app"/, "Route host should remain available for client rendering.");
 assert.doesNotMatch(server, /shell:\s*app-layout-stable-v1|controls:\s*button-audit-v1|nav:\s*topnav-fixed-v1/, "Normal shell should not expose old debug markers.");
