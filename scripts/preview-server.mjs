@@ -12874,9 +12874,14 @@ function htmlShell() {
       .lee-pill { position:fixed; right:16px; bottom:16px; justify-self:end; }
       .lee-panel { width:100vw; max-height:100vh; min-height:100vh; border-radius:0; border:0; }
     }
-    .landing-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(260px,.75fr); gap:14px; align-items:start; }
+    .landing-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,420px); gap:14px; align-items:start; min-width:0; max-width:100%; }
     .landing-actions { display:grid; gap:9px; }
-    .landing-actions a { display:flex; justify-content:space-between; align-items:center; gap:12px; min-height:44px; padding:10px 12px; border:1px solid rgba(15,31,92,.1); border-radius:12px; background:white; color:var(--le-text); text-decoration:none; font-weight:850; }
+    .landing-actions a { display:grid; grid-template-columns:minmax(0,.82fr) minmax(0,1fr) minmax(128px,auto); align-items:center; gap:10px; min-height:44px; padding:10px 12px; border:1px solid rgba(15,31,92,.1); border-radius:12px; background:white; color:var(--le-text); text-decoration:none; font-weight:850; min-width:0; max-width:100%; overflow-wrap:break-word; }
+    .landing-actions a span { min-width:0; overflow-wrap:break-word; }
+    .landing-actions a small { grid-column:2; min-width:0; color:var(--muted); font-weight:750; line-height:1.25; overflow-wrap:break-word; }
+    .landing-actions a strong { grid-column:3; justify-self:end; min-width:0; max-width:100%; color:var(--le-navy); font-size:13px; line-height:1.2; text-align:right; white-space:normal; overflow-wrap:break-word; }
+    .landing-actions a:not(:has(small)) { grid-template-columns:minmax(0,1fr) minmax(150px,auto); }
+    .landing-actions a:not(:has(small)) strong { grid-column:2; }
     .landing-actions a:hover,.landing-actions a:focus-visible { background:#F4F7FB; color:var(--le-navy); }
     :root {
       --le-navy:#0F1F5C;
@@ -12921,8 +12926,7 @@ function htmlShell() {
     .nav-top-link:focus-visible,
     .nav-menu-summary:focus-visible { background:rgba(0,169,157,.1); color:#0f172a; }
     .nav-top-link.active,
-    .nav-menu-summary.active,
-    .nav-menu[open] > .nav-menu-summary { background:#020D66; color:#fff; }
+    .nav-menu-summary.active { background:#020D66; color:#fff; }
     .nav-menu { position:relative; display:inline-flex; overflow:visible; }
     .nav-menu-summary { list-style:none; }
     .nav-menu-summary::-webkit-details-marker { display:none; }
@@ -13305,12 +13309,13 @@ function htmlShell() {
 
     /* Production shell QA guardrails */
     html, body, .shell, #app { width:100%; max-width:100%; min-width:0; overflow-x:hidden; }
-    .shell, #app, #app main { contain:layout paint; }
+    main { width:100%; max-width:100%; min-width:0; overflow-x:hidden; box-sizing:border-box; }
+    .shell, #app, #app main { max-width:100%; min-width:0; }
     .app-topbar { max-width:100%; min-width:0; overflow-x:clip; }
     .top-nav { max-width:100%; min-width:0; }
     #app { padding-bottom:96px; }
     .page-section:not(.active) { display:none !important; visibility:hidden; pointer-events:none; width:0; height:0; max-width:0; overflow:hidden; }
-    .page-section.active { min-width:0; max-width:100%; overflow-x:hidden; isolation:isolate; }
+    .page-section.active { min-width:0; max-width:min(1240px,100%); overflow-x:hidden; isolation:isolate; }
     .app-section,
     .page-section,
     .command-page,
@@ -13417,12 +13422,12 @@ function htmlShell() {
     <header class="app-topbar">
       <a class="brand-lockup" href="#overview"><span>LegalEase</span><strong>Command Center</strong></a>
       <nav class="top-nav" aria-label="Primary">
-        <a class="nav-top-link" href="#overview" data-nav-section="today">Today</a>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="growth">Growth</summary><div class="nav-menu-panel"><a href="#growth">Growth Home</a><a href="#growth-inbox">Growth Inbox</a><a href="#capture-inbox">Capture Inbox</a><a href="#campaigns">Campaigns</a><a href="#funnel">RecordShield Funnel</a><a href="#metrics">Metrics</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="partners">Partners</summary><div class="nav-menu-panel"><a href="#partner-hub">Partners Home</a><a href="#partners">Partners</a><a href="#partner-programs">Partner Programs</a><a href="#partner-pages">Partner Pages</a><a href="#partner-dashboards">Partner Dashboards</a><a href="#partner-proposals">Partner Proposals</a><a href="#partner-reports">Partner Reports</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="production">Production</summary><div class="nav-menu-panel"><a href="#production">Production Home</a><a href="#content-bank">Content Bank</a><a href="#queue">Queue</a><a href="#assets">Assets</a><a href="#posted">Posted</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="proof">Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#evidence-room">Proof</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
-        <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#tasks-today">Today Tasks</a><a href="#tasks-blocked">Blocked Tasks</a><a href="#tasks-waiting">Waiting Tasks</a><a href="#tasks-this-week">This Week Tasks</a><a href="#handoff-contract">Handoff Notes</a><a href="#operator-manual">Guide</a><a href="#roles">Team Roles</a><a href="#data-integrity">Data Check</a><a href="#autonomy">Autonomy</a><a href="#automation">App Status</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Advanced details</a><a href="#dataroom">Runbooks</a></div></details>
+        <a class="nav-top-link" href="#today" data-nav-section="today">Today</a>
+        <a class="nav-top-link" href="#growth" data-nav-section="growth">Growth</a>
+        <a class="nav-top-link" href="#partners" data-nav-section="partners">Partners</a>
+        <a class="nav-top-link" href="#production" data-nav-section="production">Production</a>
+        <a class="nav-top-link" href="#proof" data-nav-section="proof">Proof</a>
+        <a class="nav-top-link" href="#more" data-nav-section="more">More</a>
       </nav>
       <span class="shell-marker" hidden aria-hidden="true">nav: topnav-fixed-v1</span>
       <span class="shell-marker" hidden aria-hidden="true">shell: app-layout-stable-v1</span>
@@ -20032,10 +20037,10 @@ function htmlShell() {
     function sectionLandingConfig(section) {
       const configs = [
         { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Manage content, campaigns, outreach, and manual social publishing.", links:[["Growth Inbox","growth-inbox"],["Capture Ideas","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"],["Social Posts","queue"],["Content Calendar","content-bank"]] },
-        { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Track partner conversations, follow-ups, and active programs.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"],["Open RCAP Program","production-activation-rcap"]] },
+        { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Track partner conversations, follow-ups, and active programs.", links:[["Partners","partners","Open Partners"],["Partner Programs","partner-programs","Open Partner Programs"],["Follow-ups","partners","Review Follow-ups"],["Partner Proof","partner-reports","Review Partner Proof"],["Partner Pages","partner-pages","Open Partner Pages"],["Partner Dashboards","partner-dashboards","Open Partner Dashboards"],["Partner Proposals","partner-proposals","Open Partner Proposals"],["Partner Reports","partner-reports","Open Partner Reports"],["RCAP Program","rcap","Open RCAP Program"]] },
         { id:"production", eyebrow:"Production", title:"Production", copy:"Review content and assets before anything is posted, published, or shared.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
         { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Capture wins, customer notes, evidence, and investor-ready proof.", links:[["Proof","evidence-room"],["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
-        { id:"more", eyebrow:"More", title:"More", copy:"Settings, recovery, support tools, and focused work views.", links:[["Tasks","tasks"],["Today Tools","overview"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Roundtable Notes","conversation-notes"],["Guide","operator-manual"],["Team Roles","roles"],["App Status","os-health"],["Recovery Mode","safe-mode"]] }
+        { id:"more", eyebrow:"More", title:"More", copy:"Settings, recovery, support tools, and focused work views.", links:[["Tasks","tasks","Open Tasks"],["Today Tools","overview","Open Today Tools"],["Blocked Tasks","tasks-blocked","Review Blocked Tasks"],["Waiting Tasks","tasks-waiting","Review Waiting Tasks"],["This Week Tasks","tasks-this-week","Review This Week"],["Roundtable Notes","conversation-notes","Open Roundtable Notes"],["RCAP Program","rcap","Open RCAP Program","Record Clearing Access Program review workspace"],["Guide","operator-manual","Open Guide"],["Team Roles","roles","Open Team Roles"],["App Status","os-health","Open App Status"],["Recovery Mode","safe-mode","Open Recovery Mode"]] }
       ];
       return configs.find(item => item.id === section) || configs[0];
     }
@@ -20098,7 +20103,7 @@ function htmlShell() {
           </section>
           <aside class="section-band proof-band">
             <div class="simple-panel-head"><h2>Open</h2></div>
-            <div class="landing-actions">\${config.links.map(([label, href]) => \`<a href="#\${esc(href)}"><span>\${esc(label)}</span><strong>Open</strong></a>\`).join("")}</div>
+            <div class="landing-actions">\${config.links.map(([label, href, actionLabel, detail]) => \`<a href="#\${esc(href)}"><span>\${esc(label)}</span>\${detail ? \`<small>\${esc(detail)}</small>\` : ""}<strong>\${esc(actionLabel || "Open " + label)}</strong></a>\`).join("")}</div>
           </aside>
         </div>
       </section>\`;
@@ -20557,6 +20562,15 @@ function htmlShell() {
         return events.length ? events.map(event => \`<div class="metric-row"><span>\${esc(event.at || "No date")}</span><strong>\${esc(event.title)}\${event.detail ? " · " + esc(event.detail) : ""}</strong></div>\`).join("") : '<div class="empty">No lifecycle history yet. Save a partner update to start the timeline.</div>';
       }
       return growthHero(pageClass, "partners", "Partner operations", "Partners", "Move priority organizations through owned stages, evidence, reports, and renewal paths.") + \`
+        <section class="panel section">
+          <div class="simple-panel-head"><h2>RCAP Program</h2><span class="badge warn">Needs review</span></div>
+          <p class="muted">Review Record Clearing Access Program partner materials before anything goes partner-facing.</p>
+          <div class="card-actions">
+            <button class="primary" type="button" onclick="location.hash='rcap'">Open RCAP Program</button>
+            <button type="button" onclick="document.getElementById('partner-followups')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Follow-ups</button>
+            <button type="button" onclick="location.hash='partner-reports'">Review Partner Proof</button>
+          </div>
+        </section>
         <details class="panel" open><summary>Add partner</summary>
           <form class="mini-form" style="margin-top:12px" onsubmit="savePartner(event)">
             <label>Organization<input name="organizationName" required></label>
@@ -20610,7 +20624,7 @@ function htmlShell() {
             </article>\`;
           }).join("") || '<div class="empty">No partners in this stage. Add or move a partner when there is a real next step.</div>'}</section>\`;
         }).join("")}</div>
-        <details class="panel section"><summary>Table view, due follow-ups, and stalled partners</summary><div class="ops-table" style="margin-top:12px">
+        <details id="partner-followups" class="panel section"><summary>Table view, due follow-ups, and stalled partners</summary><div class="ops-table" style="margin-top:12px">
           <div class="ops-row header"><span>Partner</span><span>Stage</span><span>Owner</span><span>Next due</span><span>Flags</span><span>Next action</span></div>
           \${partners.map(partner => \`<div class="ops-row"><strong>\${esc(partner.name || partner.organizationName)}</strong><span class="badge \${growthTone(partner.stage || partner.status)}">\${esc(growthLabel(partner.stage || partner.status))}</span><span>\${esc(partner.owner || "Unassigned")}</span><span>\${esc(partner.nextActionDueDate || partner.nextFollowUpDate || "Due date missing")}</span><span>\${partnerFlags(partner).map(flag => esc(flag.label)).join(" · ") || "Clear"}</span><span class="muted">\${esc(partnerNextAction(partner))}</span></div>\`).join("") || '<div class="empty">Add your first partner target. Start with organizations that can send users or validate infrastructure value.</div>'}
         </div></details>

@@ -23,8 +23,11 @@ assert.match(server, /Manual approval required/, "Review-only controls should ex
 assert.match(server, /Live posting:\s*<strong>\\\$\{liveEnabled \? "Enabled" : "Disabled"\}<\/strong>/, "Live publishing card should show disabled status plainly.");
 assert.match(server, /<button class="review-only-action" disabled aria-disabled="true" title="Manual approval required before live publishing can be enabled.">Enable live publishing<\/button>/, "Enable live publishing must remain disabled/review-only.");
 assert.match(server, /onclick="startRcapActivation\(\)"/, "RCAP activation button should still be wired.");
-assert.match(server, /href="#growth-inbox"/, "Top nav dropdown links should still exist.");
-assert.match(server, /href="#settings"/, "Settings navigation should still exist.");
+assert.match(server, /class="nav-top-link" href="#growth" data-nav-section="growth"/, "Growth top nav link should route directly.");
+assert.match(server, /class="nav-top-link" href="#partners" data-nav-section="partners"/, "Partners top nav link should route directly.");
+assert.match(server, /class="nav-top-link" href="#production" data-nav-section="production"/, "Production top nav link should route directly.");
+assert.match(server, /Open RCAP Program/, "RCAP access buttons should use a clear route label.");
+assert.match(server, /Open App Status/, "App Status access should remain available from utility navigation.");
 
 const automationControls = snippetAround("Import controls");
 assert.match(automationControls, /type="button" onclick="connectGoogle\(\)"/, "Automation Connect Google control should be explicit.");
