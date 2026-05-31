@@ -24,9 +24,11 @@ const rcapBlock = functionBlock("rcapReviewWorkspaceHtml");
 const metricsBlock = functionBlock("metricsDashboardHtml");
 const sectionConfigBlock = functionBlock("sectionLandingConfig");
 
-for (const marker of ["topnav-fixed-v1", "app-layout-stable-v1", "button-audit-v1"]) {
-  assert(source.includes(`${marker}</span>`) || source.includes(marker), `${marker} should remain traceable in source for diagnostics`);
-  assert(source.includes(`.${marker}`) === false, `${marker} should not be used as a visible CSS class`);
+const hiddenMarkers = ["topnav-fixed-v1", "app-layout-stable-v1", "button-audit-v1"];
+const htmlShellBlock = source.includes("function htmlShell(") ? source.slice(source.indexOf("function htmlShell("), source.indexOf("<script>")) : "";
+for (const marker of hiddenMarkers) {
+  assert(!htmlShellBlock.includes(marker), `${marker} should not appear in normal rendered shell output`);
+  assert(!source.includes(`<span>${marker}</span>`), `${marker} should not be shown as visible debug text`);
 }
 
 assert(routeBlock.includes('today:"overview"'), "#today should render the Today/Overview page");

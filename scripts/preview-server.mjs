@@ -18515,6 +18515,31 @@ function htmlShell() {
         if (["not_started", "pending"].includes(raw)) return "Not started";
         return "Needs review";
       };
+      const packetArtifactKeys = {
+        "Proposal draft": "rcap-proposal-draft-v1",
+        "Partner page draft": "rcap-partner-page-draft-v1",
+        "Dashboard readiness": "rcap-dashboard-readiness-v1",
+        "Weekly report draft": "rcap-weekly-report-draft-v1",
+        "Evidence note": "rcap-production-activation-evidence-v1"
+      };
+      const packetRows = artifacts.map(([label, item]) => {
+        const rowStatus = statusLabel(item);
+        const rowClass = rowStatus === "Ready" ? "good" : rowStatus === "Missing information" ? "warn" : "info";
+        const artifactKey = esc(packetArtifactKeys[label] || "rcap-manual-review-checklist-v1");
+        return [
+          '<article class="rcap-review-row">',
+          '<div class="topline"><strong>' + esc(label) + '</strong>',
+          '<span class="artifact-review-status ' + esc(rowClass) + '">' + esc(rowStatus) + '</span>',
+          '</div>',
+          '<p>' + esc(item.summary?.answer || item.summary || item.status || "Needs review before use.") + '</p>',
+          '<div class="actions">',
+          "<button type=\"button\" onclick=\"markRcapReviewState('" + artifactKey + "','in_review')\">Review</button>",
+          "<button type=\"button\" onclick=\"markRcapReviewState('" + artifactKey + "','needs_revision')\">Add info</button>",
+          "<button type=\"button\" onclick=\"markRcapReviewState('" + artifactKey + "','approved')\">Mark ready</button>",
+          '</div>',
+          '</article>'
+        ].join("");
+      }).join("");
       const missing = [
         ...(partner.missingExternalDetailsList || []),
         ...(program.missingPartnerDetails || []),
@@ -18526,12 +18551,17 @@ function htmlShell() {
         .slice(-5)
         .reverse();
       const packetButtonLabel = "Prepare Review Packet";
-      return \`<section id="production-activation-rcap" class="\${pageClass("production-activation-rcap")} rcap-review-workspace command-page lee-bubble-safe-space">
+      return \`<section id="production-activation-rcap" class="\${pageClass("production-activation-rcap")} rcap-review-workspace command-page lee-bubble-safe-space" style="font-family: \\"Geist\\", \\"Inter\\", system-ui, -apple-system, BlinkMacSystemFont, \\"Segoe UI\\", sans-serif;">
         <div class="panel hero-panel">
           <div class="eyebrow">Record Clearing Access Program</div>
           <h1 class="big-title">RCAP Program Review</h1>
           <p class="muted">Review the Record Clearing Access Program materials before anything goes partner-facing.</p>
-          <div class="row"><span class="badge warn">Needs review</span><span class="badge info">Nothing has been sent, published, or activated.</span></div>
+          <div class="hero-actions">
+            <span class="badge warn">Needs review</span>
+            <span class="badge info">Status: \${esc(status.status || "Needs review")}</span>
+            <span class="badge good">No email sent</span>
+          </div>
+          <div class="status-note">Nothing has been sent, published, or activated.</div>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
             <button class="primary" type="button" onclick="generateRcapHandoffPacket()">\${packetButtonLabel}</button>
@@ -18551,34 +18581,42 @@ function htmlShell() {
               </div>
             </section>
             <section class="panel operating-memory-card">
-              <div class="simple-panel-head"><h2>Review Packet</h2><span class="badge warn">Needs review</span></div>
+              <div class="simple-panel-head"><h2>Review Packet</h2><span class="badge warn">Needs action</span></div>
               <div class="memory-evidence-grid">
-                \${artifacts.map(([label, item]) => \`<article class="memory-history-card"><strong>\${esc(label)}</strong><span class="badge \${statusLabel(item) === "Ready" ? "good" : statusLabel(item) === "Missing information" ? "warn" : "info"}">\${esc(statusLabel(item))}</span><p class="muted">\${esc(item.summary?.answer || item.summary || item.status || "Needs review before use.")}</p></article>\`).join("")}
+                \${packetRows || '<div class="empty">No packet rows are available yet.</div>'}
               </div>
-              <div class="card-actions"><button class="primary" type="button" onclick="startRcapActivation()">Update Review Packet</button><button type="button" onclick="location.hash='proof'">Preview Materials</button><button type="button" onclick="document.getElementById('rcap-decision-note')?.focus()">Add Review Note</button></div>
+              <div class="card-actions">
+                <button class="primary" type="button" onclick="startRcapActivation()">Update Review Packet</button>
+                <button type="button" onclick="location.hash='proof'">Preview Materials</button>
+                <button type="button" onclick="document.getElementById('rcap-decision-note')?.focus()">Add Review Note</button>
+              </div>
             </section>
             <section class="panel operating-memory-card">
               <div class="simple-panel-head"><h2>Review Notes</h2><span class="badge info">Saved work</span></div>
               <div class="grid split">
                 <label>Decision note<textarea id="rcap-decision-note" rows="3" placeholder="What does Roger need to decide?"></textarea></label>
-                <label>Revision note<textarea rows="3" placeholder="What needs to change before use?"></textarea></label>
+                <label>Revision note<textarea id="rcap-revision-note" rows="3" placeholder="What needs to change before use?"></textarea></label>
               </div>
-              <label>Partner note<textarea rows="3" placeholder="Partner-facing details to confirm manually."></textarea></label>
-              <div class="card-actions"><button class="primary" type="button" onclick="toast('Review note saved locally for manual follow-up')">Save Review Note</button></div>
+              <label>Partner note<textarea id="rcap-partner-note" rows="3" placeholder="Partner-facing details to confirm manually."></textarea></label>
+              <div class="card-actions">
+                <button type="button" onclick="document.getElementById('rcap-decision-note').value=''; document.getElementById('rcap-revision-note')?.value=''; document.getElementById('rcap-partner-note')?.value=''; toast('Review notes were cleared.')">Clear Notes</button>
+                <button class="primary" type="button" onclick="toast('Review note saved internally for manual follow-up')">Save Review Note</button>
+              </div>
             </section>
           </main>
           <aside class="grid">
             <section class="panel operating-memory-card">
-              <div class="simple-panel-head"><h2>Next Steps</h2><span class="badge warn">Needs Roger</span></div>
+              <div class="simple-panel-head"><h2>Next Steps</h2><span class="badge warn">Needs action</span></div>
               <ul class="manual-checklist">
                 <li>Confirm partner contact</li>
                 <li>Confirm partner-facing email</li>
                 <li>Confirm program scope</li>
                 <li>Review proposal language</li>
                 <li>Decide if packet is ready</li>
-                <li>Mark ready for manual handoff</li>
               </ul>
-              <div class="card-actions"><button type="button" onclick="toast('Marked as ready for manual review only. Nothing was sent.')">Mark Ready for Manual Handoff</button></div>
+              <div class="card-actions">
+                <button class="primary" type="button" onclick="markRcapReviewState('rcap-manual-review-checklist-v1', 'handoff_ready')">Mark Ready for Manual Handoff</button>
+              </div>
             </section>
             <section class="panel operating-memory-card">
               <div class="simple-panel-head"><h2>Missing Information</h2><span class="badge info">\${esc(missing.length)}</span></div>
