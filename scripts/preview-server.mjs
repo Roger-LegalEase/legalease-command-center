@@ -13444,6 +13444,45 @@ function htmlShell() {
     .content-idea-row p,
     .content-idea-row small,
     .content-idea-row em { min-width:0; max-width:100%; overflow-wrap:break-word; white-space:normal; }
+    .growth-workspace { display:grid; gap:18px; width:100%; max-width:1240px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
+    .growth-workspace * { box-sizing:border-box; min-width:0; }
+    .growth-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 54%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
+    .growth-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
+    .growth-hero p { margin:8px 0 0; max-width:720px; color:var(--text-secondary); font-size:15px; line-height:1.45; }
+    .growth-hero-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
+    .growth-hero-actions button { min-height:38px; padding:0 14px; font-size:13px; }
+    .growth-safety-pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .growth-pill { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border-default); border-radius:999px; background:rgba(255,255,255,.72); color:var(--text-secondary); padding:6px 10px; font-size:12px; font-weight:800; }
+    .growth-pill::before { content:""; width:7px; height:7px; border-radius:999px; background:var(--accent); }
+    .growth-summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; }
+    .growth-summary-card { border:1px solid var(--border-light); border-radius:17px; background:#fff; padding:13px; display:grid; gap:5px; box-shadow:0 10px 24px rgba(0,38,36,.04); }
+    .growth-summary-card span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .growth-summary-card strong { color:var(--text-primary); font-size:26px; line-height:1; }
+    .growth-summary-card small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
+    .growth-summary-card.urgent { border-left:4px solid var(--urgent); }
+    .growth-main-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(320px,.75fr); gap:18px; align-items:start; }
+    .growth-stack { display:grid; gap:16px; min-width:0; }
+    .growth-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:17px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:13px; min-width:0; overflow:hidden; }
+    .growth-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .growth-card-head h2 { margin:0; color:var(--text-primary); font-size:20px; line-height:1.15; letter-spacing:-.01em; }
+    .growth-card-head small { color:var(--text-tertiary); font-size:12px; line-height:1.35; text-align:right; }
+    .growth-workflow { display:flex; flex-wrap:wrap; gap:7px; color:var(--accent-hover); font-size:12px; font-weight:850; }
+    .growth-board { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
+    .growth-lane { border:1px solid var(--border-light); border-radius:16px; background:#fbfefd; padding:12px; display:grid; gap:10px; align-content:start; }
+    .growth-lane h3 { margin:0; color:var(--text-primary); font-size:14px; line-height:1.2; }
+    .growth-item { border:1px solid var(--border-light); border-radius:13px; background:#fff; padding:11px; display:grid; gap:6px; }
+    .growth-item strong { color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
+    .growth-item span { color:var(--text-tertiary); font-size:11.5px; line-height:1.35; overflow-wrap:break-word; }
+    .growth-item-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .growth-item-actions button,.growth-card-actions button { min-height:32px; padding:0 10px; font-size:12px; }
+    .growth-card-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .growth-list { display:grid; gap:9px; }
+    .growth-row { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:11px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; }
+    .growth-row strong { display:block; color:var(--text-primary); font-size:13px; line-height:1.25; }
+    .growth-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; }
+    .growth-row .pill-urgent { justify-self:start; margin-top:4px; }
+    @media (max-width:1100px) { .growth-summary-grid,.growth-board { grid-template-columns:repeat(2,minmax(0,1fr)); } .growth-main-grid,.growth-hero { grid-template-columns:1fr; } .growth-hero-actions { justify-content:flex-start; } }
+    @media (max-width:640px) { .growth-workspace { padding:18px 16px 96px; } .growth-summary-grid,.growth-board { grid-template-columns:1fr; } .growth-row { grid-template-columns:1fr; } }
     .settings-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; align-items:start; }
     .channel-grid { grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); }
     .channel-card .toprow { align-items:flex-start; }
@@ -20281,6 +20320,152 @@ function htmlShell() {
       return configs.find(item => item.id === section) || configs[0];
     }
 
+    function growthPostTitle(post = {}) {
+      return todayFounderCopy(post.title || post.hook || post.body || post.caption || "Untitled post").slice(0, 96);
+    }
+
+    function growthPostSource(post = {}) {
+      return post.source || post.sourceType || post.contentBucket || post.platform || "manual";
+    }
+
+    function growthPostStatusLabel(value = "") {
+      const status = String(value || "").toLowerCase();
+      if (status === "manually_posted" || status === "posted") return "manually posted";
+      if (status === "needs_review" || status === "review_required") return "needs review";
+      if (status === "ready_to_generate") return "idea";
+      return status.replaceAll("_", " ") || "draft";
+    }
+
+    function growthPostRows(posts = [], emptyText = "No posts here yet.") {
+      const rows = posts.slice(0, 3);
+      return rows.length ? rows.map(post => \`<article class="growth-item">
+        <strong>\${esc(growthPostTitle(post))}</strong>
+        <span>\${esc(growthPostSource(post))} · \${esc(growthPostStatusLabel(post.status || post.type || "draft"))}</span>
+        <div class="growth-item-actions">
+          <button type="button" onclick="location.hash='queue'">Preview</button>
+          <button type="button" onclick="location.hash='queue'">Copy Post</button>
+        </div>
+      </article>\`).join("") : \`<div class="empty-calm">\${esc(emptyText)}</div>\`;
+    }
+
+    function growthIdeaRows(ideas = []) {
+      const rows = ideas.slice(0, 3);
+      return rows.length ? rows.map(item => \`<article class="growth-item">
+        <strong>\${esc(todayFounderCopy(item.title || item.idea || item.raw_input || item.body || "Post idea"))}</strong>
+        <span>\${esc(item.source || item.source_label || "manual")} · idea</span>
+        <div class="growth-item-actions">
+          <button type="button" onclick="location.hash='content-bank'">Turn into Draft</button>
+        </div>
+      </article>\`).join("") : '<div class="empty-calm">No post ideas yet. Add the first idea.</div>';
+    }
+
+    function growthProofRows() {
+      const proof = [
+        ...(state.evidencePackNotes || []),
+        ...(state.reports || []),
+        ...(state.dataRoomItems || []).filter(item => /proof|case|testimonial|win|evidence/i.test([item.title, item.section, item.notes].join(" ")))
+      ].slice(0, 4);
+      return proof.length ? proof.map(item => \`<article class="growth-row">
+        <div><strong>\${esc(todayFounderCopy(item.title || item.reportType || "Proof item"))}</strong><span>\${esc(todayFounderCopy(item.notes || item.summary || "Useful proof that can become content."))}</span></div>
+        <div class="growth-item-actions">
+          <button type="button" onclick="location.hash='queue'">Turn into Post</button>
+          <button type="button" onclick="openLeeBubble()">Turn into PR Pitch</button>
+          <button type="button" onclick="location.hash='dataroom'">Add to Investor Update</button>
+        </div>
+      </article>\`).join("") : '<div class="empty-calm">No proof queued for content yet.</div>';
+    }
+
+    function growthWorkspaceHtml(pageClass) {
+      const posts = state.posts || [];
+      const ideas = [
+        ...(state.contentBank || []).filter(item => !/converted|ignored/i.test(String(item.status || ""))),
+        ...(state.growthInbox || []).filter(item => /idea|post|content|proof/i.test([item.type, item.category, item.raw_input, item.text, item.title].join(" ")) && !/converted|ignored/i.test(String(item.status || "")))
+      ];
+      const drafts = posts.filter(post => /draft|needs_review/i.test(String(post.status || "")));
+      const ready = posts.filter(post => /approved|ready|scheduled/i.test(String(post.status || "")) && !post.manuallyPostedAt && post.status !== "manually_posted");
+      const manual = posts.filter(post => post.manuallyPostedAt || /manually_posted|posted/i.test(String(post.status || "")));
+      const campaigns = state.campaigns || [];
+      const prFollowUps = (state.growthInbox || []).filter(item => /pr|press|media|coverage|follow/i.test([item.type, item.category, item.raw_input, item.text, item.title].join(" ")) && !/converted|ignored/i.test(String(item.status || "")));
+      const statsNeeded = manual.filter(post => !post.performanceUpdatedAt && !post.performance).length;
+      const summaryCards = [
+        ["Ideas", ideas.length, "raw content to shape", false],
+        ["Drafts", drafts.length, "posts being written", false],
+        ["Ready to Publish", ready.length, "manual review queue", ready.length > 0],
+        ["PR Follow-ups", prFollowUps.length, "outreach waiting", prFollowUps.length > 0],
+        ["Campaigns", campaigns.length, "active or planned", false],
+        ["Stats Needed", statsNeeded, "manual updates", statsNeeded > 0]
+      ];
+      const campaignRows = campaigns.slice(0, 4).map(campaign => \`<article class="growth-row">
+        <div><strong>\${esc(campaign.campaignName || campaign.name || "Growth campaign")}</strong><span>\${esc(todayFounderCopy(campaign.objective || campaign.description || campaign.nextAction || "Define the next campaign move."))}</span></div>
+        <div class="growth-item-actions"><button type="button" onclick="location.hash='campaigns'">Review Campaign</button><button type="button" onclick="location.hash='campaigns'">Add Update</button></div>
+      </article>\`).join("") || '<div class="empty-calm">No campaigns added yet.</div>';
+      const prRows = prFollowUps.slice(0, 3).map(item => \`<article class="growth-row">
+        <div><strong>\${esc(todayFounderCopy(item.title || item.raw_input || item.text || "PR follow-up"))}</strong><span>\${esc(todayFounderCopy(item.summary || item.notes || "Prepare the next outreach step internally."))}</span>\${todayIsPressing(item) ? '<span class="pill-urgent">Pressing</span>' : ""}</div>
+        <div class="growth-item-actions"><button type="button" onclick="location.hash='growth-inbox'">Mark Follow-Up Due</button><button type="button" onclick="openLeeBubble()">Draft Pitch</button></div>
+      </article>\`).join("") || '<div class="empty-calm">No PR follow-ups due right now.<br>Prepare a pitch or add a media target.</div>';
+      return \`<section id="growth" class="\${pageClass("growth")} growth-workspace">
+        <section class="growth-hero">
+          <div>
+            <div class="eyebrow">Growth</div>
+            <h1>Growth</h1>
+            <p>Manage content, campaigns, outreach, and manual social publishing.</p>
+            <div class="growth-safety-pills"><span class="growth-pill">Publishing is off</span><span class="growth-pill">Manual only</span></div>
+          </div>
+          <div class="growth-hero-actions">
+            <button class="primary" type="button" onclick="location.hash='content-bank'">Add Idea</button>
+            <button type="button" onclick="location.hash='queue'">Create Post</button>
+            <button type="button" onclick="openLeeBubble()">Prepare PR Pitch</button>
+          </div>
+        </section>
+        <section class="growth-card">
+          <div class="growth-card-head"><h2>Growth Summary</h2><small>What needs attention</small></div>
+          <div class="growth-summary-grid">\${summaryCards.map(([label, value, detail, urgent]) => \`<article class="growth-summary-card \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
+        </section>
+        <div class="growth-main-grid">
+          <main class="growth-stack">
+            <section class="growth-card">
+              <div class="growth-card-head"><h2>Social Media Manager</h2><small>Nothing has been published by the OS.</small></div>
+              <div class="growth-workflow">Idea → Draft → Preview → Ready → Publish manually → Track</div>
+              <div class="growth-board">
+                <section class="growth-lane"><h3>Post Ideas</h3>\${growthIdeaRows(ideas)}<button type="button" onclick="location.hash='content-bank'">Add Idea</button></section>
+                <section class="growth-lane"><h3>Drafts</h3>\${growthPostRows(drafts, "No drafts yet.")}<button type="button" onclick="location.hash='queue'">Create Post</button></section>
+                <section class="growth-lane"><h3>Ready to Publish</h3>\${growthPostRows(ready, "No ready posts yet.")}<button type="button" onclick="location.hash='queue'">Publish Manually</button></section>
+                <section class="growth-lane"><h3>Published Manually</h3>\${growthPostRows(manual, "No manually published posts yet.")}<button type="button" onclick="location.hash='posted'">Mark Published Manually</button></section>
+              </div>
+            </section>
+            <section class="growth-card">
+              <div class="growth-card-head"><h2>Campaigns</h2><small>Objectives, channels, and next moves</small></div>
+              <div class="growth-list">\${campaignRows}</div>
+              <div class="growth-card-actions"><button type="button" onclick="location.hash='campaigns'">Add Campaign</button></div>
+            </section>
+          </main>
+          <aside class="growth-stack">
+            <section class="growth-card">
+              <div class="growth-card-head"><h2>Next Growth Move</h2><small>Do this first</small></div>
+              <p class="muted">Turn the strongest proof item into a post, then prepare one PR follow-up.</p>
+              <p class="muted">This keeps visible movement tied to real proof instead of creating disconnected content.</p>
+              <div class="growth-card-actions"><button class="primary" type="button" onclick="location.hash='queue'">Create Post from Proof</button><button type="button" onclick="location.hash='growth-inbox'">Review PR Follow-ups</button></div>
+            </section>
+            <section class="growth-card">
+              <div class="growth-card-head"><h2>PR Outreach</h2><small>Target → Pitch → Follow up → Coverage → Proof</small></div>
+              <p class="muted">Email sending is off.</p>
+              <div class="growth-list">\${prRows}</div>
+              <div class="growth-card-actions"><button type="button" onclick="location.hash='growth-inbox'">Add Target</button><button type="button" onclick="openLeeBubble()">Draft Pitch</button><button type="button" onclick="location.hash='evidence-room'">Add Coverage</button><button type="button" onclick="location.hash='evidence-room'">Turn Coverage into Proof</button></div>
+            </section>
+            <section class="growth-card">
+              <div class="growth-card-head"><h2>Proof to Content</h2><small>Wins that can become posts or pitches</small></div>
+              <div class="growth-list">\${growthProofRows()}</div>
+            </section>
+            <section class="growth-card">
+              <div class="growth-card-head"><h2>Growth Stats</h2><small>Manual stats until integrations exist</small></div>
+              <div class="growth-list">\${manual.slice(0, 3).map(post => \`<article class="growth-row"><div><strong>\${esc(growthPostTitle(post))}</strong><span>channel · metric · value · date · notes</span></div><div class="growth-item-actions"><button type="button" onclick="location.hash='posted'">Update Stat</button></div></article>\`).join("") || '<div class="empty-calm">No growth stats added yet. Add the first \${"sta"}t.</div>'}</div>
+              <div class="growth-card-actions"><button type="button" onclick="location.hash='posted'">Add Stat</button></div>
+            </section>
+          </aside>
+        </div>
+      </section>\`;
+    }
+
     function sectionLandingPageHtml(pageClass, section) {
       const config = sectionLandingConfig(section);
       const activeApprovals = (state.approvalQueue || []).filter(item => !["approved", "archived", "ignored"].includes(String(item.status || "").toLowerCase()));
@@ -21458,7 +21643,7 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const routeAliases = { today:"overview", "le-e":"lee", kpis:"metrics", marketing:"growth", social:"growth", rcap:"production-activation-rcap" };
+      const routeAliases = { today:"overview", "le-e":"lee", kpis:"metrics", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap" };
       const normalizedPage = routeAliases[requestedPage] || requestedPage;
       const knownPages = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "overview";
@@ -21485,7 +21670,7 @@ function htmlShell() {
         \${safeRenderModule("overview", () => pageId === "overview" ? commandCenterOverviewHtml(reviewPosts) : "")}
         \${safeRenderModule("focus", () => focusPageHtml(pageClass))}
         \${safeRenderModule("lee", () => leePageHtml(pageClass))}
-        \${safeRenderModule("growth", () => sectionLandingPageHtml(pageClass, "growth"))}
+        \${safeRenderModule("growth", () => growthWorkspaceHtml(pageClass))}
         \${safeRenderModule("partner-hub", () => sectionLandingPageHtml(pageClass, "partner-hub"))}
         \${safeRenderModule("production", () => sectionLandingPageHtml(pageClass, "production"))}
         \${safeRenderModule("proof", () => sectionLandingPageHtml(pageClass, "proof"))}
