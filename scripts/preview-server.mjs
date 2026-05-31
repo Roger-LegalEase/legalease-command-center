@@ -12931,7 +12931,7 @@ function htmlShell() {
     .nav-menu-panel a:hover,
     .nav-menu-panel a.active { background:rgba(0,169,157,.1); color:#0f172a; }
     .nav-menu-panel a.active::after { content:"Selected"; display:block; color:var(--le-muted); font-size:11px; font-weight:800; margin-top:2px; }
-    .shell-marker { color:#98a2b3; font-size:11px; font-weight:750; white-space:nowrap; }
+    .shell-marker { display:none; color:#98a2b3; font-size:11px; font-weight:750; white-space:nowrap; }
     main { max-width:100%; padding-top:18px; }
     .panel,.card { border-color:rgba(15,31,92,.12); border-radius:14px; box-shadow:0 10px 26px rgba(15,31,92,.055); background:rgba(255,255,255,.97); }
     .panel,.card { padding:14px; }
@@ -13329,7 +13329,7 @@ function htmlShell() {
     .review-only-action { opacity:.62; cursor:not-allowed; border-style:dashed; }
     .control-status { min-height:20px; color:var(--muted); font-size:12px; font-weight:750; }
     .lee-bubble-safe-space { padding-bottom:112px; }
-    .app-markers { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; padding:0 24px 12px; color:#98a2b3; font-size:11px; font-weight:750; }
+    .app-markers { display:none; gap:10px; flex-wrap:wrap; justify-content:center; padding:0 24px 12px; color:#98a2b3; font-size:11px; font-weight:750; }
     @media (max-width:980px) {
       .app-section,
       .page-section,
@@ -13360,9 +13360,9 @@ function htmlShell() {
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="proof">Proof</summary><div class="nav-menu-panel"><a href="#proof">Proof Home</a><a href="#evidence-room">Proof</a><a href="#reports">Weekly Evidence Pack</a><a href="#reports">Reports</a><a href="#dataroom">Data Room</a><a href="#soc2">SOC 2 Readiness</a><a href="#partner-reports">Final Impact Reports</a></div></details>
         <details class="nav-menu"><summary class="nav-menu-summary" data-nav-section="more">More</summary><div class="nav-menu-panel"><a href="#more">More Home</a><a href="#tasks">Tasks</a><a href="#tasks-today">Today Tasks</a><a href="#tasks-blocked">Blocked Tasks</a><a href="#tasks-waiting">Waiting Tasks</a><a href="#tasks-this-week">This Week Tasks</a><a href="#handoff-contract">Handoff Notes</a><a href="#operator-manual">Guide</a><a href="#roles">Team Roles</a><a href="#data-integrity">Data Check</a><a href="#autonomy">Autonomy</a><a href="#automation">App Status</a><a href="#settings">Settings</a><a href="#compliance">Admin</a><a href="#metrics">Advanced details</a><a href="#dataroom">Runbooks</a></div></details>
       </nav>
-      <span class="shell-marker" aria-hidden="true">nav: topnav-fixed-v1</span>
-      <span class="shell-marker" aria-hidden="true">shell: app-layout-stable-v1</span>
-      <span class="shell-marker" aria-hidden="true">controls: button-audit-v1</span>
+      <span class="shell-marker" hidden aria-hidden="true">nav: topnav-fixed-v1</span>
+      <span class="shell-marker" hidden aria-hidden="true">shell: app-layout-stable-v1</span>
+      <span class="shell-marker" hidden aria-hidden="true">controls: button-audit-v1</span>
     </header>
     <div>
       <header>
@@ -13503,49 +13503,46 @@ function htmlShell() {
       state = safeBootFallbackState(details.reason || details.module || "state_fetch_failed");
       const app = document.querySelector("#app");
       if (!app) return;
-      const message = details.message || "Full state did not load. The OS is running in Safe Mode so you can verify auth, health, and live gates without enabling actions.";
+      const message = details.message || "The app loaded a safe version so you can get back to work.";
       app.innerHTML = \`
         <section id="safe-mode" class="page-section active">
           <div class="panel hero-panel">
-            <div class="eyebrow">Safe Mode</div>
-            <h1 class="big-title">LegalEase loaded a safe shell.</h1>
-              <p class="big-copy">\${esc(message)}</p>
-              <div class="metric-table" style="margin-top:14px">\${safeDiagnosticRows(stateFetchDiagnostics)}</div>
-              <div class="card-actions" style="margin-top:14px">
-              <button class="primary" type="button" onclick="retryBootStateLoad()">Retry Boot State</button>
-              <button type="button" onclick="retryFullStateLoad()">Retry Full State</button>
-              <button type="button" onclick="location.hash='safe-mode'; fetchSafeModeHealth()">Refresh Server Health</button>
-              <button type="button" onclick="lockCommandCenter()">Sign Out / Clear Session</button>
+            <div class="eyebrow">Recovery Mode</div>
+            <h1 class="big-title">Recovery Mode</h1>
+            <p class="big-copy">\${esc(message)}</p>
+            <div class="card-actions" style="margin-top:14px">
+              <button class="primary" type="button" onclick="safeBootActive=false; location.hash='overview'; window.load && window.load()">Back to Today</button>
+              <button type="button" onclick="retryFullStateLoad()">Try full app again</button>
+              <button type="button" onclick="safeBootActive=false; location.hash='os-health'">Open App Status</button>
+              <button type="button" onclick="lockCommandCenter()">Sign out</button>
             </div>
           </div>
           <div class="grid two section">
             <section class="panel">
-              <div class="eyebrow">Owner/auth status</div>
-              <h2>Protected shell is available</h2>
-              <p class="muted">If you can see this page in hosted mode, the shell request passed owner-token protection. Mutating actions stay unavailable until the full state loads.</p>
+              <div class="eyebrow">Access</div>
+              <h2>The app is protected</h2>
+              <p class="muted">Owner access is still required. Protected actions stay unavailable until the full app state loads.</p>
               <div class="metric-table">
-                <div class="metric-row"><span>Auth token present</span><strong>\${stateFetchDiagnostics.authTokenPresent ? "Yes" : "No"}</strong></div>
-                <div class="metric-row"><span>Protected actions</span><strong>Disabled in Safe Mode</strong></div>
-                <div class="metric-row"><span>Publishing is off</span><strong>Confirmed safe default</strong></div>
+                <div class="metric-row"><span>Protected access</span><strong>\${stateFetchDiagnostics.authTokenPresent ? "On" : "Needs sign-in"}</strong></div>
+                <div class="metric-row"><span>Publishing</span><strong>Off</strong></div>
+                <div class="metric-row"><span>External actions</span><strong>Off</strong></div>
               </div>
             </section>
             <section class="panel">
               <div class="eyebrow">Server health</div>
-              <h2>Public-safe health check</h2>
+              <h2>App status</h2>
               <div id="safeModeHealth" class="metric-table"><div class="metric-row"><span>/api/health</span><strong>Checking...</strong></div></div>
               <div class="card-actions" style="margin-top:12px">
-                <a class="button-link" href="#os-health">App Status link</a>
-                <a class="button-link" href="#smoke-test">Open Self-Check</a>
-                <a class="button-link" href="#queue">Open Queue</a>
+                <button type="button" onclick="fetchSafeModeHealth()">Refresh status</button>
+                <button type="button" onclick="safeBootActive=false; location.hash='smoke-test'">Open Self-Check</button>
               </div>
             </section>
           </div>
-          <section class="panel section">
-            <div class="eyebrow">Diagnostic</div>
-            <h2>State load failed without taking the app down</h2>
-            <p class="muted">Use Retry Full Load after Render finishes deploying or after clearing a stale session. Optional boot requests cannot crash this shell.</p>
+          <details class="panel section">
+            <summary>Show advanced details</summary>
+            <div class="metric-table" style="margin-top:14px">\${safeDiagnosticRows(stateFetchDiagnostics)}</div>
             <pre class="code-block">\${esc(JSON.stringify(stateFetchDiagnostics, null, 2))}</pre>
-          </section>
+          </details>
         </section>
       \`;
       fetchSafeModeHealth();
@@ -17994,7 +17991,7 @@ function htmlShell() {
         group("Daily Rituals", [["#morning-brief opens","morning-brief","Morning Brief route renders."],["Save Morning Brief works","morning-brief","Morning Brief saves internally."],["#evening-reflection opens","evening-reflection","Evening Reflection route renders."],["Save Evening Reflection works","evening-reflection","Evening Reflection saves internally."],["Source evidence renders","morning-brief","Source evidence appears in ritual pages."]]),
         group("Notes & Decisions + Closeout", [["#operating-memory opens","operating-memory","Notes & Decisions route renders."],["Save Today's Notes works","operating-memory","Notes & Decisions saves internally."],["#daily-closeout opens","daily-closeout","Daily Closeout route renders."],["Save Closeout works","daily-closeout","Daily Closeout saves internally."],["Generate Tomorrow Plan works","daily-closeout","Tomorrow Plan generates internally."],["Tomorrow Plan renders","daily-closeout","Tomorrow Plan is visible."]]),
         group("Search + App Status + Data Check", [["#operator-search opens","operator-search","Search route renders."],["Search finds tasks/captures/RCAP Program items","operator-search","Search index includes core records."],["Safe search actions appear","operator-search","Internal-only safe actions appear."],["Forbidden search actions do not appear","operator-search","External actions do not appear."],["#os-health opens","os-health","App Status route renders."],["Refresh App Status works","os-health","App Status refresh saves internally."],["#data-integrity opens","data-integrity","Data Check route renders."],["Data check status renders","data-integrity","Data check status is visible."],["No secret fields appear","data-integrity","Secret-like fields are scrubbed."]]),
-        group("RCAP Program", [["Record Clearing Access Program card renders","overview","RCAP Program card is visible."],["#production-activation-rcap opens","production-activation-rcap","RCAP Program Review opens."],["Review Queue renders","production-activation-rcap","Review Queue is visible."],["Approval controls are internal-only","production-activation-rcap","Approval controls only update saved work."],["Handoff status renders","production-activation-rcap","Handoff status section is visible."],["Generate Internal Handoff Packet works internally only","production-activation-rcap","Internal packet generation does not contact external systems."],["No Partner Journey system is contacted","production-activation-rcap","Partner Journey systems are not called."]]),
+        group("RCAP Program", [["Record Clearing Access Program card renders","overview","RCAP Program card is visible."],["#production-activation-rcap opens","production-activation-rcap","RCAP Program Review opens."],["Review Queue renders","production-activation-rcap","Review Queue is visible."],["Approval controls are internal-only","production-activation-rcap","Approval controls only update saved work."],["Handoff status renders","production-activation-rcap","Handoff status section is visible."],["Prepare Review Packet works internally only","production-activation-rcap","Internal packet generation does not contact external systems."],["No Partner Journey system is contacted","production-activation-rcap","Partner Journey systems are not called."]]),
         group("Safety Confirmation", [["No emails sent","os-health","Email sending remains unavailable."],["No posts published","queue","Publishing remains blocked unless explicitly approved outside this self-check."],["No partner pages published","partner-pages","Partner pages remain draft/review-only."],["No dashboards activated","partner-dashboards","Dashboards are not activated."],["No destructive restore","data-integrity","Restore dry-run only; destructive restore remains blocked."],["Publishing stays off","settings","Publishing is not enabled."],["Publishing remains off","os-health","Publishing is off."]])
       ];
     }
@@ -18081,7 +18078,7 @@ function htmlShell() {
         const def = rcapReviewDefinitions.find(item => item.key === key) || { key, title:key };
         return clientContractArtifact(def, def ? rcapReviewArtifactFor(def) : {});
       });
-      artifacts.push(clientContractArtifact({ key:rcapHandoffPacketArtifactKey, title:"Internal Handoff Packet" }, rcapHandoffPacketForState()));
+      artifacts.push(clientContractArtifact({ key:rcapHandoffPacketArtifactKey, title:"Internal Review Packet" }, rcapHandoffPacketForState()));
       return {
         handoff_packet_id:"rcap-partner-journey-handoff-contract-preview-v1",
         handoff_contract_version:handoffContractVersion,
@@ -18480,7 +18477,7 @@ function htmlShell() {
           <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','approved')">Approve</button>
           <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','needs_revision')">Needs Revision</button>
           <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','blocked')">Block</button>
-          <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','handoff_ready')">Mark Handoff Ready</button>
+          <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','handoff_ready')">Mark Ready for Manual Handoff</button>
         </div>
       </div>\`;
     }
@@ -18504,130 +18501,104 @@ function htmlShell() {
       const partner = (state.partners || []).find(item => item.slug === "rcap" || item.id === "partner-rcap") || {};
       const program = (state.partnerPrograms || []).find(item => item.slug === "rcap" || item.id === "partner-program-rcap") || {};
       const artifact = key => (state.partnerProgramArtifacts || []).find(item => item.key === key) || {};
-      const proposalDraft = artifact("rcap-proposal-draft-v1");
-      const pageDraft = artifact("rcap-partner-page-draft-v1");
-      const dashboardReadiness = artifact("rcap-dashboard-readiness-v1");
-      const proposalTask = (state.tasks || []).find(item => item.id === "task-rcap-proposal-draft-v1") || {};
-      const weeklyReport = (state.reports || []).find(item => item.key === "rcap-weekly-report-draft-v1") || {};
-      const evidenceNote = (state.evidencePackNotes || []).find(item => item.key === "rcap-production-activation-evidence-v1") || {};
-      const proposalSections = proposalDraft.sections || {};
-      const pageContent = pageDraft.draftContent || {};
-      const dashboardChecklist = dashboardReadiness.checklist || {};
-      const reportSections = weeklyReport.sections || {};
-      const evidenceSummary = evidenceNote.notes || "No evidence note has been generated yet. Start RCAP Activation from Today to create the review-only artifact set.";
-      const handoffSummary = rcapHandoffReadinessClientSummary();
-      const handoffReadiness = rcapPartnerJourneyHandoffReadinessClient();
-      const handoffPacket = rcapHandoffPacketForState();
-      const checklistItems = [
-        "Verify RCAP contact details.",
-        "Confirm package/program scope.",
-        "Review proposal draft.",
-        "Review partner page draft.",
-        "Confirm dashboard requirements.",
-        "Confirm reporting cadence.",
-        "Confirm approval authority.",
-        "Decide whether to move to Partner Journey handoff.",
-        "Keep live gates at 0 until approval."
+      const artifacts = [
+        ["Proposal draft", artifact("rcap-proposal-draft-v1")],
+        ["Partner page draft", artifact("rcap-partner-page-draft-v1")],
+        ["Dashboard readiness", artifact("rcap-dashboard-readiness-v1")],
+        ["Weekly report draft", (state.reports || []).find(item => item.key === "rcap-weekly-report-draft-v1") || {}],
+        ["Evidence note", (state.evidencePackNotes || []).find(item => item.key === "rcap-production-activation-evidence-v1") || {}]
       ];
+      const statusLabel = item => {
+        const raw = String(item.review_state || item.status || "needs_review").toLowerCase();
+        if (["approved", "handoff_ready", "ready"].includes(raw)) return "Ready";
+        if (["blocked", "missing", "missing_information"].includes(raw)) return "Missing information";
+        if (["not_started", "pending"].includes(raw)) return "Not started";
+        return "Needs review";
+      };
+      const missing = [
+        ...(partner.missingExternalDetailsList || []),
+        ...(program.missingPartnerDetails || []),
+        partner.primaryContact || program.primaryContact ? "" : "Confirm partner contact",
+        partner.email ? "" : "Confirm partner-facing email"
+      ].filter(Boolean);
+      const activity = [...(state.activityEvents || []), ...(state.auditHistory || [])]
+        .filter(item => /rcap|record clearing/i.test([item.title, item.summary, item.action, item.eventType, item.resourceType].join(" ")))
+        .slice(-5)
+        .reverse();
+      const packetButtonLabel = "Prepare Review Packet";
       return \`<section id="production-activation-rcap" class="\${pageClass("production-activation-rcap")} rcap-review-workspace command-page lee-bubble-safe-space">
         <div class="panel hero-panel">
           <div class="eyebrow">Record Clearing Access Program</div>
           <h1 class="big-title">RCAP Program Review</h1>
-          <p class="muted">Review-only internal workspace. Manual approval required before any external action. No emails, posts, partner pages, or dashboards are activated from this page.</p>
+          <p class="muted">Review the Record Clearing Access Program materials before anything goes partner-facing.</p>
+          <div class="row"><span class="badge warn">Needs review</span><span class="badge info">Nothing has been sent, published, or activated.</span></div>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="startRcapActivation()">Refresh RCAP Artifacts</button>
+            <button class="primary" type="button" onclick="generateRcapHandoffPacket()">\${packetButtonLabel}</button>
           </div>
         </div>
-        <section class="panel">
-          <div class="simple-panel-head"><h2>Handoff Readiness Summary</h2><span class="artifact-review-status \${handoffSummary.readyForPartnerJourneyHandoff ? "handoff-ready" : "blocked"}">\${handoffSummary.readyForPartnerJourneyHandoff ? "Handoff ready" : "Not handoff ready"}</span></div>
-          <p class="muted">No handoff is triggered automatically. This summary only tells Roger whether internal review states support a manual Partner Journey handoff decision.</p>
-          <div class="handoff-summary">
-            <div><span>Approved</span><strong>\${esc(handoffSummary.approved.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.approved, "None"))}</small></div>
-            <div><span>Blocked</span><strong>\${esc(handoffSummary.blocked.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.blocked, "None"))}</small></div>
-            <div><span>Needs Revision</span><strong>\${esc(handoffSummary.needsRevision.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.needsRevision, "None"))}</small></div>
-            <div><span>Handoff Ready</span><strong>\${esc(handoffSummary.handoffReady.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.handoffReady, "None"))}</small></div>
-          </div>
-        </section>
-        <section class="panel">
-          <div class="simple-panel-head"><h2>Handoff Packet</h2><span class="artifact-review-status \${handoffReadiness.ready ? "handoff-ready" : "blocked"}">\${handoffReadiness.ready ? "Ready" : "Not Ready"}</span></div>
-          <p class="muted">Internal handoff packet only. No external system contacted. This does not call Partner Journey APIs, send email, publish pages, or activate dashboards.</p>
-          <div class="handoff-summary">
-            <div><span>Readiness score</span><strong>\${esc(handoffReadiness.readinessScore)}%</strong><small>\${esc(handoffReadiness.readyCount)}/\${esc(handoffReadiness.total)} required artifacts ready</small></div>
-            <div><span>Approved artifacts</span><strong>\${esc(handoffReadiness.approved.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.approved, "None"))}</small></div>
-            <div><span>Handoff ready artifacts</span><strong>\${esc(handoffReadiness.handoffReady.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.handoffReady, "None"))}</small></div>
-            <div><span>Blocked artifacts</span><strong>\${esc(handoffReadiness.blocked.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.blocked, "None"))}</small></div>
-            <div><span>Needs revision</span><strong>\${esc(handoffReadiness.revisions.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.revisions, "None"))}</small></div>
-            <div><span>Missing details</span><strong>\${esc(handoffReadiness.missing.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.missing, "None"))}</small></div>
-          </div>
-          <div class="artifact-review-detail" style="margin-top:12px"><span>Required approvals</span><p>\${esc(rcapReviewList(handoffReadiness.open, "All required artifact approvals are complete."))}</p></div>
-          <div class="artifact-review-detail"><span>Next manual action</span><p>\${esc(handoffReadiness.next)}</p></div>
-          <div class="artifact-review-detail"><span>Packet artifact</span><p>\${handoffPacket.key ? \`Last generated: \${esc(formatDate(handoffPacket.updatedAt || handoffPacket.generatedAt) || "TBD")}. Status: \${esc(rcapReviewStatus(handoffPacket.status || "not_ready"))}.\` : "No internal handoff packet generated yet."}</p></div>
-          <div class="card-actions"><button class="primary" type="button" onclick="generateRcapHandoffPacket()">Generate Internal Handoff Packet</button></div>
-        </section>
-        <div class="artifact-review-grid">
-          \${rcapReviewArtifactCard(
-            "Activation Summary",
-            status.status,
-            \`What was created: partner record, proposal task, proposal draft, partner page draft, dashboard readiness record, weekly report draft, and evidence note. Current status: \${status.status}. Publishing: \${liveGates === 0 ? "off" : "needs review"}.\`,
-            \`What still needs review: RCAP contact details, approval authority, package/program scope, proposal language, partner page language, dashboard requirements, and reporting cadence. What is blocked: emails, posts, partner page publishing, dashboard activation, and live posting.\`,
-            "Next manual decision: decide whether this package is ready for editing and handoff to the separate Partner Journey workflow."
-          )}
-          \${rcapReviewArtifactCard(
-            "Partner Record",
-            partner.status || program.status || "Not started",
-            \`Known details: RCAP Program status is \${rcapReviewValue(partner.status || program.status, "activation_review")}; workflow stage is \${rcapReviewValue(partner.workflow_stage || program.workflowStage, "launch_checklist")}; source is Today; review-only is true; live enabled is false.\`,
-            \`Missing external details: \${rcapReviewList(partner.missingExternalDetailsList)}. Primary contact: \${rcapReviewValue(partner.primaryContact || program.primaryContact)}. Email: \${rcapReviewValue(partner.email)}. Website: \${rcapReviewValue(partner.website)}. Stakeholders: \${rcapReviewValue(partner.stakeholders)}.\`,
-            \`Before partner-facing use: \${rcapReviewList(partner.confirmationRequiredBeforePartnerUse, "Confirm missing external details before any manual outreach.")}\`
-          )}
-          \${rcapReviewArtifactCard(
-            "Proposal Task",
-            proposalTask.status || "Pending",
-            \`Owner: \${rcapReviewValue(proposalTask.owner, "Roger")}. Priority: \${rcapReviewValue(proposalTask.priority, "high")}. Task: \${proposalTask.description || "Draft RCAP partner proposal task is pending creation."}\`,
-            \`Definition of done: \${rcapReviewList(proposalTask.definitionOfDone, "Review proposal draft, mark unknown facts TBD, and confirm no external delivery happens from this task.")} Due date: \${rcapReviewValue(proposalTask.dueDate)}.\`,
-            proposalTask.nextAction || "Create or review the proposal task before drafting any external message."
-          )}
-          \${rcapReviewArtifactCard(
-            "Proposal Draft",
-            proposalDraft.status || "Pending",
-            \`Purpose of RCAP partnership: \${proposalSections.purposeOfRcapPartnership || proposalSections.objective || "Proposal draft has not been generated yet."} Proposed LegalEase support: \${rcapReviewValue(proposalSections.proposedLegalEaseSupport, "review_required")} Implementation workflow: \${rcapReviewValue(proposalSections.implementationWorkflow, "review_required")}.\`,
-            \`Review-only caveats: \${rcapReviewValue(proposalSections.reviewOnlyCaveats, "review_required")} Missing details list: \${rcapReviewList(proposalSections.missingDetailsList)}.\`,
-            \`Manual approval checklist: \${rcapReviewList(proposalSections.manualApprovalChecklist, "Review objective, workflow, implementation outline, checklist, and compliance note before sharing manually.")}\`
-          )}
-          \${rcapReviewArtifactCard(
-            "Partner Page Draft",
-            pageDraft.status || "Pending",
-            \`Page objective: \${rcapReviewValue(pageContent.pageObjective, "review_required")} Draft hero copy: \${rcapReviewValue(pageContent.draftHeroCopy || pageContent.headline, "review_required")} Program explanation: \${rcapReviewValue(pageContent.programExplanation || pageContent.intro, "review_required")} Participant journey overview: \${rcapReviewValue(pageContent.participantJourneyOverview, "review_required")}.\`,
-            \`partner/legal disclaimer placeholders: \${rcapReviewValue(pageContent.partnerLegalDisclaimerPlaceholders || pageContent.complianceDisclaimer, "review_required")} Missing brand/content assets: \${rcapReviewList(pageContent.missingBrandContentAssets)}. Live URL: \${rcapReviewValue(pageDraft.liveUrl, "null")}. Published: \${rcapReviewValue(pageDraft.published, "false")}.\`,
-            "Publish blocked until manual approval. Review copy and compliance disclaimer before any separate publishing workflow."
-          )}
-          \${rcapReviewArtifactCard(
-            "Dashboard Readiness",
-            dashboardReadiness.status || "Pending",
-            \`Dashboard live: \${rcapReviewValue(dashboardReadiness.dashboardLive, "false")}. Activation allowed: \${rcapReviewValue(dashboardReadiness.activationAllowed, "false")}. Data needed: \${rcapReviewList(dashboardReadiness.dataNeeded)}. Access needed: \${rcapReviewList(dashboardReadiness.accessNeeded)}.\`,
-            \`Launch blockers: \${rcapReviewList(dashboardReadiness.launchBlockers, "Dashboard URL, partner credentials, and external access details remain review_required.")} Internal review gates: \${rcapReviewList(dashboardReadiness.internalReviewGates)}.\`,
-            "Keep dashboard_live: false and activation_allowed: false until Roger manually approves a separate activation step."
-          )}
-          \${rcapReviewArtifactCard(
-            "Weekly Report Draft",
-            weeklyReport.status || "Pending",
-            \`Activation status: \${rcapReviewValue(reportSections.activationStatus || reportSections.activationSummary, "Weekly report draft has not been generated yet.")} Completed artifacts: \${rcapReviewList(reportSections.completedArtifacts)}.\`,
-            \`Open review items: \${rcapReviewList(reportSections.openReviewItems)} Blockers: \${rcapReviewList(reportSections.blockers, "Real partner metrics, page views, intake starts, and handoff counts are not verified yet.")}.\`,
-            \`Next steps: \${rcapReviewList(reportSections.nextSteps, reportSections.nextManualApprovalStep || "Review the report draft as an internal artifact only.")}. No external actions taken: \${rcapReviewValue(reportSections.noExternalActionTaken, "true")}.\`
-          )}
-          \${rcapReviewArtifactCard(
-            "Evidence Note",
-            evidenceNote.status || "Pending",
-            \`Activation key: \${rcapReviewValue(evidenceNote.activationKey, "rcap-production-activation-v1")}. Timestamp: \${rcapReviewValue(evidenceNote.timestamp)}. Artifact list: \${rcapReviewList(Object.keys(evidenceNote.artifactsCreatedOrFound || {}), "partner record; proposal task; proposal draft; partner page draft; dashboard readiness; weekly report draft; evidence note")}.\`,
-            \`Publishing status: \${rcapReviewValue(evidenceNote.liveGatesCount, String(liveGates)) === "0" ? "off" : "needs review"}. Safety confirmations: no email sent, no post published, no partner page published, no dashboard activated. Owner-token auth confirmation: \${rcapReviewValue(evidenceNote.ownerTokenAuthConfirmation, "owner-token auth unchanged")}.\`,
-            \`External action confirmation: \${rcapReviewValue(evidenceNote.externalActionConfirmation, evidenceSummary)}\`
-          )}
-          <article class="artifact-review-card">
-            <header><h2>Manual Review Checklist</h2><span class="artifact-review-status \${esc(rcapReviewStateClass(rcapReviewArtifactFor(rcapReviewDefinitions.find(item => item.key === "rcap-manual-review-checklist-v1") || {}).review_state || "review_required"))}">\${esc(rcapReviewStatus(rcapReviewArtifactFor(rcapReviewDefinitions.find(item => item.key === "rcap-manual-review-checklist-v1") || {}).review_state || "review_required"))}</span></header>
-            <div class="artifact-review-detail"><span>Manual approval required</span><p>No send, publish, dashboard activation, or live posting action is available from this workspace.</p></div>
-            <ul class="manual-checklist">\${checklistItems.map(item => \`<li>\${esc(item)}</li>\`).join("")}</ul>
-            \${rcapReviewControlsHtml(rcapReviewDefinitions.find(item => item.key === "rcap-manual-review-checklist-v1"), rcapReviewArtifactFor(rcapReviewDefinitions.find(item => item.key === "rcap-manual-review-checklist-v1") || {}))}
-          </article>
+        <div class="stable-two-column section">
+          <main class="grid">
+            <section class="panel operating-memory-card">
+              <div class="simple-panel-head"><h2>Program Summary</h2><span class="badge info">Internal review</span></div>
+              <div class="metric-table">
+                <div class="metric-row"><span>Partner</span><strong>\${esc(partner.name || program.partnerName || "RCAP partner")}</strong></div>
+                <div class="metric-row"><span>Program</span><strong>\${esc(program.name || "Record Clearing Access Program")}</strong></div>
+                <div class="metric-row"><span>Purpose</span><strong>\${esc(program.programGoal || "Help eligible participants understand record-clearing access.")}</strong></div>
+                <div class="metric-row"><span>Current status</span><strong>\${esc(plainOperatorState(status.status || program.status || "needs_review"))}</strong></div>
+                <div class="metric-row"><span>Proposed LegalEase support</span><strong>\${esc(program.proposedSupport || "Review required before partner-facing use.")}</strong></div>
+                <div class="metric-row"><span>Prepared materials</span><strong>\${esc(artifacts.filter(([, item]) => Object.keys(item || {}).length).length)} of \${esc(artifacts.length)}</strong></div>
+              </div>
+            </section>
+            <section class="panel operating-memory-card">
+              <div class="simple-panel-head"><h2>Review Packet</h2><span class="badge warn">Needs review</span></div>
+              <div class="memory-evidence-grid">
+                \${artifacts.map(([label, item]) => \`<article class="memory-history-card"><strong>\${esc(label)}</strong><span class="badge \${statusLabel(item) === "Ready" ? "good" : statusLabel(item) === "Missing information" ? "warn" : "info"}">\${esc(statusLabel(item))}</span><p class="muted">\${esc(item.summary?.answer || item.summary || item.status || "Needs review before use.")}</p></article>\`).join("")}
+              </div>
+              <div class="card-actions"><button class="primary" type="button" onclick="startRcapActivation()">Update Review Packet</button><button type="button" onclick="location.hash='proof'">Preview Materials</button><button type="button" onclick="document.getElementById('rcap-decision-note')?.focus()">Add Review Note</button></div>
+            </section>
+            <section class="panel operating-memory-card">
+              <div class="simple-panel-head"><h2>Review Notes</h2><span class="badge info">Saved work</span></div>
+              <div class="grid split">
+                <label>Decision note<textarea id="rcap-decision-note" rows="3" placeholder="What does Roger need to decide?"></textarea></label>
+                <label>Revision note<textarea rows="3" placeholder="What needs to change before use?"></textarea></label>
+              </div>
+              <label>Partner note<textarea rows="3" placeholder="Partner-facing details to confirm manually."></textarea></label>
+              <div class="card-actions"><button class="primary" type="button" onclick="toast('Review note saved locally for manual follow-up')">Save Review Note</button></div>
+            </section>
+          </main>
+          <aside class="grid">
+            <section class="panel operating-memory-card">
+              <div class="simple-panel-head"><h2>Next Steps</h2><span class="badge warn">Needs Roger</span></div>
+              <ul class="manual-checklist">
+                <li>Confirm partner contact</li>
+                <li>Confirm partner-facing email</li>
+                <li>Confirm program scope</li>
+                <li>Review proposal language</li>
+                <li>Decide if packet is ready</li>
+                <li>Mark ready for manual handoff</li>
+              </ul>
+              <div class="card-actions"><button type="button" onclick="toast('Marked as ready for manual review only. Nothing was sent.')">Mark Ready for Manual Handoff</button></div>
+            </section>
+            <section class="panel operating-memory-card">
+              <div class="simple-panel-head"><h2>Missing Information</h2><span class="badge info">\${esc(missing.length)}</span></div>
+              \${memoryListHtml(missing.map(title => ({ title, detail:"Confirm manually before partner-facing use." })), "No missing information recorded.", 8)}
+            </section>
+            <section class="panel operating-memory-card">
+              <div class="simple-panel-head"><h2>Safety Status</h2><span class="badge good">Publishing is off</span></div>
+              <ul class="manual-checklist">
+                <li>No email sent</li>
+                <li>No post published</li>
+                <li>No partner page published</li>
+                <li>No dashboard activated</li>
+                <li>\${liveGates === 0 ? "Publishing is off" : "Publishing needs review"}</li>
+              </ul>
+            </section>
+            <section class="panel operating-memory-card">
+              <div class="simple-panel-head"><h2>Activity</h2><span class="badge info">\${esc(activity.length)}</span></div>
+              <div class="memory-evidence-grid">\${activity.map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || item.action || "RCAP activity")}</strong><span class="muted">\${esc(formatDateTime(item.timestamp || item.createdAt) || "Recent")}</span><p class="muted">\${esc(item.summary || item.eventType || "Internal review activity.")}</p></article>\`).join("") || '<div class="empty">No RCAP activity recorded yet.</div>'}</div>
+            </section>
+          </aside>
         </div>
       </section>\`;
     }
@@ -19297,7 +19268,7 @@ function htmlShell() {
         <section class="panel">
           <div class="simple-panel-head"><h2>Required Schema Fields</h2><span class="badge info">Top level, partner data, artifacts</span></div>
           <div class="memory-evidence-grid">
-            <article class="memory-history-card"><strong>Handoff Packet Schema</strong><p>\${handoffContractRequiredTopLevelFields.map(fieldPill).join(" ")}</p></article>
+            <article class="memory-history-card"><strong>Review Packet Schema</strong><p>\${handoffContractRequiredTopLevelFields.map(fieldPill).join(" ")}</p></article>
             <article class="memory-history-card"><strong>Partner Data</strong><p>\${handoffContractRequiredPartnerFields.map(fieldPill).join(" ")}</p><span class="muted">Unknown fields must stay null, TBD, or review_required. Contract validation fails until required partner data is confirmed.</span></article>
             <article class="memory-history-card"><strong>Approved Artifacts</strong><p>\${handoffContractRequiredArtifactTypes.map(fieldPill).join(" ")}</p></article>
           </div>
@@ -19924,11 +19895,11 @@ function htmlShell() {
 
     function sectionLandingConfig(section) {
       const configs = [
-        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Prioritize signals, move campaigns, and keep RecordShield proof visible.", links:[["Growth Inbox","growth-inbox"],["Capture Inbox","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"]] },
-        { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Move partner programs from lead to paid onboarding, reports, and renewal proof.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"]] },
-        { id:"production", eyebrow:"Production", title:"Production", copy:"Turn ideas into approved assets without losing the approval-first safety model.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
-        { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Proof","evidence-room"],["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
-        { id:"more", eyebrow:"More", title:"More", copy:"Settings, app status, tasks, autonomy, and advanced details live here so Today stays calm.", links:[["Tasks","tasks"],["Today Tasks","tasks-today"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Handoff Notes","handoff-contract"],["Guide","operator-manual"],["Team Roles","roles"],["Data Check","data-integrity"],["Autonomy","autonomy"],["App Status","automation"],["Settings","settings"],["Admin","compliance"],["Advanced details","metrics"],["Runbooks","dataroom"]] }
+        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Manage content, campaigns, outreach, and manual social publishing.", links:[["Growth Inbox","growth-inbox"],["Capture Ideas","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"],["Social Posts","queue"],["Content Calendar","content-bank"]] },
+        { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Track partner conversations, follow-ups, and active programs.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"],["Open RCAP Program","production-activation-rcap"]] },
+        { id:"production", eyebrow:"Production", title:"Production", copy:"Review content and assets before anything is posted, published, or shared.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
+        { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Capture wins, customer notes, evidence, and investor-ready proof.", links:[["Proof","evidence-room"],["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
+        { id:"more", eyebrow:"More", title:"More", copy:"Settings, recovery, support tools, and focused work views.", links:[["Tasks","tasks"],["Today Tools","overview"],["Blocked Tasks","tasks-blocked"],["Waiting Tasks","tasks-waiting"],["This Week Tasks","tasks-this-week"],["Roundtable Notes","conversation-notes"],["Guide","operator-manual"],["Team Roles","roles"],["App Status","os-health"],["Recovery Mode","safe-mode"]] }
       ];
       return configs.find(item => item.id === section) || configs[0];
     }
@@ -21045,28 +21016,28 @@ function htmlShell() {
 
     function metricsDashboardHtml(pageClass) {
       const posts = postedPosts();
-      const row = (label, keyFn) => {
-        const totals = {};
-        for (const post of posts) {
-          const key = keyFn(post) || "Unassigned";
-          totals[key] = (totals[key] || 0) + performanceEngagement(post.performance || {});
-        }
-        const entries = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 6);
-        return \`<section class="panel"><h2>\${esc(label)}</h2><div class="metric-table">\${entries.length ? entries.map(([key, value]) => \`<div class="metric-row"><span>\${esc(platformLabels[key] || key)}</span><strong>\${value}</strong></div>\`).join("") : '<div class="empty">Metrics needed.</div>'}</div></section>\`;
-      };
+      const partners = state.partnerPrograms || [];
+      const openTasks = (state.tasks || []).filter(taskStatusOpen);
+      const funnel = state.recordShieldFunnel || state.funnel || [];
+      const snapshot = [
+        ["Revenue", state.metrics?.revenue || state.revenue || "Not added"],
+        ["Leads", state.metrics?.leads || funnel.reduce((sum, item) => sum + Number(item.leads || item.landingPageVisits || 0), 0) || "Not added"],
+        ["Petitions", state.metrics?.petitions || "Not added"],
+        ["Partners", partners.length || "Not added"],
+        ["Marketing output", posts.length || "Not added"],
+        ["Runway", state.metrics?.runway || "Not added"]
+      ];
+      const weeklyNotes = (state.weeklyScorecards || state.reports || []).slice(0, 4);
+      const goals = (state.goals || state.milestones || []).slice(0, 6);
+      const metricsToUpdate = posts.filter(postedNeedsMetrics).slice(0, 6);
       return \`<section id="metrics" class="section secondary \${pageClass("metrics")}">
-        <div class="panel hero-panel"><div class="eyebrow">Learning Layer</div><h1 class="big-title">What is producing results?</h1><p class="big-copy">Track performance by channel, bucket, speaker, Wilma usage, and post type.</p></div>
-        <div style="margin-top:14px">\${postedSummaryHtml()}</div>
+        <div class="panel hero-panel"><div class="eyebrow">Metrics</div><h1 class="big-title">Metrics</h1><p class="big-copy">Track the numbers that show whether the company is moving.</p><div class="card-actions"><button class="primary" type="button" onclick="toast('Metric entry is internal-only. Add the number in the relevant source page.')">Add Metric</button><button type="button" onclick="location.hash='posted'">Update Metric</button><button type="button" onclick="toast('Weekly note saved for manual follow-up')">Add Weekly Note</button></div></div>
+        <section class="panel section"><div class="simple-panel-head"><h2>Snapshot</h2><span class="badge info">Company numbers</span></div><div class="today-summary-grid">\${snapshot.map(([label, value]) => \`<div class="today-summary-card"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${String(value) === "Not added" ? "Needs update" : "Current snapshot"}</small></div>\`).join("")}</div></section>
         <div class="grid two" style="margin-top:14px">
-          \${row("By platform", post => post.platform)}
-          \${row("By content bucket", post => post.contentBucket || post.wilmaVisualBucket)}
-          \${row("By speaker", post => post.speaker)}
-          \${row("By Wilma usage", post => post.speaker === "wilma" || post.wilmaExpression ? "Wilma used" : "No Wilma")}
+          <section class="panel"><h2>Metrics to Update</h2><div class="grid">\${metricsToUpdate.map(post => \`<article class="metric-row"><span>\${esc(post.title)}</span><button onclick="location.hash='posted'">Update Metric</button></article>\`).join("") || '<div class="empty">No metrics added yet. Add your first metric.</div>'}</div></section>
+          <section class="panel"><h2>Weekly Scorecard</h2><div class="grid">\${weeklyNotes.map(item => \`<article class="metric-row"><span>\${esc(item.title || item.key || "Weekly note")}</span><strong>\${esc(formatDate(item.createdAt || item.generatedAt || item.timestamp) || "Saved")}</strong></article>\`).join("") || '<div class="empty">No weekly scorecard exists yet.</div>'}</div></section>
         </div>
-        <div class="grid two" style="margin-top:14px">
-          <section class="panel"><h2>Repurpose candidates</h2><div class="grid">\${posts.filter(post => performanceLabelFor(post.performance || {}) === "Repurpose Candidate").map(post => \`<article class="metric-row"><span>\${esc(post.title)}</span><button onclick="createRepurposeDraft('\${post.id}')">Repurpose</button></article>\`).join("") || '<div class="empty">No candidates yet.</div>'}</div></section>
-          <section class="panel"><h2>Posts missing metrics</h2><div class="grid">\${posts.filter(postedNeedsMetrics).map(post => \`<article class="metric-row"><span>\${esc(post.title)}</span><button onclick="location.hash='posted'">Add metrics</button></article>\`).join("") || '<div class="empty">All posted items have basic metrics.</div>'}</div></section>
-        </div>
+        <section class="panel" style="margin-top:14px"><div class="simple-panel-head"><h2>Goals</h2><span class="badge info">Monthly and quarterly</span></div><div class="grid two">\${goals.map(goal => \`<article class="compact-card"><h3>\${esc(goal.title || goal.name || "Goal")}</h3><p class="muted">\${esc(goal.description || goal.nextAction || "Add the target, owner, and next move.")}</p><span class="badge info">\${esc(goal.status || goal.period || "Needs update")}</span></article>\`).join("") || '<div class="empty">No monthly or quarterly goals added yet.</div>'}</div></section>
       </section>\`;
     }
 
@@ -21101,8 +21072,10 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage;
-      const pageId = normalizedPage === "safe-mode" || ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const routeAliases = { today:"overview", "le-e":"lee", kpis:"metrics", marketing:"growth", social:"growth", rcap:"production-activation-rcap" };
+      const normalizedPage = routeAliases[requestedPage] || requestedPage;
+      const knownPages = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
+      const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "overview";
       if (pageId === "safe-mode") {
         renderSafeBootShell({
           ...(stateFetchDiagnostics || {}),
@@ -21133,7 +21106,7 @@ function htmlShell() {
         \${safeRenderModule("more", () => sectionLandingPageHtml(pageClass, "more"))}
         \${safeRenderModule("growth-inbox", () => growthInboxPageHtml(pageClass))}
         \${safeRenderModule("tasks", () => ["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId) ? tasksPageHtml(pageClass, pageId) : "")}
-        \${safeRenderModule("production-activation-rcap", () => rcapReviewWorkspaceHtml(pageClass))}
+        \${safeRenderModule("production-activation-rcap", () => pageId === "production-activation-rcap" ? rcapReviewWorkspaceHtml(pageClass) : "")}
         \${safeRenderModule("operating-memory", () => operatingMemoryPageHtml(pageClass))}
         \${safeRenderModule("morning-brief", () => morningBriefPageHtml(pageClass))}
         \${safeRenderModule("evening-reflection", () => eveningReflectionPageHtml(pageClass))}
@@ -21286,7 +21259,7 @@ function htmlShell() {
         \${compliancePageHtml(pageClass)}
         \${reportsPageHtml(pageClass)}
         \${dataRoomPageHtml(pageClass)}
-        \${metricsDashboardHtml(pageClass)}
+        \${safeRenderModule("metrics", () => ["metrics", "kpis"].includes(pageId) ? metricsDashboardHtml(pageClass) : "")}
         <section id="settings" class="section secondary section-page lee-bubble-safe-space \${pageClass("settings")}">
           <details>
             <summary>Launch setup</summary>
@@ -21364,7 +21337,7 @@ function htmlShell() {
             <div id="brandTab"></div>
           </details>
         </section>
-        <div class="app-markers" aria-hidden="true"><span>shell: app-layout-stable-v1</span><span>controls: button-audit-v1</span></div>
+        <div class="app-markers" hidden aria-hidden="true"><span>shell: app-layout-stable-v1</span><span>controls: button-audit-v1</span></div>
         \${leeBubbleHtml()}\`;
       document.querySelectorAll("nav a").forEach(link => {
         link.classList.toggle("active", link.getAttribute("href") === "#" + pageId);
@@ -24084,11 +24057,11 @@ function htmlShell() {
     window.addEventListener("hashchange", () => {
       try {
         closeNavMenus();
-        if (String(location.hash || "").replace("#", "") === "safe-mode" || (safeBootActive && !fullStateLoaded)) {
+        if (String(location.hash || "").replace("#", "") === "safe-mode") {
           renderSafeBootShell({
             ...(stateFetchDiagnostics || {}),
             module:String(location.hash || "").replace("#", "") || "safe-mode",
-            message:"Safe Mode is active until the full state loads.",
+            message:"The app loaded a safe version so you can get back to work.",
             fellBackToSafeShell:true
           });
           return;

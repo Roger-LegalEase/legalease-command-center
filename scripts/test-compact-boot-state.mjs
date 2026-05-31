@@ -132,8 +132,8 @@ assert(!/showRenderFailure\(formatStateFetchError\(error\), "state-fetch"\)/.tes
 assert(source.includes("showSafeBootShell(formatStateFetchError(error), \"boot-state-fetch\", error)"), "Boot-state failures should use safe shell.");
 assert(source.includes("bootStateDiagnostics"), "Safe mode should show boot-state diagnostics.");
 assert(source.includes("fullStateDiagnostics"), "Safe mode should show full-state diagnostics.");
-assert(source.includes("Retry Boot State"), "Safe mode should include Retry Boot State.");
-assert(source.includes("Retry Full State"), "Safe mode should include Retry Full State.");
+assert(source.includes("Back to Today"), "Recovery Mode should include Back to Today.");
+assert(source.includes("Try full app again"), "Recovery Mode should include Try full app again.");
 assert(source.includes("guardForbiddenEndpoint"), "Forbidden action guard should remain wired.");
 
 console.log("Compact boot state tests passed.");

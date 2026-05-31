@@ -80,10 +80,10 @@ try {
   const safeModeHtml = await readText("/#safe-mode", { headers: { cookie: `leos_session=${encodeURIComponent(ownerToken)}` } });
   assert.equal(safeModeHtml.response.status, 200, "Safe mode route should serve the authenticated shell.");
   assert.match(safeModeHtml.text, /renderSafeBootShell/, "Authenticated shell should include the safe boot renderer.");
-  assert.match(safeModeHtml.text, /Safe Mode/, "Safe mode UI copy should be present.");
-  assert.match(safeModeHtml.text, /Retry Full Load/, "Safe mode should offer a full-state retry.");
-  assert.match(safeModeHtml.text, /Sign Out \/ Clear Session/, "Safe mode should offer session clearing.");
-  assert.match(safeModeHtml.text, /Publishing is off|Publishing[^<]*Off/i, "Safe mode should show publishing remains off.");
+  assert.match(safeModeHtml.text, /Recovery Mode/, "Recovery mode UI copy should be present.");
+  assert.match(safeModeHtml.text, /Try full app again/, "Recovery mode should offer a full-state retry.");
+  assert.match(safeModeHtml.text, /Sign out/, "Recovery mode should offer session clearing.");
+  assert.match(safeModeHtml.text, /Publishing is off|Publishing[^<]*Off/i, "Recovery mode should show publishing remains off.");
   assert.match(safeModeHtml.text, /\/api\/health/, "Safe mode should fetch public-safe health.");
   const health = await readJson("/api/health");
   assert.equal(health.response.status, 200, "/api/health should remain public-safe.");
@@ -92,15 +92,15 @@ try {
   child.kill("SIGTERM");
 }
 
-assert(source.includes("function renderSafeBootShell"), "Safe boot shell renderer should exist.");
-assert(source.includes('normalizedPage === "safe-mode"'), "#safe-mode should bypass full state rendering.");
+assert(source.includes("function renderSafeBootShell"), "Recovery shell renderer should exist.");
+assert(source.includes('pageId === "safe-mode"'), "#safe-mode should bypass full state rendering.");
 assert(source.includes("safeBootFallbackState"), "Bad or missing state should hydrate a limited safe fallback state.");
 assert(source.includes("showSafeBootShell(formatStateFetchError(error), \"boot-state-fetch\", error)"), "Boot state failures should fall back to safe shell.");
 assert(source.includes("stateFetchDiagnostics"), "Safe shell should store state-fetch diagnostics.");
 assert(source.includes("Auth token present:"), "State-fetch diagnostics should include whether an auth token was present.");
 assert(source.includes("Fell back to safe shell:"), "State-fetch diagnostics should include fallback status.");
 assert(source.includes("retryFullStateLoad"), "Retry Full Load should use the normal token-aware load path.");
-assert(source.includes("lockCommandCenter()"), "Safe shell sign out should clear token/cookie through lockCommandCenter.");
+assert(source.includes("lockCommandCenter()"), "Recovery mode sign out should clear token/cookie through lockCommandCenter.");
 assert(source.includes("optionalBootApi"), "Optional boot requests should remain non-fatal.");
 assert(source.includes("guardForbiddenEndpoint"), "Forbidden action guard should remain wired.");
 const safeShellBlock = source.match(/function renderSafeBootShell[\s\S]*?function showSafeBootShell/)?.[0] || "";

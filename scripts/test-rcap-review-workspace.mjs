@@ -13,61 +13,51 @@ assert.match(server, /function rcapReviewWorkspaceHtml\(pageClass\)/, "RCAP revi
 assert.match(server, /Review RCAP Program/, "Cockpit should link to the RCAP program review workspace.");
 assert.match(server, /location\.hash='production-activation-rcap'/, "Cockpit review button should navigate to the workspace.");
 
-const routeList = server.match(/const pageId = [\s\S]*?\]\.includes\(normalizedPage\)/)?.[0] || "";
+const routeList = server.match(/const knownPages = \[[\s\S]*?\];/)?.[0] || "";
 assert.match(routeList, /"production-activation-rcap"/, "RCAP review workspace should be included in the app route allow-list.");
 
-assert.match(server, /safeRenderModule\("production-activation-rcap", \(\) => rcapReviewWorkspaceHtml\(pageClass\)\)/, "RCAP review workspace should render from the app shell with module-level fallback protection.");
+assert.match(server, /safeRenderModule\("production-activation-rcap", \(\) => pageId === "production-activation-rcap" \? rcapReviewWorkspaceHtml\(pageClass\) : ""\)/, "RCAP review workspace should render only on RCAP routes with module-level fallback protection.");
 
 const workspaceMatch = server.match(/function rcapReviewWorkspaceHtml\(pageClass\) \{[\s\S]*?function [a-zA-Z0-9_]+\(pageClass\)/);
 assert.ok(workspaceMatch, "RCAP review workspace function should be discoverable.");
 const workspace = workspaceMatch[0];
 
 for (const label of [
-  "Activation Summary",
-  "Partner Record",
-  "Proposal Task",
-  "Proposal Draft",
-  "Partner Page Draft",
-  "Dashboard Readiness",
-  "Weekly Report Draft",
-  "Evidence Note",
-  "Manual Review Checklist"
+  "Program Summary",
+  "Review Packet",
+  "Review Notes",
+  "Next Steps",
+  "Missing Information",
+  "Safety Status",
+  "Activity"
 ]) {
   assert.match(workspace, new RegExp(label), `${label} section should render.`);
 }
 
-assert.match(workspace, /Review-only/, "Workspace should plainly state review-only status.");
-assert.match(workspace, /Manual approval required/, "Workspace should state manual approval is required.");
-assert.match(workspace, /No emails, posts, partner pages, or dashboards are activated/, "Workspace should state no external side effects.");
+assert.match(workspace, /Record Clearing Access Program/, "Workspace should define RCAP as Record Clearing Access Program.");
+assert.match(workspace, /Nothing has been sent, published, or activated/, "Workspace should state no external side effects.");
 assert.match(workspace, /Publishing is off|Publishing/, "Workspace should show publishing remains off.");
-assert.match(workspace, /What was created/, "Activation Summary should answer what was created.");
-assert.match(workspace, /What still needs review/, "Activation Summary should answer what still needs review.");
-assert.match(workspace, /What is blocked/, "Activation Summary should answer what is blocked.");
-assert.match(workspace, /Next manual decision/, "Activation Summary should answer the next manual decision.");
-assert.match(workspace, /Known details/, "Partner Record should show known details.");
-assert.match(workspace, /Definition of done/, "Proposal Task should show definition of done.");
-assert.match(workspace, /Missing brand\/content assets/, "Partner Page Draft should surface missing brand and content assets.");
-assert.match(workspace, /Launch blockers/, "Dashboard Readiness should show launch blockers.");
-assert.match(workspace, /External action confirmation/, "Evidence Note should include external action confirmation.");
+assert.match(workspace, /Confirm partner contact/, "Next steps should include partner contact confirmation.");
+assert.match(workspace, /Confirm partner-facing email/, "Next steps should include partner-facing email confirmation.");
+assert.match(workspace, /Review proposal language/, "Next steps should include proposal language review.");
+assert.match(workspace, /Proposal draft/, "Review Packet should show proposal draft row.");
+assert.match(workspace, /Partner page draft/, "Review Packet should show partner page draft row.");
+assert.match(workspace, /Dashboard readiness/, "Review Packet should show dashboard readiness row.");
+assert.match(workspace, /Weekly report draft/, "Review Packet should show weekly report draft row.");
+assert.match(workspace, /Evidence note/, "Review Packet should show evidence note row.");
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 for (const phrase of [
   "Purpose of RCAP partnership",
   "Proposed LegalEase support",
   "Implementation workflow",
-  "Review-only caveats",
-  "Missing details list",
-  "Manual approval checklist",
   "Participant journey overview",
   "partner/legal disclaimer placeholders",
-  "publish blocked until manual approval",
-  "data needed",
-  "access needed",
-  "internal review gates",
   "approval authority",
-  "Partner Journey handoff",
-  "owner-token auth unchanged"
 ]) {
-  assert.match(activationSource + workspace, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), `${phrase} should be present in RCAP review content.`);
+  assert.match(activationSource + workspace, new RegExp(escapeRegExp(phrase), "i"), `${phrase} should be present in RCAP review content.`);
 }
 
 const activated = ensureRcapProductionActivation({

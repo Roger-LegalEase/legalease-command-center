@@ -103,17 +103,14 @@ const workspaceMatch = server.match(/function rcapReviewWorkspaceHtml\(pageClass
 assert.ok(workspaceMatch, "RCAP Review Workspace renderer should exist.");
 const workspace = workspaceMatch[0];
 [
-  "Activation Summary",
-  "Partner Record",
-  "Proposal Task",
-  "Proposal Draft",
-  "Partner Page Draft",
-  "Dashboard Readiness",
-  "Weekly Report Draft",
-  "Evidence Note",
-  "Manual Review Checklist",
-  "Handoff Packet"
-].forEach(label => assert.match(workspace, new RegExp(label), `${label} should render in RCAP Review Workspace.`));
+  "Program Summary",
+  "Review Packet",
+  "Review Notes",
+  "Next Steps",
+  "Missing Information",
+  "Safety Status",
+  "Activity"
+].forEach(label => assert.match(workspace, new RegExp(label), `${label} should render in RCAP Program Review.`));
 
 const auditBeforeTransitions = state.auditHistory.length;
 const activityBeforeTransitions = state.activityEvents.length;
