@@ -78,7 +78,7 @@ assert(server.includes("\"capture-inbox\""), "#capture-inbox route must be regis
 assert(server.includes("Route to Conversation Notes"), "Capture review page should route to Conversation Notes.");
 assert(server.includes("Route to Morning Brief Inputs"), "Capture review page should route to Morning Brief Inputs.");
 assert(server.includes("Route to Evening Reflection Inputs"), "Capture review page should route to Evening Reflection Inputs.");
-assert(server.includes("Route to Operating Memory"), "Capture review page should route to Operating Memory.");
+assert(server.includes("Route to Notes & Decisions"), "Capture review page should route to Notes & Decisions.");
 assert(server.includes("Route to Task"), "Capture review page should route to Task.");
 assert(!/capture-inbox[\s\S]{0,2600}(send email|publish page|activate dashboard|enable live)/i.test(server), "Capture Inbox must not enable external controls.");
 

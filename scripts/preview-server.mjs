@@ -14750,7 +14750,7 @@ function htmlShell() {
           <div><span class="muted">Banned visuals</span>\${safetyBadge(safety.bannedVisualElementsOk, "Rules loaded", "Missing rules")}</div>
           <div><span class="muted">Mobile readability</span>\${safetyBadge(safety.mobileReadable, "Short overlay", "Shorten overlay")}</div>
         </div>
-        \${review.reasons.length ? \`<div class="blocked-reason"><strong>Why blocked?</strong><ul>\${review.reasons.map(reason => \`<li>\${esc(reason)}</li>\`).join("")}</ul></div>\` : \`<p class="muted" style="margin:0">All local readiness checks passed. Live gates are off.</p>\`}
+        \${review.reasons.length ? \`<div class="blocked-reason"><strong>Why blocked?</strong><ul>\${review.reasons.map(reason => \`<li>\${esc(reason)}</li>\`).join("")}</ul></div>\` : \`<p class="muted" style="margin:0">All local readiness checks passed. Publishing is off.</p>\`}
       </div>\`;
     }
 
@@ -15531,7 +15531,7 @@ function htmlShell() {
         <div class="toprow">
           <div>
             <div class="eyebrow">Publishing mode</div>
-            <h2 style="margin:4px 0 0">\${active ? "Manual Mode Active" : "Live gates enabled"}</h2>
+            <h2 style="margin:4px 0 0">\${active ? "Manual Mode Active" : "Publishing needs review"}</h2>
             <p class="muted" style="margin:8px 0 0">\${active ? "The system can generate posts and final images. You manually copy, export, or post while live API posting remains disabled." : "At least one live gate is enabled. Use only after dry runs pass cleanly."}</p>
           </div>
           <button onclick="createTomorrowQueue()">Create Tomorrow's 3-Post Queue</button>
@@ -16316,7 +16316,7 @@ function htmlShell() {
         ["Supabase env", Boolean(supabaseHealth?.configured || state.persistence === "supabase"), supabaseHealth?.connected ? "good" : "warn"],
         ["Assets directory", Boolean((state.settings?.localAssets || []).length || (state.settings?.wilmaPoseMappings || []).length), "good"],
         ["Export directories", Boolean((state.postImages || []).some(image => image.finalPngPath) || (state.posts || []).some(post => post.postingPackageGenerated)), "good"],
-        ["Live posting gates", Object.values(state.runtime?.livePostingGates || {}).some(gate => gate.enabled) ? "Live gates checked" : "Manual-only", "info"],
+        ["Publishing", Object.values(state.runtime?.livePostingGates || {}).some(gate => gate.enabled) ? "Needs review" : "Manual-only", "info"],
         ["Recent backup", Boolean(backup), backup ? "good" : "warn"]
       ];
       return \`<div class="grid two">\${checks.map(([label, value, tone]) => \`<div class="metric-row"><span>\${esc(label)}</span><span class="badge \${tone}">\${esc(value === true ? "Ready" : value === false ? "Needs attention" : value)}</span></div>\`).join("")}</div>\${systemCheckRanAt ? \`<p class="muted">Last system check: \${esc(systemCheckRanAt)}</p>\` : ""}\`;
@@ -17152,11 +17152,11 @@ function htmlShell() {
           id:item.id,
           title:item.summary || item.rawText || "New company signal",
           whyItMatters:item.riskLevel === "high" ? "This may create legal, partner, customer, or revenue risk." : "This needs routing before it becomes founder memory.",
-          nextAction:item.suggestedAction || "Triage and route this signal.",
+          nextAction:item.suggestedAction || "Prioritize and route this signal.",
           priority:item.priority || "medium",
           status:item.status || "new",
           href:"growth-inbox",
-          button:"Triage"
+          button:"Prioritize"
         }));
       const approvals = (state.approvalQueue || []).filter(item => !["approved", "archived", "ignored"].includes(String(item.status || "").toLowerCase()));
       const approvalSummary = approvals.length ? [{
@@ -17290,10 +17290,10 @@ function htmlShell() {
         return {
           type:"growth_inbox",
           id:item.id,
-          title:item.summary || item.rawText || "Triage the newest company signal",
+          title:item.summary || item.rawText || "Prioritize the newest company signal",
           context:item.suggestedAction || "This signal should be routed before it becomes founder memory.",
           href:"growth-inbox",
-          primaryLabel:"Triage signal",
+          primaryLabel:"Prioritize signal",
           secondaryLabel:"Open Inbox",
           snoozeLabel:"Later",
           range:cockpitFocusRange(),
@@ -17459,7 +17459,7 @@ function htmlShell() {
         { label:dbConnected ? "Supabase DB connected" : "Local fallback active", ok:dbConnected },
         { label:storageConnected ? "Supabase Storage connected" : "Storage check needed", ok:storageConnected },
         { label:state.runtime?.openAIConfigured ? "OpenAI configured" : "OpenAI not configured", ok:Boolean(state.runtime?.openAIConfigured) },
-        { label:"Live gates off: " + liveGates, ok:liveGates === 0, danger:liveGates > 0 }
+        { label:"Publishing is off", ok:liveGates === 0, danger:liveGates > 0 }
       ];
     }
 
@@ -17498,7 +17498,7 @@ function htmlShell() {
     function cockpitRcapActivationHtml() {
       const status = cockpitRcapActivationStatus();
       return \`<section class="cockpit-card production-activation-card">
-        <div class="cockpit-card-head"><h2>RCAP Production Activation</h2><small>\${esc(status.status)}</small></div>
+        <div class="cockpit-card-head"><h2>Record Clearing Access Program</h2><small>\${esc(status.status)}</small></div>
         <div class="activation-rows">
           <div><span>Partner</span><strong>\${esc(status.partner)}</strong></div>
           <div><span>Proposal</span><strong>\${esc(status.proposal)}</strong></div>
@@ -17506,12 +17506,12 @@ function htmlShell() {
           <div><span>Dashboard</span><strong>\${esc(status.dashboard)}</strong></div>
           <div><span>Weekly report</span><strong>\${esc(status.weeklyReport)}</strong></div>
           <div><span>Evidence note</span><strong>\${esc(status.evidence)}</strong></div>
-          <div><span>Live gates</span><strong>\${esc(status.liveGates)}</strong></div>
+          <div><span>Publishing</span><strong>\${esc(status.liveGates === 0 ? "Off" : "Needs review")}</strong></div>
         </div>
         <p class="muted">Review-only. No emails, posts, partner pages, or dashboards are activated.</p>
         <div class="activation-card-actions">
-          <button class="primary wide" type="button" onclick="startRcapActivation()">Start RCAP Activation</button>
-          <button class="wide" type="button" onclick="location.hash='production-activation-rcap'">Review RCAP Artifacts</button>
+          <button class="primary wide" type="button" onclick="startRcapActivation()">Prepare RCAP Package</button>
+          <button class="wide" type="button" onclick="location.hash='production-activation-rcap'">Review RCAP Program</button>
         </div>
       </section>\`;
     }
@@ -17613,7 +17613,7 @@ function htmlShell() {
     function rcapHandoffReadinessCardHtml() {
       const readiness = rcapPartnerJourneyHandoffReadinessClient();
       return \`<section class="cockpit-card">
-        <div class="cockpit-card-head"><h2>RCAP Handoff Readiness</h2><small>\${readiness.ready ? "Ready" : "Not Ready"}</small></div>
+        <div class="cockpit-card-head"><h2>RCAP Program Handoff</h2><small>\${readiness.ready ? "Ready" : "Not Ready"}</small></div>
         <div class="activation-rows">
           <div><span>Readiness</span><strong>\${esc(readiness.readyCount)}/\${esc(readiness.total)}</strong></div>
           <div><span>Blockers</span><strong>\${esc(readiness.blocked.length)}</strong></div>
@@ -17621,7 +17621,7 @@ function htmlShell() {
           <div><span>Missing details</span><strong>\${esc(readiness.missing.length)}</strong></div>
         </div>
         <p class="muted">\${esc(readiness.next)}</p>
-        <button class="wide" type="button" onclick="location.hash='production-activation-rcap'">Open RCAP Review Workspace</button>
+        <button class="wide" type="button" onclick="location.hash='production-activation-rcap'">Open RCAP Program Review</button>
       </section>\`;
     }
 
@@ -17632,8 +17632,8 @@ function htmlShell() {
       if (!needsAttention) return "";
       const primary = queue[0]?.title || (readiness.blocked[0] || readiness.revisions[0] || readiness.open[0] || readiness.missing[0] || "Handoff status needs review");
       const detail = queue[0]?.nextAction || readiness.next || "Open RCAP only when there is a review decision, blocker, or missing detail.";
-      return \`<section class="cockpit-card rcap-signal-card" aria-label="RCAP needs review">
-        <div class="cockpit-card-head"><h2>RCAP needs review</h2><small>\${readiness.ready ? "Ready for decision" : "Not ready"}</small></div>
+      return \`<section class="cockpit-card rcap-signal-card" aria-label="RCAP Program needs review">
+        <div class="cockpit-card-head"><h2>RCAP Program needs review</h2><small>\${readiness.ready ? "Ready for decision" : "Not ready"}</small></div>
         <p><strong>\${esc(primary)}</strong></p>
         <p class="muted">\${esc(detail)}</p>
         <div class="mini-metrics">
@@ -17641,7 +17641,7 @@ function htmlShell() {
           <span>Revisions <strong>\${esc(readiness.revisions.length)}</strong></span>
           <span>Missing <strong>\${esc(readiness.missing.length)}</strong></span>
         </div>
-        <div class="card-actions"><button type="button" onclick="location.hash='production-activation-rcap'">Open RCAP</button></div>
+        <div class="card-actions"><button type="button" onclick="location.hash='production-activation-rcap'">Open RCAP Program</button></div>
       </section>\`;
     }
 
@@ -17687,32 +17687,32 @@ function htmlShell() {
       const revisions = queue.filter(item => item.reviewState === "needs_revision");
       const reviewRequired = queue.filter(item => item.reviewState === "review_required");
       const topCandidates = [];
-      if (blocked.length) topCandidates.push(cockpitLoopItem(\`Resolve blocked RCAP artifact: \${blocked[0].title}\`, blocked[0].nextAction || "Blocked artifacts stop handoff readiness.", "production-activation-rcap", "Review"));
-      if (revisions.length) topCandidates.push(cockpitLoopItem(\`Revise RCAP artifact: \${revisions[0].title}\`, revisions[0].nextAction || "Revision-required artifacts need a clear operator pass.", "production-activation-rcap", "Review"));
-      if (!readiness.ready) topCandidates.push(cockpitLoopItem("Move RCAP toward handoff readiness", readiness.next, "production-activation-rcap", "Review"));
-      if (reviewRequired.length) topCandidates.push(cockpitLoopItem(\`Review RCAP artifact: \${reviewRequired[0].title}\`, reviewRequired[0].nextAction || "This artifact still needs Roger's review state.", "production-activation-rcap", "Review"));
+      if (blocked.length) topCandidates.push(cockpitLoopItem(\`Resolve blocked RCAP Program item: \${blocked[0].title}\`, blocked[0].nextAction || "Blocked items stop handoff readiness.", "production-activation-rcap", "Review"));
+      if (revisions.length) topCandidates.push(cockpitLoopItem(\`Revise RCAP Program item: \${revisions[0].title}\`, revisions[0].nextAction || "Revision-needed items need a clear review pass.", "production-activation-rcap", "Review"));
+      if (!readiness.ready) topCandidates.push(cockpitLoopItem("Move the RCAP Program toward handoff readiness", readiness.next, "production-activation-rcap", "Review"));
+      if (reviewRequired.length) topCandidates.push(cockpitLoopItem(\`Review RCAP Program item: \${reviewRequired[0].title}\`, reviewRequired[0].nextAction || "This item still needs Roger's review state.", "production-activation-rcap", "Review"));
       if (openTasks.length) topCandidates.push(cockpitLoopItem(openTasks[0].title || "Open task needs attention", openTasks[0].nextAction || openTasks[0].description || "An internal task is still open.", "tasks", "Open Tasks"));
 
       const top3 = cockpitUniqueByTitle([
         ...topCandidates,
-        cockpitLoopItem("Review RCAP handoff packet", "Use the internal packet to decide what still needs Roger before any Partner Journey handoff.", "production-activation-rcap", "Review"),
+        cockpitLoopItem("Review RCAP Program handoff packet", "Use the internal packet to decide what still needs Roger before any Partner Journey handoff.", "production-activation-rcap", "Review"),
         cockpitLoopItem("Clear one open task", "Pick the highest leverage internal task and move it to a clear next state.", "tasks", "Open Tasks"),
         cockpitLoopItem("Capture missing context", "If the next move is unclear, capture the missing detail instead of switching modules.", "growth-inbox", "Open Inbox")
       ]).slice(0, 3);
 
       const waitingOn = cockpitUniqueByTitle([
-        ...readiness.missing.map(detail => cockpitLoopItem(detail, "Missing RCAP partner detail blocks handoff readiness.", "production-activation-rcap", "Review")),
-        ...blocked.map(item => cockpitLoopItem(item.title, item.nextAction || "Blocked pending operator review.", "production-activation-rcap", "Review"))
+        ...readiness.missing.map(detail => cockpitLoopItem(detail, "Missing RCAP Program partner detail blocks handoff readiness.", "production-activation-rcap", "Review")),
+        ...blocked.map(item => cockpitLoopItem(item.title, item.nextAction || "Blocked pending founder review.", "production-activation-rcap", "Review"))
       ]).slice(0, 5);
 
       const decisionsNeeded = cockpitUniqueByTitle([
         ...reviewRequired.map(item => cockpitLoopItem(item.title, "Choose an internal review state before handoff can be evaluated.", "production-activation-rcap", "Review")),
         ...revisions.map(item => cockpitLoopItem(item.title, "Decide what revision is needed, then update the review state.", "production-activation-rcap", "Review")),
-        cockpitLoopItem("RCAP Partner Journey handoff", readiness.ready ? "Ready for a manual handoff decision. No external system is contacted." : readiness.next, "production-activation-rcap", "Review")
+        cockpitLoopItem("RCAP Program handoff", readiness.ready ? "Ready for a manual handoff decision. No external system is contacted." : readiness.next, "production-activation-rcap", "Review")
       ]).slice(0, 5);
 
       const doNotTouchToday = [
-        cockpitLoopItem("Live posting gates", liveGates === 0 ? "Leave live gates at 0 until explicit approval." : \`\${liveGates} live gate(s) need immediate review.\`, "settings", "Check"),
+        cockpitLoopItem("Publishing is off", liveGates === 0 ? "Keep publishing off until explicit approval." : \`\${liveGates} publishing gate(s) need immediate review.\`, "settings", "Check"),
         cockpitLoopItem("External Partner Journey handoff", "Do not contact external systems from this OS. Use the internal packet only.", "production-activation-rcap", "Review"),
         cockpitLoopItem("Email, page, and dashboard actions", "Keep all artifacts draft or review-only until Roger manually approves a separate external step.", "production-activation-rcap", "Review")
       ];
@@ -17735,11 +17735,11 @@ function htmlShell() {
       const loop = cockpitDailyOperatingLoop();
       return \`<section class="cockpit-card daily-operating-loop" aria-label="Today's Focus">
         <div class="cockpit-card-head"><h2>Today's Focus</h2><small>Le-E operating brief</small></div>
-        <div class="daily-loop-summary"><strong>Top 3 for today.</strong><span>Internal guidance only.</span><span>Live gates: \${esc(loop.liveGates)}</span></div>
+        <div class="daily-loop-summary"><strong>Top 3 for today.</strong><span>Founder guidance only.</span><span>Publishing is off</span></div>
         <div class="daily-loop-grid">
           <section class="daily-loop-section primary"><h3>Today's Top 3</h3>\${cockpitLoopListHtml(loop.top3, "No top actions available yet.")}</section>
           <section class="daily-loop-section"><h3>Waiting On</h3>\${cockpitLoopListHtml(loop.waitingOn, "Nothing is waiting on missing details right now.")}</section>
-          <section class="daily-loop-section"><h3>Decisions Needed</h3>\${cockpitLoopListHtml(loop.decisionsNeeded, "No operator decisions are waiting.")}</section>
+          <section class="daily-loop-section"><h3>Decisions Needed</h3>\${cockpitLoopListHtml(loop.decisionsNeeded, "No founder decisions are waiting.")}</section>
           <section class="daily-loop-section"><h3>Do Not Touch Today</h3>\${cockpitLoopListHtml(loop.doNotTouchToday, "No distractions flagged.")}</section>
           <section class="daily-loop-section"><h3>Momentum</h3>\${cockpitLoopListHtml(loop.momentum, "No recent operating movement logged yet.")}</section>
         </div>
@@ -17768,7 +17768,7 @@ function htmlShell() {
         carry_forward:loop.top3.map(item => ({ title:item.title, detail:item.detail, href:item.href })),
         resurface_tomorrow:[...loop.waitingOn, ...loop.decisionsNeeded].map(item => ({ title:item.title, detail:item.detail, href:item.href })).slice(0, 5),
         do_not_carry_forward:loop.doNotTouchToday.map(item => ({ title:item.title, detail:item.detail, href:item.href })),
-        risk_notes:[{ title:"Live gates remain " + loop.liveGates, detail:"No external action should happen from Operating Memory.", href:"settings" }],
+        risk_notes:[{ title:"Publishing is off", detail:"No external action should happen from Notes & Decisions.", href:"settings" }],
         live_gates_count:loop.liveGates,
         external_actions_confirmation:"No emails sent, no posts published, no partner pages published, no dashboards activated, no external systems contacted."
       };
@@ -17776,7 +17776,7 @@ function htmlShell() {
 
     function memoryListHtml(items, emptyText, limit = 3) {
       const rows = (items || []).slice(0, limit);
-      return \`<ul>\${rows.length ? rows.map(item => \`<li><strong>\${esc(item.title || "Memory item")}</strong><br><span>\${esc(item.detail || "Internal operating memory.")}</span></li>\`).join("") : \`<li>\${esc(emptyText)}</li>\`}</ul>\`;
+      return \`<ul>\${rows.length ? rows.map(item => \`<li><strong>\${esc(item.title || "Note")}</strong><br><span>\${esc(item.detail || "Saved work note.")}</span></li>\`).join("") : \`<li>\${esc(emptyText)}</li>\`}</ul>\`;
     }
 
     function savedMorningBriefForToday() {
@@ -17869,7 +17869,7 @@ function htmlShell() {
       const evening = cockpitEveningReflectionRecord();
       return \`<section class="cockpit-card daily-rituals-card" aria-label="Daily Rituals">
         <div class="cockpit-card-head"><h2>Daily Rituals</h2><small>Internal only</small></div>
-        <div class="daily-loop-summary"><strong>Morning Brief: \${morningSaved ? "Saved" : "Not saved"}</strong><span>Evening Reflection: \${eveningSaved ? "Saved" : "Not saved"}</span><span>Live gates: \${esc(morning.live_gates_count || evening.live_gates_count || 0)}</span></div>
+        <div class="daily-loop-summary"><strong>Morning Brief: \${morningSaved ? "Saved" : "Not saved"}</strong><span>Daily Closeout: \${eveningSaved ? "Saved" : "Not saved"}</span><span>Publishing is off</span></div>
         <div class="daily-loop-grid">
           <section class="daily-loop-section primary"><h3>Morning Brief</h3><p>\${esc(morning.mission_today || "Run the internal operating loop.")}</p><a href="#morning-brief">Open Morning Brief</a></section>
           <section class="daily-loop-section"><h3>Evening Reflection</h3><p>\${esc((evening.carry_forward || [])[0]?.title || "No reflection saved yet.")}</p><a href="#evening-reflection">Open Evening Reflection</a></section>
@@ -17886,7 +17886,7 @@ function htmlShell() {
       const closeout = cockpitDailyCloseoutRecord();
       return \`<section class="cockpit-card daily-closeout-card" aria-label="Closeout">
         <div class="cockpit-card-head"><h2>Closeout</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
-        <div class="daily-loop-summary"><strong>Tomorrow: \${esc(closeout.tomorrow_mission || "Plan not generated")}</strong><span>Live gates: \${esc(closeout.live_gates_count || 0)}</span><span>Internal only</span></div>
+        <div class="daily-loop-summary"><strong>Tomorrow: \${esc(closeout.tomorrow_mission || "Plan not generated")}</strong><span>Publishing is off</span><span>Internal only</span></div>
         <div class="daily-loop-grid">
           <section class="daily-loop-section primary"><h3>Tomorrow Top 3</h3>\${memoryListHtml(closeout.tomorrow_top_3, "No tomorrow plan yet.", 3)}</section>
           <section class="daily-loop-section"><h3>Blocked</h3>\${memoryListHtml(closeout.blocked_items, "No blockers captured.", 3)}</section>
@@ -17907,7 +17907,7 @@ function htmlShell() {
         overall_health:"needs_attention",
         trust_warnings:[],
         live_gates_count:Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length,
-        summary:{ next_operator_action:"Open OS Health and refresh the snapshot." }
+        summary:{ next_operator_action:"Open App Status and refresh the snapshot." }
       };
     }
 
@@ -17916,10 +17916,10 @@ function htmlShell() {
       const warnings = health.trust_warnings || [];
       return \`<section class="cockpit-card os-health-card" aria-label="System Health">
         <div class="cockpit-card-head"><h2>System Health</h2><small>\${esc(plainOperatorState(health.overall_health || "needs_attention"))}</small></div>
-        <div class="daily-loop-summary"><strong>Overall: \${esc(plainOperatorState(health.overall_health || "needs_attention"))}</strong><span>Last verified: \${esc(formatDateTime(health.generated_at) || "Not recorded")}</span><span>Live gates: \${esc(health.live_gates_count || 0)}</span></div>
+        <div class="daily-loop-summary"><strong>Overall: \${esc(plainOperatorState(health.overall_health || "needs_attention"))}</strong><span>Last verified: \${esc(formatDateTime(health.generated_at) || "Not recorded")}</span><span>Publishing is off</span></div>
         <div class="daily-loop-grid">
           <section class="daily-loop-section primary"><h3>Key warnings</h3>\${memoryListHtml(warnings, "No key warnings saved in the latest snapshot.", 3)}</section>
-          <section class="daily-loop-section"><h3>Next action</h3><ul><li>\${esc(health.summary?.next_operator_action || "Refresh OS Health Snapshot.")}</li></ul></section>
+          <section class="daily-loop-section"><h3>Next action</h3><ul><li>\${esc(health.summary?.next_operator_action || "Refresh App Status.")}</li></ul></section>
         </div>
         <div class="operating-memory-actions">
           <button type="button" onclick="location.hash='os-health'">Open System Health</button>
@@ -17960,7 +17960,7 @@ function htmlShell() {
       const warnings = [
         viewerCanMutate ? { title:"Viewer can mutate state", detail:"Viewer role unexpectedly has mutation capability." } : null,
         nonOwnerCanManageRoles ? { title:"Non-owner can manage roles", detail:"Role management must stay owner-only." } : null,
-        liveGates !== 0 ? { title:"Live gates are not 0", detail:liveGates + " live gate(s) are enabled." } : null
+        liveGates !== 0 ? { title:"Publishing needs review", detail:liveGates + " publishing gate(s) are enabled." } : null
       ].filter(Boolean);
       return {
         status:warnings.length ? "needs_attention" : "protected",
@@ -18059,12 +18059,12 @@ function htmlShell() {
 
     function clientEvidenceSource(item = {}, fallback = "Operating Proof") {
       const text = [item.title, item.reportTitle, item.evidenceTitle, item.key, item.id, item.source, item.section, item.category, item.type, item.artifactType].filter(Boolean).join(" ");
-      if (/rcap.*production|production.*activation/i.test(text)) return "RCAP Production Activation";
-      if (/rcap.*review|review.*workspace/i.test(text)) return "RCAP Review Workspace";
+      if (/rcap.*production|production.*activation/i.test(text)) return "RCAP Program";
+      if (/rcap.*review|review.*workspace/i.test(text)) return "RCAP Program Review";
       if (/approval|review_state|needs_revision|handoff_ready/i.test(text)) return "Review Approval Engine";
       if (/handoff/i.test(text)) return "Handoff Readiness";
       if (/daily operating loop/i.test(text)) return "Daily Operating Loop";
-      if (/operating memory/i.test(text)) return "Operating Memory";
+      if (/operating memory/i.test(text)) return "Notes & Decisions";
       if (/daily closeout|tomorrow plan/i.test(text)) return "Daily Closeout";
       if (/task/i.test(text)) return "Task Management";
       if (/partner program|proposal|partner page|dashboard|weekly report|final report/i.test(text)) return "Partner Program Engine";
@@ -18141,15 +18141,15 @@ function htmlShell() {
       let index = 0;
       const items = [];
       const add = (collection, defaults) => list(collection).forEach(item => items.push(clientEvidenceItem(item, defaults, index++)));
-      add(inputState.evidencePackNotes, { source:"RCAP Production Activation", type:"evidence_note", route:"reports" });
+      add(inputState.evidencePackNotes, { source:"RCAP Program", type:"evidence_note", route:"reports" });
       add(inputState.reports, { type:"report", route:"reports" });
       add([...(list(inputState.dataRoomItems)), ...(list(inputState.dataRoom))], { source:"Data Room", type:"data_room_item", route:"dataroom" });
       add(inputState.soc2Evidence, { source:"SOC 2 Readiness", type:"readiness_artifact", route:"soc2-evidence", proof_category:"compliance" });
       add(inputState.partnerProgramArtifacts, { type:"partner_program_artifact" });
       add(inputState.handoffContractPreviews, { source:"Partner Journey Handoff Contract", type:"handoff_contract_preview", route:"handoff-contract", proof_category:"operating" });
       add(inputState.handoffPackets, { source:"Handoff Readiness", type:"handoff_packet", route:"production-activation-rcap", proof_category:"partner" });
-      add(inputState.productionActivationRuns, { source:"RCAP Production Activation", type:"production_activation_run", route:"production-activation-rcap", proof_category:"partner" });
-      add(inputState.operatingMemory, { source:"Operating Memory", type:"operating_memory", route:"operating-memory", proof_category:"operating" });
+      add(inputState.productionActivationRuns, { source:"RCAP Program", type:"production_activation_run", route:"production-activation-rcap", proof_category:"partner" });
+      add(inputState.operatingMemory, { source:"Notes & Decisions", type:"operating_memory", route:"operating-memory", proof_category:"operating" });
       add(inputState.dailyCloseouts, { source:"Daily Closeout", type:"daily_closeout", route:"daily-closeout", proof_category:"operating" });
       add(inputState.tasks, { source:"Task Management", type:"task", route:"tasks", proof_category:"operating" });
       add(list(inputState.auditHistory).slice(0, 80), { source:"Audit History", type:"audit_history", route:"os-health", proof_category:"audit" });
@@ -18425,7 +18425,7 @@ function htmlShell() {
 
     function renderModuleFallbackHtml(moduleName = "module", error = {}) {
       const message = error?.message || "Module unavailable. Safe fallback used.";
-      return \`<section class="panel module-fallback" data-module-fallback="\${esc(moduleName)}"><div class="eyebrow">Module fallback</div><h2>\${esc(moduleName)}</h2><p class="muted">\${esc(message)}</p><div class="metric-table"><div class="metric-row"><span>Function</span><strong>\${esc(error?.name === "ReferenceError" ? message : "No missing helper detected")}</strong></div><div class="metric-row"><span>Safe fallback used</span><strong>Yes</strong></div><div class="metric-row"><span>Live gates</span><strong>0</strong></div></div></section>\`;
+      return \`<section class="panel module-fallback" data-module-fallback="\${esc(moduleName)}"><div class="eyebrow">Recovery fallback</div><h2>\${esc(moduleName)}</h2><p class="muted">\${esc(message)}</p><div class="metric-table"><div class="metric-row"><span>Function</span><strong>\${esc(error?.name === "ReferenceError" ? message : "No missing helper detected")}</strong></div><div class="metric-row"><span>Safe fallback used</span><strong>Yes</strong></div><div class="metric-row"><span>Publishing</span><strong>Off</strong></div></div></section>\`;
     }
 
     function safeRenderModule(moduleName = "module", renderer = () => "") {
@@ -18439,11 +18439,11 @@ function htmlShell() {
 
     function cockpitSmokeTestHtml() {
       const status = buildSmokeTestStatus(state, { commit_hash: state.runtime?.commitHash || "" });
-      return \`<section class="cockpit-card smoke-test-card" aria-label="Smoke Test">
-        <div class="cockpit-card-head"><h2>Smoke Test</h2><small>Post-deploy checklist</small></div>
+      return \`<section class="cockpit-card smoke-test-card" aria-label="Self-Check">
+        <div class="cockpit-card-head"><h2>Self-Check</h2><small>Post-deploy checklist</small></div>
         <div class="daily-loop-summary"><strong>Last smoke test status: \${esc(plainOperatorState(status.last_status))}</strong><span>Last run: \${esc(formatDateTime(status.last_run_timestamp) || "Not recorded")}</span><span>Failed: \${esc(status.failed_count || 0)}</span></div>
         <div class="operating-memory-actions">
-          <button class="primary" type="button" onclick="location.hash='smoke-test'">Open Smoke Test Center</button>
+          <button class="primary" type="button" onclick="location.hash='smoke-test'">Open Self-Check</button>
         </div>
       </section>\`;
     }
@@ -18459,30 +18459,30 @@ function htmlShell() {
           <span>Last update: \${esc(formatDateTime(overview.last_evidence_update) || "Not recorded")}</span>
         </div>
         <div class="operating-memory-actions">
-          <button class="primary" type="button" onclick="location.hash='evidence-room'">Open Evidence Room</button>
+          <button class="primary" type="button" onclick="location.hash='evidence-room'">Open Proof</button>
         </div>
       </section>\`;
     }
 
     function cockpitOperatorManualHtml() {
-      return \`<section class="cockpit-card operator-manual-card" aria-label="Operator Manual">
-        <div class="cockpit-card-head"><h2>Operator Manual</h2><small>Internal source of truth</small></div>
+      return \`<section class="cockpit-card operator-manual-card" aria-label="Guide">
+        <div class="cockpit-card-head"><h2>Guide</h2><small>Internal source of truth</small></div>
         <div class="daily-loop-summary">
           <strong>Manual status: Current</strong>
           <span>Last updated: May 28, 2026</span>
           <span>Scope: LegalEase OS only</span>
         </div>
-        <p class="muted">Practical operating guide for safe daily use, deploy checks, RCAP review, evidence handling, and break/fix response.</p>
+        <p class="muted">Practical guide for safe daily use, deploy checks, RCAP Program review, proof handling, and break/fix response.</p>
         <div class="operating-memory-actions">
-          <button class="primary" type="button" onclick="location.hash='operator-manual'">Open Operator Manual</button>
+          <button class="primary" type="button" onclick="location.hash='operator-manual'">Open Guide</button>
         </div>
       </section>\`;
     }
 
     function cockpitHandoffContractHtml() {
       const status = handoffContractStatus(state);
-      return \`<section class="cockpit-card handoff-contract-card" aria-label="Handoff Contract">
-        <div class="cockpit-card-head"><h2>Handoff Contract</h2><small>Contract only</small></div>
+      return \`<section class="cockpit-card handoff-contract-card" aria-label="Handoff Notes">
+        <div class="cockpit-card-head"><h2>Handoff Notes</h2><small>Contract only</small></div>
         <div class="daily-loop-summary">
           <strong>Contract status: \${esc(plainOperatorState(status.contract_status || "not_generated"))}</strong>
           <span>Required fields: \${esc(status.required_fields_count || 0)}</span>
@@ -18504,14 +18504,14 @@ function htmlShell() {
     function cockpitDataIntegrityHtml() {
       const integrity = cockpitDataIntegrityRecord();
       const warningCount = (integrity.errors || []).length + (integrity.warnings || []).length;
-      return \`<section class="cockpit-card data-integrity-card" aria-label="Data Integrity">
-        <div class="cockpit-card-head"><h2>Data Integrity</h2><small>\${esc(plainOperatorState(integrity.integrity_status || "needs_attention"))}</small></div>
+      return \`<section class="cockpit-card data-integrity-card" aria-label="Data Check">
+        <div class="cockpit-card-head"><h2>Data Check</h2><small>\${esc(plainOperatorState(integrity.integrity_status || "needs_attention"))}</small></div>
         <p>\${esc(warningCount ? warningCount + " integrity warning(s) need review." : "Collections are structurally healthy.")}</p>
         <div class="mini-metrics">
           <span>Warnings <strong>\${esc(warningCount)}</strong></span>
-          <span>Live gates <strong>\${esc(integrity.live_gates_count || 0)}</strong></span>
+          <span>Publishing <strong>\${Number(integrity.live_gates_count || 0) === 0 ? "Off" : "Needs review"}</strong></span>
         </div>
-        <div class="card-actions"><button type="button" onclick="location.hash='data-integrity'">Open Data Integrity</button></div>
+        <div class="card-actions"><button type="button" onclick="location.hash='data-integrity'">Open Data Check</button></div>
       </section>\`;
     }
 
@@ -18578,7 +18578,7 @@ function htmlShell() {
       (state.eveningReflections || []).forEach(item => result.push(make({ id:item.key || item.id, type:"eveningReflection", title:item.title || "Evening Reflection", summary:(item.notes_for_tomorrow || [])[0]?.title || "Evening reflection.", route:"evening-reflection", status:item.status || "saved", safeActions:[{ action:"open_evening_reflection", label:"Open Evening Reflection", route:"evening-reflection" }] })));
       (state.operatingMemory || []).forEach(item => result.push(make({ id:item.key || item.id, type:"operatingMemory", title:(item.moved_today || [])[0]?.title || "Notes & Decisions", summary:(item.carry_forward || [])[0]?.title || "What needs to carry forward.", route:"operating-memory", status:item.status || "saved" })));
       (state.dailyCloseouts || []).forEach(item => result.push(make({ id:item.key || item.id, type:"dailyCloseout", title:item.tomorrow_mission || "Daily Closeout", summary:(item.tomorrow_top_3 || [])[0]?.title || "Closeout and tomorrow plan.", route:"daily-closeout", status:item.status || "saved", safeActions:[{ action:"open_daily_closeout", label:"Open Daily Closeout", route:"daily-closeout" }] })));
-      (state.partnerProgramArtifacts || []).filter(item => /rcap/i.test([item.key, item.title, item.partnerSlug].join(" "))).forEach(item => result.push(make({ id:item.key || item.id, type:item.key === rcapHandoffPacketArtifactKey ? "handoffPacket" : "recoveryPlanArtifact", title:founderText(item.title || item.key || "Recovery plan artifact"), summary:founderText(item.summary?.nextManualAction || item.summary?.answer || item.status || "Recovery plan artifact."), route:"production-activation-rcap", status:item.review_state || item.status, priority:item.priority, safeActions:[{ action:"open_rcap_review_workspace", label:"Open Launch Checklist", route:"production-activation-rcap" }] })));
+      (state.partnerProgramArtifacts || []).filter(item => /rcap/i.test([item.key, item.title, item.partnerSlug].join(" "))).forEach(item => result.push(make({ id:item.key || item.id, type:item.key === rcapHandoffPacketArtifactKey ? "handoffPacket" : "rcapProgramArtifact", title:founderText(item.title || item.key || "RCAP Program item"), summary:founderText(item.summary?.nextManualAction || item.summary?.answer || item.status || "RCAP Program item."), route:"production-activation-rcap", status:item.review_state || item.status, priority:item.priority, safeActions:[{ action:"open_rcap_review_workspace", label:"Open RCAP Program Review", route:"production-activation-rcap" }] })));
       (state.reports || []).forEach(item => result.push(make({ id:item.key || item.id, type:"report", title:item.title || item.reportTitle || "Report", summary:item.summary || item.status || "Internal report.", route:"reports", status:item.status || item.review_state })));
       (state.evidencePackNotes || []).forEach(item => result.push(make({ id:item.key || item.id, type:"evidenceNote", title:item.title || "Evidence note", summary:item.notes || item.summary || item.status, route:"reports", status:item.status || item.review_state })));
       (state.dataRoomItems || []).forEach(item => result.push(make({ id:item.id || item.key, type:"dataRoomItem", title:item.title || item.name || "Data Room item", summary:item.summary || item.notes || item.status, route:"dataroom", status:item.status })));
@@ -18616,9 +18616,9 @@ function htmlShell() {
     function cockpitOperatorSearchHtml() {
       const index = operatorSearchClientIndex();
       const needsReview = index.filter(item => /review_required|blocked|needs_revision/i.test(item.status || "")).length;
-      return \`<section class="cockpit-card operator-search-card" aria-label="Operator Search">
-        <div class="cockpit-card-head"><h2>Operator Search</h2><small>Internal command palette</small></div>
-        <div class="daily-loop-summary"><strong>\${esc(index.length)} indexed records</strong><span>\${esc(needsReview)} need attention</span><span>Live gates: \${esc(Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length)}</span></div>
+      return \`<section class="cockpit-card operator-search-card" aria-label="Search">
+        <div class="cockpit-card-head"><h2>Search</h2><small>Find work fast</small></div>
+        <div class="daily-loop-summary"><strong>\${esc(index.length)} saved records</strong><span>\${esc(needsReview)} need attention</span><span>Publishing is off</span></div>
         <div class="operating-memory-actions">
           <button class="primary" type="button" onclick="location.hash='operator-search'">Search OS</button>
           <button type="button" onclick="location.hash='operator-search'">Open Command Palette</button>
@@ -18639,7 +18639,7 @@ function htmlShell() {
           <section class="operating-memory-tile"><h3>Still Blocked</h3>\${memoryListHtml(memory.still_blocked, "No blockers carried in memory.")}</section>
         </div>
         <div class="operating-memory-actions">
-          <button class="primary" type="button" onclick="saveOperatingMemory()">Save Today's Operating Memory</button>
+          <button class="primary" type="button" onclick="saveOperatingMemory()">Save Today's Notes</button>
           <button type="button" onclick="location.hash='operating-memory'">Open Memory</button>
         </div>
       </section>\`;
@@ -18713,7 +18713,7 @@ function htmlShell() {
           <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_conversation_notes')">Route to Conversation Notes</button>
           <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_morning_brief')">Route to Morning Brief Inputs</button>
           <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_evening_reflection')">Route to Evening Reflection Inputs</button>
-          <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_operating_memory')">Route to Operating Memory</button>
+          <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_operating_memory')">Route to Notes &amp; Decisions</button>
           <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_evidence_notes')">Route to Evidence Notes</button>
           <button type="button" onclick="captureInboxAction('\${esc(item.id)}','ignore')">Ignore</button>
         </div>
@@ -18793,7 +18793,7 @@ function htmlShell() {
       ];
       return \`<section id="production-activation-rcap" class="\${pageClass("production-activation-rcap")} rcap-review-workspace command-page lee-bubble-safe-space">
         <div class="panel hero-panel">
-          <div class="eyebrow">Recovery plan</div>
+          <div class="eyebrow">Record Clearing Access Program</div>
           <h1 class="big-title">Launch Checklist</h1>
           <p class="muted">Review-only workspace. Manual approval required before anything external happens. No emails, posts, partner pages, or dashboards are activated from this page.</p>
           <div class="card-actions">
@@ -18831,7 +18831,7 @@ function htmlShell() {
           \${rcapReviewArtifactCard(
             "Activation Summary",
             status.status,
-            \`What was created: partner record, proposal task, proposal draft, partner page draft, dashboard readiness record, weekly report draft, and evidence note. Current status: \${status.status}. Live gates: \${liveGates}.\`,
+            \`What was created: partner record, proposal task, proposal draft, partner page draft, dashboard readiness record, weekly report draft, and proof note. Current status: \${status.status}. Publishing is off.\`,
             \`What still needs review: RCAP contact details, approval authority, package/program scope, proposal language, partner page language, dashboard requirements, and reporting cadence. What is blocked: emails, posts, partner page publishing, dashboard activation, and live posting.\`,
             "Next manual decision: decide whether this package is ready for editing and handoff to the separate Partner Journey workflow."
           )}
@@ -18881,7 +18881,7 @@ function htmlShell() {
             "Evidence Note",
             evidenceNote.status || "Pending",
             \`Activation key: \${rcapReviewValue(evidenceNote.activationKey, "rcap-production-activation-v1")}. Timestamp: \${rcapReviewValue(evidenceNote.timestamp)}. Artifact list: \${rcapReviewList(Object.keys(evidenceNote.artifactsCreatedOrFound || {}), "partner record; proposal task; proposal draft; partner page draft; dashboard readiness; weekly report draft; evidence note")}.\`,
-            \`Live gates count: \${rcapReviewValue(evidenceNote.liveGatesCount, String(liveGates))}. Safety confirmations: no email sent, no post published, no partner page published, no dashboard activated. Owner-token auth confirmation: \${rcapReviewValue(evidenceNote.ownerTokenAuthConfirmation, "owner-token auth unchanged")}.\`,
+            \`Publishing status: off. Safety confirmations: no email sent, no post published, no partner page published, no dashboard activated. Owner-token auth confirmation: \${rcapReviewValue(evidenceNote.ownerTokenAuthConfirmation, "owner-token auth unchanged")}.\`,
             \`External action confirmation: \${rcapReviewValue(evidenceNote.externalActionConfirmation, evidenceSummary)}\`
           )}
           <article class="artifact-review-card">
@@ -18930,7 +18930,7 @@ function htmlShell() {
         </section>
         <section class="panel">
           <div class="simple-panel-head"><h2>Recent History</h2><span class="badge info">\${esc(history.length)} saved</span></div>
-          <div class="memory-history-list">\${history.map(item => \`<article class="memory-history-card"><strong>\${esc(item.date || item.key)}</strong><span class="muted">\${esc(formatDate(item.generated_at) || "No timestamp")} · Carry forward: \${esc((item.carry_forward || []).length)} · Still blocked: \${esc((item.still_blocked || []).length)}</span></article>\`).join("") || '<div class="empty">No operating memory history saved yet.</div>'}</div>
+          <div class="memory-history-list">\${history.map(item => \`<article class="memory-history-card"><strong>\${esc(item.date || item.key)}</strong><span class="muted">\${esc(formatDate(item.generated_at) || "No timestamp")} · Carry forward: \${esc((item.carry_forward || []).length)} · Still blocked: \${esc((item.still_blocked || []).length)}</span></article>\`).join("") || '<div class="empty">No notes or decisions history saved yet.</div>'}</div>
         </section>
       </section>\`;
     }
@@ -19064,15 +19064,15 @@ function htmlShell() {
         <section class="panel operating-memory-card">
           <div class="simple-panel-head"><h2>Status Summary</h2><span class="badge info">Publishing is off</span></div>
           <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>What is safe to trust</h3>\${memoryListHtml((health.summary?.safe_to_trust || []).map(title => ({ title, detail:"Verified by current OS snapshot." })), "Nothing saved yet.", 6)}</section>
-            <section class="operating-memory-tile"><h3>What needs attention</h3>\${memoryListHtml((health.summary?.needs_attention || []).map(title => ({ title, detail:"Needs operator review." })), "No saved warnings.", 6)}</section>
+            <section class="operating-memory-tile"><h3>What is safe to trust</h3>\${memoryListHtml((health.summary?.safe_to_trust || []).map(title => ({ title, detail:"Verified by current app snapshot." })), "Nothing saved yet.", 6)}</section>
+            <section class="operating-memory-tile"><h3>What needs attention</h3>\${memoryListHtml((health.summary?.needs_attention || []).map(title => ({ title, detail:"Needs review." })), "No saved warnings.", 6)}</section>
             <section class="operating-memory-tile"><h3>What should not be trusted yet</h3>\${memoryListHtml((health.summary?.do_not_trust_yet || []).map(title => ({ title, detail:"Do not rely on this until resolved." })), "Nothing flagged.", 6)}</section>
-            <section class="operating-memory-tile"><h3>Next operator action</h3><ul><li>\${esc(health.summary?.next_operator_action || "Refresh OS Health Snapshot.")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Next action</h3><ul><li>\${esc(health.summary?.next_operator_action || "Refresh App Status.")}</li></ul></section>
           </div>
         </section>
         <section class="panel"><div class="simple-panel-head"><h2>Connection Health</h2><span class="badge info">\${esc(health.overall_health || "not_recorded")}</span></div>\${healthStatusGridHtml(health.connection_health || {})}</section>
         <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Auth + Endpoint Hardening</h2><span class="badge info">\${esc(plainOperatorState(hardening.endpoint_protection?.status || "not_checked"))}</span></div>
+          <div class="simple-panel-head"><h2>Access Protection</h2><span class="badge info">\${esc(plainOperatorState(hardening.endpoint_protection?.status || "not_checked"))}</span></div>
           <div class="operating-memory-grid">
             <section class="operating-memory-tile"><h3>Endpoint protection status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.endpoint_protection?.status || "not_checked"))}</strong><br><span>\${esc(hardening.endpoint_protection?.protected_count || 0)} protected endpoint(s), \${esc(hardening.endpoint_protection?.public_safe_count || 0)} public-safe endpoint(s).</span></li></ul></section>
             <section class="operating-memory-tile"><h3>Secret leakage status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.secret_leakage?.status || "clean"))}</strong><br><span>\${esc(hardening.secret_leakage?.note || "No secret response values are exposed by hardening checks.")}</span></li></ul></section>
@@ -19081,7 +19081,7 @@ function htmlShell() {
           </div>
         </section>
         <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Role System</h2><span class="badge info">\${esc(plainOperatorState(health.role_system_status?.status || "protected"))}</span></div>
+          <div class="simple-panel-head"><h2>Team Roles</h2><span class="badge info">\${esc(plainOperatorState(health.role_system_status?.status || "protected"))}</span></div>
           <div class="operating-memory-grid">
             <section class="operating-memory-tile"><h3>Role system status</h3><ul><li><strong>\${esc(plainOperatorState(health.role_system_status?.status || "protected"))}</strong><br><span>\${esc(health.role_system_status?.role_protection_status || "enforced")}</span></li></ul></section>
             <section class="operating-memory-tile"><h3>Current role</h3><ul><li>\${esc(plainOperatorState(health.role_system_status?.current_role || "owner"))}</li></ul></section>
@@ -19090,24 +19090,24 @@ function htmlShell() {
           </div>
         </section>
         <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Smoke Test Status</h2><span class="badge info">\${esc(plainOperatorState(smoke.last_status || "not_started"))}</span></div>
+          <div class="simple-panel-head"><h2>Self-Check Status</h2><span class="badge info">\${esc(plainOperatorState(smoke.last_status || "not_started"))}</span></div>
           <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>Last smoke test status</h3><ul><li><strong>\${esc(plainOperatorState(smoke.last_status || "not_started"))}</strong><br><span>\${esc(formatDateTime(smoke.last_run_timestamp) || "Not recorded")}</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Failed smoke test count</h3><ul><li>\${esc(smoke.failed_count || 0)} failed step(s)</li></ul></section>
-            <section class="operating-memory-tile"><h3>Deploy coverage</h3><ul><li>\${esc(smoke.warning || "Smoke test is current for the latest known commit or no commit is recorded.")}</li></ul></section>
-            <section class="operating-memory-tile"><h3>Next action</h3><ul><li><a href="#smoke-test">Open Smoke Test Center</a></li></ul></section>
+            <section class="operating-memory-tile"><h3>Last self-check status</h3><ul><li><strong>\${esc(plainOperatorState(smoke.last_status || "not_started"))}</strong><br><span>\${esc(formatDateTime(smoke.last_run_timestamp) || "Not recorded")}</span></li></ul></section>
+            <section class="operating-memory-tile"><h3>Failed self-check count</h3><ul><li>\${esc(smoke.failed_count || 0)} failed step(s)</li></ul></section>
+            <section class="operating-memory-tile"><h3>Deploy coverage</h3><ul><li>\${esc(smoke.warning || "Self-check is current for the latest known commit or no commit is recorded.")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Next action</h3><ul><li><a href="#smoke-test">Open Self-Check</a></li></ul></section>
           </div>
         </section>
         <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Evidence Room Status</h2><span class="badge info">\${esc(health.evidence_room_status?.open_review_items || 0)} open review</span></div>
+          <div class="simple-panel-head"><h2>Proof Status</h2><span class="badge info">\${esc(health.evidence_room_status?.open_review_items || 0)} open review</span></div>
           <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>Evidence room status</h3><ul><li><strong>\${esc(health.evidence_room_status?.total_evidence_items || 0)} evidence item(s)</strong><br><span>\${esc(health.evidence_room_status?.recent_evidence_items || 0)} recent item(s)</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Latest evidence summary timestamp</h3><ul><li>\${esc(formatDateTime(health.evidence_room_status?.latest_evidence_summary_timestamp) || "Not recorded")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Proof status</h3><ul><li><strong>\${esc(health.evidence_room_status?.total_evidence_items || 0)} proof item(s)</strong><br><span>\${esc(health.evidence_room_status?.recent_evidence_items || 0)} recent item(s)</span></li></ul></section>
+            <section class="operating-memory-tile"><h3>Latest proof summary</h3><ul><li>\${esc(formatDateTime(health.evidence_room_status?.latest_evidence_summary_timestamp) || "Not recorded")}</li></ul></section>
             <section class="operating-memory-tile"><h3>Missing evidence warnings</h3>\${memoryListHtml((health.missing_evidence_warnings || []).map(title => ({ title, detail:"Review in Evidence Room." })), "No missing evidence warnings.", 4)}</section>
             <section class="operating-memory-tile"><h3>Stale evidence warnings</h3>\${memoryListHtml((health.stale_evidence_warnings || []).map(title => ({ title, detail:"Refresh proof when work moves." })), "No stale evidence warnings.", 4)}</section>
           </div>
         </section>
-        <section class="panel"><div class="simple-panel-head"><h2>Workflow Health</h2><span class="badge info">Internal workflows</span></div>\${healthStatusGridHtml(health.workflow_health || {})}</section>
+        <section class="panel"><div class="simple-panel-head"><h2>Workflow Status</h2><span class="badge info">Saved workflows</span></div>\${healthStatusGridHtml(health.workflow_health || {})}</section>
         <section class="panel operating-memory-card">
           <div class="simple-panel-head"><h2>Data Freshness</h2><span class="badge info">Last saved signals</span></div>
           <div class="operating-memory-grid">\${Object.entries(health.data_freshness || {}).map(([key, value]) => \`<section class="operating-memory-tile"><h3>\${esc(plainOperatorState(key))}</h3><ul><li>\${esc(formatDateTime(value) || "Not recorded")}</li></ul></section>\`).join("")}</div>
@@ -19117,7 +19117,7 @@ function htmlShell() {
           <div class="memory-evidence-grid">\${(health.trust_warnings || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Warning")}</strong><span class="muted">\${esc(item.detail || "Needs attention.")}</span></article>\`).join("") || '<div class="empty">No saved trust warnings.</div>'}</div>
         </section>
         <section class="panel">
-          <div class="simple-panel-head"><h2>Self-Test Status</h2><span class="badge info">\${esc(health.self_test_status?.last_known_status || "last known not recorded")}</span></div>
+          <div class="simple-panel-head"><h2>Test Status</h2><span class="badge info">\${esc(health.self_test_status?.last_known_status || "last known not recorded")}</span></div>
           <div class="memory-evidence-grid">\${(health.self_test_status?.checklist || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.command)}</strong><span class="muted">\${esc(plainOperatorState(item.status || "last_known_not_recorded"))}</span></article>\`).join("") || '<div class="empty">No self-test checklist saved yet.</div>'}</div>
         </section>
       </section>\`;
@@ -19151,13 +19151,13 @@ function htmlShell() {
         <section class="panel operating-memory-card">
           <div class="simple-panel-head"><h2>Run Summary</h2><span class="badge info">Publishing is off</span></div>
           <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>Last smoke test status</h3><ul><li><strong>\${esc(plainOperatorState(status.last_status || "not_started"))}</strong><br><span>\${esc(formatDateTime(status.last_run_timestamp) || "Not recorded")}</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Run ID</h3><ul><li>\${esc(runId || "No smoke test run started yet.")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Last self-check status</h3><ul><li><strong>\${esc(plainOperatorState(status.last_status || "not_started"))}</strong><br><span>\${esc(formatDateTime(status.last_run_timestamp) || "Not recorded")}</span></li></ul></section>
+            <section class="operating-memory-tile"><h3>Run ID</h3><ul><li>\${esc(runId || "No self-check run started yet.")}</li></ul></section>
             <section class="operating-memory-tile"><h3>Counts</h3><ul><li>\${esc(run?.passed_count || 0)} passed · \${esc(run?.failed_count || 0)} failed · \${esc(run?.not_tested_count ?? groups.reduce((count, group) => count + (group.items?.length || 0), 0))} not tested</li></ul></section>
-            <section class="operating-memory-tile"><h3>Safety</h3><ul><li>\${esc(run?.no_external_actions_confirmation || "No emails sent, no posts published, no partner pages published, no dashboards activated, no Partner Journey calls, no destructive restore, no live gates enabled.")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Safety</h3><ul><li>\${esc(run?.no_external_actions_confirmation || "No emails sent, no posts published, no partner pages published, no dashboards activated, no Partner Journey calls, no destructive restore, and publishing remains off.")}</li></ul></section>
           </div>
           <label class="field-label" for="smoke-test-notes">Run notes</label>
-          <textarea id="smoke-test-notes" rows="3" placeholder="Add deployment smoke test notes...">\${esc(run?.notes || "")}</textarea>
+          <textarea id="smoke-test-notes" rows="3" placeholder="Add deployment self-check notes...">\${esc(run?.notes || "")}</textarea>
         </section>
         <section class="panel">
           <div class="simple-panel-head"><h2>Deployment Checklist</h2><span class="badge info">\${esc(groups.length)} groups</span></div>
@@ -19275,9 +19275,9 @@ function htmlShell() {
         {
           title:"What the LegalEase OS is",
           items:[
-            "LegalEase OS is the internal operating system Roger uses to run the company. It is not the Partner Journey app.",
-            "It combines the Operator Cockpit, memory layer, review system, proof layer, and controlled autonomy layer.",
-            "Its job is to reduce context switching, keep work review-only until approved, and make the next internal action clear."
+            "LegalEase OS is Roger's founder workspace for running the company. It is not the Partner Journey app.",
+            "It brings together Today, tasks, notes, proof, partner work, marketing, and app status.",
+            "Its job is to reduce context switching, keep work review-only until approved, and make the next action clear."
           ]
         },
         {
@@ -19291,8 +19291,8 @@ function htmlShell() {
         {
           title:"Le-E",
           items:[
-            "Le-E can summarize OS state, answer operational questions, draft internal artifacts, propose safe internal changes, and point Roger to the next review surface.",
-            "Le-E cannot perform email sending, move pages into publication, perform dashboard activation, change live gates, expose secrets, provide legal advice, promise eligibility, or promise court outcomes.",
+            "Le-E can summarize saved work, answer operating questions, draft internal notes, propose safe changes, and point Roger to the next review surface.",
+            "Le-E cannot perform email sending, move pages into publication, perform dashboard activation, change publishing gates, expose secrets, provide legal advice, promise eligibility, or promise court outcomes.",
             "No emails. No publishing. No dashboard activation. No legal promises. No secret exposure.",
             "Le-E is internal-only by design. Any external action must stay blocked until Roger manually approves it outside this OS."
           ]
@@ -19301,71 +19301,72 @@ function htmlShell() {
           title:"Quick Capture + Capture Inbox",
           items:[
             "Capture tasks, partner updates, ideas, meeting notes, conversation takeaways, blockers, decisions, risks, carry-forward items, and reflection notes.",
-            "Le-E classifies the capture into a review_required lane. Classification is a routing suggestion, not a final decision.",
-            "Reviewed captures can route to tasks, conversation notes, Morning Brief inputs, Evening Reflection inputs, Operating Memory, evidence notes, partner updates, or ideas.",
+            "Le-E suggests a review lane. Classification is a routing suggestion, not a final decision.",
+            "Reviewed captures can route to tasks, conversation notes, Morning Brief inputs, Daily Closeout inputs, Notes & Decisions, proof notes, partner updates, or ideas.",
             "Ignored means the capture should not influence briefs, memory, tasks, evidence, or future planning."
           ]
         },
         {
           title:"Tasks",
           items:[
-            "Task statuses are open, in_progress, waiting, blocked, done, and archived.",
+            "Task statuses are open, in progress, waiting, blocked, done, and archived.",
             "Blocked tasks require a blocker reason. Waiting tasks should name what Roger is waiting on. Done tasks should include a completion note when useful.",
-            "Task movement feeds Daily Operating Loop, Morning Brief, Evening Reflection, Daily Closeout, Operator Search, and OS Health."
+            "Task movement feeds Today's Focus, Morning Brief, Daily Closeout, Search, and App Status."
           ]
         },
         {
           title:"Daily Rituals",
           items:[
             "Morning Brief turns tasks, captures, review state, blockers, and yesterday context into a direct start-of-day plan.",
-            "Daily Operating Loop keeps the cockpit focused on Top 3, Waiting On, Decisions Needed, Do Not Touch Today, and Momentum.",
-            "Evening Reflection, Operating Memory, Daily Closeout, and Tomorrow Plan record what changed and decide what should resurface tomorrow."
+            "Today's Focus keeps the cockpit focused on Top 3, Waiting On, Decisions Needed, Do Not Touch Today, and Momentum.",
+            "Daily Closeout, Notes & Decisions, and Tomorrow Plan record what changed and decide what should resurface tomorrow."
           ]
         },
         {
           title:"Search + Command Palette",
           items:[
-            "Operator Search can find tasks, captures, rituals, memory, closeouts, RCAP artifacts, handoff packets, reports, evidence notes, Data Room items, audit history, activity events, and OS Health snapshots.",
+            "Search can find tasks, captures, rituals, notes, closeouts, RCAP Program items, handoff packets, reports, proof notes, Data Room items, activity history, and App Status snapshots.",
             "Safe internal actions include opening routes, marking captures reviewed, and routing captures internally.",
-            "Forbidden external actions are not available from search: email sending, page publication, content posting, dashboard activation, live gate changes, Partner Journey calls, or secret exposure."
+            "Forbidden external actions are not available from search: email sending, page publication, content posting, dashboard activation, publishing gate changes, Partner Journey calls, or secret exposure."
           ]
         },
         {
-          title:"OS Health + Smoke Test Center",
+          title:"App Status + Self-Check",
           items:[
-            "Use OS Health to check connections, workflow health, freshness, auth hardening, evidence status, smoke test status, and trust warnings.",
-            "After each deploy, run Smoke Test Center as a manual checklist. If a smoke test fails, record the failed step and do not assume the hosted OS is ready.",
+            "Use App Status to check connections, workflow health, freshness, access protection, proof status, self-check status, and trust warnings.",
+            "After each deploy, run Self-Check as a manual checklist. If a self-check fails, record the failed step and do not assume the hosted OS is ready.",
             "Health warnings mean Roger should trust only the verified parts of the OS until the warning is resolved."
           ]
         },
         {
-          title:"Data Integrity",
+          title:"Data Check",
           items:[
-            "Data Integrity documents major collections, stable keys, idempotency rules, audit behavior, related routes, and risk if missing or duplicated.",
+            "Data Check documents major saved-work collections, stable keys, repeat-safe rules, activity behavior, related routes, and risk if missing or duplicated.",
             "Integrity checks look for missing fields, duplicate stable keys, invalid states, invalid task statuses, routed capture problems, and secret-like fields.",
             "Exports create redacted snapshots. Restore dry-run validates a snapshot without overwriting live state. No destructive restore is available."
           ]
         },
         {
-          title:"Evidence Room / Data Room",
+          title:"Proof / Data Room",
           items:[
-            "Evidence Room gathers evidence notes, reports, audit-backed proof, Data Room artifacts, RCAP artifacts, partner program artifacts, and SOC 2 Readiness evidence.",
+            "Proof gathers notes, reports, activity-backed proof, Data Room artifacts, RCAP Program items, partner program artifacts, and SOC 2 Readiness evidence.",
             "Generate Evidence Summary creates an internal review-only summary. It does not send, publish, expose secrets, or contact external systems.",
             "Use only SOC 2 Readiness, readiness evidence, and readiness artifact language. Do not claim certification or compliance status."
           ]
         },
         {
-          title:"RCAP Workflow",
+          title:"RCAP Program",
           items:[
-            "RCAP Production Activation creates review-only artifacts for the first internal RCAP workflow package.",
-            "RCAP Review Workspace, Approval Engine, Handoff Readiness, and Handoff Packet help Roger decide whether the package is ready for manual Partner Journey handoff.",
+            "RCAP means Record Clearing Access Program.",
+            "The RCAP Program workspace creates review-only artifacts for the first Record Clearing Access Program package.",
+            "RCAP Program Review, approval state, handoff status, and handoff packet help Roger decide whether the package is ready for manual Partner Journey handoff.",
             "No external action happens until manual approval. The OS does not send proposals, move pages into publication, perform dashboard activation, or call Partner Journey."
           ]
         },
         {
           title:"Safety Gates",
           items:[
-            "Live gates remain 0.",
+            "Publishing is off.",
             "No emails. No posts. No publishing. No dashboard activation.",
             "No Partner Journey calls. No destructive actions. No secrets exposed.",
             "No legal promises, no eligibility promises, no court outcome promises, and no automatic external side effects."
@@ -19376,10 +19377,10 @@ function htmlShell() {
           items:[
             "Deploy latest commit.",
             "Hard refresh the hosted app.",
-            "Open Operator Cockpit.",
-            "Run Smoke Test.",
-            "Check OS Health.",
-            "Check live gates.",
+            "Open Today.",
+            "Run Self-Check.",
+            "Check App Status.",
+            "Check that publishing is off.",
             "Verify no external actions occurred."
           ]
         },
@@ -19389,23 +19390,23 @@ function htmlShell() {
             "If the render error screen appears, capture the failed module and error text before changing anything.",
             "If there are broken buttons, identify whether the control is a route, safe internal action, review-only disabled action, or accidental placeholder.",
             "For auth failure, verify owner-token login, lock/sign out behavior, and protected API requests without exposing the token.",
-            "For stale state, refresh OS Health, check Data Integrity, and inspect latest audit/activity events.",
+            "For stale saved work, refresh App Status, check Data Check, and inspect latest activity.",
             "For route not loading, confirm the hash route is registered in the active renderer.",
             "For a health warning or data integrity warning, do not clear it unless the underlying state has been verified.",
-            "During a failure, do not turn live gates on, perform external sending, publish, perform dashboard activation, run destructive restore, or make Partner Journey calls."
+            "During a failure, do not turn publishing on, perform external sending, publish, perform dashboard activation, run destructive restore, or make Partner Journey calls."
           ]
         },
         {
           title:"Glossary",
           items:[
-            "Live gates: the internal count of enabled live external behaviors. It should remain 0 until Roger explicitly changes the safety model.",
+            "Publishing is off: no live external publishing behavior is enabled.",
             "Review-only: internal artifact or state that can be inspected and edited but not sent or published.",
             "Handoff-ready: internally approved for manual handoff consideration. It does not trigger handoff.",
-            "Evidence note: audit-friendly record of proof, movement, or safety confirmation.",
-            "Operating memory: day-over-day memory of what moved, what stayed blocked, and what should resurface.",
-            "Capture inbox: review lane for raw Quick Capture inputs before routing.",
-            "Smoke test: manual post-deploy checklist for hosted usability and safety.",
-            "Data integrity: inventory and checks for collections, fields, stable keys, duplicate risk, and backups.",
+            "Proof note: activity-friendly record of proof, movement, or safety confirmation.",
+            "Notes & Decisions: day-over-day memory of what moved, what stayed blocked, and what should resurface.",
+            "Inbox: review lane for raw Quick Capture inputs before routing.",
+            "Self-check: manual post-deploy checklist for hosted usability and safety.",
+            "Data Check: inventory and checks for collections, fields, stable keys, duplicate risk, and backups.",
             "SOC 2 Readiness: internal readiness evidence and preparation status."
           ]
         }
@@ -19507,8 +19508,8 @@ function htmlShell() {
           <div class="memory-evidence-grid">\${clientRoles.map(role => \`<article class="memory-history-card"><strong>\${esc(plainOperatorState(role))}</strong><p>\${(clientRoleCapabilities[role] || []).map(cap => \`<span class="badge info">\${esc(roleCapabilityLabel(cap))}</span>\`).join(" ")}</p></article>\`).join("")}</div>
         </section>
         <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Recent role/audit events</h2><span class="badge info">\${esc(roleEvents.length)} event(s)</span></div>
-          <div class="memory-evidence-grid">\${roleEvents.map(item => \`<article class="memory-history-card"><strong>\${esc(item.action || item.eventType || item.title || "Role event")}</strong><span class="muted">\${esc(formatDateTime(item.timestamp || item.createdAt) || "Not recorded")}</span><p class="muted">\${esc(item.summary || item.resourceType || "Internal role audit event.")}</p></article>\`).join("") || '<div class="empty">No role events recorded yet.</div>'}</div>
+          <div class="simple-panel-head"><h2>Recent role activity</h2><span class="badge info">\${esc(roleEvents.length)} event(s)</span></div>
+          <div class="memory-evidence-grid">\${roleEvents.map(item => \`<article class="memory-history-card"><strong>\${esc(item.action || item.eventType || item.title || "Role activity")}</strong><span class="muted">\${esc(formatDateTime(item.timestamp || item.createdAt) || "Not recorded")}</span><p class="muted">\${esc(item.summary || item.resourceType || "Internal role activity.")}</p></article>\`).join("") || '<div class="empty">No role activity recorded yet.</div>'}</div>
         </section>
         <section class="panel">
           <div class="simple-panel-head"><h2>Safety note</h2><span class="badge good">Internal only</span></div>
@@ -19554,7 +19555,7 @@ function htmlShell() {
             <section class="operating-memory-tile"><h3>Required fields count</h3><ul><li>\${esc(status.required_fields_count || validation.required_fields_count)}</li></ul></section>
             <section class="operating-memory-tile"><h3>Missing fields count</h3><ul><li>\${esc(status.missing_fields_count || validation.missing_fields_count)}</li></ul></section>
             <section class="operating-memory-tile"><h3>Latest packet validation status</h3><ul><li>\${esc(plainOperatorState(status.latest_validation_result || validation.status))}</li></ul></section>
-            <section class="operating-memory-tile"><h3>Live gates</h3><ul><li>\${esc(packet.live_gates_count)}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Publishing</h3><ul><li>\${Number(packet.live_gates_count || 0) === 0 ? "Off" : "Needs review"}</li></ul></section>
             <section class="operating-memory-tile"><h3>No external actions</h3><ul><li>\${esc(packet.no_external_actions_confirmation ? "Confirmed" : "Not confirmed")}</li></ul></section>
           </div>
         </section>
@@ -19698,10 +19699,10 @@ function htmlShell() {
         <div class="panel hero-panel">
           <div class="eyebrow">Le-E Context</div>
           <h1 class="big-title">Conversation Notes</h1>
-          <p class="muted">Manual conversation capture only. Notes are internal, reviewable inputs for Morning Brief, Evening Reflection, Daily Operating Loop, and Operating Memory. No external conversations are read automatically.</p>
+          <p class="muted">Manual conversation capture only. Notes are reviewable inputs for Morning Brief, Daily Closeout, Today's Focus, and Notes & Decisions. No external conversations are read automatically.</p>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button type="button" onclick="location.hash='operating-memory'">Open Operating Memory</button>
+            <button type="button" onclick="location.hash='operating-memory'">Open Notes &amp; Decisions</button>
           </div>
         </div>
         <section class="panel">
@@ -19745,7 +19746,6 @@ function htmlShell() {
       let text = String(value ?? "").trim() || fallback;
       const replacements = [
         [/\\bTriage\\b/gi, "Prioritize"],
-        [/\\bRCAP\\b/g, "Recovery plan"],
         [/Production Activation/gi, "Launch checklist"],
         [/Operating Memory/gi, "Notes & decisions"],
         [/Operator Search/gi, "Search"],
@@ -20241,7 +20241,7 @@ function htmlShell() {
                 <div><span>Pending</span><strong>\${status.pendingProposedActions}</strong></div>
                 <div><span>Blocked</span><strong>\${status.blockedActions}</strong></div>
                 <div><span>Safe mode</span><strong>on</strong></div>
-                <div><span>Live gates</span><strong>\${status.liveGatesCount}</strong></div>
+                <div><span>Publishing</span><strong>\${status.liveGatesCount === 0 ? "off" : "needs review"}</strong></div>
               </div>
             </section>
             <section class="panel">
@@ -20320,7 +20320,7 @@ function htmlShell() {
                       <div><span>OpenAI</span><strong>\${status.openAIConfigured ? "yes" : "no"}</strong></div>
                       <div><span>Index</span><strong>\${status.knowledgeIndexRecords}</strong></div>
                       <div><span>Pending</span><strong>\${status.pendingProposedActions}</strong></div>
-                      <div><span>Live gates</span><strong>\${status.liveGatesCount}</strong></div>
+                      <div><span>Publishing</span><strong>\${status.liveGatesCount === 0 ? "off" : "needs review"}</strong></div>
                     </div>
                   </section>
                   <section class="panel">
@@ -20470,11 +20470,11 @@ function htmlShell() {
 
     function sectionLandingConfig(section) {
       const configs = [
-        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Triage signals, move campaigns, and keep RecordShield proof visible.", links:[["Growth Inbox","growth-inbox"],["Captures","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"]] },
+        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Prioritize signals, move campaigns, and keep RecordShield proof visible.", links:[["Inbox","growth-inbox"],["Captures","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"]] },
         { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Move partner programs from lead to paid onboarding, reports, and renewal proof.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"]] },
         { id:"production", eyebrow:"Production", title:"Production", copy:"Turn ideas into approved assets without losing the approval-first safety model.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
         { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Evidence Room","evidence-room"],["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
-        { id:"more", eyebrow:"System", title:"System", copy:"Health, checks, roles, and manuals live here so Today stays focused.", links:[["System Health","os-health"],["System Checks","data-integrity"],["Smoke Test","smoke-test"],["Roles","roles"],["Safe Mode","safe-mode"],["Operator Manual","operator-manual"],["Settings","settings"],["Handoff Contract","handoff-contract"]] }
+        { id:"more", eyebrow:"Settings", title:"Settings", copy:"App status, checks, roles, and guide live here so Today stays focused.", links:[["App Status","os-health"],["Data Check","data-integrity"],["Self-Check","smoke-test"],["Team Roles","roles"],["Recovery Mode","safe-mode"],["Guide","operator-manual"],["Settings","settings"],["Handoff Notes","handoff-contract"]] }
       ];
       return configs.find(item => item.id === section) || configs[0];
     }
@@ -20510,11 +20510,11 @@ function htmlShell() {
         more:[
           ["Tasks", openTasks.length, "Open"],
           ["Blocked", blockedTasks.length, "Need clearing"],
-          ["Live gates", Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length, "Must stay 0"]
+          ["Publishing", Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length ? "Needs review" : "Off", "Must stay off"]
         ]
       }[section] || [];
       const nextAction = {
-        growth:"Triage Growth Inbox first, then turn strong movement into proof.",
+        growth:"Prioritize the inbox first, then turn strong movement into proof.",
         "partner-hub":"Open Partner Programs and move paid or stalled partners forward.",
         production:"Open Queue for approval work; do not auto-publish.",
         proof:"Generate or review the Weekly Evidence Pack.",
@@ -20584,13 +20584,13 @@ function htmlShell() {
             <div class="metric-row"><span>Decision</span><strong>\${esc(growthLabel(item.decisionNeeded || "operator_triage"))}</strong></div>
             <div class="metric-row"><span>Operating area</span><strong>\${esc(growthLabel(item.operatingArea || "operations"))}</strong></div>
             <div class="metric-row"><span>Due</span><strong>\${esc(item.dueDate || "Not set")}</strong></div>
-            <div class="metric-row"><span>Suggested action</span><strong>\${esc(item.suggestedAction || "Triage this signal")}</strong></div>
+            <div class="metric-row"><span>Suggested action</span><strong>\${esc(item.suggestedAction || "Prioritize this signal")}</strong></div>
             <div class="metric-row"><span>Suggested destination</span><strong>\${esc(growthLabel(item.suggestedDestination || "task"))}</strong></div>
             <div class="metric-row"><span>Related</span><strong>\${esc([item.relatedPartner, item.relatedCampaign, item.relatedPilot].filter(Boolean).join(" · ") || "None")}</strong></div>
           </div>
-          \${item.aiTriage?.error ? \`<p class="muted">AI triage fallback: \${esc(item.aiTriage.error)}</p>\` : ""}
+          \${item.aiTriage?.error ? \`<p class="muted">AI prioritization fallback: \${esc(item.aiTriage.error)}</p>\` : ""}
           <div class="card-actions">
-            <button \${disabled} onclick="triageGrowthInbox('\${item.id}')">Triage</button>
+            <button \${disabled} onclick="triageGrowthInbox('\${item.id}')">Prioritize</button>
             \${destinationOptions.map(([destination, label]) => \`<button \${disabled} onclick="convertGrowthInbox('\${item.id}', '\${destination}')">\${esc(label)}</button>\`).join("")}
             <button \${disabled} onclick="ignoreGrowthInbox('\${item.id}')">Ignore</button>
           </div>
@@ -20603,7 +20603,7 @@ function htmlShell() {
           <div class="simple-hero-actions">
             <span class="badge \${urgent.length ? "danger" : "good"}">\${urgent.length} urgent</span>
             <span class="badge info">\${open.length} open</span>
-            <button onclick="triageNewGrowthInbox()">Triage New</button>
+            <button onclick="triageNewGrowthInbox()">Prioritize New</button>
           </div>
         </div>
         <div class="grid two section">
@@ -20628,17 +20628,17 @@ function htmlShell() {
           <section class="panel">
             <h2>What happens next</h2>
             <div class="metric-table">
-              <div class="metric-row"><span>AI/rule triage</span><strong>Draft only</strong></div>
+              <div class="metric-row"><span>AI/rule prioritization</span><strong>Draft only</strong></div>
               <div class="metric-row"><span>External actions</span><strong>Never automatic</strong></div>
               <div class="metric-row"><span>Publishing gates</span><strong>Fail closed</strong></div>
-              <div class="metric-row"><span>Events</span><strong>Created, triaged, converted, ignored</strong></div>
+              <div class="metric-row"><span>Activity</span><strong>Created, prioritized, converted, ignored</strong></div>
             </div>
             <p class="muted" style="margin-top:12px">High-risk legal, compliance, support, and customer-sensitive signals stay internal and route to human review.</p>
           </section>
         </div>
         <div class="grid three section">
           <article class="readiness-card info"><div class="readiness-title">New</div><strong>\${items.filter(item => (item.status || "new") === "new").length}</strong></article>
-          <article class="readiness-card warn"><div class="readiness-title">Triaged</div><strong>\${items.filter(item => item.status === "triaged").length}</strong></article>
+          <article class="readiness-card warn"><div class="readiness-title">Prioritized</div><strong>\${items.filter(item => item.status === "triaged").length}</strong></article>
           <article class="readiness-card good"><div class="readiness-title">Converted</div><strong>\${items.filter(item => item.status === "converted").length}</strong></article>
         </div>
         <div class="grid post-grid section">\${itemHtml}</div>
@@ -23009,8 +23009,8 @@ function htmlShell() {
         });
         state = result.state;
         render();
-        return result.message || "Growth Inbox item triaged.";
-      }, "Could not triage Growth Inbox item.");
+        return founderText(result.message || "Growth Inbox item prioritized.");
+      }, "Could not prioritize Growth Inbox item.");
     }
 
     async function triageNewGrowthInbox() {
@@ -23018,8 +23018,8 @@ function htmlShell() {
         const result = await api("/api/growth-inbox/triage-new", { method:"POST", body:JSON.stringify({}) });
         state = result.state;
         render();
-        return result.message || "Growth Inbox triaged.";
-      }, "Could not triage new Growth Inbox items.");
+        return founderText(result.message || "Growth Inbox prioritized.");
+      }, "Could not prioritize new Growth Inbox items.");
     }
 
     async function convertGrowthInbox(id, destination) {

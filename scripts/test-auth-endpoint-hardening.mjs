@@ -229,7 +229,7 @@ try {
   child.kill("SIGTERM");
 }
 
-assert(serverSource.includes("Auth + Endpoint Hardening"), "OS Health page should render Auth + Endpoint Hardening.");
+assert(serverSource.includes("Access Protection"), "App Status page should render founder-facing access protection.");
 assert(serverSource.includes("/api/auth-hardening/endpoints"), "Auth hardening endpoint inventory API should exist.");
 assert(serverSource.includes("guardForbiddenEndpoint"), "Central forbidden endpoint guard should be wired into the preview server.");
 
