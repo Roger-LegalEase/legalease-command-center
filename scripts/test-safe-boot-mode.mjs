@@ -83,7 +83,7 @@ try {
   assert.match(safeModeHtml.text, /Safe Mode/, "Safe mode UI copy should be present.");
   assert.match(safeModeHtml.text, /Retry Full Load/, "Safe mode should offer a full-state retry.");
   assert.match(safeModeHtml.text, /Sign Out \/ Clear Session/, "Safe mode should offer session clearing.");
-  assert.match(safeModeHtml.text, /Live gates: 0/, "Safe mode should show live gates remain 0.");
+  assert.match(safeModeHtml.text, /Publishing is off|Publishing[^<]*Off/i, "Safe mode should show publishing remains off.");
   assert.match(safeModeHtml.text, /\/api\/health/, "Safe mode should fetch public-safe health.");
   const health = await readJson("/api/health");
   assert.equal(health.response.status, 200, "/api/health should remain public-safe.");

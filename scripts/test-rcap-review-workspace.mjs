@@ -10,7 +10,7 @@ const activationSource = readFileSync(join(here, "production-activation.mjs"), "
 
 assert.match(server, /production-activation-rcap/, "#production-activation-rcap route should exist.");
 assert.match(server, /function rcapReviewWorkspaceHtml\(pageClass\)/, "RCAP review workspace renderer should exist.");
-assert.match(server, /Review RCAP Artifacts/, "Cockpit should link to the RCAP review workspace.");
+assert.match(server, /Review RCAP Program/, "Cockpit should link to the RCAP program review workspace.");
 assert.match(server, /location\.hash='production-activation-rcap'/, "Cockpit review button should navigate to the workspace.");
 
 const routeList = server.match(/const pageId = [\s\S]*?\]\.includes\(normalizedPage\)/)?.[0] || "";
@@ -39,7 +39,7 @@ for (const label of [
 assert.match(workspace, /Review-only/, "Workspace should plainly state review-only status.");
 assert.match(workspace, /Manual approval required/, "Workspace should state manual approval is required.");
 assert.match(workspace, /No emails, posts, partner pages, or dashboards are activated/, "Workspace should state no external side effects.");
-assert.match(workspace, /Live gates/, "Workspace should show live gates.");
+assert.match(workspace, /Publishing is off|Publishing/, "Workspace should show publishing remains off.");
 assert.match(workspace, /What was created/, "Activation Summary should answer what was created.");
 assert.match(workspace, /What still needs review/, "Activation Summary should answer what still needs review.");
 assert.match(workspace, /What is blocked/, "Activation Summary should answer what is blocked.");

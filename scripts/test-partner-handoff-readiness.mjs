@@ -107,7 +107,7 @@ assert.equal(Object.values(packetResult.state.runtime.livePostingGates).filter(g
 
 assert.match(server, /Handoff Packet/, "RCAP Review Workspace should render handoff packet section.");
 assert.match(server, /Generate Internal Handoff Packet/, "Workspace should include internal packet generation action.");
-assert.match(server, /RCAP Handoff Readiness/, "Cockpit should show compact handoff readiness card.");
+assert.match(server, /RCAP Program Handoff/, "Cockpit should show compact RCAP program handoff card.");
 assert.match(server, /Internal handoff packet only/, "Workspace should label packet as internal only.");
 assert.match(server, /No external system contacted/, "Workspace should state no external system contacted.");
 assert.match(server, /\/api\/production-activation\/rcap\/handoff-packet/, "Handoff packet API endpoint should exist.");

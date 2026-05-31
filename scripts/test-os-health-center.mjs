@@ -95,7 +95,7 @@ const saved = saveOsHealthSnapshot(baseState, {
   ownerTokenAuthConfigured: true,
   localFallbackAvailable: true
 });
-assert.equal(saved.state.osHealthSnapshots.length, 1, "Refresh OS Health Snapshot should create one snapshot.");
+assert.equal(saved.state.osHealthSnapshots.length, 1, "Refresh App Status should create one snapshot.");
 assert.equal(saved.state.auditHistory[0].action, "os health snapshot refreshed", "Refresh should create audit entry.");
 assert.equal(saved.state.activityEvents[0].eventType, "OS Health Snapshot refreshed", "Refresh should create activity event.");
 const savedAgain = saveOsHealthSnapshot(saved.state, {
@@ -110,20 +110,20 @@ const savedAgain = saveOsHealthSnapshot(saved.state, {
 });
 assert.equal(savedAgain.state.osHealthSnapshots.length, 1, "Refresh should update today's snapshot instead of duplicating.");
 
-assert(serverSource.includes("function cockpitOsHealthHtml"), "Cockpit OS Health card must render.");
-assert(serverSource.includes("OS Health"), "OS Health label must exist.");
+assert(serverSource.includes("function cockpitOsHealthHtml"), "Cockpit App Status card must render.");
+assert(serverSource.includes("App Status"), "App Status label must exist.");
 assert(serverSource.includes("osHealthPageHtml"), "#os-health route renderer must exist.");
 assert(serverSource.includes("\"os-health\""), "#os-health route must be registered.");
 assert(serverSource.includes("Connection Health"), "Connection Health section must render.");
-assert(serverSource.includes("Workflow Health"), "Workflow Health section must render.");
+assert(serverSource.includes("Workflow Status"), "Workflow Status section must render.");
 assert(serverSource.includes("Data Freshness"), "Data Freshness section must render.");
 assert(serverSource.includes("Trust Warnings"), "Trust Warnings section must render.");
-assert(serverSource.includes("Self-Test Status"), "Self-Test Status section must render.");
-assert(serverSource.includes("Auth + Endpoint Hardening"), "Auth hardening section must render in OS Health.");
+assert(serverSource.includes("Test Status"), "Test Status section must render.");
+assert(serverSource.includes("Access Protection"), "Access protection section must render in App Status.");
 assert(serverSource.includes("Endpoint protection status"), "Endpoint protection status must render.");
 assert(serverSource.includes("Secret leakage status"), "Secret leakage status must render.");
 assert(serverSource.includes("Forbidden action guard status"), "Forbidden action guard status must render.");
-assert(serverSource.includes("Refresh OS Health Snapshot"), "Refresh OS Health Snapshot action must render.");
+assert(serverSource.includes("Refresh App Status"), "Refresh App Status action must render.");
 assert(serverSource.includes("/api/os-health/refresh"), "OS Health refresh endpoint must exist.");
 assert(!/os-health[\s\S]{0,2600}(send email|publish page|activate dashboard|enable live)/i.test(serverSource), "OS Health must not enable external controls.");
 

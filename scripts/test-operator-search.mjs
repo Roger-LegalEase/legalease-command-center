@@ -114,8 +114,8 @@ assert.equal(Object.values(routed.state.runtime.livePostingGates).filter(gate =>
 assert.throws(() => runOperatorSearchAction(baseState, { action: "send_email", targetId: "capture-1" }), /blocked|unsupported|forbidden/i, "Forbidden action should be blocked.");
 
 assert(serverSource.includes("function cockpitOperatorSearchHtml"), "Cockpit search entry must render.");
-assert(serverSource.includes("Operator Search"), "Operator Search label must exist.");
-assert(serverSource.includes("Open Command Palette"), "Open Command Palette label must exist.");
+assert(serverSource.includes("Search"), "Search label must exist.");
+assert(serverSource.includes("Open Command Search"), "Open Command Search label must exist.");
 assert(serverSource.includes("operatorSearchPageHtml"), "#operator-search route renderer must exist.");
 assert(serverSource.includes("\"operator-search\""), "#operator-search route must be registered.");
 assert(serverSource.includes("/api/operator-search"), "Operator search API must exist.");

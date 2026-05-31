@@ -27,7 +27,7 @@ function functionBlock(name) {
 assert(source.includes("operator-manual"), "#operator-manual route exists in active renderer");
 assert(source.includes("cockpitOperatorManualHtml"), "cockpit Operator Manual card exists");
 assert(source.includes("operatorManualPageHtml"), "operator manual page renderer exists");
-assert(source.includes("Open Operator Manual"), "cockpit links to Operator Manual");
+assert(source.includes("Open Guide"), "cockpit links to Guide");
 
 const manual = functionBlock("operatorManualPageHtml");
 const cockpit = functionBlock("cockpitOperatorManualHtml");
@@ -40,10 +40,10 @@ const cockpit = functionBlock("cockpitOperatorManualHtml");
   "Tasks",
   "Daily Rituals",
   "Search + Command Palette",
-  "OS Health + Smoke Test Center",
-  "Data Integrity",
-  "Evidence Room / Data Room",
-  "RCAP Workflow",
+  "App Status + Self-Check",
+  "Data Check",
+  "Proof / Data Room",
+  "RCAP Program",
   "Safety Gates",
   "Deployment Checklist",
   "Break/Fix Guide",
@@ -59,7 +59,7 @@ const cockpit = functionBlock("cockpitOperatorManualHtml");
 ].forEach(text => assert(manual.includes(text), `Le-E limitation renders: ${text}`));
 
 [
-  "Live gates remain 0",
+  "Publishing is off",
   "No Partner Journey calls",
   "No destructive actions"
 ].forEach(text => assert(manual.includes(text), `safety gates language renders: ${text}`));
@@ -67,9 +67,9 @@ const cockpit = functionBlock("cockpitOperatorManualHtml");
 [
   "Deploy latest commit",
   "Hard refresh",
-  "Open Operator Cockpit",
-  "Run Smoke Test",
-  "Check OS Health",
+  "Open Today",
+  "Run Self-Check",
+  "Check App Status",
   "Verify no external actions"
 ].forEach(text => assert(manual.includes(text), `deployment checklist item renders: ${text}`));
 
@@ -77,7 +77,7 @@ const cockpit = functionBlock("cockpitOperatorManualHtml");
   "render error screen",
   "broken buttons",
   "auth failure",
-  "stale state",
+  "stale saved work",
   "route not loading",
   "health warning",
   "data integrity warning"
@@ -92,7 +92,7 @@ assert(!/child_process|execCommand|spawn\(/i.test(manual), "manual does not exec
 
 assert(cockpit.includes("Manual status"), "cockpit card shows manual status");
 assert(cockpit.includes("Last updated"), "cockpit card shows last updated");
-assert(cockpit.includes("location.hash='operator-manual'"), "cockpit card opens Operator Manual");
+assert(cockpit.includes("location.hash='operator-manual'"), "cockpit card opens Guide");
 
 assert((pkg.scripts.check || "").includes("scripts/test-operator-manual.mjs"), "operator manual test is included in npm run verify");
 assert((pkg.scripts.test || "").includes("scripts/test-operator-manual.mjs"), "operator manual test is included in npm test");

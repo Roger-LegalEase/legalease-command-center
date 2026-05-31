@@ -99,16 +99,16 @@ assert.equal(guardForbiddenEndpoint({ method: "POST", pathname: "/api/posts/exam
 assert.equal(finished.run.live_gates_count, 0, "Live gates remain 0.");
 assert.equal(finished.run.no_external_actions_confirmation, "No emails sent, no posts published, no partner pages published, no dashboards activated, no Partner Journey calls, no destructive restore, no shell commands executed from browser.", "Smoke test run should confirm no external actions.");
 
-assert(serverSource.includes("function cockpitSmokeTestHtml"), "Cockpit Smoke Test card must render.");
+assert(serverSource.includes("function cockpitSmokeTestHtml"), "Cockpit Self-Check card must render.");
 assert(serverSource.includes("smokeTestPageHtml"), "#smoke-test route renderer must exist.");
 assert(serverSource.includes("\"smoke-test\""), "#smoke-test route must be registered.");
-assert(serverSource.includes("Start Smoke Test Run"), "Start Smoke Test Run action must render.");
-assert(serverSource.includes("Finish Smoke Test Run"), "Finish Smoke Test Run action must render.");
+assert(serverSource.includes("Start Self-Check"), "Start Self-Check action must render.");
+assert(serverSource.includes("Finish Self-Check"), "Finish Self-Check action must render.");
 assert(serverSource.includes("buildSmokeTestChecklist"), "Smoke test checklist groups must render from the shared checklist helper.");
 assert(serverSource.includes("group.name"), "Smoke test page must render checklist group names.");
 assert(serverSource.includes("/api/smoke-test/start"), "Smoke test start API must exist.");
 assert(serverSource.includes("/api/smoke-test/") && serverSource.includes("/item"), "Smoke test item API must exist.");
-assert(serverSource.includes("last smoke test status") || serverSource.includes("Last smoke test status"), "OS Health should render smoke test status.");
+assert(serverSource.includes("last self-check status") || serverSource.includes("Last self-check status"), "App Status should render self-check status.");
 assert(!/smoke-test[\s\S]{0,4200}(child_process|execCommand|exec\(|spawn\()/i.test(serverSource), "Smoke Test Center must not expose browser shell execution.");
 assert(!/smoke-test[\s\S]{0,4200}(send email|publish page|activate dashboard|partner[-_ ]journey.*fetch|partner[-_ ]journey.*api.*call)/i.test(serverSource), "Smoke Test Center must not expose external action controls.");
 
