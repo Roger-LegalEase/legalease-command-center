@@ -58,7 +58,7 @@ for (const label of ["Back to Today", "Try full app again", "Open App Status", "
 assert.match(safeModeBlock, /<details[\s\S]*Show advanced details/, "Recovery Mode should hide technical details behind Advanced details");
 assert.doesNotMatch(safeModeBlock.split("<details")[0], /Failed module|Content type|Timeout ms|Request aborted/, "Recovery Mode summary should not show technical table before advanced details");
 
-for (const label of ["Program Summary", "Review Packet", "Next Steps", "Missing Information", "Safety Status", "Activity"]) {
+for (const label of ["Partner Summary", "Review Packet", "Roger's Next Steps", "Missing Information", "Safety Status", "Activity"]) {
   assert(rcapBlock.includes(label), `RCAP Program Review should include ${label}`);
 }
 for (const oldLabel of ["Refresh RCAP Artifacts", "Generate Internal Handoff Packet", "activation review"]) {

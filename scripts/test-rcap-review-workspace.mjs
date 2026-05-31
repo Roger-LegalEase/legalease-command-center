@@ -23,10 +23,10 @@ assert.ok(workspaceMatch, "RCAP review workspace function should be discoverable
 const workspace = workspaceMatch[0];
 
 for (const label of [
-  "Program Summary",
+  "Partner Summary",
   "Review Packet",
   "Review Notes",
-  "Next Steps",
+  "Roger's Next Steps",
   "Missing Information",
   "Safety Status",
   "Activity"

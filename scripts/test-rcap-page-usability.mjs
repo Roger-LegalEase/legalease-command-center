@@ -30,10 +30,13 @@ const renderSection = functionBlock("render")
 for (const term of [
   "RCAP Program Review",
   "Record Clearing Access Program",
-  "Program Summary",
+  "Partner program review",
+  "Review partner materials before anything is sent, published, or activated.",
+  "Partner Summary",
+  "LegalEase support",
   "Review Packet",
   "Review Notes",
-  "Next Steps",
+  "Roger's Next Steps",
   "Missing Information",
   "Safety Status",
   "Activity"
@@ -51,24 +54,55 @@ for (const term of [
   "Nothing has been sent, published, or activated.",
   "Prepare Review Packet",
   "Back to Today",
-  "Mark Ready for Manual Handoff"
+  "Mark Ready for Manual Handoff",
+  "Next decision",
+  "Is this ready for partner review?",
+  "Ready",
+  "Materials ready for final review",
+  "Missing",
+  "Details needed before partner review",
+  "Needs decision",
+  "Items waiting on Roger"
 ]) {
   assert(rcapWorkspace.includes(term), `RCAP page should include: ${term}`);
 }
 
 // Required rows in review packet
 for (const row of [
+  "<table",
+  "<colgroup><col><col><col><col></colgroup>",
+  "<th>Item</th>",
+  "<th>Status</th>",
+  "<th>Needs</th>",
+  "<th>Action</th>",
+  'data-label="Item"',
+  'data-label="Status"',
+  'data-label="Needs"',
+  'data-label="Action"',
   "Proposal draft",
+  "Roger review",
   "Partner page draft",
+  "Confirm copy",
   "Dashboard readiness",
+  "Keep internal",
   "Weekly report draft",
+  "Confirm reporting format",
   "Evidence note"
 ]) {
   assert(rcapWorkspace.includes(row), `Review Packet should include ${row}`);
 }
+assert(rcapWorkspace.includes("data-rcap-key"), "Review Packet action should avoid fragile inline quoted arguments");
+assert(rcapWorkspace.includes("this.dataset.rcapKey"), "Review Packet action should use data attributes for handler arguments");
 
 // Ensure old internal labels do not leak into this page
 assertNoMatch(rcapWorkspace, [
+  "Prepare the first review-only production workflow",
+  "Review the partner materials before anything is sent",
+  "What it needs",
+  "Roger review before anything goes partner-facing",
+  "Confirm the dashboard stays internal until approved",
+  "Review partner materials and prepare manual next steps",
+  "RCAP partner</strong> ·",
   "handoff readiness summary",
   "review-only",
   "content summary",
@@ -81,11 +115,64 @@ assertNoMatch(rcapWorkspace, [
   "refresh rcap artifacts",
   "generate internal handoff packet",
   "activation review",
+  "review_required",
+  "rcap-review-row",
+  "memory-evidence-grid",
+  "memory-history-card",
+  "Update Review Packet",
+  "Preview Materials",
+  "Add Review Note",
 ], "RCAP page should avoid legacy handoff/internal wording");
+
+// Decision-screen structure: hero, readiness strip, main two-column decision area, bottom activity.
+for (const className of [
+  "rcap-decision-hero",
+  "rcap-readiness-strip",
+  "rcap-decision-layout",
+  "rcap-packet-table",
+  "rcap-right-rail",
+  "rcap-activity-section",
+  "rcap-activity-feed"
+]) {
+  assert(rcapWorkspace.includes(className), `RCAP page should use ${className}`);
+}
+
+assert(source.includes("position:sticky"), "Right rail should be sticky on desktop");
+assert(
+  source.includes("grid-template-columns:minmax(0,1fr) clamp(300px,32vw,380px)"),
+  "RCAP grids should fit laptop width with a clamped right rail"
+);
+assert(
+  source.includes(".rcap-decision-card {") && source.includes("min-width:0"),
+  "RCAP cards should allow grid children to shrink instead of causing overflow"
+);
+assert(
+  source.includes(".rcap-packet-table { width:100%; table-layout:fixed; border-collapse:collapse; min-width:0; }"),
+  "Review Packet table should not force page-level horizontal overflow"
+);
+assert(
+  source.includes(".rcap-packet-table col:nth-child(1) { width:26%; }") &&
+  source.includes(".rcap-packet-table col:nth-child(2) { width:22%; }") &&
+  source.includes(".rcap-packet-table col:nth-child(3) { width:32%; }") &&
+  source.includes(".rcap-packet-table col:nth-child(4) { width:20%; }"),
+  "Review Packet table should use the requested column proportions"
+);
+assert(
+  source.includes("overflow-wrap:break-word") && source.includes("white-space:normal"),
+  "RCAP content should wrap naturally instead of clipping"
+);
+assert(
+  source.includes("@media (max-width:900px)") && source.includes("content:attr(data-label)"),
+  "Review Packet should become stacked labeled rows below 900px"
+);
 
 // Ensure RCAP copy is program-facing
 assert(rcapWorkspace.includes("Record Clearing Access Program"), "RCAP should be labeled as Record Clearing Access Program");
 assert(rcapWorkspace.includes("RCAP Program Review"), "RCAP title should remain explicitly set in the page");
+assert(
+  rcapWorkspace.includes("Review materials and prepare manual next steps"),
+  "LegalEase support should use the short wrapping-safe value"
+);
 
 // No debug markers visible on RCAP page
 assertNoMatch(rcapWorkspace, [

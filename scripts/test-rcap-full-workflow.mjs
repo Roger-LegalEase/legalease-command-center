@@ -103,10 +103,10 @@ const workspaceMatch = server.match(/function rcapReviewWorkspaceHtml\(pageClass
 assert.ok(workspaceMatch, "RCAP Review Workspace renderer should exist.");
 const workspace = workspaceMatch[0];
 [
-  "Program Summary",
+  "Partner Summary",
   "Review Packet",
   "Review Notes",
-  "Next Steps",
+  "Roger's Next Steps",
   "Missing Information",
   "Safety Status",
   "Activity"

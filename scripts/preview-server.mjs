@@ -13074,7 +13074,7 @@ function htmlShell() {
     .operator-v31 *, .operator-v31 *::before, .operator-v31 *::after { box-sizing:border-box; }
     .operator-v31 .operator-page,
     .operator-v31 .app-page,
-    .operator-v31 .cockpit-page { width:100%; max-width:1240px; margin:0 auto; padding:0 32px; overflow-x:hidden; }
+    .operator-v31 .cockpit-page { width:100%; max-width:1240px; margin:0 auto; padding:0 32px; overflow-x:hidden; box-sizing:border-box; }
     .app-header { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; color:var(--text-tertiary); }
     .app-date { font-size:13px; font-weight:650; letter-spacing:.01em; }
     .app-time { font-size:22px; line-height:1; color:var(--text-primary); font-weight:700; font-variant-numeric:tabular-nums; }
@@ -13143,8 +13143,67 @@ function htmlShell() {
     .activation-rows span { color:var(--text-tertiary); font-size:12px; }
     .activation-rows strong { color:var(--text-primary); font-size:12px; text-align:right; }
     .activation-card-actions { display:grid; gap:8px; }
-    .rcap-review-workspace { display:grid; gap:16px; }
+    .rcap-review-workspace { display:grid; gap:12px; width:100%; max-width:100%; min-width:0; overflow-x:hidden; box-sizing:border-box; }
+    .rcap-review-workspace * { box-sizing:border-box; }
     .rcap-review-workspace .hero-panel { display:grid; gap:10px; }
+    .rcap-decision-hero { display:grid; grid-template-columns:minmax(0,1fr) clamp(300px,32vw,380px); gap:18px; align-items:stretch; padding:18px; border-color:rgba(0,169,157,.18); background:linear-gradient(135deg,#fff 0%,#f8fffe 52%,#eef8f6 100%); min-width:0; max-width:100%; overflow:hidden; }
+    .rcap-title-line { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+    .rcap-decision-hero h1 { margin:4px 0 0; font-size:clamp(30px,3.3vw,44px); line-height:1; letter-spacing:0; color:var(--text-primary); }
+    .rcap-decision-hero .purpose { max-width:720px; margin:7px 0 0; color:var(--text-secondary); font-size:15px; line-height:1.36; }
+    .rcap-decision-side { display:grid; gap:10px; align-content:center; border:1px solid rgba(0,169,157,.16); border-radius:18px; background:rgba(255,255,255,.72); padding:15px; box-shadow:0 14px 34px rgba(20,42,61,.07); min-width:0; overflow-wrap:break-word; }
+    .rcap-next-decision { display:grid; gap:6px; }
+    .rcap-next-decision span { color:var(--text-tertiary); font-size:12px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .rcap-next-decision strong { color:var(--text-primary); font-size:20px; line-height:1.15; white-space:normal; overflow-wrap:break-word; }
+    .rcap-safety-line { color:var(--text-tertiary); font-size:13px; line-height:1.35; white-space:normal; overflow-wrap:break-word; }
+    .rcap-readiness-strip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    .rcap-readiness-card { border:1px solid var(--border-light); border-radius:16px; background:#fff; padding:12px 14px; box-shadow:0 12px 26px rgba(20,42,61,.05); display:grid; gap:4px; }
+    .rcap-readiness-card span { color:var(--text-tertiary); font-size:12px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .rcap-readiness-card strong { color:var(--text-primary); font-size:25px; line-height:1; }
+    .rcap-readiness-card p { margin:0; color:var(--text-secondary); font-size:13px; line-height:1.35; }
+    .rcap-decision-layout { display:grid; grid-template-columns:minmax(0,1fr) clamp(300px,32vw,380px); gap:18px; align-items:start; min-width:0; max-width:100%; }
+    .rcap-decision-layout > main.rcap-decision-stack { width:100%; max-width:100%; min-width:0; margin:0; padding:0; }
+    .rcap-decision-stack { display:grid; gap:12px; min-width:0; }
+    .rcap-decision-card { border:1px solid var(--border-light); border-radius:18px; background:#fff; padding:15px; box-shadow:0 12px 26px rgba(20,42,61,.05); min-width:0; }
+    .rcap-card-title { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }
+    .rcap-card-title h2 { margin:0; color:var(--text-primary); font-size:21px; line-height:1.16; letter-spacing:0; }
+    .rcap-summary-rows { display:grid; gap:0; border:1px solid var(--border-light); border-radius:16px; overflow:hidden; background:#fbfefd; }
+    .rcap-summary-row { display:grid; grid-template-columns:170px minmax(0,1fr); gap:16px; padding:10px 13px; border-top:1px solid var(--border-light); align-items:start; }
+    .rcap-summary-row:first-child { border-top:0; }
+    .rcap-summary-row span { color:var(--text-tertiary); font-size:12px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .rcap-summary-row strong { color:var(--text-primary); font-size:14px; line-height:1.35; overflow-wrap:anywhere; }
+    .rcap-definition-list { display:grid; gap:10px; margin:0; }
+    .rcap-definition-list div { display:grid; grid-template-columns:minmax(120px,150px) minmax(0,1fr); gap:16px; align-items:start; padding:0 0 10px; border-bottom:1px solid var(--border-light); min-width:0; }
+    .rcap-definition-list div:last-child { border-bottom:0; padding-bottom:0; }
+    .rcap-definition-list dt { color:var(--text-tertiary); font-size:12px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .rcap-definition-list dd { margin:0; color:var(--text-primary); font-size:14px; line-height:1.35; font-weight:760; overflow-wrap:break-word; word-break:normal; min-width:0; white-space:normal; }
+    .rcap-packet-table-wrap { overflow-x:auto; overflow-y:visible; border:1px solid var(--border-light); border-radius:16px; background:#fff; max-width:100%; }
+    .rcap-packet-table { width:100%; table-layout:fixed; border-collapse:collapse; min-width:0; }
+    .rcap-packet-table col:nth-child(1) { width:26%; }
+    .rcap-packet-table col:nth-child(2) { width:22%; }
+    .rcap-packet-table col:nth-child(3) { width:32%; }
+    .rcap-packet-table col:nth-child(4) { width:20%; }
+    .rcap-packet-table th { color:var(--text-tertiary); background:#f8fbfa; font-size:11px; text-transform:uppercase; letter-spacing:.04em; text-align:left; padding:10px 12px; border-bottom:1px solid var(--border-light); white-space:normal; overflow-wrap:break-word; }
+    .rcap-packet-table td { padding:10px 12px; border-bottom:1px solid var(--border-light); color:var(--text-secondary); font-size:13px; line-height:1.3; vertical-align:middle; white-space:normal; overflow-wrap:break-word; word-break:normal; }
+    .rcap-packet-table tr:last-child td { border-bottom:0; }
+    .rcap-packet-table td:first-child { color:var(--text-primary); font-weight:850; }
+    .rcap-packet-table button { min-height:32px; padding:0 12px; font-size:12px; border-radius:999px; white-space:normal; line-height:1.15; }
+    .rcap-decision-side .card-actions,.rcap-decision-card .card-actions { min-width:0; flex-wrap:wrap; }
+    .rcap-decision-side .card-actions button,.rcap-decision-card .card-actions button { max-width:100%; min-width:0; height:auto; min-height:38px; padding-top:8px; padding-bottom:8px; white-space:normal; overflow-wrap:break-word; line-height:1.2; }
+    .rcap-note-box { display:grid; gap:10px; }
+    .rcap-note-box textarea { min-height:130px; resize:vertical; border-radius:15px; background:#fbfefd; }
+    .rcap-right-rail { position:sticky; top:96px; align-self:start; }
+    .rcap-side-list { margin:0; padding-left:18px; color:var(--text-secondary); display:grid; gap:10px; font-size:14px; line-height:1.35; }
+    .rcap-safety-list { display:grid; gap:9px; margin:0; padding:0; list-style:none; }
+    .rcap-safety-list li { display:flex; justify-content:space-between; gap:12px; align-items:center; color:var(--text-secondary); font-size:14px; border-bottom:1px solid var(--border-light); padding-bottom:9px; }
+    .rcap-safety-list li:last-child { border-bottom:0; padding-bottom:0; }
+    .rcap-safety-list li::after { content:"Safe"; display:inline-flex; border:1px solid rgba(5,150,105,.2); color:#065f46; background:rgba(5,150,105,.08); border-radius:999px; padding:4px 8px; font-size:11px; font-weight:850; }
+    .rcap-activity-feed { display:grid; gap:8px; }
+    .rcap-activity-item { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:12px; display:grid; gap:4px; }
+    .rcap-activity-item strong { color:var(--text-primary); font-size:14px; line-height:1.25; }
+    .rcap-activity-item span { color:var(--text-tertiary); font-size:12px; line-height:1.35; }
+    @media (max-width:980px) { .rcap-decision-hero,.rcap-decision-layout { grid-template-columns:1fr; } .rcap-right-rail { position:static; top:auto; } }
+    @media (max-width:900px) { .rcap-packet-table thead { display:none; } .rcap-packet-table,.rcap-packet-table tbody,.rcap-packet-table tr,.rcap-packet-table td { display:block; width:100%; } .rcap-packet-table tr { border-bottom:1px solid var(--border-light); padding:10px 12px; } .rcap-packet-table tr:last-child { border-bottom:0; } .rcap-packet-table td { border-bottom:0; padding:4px 0; } .rcap-packet-table td::before { content:attr(data-label); display:block; color:var(--text-tertiary); font-size:10px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; margin-bottom:2px; } }
+    @media (max-width:720px) { .rcap-readiness-strip { grid-template-columns:1fr; } .rcap-summary-row,.rcap-definition-list div { grid-template-columns:1fr; gap:5px; } }
     .artifact-review-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; align-items:start; width:100%; }
     .artifact-review-card { width:100%; min-width:0; max-width:100%; border:1px solid rgba(8,20,95,.08); border-radius:18px; background:#fff; padding:16px; display:grid; gap:10px; box-sizing:border-box; overflow-wrap:break-word; }
     .artifact-review-card header { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; border-bottom:1px solid rgba(8,20,95,.08); padding-bottom:10px; }
@@ -13245,8 +13304,13 @@ function htmlShell() {
     @media (max-width:1100px) { .landing-grid { grid-template-columns:1fr; } .operator-command-strip { grid-template-columns:1fr; } }
 
     /* Production shell QA guardrails */
-    html, body, .shell, #app { width:100%; max-width:100%; overflow-x:hidden; }
+    html, body, .shell, #app { width:100%; max-width:100%; min-width:0; overflow-x:hidden; }
+    .shell, #app, #app main { contain:layout paint; }
+    .app-topbar { max-width:100%; min-width:0; overflow-x:clip; }
+    .top-nav { max-width:100%; min-width:0; }
     #app { padding-bottom:96px; }
+    .page-section:not(.active) { display:none !important; visibility:hidden; pointer-events:none; width:0; height:0; max-width:0; overflow:hidden; }
+    .page-section.active { min-width:0; max-width:100%; overflow-x:hidden; isolation:isolate; }
     .app-section,
     .page-section,
     .command-page,
@@ -18522,109 +18586,143 @@ function htmlShell() {
         "Weekly report draft": "rcap-weekly-report-draft-v1",
         "Evidence note": "rcap-production-activation-evidence-v1"
       };
+      const packetNeed = (label, item, rowStatus) => {
+        if (label === "Partner page draft") return "Confirm copy";
+        if (label === "Dashboard readiness") return "Keep internal";
+        if (label === "Weekly report draft") return "Confirm reporting format";
+        if (label === "Evidence note") return "Confirm proof language";
+        return "Roger review";
+      };
+      const packetActionLabel = (label, rowStatus) => {
+        return "Review";
+      };
       const packetRows = artifacts.map(([label, item]) => {
         const rowStatus = statusLabel(item);
         const rowClass = rowStatus === "Ready" ? "good" : rowStatus === "Missing information" ? "warn" : "info";
         const artifactKey = esc(packetArtifactKeys[label] || "rcap-manual-review-checklist-v1");
+        const actionState = rowStatus === "Missing information" ? "needs_revision" : "in_review";
         return [
-          '<article class="rcap-review-row">',
-          '<div class="topline"><strong>' + esc(label) + '</strong>',
-          '<span class="artifact-review-status ' + esc(rowClass) + '">' + esc(rowStatus) + '</span>',
-          '</div>',
-          '<p>' + esc(item.summary?.answer || item.summary || item.status || "Needs review before use.") + '</p>',
-          '<div class="actions">',
-          "<button type=\"button\" onclick=\"markRcapReviewState('" + artifactKey + "','in_review')\">Review</button>",
-          "<button type=\"button\" onclick=\"markRcapReviewState('" + artifactKey + "','needs_revision')\">Add info</button>",
-          "<button type=\"button\" onclick=\"markRcapReviewState('" + artifactKey + "','approved')\">Mark ready</button>",
-          '</div>',
-          '</article>'
+          "<tr>",
+          '<td data-label="Item">' + esc(label) + "</td>",
+          '<td data-label="Status"><span class="artifact-review-status ' + esc(rowClass) + '">' + esc(rowStatus) + "</span></td>",
+          '<td data-label="Needs">' + esc(packetNeed(label, item, rowStatus)) + "</td>",
+          '<td data-label="Action"><button type="button" data-rcap-key="' + artifactKey + '" data-rcap-state="' + esc(actionState) + '" onclick="markRcapReviewState(this.dataset.rcapKey,this.dataset.rcapState)">' + esc(packetActionLabel(label, rowStatus)) + "</button></td>",
+          "</tr>"
         ].join("");
       }).join("");
       const missing = [
         ...(partner.missingExternalDetailsList || []),
         ...(program.missingPartnerDetails || []),
-        partner.primaryContact || program.primaryContact ? "" : "Confirm partner contact",
-        partner.email ? "" : "Confirm partner-facing email"
+        partner.primaryContact || program.primaryContact ? "" : "Partner contact email",
+        program.programScope || program.scope ? "" : "Program scope",
+        program.approvalAuthority ? "" : "Approval authority",
+        program.launchTimeline ? "" : "Launch timeline",
+        program.partnerFacingLanguageApproved ? "" : "Partner-facing language"
       ].filter(Boolean);
       const activity = [...(state.activityEvents || []), ...(state.auditHistory || [])]
         .filter(item => /rcap|record clearing/i.test([item.title, item.summary, item.action, item.eventType, item.resourceType].join(" ")))
         .slice(-5)
         .reverse();
       const packetButtonLabel = "Prepare Review Packet";
+      const readyCount = artifacts.filter(([, item]) => statusLabel(item) === "Ready").length;
+      const missingCount = missing.length + artifacts.filter(([, item]) => statusLabel(item) === "Missing information").length;
+      const needsDecisionCount = artifacts.filter(([, item]) => statusLabel(item) !== "Ready").length;
+      const decisionStatus = readyCount === artifacts.length && missingCount === 0 ? "Ready" : "Needs review";
+      const partnerName = partner.name || program.partnerName || "RCAP partner";
+      const contact = partner.primaryContact || program.primaryContact || partner.email || "Needs confirmation";
+      const scope = program.programScope || program.scope || "Needs confirmation";
+      const support = "Review materials and prepare manual next steps";
+      const currentStatus = decisionStatus;
+      const purpose = "Review partner materials before anything is sent, published, or activated.";
+      const activityRows = activity.length
+        ? activity.map(item => [
+          '<article class="rcap-activity-item">',
+          "<strong>" + esc(item.title || item.action || "Review activity") + "</strong>",
+          "<span>" + esc(formatDateTime(item.timestamp || item.createdAt) || "Recent") + " · " + esc(plainOperatorState(item.summary || item.eventType || "Review activity saved.")) + "</span>",
+          "</article>"
+        ].join("")).join("")
+        : '<div class="empty">No activity yet.</div>';
       return \`<section id="production-activation-rcap" class="\${pageClass("production-activation-rcap")} rcap-review-workspace command-page lee-bubble-safe-space" style="font-family: \\"Geist\\", \\"Inter\\", system-ui, -apple-system, BlinkMacSystemFont, \\"Segoe UI\\", sans-serif;">
-        <div class="panel hero-panel">
-          <div class="eyebrow">Record Clearing Access Program</div>
-          <h1 class="big-title">RCAP Program Review</h1>
-          <p class="muted">Review the Record Clearing Access Program materials before anything goes partner-facing.</p>
-          <div class="hero-actions">
-            <span class="badge warn">Needs review</span>
-            <span class="badge info">Status: \${esc(status.status || "Needs review")}</span>
-            <span class="badge good">No email sent</span>
+        <div class="panel rcap-decision-hero">
+          <div>
+            <div class="eyebrow">Record Clearing Access Program</div>
+            <div class="rcap-title-line">
+              <h1 class="big-title">RCAP Program Review</h1>
+              <span class="badge warn">Status: \${esc(decisionStatus)}</span>
+            </div>
+            <p class="purpose"><strong>Partner program review</strong></p>
+            <p class="purpose">\${esc(purpose)}</p>
           </div>
-          <div class="status-note">Nothing has been sent, published, or activated.</div>
-          <div class="card-actions">
-            <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="generateRcapHandoffPacket()">\${packetButtonLabel}</button>
-          </div>
+          <aside class="rcap-decision-side">
+            <div class="rcap-next-decision"><span>Next decision</span><strong>Is this ready for partner review?</strong></div>
+            <div class="card-actions">
+              <button class="primary" type="button" onclick="generateRcapHandoffPacket()">\${packetButtonLabel}</button>
+              <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            </div>
+            <div class="rcap-safety-line">Nothing has been sent, published, or activated.</div>
+          </aside>
         </div>
-        <div class="stable-two-column section">
-          <main class="grid">
-            <section class="panel operating-memory-card">
-              <div class="simple-panel-head"><h2>Program Summary</h2><span class="badge info">Internal review</span></div>
-              <div class="metric-table">
-                <div class="metric-row"><span>Partner</span><strong>\${esc(partner.name || program.partnerName || "RCAP partner")}</strong></div>
-                <div class="metric-row"><span>Program</span><strong>\${esc(program.name || "Record Clearing Access Program")}</strong></div>
-                <div class="metric-row"><span>Purpose</span><strong>\${esc(program.programGoal || "Help eligible participants understand record-clearing access.")}</strong></div>
-                <div class="metric-row"><span>Current status</span><strong>\${esc(plainOperatorState(status.status || program.status || "needs_review"))}</strong></div>
-                <div class="metric-row"><span>Proposed LegalEase support</span><strong>\${esc(program.proposedSupport || "Review required before partner-facing use.")}</strong></div>
-                <div class="metric-row"><span>Prepared materials</span><strong>\${esc(artifacts.filter(([, item]) => Object.keys(item || {}).length).length)} of \${esc(artifacts.length)}</strong></div>
+        <div class="rcap-readiness-strip">
+          <section class="rcap-readiness-card"><span>Ready</span><strong>\${esc(readyCount)}</strong><p>Materials ready for final review</p></section>
+          <section class="rcap-readiness-card"><span>Missing</span><strong>\${esc(missingCount)}</strong><p>Details needed before partner review</p></section>
+          <section class="rcap-readiness-card"><span>Needs decision</span><strong>\${esc(needsDecisionCount)}</strong><p>Items waiting on Roger</p></section>
+        </div>
+        <div class="rcap-decision-layout">
+          <main class="rcap-decision-stack">
+            <section class="rcap-decision-card">
+              <div class="rcap-card-title"><h2>Partner Summary</h2><span class="badge info">Decision context</span></div>
+              <dl class="rcap-definition-list">
+                <div><dt>Partner</dt><dd>\${esc(partnerName)}</dd></div>
+                <div><dt>Contact</dt><dd>\${esc(contact)}</dd></div>
+                <div><dt>Program scope</dt><dd>\${esc(scope)}</dd></div>
+                <div><dt>LegalEase support</dt><dd>\${esc(support)}</dd></div>
+                <div><dt>Status</dt><dd>\${esc(currentStatus)}</dd></div>
+              </dl>
+            </section>
+            <section class="rcap-decision-card">
+              <div class="rcap-card-title"><h2>Review Packet</h2><span class="badge warn">Needs review</span></div>
+              <div class="rcap-packet-table-wrap">
+                <table class="rcap-packet-table">
+                  <colgroup><col><col><col><col></colgroup>
+                  <thead><tr><th>Item</th><th>Status</th><th>Needs</th><th>Action</th></tr></thead>
+                  <tbody>\${packetRows}</tbody>
+                </table>
               </div>
             </section>
-            <section class="panel operating-memory-card">
-              <div class="simple-panel-head"><h2>Review Packet</h2><span class="badge warn">Needs action</span></div>
-              <div class="memory-evidence-grid">
-                \${packetRows || '<div class="empty">No packet rows are available yet.</div>'}
-              </div>
-              <div class="card-actions">
-                <button class="primary" type="button" onclick="startRcapActivation()">Update Review Packet</button>
-                <button type="button" onclick="location.hash='proof'">Preview Materials</button>
-                <button type="button" onclick="document.getElementById('rcap-decision-note')?.focus()">Add Review Note</button>
-              </div>
-            </section>
-            <section class="panel operating-memory-card">
-              <div class="simple-panel-head"><h2>Review Notes</h2><span class="badge info">Saved work</span></div>
-              <div class="grid split">
-                <label>Decision note<textarea id="rcap-decision-note" rows="3" placeholder="What does Roger need to decide?"></textarea></label>
-                <label>Revision note<textarea id="rcap-revision-note" rows="3" placeholder="What needs to change before use?"></textarea></label>
-              </div>
-              <label>Partner note<textarea id="rcap-partner-note" rows="3" placeholder="Partner-facing details to confirm manually."></textarea></label>
-              <div class="card-actions">
-                <button type="button" onclick="document.getElementById('rcap-decision-note').value=''; document.getElementById('rcap-revision-note')?.value=''; document.getElementById('rcap-partner-note')?.value=''; toast('Review notes were cleared.')">Clear Notes</button>
-                <button class="primary" type="button" onclick="toast('Review note saved internally for manual follow-up')">Save Review Note</button>
+            <section class="rcap-decision-card">
+              <div class="rcap-card-title"><h2>Review Notes</h2><span class="badge info">Saved work</span></div>
+              <div class="rcap-note-box">
+                <textarea id="rcap-decision-note" rows="5" placeholder="Add the decision, revision, or partner note Roger should remember."></textarea>
+                <div class="card-actions">
+                  <button type="button" onclick="toast('Review note saved internally for manual follow-up')">Save review note</button>
+                </div>
               </div>
             </section>
           </main>
-          <aside class="grid">
-            <section class="panel operating-memory-card">
-              <div class="simple-panel-head"><h2>Next Steps</h2><span class="badge warn">Needs action</span></div>
-              <ul class="manual-checklist">
-                <li>Confirm partner contact</li>
-                <li>Confirm partner-facing email</li>
-                <li>Confirm program scope</li>
-                <li>Review proposal language</li>
-                <li>Decide if packet is ready</li>
+          <aside class="rcap-decision-stack rcap-right-rail">
+            <section class="rcap-decision-card">
+              <div class="rcap-card-title"><h2>Roger's Next Steps</h2><span class="badge warn">5 max</span></div>
+              <ul class="rcap-side-list">
+                <li>Confirm partner contact.</li>
+                <li>Confirm partner-facing email.</li>
+                <li>Confirm program scope.</li>
+                <li>Review proposal language.</li>
+                <li>Decide if the packet is ready.</li>
               </ul>
-              <div class="card-actions">
-                <button class="primary" type="button" onclick="markRcapReviewState('rcap-manual-review-checklist-v1', 'handoff_ready')">Mark Ready for Manual Handoff</button>
+              <div class="card-actions" style="margin-top:14px">
+                <button type="button" onclick="markRcapReviewState('rcap-manual-review-checklist-v1', 'handoff_ready')">Mark Ready for Manual Handoff</button>
               </div>
             </section>
-            <section class="panel operating-memory-card">
-              <div class="simple-panel-head"><h2>Missing Information</h2><span class="badge info">\${esc(missing.length)}</span></div>
-              \${memoryListHtml(missing.map(title => ({ title, detail:"Confirm manually before partner-facing use." })), "No missing information recorded.", 8)}
+            <section class="rcap-decision-card">
+              <div class="rcap-card-title"><h2>Missing Information</h2><span class="badge info">\${esc(missing.length)}</span></div>
+              <ul class="rcap-side-list">\${missing.slice(0, 7).map(item => \`<li>\${esc(item)}</li>\`).join("") || "<li>No missing information recorded.</li>"}</ul>
+              <div class="card-actions" style="margin-top:14px">
+                <button type="button" onclick="document.getElementById('rcap-decision-note')?.focus()">Add missing info</button>
+              </div>
             </section>
-            <section class="panel operating-memory-card">
-              <div class="simple-panel-head"><h2>Safety Status</h2><span class="badge good">Publishing is off</span></div>
-              <ul class="manual-checklist">
+            <section class="rcap-decision-card">
+              <div class="rcap-card-title"><h2>Safety Status</h2><span class="badge good">Publishing is off</span></div>
+              <ul class="rcap-safety-list">
                 <li>No email sent</li>
                 <li>No post published</li>
                 <li>No partner page published</li>
@@ -18632,12 +18730,12 @@ function htmlShell() {
                 <li>\${liveGates === 0 ? "Publishing is off" : "Publishing needs review"}</li>
               </ul>
             </section>
-            <section class="panel operating-memory-card">
-              <div class="simple-panel-head"><h2>Activity</h2><span class="badge info">\${esc(activity.length)}</span></div>
-              <div class="memory-evidence-grid">\${activity.map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || item.action || "RCAP activity")}</strong><span class="muted">\${esc(formatDateTime(item.timestamp || item.createdAt) || "Recent")}</span><p class="muted">\${esc(item.summary || item.eventType || "Internal review activity.")}</p></article>\`).join("") || '<div class="empty">No RCAP activity recorded yet.</div>'}</div>
-            </section>
           </aside>
         </div>
+        <section class="rcap-decision-card rcap-activity-section">
+          <div class="rcap-card-title"><h2>Activity</h2><span class="badge info">\${esc(activity.length)}</span></div>
+          <div class="rcap-activity-feed">\${activityRows}</div>
+        </section>
       </section>\`;
     }
 
