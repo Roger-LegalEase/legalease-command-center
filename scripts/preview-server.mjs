@@ -12529,8 +12529,8 @@ function htmlShell() {
   <style>
     :root { --ink:#020D66; --paper:#E5EBEB; --line:#B8D8D8; --moss:#536b4e; --steel:#3040BF; --rust:#F04800; --gold:#F98C30; }
     * { box-sizing:border-box; }
-    body { margin:0; background:var(--paper); color:var(--ink); font-family:"DM Sans",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-    .shell { min-height:100vh; }
+    body { margin:0; max-width:100%; overflow-x:hidden; background:var(--paper); color:var(--ink); font-family:"DM Sans",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    .shell { min-height:100vh; width:100%; max-width:100%; min-width:0; overflow-x:hidden; }
     aside { background:white; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:8; min-height:66px; display:flex; align-items:center; justify-content:space-between; gap:18px; padding:0 28px; }
     .brand { padding:0; min-width:220px; }
     .brand small, .eyebrow { color:var(--rust); font-weight:800; letter-spacing:.18em; text-transform:uppercase; font-size:11px; }
@@ -13528,7 +13528,7 @@ function htmlShell() {
     .add-partner-details summary small { display:block; color:var(--text-tertiary); margin-top:2px; }
     @media (max-width:1180px) { .partner-summary-grid,.partner-pipeline { grid-template-columns:repeat(3,minmax(0,1fr)); } .partner-work-grid,.partners-hero { grid-template-columns:1fr; } .partners-hero-actions { justify-content:flex-start; } }
     @media (max-width:760px) { .partners-workspace { padding:18px 16px 96px; } .partner-summary-grid,.partner-pipeline { grid-template-columns:1fr; } .partner-row { grid-template-columns:1fr; } }
-    .production-workspace { display:grid; gap:18px; width:100%; max-width:1240px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
+    .production-workspace { display:grid; gap:18px; width:100%; max-width:min(1180px, calc(100vw - 32px)); margin:0 auto; padding:24px 24px 96px; box-sizing:border-box; overflow-x:hidden; }
     .production-workspace * { box-sizing:border-box; min-width:0; }
     .production-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
     .production-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
@@ -13567,7 +13567,12 @@ function htmlShell() {
     .production-thumbnail small { color:var(--text-tertiary); font-size:11px; line-height:1.3; }
     .production-thumbnail button { min-height:28px; padding:0 9px; font-size:11.5px; }
     .production-meta { display:grid; gap:3px; }
-    .campaign-upload-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(300px,.9fr); gap:14px; align-items:start; }
+    .campaign-upload-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,.8fr); gap:14px; align-items:start; max-width:100%; min-width:0; overflow:hidden; }
+    .campaign-upload-intro { display:grid; gap:11px; min-width:0; }
+    .campaign-upload-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .campaign-upload-actions button { min-height:34px; padding:0 12px; font-size:12.5px; }
+    .campaign-safety-lines { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+    .campaign-safety-lines span { border:1px solid var(--border-light); border-radius:12px; background:#fbfefd; color:var(--text-secondary); font-size:12px; font-weight:750; line-height:1.3; padding:8px 10px; }
     .campaign-template-chips { display:flex; flex-wrap:wrap; gap:6px; }
     .campaign-template-chips span { border:1px solid var(--border-light); border-radius:999px; background:#fbfefd; color:var(--text-secondary); font-size:11px; font-weight:750; padding:5px 8px; }
     .campaign-step-row { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
@@ -13578,11 +13583,14 @@ function htmlShell() {
     .campaign-preview-metric { border:1px solid var(--border-light); border-radius:13px; background:#fbfefd; padding:10px; display:grid; gap:3px; }
     .campaign-preview-metric strong { color:var(--text-primary); font-size:20px; line-height:1; }
     .campaign-preview-metric span { color:var(--text-tertiary); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.035em; }
-    .campaign-upload-table { display:grid; gap:7px; overflow-x:auto; max-width:100%; padding-bottom:4px; }
-    .campaign-upload-row { display:grid; grid-template-columns:82px 78px minmax(190px,1fr) 104px 110px 104px; gap:8px; align-items:center; min-width:720px; border:1px solid var(--border-light); border-radius:12px; background:#fbfefd; padding:9px; color:var(--text-secondary); font-size:11.5px; line-height:1.3; }
+    .campaign-import-status { border:1px solid var(--border-light); border-radius:13px; background:#fbfefd; padding:10px; color:var(--text-secondary); font-size:12px; line-height:1.4; }
+    .campaign-import-status.warn { border-color:rgba(240,72,0,.28); background:#fff8f4; }
+    .campaign-upload-table { display:grid; gap:7px; overflow-x:auto; overflow-y:hidden; max-width:100%; min-width:0; padding-bottom:4px; overscroll-behavior-x:contain; }
+    .campaign-upload-row { display:grid; grid-template-columns:minmax(60px,.72fr) minmax(72px,.78fr) minmax(0,1.45fr) minmax(76px,.86fr) minmax(66px,.78fr) minmax(70px,.78fr); gap:7px; align-items:center; width:100%; min-width:0; max-width:100%; border:1px solid var(--border-light); border-radius:12px; background:#fbfefd; padding:9px; color:var(--text-secondary); font-size:11.5px; line-height:1.3; overflow-wrap:anywhere; }
+    .campaign-upload-row span { min-width:0; overflow-wrap:anywhere; }
     .campaign-upload-row.header { background:#fff; color:var(--text-tertiary); font-weight:850; text-transform:uppercase; letter-spacing:.035em; }
     .campaign-upload-row.header span { white-space:nowrap; }
-    .creative-engine-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .campaign-detail-grid { display:grid; gap:9px; }
     .campaign-details summary { cursor:pointer; color:var(--accent-hover); font-weight:850; font-size:12px; margin-top:8px; }
     .production-list { display:grid; gap:9px; }
     .production-row { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:11px; display:grid; grid-template-columns:minmax(0,1fr); gap:10px; align-items:start; }
@@ -13595,8 +13603,8 @@ function htmlShell() {
     .platform-preview-note { display:grid; gap:3px; color:var(--text-tertiary); font-size:11.5px; line-height:1.35; }
     .account-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:11px; }
     .account-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; margin-top:3px; }
-    @media (max-width:1180px) { .production-summary-grid,.creative-engine-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .production-main-grid,.production-hero,.campaign-upload-grid { grid-template-columns:1fr; } .production-actions { justify-content:flex-start; } }
-    @media (max-width:760px) { .production-workspace { padding:18px 16px 96px; } .production-summary-grid,.platform-preview-grid,.creative-engine-grid,.campaign-preview-metrics,.campaign-step-row { grid-template-columns:1fr; } .account-row,.campaign-upload-row { grid-template-columns:1fr; } .production-board { grid-auto-columns:minmax(230px,82vw); } }
+    @media (max-width:1180px) { .production-summary-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .production-main-grid,.production-hero,.campaign-upload-grid { grid-template-columns:1fr; } .production-actions { justify-content:flex-start; } }
+    @media (max-width:760px) { .production-workspace { max-width:calc(100vw - 20px); padding:18px 12px 96px; } .production-summary-grid,.platform-preview-grid,.campaign-preview-metrics,.campaign-step-row,.campaign-safety-lines { grid-template-columns:1fr; } .account-row,.campaign-upload-row { grid-template-columns:1fr; } .production-board { grid-auto-columns:minmax(230px,82vw); } }
     @media (max-width:1100px) { .growth-summary-grid,.growth-board { grid-template-columns:repeat(2,minmax(0,1fr)); } .growth-main-grid,.growth-hero { grid-template-columns:1fr; } .growth-hero-actions { justify-content:flex-start; } }
     @media (max-width:640px) { .growth-workspace { padding:18px 16px 96px; } .growth-summary-grid,.growth-board { grid-template-columns:1fr; } .growth-row { grid-template-columns:1fr; } }
     .settings-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; align-items:start; }
@@ -13705,6 +13713,7 @@ function htmlShell() {
     let leeAdvanced = false;
     let leeBubbleOpen = false;
     let rcapActivationClientStatus = null;
+    let campaignImportPreview = null;
     const rcapReviewDefinitions = [
       { key:"rcap-proposal-task-v1", title:"Proposal Task", collection:"tasks", id:"task-rcap-proposal-draft-v1", priority:"high" },
       { key:"rcap-proposal-draft-v1", title:"Proposal Draft", collection:"partnerProgramArtifacts", artifactKey:"rcap-proposal-draft-v1", priority:"high" },
@@ -14062,6 +14071,185 @@ function htmlShell() {
       toast(message || "Safe local action complete.");
     }
     const sectionClass = id => \`page-section \${id === currentPageId ? "active" : ""}\`;
+
+    const campaignUploadColumns = ["Date", "Time", "Platform", "Campaign", "Post Type", "Topic", "Caption", "Headline", "Subhead", "CTA", "Link", "Audience", "Goal", "Tone", "Image Direction", "Overlay Text", "Wilma Preference", "Approval Owner", "Status", "Notes"];
+    const campaignRequiredColumns = ["Date", "Platform", "Caption"];
+    const campaignColumnKey = value => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+    function parseCampaignCsvText(text = "") {
+      const rows = [];
+      let row = [];
+      let cell = "";
+      let quoted = false;
+      for (let index = 0; index < text.length; index += 1) {
+        const char = text[index];
+        const next = text[index + 1];
+        if (quoted && char === '"' && next === '"') {
+          cell += '"';
+          index += 1;
+        } else if (char === '"') {
+          quoted = !quoted;
+        } else if (char === "," && !quoted) {
+          row.push(cell.trim());
+          cell = "";
+        } else if ((char === "\\n" || char === "\\r") && !quoted) {
+          if (char === "\\r" && next === "\\n") index += 1;
+          row.push(cell.trim());
+          if (row.some(value => value !== "")) rows.push(row);
+          row = [];
+          cell = "";
+        } else {
+          cell += char;
+        }
+      }
+      row.push(cell.trim());
+      if (row.some(value => value !== "")) rows.push(row);
+      return rows;
+    }
+    function campaignRecordValue(record, label) {
+      return record[campaignColumnKey(label)] || "";
+    }
+    function campaignDateRange(records) {
+      const dates = records.map(record => campaignRecordValue(record, "Date")).filter(Boolean);
+      if (!dates.length) return "No dates";
+      const sorted = [...dates].sort();
+      return sorted[0] === sorted[sorted.length - 1] ? sorted[0] : sorted[0] + " to " + sorted[sorted.length - 1];
+    }
+    function campaignWilmaLabel(record) {
+      const preference = campaignRecordValue(record, "Wilma Preference").toLowerCase();
+      const postType = campaignRecordValue(record, "Post Type").toLowerCase();
+      const topic = campaignRecordValue(record, "Topic").toLowerCase();
+      if (["no", "never"].includes(preference)) return "Do not use Wilma";
+      if (preference === "yes") return "Use Wilma";
+      if (preference === "helper") return "Use Wilma as helper";
+      if (/faq|checklist|explainer|how|step|myth|walkthrough|reminder/.test(postType + " " + topic)) return "Use Wilma";
+      return "Wilma optional";
+    }
+    function campaignImagePlan(record) {
+      return campaignRecordValue(record, "Image Direction") ? "Image: Requested" : "Suggest direction";
+    }
+    async function handleCampaignSpreadsheetUpload(file) {
+      if (!file) return;
+      const name = String(file.name || "campaign upload");
+      if (/\\.xlsx$/i.test(name)) {
+        campaignImportPreview = {
+          fileName:name,
+          rows:[],
+          errors:["CSV upload is ready. XLSX support can be added next."],
+          summary:{ found:0, dateRange:"Not imported", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0 },
+          confirmed:false
+        };
+        render();
+        toast("CSV upload is ready. XLSX support can be added next.");
+        return;
+      }
+      if (!/\\.csv$/i.test(name) && !/text\\/csv/i.test(String(file.type || ""))) {
+        campaignImportPreview = {
+          fileName:name,
+          rows:[],
+          errors:["Use a CSV file for this import. XLSX support can be added next."],
+          summary:{ found:0, dateRange:"Not imported", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0 },
+          confirmed:false
+        };
+        render();
+        toast("Use a CSV file for this import.");
+        return;
+      }
+      const rows = parseCampaignCsvText(await file.text());
+      const headers = rows[0] || [];
+      const headerMap = new Map(headers.map((header, index) => [campaignColumnKey(header), index]));
+      const missing = campaignRequiredColumns.filter(column => !headerMap.has(campaignColumnKey(column)));
+      if (missing.length) {
+        campaignImportPreview = {
+          fileName:name,
+          rows:[],
+          errors:["This file needs Date, Platform, and Caption columns before it can be imported."],
+          summary:{ found:0, dateRange:"Not imported", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0 },
+          confirmed:false
+        };
+        render();
+        toast("This file needs Date, Platform, and Caption columns before it can be imported.");
+        return;
+      }
+      const records = rows.slice(1).map(sourceRow => {
+        const record = {};
+        for (const [key, index] of headerMap.entries()) record[key] = String(sourceRow[index] || "").trim();
+        return record;
+      }).filter(record => campaignRecordValue(record, "Date") || campaignRecordValue(record, "Platform") || campaignRecordValue(record, "Caption"));
+      const platforms = [...new Set(records.map(record => campaignRecordValue(record, "Platform")).filter(Boolean))];
+      campaignImportPreview = {
+        fileName:name,
+        rows:records.slice(0, 30),
+        errors:[],
+        summary:{
+          found:records.length,
+          dateRange:campaignDateRange(records),
+          platforms:platforms.join(", ") || "None",
+          needsImages:records.filter(record => !campaignRecordValue(record, "Image Direction")).length,
+          wilmaRecommended:records.filter(record => /Use Wilma/.test(campaignWilmaLabel(record))).length,
+          overlaySuggestions:records.filter(record => campaignRecordValue(record, "Overlay Text") || campaignRecordValue(record, "Headline") || campaignRecordValue(record, "CTA")).length
+        },
+        confirmed:false
+      };
+      render();
+      toast("Import preview ready. Nothing has been posted.");
+    }
+    function confirmCampaignImport() {
+      if (!campaignImportPreview?.rows?.length || campaignImportPreview.errors?.length) {
+        toast("Review a valid CSV preview before confirming import.");
+        return;
+      }
+      const now = Date.now();
+      const imported = campaignImportPreview.rows.map((record, index) => {
+        const caption = campaignRecordValue(record, "Caption");
+        const headline = campaignRecordValue(record, "Headline");
+        const topic = campaignRecordValue(record, "Topic");
+        const title = headline || topic || caption.slice(0, 72) || "Imported campaign post";
+        return {
+          id:"campaign-import-" + now + "-" + index,
+          title,
+          caption,
+          platform:campaignRecordValue(record, "Platform") || "linkedin",
+          status:"draft",
+          campaign:campaignRecordValue(record, "Campaign"),
+          scheduledFor:[campaignRecordValue(record, "Date"), campaignRecordValue(record, "Time")].filter(Boolean).join(" "),
+          imageBrief:campaignRecordValue(record, "Image Direction"),
+          overlayText:campaignRecordValue(record, "Overlay Text"),
+          sourceType:"campaign_upload",
+          createdAt:new Date().toISOString()
+        };
+      });
+      state.posts = [...imported, ...(state.posts || [])];
+      campaignImportPreview = { ...campaignImportPreview, confirmed:true };
+      render();
+      toast("Internal drafts created. Nothing gets posted.");
+    }
+    function cancelCampaignImport() {
+      campaignImportPreview = null;
+      render();
+      toast("Import preview cleared. Nothing was saved.");
+    }
+    function fixCampaignImportIssues() {
+      toast("Fix Issues checks the preview before anything is saved.");
+    }
+    function downloadCampaignTemplate() {
+      const sample = ["2026-06-01", "9:00 AM", "LinkedIn", "RecordShield", "Explainer", "Clean record basics", "A clean record should not require a maze.", "Clean records, clear next steps", "", "Start with a free eligibility check", "", "Job seekers", "Education", "Plainspoken", "Warm LegalEase illustration", "Clean records, clear next steps", "auto", "Roger", "Draft", "Imported safely as an internal draft"];
+      const csv = [campaignUploadColumns, sample].map(row => row.map(value => '"' + String(value).replace(/"/g, '""') + '"').join(",")).join("\\n");
+      const blob = new Blob([csv], { type:"text/csv" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "legalease-campaign-upload-template.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast("Template downloaded. Uploads create internal drafts only.");
+    }
+    window.handleCampaignSpreadsheetUpload = handleCampaignSpreadsheetUpload;
+    window.confirmCampaignImport = confirmCampaignImport;
+    window.cancelCampaignImport = cancelCampaignImport;
+    window.fixCampaignImportIssues = fixCampaignImportIssues;
+    window.downloadCampaignTemplate = downloadCampaignTemplate;
 
     async function api(path, options = {}) {
       const timeoutMs = Number(options.timeoutMs || 8000);
@@ -20706,23 +20894,26 @@ function htmlShell() {
       const campaignTemplateColumns = [
         "Date", "Time", "Platform", "Campaign", "Post Type", "Topic", "Caption", "Headline", "Subhead", "CTA", "Link", "Audience", "Goal", "Tone", "Image Direction", "Overlay Text", "Wilma Preference", "Approval Owner", "Status", "Notes"
       ];
-      const priorityTemplateColumns = ["Date", "Time", "Platform", "Caption", "Campaign", "Image Direction", "Overlay Text", "Wilma Preference", "Status"];
-      const campaignPreviewRows = [
-        ["2026-06-01", "LinkedIn", "Fresh Start", "Explainer", "A clean record should not require a maze.", "Image requested", "Use Wilma", "Needs review"],
-        ["2026-06-03", "Instagram", "RecordShield", "Proof / win", "Fresh Start Campaign produced the first proof loop.", "Image requested", "Do not use Wilma", "Needs review"],
-        ["2026-06-05", "TikTok", "Wilma", "FAQ", "Do old records disappear automatically?", "Image requested", "Use Wilma as helper", "Needs review"]
-      ];
-      const creativeEngineCards = [
-        ["Creative Recommendations", "For each imported post, the Command Center recommends the creative type, visual treatment, Wilma usage, overlay text, and image direction."],
-        ["Wilma Recommendations", "Use Wilma · Wilma optional · Use Wilma as helper · Do not use Wilma · Never use Wilma"],
-        ["Overlay Text", "Add editable headline, subhead, and CTA text for generated visuals. Headline · Subhead · CTA · Placement · Alignment · Style"]
-      ];
+      const priorityTemplateColumns = ["Date", "Platform", "Caption", "Campaign", "Image Direction", "Overlay Text", "Wilma Preference", "Status"];
       const campaignSteps = [
-        ["1", "Upload content plan"],
-        ["2", "Review imported posts"],
-        ["3", "Generate image plan"],
-        ["4", "Send to approval queue"]
+        ["1", "Upload plan"],
+        ["2", "Review posts"],
+        ["3", "Generate images"],
+        ["4", "Approve schedule"]
       ];
+      const campaignPreview = campaignImportPreview;
+      const campaignPreviewRows = campaignPreview?.rows?.length ? campaignPreview.rows.slice(0, 5) : [];
+      const campaignSummary = campaignPreview?.summary || { found:0, dateRange:"No file selected", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0 };
+      const campaignPreviewMetrics = [
+        [campaignSummary.found || 0, "posts found"],
+        [campaignSummary.dateRange || "No file selected", "date range"],
+        [campaignSummary.platforms || "None", "platforms included"],
+        [campaignSummary.needsImages || 0, "posts needing images"],
+        [campaignSummary.wilmaRecommended || 0, "Wilma recommended"],
+        [campaignSummary.overlaySuggestions || 0, "overlay text suggestions"]
+      ];
+      const campaignErrors = campaignPreview?.errors || [];
+      const campaignConfirmDisabled = !campaignPreviewRows.length || campaignErrors.length ? "disabled" : "";
       return \`<section id="production" class="\${pageClass("production")} production-workspace">
         <section class="production-hero">
           <div>
@@ -20746,44 +20937,54 @@ function htmlShell() {
         </section>
 
         <section class="production-card">
-          <div class="production-card-head"><div><h2>Campaign Upload</h2><small>Upload a 30-day content plan and turn it into a review-ready production queue.</small></div><span class="badge warn">Uploads create internal drafts only.</span></div>
+          <div class="production-card-head"><div><h2>Campaign Upload</h2><small>Upload a spreadsheet and turn it into a 30-day production queue.</small></div><span class="badge warn">Manual only</span></div>
           <div class="campaign-upload-grid">
-            <div class="production-stack">
+            <div class="campaign-upload-intro">
               <div class="campaign-step-row">\${campaignSteps.map(([number, label]) => \`<article class="campaign-step"><span>\${esc(number)}</span><strong>\${esc(label)}</strong></article>\`).join("")}</div>
-              <div class="production-card-actions">
-                <button type="button" disabled title="Spreadsheet upload is planned for internal import review.">Upload Spreadsheet</button>
-                <button type="button" onclick="toast('Template guidance is visible in Campaign Upload.')">Download Template</button>
+              <p class="muted">Upload a 30-day content plan and review the posts before anything moves forward.</p>
+              <div class="campaign-upload-actions">
+                <input id="campaign-upload-input" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onchange="handleCampaignSpreadsheetUpload(this.files && this.files[0]); this.value='';">
+                <button class="primary" type="button" onclick="document.getElementById('campaign-upload-input')?.click()">Upload Spreadsheet</button>
+                <button type="button" onclick="downloadCampaignTemplate()">Download Template</button>
                 <button type="button" onclick="document.getElementById('campaign-import-preview')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Imported Posts</button>
                 <button type="button" onclick="openLeeBubble()">Generate Image Plan</button>
-                <button type="button" disabled title="Confirm Import must be reviewed before approval routing.">Send to Approval Queue</button>
+                <button type="button" \${campaignConfirmDisabled} title="\${campaignConfirmDisabled ? "Review a valid import preview first." : "Send imported drafts into the internal approval queue."}">Send to Approval Queue</button>
               </div>
-              <p class="muted">This is an internal schedule only. Nothing has been posted or scheduled on social platforms.</p>
+              <p class="muted">CSV upload is ready. XLSX support can be added next.</p>
+              <div class="campaign-safety-lines">
+                <span>Uploads create internal drafts only. Nothing gets posted.</span>
+                <span>Nothing gets scheduled on social platforms.</span>
+                <span>You approve before anything moves forward.</span>
+                <span>Nothing has been published by the OS.</span>
+              </div>
+              <div class="campaign-import-status \${campaignErrors.length ? "warn" : ""}">
+                \${campaignErrors.length ? campaignErrors.map(error => \`<strong>\${esc(error)}</strong>\`).join("<br>") : campaignPreview?.confirmed ? "Internal drafts were added to the queue. Nothing gets posted." : "Choose a CSV to preview posts before saving internal drafts."}
+              </div>
               <div>
-                <strong>Spreadsheet Template</strong>
-                <p class="muted">Required columns: Date, Time, Platform, Caption, Campaign, Image Direction, Overlay Text, Wilma Preference, Status</p>
-                <div class="campaign-template-chips" aria-label="Key spreadsheet columns">\${priorityTemplateColumns.map(column => \`<span>\${esc(column)}</span>\`).join("")}</div>
-                <details class="campaign-details"><summary>View all columns</summary><div class="campaign-template-chips" aria-label="All spreadsheet columns">\${campaignTemplateColumns.map(column => \`<span>\${esc(column)}</span>\`).join("")}</div></details>
+                <strong>Creative Recommendations</strong>
+                <p class="muted">The Command Center recommends image direction, Wilma usage, and overlay text after import.</p>
               </div>
-              <div class="campaign-template-chips" aria-label="Allowed Wilma preference values">
-                \${["Wilma Preference", "Auto", "Yes", "No", "Helper", "LinkedIn", "Facebook", "Instagram", "TikTok"].map(value => \`<span>\${esc(value)}</span>\`).join("")}
+              <div class="campaign-detail-grid">
+                <details class="campaign-details"><summary>View template details</summary><p class="muted">Required columns: Date, Platform, Caption. This file needs Date, Platform, and Caption columns before it can be imported.</p><div class="campaign-template-chips" aria-label="Accepted spreadsheet columns">\${campaignTemplateColumns.map(column => \`<span>\${esc(column)}</span>\`).join("")}</div><p class="muted">Platform values: LinkedIn, Facebook, Instagram, TikTok. Wilma Preference values: Auto, Yes, No, Helper.</p></details>
+                <details class="campaign-details"><summary>View Wilma rules</summary><div class="campaign-template-chips" aria-label="Wilma recommendation labels">\${["Use Wilma", "Wilma optional", "Use Wilma as helper", "Do not use Wilma", "Never use Wilma"].map(value => \`<span>\${esc(value)}</span>\`).join("")}</div></details>
+                <details class="campaign-details"><summary>View overlay text options</summary><p class="muted">Overlay Text can include Headline, Subhead, CTA, Placement, Alignment, and Style.</p><div class="campaign-template-chips" aria-label="Overlay text options">\${["Headline", "Subhead", "CTA", "Placement", "Alignment", "Style"].map(value => \`<span>\${esc(value)}</span>\`).join("")}</div></details>
               </div>
-              <p class="muted">Wilma is recommended for explainers, checklists, and friendly guidance. She is not recommended for serious impact stories, policy commentary, or trauma-sensitive posts.</p>
-              <div class="creative-engine-grid">\${creativeEngineCards.map(([title, detail]) => \`<article class="production-summary-card"><span>\${esc(title)}</span><small>\${esc(detail)}</small></article>\`).join("")}</div>
             </div>
             <aside id="campaign-import-preview" class="production-stack">
-              <div class="production-card-head"><div><h2>Import Preview</h2><small>No spreadsheet has been imported yet. Sample preview only.</small></div></div>
+              <div class="production-card-head"><div><h2>Import Preview</h2><small>\${campaignPreview?.fileName ? esc(campaignPreview.fileName) : "No spreadsheet selected yet."}</small></div></div>
               <div class="campaign-preview-metrics">
-                \${[["30", "posts found"], ["30", "scheduled internally"], ["18", "need images"], ["7", "Wilma recommended"], ["5", "Wilma not recommended"], ["12", "overlay text suggestions"], ["0", "published"]].map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(value)}</strong><span>\${esc(label)}</span></article>\`).join("")}
+                \${campaignPreviewMetrics.map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}
               </div>
               <div class="campaign-upload-table">
                 <div class="campaign-upload-row header"><span>Date</span><span>Platform</span><span>Caption Preview</span><span>Image Plan</span><span>Wilma</span><span>Approval</span></div>
-                \${campaignPreviewRows.map(([date, platform, campaign, postType, caption, imageStatus, wilma, approval]) => \`<div class="campaign-upload-row"><span>\${esc(date)}</span><span>\${esc(platform)}</span><span>\${esc(campaign)} · \${esc(postType)} · \${esc(caption)}</span><span>\${esc(imageStatus)}</span><span>\${esc(wilma)}</span><span>\${esc(approval)}</span></div>\`).join("")}
+                \${campaignPreviewRows.map(record => \`<div class="campaign-upload-row"><span>\${esc(campaignRecordValue(record, "Date"))}</span><span>\${esc(campaignRecordValue(record, "Platform"))}</span><span>\${esc(campaignRecordValue(record, "Caption")).slice(0, 120)}</span><span>\${esc(campaignImagePlan(record))}</span><span>\${esc(campaignWilmaLabel(record))}</span><span>Needs review</span></div>\`).join("") || '<div class="campaign-import-status">Upload a CSV to preview Date, Platform, Caption Preview, Image Plan, Wilma, and Approval before saving.</div>'}
               </div>
               <div class="production-card-actions">
-                <button type="button" disabled title="Upload and preview a spreadsheet before confirming import.">Confirm Import</button>
-                <button type="button" onclick="toast('Fix Issues will open after a real import preview exists.')">Fix Issues</button>
-                <button type="button" onclick="toast('Import preview cleared. Nothing was saved.')">Cancel Import</button>
+                <button type="button" \${campaignConfirmDisabled} onclick="confirmCampaignImport()" title="Confirm Import creates internal drafts only.">Confirm Import</button>
+                <button type="button" onclick="fixCampaignImportIssues()">Fix Issues</button>
+                <button type="button" onclick="cancelCampaignImport()">Cancel</button>
               </div>
+              <p class="muted">Confirm Import creates internal drafts only.</p>
             </aside>
           </div>
         </section>
