@@ -13649,6 +13649,38 @@ function htmlShell() {
     .proof-metric small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
     .proof-metric.urgent { border-left:4px solid var(--urgent); }
     .proof-two-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+    .more-workspace { display:grid; gap:18px; width:100%; max-width:1180px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
+    .more-workspace * { box-sizing:border-box; min-width:0; }
+    .more-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
+    .more-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
+    .more-hero p { margin:8px 0 0; max-width:760px; color:var(--text-secondary); font-size:15px; line-height:1.45; }
+    .more-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; max-width:100%; }
+    .more-actions button { min-height:38px; padding:0 14px; font-size:13px; }
+    .more-pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .more-pill { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border-default); border-radius:999px; background:rgba(255,255,255,.72); color:var(--text-secondary); padding:6px 10px; font-size:12px; font-weight:800; }
+    .more-pill::before { content:""; width:7px; height:7px; border-radius:999px; background:var(--accent); }
+    .more-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:17px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:13px; min-width:0; overflow:hidden; }
+    .more-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .more-card-head h2 { margin:0; color:var(--text-primary); font-size:20px; line-height:1.15; letter-spacing:-.01em; }
+    .more-card-head small { color:var(--text-tertiary); font-size:12px; line-height:1.35; text-align:right; }
+    .more-summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; }
+    .more-summary-card { border:1px solid var(--border-light); border-radius:17px; background:#fff; padding:13px; display:grid; gap:5px; box-shadow:0 10px 24px rgba(0,38,36,.04); }
+    .more-summary-card span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .more-summary-card strong { color:var(--text-primary); font-size:22px; line-height:1.1; }
+    .more-summary-card small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
+    .more-utility-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; align-items:stretch; }
+    .more-utility-card { border:1px solid var(--border-light); border-radius:17px; background:#fbfefd; padding:14px; display:grid; gap:10px; align-content:start; }
+    .more-utility-card h3 { margin:0; color:var(--text-primary); font-size:16px; line-height:1.2; }
+    .more-utility-card p { margin:0; color:var(--text-secondary); font-size:13px; line-height:1.4; }
+    .more-card-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .more-card-actions button { min-height:32px; padding:0 10px; font-size:12px; }
+    .more-bottom-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,.72fr); gap:16px; align-items:start; }
+    .more-safety-list { display:grid; gap:8px; }
+    .more-safety-row { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:10px 12px; display:flex; justify-content:space-between; gap:12px; align-items:center; color:var(--text-secondary); font-size:13px; line-height:1.3; }
+    .more-safety-row strong { color:var(--text-primary); }
+    .more-safety-row span { color:var(--accent-hover); font-weight:850; white-space:nowrap; }
+    @media (max-width:1180px) { .more-summary-grid,.more-utility-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .more-hero,.more-bottom-grid { grid-template-columns:1fr; } .more-actions { justify-content:flex-start; } }
+    @media (max-width:760px) { .more-workspace { padding:18px 16px 96px; } .more-summary-grid,.more-utility-grid { grid-template-columns:1fr; } .more-card-head,.more-safety-row { align-items:flex-start; flex-direction:column; } }
     @media (max-width:1180px) { .proof-summary-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .proof-main-grid,.proof-hero,.proof-two-grid { grid-template-columns:1fr; } .proof-actions { justify-content:flex-start; } }
     @media (max-width:760px) { .proof-workspace { padding:18px 16px 96px; } .proof-summary-grid,.proof-metric-grid { grid-template-columns:1fr; } }
     @media (max-width:1100px) { .growth-summary-grid,.growth-board { grid-template-columns:repeat(2,minmax(0,1fr)); } .growth-main-grid,.growth-hero { grid-template-columns:1fr; } .growth-hero-actions { justify-content:flex-start; } }
@@ -22493,6 +22525,79 @@ function htmlShell() {
       </section>\`;
     }
 
+    function moreWorkspaceHtml(pageClass) {
+      const summaryCards = [
+        ["App Status", "Protected", "Check whether the app is healthy."],
+        ["Recovery Mode", "Ready", "Get back to Today if something breaks."],
+        ["Guide", "Available", "Learn how to use the Command Center."],
+        ["Team Roles", "Clear", "Clarify who owns what."],
+        ["Data Check", "Manual", "Review stored work and data health."],
+        ["Privacy", "Ready", "Review privacy and data-use information."]
+      ];
+      const utilityCards = [
+        ["App Status", "Check whether the app is healthy and protected.", [["Open App Status", "app-status", "primary"], ["Refresh Status", "app-status"]]],
+        ["Recovery Mode", "Get back to work if something breaks.", [["Open Recovery Mode", "recovery", "primary"], ["Back to Today", "today"]]],
+        ["Guide", "Learn how to use the Command Center.", [["Open Guide", "guide", "primary"], ["Open Course Manual", "course-manual"]]],
+        ["Team Roles", "Clarify who owns what.", [["Open Team Roles", "roles", "primary"], ["Add Role Note", "role-note"]]],
+        ["Data Check", "Review data health and stored work.", [["Open Data Check", "data-check", "primary"], ["Review Saved Work", "data-check"]]],
+        ["Privacy", "Review privacy and data-use information.", [["Open Privacy", "privacy", "primary"]]],
+        ["Exports / Handoff", "Prepare internal handoff packets, reports, and exports.", [["Prepare Export", "handoff-notes", "primary"], ["Review Handoff Notes", "handoff-notes"]]],
+        ["RCAP Program", "Shortcut to the Record Clearing Access Program review workspace.", [["Open RCAP Program", "rcap", "primary"]]]
+      ];
+      const safetyRows = [
+        "Publishing: Off",
+        "Email sending: Off",
+        "Live social posting: Off",
+        "Calendar writes: Off",
+        "External actions: Off"
+      ];
+      const moreAction = (label, target, tone = "") => {
+        const className = tone === "primary" ? ' class="primary"' : "";
+        if (target === "role-note") {
+          return \`<button type="button"\${className} onclick="toast('Role note stays internal until Roger reviews it.')">\${esc(label)}</button>\`;
+        }
+        return \`<button type="button"\${className} onclick="location.hash='\${esc(target)}'">\${esc(label)}</button>\`;
+      };
+      return \`<section id="more" class="\${pageClass("more")} more-workspace">
+        <section class="more-hero">
+          <div>
+            <div class="eyebrow">Utility center</div>
+            <h1>More</h1>
+            <p>Settings, recovery, support tools, and focused work views.</p>
+            <div class="more-pills"><span class="more-pill">Publishing is off</span><span class="more-pill">Protected</span></div>
+          </div>
+          <div class="more-actions">
+            <button class="primary" type="button" onclick="location.hash='app-status'">Open App Status</button>
+            <button type="button" onclick="location.hash='recovery'">Open Recovery Mode</button>
+            <button type="button" onclick="location.hash='guide'">Open Guide</button>
+          </div>
+        </section>
+
+        <section class="more-card">
+          <div class="more-card-head"><div><h2>Utility Summary</h2><small>Support tools without mixing them into daily work</small></div></div>
+          <div class="more-summary-grid">\${summaryCards.map(([label, status, detail]) => \`<article class="more-summary-card"><span>\${esc(label)}</span><strong>\${esc(status)}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
+        </section>
+
+        <section class="more-card">
+          <div class="more-card-head"><div><h2>Utilities</h2><small>Small, focused tools for setup, review, and recovery</small></div></div>
+          <div class="more-utility-grid">\${utilityCards.map(([title, purpose, actions]) => \`<article class="more-utility-card"><h3>\${esc(title)}</h3><p>\${esc(purpose)}</p><div class="more-card-actions">\${actions.map(([label, target, tone]) => moreAction(label, target, tone)).join("")}</div></article>\`).join("")}</div>
+        </section>
+
+        <div class="more-bottom-grid">
+          <section class="more-card">
+            <div class="more-card-head"><div><h2>System Safety</h2><small>Calm status for what stays offline</small></div></div>
+            <div class="more-safety-list">\${safetyRows.map(row => \`<div class="more-safety-row"><strong>\${esc(row)}</strong><span>Protected</span></div>\`).join("")}</div>
+          </section>
+
+          <section class="more-card">
+            <div class="more-card-head"><div><h2>If something breaks</h2><small>Return to steady ground</small></div></div>
+            <p class="muted">Use Recovery Mode to return to Today, retry the app, or check App Status.</p>
+            <div class="more-card-actions"><button class="primary" type="button" onclick="location.hash='recovery'">Open Recovery Mode</button><button type="button" onclick="location.hash='today'">Back to Today</button></div>
+          </section>
+        </div>
+      </section>\`;
+    }
+
     function render() {
       const c = counts();
       const queueStatuses = ["draft", "needs_review", "approved", "scheduled", "failed", "blocked_channel_not_connected", "retry_ready", "posted", "manually_posted"];
@@ -22524,7 +22629,7 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const routeAliases = { today:"overview", "le-e":"lee", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap" };
+      const routeAliases = { today:"overview", "le-e":"lee", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings" };
       const normalizedPage = routeAliases[requestedPage] || requestedPage;
       const knownPages = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "overview";
@@ -22555,7 +22660,7 @@ function htmlShell() {
         \${safeRenderModule("partner-hub", () => sectionLandingPageHtml(pageClass, "partner-hub"))}
         \${safeRenderModule("production", () => productionWorkspaceHtml(pageClass))}
         \${safeRenderModule("proof", () => proofWorkspaceHtml(pageClass))}
-        \${safeRenderModule("more", () => sectionLandingPageHtml(pageClass, "more"))}
+        \${safeRenderModule("more", () => moreWorkspaceHtml(pageClass))}
         \${safeRenderModule("growth-inbox", () => growthInboxPageHtml(pageClass))}
         \${safeRenderModule("tasks", () => ["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId) ? tasksPageHtml(pageClass, pageId) : "")}
         \${safeRenderModule("production-activation-rcap", () => pageId === "production-activation-rcap" ? rcapReviewWorkspaceHtml(pageClass) : "")}
