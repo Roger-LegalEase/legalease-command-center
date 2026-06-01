@@ -70,7 +70,7 @@ for (const [route, label] of [
 assert(partnersPage.includes("Partners"), "#partners should render the Partners page");
 assert(proofPage.includes("Metrics / KPIs"), "#metrics/#kpis should render Metrics / KPIs inside Proof");
 assert(!proofPage.includes("RCAP Program Review"), "Proof / Metrics should not render RCAP content");
-assert(safeMode.includes('<h1 class="big-title">Recovery Mode</h1>'), "#safe-mode should render Recovery Mode");
+assert(safeMode.includes("<h1>Recovery Mode</h1>") || safeMode.includes('<h1 class="big-title">Recovery Mode</h1>'), "#safe-mode should render Recovery Mode");
 
 for (const block of [partnersPage, sectionConfig]) {
   assert(block.includes("RCAP Program"), "Partners/More surfaces should include RCAP Program access");

@@ -13681,6 +13681,25 @@ function htmlShell() {
     .more-safety-row span { color:var(--accent-hover); font-weight:850; white-space:nowrap; }
     @media (max-width:1180px) { .more-summary-grid,.more-utility-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .more-hero,.more-bottom-grid { grid-template-columns:1fr; } .more-actions { justify-content:flex-start; } }
     @media (max-width:760px) { .more-workspace { padding:18px 16px 96px; } .more-summary-grid,.more-utility-grid { grid-template-columns:1fr; } .more-card-head,.more-safety-row { align-items:flex-start; flex-direction:column; } }
+    .support-workspace { display:grid; gap:18px; width:100%; max-width:1040px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
+    .support-workspace * { box-sizing:border-box; min-width:0; }
+    .support-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
+    .support-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
+    .support-hero p { margin:8px 0 0; max-width:720px; color:var(--text-secondary); font-size:15px; line-height:1.45; }
+    .support-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
+    .support-actions button { min-height:38px; padding:0 14px; font-size:13px; }
+    .support-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:18px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:14px; min-width:0; overflow:hidden; }
+    .support-card h2 { margin:0; color:var(--text-primary); font-size:22px; line-height:1.15; letter-spacing:-.01em; }
+    .support-status-list { display:grid; gap:9px; }
+    .support-status-row { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:11px 12px; display:flex; justify-content:space-between; gap:12px; align-items:center; color:var(--text-secondary); font-size:13px; line-height:1.3; }
+    .support-status-row strong { color:var(--text-primary); }
+    .support-status-row span { color:var(--accent-hover); font-weight:850; text-align:right; }
+    .support-checklist { margin:0; padding:0; list-style:none; counter-reset:support-step; display:grid; gap:9px; }
+    .support-checklist li { counter-increment:support-step; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:11px 12px 11px 42px; color:var(--text-secondary); font-size:13px; line-height:1.4; position:relative; }
+    .support-checklist li::before { content:counter(support-step); position:absolute; left:12px; top:10px; width:20px; height:20px; border-radius:999px; display:grid; place-items:center; background:var(--accent); color:#fff; font-size:11px; font-weight:900; }
+    .support-details summary { cursor:pointer; color:var(--accent-hover); font-weight:850; }
+    @media (max-width:920px) { .support-hero { grid-template-columns:1fr; } .support-actions { justify-content:flex-start; } }
+    @media (max-width:760px) { .support-workspace { padding:18px 16px 96px; } .support-status-row { flex-direction:column; align-items:flex-start; } .support-status-row span { text-align:left; } }
     @media (max-width:1180px) { .proof-summary-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .proof-main-grid,.proof-hero,.proof-two-grid { grid-template-columns:1fr; } .proof-actions { justify-content:flex-start; } }
     @media (max-width:760px) { .proof-workspace { padding:18px 16px 96px; } .proof-summary-grid,.proof-metric-grid { grid-template-columns:1fr; } }
     @media (max-width:1100px) { .growth-summary-grid,.growth-board { grid-template-columns:repeat(2,minmax(0,1fr)); } .growth-main-grid,.growth-hero { grid-template-columns:1fr; } .growth-hero-actions { justify-content:flex-start; } }
@@ -13867,47 +13886,44 @@ function htmlShell() {
       state = safeBootFallbackState(details.reason || details.module || "state_fetch_failed");
       const app = document.querySelector("#app");
       if (!app) return;
-      const message = details.message || "The app loaded a safe version so you can get back to work.";
       app.innerHTML = \`
-        <section id="safe-mode" class="page-section active">
-          <div class="panel hero-panel">
-            <div class="eyebrow">Recovery Mode</div>
-            <h1 class="big-title">Recovery Mode</h1>
-            <p class="big-copy">\${esc(message)}</p>
-            <div class="card-actions" style="margin-top:14px">
-              <button class="primary" type="button" onclick="safeBootActive=false; location.hash='overview'; window.load && window.load()">Back to Today</button>
+        <section id="safe-mode" class="page-section active support-workspace lee-bubble-safe-space">
+          <section class="support-hero">
+            <div>
+              <div class="eyebrow">Recovery Mode</div>
+              <h1 class="big-title">Recovery Mode</h1>
+              <p>Use this if something breaks or the full app does not load.</p>
+            </div>
+            <div class="support-actions">
+              <button class="primary" type="button" onclick="safeBootActive=false; location.hash='today'; window.load && window.load()">Back to Today</button>
               <button type="button" onclick="retryFullStateLoad()">Try full app again</button>
-              <button type="button" onclick="safeBootActive=false; location.hash='os-health'">Open App Status</button>
+              <button type="button" onclick="safeBootActive=false; location.hash='app-status'">Open App Status</button>
               <button type="button" onclick="lockCommandCenter()">Sign out</button>
             </div>
-          </div>
-          <div class="grid two section">
-            <section class="panel">
-              <div class="eyebrow">Access</div>
-              <h2>The app is protected</h2>
-              <p class="muted">Owner access is still required. Protected actions stay unavailable until the full app state loads.</p>
-              <div class="metric-table">
-                <div class="metric-row"><span>Protected access</span><strong>\${stateFetchDiagnostics.authTokenPresent ? "On" : "Needs sign-in"}</strong></div>
-                <div class="metric-row"><span>Publishing</span><strong>Off</strong></div>
-                <div class="metric-row"><span>External actions</span><strong>Off</strong></div>
-              </div>
-            </section>
-            <section class="panel">
-              <div class="eyebrow">Server health</div>
-              <h2>App status</h2>
-              <div id="safeModeHealth" class="metric-table"><div class="metric-row"><span>/api/health</span><strong>Checking...</strong></div></div>
-              <div class="card-actions" style="margin-top:12px">
-                <button type="button" onclick="fetchSafeModeHealth()">Refresh status</button>
-                <button type="button" onclick="safeBootActive=false; location.hash='smoke-test'">Open Self-Check</button>
-              </div>
-            </section>
-          </div>
-          <details class="panel section">
+          </section>
+
+          <section class="support-card">
+            <h2>Get back to steady ground.</h2>
+            <ol class="support-checklist">
+              <li>Go back to Today.</li>
+              <li>Try the full app again.</li>
+              <li>Check App Status.</li>
+              <li>If the issue continues, note the page and button that failed.</li>
+            </ol>
+            <div class="support-status-list">
+              <div class="support-status-row"><strong>Publishing: Off</strong><span>Protected</span></div>
+              <div class="support-status-row"><strong>External actions: Off</strong><span>Protected</span></div>
+            </div>
+          </section>
+
+          <details class="support-card support-details">
             <summary>Show advanced details</summary>
             <div class="metric-table" style="margin-top:14px">\${safeDiagnosticRows(stateFetchDiagnostics)}</div>
+            <div id="safeModeHealth" class="metric-table" style="margin-top:14px"><div class="metric-row"><span>/api/health</span><strong>Not checked yet</strong></div></div>
             <pre class="code-block">\${esc(JSON.stringify(stateFetchDiagnostics, null, 2))}</pre>
           </details>
         </section>
+        \${typeof leeBubbleHtml === "function" ? leeBubbleHtml() : ""}
       \`;
       fetchSafeModeHealth();
     }
@@ -19583,75 +19599,90 @@ function htmlShell() {
       const health = cockpitOsHealthRecord();
       const hardening = health.auth_hardening || {};
       const smoke = health.smoke_test_status || buildSmokeTestStatus(state, { commit_hash: state.runtime?.commitHash || "" });
-      return \`<section id="os-health" class="\${pageClass("os-health")} command-page section-page lee-bubble-safe-space">
-        <div class="panel hero-panel">
-          <div class="eyebrow">Trust Center</div>
-          <h1 class="big-title">App Status</h1>
-          <p class="muted">Plain-English status for what is connected, stale, unverified, or not safe to trust yet. This page does not run shell tests from the browser and does not trigger external actions.</p>
-          <div class="card-actions">
-            <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="refreshOsHealth()">Refresh App Status</button>
+      const databaseStatus = supabaseHealth?.connected || health.connection_health?.supabase_db?.status === "connected" ? "Connected" : "Needs setup";
+      const imageGenerationStatus = state.runtime?.openAIConfigured || health.connection_health?.openai?.status === "configured" ? "Ready" : "Not connected";
+      const statusRows = [
+        ["Publishing: Off", "Protected"],
+        ["Email sending: Off", "Protected"],
+        ["Live social posting: Off", "Protected"],
+        ["Calendar writes: Off", "Protected"],
+        ["External actions: Off", "Protected"],
+        ["Owner access: Protected", "Owner only"],
+        ["Database:", databaseStatus],
+        ["Image generation:", imageGenerationStatus]
+      ];
+      return \`<section id="os-health" class="\${pageClass("os-health")} support-workspace lee-bubble-safe-space">
+        <section class="support-hero">
+          <div>
+            <div class="eyebrow">App Status</div>
+            <h1>App Status</h1>
+            <p>Check whether the Command Center is healthy, protected, and safe to use.</p>
           </div>
-        </div>
-        <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Status Summary</h2><span class="badge info">Publishing is off</span></div>
-          <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>What is safe to trust</h3>\${memoryListHtml((health.summary?.safe_to_trust || []).map(title => ({ title, detail:"Verified by current OS snapshot." })), "Nothing saved yet.", 6)}</section>
-            <section class="operating-memory-tile"><h3>What needs attention</h3>\${memoryListHtml((health.summary?.needs_attention || []).map(title => ({ title, detail:"Needs review." })), "No saved warnings.", 6)}</section>
-            <section class="operating-memory-tile"><h3>What should not be trusted yet</h3>\${memoryListHtml((health.summary?.do_not_trust_yet || []).map(title => ({ title, detail:"Do not rely on this until resolved." })), "Nothing flagged.", 6)}</section>
-            <section class="operating-memory-tile"><h3>Next action</h3><ul><li>\${esc(health.summary?.next_operator_action || "Refresh App Status.")}</li></ul></section>
-          </div>
-        </section>
-        <section class="panel"><div class="simple-panel-head"><h2>Connection Health</h2><span class="badge info">\${esc(health.overall_health || "not_recorded")}</span></div>\${healthStatusGridHtml(health.connection_health || {})}</section>
-        <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Access Protection</h2><span class="badge info">\${esc(plainOperatorState(hardening.endpoint_protection?.status || "not_checked"))}</span></div>
-          <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>Endpoint protection status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.endpoint_protection?.status || "not_checked"))}</strong><br><span>\${esc(hardening.endpoint_protection?.protected_count || 0)} protected endpoint(s), \${esc(hardening.endpoint_protection?.public_safe_count || 0)} public-safe endpoint(s).</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Secret leakage status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.secret_leakage?.status || "clean"))}</strong><br><span>\${esc(hardening.secret_leakage?.note || "No secret response values are exposed by hardening checks.")}</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Forbidden action guard status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.forbidden_action_guard?.status || "blocked"))}</strong><br><span>\${esc(hardening.forbidden_action_guard?.no_external_actions_confirmation || "Forbidden external actions remain blocked.")}</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Last auth hardening check</h3><ul><li>\${esc(formatDateTime(hardening.last_auth_hardening_check) || "Not recorded")}</li></ul></section>
+          <div class="support-actions">
+            <button class="primary" type="button" onclick="refreshOsHealth()">Refresh Status</button>
+            <button type="button" onclick="location.hash='recovery'">Open Recovery Mode</button>
+            <button type="button" onclick="location.hash='today'">Back to Today</button>
           </div>
         </section>
-        <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Team Roles</h2><span class="badge info">\${esc(plainOperatorState(health.role_system_status?.status || "protected"))}</span></div>
-          <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>Role system status</h3><ul><li><strong>\${esc(plainOperatorState(health.role_system_status?.status || "protected"))}</strong><br><span>\${esc(health.role_system_status?.role_protection_status || "enforced")}</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Current role</h3><ul><li>\${esc(plainOperatorState(health.role_system_status?.current_role || "owner"))}</li></ul></section>
-            <section class="operating-memory-tile"><h3>Role protection status</h3><ul><li>\${esc(health.role_system_status?.protected_mode === false ? "Needs review" : "Owner-token auth plus role capabilities are enforced.")}</li></ul></section>
-            <section class="operating-memory-tile"><h3>Warnings</h3>\${memoryListHtml((health.role_system_status?.warnings || []).map(item => ({ title:item.title, detail:item.detail })), "No role warnings.", 4)}</section>
-          </div>
+
+        <section class="support-card">
+          <h2>Command Center is protected</h2>
+          <div class="support-status-list">\${statusRows.map(([label, value]) => \`<div class="support-status-row"><strong>\${esc(label)}</strong><span>\${esc(value)}</span></div>\`).join("")}</div>
         </section>
-        <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Self-Check Status</h2><span class="badge info">\${esc(plainOperatorState(smoke.last_status || "not_started"))}</span></div>
-          <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>Last self-check status</h3><ul><li><strong>\${esc(plainOperatorState(smoke.last_status || "not_started"))}</strong><br><span>\${esc(formatDateTime(smoke.last_run_timestamp) || "Not recorded")}</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Failed self-check count</h3><ul><li>\${esc(smoke.failed_count || 0)} failed step(s)</li></ul></section>
-            <section class="operating-memory-tile"><h3>Deploy coverage</h3><ul><li>\${esc(smoke.warning || "Self-check is current for the latest known commit or no commit is recorded.")}</li></ul></section>
-            <section class="operating-memory-tile"><h3>Next action</h3><ul><li><a href="#smoke-test">Open Self-Check</a></li></ul></section>
-          </div>
-        </section>
-        <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Proof Status</h2><span class="badge info">\${esc(health.evidence_room_status?.open_review_items || 0)} open review</span></div>
-          <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>Proof status</h3><ul><li><strong>\${esc(health.evidence_room_status?.total_evidence_items || 0)} proof item(s)</strong><br><span>\${esc(health.evidence_room_status?.recent_evidence_items || 0)} recent item(s)</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Latest proof summary</h3><ul><li>\${esc(formatDateTime(health.evidence_room_status?.latest_evidence_summary_timestamp) || "Not recorded")}</li></ul></section>
-            <section class="operating-memory-tile"><h3>Missing proof warnings</h3>\${memoryListHtml((health.missing_evidence_warnings || []).map(title => ({ title, detail:"Review in Proof." })), "No missing proof warnings.", 4)}</section>
-            <section class="operating-memory-tile"><h3>Stale proof warnings</h3>\${memoryListHtml((health.stale_evidence_warnings || []).map(title => ({ title, detail:"Refresh proof when work moves." })), "No stale proof warnings.", 4)}</section>
-          </div>
-        </section>
-        <section class="panel"><div class="simple-panel-head"><h2>Workflow Status</h2><span class="badge info">Internal workflows</span></div>\${healthStatusGridHtml(health.workflow_health || {})}</section>
-        <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Data Freshness</h2><span class="badge info">Last saved signals</span></div>
-          <div class="operating-memory-grid">\${Object.entries(health.data_freshness || {}).map(([key, value]) => \`<section class="operating-memory-tile"><h3>\${esc(plainOperatorState(key))}</h3><ul><li>\${esc(formatDateTime(value) || "Not recorded")}</li></ul></section>\`).join("")}</div>
-        </section>
-        <section class="panel">
-          <div class="simple-panel-head"><h2>Trust Warnings</h2><span class="badge info">\${esc((health.trust_warnings || []).length)} warning(s)</span></div>
-          <div class="memory-evidence-grid">\${(health.trust_warnings || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Warning")}</strong><span class="muted">\${esc(item.detail || "Needs attention.")}</span></article>\`).join("") || '<div class="empty">No saved trust warnings.</div>'}</div>
-        </section>
-        <section class="panel">
-          <div class="simple-panel-head"><h2>Test Status</h2><span class="badge info">\${esc(health.self_test_status?.last_known_status || "last known not recorded")}</span></div>
-          <div class="memory-evidence-grid">\${(health.self_test_status?.checklist || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.command)}</strong><span class="muted">\${esc(plainOperatorState(item.status || "last_known_not_recorded"))}</span></article>\`).join("") || '<div class="empty">No self-test checklist saved yet.</div>'}</div>
-        </section>
+
+        <details class="support-card support-details">
+          <summary>Show advanced details</summary>
+          <section class="panel" style="margin-top:14px"><div class="simple-panel-head"><h2>Connection Health</h2><span class="badge info">\${esc(health.overall_health || "not_recorded")}</span></div>\${healthStatusGridHtml(health.connection_health || {})}</section>
+          <section class="panel operating-memory-card">
+            <div class="simple-panel-head"><h2>Access Protection</h2><span class="badge info">\${esc(plainOperatorState(hardening.endpoint_protection?.status || "not_checked"))}</span></div>
+            <div class="operating-memory-grid">
+              <section class="operating-memory-tile"><h3>Endpoint protection status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.endpoint_protection?.status || "not_checked"))}</strong><br><span>\${esc(hardening.endpoint_protection?.protected_count || 0)} protected endpoint(s), \${esc(hardening.endpoint_protection?.public_safe_count || 0)} public-safe endpoint(s).</span></li></ul></section>
+              <section class="operating-memory-tile"><h3>Secret leakage status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.secret_leakage?.status || "clean"))}</strong><br><span>\${esc(hardening.secret_leakage?.note || "No secret response values are exposed by hardening checks.")}</span></li></ul></section>
+              <section class="operating-memory-tile"><h3>Forbidden action guard status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.forbidden_action_guard?.status || "blocked"))}</strong><br><span>\${esc(hardening.forbidden_action_guard?.no_external_actions_confirmation || "Forbidden external actions remain blocked.")}</span></li></ul></section>
+              <section class="operating-memory-tile"><h3>Last auth hardening check</h3><ul><li>\${esc(formatDateTime(hardening.last_auth_hardening_check) || "Not recorded")}</li></ul></section>
+            </div>
+          </section>
+          <section class="panel operating-memory-card">
+            <div class="simple-panel-head"><h2>Team Roles</h2><span class="badge info">\${esc(plainOperatorState(health.role_system_status?.status || "protected"))}</span></div>
+            <div class="operating-memory-grid">
+              <section class="operating-memory-tile"><h3>Role system status</h3><ul><li><strong>\${esc(plainOperatorState(health.role_system_status?.status || "protected"))}</strong><br><span>\${esc(health.role_system_status?.role_protection_status || "enforced")}</span></li></ul></section>
+              <section class="operating-memory-tile"><h3>Current role</h3><ul><li>\${esc(plainOperatorState(health.role_system_status?.current_role || "owner"))}</li></ul></section>
+              <section class="operating-memory-tile"><h3>Role protection status</h3><ul><li>\${esc(health.role_system_status?.protected_mode === false ? "Needs review" : "Owner-token auth plus role capabilities are enforced.")}</li></ul></section>
+              <section class="operating-memory-tile"><h3>Warnings</h3>\${memoryListHtml((health.role_system_status?.warnings || []).map(item => ({ title:item.title, detail:item.detail })), "No role warnings.", 4)}</section>
+            </div>
+          </section>
+          <section class="panel operating-memory-card">
+            <div class="simple-panel-head"><h2>Self-Check Status</h2><span class="badge info">\${esc(plainOperatorState(smoke.last_status || "not_started"))}</span></div>
+            <div class="operating-memory-grid">
+              <section class="operating-memory-tile"><h3>Last self-check status</h3><ul><li><strong>\${esc(plainOperatorState(smoke.last_status || "not_started"))}</strong><br><span>\${esc(formatDateTime(smoke.last_run_timestamp) || "Not recorded")}</span></li></ul></section>
+              <section class="operating-memory-tile"><h3>Failed self-check count</h3><ul><li>\${esc(smoke.failed_count || 0)} failed step(s)</li></ul></section>
+              <section class="operating-memory-tile"><h3>Deploy coverage</h3><ul><li>\${esc(smoke.warning || "Self-check is current for the latest known commit or no commit is recorded.")}</li></ul></section>
+              <section class="operating-memory-tile"><h3>Next action</h3><ul><li><a href="#smoke-test">Open Self-Check</a></li></ul></section>
+            </div>
+          </section>
+          <section class="panel operating-memory-card">
+            <div class="simple-panel-head"><h2>Proof Status</h2><span class="badge info">\${esc(health.evidence_room_status?.open_review_items || 0)} open review</span></div>
+            <div class="operating-memory-grid">
+              <section class="operating-memory-tile"><h3>Proof status</h3><ul><li><strong>\${esc(health.evidence_room_status?.total_evidence_items || 0)} proof item(s)</strong><br><span>\${esc(health.evidence_room_status?.recent_evidence_items || 0)} recent item(s)</span></li></ul></section>
+              <section class="operating-memory-tile"><h3>Latest proof summary</h3><ul><li>\${esc(formatDateTime(health.evidence_room_status?.latest_evidence_summary_timestamp) || "Not recorded")}</li></ul></section>
+              <section class="operating-memory-tile"><h3>Missing proof warnings</h3>\${memoryListHtml((health.missing_evidence_warnings || []).map(title => ({ title, detail:"Review in Proof." })), "No missing proof warnings.", 4)}</section>
+              <section class="operating-memory-tile"><h3>Stale proof warnings</h3>\${memoryListHtml((health.stale_evidence_warnings || []).map(title => ({ title, detail:"Refresh proof when work moves." })), "No stale proof warnings.", 4)}</section>
+            </div>
+          </section>
+          <section class="panel"><div class="simple-panel-head"><h2>Workflow Status</h2><span class="badge info">Internal workflows</span></div>\${healthStatusGridHtml(health.workflow_health || {})}</section>
+          <section class="panel operating-memory-card">
+            <div class="simple-panel-head"><h2>Data Freshness</h2><span class="badge info">Last saved signals</span></div>
+            <div class="operating-memory-grid">\${Object.entries(health.data_freshness || {}).map(([key, value]) => \`<section class="operating-memory-tile"><h3>\${esc(plainOperatorState(key))}</h3><ul><li>\${esc(formatDateTime(value) || "Not recorded")}</li></ul></section>\`).join("")}</div>
+          </section>
+          <section class="panel">
+            <div class="simple-panel-head"><h2>Trust Warnings</h2><span class="badge info">\${esc((health.trust_warnings || []).length)} warning(s)</span></div>
+            <div class="memory-evidence-grid">\${(health.trust_warnings || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Warning")}</strong><span class="muted">\${esc(item.detail || "Needs attention.")}</span></article>\`).join("") || '<div class="empty">No saved trust warnings.</div>'}</div>
+          </section>
+          <section class="panel">
+            <div class="simple-panel-head"><h2>Test Status</h2><span class="badge info">\${esc(health.self_test_status?.last_known_status || "last known not recorded")}</span></div>
+            <div class="memory-evidence-grid">\${(health.self_test_status?.checklist || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.command)}</strong><span class="muted">\${esc(plainOperatorState(item.status || "last_known_not_recorded"))}</span></article>\`).join("") || '<div class="empty">No self-test checklist saved yet.</div>'}</div>
+          </section>
+        </details>
       </section>\`;
     }
 
