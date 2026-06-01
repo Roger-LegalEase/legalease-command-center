@@ -89,7 +89,8 @@ assert.equal(Object.values(readyState.runtime.livePostingGates).filter(gate => g
 
 assert.match(server, /function rcapReviewQueueHtml\(\)/, "Cockpit Review Queue renderer should exist.");
 assert.match(server, /RCAP Review Queue/, "Cockpit should render RCAP Review Queue.");
-assert.match(server, /Handoff Readiness Summary/, "Workspace should render handoff readiness summary.");
+assert.match(server, /Review Packet/, "Workspace should render review packet summary.");
+assert.match(server, /Next Steps/, "Workspace should render next steps.");
 assert.match(server, /markRcapReviewState/, "Workspace controls should call state-only review transition handler.");
 assert.match(server, /\/api\/production-activation\/rcap\/review-state/, "Review state API endpoint should exist.");
 assert.match(server, /review_state/, "Workspace should render review states.");

@@ -1,0 +1,97 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const source = readFileSync(join(process.cwd(), "scripts", "preview-server.mjs"), "utf8");
+
+function functionBlock(name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  assert(start >= 0, `${name} should exist`);
+  const rest = source.slice(start);
+  const next = rest.slice(1).search(/\n    function [a-zA-Z0-9_$]+\(/);
+  return next > 0 ? rest.slice(0, next + 1) : rest;
+}
+
+const production = functionBlock("productionWorkspaceHtml");
+
+for (const required of [
+  "Campaign Upload",
+  "Upload a spreadsheet and turn it into a 30-day production queue.",
+  "campaign-upload-input",
+  "accept=\".csv,.xlsx",
+  "Upload Spreadsheet",
+  "Download Template",
+  "Upload plan",
+  "Review posts",
+  "Generate images",
+  "Approve schedule",
+  "Uploads create internal drafts only.",
+  "Nothing gets posted.",
+  "Nothing gets scheduled on social platforms.",
+  "You approve before anything moves forward.",
+  "CSV upload is ready. XLSX support can be added next.",
+  "View template details",
+  "View Wilma rules",
+  "View overlay text options",
+  "Import Preview",
+  "Platform",
+  "Caption Preview",
+  "Image Plan",
+  "Wilma",
+  "Approval",
+  "This file needs Date, Platform, and Caption columns before it can be imported.",
+  "Confirm Import",
+  "Fix Issues",
+  "Cancel",
+  "Confirm Import creates internal drafts only.",
+  "Creative Recommendations",
+  "The Command Center recommends image direction, Wilma usage, and overlay text after import.",
+  "Nothing has been published by the OS"
+]) {
+  assert(production.includes(required), `Production Campaign Upload should include ${required}`);
+}
+
+for (const forbidden of [
+  "Time, Platform, Campaign, Post Type, Topic, Caption, Headline",
+  "Creative Recommendation Engine",
+  "post_type",
+  "image_direction",
+  "overlay_text",
+  "wilma_preference",
+  "approval_owner",
+  "use_wilma",
+  "wilma_optional",
+  "wilma_helper",
+  "do_not_use_wilma",
+  "never_use_wilma",
+  "overlayHeadline",
+  "overlaySubhead",
+  "overlayCTA",
+  "overlayPlacement",
+  "overlayAlignment",
+  "overlayStyle",
+  "Post Now",
+  "Publish Now",
+  "OAuth",
+  "token",
+  "webhook",
+  "API status",
+  "external action dispatcher",
+  "live gates"
+]) {
+  assert(!production.includes(forbidden), `Production Campaign Upload should not include ${forbidden}`);
+}
+
+assert(!production.includes("disabled title=\"Spreadsheet upload"), "Upload Spreadsheet should not be disabled");
+assert(source.includes("function parseCampaignCsvText"), "CSV parsing should be implemented for Campaign Upload");
+assert(source.includes("function handleCampaignSpreadsheetUpload"), "Campaign Upload should handle file selection");
+assert(source.includes("window.handleCampaignSpreadsheetUpload = handleCampaignSpreadsheetUpload"), "Upload handler should be callable from the file input");
+assert(source.includes("state.posts = [...imported"), "Confirm Import should create internal draft records only");
+assert(source.includes(".production-workspace { display:grid; gap:18px; width:100%; max-width:min(1180px, calc(100vw - 32px));"), "Production workspace should be contained within the viewport");
+assert(source.includes(".campaign-upload-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,.8fr);"), "Campaign Upload grid should use safe responsive columns");
+assert(source.includes(".campaign-upload-row { display:grid; grid-template-columns:minmax(60px,.72fr)"), "Campaign Upload preview rows should fit inside the card");
+assert(source.includes("liveGatesCount:0"), "Safe fallback state should keep liveGatesCount at 0");
+
+console.log("production campaign upload tests passed.");

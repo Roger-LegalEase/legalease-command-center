@@ -180,19 +180,19 @@ assert(health.data_freshness.latest_evidence_summary_timestamp, "OS Health shoul
 assert("missing_evidence_warnings" in health, "OS Health should include missing evidence warnings.");
 assert("stale_evidence_warnings" in health, "OS Health should include stale evidence warnings.");
 
-assert(serverSource.includes("function cockpitEvidenceRoomHtml"), "Cockpit Evidence Room card must render.");
+assert(serverSource.includes("function cockpitEvidenceRoomHtml"), "Cockpit Proof card must render.");
 assert(serverSource.includes("evidenceRoomPageHtml"), "#evidence-room route renderer must exist.");
 assert(serverSource.includes("\"evidence-room\""), "#evidence-room route must be registered.");
 assert(serverSource.includes("Proof Overview"), "Proof overview must render.");
-assert(serverSource.includes("Evidence Sources"), "Evidence sources must render.");
-assert(serverSource.includes("Evidence List"), "Evidence list must render.");
+assert(serverSource.includes("Proof Sources"), "Proof sources must render.");
+assert(serverSource.includes("Proof List"), "Proof list must render.");
 assert(serverSource.includes("Data Room Index"), "Data Room index must render.");
-assert(serverSource.includes("Generate proof summary"), "Generate proof summary action must render.");
+assert(serverSource.includes("Generate Proof Summary"), "Generate Proof Summary action must render.");
 assert(serverSource.includes("/api/evidence-room/summary"), "Evidence Summary endpoint must exist.");
 assert(!/evidence-room[\s\S]{0,5000}(send email|publish page|activate dashboard|Partner Journey API|child_process|execCommand|spawn\()/i.test(serverSource), "Evidence Room must not expose external controls or browser shell execution.");
 const evidenceRoomSource = serverSource.match(/function evidenceRoomPageHtml[\s\S]*?function [a-zA-Z0-9]+PageHtml/)?.[0] || "";
-assert(evidenceRoomSource.includes("SOC 2 Readiness"), "Evidence Room must use SOC 2 Readiness language.");
-assert(!/SOC 2 compliant|SOC 2 certified/i.test(evidenceRoomSource), "Evidence Room must not claim SOC 2 compliance or certification.");
+assert(evidenceRoomSource.includes("SOC 2 Readiness"), "Proof page must use SOC 2 Readiness language.");
+assert(!/SOC 2 compliant|SOC 2 certified/i.test(evidenceRoomSource), "Proof page must not claim SOC 2 compliance or certification.");
 assert.equal(generated.summary.no_external_actions_confirmation, "No emails sent, no posts published, no partner pages published, no dashboards activated, no Partner Journey calls, no external systems contacted.", "Evidence Summary must confirm no external actions.");
 
 console.log("Evidence Room tests passed.");

@@ -73,7 +73,7 @@ assert.doesNotMatch(startRouteSnippet, /state:\s*withPublicChannelSetup/, "Activ
 assert.match(startRouteSnippet, /activation_status:\s*rcapActivationStatus/, "Activation start endpoint should return compact activation status.");
 assert.match(server, /rcapActivationClientStatus/, "Cockpit should keep a compact activation status for UI refreshes.");
 assert.match(server, /class="founder-today/, "Founder cockpit should remain the stable daily shell.");
-assert.match(server, /href="#production-activation-rcap"[\s\S]*Launch Checklist/, "Recovery plan link should route to the RCAP launch checklist.");
+assert.match(server, /location\.hash='production-activation-rcap'[\s\S]*RCAP Program Review/, "Recovery plan link should route to the RCAP Program Review workspace.");
 assert.doesNotMatch(server, /layout: cockpit-grid-fixed-v1|nav: topnav-fixed-v1/, "Normal UI should not expose deprecated debug markers.");
 assert.match(server, /liveGatesCount:\s*Object\.values/, "Health endpoint should still report live gates.");
 

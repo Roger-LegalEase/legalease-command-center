@@ -12,7 +12,7 @@ function snippetAround(text, radius = 600) {
   return server.slice(Math.max(0, index - radius), index + text.length + radius);
 }
 
-assert.doesNotMatch(server, /controls:\s*button-audit-v1/, "Normal UI should not expose the old button-audit marker.");
+assert.doesNotMatch(server, /controls:\s*button-audit-v1|shell:\s*app-layout-stable-v1|nav:\s*topnav-fixed-v1/, "Old debug markers should not render in hosted mode.");
 assert.match(server, /function safeControlToast/, "Safe local control status helper should exist.");
 assert.match(server, /review-only-action/, "Review-only disabled action class should exist.");
 assert.match(server, /type="button" onclick="connectGoogle\(\)"/, "Connect Google should be an explicit button, not an accidental submit.");
@@ -23,9 +23,11 @@ assert.match(server, /Manual approval required/, "Review-only controls should ex
 assert.match(server, /Live posting:\s*<strong>\\\$\{liveEnabled \? "Enabled" : "Disabled"\}<\/strong>/, "Live publishing card should show disabled status plainly.");
 assert.match(server, /<button class="review-only-action" disabled aria-disabled="true" title="Manual approval required before live publishing can be enabled.">Enable live publishing<\/button>/, "Enable live publishing must remain disabled/review-only.");
 assert.match(server, /onclick="startRcapActivation\(\)"/, "RCAP activation button should still be wired.");
-assert.match(server, /href="#capture-inbox"/, "Work dropdown inbox link should still exist.");
-assert.match(server, /href="#tasks"/, "Work dropdown task link should still exist.");
-assert.match(server, /href="#settings"/, "Settings navigation should still exist as a secondary control.");
+assert.match(server, /class="nav-top-link" href="#growth" data-nav-section="growth"/, "Growth top nav link should route directly.");
+assert.match(server, /class="nav-top-link" href="#partners" data-nav-section="partners"/, "Partners top nav link should route directly.");
+assert.match(server, /class="nav-top-link" href="#production" data-nav-section="production"/, "Production top nav link should route directly.");
+assert.match(server, /Open RCAP Program/, "RCAP access buttons should use a clear route label.");
+assert.match(server, /Open App Status/, "App Status access should remain available from utility navigation.");
 
 const automationControls = snippetAround("Import controls");
 assert.match(automationControls, /type="button" onclick="connectGoogle\(\)"/, "Automation Connect Google control should be explicit.");

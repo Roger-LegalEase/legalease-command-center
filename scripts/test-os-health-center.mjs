@@ -95,7 +95,7 @@ const saved = saveOsHealthSnapshot(baseState, {
   ownerTokenAuthConfigured: true,
   localFallbackAvailable: true
 });
-assert.equal(saved.state.osHealthSnapshots.length, 1, "Refresh OS Health Snapshot should create one snapshot.");
+assert.equal(saved.state.osHealthSnapshots.length, 1, "Refresh App Status should create one snapshot.");
 assert.equal(saved.state.auditHistory[0].action, "os health snapshot refreshed", "Refresh should create audit entry.");
 assert.equal(saved.state.activityEvents[0].eventType, "OS Health Snapshot refreshed", "Refresh should create activity event.");
 const savedAgain = saveOsHealthSnapshot(saved.state, {
@@ -110,7 +110,7 @@ const savedAgain = saveOsHealthSnapshot(saved.state, {
 });
 assert.equal(savedAgain.state.osHealthSnapshots.length, 1, "Refresh should update today's snapshot instead of duplicating.");
 
-assert(serverSource.includes("function cockpitOsHealthHtml"), "Cockpit OS Health card must render.");
+assert(serverSource.includes("function cockpitOsHealthHtml"), "Cockpit App Status card must render.");
 assert(serverSource.includes("App Status"), "App Status label must exist.");
 assert(serverSource.includes("osHealthPageHtml"), "#os-health route renderer must exist.");
 assert(serverSource.includes("\"os-health\""), "#os-health route must be registered.");

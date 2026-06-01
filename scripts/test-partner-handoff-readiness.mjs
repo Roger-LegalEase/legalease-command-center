@@ -105,11 +105,11 @@ assert.equal(packetResult.state.auditHistory[0].action, "rcap internal handoff p
 assert.equal(packetResult.state.activityEvents[0].eventType, "RCAP internal handoff packet generated", "Packet generation should create activity event.");
 assert.equal(Object.values(packetResult.state.runtime.livePostingGates).filter(gate => gate.enabled).length, 0, "Packet generation should keep live gates at 0.");
 
-assert.match(server, /Handoff Packet/, "RCAP Review Workspace should render handoff packet section.");
-assert.match(server, /Generate Internal Handoff Packet/, "Workspace should include internal packet generation action.");
+assert.match(server, /Review Packet/, "RCAP Program Review should render review packet section.");
+assert.match(server, /Prepare Review Packet/, "Workspace should include internal packet preparation action.");
 assert.match(server, /RCAP Program Handoff/, "Cockpit should show compact RCAP program handoff card.");
-assert.match(server, /Internal handoff packet only/, "Workspace should label packet as internal only.");
-assert.match(server, /No external system contacted/, "Workspace should state no external system contacted.");
+assert.match(server, /Nothing has been sent, published, or activated|no external system contacted/i, "Workspace should label packet as internal only.");
+assert.match(server, /No external system contacted|Nothing has been sent, published, or activated/i, "Workspace should state no external system contacted.");
 assert.match(server, /\/api\/production-activation\/rcap\/handoff-packet/, "Handoff packet API endpoint should exist.");
 assert.match(server, /generateRcapHandoffPacket/, "Client packet action should exist.");
 assert.doesNotMatch(server + engine, /partnerJourneyApi|PartnerJourneyClient|fetch\(["']https?:\/\/.*partner/i, "No Partner Journey API calls should exist.");

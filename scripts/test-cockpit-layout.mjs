@@ -10,22 +10,27 @@ const overviewMatch = server.match(/function commandCenterOverviewHtml\(posts\) 
 assert.ok(overviewMatch, "Today overview renderer should be present.");
 const overview = overviewMatch[0];
 
-assert.match(overview, /class="founder-today/, "Today should use the founder-simple shell.");
-assert.match(overview, /class="founder-hero"/, "Today should have a clear header.");
-assert.match(overview, /class="founder-card" aria-label="Today's Focus"/, "Today should render focus first.");
-assert.match(overview, /class="founder-card" aria-label="Top 3"/, "Today should render Top 3.");
-assert.match(overview, /class="founder-card quick-capture" aria-label="Quick Capture"/, "Today should render one Quick Capture card.");
-assert.match(overview, /class="founder-card" aria-label="Tasks"/, "Today should render one Tasks card.");
-assert.match(overview, /class="founder-card" aria-label="Decisions and Blockers"/, "Today should render one decisions/blockers card.");
-assert.match(overview, /socialContentCardHtml\(\)/, "Today should render one compact Social / Content card.");
-assert.match(server, /class="founder-card social-content-card" aria-label="Social \/ Content"/, "Social / Content card markup should exist.");
-assert.match(overview, /class="founder-card" aria-label="What Moved"/, "Today should render movement summary.");
-assert.match(overview, /class="founder-card" aria-label="Tomorrow Plan"/, "Today should render Tomorrow Plan.");
-assert.match(overview, /class="founder-card" aria-label="Tiny App Status"/, "Today should render a small app status card.");
-assert.match(server, /\.founder-today\s*\{[^}]*max-width:\s*1120px[^}]*display:grid/s, "Founder Today should be a constrained grid.");
-assert.match(server, /\.founder-snapshot-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,minmax\(0,1fr\)\)/s, "Tasks snapshot should use stable four-column metrics.");
-assert.match(server, /@media\s*\(max-width:760px\)[\s\S]*\.founder-snapshot-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,minmax\(0,1fr\)\)/s, "Tasks snapshot should adapt on mobile.");
-assert.doesNotMatch(overview, /cockpit-rail|cockpit-layout|Threads Open|Parked|layout: cockpit-grid-fixed-v1/, "Today should not expose the old dense cockpit rail.");
-assert.doesNotMatch(server, /word-break:\s*break-all/, "Layout must not force clipped vertical text.");
+assert.match(overview, /class="operator-v31"/, "Today should render the operator-v31 shell.");
+assert.match(overview, /class="cockpit-page"/, "Today should have a centered cockpit-page wrapper.");
+assert.match(overview, /class="cockpit-layout"/, "Today should render a cockpit layout wrapper.");
+assert.match(overview, /class="cockpit-main"/, "Today should render a main cockpit column.");
+assert.match(overview, /class="cockpit-rail"/, "Today should render a right cockpit rail.");
+assert.match(server, /\.operator-v31 \.cockpit-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*380px/s, "Cockpit layout CSS should use minmax(0, 1fr) plus a 380px rail.");
+assert.match(server, /\.operator-v31 \.cockpit-main\s*\{[^}]*min-width:\s*0/s, "Cockpit main should have min-width: 0.");
+assert.match(server, /\.operator-v31 \.cockpit-rail\s*\{[^}]*position:\s*static/s, "Cockpit rail should be statically positioned.");
+const nowTitleRule = server.match(/\.operator-v31 \.now-block h1,[\s\S]*?\.operator-v31 \.now-headline\s*\{(?<body>[^}]*)\}/)?.groups?.body || "";
+assert.match(nowTitleRule, /white-space:\s*normal/, "Now block title should allow normal wrapping.");
+assert.doesNotMatch(nowTitleRule, /white-space:\s*nowrap/, "Now block title must not use nowrap.");
+assert.doesNotMatch(server, /layout: cockpit-grid-fixed-v1/, "Today footer should not expose the old cockpit layout marker.");
+
+const mainStart = overview.indexOf('<main class="cockpit-main">');
+const railStart = overview.indexOf('<aside class="cockpit-rail">');
+const nowStart = overview.indexOf('<section class="now-block"');
+const quickStart = overview.indexOf("cockpitQuickCaptureHtml()");
+const threadsStart = overview.indexOf("Needs Follow-Up");
+assert.ok(mainStart !== -1 && railStart !== -1, "Main and rail columns should both exist.");
+assert.ok(nowStart > mainStart && nowStart < railStart, "Now block should be inside cockpit-main before cockpit-rail.");
+assert.ok(quickStart > railStart, "Quick Capture should be inside cockpit-rail.");
+assert.ok(threadsStart > railStart, "Needs Follow-Up should be inside cockpit-rail.");
 
 console.log("cockpit layout tests passed");

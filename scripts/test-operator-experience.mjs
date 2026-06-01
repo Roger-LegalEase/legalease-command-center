@@ -6,54 +6,85 @@ import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const server = readFileSync(join(here, "preview-server.mjs"), "utf8");
 
-const overviewMatch = server.match(/function commandCenterOverviewHtml\(posts\) \{[\s\S]*?function focusItemsForMode/);
-assert.ok(overviewMatch, "Today renderer should be present.");
-const overview = overviewMatch[0];
-
-assert.match(server, /<nav class="top-nav" aria-label="Primary">/, "Primary navigation should exist.");
-assert.match(server, /href="#overview" data-nav-section="today">Today/, "Today top nav item should be a real route.");
-assert.match(server, /href="#work" data-nav-section="work">Work/, "Work top nav item should be a real route.");
-assert.match(server, /href="#social" data-nav-section="social">Social/, "Social top nav item should be a real route.");
-assert.match(server, /href="#proof" data-nav-section="proof">Proof/, "Proof top nav item should be a real route.");
-assert.match(server, /href="#operator-search" data-nav-section="search">Search/, "Search top nav item should be a real route.");
-assert.doesNotMatch(server.match(/<nav class="top-nav"[\s\S]*?<\/nav>/)?.[0] || "", /Settings/, "Settings should not be a primary nav item.");
-assert.match(server, /href="#settings"/, "Settings should remain reachable secondarily.");
-
-for (const label of [
-  "Today",
-  "Focus on the few things that move the company forward.",
-  "Publishing is off",
-  "App is protected",
-  "Today’s Focus",
-  "Set today’s focus",
-  "Top 3",
-  "Priority 1",
-  "Quick Capture",
-  "Save as task",
-  "Tasks",
-  "Decisions &amp; Blockers",
-  "What Moved",
-  "Tomorrow Plan",
-  "View app status"
-]) {
-  assert.match(overview, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `Today should render ${label}.`);
-}
-
-assert.match(server, /function workPageHtml\(pageClass\)/, "Work hub should exist.");
-assert.match(server, /function socialPageHtml\(pageClass\)/, "Social workspace should exist.");
-assert.match(server, /aria-label="Social \/ Content"/, "Today should include a compact Social / Content card.");
-assert.match(server, /function proofPageHtml\(pageClass\)/, "Proof hub should exist.");
-assert.match(server, /function founderText/, "Founder-facing copy sanitizer should exist.");
-assert.match(server, /function quickCapture\(event\)/, "Quick Capture should have a submit handler.");
-assert.match(server, /api\("\/api\/capture-inbox"/, "Quick Capture should save into the inbox.");
-assert.match(server, /route_task/, "Save as task should route into Tasks.");
-assert.match(server, /function setFounderCaptureType/, "Founder action buttons should focus the single Quick Capture input.");
-assert.match(server, /function founderSetTodayFocus/, "Set today’s focus should be wired.");
-assert.match(server, /function founderPlanTomorrow/, "Plan tomorrow should be wired.");
-assert.match(server, /class="lee-pill"/, "Le-E should remain available as one compact entry point.");
-assert.doesNotMatch(overview, /Triage|RCAP|Production Activation|Operating Memory|Operator Search|OS Health|Data Integrity|Smoke Test|Safe Mode|Handoff Contract|Live gates/, "Today should use founder language.");
-assert.doesNotMatch(overview, /cockpitRcapSignalHtml|cockpitRoleProtectionHtml|cockpitSmokeTestHtml|cockpitDataIntegrityHtml/, "Today should not render deep system cards.");
-assert.doesNotMatch(server, /word-break:\s*break-all/, "Shell should never force one-letter vertical text.");
-assert.doesNotMatch(server, /writing-mode:/, "Shell should not use vertical writing modes.");
+assert.match(server, /function commandCenterOverviewHtml\(posts\)/, "Today surface should replace the old Overview renderer in place.");
+assert.match(server, /function cockpitDailyIntention/, "Today should generate a Le-E daily intention from live operating data.");
+assert.match(server, /function cockpitNowItem/, "Today should derive a dominant Now block from priority work.");
+assert.match(server, /function cockpitTimelineHtml/, "Today should render the v3.1 horizontal flow timeline.");
+assert.match(server, /function cockpitThreadsOpen/, "Today should derive open threads from tasks, inbox, partners, and programs.");
+assert.match(server, /function cockpitParkedItems/, "Today should show parked blocked or waiting items.");
+assert.match(server, /function cockpitPressingHtml/, "Today should turn urgent parked or waiting items into the Pressing rail card.");
+assert.match(server, /function cockpitThisWeekMoved/, "Today should show outcomes moved this week.");
+assert.match(server, /class="operator-v31"/, "Today should use the v3.1 operator cockpit shell.");
+assert.match(server, /class="app-header"/, "Today should include the v3.1 date and clock header.");
+assert.match(server, /id="cockpit-clock"/, "Today should render a live clock target.");
+assert.match(server, /class="app-intention"/, "Today should render the daily intention.");
+assert.match(server, /class="now-block"/, "Today should render the dominant Now block.");
+assert.match(server, /class="now-first"/, "Today should render the Start-with cue.");
+assert.match(server, /START WITH/, "Start-with cue should be explicit.");
+assert.match(server, /class="timeline-card"/, "Today should render the timeline card.");
+assert.match(server, /class="thread"/, "Today should render Needs Follow-Up rows.");
+assert.match(server, /class="pressure-item pressing"/, "Today should render Pressing rows instead of a duplicate parked rail.");
+assert.match(server, /class="moved-row"/, "Today should render This Week Moved rows.");
+assert.match(server, /class="app-footer"/, "Today should render the v3.1 footer gates.");
+assert.match(server, /MADE FOR ROGER/, "Footer should keep the made-for-Roger signature.");
+assert.match(server, /tickCockpitClock/, "Clock should update on an interval.");
+assert.match(server, /setInterval\(tickCockpitClock, 30000\)/, "Clock should refresh every 30 seconds.");
+assert.match(server, /family=Geist:wght@400;500;600;700;800/, "Today should load Geist Sans for the refined operator cockpit.");
+assert.match(server, /font-family:\s*"Geist", Inter/, "Today cockpit should use Geist as the primary font family.");
+assert.match(server, /--bg-primary:\s*#f6f8f8/, "Refined Today palette should use a calm LegalEase shell background.");
+assert.match(server, /--accent:\s*#00A99D/i, "Today accent should use LegalEase teal instead of burnt orange.");
+assert.match(server, /--accent-hover:\s*#047A72/i, "Today accent hover should stay in the LegalEase teal family.");
+assert.doesNotMatch(server, /--accent:\s*#b8501f/i, "Today accent should no longer use burnt orange.");
+assert.doesNotMatch(server, /layout: cockpit-grid-fixed-v1/, "Today footer should not expose the old cockpit layout marker.");
+assert.match(server, /\.operator-v31 \.operator-page,[\s\S]*?\.operator-v31 \.cockpit-page\s*\{[^}]*width:\s*100%[^}]*max-width:\s*1240px[^}]*margin:0 auto[^}]*padding:0 32px[^}]*overflow-x:hidden/s, "Today cockpit should be a centered max-width page container with desktop side padding and no horizontal overflow.");
+assert.match(server, /\.operator-v31 \.cockpit-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*380px/s, "Today grid should use the specified flexible main column and 380px right rail.");
+assert.match(server, /\.operator-v31 \.cockpit-main\s*\{[^}]*min-width:0/s, "Cockpit main should allow shrinking without overflow.");
+assert.match(server, /\.operator-v31 \.cockpit-rail\s*\{[^}]*position:static/s, "Right rail should be static, never an overlay.");
+assert.match(server, /\.operator-v31 \.now-block,[\s\S]*?\.operator-v31 \.app-footer\s*\{[^}]*min-width:\s*0/s, "Now card and cockpit cards should not force columns wider than the grid.");
+assert.match(server, /\.operator-v31 \.now-block h1[\s\S]*?\{[^}]*white-space:\s*normal[^}]*overflow-wrap:\s*break-word[^}]*word-break:\s*normal/s, "Now title should wrap instead of clipping.");
+assert.match(server, /\.thread,\.parked-item,\.moved-row\s*\{[^}]*max-width:100%/s, "Right rail rows should stay inside their card column.");
+assert.match(server, /<main class="cockpit-main">/, "Cockpit should use the requested main column element.");
+assert.doesNotMatch(server, /\.cockpit-rail\s*\{[^}]*position:absolute/s, "Right rail must never be absolutely positioned.");
+assert.match(server, /\.operator-v31 \.cockpit-rail\s*\{[^}]*transform:none/s, "Right rail should explicitly avoid transform positioning.");
+assert.doesNotMatch(server, /\.cockpit-rail\s*\{[^}]*margin-left:-/s, "Right rail must not use negative margins.");
+assert.match(server, /function quickCapture\(event\)/, "Quick Capture should have a dedicated submit handler.");
+assert.match(server, /api\("\/api\/capture-inbox"/, "Quick Capture should create Capture Inbox items.");
+assert.match(server, /Capture with Le-E/, "Quick Capture should use the unified Le-E capture action.");
+assert.match(server, /function focusPageHtml\(pageClass\)/, "Focus Mode page should render through the app shell.");
+assert.match(server, /--le-shell-bg:\s*#EEF2F6/, "Operator shell should use a cooler high-contrast page background token.");
+assert.match(server, /class="nav-top-link" href="#today" data-nav-section="today"/, "Today top nav item should be a real link to #today.");
+assert.match(server, /class="nav-top-link" href="#growth" data-nav-section="growth"/, "Simplified nav should expose Growth as a direct route.");
+assert.match(server, /class="nav-top-link" href="#partners" data-nav-section="partners"/, "Simplified nav should expose Partners as a direct route.");
+assert.match(server, /class="nav-top-link" href="#production" data-nav-section="production"/, "Simplified nav should expose Production as a direct route.");
+assert.match(server, /class="nav-top-link" href="#proof" data-nav-section="proof"/, "Simplified nav should expose Proof as a direct route.");
+assert.match(server, /class="nav-top-link" href="#more" data-nav-section="more"/, "Simplified nav should expose More as a direct route.");
+assert.equal((server.match(/data-nav-section="/g) || []).length, 6, "Top navigation should have exactly six visible sections.");
+const topNav = server.match(/<nav class="top-nav" aria-label="Primary">([\s\S]*?)<\/nav>/)?.[1] || "";
+assert.doesNotMatch(topNav, /<details class="nav-menu">/, "Navigation should not use hover preview menus.");
+assert.doesNotMatch(topNav, /(?:Growth|Partners|Production|Proof|More) Home/, "Navigation should not expose floating Home preview labels.");
+assert.match(server, /function sectionLandingPageHtml\(pageClass, section\)/, "Top-level sections should have compact landing pages.");
+assert.match(server, /id:"growth"/, "Growth landing route should exist.");
+assert.match(server, /id:"partner-hub"/, "Partners landing route should exist.");
+assert.match(server, /id:"production"/, "Production landing route should exist.");
+assert.match(server, /id:"proof"/, "Proof landing route should exist.");
+assert.match(server, /id:"more"/, "More landing route should exist.");
+assert.match(server, /class="lee-pill"/, "Le-E should be available as the v3.1 ambient pill.");
+assert.match(server, /class="lee-panel"/, "Le-E should render the v3.1 compact panel.");
+assert.match(server, /class="lee-pill-dot"/, "Le-E pill should keep the gentle activity dot.");
+assert.match(server, /Inbox Triage/, "Focus Mode should include Inbox Triage.");
+assert.match(server, /Partner Follow-Up/, "Focus Mode should include Partner Follow-Up.");
+assert.match(server, /Content Approval/, "Focus Mode should include Content Approval.");
+assert.match(server, /Proposal Review/, "Focus Mode should include Proposal Review.");
+assert.match(server, /Weekly Report/, "Focus Mode should include Weekly Report.");
+assert.match(server, /Evidence Pack/, "Focus Mode should include Evidence Pack.");
+assert.match(server, /Clear Blockers/, "Focus Mode should include Clear Blockers.");
+assert.match(server, /"focus"/, "Focus route should be included in the render whitelist.");
+assert.doesNotMatch(server, /Overview Approval Summary v1/, "Today should not keep the old Overview approval summary marker.");
+assert.doesNotMatch(server, /overview-approval-queue/, "Today should not render approval queue cards or summary blocks.");
+assert.doesNotMatch(server, /Today’s 3 Priorities/, "Today should not use the old dashboard priority section.");
+assert.doesNotMatch(server, /operator-cockpit-grid/, "Today should not use the previous dashboard grid shell.");
+assert.doesNotMatch(server, /href="#lee">Ask Le-E/, "Top navigation should not expose Ask Le-E.");
+assert.doesNotMatch(server, /word-break:\s*break-all/, "Operator shell should never force one-letter vertical text.");
+assert.doesNotMatch(server, /writing-mode:/, "Operator shell should not use vertical writing modes.");
 
 console.log("operator experience tests passed");

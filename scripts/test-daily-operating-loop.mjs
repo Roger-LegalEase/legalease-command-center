@@ -128,7 +128,9 @@ assert(serverSource.includes("Waiting On"), "Waiting On section must render.");
 assert(serverSource.includes("Decisions Needed"), "Decisions Needed section must render.");
 assert(serverSource.includes("Do Not Touch Today"), "Do Not Touch Today section must render.");
 assert(serverSource.includes("Momentum"), "Momentum section must render.");
-assert(serverSource.includes("cockpitDailyOperatingLoopHtml()"), "Overview must include the Daily Operating Loop.");
+assert(serverSource.includes("function cockpitTodayStandupBoardHtml"), "Today should turn Daily Operating Loop data into the founder standup board.");
+assert(serverSource.includes("cockpitTodayStandupBoardHtml()"), "Overview must include the Today standup board.");
+assert(serverSource.includes("Blockers & Decisions"), "Today standup should include founder-facing blockers and decisions.");
 assert(!/daily-operating-loop[\s\S]{0,2000}(send email|publish page|activate dashboard|enable live)/i.test(serverSource), "Daily Operating Loop must not enable external controls.");
 
 console.log("Daily Operating Loop tests passed.");

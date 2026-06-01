@@ -72,7 +72,6 @@ import { buildSmokeTestChecklist, buildSmokeTestStatus, finishSmokeTestRun, mark
 import { buildEvidenceIndex, buildEvidenceOverview, generateEvidenceSummary, latestEvidenceSummary } from "./evidence-room.mjs";
 import { buildPartnerJourneyHandoffContractPacket, generatePartnerJourneyHandoffContractPreview, handoffContractRequiredArtifactTypes, handoffContractRequiredPartnerFields, handoffContractRequiredTopLevelFields, handoffContractStatus, handoffContractVersion, latestHandoffContractPreview, redactHandoffContractJson, validatePartnerJourneyHandoffContract } from "./partner-journey-handoff-contract.mjs";
 import { applyRoleAssignmentChange, buildRoleSystemStatus, canPerformEndpoint, ensureRoleAssignments, roleCapabilities } from "./roles.mjs";
-import { databaseReadiness } from "../lib/storage/index.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -3833,98 +3832,6 @@ async function markPostManuallyPosted(postId) {
   return { state: nextState, message: "Post archived as manually posted." };
 }
 
-async function createInternalSocialRecord(input = {}) {
-  const now = new Date().toISOString();
-  const body = String(input.body || input.raw_input || "").trim();
-  if (!body) throw new Error("Post text is required.");
-  const type = ["idea", "draft", "ready", "manually_published"].includes(String(input.type || "")) ? input.type : "draft";
-  const status = String(input.status || type || "draft");
-  const post = {
-    id: `social-${crypto.randomUUID().slice(0, 8)}`,
-    type,
-    status,
-    platform: input.channel || input.platform || "manual",
-    channel: input.channel || input.platform || "manual",
-    title: String(input.title || body.slice(0, 80) || "Social post").trim(),
-    hook: "",
-    body,
-    cta: "",
-    hashtags: [],
-    source: input.source || "manual",
-    sourceId: input.sourceId || "",
-    planned_date: input.planned_date || "",
-    scheduledFor: input.scheduledFor || input.planned_date || "",
-    created_at: now,
-    updated_at: now,
-    createdAt: now,
-    updatedAt: now,
-    publishingStatus: "manual_only",
-    externalActionConfirmation: "Publishing is off. Nothing has been published by the OS."
-  };
-  const state = await store.readState();
-  const nextState = analyzeOperations({
-    ...state,
-    posts: [post, ...(state.posts || [])],
-    auditHistory: [{
-      id: `audit-social-${crypto.randomUUID().slice(0, 8)}`,
-      action: "social_record_created",
-      resourceType: "social",
-      resourceId: post.id,
-      actor: "owner_token",
-      timestamp: now,
-      summary: `Social ${type} created internally. Nothing published.`
-    }, ...(state.auditHistory || [])].slice(0, 1000),
-    activityEvents: [{
-      id: `activity-social-${crypto.randomUUID().slice(0, 8)}`,
-      eventType: "Social item saved",
-      title: post.title,
-      summary: "Internal social item saved. Nothing has been published by the OS.",
-      relatedObjectType: "social",
-      relatedObjectId: post.id,
-      createdAt: now
-    }, ...(state.activityEvents || [])].slice(0, 500)
-  });
-  await store.writeState(nextState);
-  return { state: nextState, post, message: type === "idea" ? "Idea saved." : "Draft saved." };
-}
-
-async function updateInternalSocialRecord(id = "", patch = {}, action = "social_record_updated") {
-  const state = await store.readState();
-  const current = (state.posts || []).find((post) => post.id === id);
-  if (!current) throw new Error("Social item not found.");
-  const now = new Date().toISOString();
-  const nextPost = {
-    ...current,
-    ...patch,
-    updated_at: now,
-    updatedAt: now
-  };
-  const nextState = analyzeOperations({
-    ...state,
-    posts: (state.posts || []).map((post) => post.id === id ? nextPost : post),
-    auditHistory: [{
-      id: `audit-social-${crypto.randomUUID().slice(0, 8)}`,
-      action,
-      resourceType: "social",
-      resourceId: id,
-      actor: "owner_token",
-      timestamp: now,
-      summary: "Social item updated internally. Nothing published by the OS."
-    }, ...(state.auditHistory || [])].slice(0, 1000),
-    activityEvents: [{
-      id: `activity-social-${crypto.randomUUID().slice(0, 8)}`,
-      eventType: "Social item updated",
-      title: nextPost.title || "Social item",
-      summary: "Internal social item updated. Nothing has been published by the OS.",
-      relatedObjectType: "social",
-      relatedObjectId: id,
-      createdAt: now
-    }, ...(state.activityEvents || [])].slice(0, 500)
-  });
-  await store.writeState(nextState);
-  return { state: nextState, post: nextPost, message: "Social item updated." };
-}
-
 async function updateManualPerformance(postId, performancePatch = {}) {
   const state = await store.readState();
   const post = state.posts.find((item) => item.id === postId);
@@ -6948,52 +6855,6 @@ function sendAuthRequired(response, decision = {}) {
   </script>
 </body>
 </html>`);
-}
-
-function privacyPolicyHtml() {
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Privacy Policy - LegalEase Command Center</title>
-  <style>
-    body{font-family:Geist,Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:#f7faf9;color:#102a2a;line-height:1.55}
-    main{max-width:860px;margin:0 auto;padding:48px 20px 72px}
-    a{color:#0f766e} h1{font-size:42px;margin:0 0 8px} h2{margin-top:28px}
-    .card{background:white;border:1px solid #dfe8e6;border-radius:14px;padding:22px;box-shadow:0 8px 24px rgba(15,45,45,.06)}
-    .muted{color:#667}
-  </style>
-</head>
-<body>
-  <main>
-    <p><a href="/#settings">Back to Settings</a></p>
-    <section class="card">
-      <h1>Privacy Policy</h1>
-      <p class="muted">Last updated: May 30, 2026</p>
-      <p>LegalEase Command Center is currently owner-access only. It helps Roger capture work, manage tasks, organize Social drafts, track proof, and plan the day.</p>
-      <h2>Data collected</h2>
-      <p>The app stores captures, tasks, notes, decisions, blockers, closeouts, tomorrow plans, proof items, wins, customer notes, and internal activity records.</p>
-      <h2>How data is used</h2>
-      <p>Data is used to run the internal operating workflow, prepare founder decisions, organize proof, and plan manual Social content.</p>
-      <h2>Social workspace data</h2>
-      <p>The app stores Social ideas, draft posts, planned posts, ready-to-publish posts, manually published records, proof-to-social links, Le-E-created Social drafts or ideas, and manually entered published URLs. The OS does not currently publish to social platforms.</p>
-      <h2>Storage and providers</h2>
-      <p>Production data should be stored in a durable Postgres database configured through server-side environment variables. Render may host the app. A database provider such as Neon, Supabase, or Render Postgres may store app data. Email, social publishing, calendar writes, and payment providers are not active unless separately configured in a future build.</p>
-      <h2>AI</h2>
-      <p>If AI features are enabled, they must run through protected server-side routes. Browser code must not receive an OpenAI API key.</p>
-      <h2>Retention</h2>
-      <p>Internal records are retained until Roger deletes, exports, or migrates them. Temporary exports are not the source of truth.</p>
-      <h2>Access and deletion</h2>
-      <p>For access, correction, or deletion requests, contact LegalEase / Roger through the business contact channel currently used with LegalEase.</p>
-      <h2>Security</h2>
-      <p>Hosted access is protected by owner-token authentication and role checks. Secrets and provider tokens must stay server-side.</p>
-      <h2>Cookies and analytics</h2>
-      <p>The app may use a session cookie or browser storage to keep the owner signed in. Analytics are not claimed as active unless separately configured.</p>
-    </section>
-  </main>
-</body>
-</html>`;
 }
 
 async function logAccessDecision(decision = {}, url = {}) {
@@ -12668,8 +12529,8 @@ function htmlShell() {
   <style>
     :root { --ink:#020D66; --paper:#E5EBEB; --line:#B8D8D8; --moss:#536b4e; --steel:#3040BF; --rust:#F04800; --gold:#F98C30; }
     * { box-sizing:border-box; }
-    body { margin:0; background:var(--paper); color:var(--ink); font-family:"DM Sans",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-    .shell { min-height:100vh; }
+    body { margin:0; max-width:100%; overflow-x:hidden; background:var(--paper); color:var(--ink); font-family:"DM Sans",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    .shell { min-height:100vh; width:100%; max-width:100%; min-width:0; overflow-x:hidden; }
     aside { background:white; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:8; min-height:66px; display:flex; align-items:center; justify-content:space-between; gap:18px; padding:0 28px; }
     .brand { padding:0; min-width:220px; }
     .brand small, .eyebrow { color:var(--rust); font-weight:800; letter-spacing:.18em; text-transform:uppercase; font-size:11px; }
@@ -13013,9 +12874,14 @@ function htmlShell() {
       .lee-pill { position:fixed; right:16px; bottom:16px; justify-self:end; }
       .lee-panel { width:100vw; max-height:100vh; min-height:100vh; border-radius:0; border:0; }
     }
-    .landing-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(260px,.75fr); gap:14px; align-items:start; }
+    .landing-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,420px); gap:14px; align-items:start; min-width:0; max-width:100%; }
     .landing-actions { display:grid; gap:9px; }
-    .landing-actions a { display:flex; justify-content:space-between; align-items:center; gap:12px; min-height:44px; padding:10px 12px; border:1px solid rgba(15,31,92,.1); border-radius:12px; background:white; color:var(--le-text); text-decoration:none; font-weight:850; }
+    .landing-actions a { display:grid; grid-template-columns:minmax(0,.82fr) minmax(0,1fr) minmax(128px,auto); align-items:center; gap:10px; min-height:44px; padding:10px 12px; border:1px solid rgba(15,31,92,.1); border-radius:12px; background:white; color:var(--le-text); text-decoration:none; font-weight:850; min-width:0; max-width:100%; overflow-wrap:break-word; }
+    .landing-actions a span { min-width:0; overflow-wrap:break-word; }
+    .landing-actions a small { grid-column:2; min-width:0; color:var(--muted); font-weight:750; line-height:1.25; overflow-wrap:break-word; }
+    .landing-actions a strong { grid-column:3; justify-self:end; min-width:0; max-width:100%; color:var(--le-navy); font-size:13px; line-height:1.2; text-align:right; white-space:normal; overflow-wrap:break-word; }
+    .landing-actions a:not(:has(small)) { grid-template-columns:minmax(0,1fr) minmax(150px,auto); }
+    .landing-actions a:not(:has(small)) strong { grid-column:2; }
     .landing-actions a:hover,.landing-actions a:focus-visible { background:#F4F7FB; color:var(--le-navy); }
     :root {
       --le-navy:#0F1F5C;
@@ -13060,18 +12926,15 @@ function htmlShell() {
     .nav-top-link:focus-visible,
     .nav-menu-summary:focus-visible { background:rgba(0,169,157,.1); color:#0f172a; }
     .nav-top-link.active,
-    .nav-menu-summary.active,
-    .nav-menu[open] > .nav-menu-summary { background:#020D66; color:#fff; }
+    .nav-menu-summary.active { background:#020D66; color:#fff; }
     .nav-menu { position:relative; display:inline-flex; overflow:visible; }
     .nav-menu-summary { list-style:none; }
     .nav-menu-summary::-webkit-details-marker { display:none; }
     .nav-menu-panel { position:absolute; top:calc(100% + 10px); right:0; min-width:240px; max-width:min(320px, calc(100vw - 32px)); z-index:200; border-radius:18px; border:1px solid rgba(15,23,42,.12); background:#fff; box-shadow:0 24px 60px rgba(15,23,42,.16); padding:10px; display:grid; gap:4px; }
-    .nav-menu-panel strong { display:block; padding:8px 14px 4px; color:#667085; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
     .nav-menu-panel a { display:block; padding:12px 14px; border-radius:12px; text-decoration:none; color:#0f172a; font-weight:700; font-size:13px; }
     .nav-menu-panel a:hover,
     .nav-menu-panel a.active { background:rgba(0,169,157,.1); color:#0f172a; }
     .nav-menu-panel a.active::after { content:"Selected"; display:block; color:var(--le-muted); font-size:11px; font-weight:800; margin-top:2px; }
-    .shell-marker { display:none; color:#98a2b3; font-size:11px; font-weight:750; white-space:nowrap; }
     main { max-width:100%; padding-top:18px; }
     .panel,.card { border-color:rgba(15,31,92,.12); border-radius:14px; box-shadow:0 10px 26px rgba(15,31,92,.055); background:rgba(255,255,255,.97); }
     .panel,.card { padding:14px; }
@@ -13201,6 +13064,9 @@ function htmlShell() {
       --accent-hover: #047A72;
       --accent-pulse: #00A99D;
       --accent-tint: #e7f7f5;
+      --urgent: #F04800;
+      --urgent-soft: rgba(240,72,0,.08);
+      --urgent-border: rgba(240,72,0,.24);
       --border-default: #d9e5e4;
       --border-emphasis: #b7d5d1;
       --border-light: #e8f0ef;
@@ -13214,37 +13080,37 @@ function htmlShell() {
     .operator-v31 *, .operator-v31 *::before, .operator-v31 *::after { box-sizing:border-box; }
     .operator-v31 .operator-page,
     .operator-v31 .app-page,
-    .operator-v31 .cockpit-page { width:100%; max-width:1240px; margin:0 auto; padding:0 32px; overflow-x:hidden; }
+    .operator-v31 .cockpit-page { width:100%; max-width:1240px; margin:0 auto; padding:0 32px; overflow-x:hidden; box-sizing:border-box; }
     .app-header { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; color:var(--text-tertiary); }
     .app-date { font-size:13px; font-weight:650; letter-spacing:.01em; }
     .app-time { font-size:22px; line-height:1; color:var(--text-primary); font-weight:700; font-variant-numeric:tabular-nums; }
-    .operator-v31 .app-intention { width:100%; max-width:960px; padding:4px 0 0; margin-bottom:32px; }
+    .operator-v31 .app-intention { width:100%; max-width:960px; padding:0; margin-bottom:18px; }
     .operator-v31 .app-intention h1,
-    .operator-v31 .app-intention p { margin:0; font-size:clamp(40px,4.4vw,64px); line-height:1.02; letter-spacing:-.02em; font-weight:620; color:var(--text-primary); white-space:normal; overflow:visible; overflow-wrap:break-word; word-break:normal; }
+    .operator-v31 .app-intention p { margin:0; font-size:clamp(34px,3.7vw,53px); line-height:1.01; letter-spacing:-.018em; font-weight:620; color:var(--text-primary); white-space:normal; overflow:visible; overflow-wrap:break-word; word-break:normal; }
     .intention-accent { color:var(--accent); }
     .intention-meta { margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; color:var(--text-tertiary); font-size:12px; }
     .intention-meta button { min-height:30px; padding:0 10px; background:transparent; border-color:var(--border-default); color:var(--accent); }
     .operator-v31 .cockpit-layout { display:grid; grid-template-columns:minmax(0, 1fr) 380px; gap:24px; align-items:start; width:100%; }
     .operator-v31 .cockpit-main { display:grid; gap:14px; min-width:0; width:100%; max-width:100%; overflow:visible; padding:0; margin:0; }
     .operator-v31 .cockpit-rail { display:grid; gap:14px; position:static; transform:none; width:100%; max-width:380px; min-width:0; margin:0; padding:0; border:0; background:transparent; box-shadow:none; align-content:start; overflow:visible; }
-    .operator-v31 .now-block { border:1px solid var(--border-emphasis); border-radius:20px; background:var(--bg-now); padding:22px; display:grid; gap:16px; box-shadow:0 18px 44px rgba(0,38,36,.07); overflow:visible; }
+    .operator-v31 .now-block { border:1px solid var(--border-emphasis); border-radius:20px; background:var(--bg-now); padding:18px; display:grid; gap:12px; box-shadow:0 18px 44px rgba(0,38,36,.07); overflow:visible; }
     .now-kicker { display:flex; justify-content:space-between; gap:12px; align-items:center; color:var(--accent-hover); font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; }
     .operator-v31 .now-block h1,
     .operator-v31 .now-block h2,
     .operator-v31 .now-block h3,
     .operator-v31 .now-title,
-    .operator-v31 .now-headline { margin:0; max-width:100%; font-size:clamp(34px,3.4vw,48px); line-height:1.05; letter-spacing:-.018em; color:var(--text-primary); font-weight:720; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; word-break:normal; }
+    .operator-v31 .now-headline { margin:0; max-width:100%; font-size:clamp(30px,3vw,42px); line-height:1.04; letter-spacing:-.016em; color:var(--text-primary); font-weight:720; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; word-break:normal; }
     .operator-v31 .now-block p,
     .operator-v31 .now-block .muted,
     .operator-v31 .now-copy,
-    .operator-v31 .now-description { margin:0; max-width:100%; color:var(--text-secondary); font-size:15px; line-height:1.5; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; word-break:normal; }
-    .now-first { width:100%; min-width:0; max-width:100%; border:1px solid var(--border-default); border-radius:16px; background:var(--bg-cue); padding:14px; display:grid; gap:10px; }
-    .now-first strong { color:var(--text-primary); font-size:12px; letter-spacing:.1em; text-transform:uppercase; }
-    .now-steps { display:grid; gap:8px; margin:0; padding:0; list-style:none; counter-reset:step; }
-    .now-steps li { counter-increment:step; display:grid; grid-template-columns:24px 1fr; gap:9px; align-items:start; color:var(--text-secondary); font-size:13px; line-height:1.4; }
-    .now-steps li::before { content:counter(step); display:grid; place-items:center; width:24px; height:24px; border-radius:999px; background:var(--accent); color:white; font-size:11px; font-weight:800; }
-    .now-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
-    .now-actions button { min-height:42px; padding:0 16px; }
+    .operator-v31 .now-description { margin:0; max-width:100%; color:var(--text-secondary); font-size:14px; line-height:1.45; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; word-break:normal; }
+    .now-first { width:100%; min-width:0; max-width:100%; border:1px solid var(--border-default); border-radius:16px; background:var(--bg-cue); padding:12px; display:grid; gap:8px; }
+    .now-first strong { color:var(--text-primary); font-size:11px; letter-spacing:.1em; text-transform:uppercase; }
+    .now-steps { display:grid; gap:6px; margin:0; padding:0; list-style:none; counter-reset:step; }
+    .now-steps li { counter-increment:step; display:grid; grid-template-columns:22px 1fr; gap:8px; align-items:start; color:var(--text-secondary); font-size:12.5px; line-height:1.35; }
+    .now-steps li::before { content:counter(step); display:grid; place-items:center; width:22px; height:22px; border-radius:999px; background:var(--accent); color:white; font-size:10px; font-weight:800; }
+    .now-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .now-actions button { min-height:38px; padding:0 14px; }
     .now-actions .primary { background:var(--accent); color:white; border-color:var(--accent); }
     .now-actions .primary:hover { background:var(--accent-hover); }
     .operator-v31 .now-block,
@@ -13258,33 +13124,109 @@ function htmlShell() {
     .cockpit-card h2,.timeline-card h2 { margin:0; font-size:15px; line-height:1.2; color:var(--text-primary); font-weight:720; letter-spacing:-.01em; }
     .cockpit-card-head { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:12px; }
     .cockpit-card-head small { color:var(--text-tertiary); font-size:12px; }
-    .timeline-track { position:relative; height:104px; border-radius:16px; background:linear-gradient(180deg,#f8fffe,#eef7f6); border:1px solid var(--border-light); overflow:hidden; margin-top:12px; }
-    .timeline-axis { position:absolute; inset:0; display:grid; grid-template-columns:repeat(10,1fr); color:var(--text-quaternary); font-size:10px; }
+    .timeline-track { position:relative; height:100px; border-radius:16px; background:linear-gradient(180deg,#f8fffe,#eef7f6); border:1px solid var(--border-light); overflow:hidden; margin-top:10px; }
+    .timeline-axis { position:absolute; inset:0; display:grid; grid-template-columns:repeat(10,1fr); color:#61707a; font-size:10px; font-weight:750; }
     .timeline-axis span { border-left:1px solid rgba(216,207,185,.45); padding:8px 0 0 6px; }
-    .timeline-block { position:absolute; top:38px; height:42px; min-width:34px; border-radius:999px; display:flex; align-items:center; padding:0 12px; color:white; font-size:12px; font-weight:750; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; box-shadow:0 10px 22px rgba(26,24,20,.12); }
+    .timeline-block { position:absolute; top:34px; height:48px; min-width:54px; border-radius:18px; display:grid; align-content:center; justify-items:center; text-align:center; gap:2px; padding:5px 9px; color:white; font-size:11.5px; line-height:1.1; font-weight:750; overflow:hidden; white-space:normal; overflow-wrap:anywhere; box-shadow:0 10px 22px rgba(26,24,20,.12); }
+    .timeline-block-title { display:block; max-width:100%; overflow-wrap:anywhere; }
+    .timeline-block-meta { display:block; color:rgba(255,255,255,.82); font-size:9px; line-height:1.05; font-weight:800; text-transform:uppercase; letter-spacing:.02em; }
     .timeline-block.focus { background:var(--accent); }
     .timeline-block.meeting { background:#0f1f5c; }
     .timeline-block.personal { background:#61707a; }
+    .timeline-block.closeout { background:#047A72; }
     .timeline-block.past { opacity:.34; }
     .timeline-block.current { outline:3px solid rgba(0,169,157,.28); }
-    .timeline-now { position:absolute; top:26px; bottom:14px; width:2px; background:var(--accent-pulse); box-shadow:0 0 0 4px rgba(0,169,157,.16); }
-    .timeline-now-label { position:absolute; top:8px; transform:translateX(-45%); color:var(--accent); font-size:10px; font-weight:800; white-space:nowrap; }
+    .timeline-now { position:absolute; top:22px; bottom:12px; width:3px; background:var(--accent-pulse); box-shadow:0 0 0 5px rgba(0,169,157,.2); border-radius:999px; }
+    .timeline-now-label { position:absolute; top:7px; transform:translateX(-45%); color:var(--accent-hover); background:rgba(255,255,255,.82); border:1px solid rgba(0,169,157,.18); border-radius:999px; padding:2px 6px; font-size:10px; font-weight:850; white-space:nowrap; }
     .thread-list,.parked-list,.moved-list { display:grid; gap:9px; }
-    .thread,.parked-item,.moved-row { width:100%; max-width:100%; text-align:left; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:12px; display:grid; gap:5px; color:var(--text-primary); overflow:hidden; }
+    .follow-up-filters { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px; }
+    .follow-up-filters button { min-height:28px; padding:0 9px; font-size:11px; border-radius:999px; }
+    .follow-up-filters button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .follow-up-tag { width:max-content; max-width:100%; border:1px solid rgba(0,169,157,.16); border-radius:999px; background:rgba(0,169,157,.08); color:var(--accent-hover); padding:2px 7px; font-size:10px; font-weight:850; }
+    .follow-up-view-all { margin-top:8px; width:100%; min-height:34px; font-size:12px; }
+    .thread,.parked-item,.moved-row { width:100%; max-width:100%; text-align:left; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:10px; display:grid; gap:4px; color:var(--text-primary); overflow:hidden; }
     .thread:hover,.parked-item:hover,.moved-row:hover { border-color:var(--border-emphasis); background:#f4fbfa; }
-    .thread strong,.parked-item strong,.moved-row strong { font-size:14px; line-height:1.25; }
-    .thread span,.parked-item span,.moved-row span { color:var(--text-tertiary); font-size:12px; line-height:1.4; }
+    .thread strong,.parked-item strong,.moved-row strong { font-size:13px; line-height:1.25; }
+    .thread span,.parked-item span,.moved-row span { color:var(--text-tertiary); font-size:11.5px; line-height:1.35; }
     .thread-age { color:var(--accent); font-weight:800; }
+    .urgent,.critical,.pressing { border-color:var(--urgent-border); }
+    .status-urgent,.pill-urgent { display:inline-flex; width:max-content; max-width:100%; align-items:center; border:1px solid var(--urgent-border); border-radius:999px; background:var(--urgent-soft); color:var(--urgent); padding:3px 7px; font-size:10px; font-weight:850; line-height:1; }
+    .standup-row.urgent,.standup-row.critical,.standup-row.pressing { border-left:4px solid var(--urgent); padding-left:9px; }
+    .pressure-list { display:grid; gap:9px; }
+    .pressure-item { width:100%; max-width:100%; text-align:left; border:1px solid var(--urgent-border); border-left:4px solid var(--urgent); border-radius:14px; background:#fffaf7; padding:10px; display:grid; gap:5px; color:var(--text-primary); overflow:hidden; }
+    .pressure-item:hover { background:#fff6ef; }
+    .pressure-item strong { color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
+    .pressure-item span { color:var(--text-tertiary); font-size:11.5px; line-height:1.35; overflow-wrap:break-word; }
+    .pressure-item .pill-urgent { margin-top:2px; }
     .rail-form { display:grid; gap:10px; }
-    .rail-form textarea { min-height:92px; resize:vertical; border-radius:14px; background:#fbfefd; border-color:var(--border-default); }
+    .rail-form textarea { min-height:82px; resize:vertical; border-radius:14px; background:#fbfefd; border-color:var(--border-default); }
     .rail-form button.primary { background:var(--text-primary); color:white; border-color:var(--text-primary); }
     .activation-rows { display:grid; gap:7px; margin:0 0 10px; }
     .activation-rows div { display:flex; justify-content:space-between; gap:12px; align-items:center; border-bottom:1px solid var(--border-light); padding-bottom:7px; }
     .activation-rows span { color:var(--text-tertiary); font-size:12px; }
     .activation-rows strong { color:var(--text-primary); font-size:12px; text-align:right; }
     .activation-card-actions { display:grid; gap:8px; }
-    .rcap-review-workspace { display:grid; gap:16px; }
+    .rcap-review-workspace { display:grid; gap:12px; width:100%; max-width:100%; min-width:0; overflow-x:hidden; box-sizing:border-box; }
+    .rcap-review-workspace * { box-sizing:border-box; }
     .rcap-review-workspace .hero-panel { display:grid; gap:10px; }
+    .rcap-decision-hero { display:grid; grid-template-columns:minmax(0,1fr) clamp(300px,32vw,380px); gap:18px; align-items:stretch; padding:18px; border-color:rgba(0,169,157,.18); background:linear-gradient(135deg,#fff 0%,#f8fffe 52%,#eef8f6 100%); min-width:0; max-width:100%; overflow:hidden; }
+    .rcap-title-line { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+    .rcap-decision-hero h1 { margin:4px 0 0; font-size:clamp(30px,3.3vw,44px); line-height:1; letter-spacing:0; color:var(--text-primary); }
+    .rcap-decision-hero .purpose { max-width:720px; margin:7px 0 0; color:var(--text-secondary); font-size:15px; line-height:1.36; }
+    .rcap-decision-side { display:grid; gap:10px; align-content:center; border:1px solid rgba(0,169,157,.16); border-radius:18px; background:rgba(255,255,255,.72); padding:15px; box-shadow:0 14px 34px rgba(20,42,61,.07); min-width:0; overflow-wrap:break-word; }
+    .rcap-next-decision { display:grid; gap:6px; }
+    .rcap-next-decision span { color:var(--text-tertiary); font-size:12px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .rcap-next-decision strong { color:var(--text-primary); font-size:20px; line-height:1.15; white-space:normal; overflow-wrap:break-word; }
+    .rcap-safety-line { color:var(--text-tertiary); font-size:13px; line-height:1.35; white-space:normal; overflow-wrap:break-word; }
+    .rcap-readiness-strip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    .rcap-readiness-card { border:1px solid var(--border-light); border-radius:16px; background:#fff; padding:12px 14px; box-shadow:0 12px 26px rgba(20,42,61,.05); display:grid; gap:4px; }
+    .rcap-readiness-card span { color:var(--text-tertiary); font-size:12px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .rcap-readiness-card strong { color:var(--text-primary); font-size:25px; line-height:1; }
+    .rcap-readiness-card p { margin:0; color:var(--text-secondary); font-size:13px; line-height:1.35; }
+    .rcap-decision-layout { display:grid; grid-template-columns:minmax(0,1fr) clamp(300px,32vw,380px); gap:18px; align-items:start; min-width:0; max-width:100%; }
+    .rcap-decision-layout > main.rcap-decision-stack { width:100%; max-width:100%; min-width:0; margin:0; padding:0; }
+    .rcap-decision-stack { display:grid; gap:12px; min-width:0; }
+    .rcap-decision-card { border:1px solid var(--border-light); border-radius:18px; background:#fff; padding:15px; box-shadow:0 12px 26px rgba(20,42,61,.05); min-width:0; }
+    .rcap-card-title { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }
+    .rcap-card-title h2 { margin:0; color:var(--text-primary); font-size:21px; line-height:1.16; letter-spacing:0; }
+    .rcap-summary-rows { display:grid; gap:0; border:1px solid var(--border-light); border-radius:16px; overflow:hidden; background:#fbfefd; }
+    .rcap-summary-row { display:grid; grid-template-columns:170px minmax(0,1fr); gap:16px; padding:10px 13px; border-top:1px solid var(--border-light); align-items:start; }
+    .rcap-summary-row:first-child { border-top:0; }
+    .rcap-summary-row span { color:var(--text-tertiary); font-size:12px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .rcap-summary-row strong { color:var(--text-primary); font-size:14px; line-height:1.35; overflow-wrap:anywhere; }
+    .rcap-definition-list { display:grid; gap:10px; margin:0; }
+    .rcap-definition-list div { display:grid; grid-template-columns:minmax(120px,150px) minmax(0,1fr); gap:16px; align-items:start; padding:0 0 10px; border-bottom:1px solid var(--border-light); min-width:0; }
+    .rcap-definition-list div:last-child { border-bottom:0; padding-bottom:0; }
+    .rcap-definition-list dt { color:var(--text-tertiary); font-size:12px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .rcap-definition-list dd { margin:0; color:var(--text-primary); font-size:14px; line-height:1.35; font-weight:760; overflow-wrap:break-word; word-break:normal; min-width:0; white-space:normal; }
+    .rcap-packet-table-wrap { overflow-x:auto; overflow-y:visible; border:1px solid var(--border-light); border-radius:16px; background:#fff; max-width:100%; }
+    .rcap-packet-table { width:100%; table-layout:fixed; border-collapse:collapse; min-width:0; }
+    .rcap-packet-table col:nth-child(1) { width:26%; }
+    .rcap-packet-table col:nth-child(2) { width:22%; }
+    .rcap-packet-table col:nth-child(3) { width:32%; }
+    .rcap-packet-table col:nth-child(4) { width:20%; }
+    .rcap-packet-table th { color:var(--text-tertiary); background:#f8fbfa; font-size:11px; text-transform:uppercase; letter-spacing:.04em; text-align:left; padding:10px 12px; border-bottom:1px solid var(--border-light); white-space:normal; overflow-wrap:break-word; }
+    .rcap-packet-table td { padding:10px 12px; border-bottom:1px solid var(--border-light); color:var(--text-secondary); font-size:13px; line-height:1.3; vertical-align:middle; white-space:normal; overflow-wrap:break-word; word-break:normal; }
+    .rcap-packet-table tr:last-child td { border-bottom:0; }
+    .rcap-packet-table td:first-child { color:var(--text-primary); font-weight:850; }
+    .rcap-packet-table button { min-height:32px; padding:0 12px; font-size:12px; border-radius:999px; white-space:normal; line-height:1.15; }
+    .rcap-decision-side .card-actions,.rcap-decision-card .card-actions { min-width:0; flex-wrap:wrap; }
+    .rcap-decision-side .card-actions button,.rcap-decision-card .card-actions button { max-width:100%; min-width:0; height:auto; min-height:38px; padding-top:8px; padding-bottom:8px; white-space:normal; overflow-wrap:break-word; line-height:1.2; }
+    .rcap-note-box { display:grid; gap:10px; }
+    .rcap-note-box textarea { min-height:130px; resize:vertical; border-radius:15px; background:#fbfefd; }
+    .rcap-right-rail { position:sticky; top:96px; align-self:start; }
+    .rcap-side-list { margin:0; padding-left:18px; color:var(--text-secondary); display:grid; gap:10px; font-size:14px; line-height:1.35; }
+    .rcap-safety-list { display:grid; gap:9px; margin:0; padding:0; list-style:none; }
+    .rcap-safety-list li { display:flex; justify-content:space-between; gap:12px; align-items:center; color:var(--text-secondary); font-size:14px; border-bottom:1px solid var(--border-light); padding-bottom:9px; }
+    .rcap-safety-list li:last-child { border-bottom:0; padding-bottom:0; }
+    .rcap-safety-list li::after { content:"Safe"; display:inline-flex; border:1px solid rgba(5,150,105,.2); color:#065f46; background:rgba(5,150,105,.08); border-radius:999px; padding:4px 8px; font-size:11px; font-weight:850; }
+    .rcap-activity-feed { display:grid; gap:8px; }
+    .rcap-activity-item { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:12px; display:grid; gap:4px; }
+    .rcap-activity-item strong { color:var(--text-primary); font-size:14px; line-height:1.25; }
+    .rcap-activity-item span { color:var(--text-tertiary); font-size:12px; line-height:1.35; }
+    @media (max-width:980px) { .rcap-decision-hero,.rcap-decision-layout { grid-template-columns:1fr; } .rcap-right-rail { position:static; top:auto; } }
+    @media (max-width:900px) { .rcap-packet-table thead { display:none; } .rcap-packet-table,.rcap-packet-table tbody,.rcap-packet-table tr,.rcap-packet-table td { display:block; width:100%; } .rcap-packet-table tr { border-bottom:1px solid var(--border-light); padding:10px 12px; } .rcap-packet-table tr:last-child { border-bottom:0; } .rcap-packet-table td { border-bottom:0; padding:4px 0; } .rcap-packet-table td::before { content:attr(data-label); display:block; color:var(--text-tertiary); font-size:10px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; margin-bottom:2px; } }
+    @media (max-width:720px) { .rcap-readiness-strip { grid-template-columns:1fr; } .rcap-summary-row,.rcap-definition-list div { grid-template-columns:1fr; gap:5px; } }
     .artifact-review-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; align-items:start; width:100%; }
     .artifact-review-card { width:100%; min-width:0; max-width:100%; border:1px solid rgba(8,20,95,.08); border-radius:18px; background:#fff; padding:16px; display:grid; gap:10px; box-sizing:border-box; overflow-wrap:break-word; }
     .artifact-review-card header { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; border-bottom:1px solid rgba(8,20,95,.08); padding-bottom:10px; }
@@ -13318,6 +13260,37 @@ function htmlShell() {
     .daily-loop-list span { color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
     .daily-loop-list a { color:var(--accent); font-size:12px; font-weight:800; text-decoration:none; width:max-content; max-width:100%; }
     .daily-loop-list a:hover { text-decoration:underline; }
+    .today-standup-board { display:grid; gap:14px; width:100%; max-width:100%; min-width:0; }
+    .standup-two-col { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; align-items:start; width:100%; min-width:0; }
+    .standup-card { display:grid; gap:12px; overflow:visible; }
+    .standup-priority-list { display:grid; gap:9px; list-style:none; margin:0; padding:0; counter-reset:priority; }
+    .standup-priority-list li { counter-increment:priority; display:grid; gap:5px; border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:12px; min-width:0; }
+    .standup-priority-list li > span { color:var(--accent-hover); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.06em; }
+    .standup-priority-list strong { color:var(--text-primary); font-size:14px; line-height:1.25; overflow-wrap:break-word; }
+    .standup-priority-list small { color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
+    .standup-priority-list a,
+    .standup-row a { width:max-content; max-width:100%; color:var(--accent); font-size:12px; font-weight:850; text-decoration:none; }
+    .standup-priority-list a:hover,
+    .standup-row a:hover { text-decoration:underline; }
+    .standup-row-list { display:grid; gap:9px; min-width:0; }
+    .standup-row { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:12px; align-items:center; border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:12px; min-width:0; }
+    .standup-row div { display:grid; gap:4px; min-width:0; }
+    .standup-row strong { color:var(--text-primary); font-size:14px; line-height:1.25; overflow-wrap:break-word; }
+    .standup-row span { color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
+    .standup-card-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .standup-card-actions button { min-height:34px; padding:0 12px; font-size:12px; }
+    .closeout-summary { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px; }
+    .closeout-summary div { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:12px; display:grid; gap:6px; min-width:0; }
+    .closeout-summary span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .closeout-summary strong { color:var(--text-primary); font-size:13px; line-height:1.35; overflow-wrap:break-word; }
+    .today-capture-form { gap:11px; }
+    .quick-capture { padding:14px; }
+    .quick-capture .cockpit-card-head { margin-bottom:8px; }
+    .quick-capture .cockpit-card-head h2 { font-size:14px; }
+    .quick-capture .cockpit-card-head small { font-size:11px; }
+    .capture-helper { margin:0; color:var(--text-tertiary); font-size:12px; line-height:1.35; }
+    .capture-button-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .capture-button-row button { min-height:34px; padding:0 12px; font-size:12px; }
     .operating-memory-card { display:grid; gap:12px; overflow:visible; }
     .operating-memory-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
     .operating-memory-tile { min-width:0; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:11px; display:grid; gap:7px; }
@@ -13354,8 +13327,7 @@ function htmlShell() {
     .gate.good::before { background:#059669; }
     .gate.warn::before { background:var(--accent); }
     .gate.danger::before { background:#dc2626; }
-    .made-for-roger,.layout-marker { color:var(--text-quaternary); font-weight:800; letter-spacing:.08em; }
-    .layout-marker { font-size:11px; text-transform:none; letter-spacing:.02em; }
+    .made-for-roger { color:var(--text-quaternary); font-weight:800; letter-spacing:.08em; }
     @media (max-width:980px) {
       .operator-v31 .operator-page,
       .operator-v31 .app-page,
@@ -13363,6 +13335,8 @@ function htmlShell() {
       .operator-v31 .cockpit-layout { grid-template-columns:1fr; }
       .operator-v31 .cockpit-rail { max-width:100%; }
       .daily-loop-grid { grid-template-columns:1fr; }
+      .standup-two-col { grid-template-columns:1fr; }
+      .closeout-summary { grid-template-columns:1fr; }
       .operating-memory-grid { grid-template-columns:1fr; }
       .conversation-capture-grid { grid-template-columns:1fr; }
       .app-intention p { font-size:clamp(28px,7vw,42px); }
@@ -13384,49 +13358,15 @@ function htmlShell() {
     }
     @media (max-width:1100px) { .landing-grid { grid-template-columns:1fr; } .operator-command-strip { grid-template-columns:1fr; } }
 
-    /* Founder-simple daily workflow */
-    .founder-today { width:100%; max-width:1120px; margin:0 auto; padding:22px 28px 96px; display:grid; gap:16px; }
-    .founder-hero { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; padding:10px 0 2px; }
-    .founder-hero h1 { margin:0; color:var(--ink); font-size:42px; line-height:1; letter-spacing:0; }
-    .founder-hero p { margin:8px 0 0; color:var(--muted); font-size:15px; }
-    .founder-pills { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
-    .founder-pill { display:inline-flex; min-height:30px; align-items:center; border-radius:999px; border:1px solid rgba(0,169,157,.22); background:rgba(0,169,157,.08); color:#047A72; padding:0 10px; font-size:12px; font-weight:850; white-space:nowrap; }
-    .founder-card { border:1px solid var(--border-default); border-radius:18px; background:#fff; padding:16px; box-shadow:0 10px 26px rgba(0,38,36,.045); display:grid; gap:12px; }
-    .founder-card header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
-    .founder-card h2 { margin:0; color:var(--ink); font-size:18px; line-height:1.2; letter-spacing:0; }
-    .founder-card p { margin:0; color:var(--muted); line-height:1.45; }
-    .founder-focus-title { margin:0; color:var(--ink); font-size:24px; line-height:1.18; font-weight:760; }
-    .founder-list { display:grid; gap:8px; }
-    .founder-row { display:grid; gap:6px; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:11px; }
-    .founder-row-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
-    .founder-row strong { color:var(--ink); line-height:1.25; }
-    .founder-row span { color:var(--muted); font-size:13px; line-height:1.4; }
-    .founder-row-actions { display:flex; flex-wrap:wrap; gap:8px; }
-    .founder-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-    .founder-actions button,.founder-actions .button-link,.founder-row-actions button { min-height:38px; padding:0 13px; }
-    .founder-capture-form { display:grid; gap:10px; }
-    .founder-capture-form textarea { min-height:96px; resize:vertical; border-radius:14px; background:#fbfefd; }
-    .founder-capture-buttons { display:flex; gap:8px; flex-wrap:wrap; }
-    .founder-capture-buttons button { min-height:40px; padding:0 13px; }
-    .founder-empty { border:1px dashed var(--border-emphasis); border-radius:14px; background:#fbfefd; padding:14px; color:var(--muted); font-size:13px; }
-    .founder-snapshot-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
-    .founder-metric { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:12px; display:grid; gap:4px; }
-    .founder-metric span { color:var(--muted); font-size:12px; font-weight:800; }
-    .founder-metric strong { color:var(--ink); font-size:22px; line-height:1; }
-    .founder-hub { width:100%; max-width:1120px; margin:0 auto; padding:24px 32px 96px; display:grid; gap:16px; }
-    .founder-hub-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }
-    .founder-hub-card { border:1px solid var(--border-default); border-radius:18px; background:#fff; padding:16px; display:grid; gap:10px; text-decoration:none; color:inherit; box-shadow:0 10px 26px rgba(0,38,36,.04); }
-    .founder-hub-card:hover { border-color:var(--border-emphasis); transform:translateY(-1px); }
-    @media (max-width:760px) {
-      .founder-today,.founder-hub { padding:18px 16px 96px; }
-      .founder-hero { display:grid; }
-      .founder-pills { justify-content:flex-start; }
-      .founder-snapshot-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
-    }
-
     /* Production shell QA guardrails */
-    html, body, .shell, #app { width:100%; max-width:100%; overflow-x:hidden; }
+    html, body, .shell, #app { width:100%; max-width:100%; min-width:0; overflow-x:hidden; }
+    main { width:100%; max-width:100%; min-width:0; overflow-x:hidden; box-sizing:border-box; }
+    .shell, #app, #app main { max-width:100%; min-width:0; }
+    .app-topbar { max-width:100%; min-width:0; overflow-x:clip; }
+    .top-nav { max-width:100%; min-width:0; }
     #app { padding-bottom:96px; }
+    .page-section:not(.active) { display:none !important; visibility:hidden; pointer-events:none; width:0; height:0; max-width:0; overflow:hidden; }
+    .page-section.active { min-width:0; max-width:min(1240px,100%); overflow-x:hidden; isolation:isolate; }
     .app-section,
     .page-section,
     .command-page,
@@ -13502,16 +13442,273 @@ function htmlShell() {
     .content-idea-row p,
     .content-idea-row small,
     .content-idea-row em { min-width:0; max-width:100%; overflow-wrap:break-word; white-space:normal; }
+    .growth-workspace { display:grid; gap:18px; width:100%; max-width:1240px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
+    .growth-workspace * { box-sizing:border-box; min-width:0; }
+    .growth-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 54%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
+    .growth-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
+    .growth-hero p { margin:8px 0 0; max-width:720px; color:var(--text-secondary); font-size:15px; line-height:1.45; }
+    .growth-hero-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
+    .growth-hero-actions button { min-height:38px; padding:0 14px; font-size:13px; }
+    .growth-safety-pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .growth-pill { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border-default); border-radius:999px; background:rgba(255,255,255,.72); color:var(--text-secondary); padding:6px 10px; font-size:12px; font-weight:800; }
+    .growth-pill::before { content:""; width:7px; height:7px; border-radius:999px; background:var(--accent); }
+    .growth-summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; }
+    .growth-summary-card { border:1px solid var(--border-light); border-radius:17px; background:#fff; padding:13px; display:grid; gap:5px; box-shadow:0 10px 24px rgba(0,38,36,.04); }
+    .growth-summary-card span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .growth-summary-card strong { color:var(--text-primary); font-size:26px; line-height:1; }
+    .growth-summary-card small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
+    .growth-summary-card.urgent { border-left:4px solid var(--urgent); }
+    .growth-main-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(320px,.75fr); gap:18px; align-items:start; }
+    .growth-stack { display:grid; gap:16px; min-width:0; }
+    .growth-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:17px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:13px; min-width:0; overflow:hidden; }
+    .growth-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .growth-card-head h2 { margin:0; color:var(--text-primary); font-size:20px; line-height:1.15; letter-spacing:-.01em; }
+    .growth-card-head small { color:var(--text-tertiary); font-size:12px; line-height:1.35; text-align:right; }
+    .growth-workflow { display:flex; flex-wrap:wrap; gap:7px; color:var(--accent-hover); font-size:12px; font-weight:850; }
+    .growth-board { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
+    .growth-lane { border:1px solid var(--border-light); border-radius:16px; background:#fbfefd; padding:12px; display:grid; gap:10px; align-content:start; }
+    .growth-lane h3 { margin:0; color:var(--text-primary); font-size:14px; line-height:1.2; }
+    .growth-item { border:1px solid var(--border-light); border-radius:13px; background:#fff; padding:11px; display:grid; gap:6px; }
+    .growth-item strong { color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
+    .growth-item span { color:var(--text-tertiary); font-size:11.5px; line-height:1.35; overflow-wrap:break-word; }
+    .growth-item-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .growth-item-actions button,.growth-card-actions button { min-height:32px; padding:0 10px; font-size:12px; }
+    .growth-card-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .growth-list { display:grid; gap:9px; }
+    .growth-row { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:11px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; }
+    .growth-row strong { display:block; color:var(--text-primary); font-size:13px; line-height:1.25; }
+    .growth-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; }
+    .growth-row .pill-urgent { justify-self:start; margin-top:4px; }
+    .partners-workspace { display:grid; gap:18px; width:100%; max-width:1240px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
+    .partners-workspace * { box-sizing:border-box; min-width:0; }
+    .partners-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
+    .partners-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
+    .partners-hero p { margin:8px 0 0; max-width:760px; color:var(--text-secondary); font-size:15px; line-height:1.45; }
+    .partners-hero-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
+    .partners-hero-actions button { min-height:38px; padding:0 14px; font-size:13px; }
+    .partners-pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .partners-pill { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border-default); border-radius:999px; background:rgba(255,255,255,.72); color:var(--text-secondary); padding:6px 10px; font-size:12px; font-weight:800; }
+    .partners-pill::before { content:""; width:7px; height:7px; border-radius:999px; background:var(--accent); }
+    .partner-summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; }
+    .partner-summary-card { border:1px solid var(--border-light); border-radius:17px; background:#fff; padding:13px; display:grid; gap:5px; box-shadow:0 10px 24px rgba(0,38,36,.04); }
+    .partner-summary-card span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .partner-summary-card strong { color:var(--text-primary); font-size:26px; line-height:1; }
+    .partner-summary-card small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
+    .partner-summary-card.urgent { border-left:4px solid var(--urgent); }
+    .partner-work-grid { display:grid; grid-template-columns:minmax(0,1.28fr) minmax(320px,.82fr); gap:18px; align-items:start; }
+    .partner-stack { display:grid; gap:16px; min-width:0; }
+    .partner-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:17px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:13px; min-width:0; overflow:hidden; }
+    .partner-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .partner-card-head h2 { margin:0; color:var(--text-primary); font-size:20px; line-height:1.15; letter-spacing:-.01em; }
+    .partner-card-head small { color:var(--text-tertiary); font-size:12px; line-height:1.35; text-align:right; }
+    .partner-card-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .partner-card-actions button { min-height:32px; padding:0 10px; font-size:12px; }
+    .partner-program-card { border:1px solid rgba(0,169,157,.18); border-radius:17px; background:#fbfefd; padding:14px; display:grid; gap:11px; }
+    .partner-program-card h3 { margin:0; color:var(--text-primary); font-size:17px; line-height:1.2; }
+    .partner-facts { margin:0; padding:0; list-style:none; display:grid; gap:7px; color:var(--text-secondary); font-size:13px; line-height:1.35; }
+    .partner-facts li { display:grid; grid-template-columns:18px minmax(0,1fr); gap:7px; }
+    .partner-facts li::before { content:""; width:8px; height:8px; border-radius:999px; margin-top:5px; background:var(--accent); }
+    .partner-list { display:grid; gap:9px; }
+    .partner-row { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:11px; display:grid; grid-template-columns:minmax(0,1fr); gap:10px; align-items:start; }
+    .partner-row strong { display:block; color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
+    .partner-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
+    .partner-row .badge { justify-self:start; margin-top:4px; }
+    .partner-pipeline { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; align-items:start; }
+    .partner-stage { border:1px solid var(--border-light); border-radius:17px; background:#fbfefd; padding:12px; display:grid; gap:10px; align-content:start; min-height:150px; }
+    .partner-stage h3 { margin:0; display:flex; justify-content:space-between; gap:8px; align-items:center; color:var(--text-primary); font-size:14px; line-height:1.2; }
+    .partner-mini-card { border:1px solid var(--border-light); border-radius:13px; background:#fff; padding:11px; display:grid; gap:7px; }
+    .partner-mini-card strong { color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
+    .partner-mini-card span { color:var(--text-tertiary); font-size:11.5px; line-height:1.35; overflow-wrap:break-word; }
+    .partner-proof-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px; }
+    .add-partner-details summary { list-style:none; cursor:pointer; display:flex; justify-content:space-between; gap:12px; align-items:center; border:1px solid var(--border-light); border-radius:16px; background:#fbfefd; padding:12px 14px; }
+    .add-partner-details summary::-webkit-details-marker { display:none; }
+    .add-partner-details summary strong { display:block; color:var(--text-primary); }
+    .add-partner-details summary small { display:block; color:var(--text-tertiary); margin-top:2px; }
+    @media (max-width:1180px) { .partner-summary-grid,.partner-pipeline { grid-template-columns:repeat(3,minmax(0,1fr)); } .partner-work-grid,.partners-hero { grid-template-columns:1fr; } .partners-hero-actions { justify-content:flex-start; } }
+    @media (max-width:760px) { .partners-workspace { padding:18px 16px 96px; } .partner-summary-grid,.partner-pipeline { grid-template-columns:1fr; } .partner-row { grid-template-columns:1fr; } }
+    .production-workspace { display:grid; gap:18px; width:100%; max-width:min(1180px, calc(100vw - 32px)); margin:0 auto; padding:24px 24px 96px; box-sizing:border-box; overflow-x:hidden; }
+    .production-workspace * { box-sizing:border-box; min-width:0; }
+    .production-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
+    .production-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
+    .production-hero p { margin:8px 0 0; max-width:780px; color:var(--text-secondary); font-size:15px; line-height:1.45; }
+    .production-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
+    .production-actions button { min-height:38px; padding:0 14px; font-size:13px; }
+    .production-pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .production-pill { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border-default); border-radius:999px; background:rgba(255,255,255,.72); color:var(--text-secondary); padding:6px 10px; font-size:12px; font-weight:800; }
+    .production-pill::before { content:""; width:7px; height:7px; border-radius:999px; background:var(--accent); }
+    .production-summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; }
+    .production-summary-card { border:1px solid var(--border-light); border-radius:17px; background:#fff; padding:13px; display:grid; gap:5px; box-shadow:0 10px 24px rgba(0,38,36,.04); }
+    .production-summary-card span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .production-summary-card strong { color:var(--text-primary); font-size:26px; line-height:1; }
+    .production-summary-card small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
+    .production-summary-card.urgent { border-left:4px solid var(--urgent); }
+    .production-main-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(320px,.75fr); gap:18px; align-items:start; }
+    .production-stack { display:grid; gap:16px; min-width:0; }
+    .production-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:17px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:13px; min-width:0; overflow:hidden; }
+    .production-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .production-card-head h2 { margin:0; color:var(--text-primary); font-size:20px; line-height:1.15; letter-spacing:-.01em; }
+    .production-card-head small { color:var(--text-tertiary); font-size:12px; line-height:1.35; text-align:right; }
+    .production-card-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .production-card-actions button { min-height:32px; padding:0 10px; font-size:12px; }
+    .production-workflow { display:flex; flex-wrap:wrap; gap:7px; color:var(--accent-hover); font-size:12px; font-weight:850; }
+    .production-board { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(240px,260px); gap:14px; overflow-x:auto; overflow-y:hidden; max-width:100%; padding:2px 2px 10px; scroll-snap-type:x proximity; overscroll-behavior-x:contain; }
+    .production-board::-webkit-scrollbar { height:8px; }
+    .production-board::-webkit-scrollbar-thumb { background:rgba(0,169,157,.22); border-radius:999px; }
+    .production-lane { border:1px solid var(--border-light); border-radius:16px; background:#fbfefd; padding:12px; display:grid; gap:10px; align-content:start; min-width:240px; scroll-snap-align:start; }
+    .production-lane h3 { margin:0; display:flex; justify-content:space-between; gap:8px; align-items:center; color:var(--text-primary); font-size:14px; line-height:1.2; }
+    .production-item { border:1px solid var(--border-light); border-radius:14px; background:#fff; padding:12px; display:grid; gap:9px; }
+    .production-item strong { color:var(--text-primary); font-size:13.5px; line-height:1.28; overflow-wrap:break-word; }
+    .production-item span { color:var(--text-tertiary); font-size:11.5px; line-height:1.35; overflow-wrap:break-word; }
+    .production-thumbnail { min-height:118px; border:1px dashed var(--border-emphasis); border-radius:13px; background:linear-gradient(135deg,#eef7f6,#fff); display:grid; gap:7px; place-items:center; text-align:center; padding:10px; overflow:hidden; }
+    .production-thumbnail img { width:100%; height:118px; object-fit:cover; border-radius:10px; display:block; }
+    .production-thumbnail strong { font-size:12px; color:var(--text-primary); }
+    .production-thumbnail small { color:var(--text-tertiary); font-size:11px; line-height:1.3; }
+    .production-thumbnail button { min-height:28px; padding:0 9px; font-size:11.5px; }
+    .production-meta { display:grid; gap:3px; }
+    .campaign-upload-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,.8fr); gap:14px; align-items:start; max-width:100%; min-width:0; overflow:hidden; }
+    .campaign-upload-intro { display:grid; gap:11px; min-width:0; }
+    .campaign-upload-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .campaign-upload-actions button { min-height:34px; padding:0 12px; font-size:12.5px; }
+    .campaign-safety-lines { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+    .campaign-safety-lines span { border:1px solid var(--border-light); border-radius:12px; background:#fbfefd; color:var(--text-secondary); font-size:12px; font-weight:750; line-height:1.3; padding:8px 10px; }
+    .campaign-template-chips { display:flex; flex-wrap:wrap; gap:6px; }
+    .campaign-template-chips span { border:1px solid var(--border-light); border-radius:999px; background:#fbfefd; color:var(--text-secondary); font-size:11px; font-weight:750; padding:5px 8px; }
+    .campaign-step-row { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+    .campaign-step { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:10px; display:grid; gap:4px; }
+    .campaign-step span { color:var(--accent-hover); font-size:11px; font-weight:900; }
+    .campaign-step strong { color:var(--text-primary); font-size:12.5px; line-height:1.25; }
+    .campaign-preview-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .campaign-preview-metric { border:1px solid var(--border-light); border-radius:13px; background:#fbfefd; padding:10px; display:grid; gap:3px; }
+    .campaign-preview-metric strong { color:var(--text-primary); font-size:20px; line-height:1; }
+    .campaign-preview-metric span { color:var(--text-tertiary); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.035em; }
+    .campaign-import-status { border:1px solid var(--border-light); border-radius:13px; background:#fbfefd; padding:10px; color:var(--text-secondary); font-size:12px; line-height:1.4; }
+    .campaign-import-status.warn { border-color:rgba(240,72,0,.28); background:#fff8f4; }
+    .campaign-upload-table { display:grid; gap:7px; overflow-x:auto; overflow-y:hidden; max-width:100%; min-width:0; padding-bottom:4px; overscroll-behavior-x:contain; }
+    .campaign-upload-row { display:grid; grid-template-columns:minmax(60px,.72fr) minmax(72px,.78fr) minmax(0,1.45fr) minmax(76px,.86fr) minmax(66px,.78fr) minmax(70px,.78fr); gap:7px; align-items:center; width:100%; min-width:0; max-width:100%; border:1px solid var(--border-light); border-radius:12px; background:#fbfefd; padding:9px; color:var(--text-secondary); font-size:11.5px; line-height:1.3; overflow-wrap:anywhere; }
+    .campaign-upload-row span { min-width:0; overflow-wrap:anywhere; }
+    .campaign-upload-row.header { background:#fff; color:var(--text-tertiary); font-weight:850; text-transform:uppercase; letter-spacing:.035em; }
+    .campaign-upload-row.header span { white-space:nowrap; }
+    .campaign-detail-grid { display:grid; gap:9px; }
+    .campaign-details summary { cursor:pointer; color:var(--accent-hover); font-weight:850; font-size:12px; margin-top:8px; }
+    .production-list { display:grid; gap:9px; }
+    .production-row { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:11px; display:grid; grid-template-columns:minmax(0,1fr); gap:10px; align-items:start; }
+    .production-row strong { display:block; color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
+    .production-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
+    .platform-preview-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .platform-preview-card { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:12px; display:grid; gap:9px; }
+    .platform-preview-media { min-height:104px; border-radius:13px; border:1px dashed var(--border-emphasis); background:linear-gradient(135deg,#eef7f6,#fff); display:grid; place-items:center; color:var(--text-tertiary); font-size:12px; font-weight:850; overflow:hidden; }
+    .platform-preview-media img { width:100%; height:104px; object-fit:cover; display:block; }
+    .platform-preview-note { display:grid; gap:3px; color:var(--text-tertiary); font-size:11.5px; line-height:1.35; }
+    .account-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:11px; }
+    .account-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; margin-top:3px; }
+    @media (max-width:1180px) { .production-summary-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .production-main-grid,.production-hero,.campaign-upload-grid { grid-template-columns:1fr; } .production-actions { justify-content:flex-start; } }
+    @media (max-width:760px) { .production-workspace { max-width:calc(100vw - 20px); padding:18px 12px 96px; } .production-summary-grid,.platform-preview-grid,.campaign-preview-metrics,.campaign-step-row,.campaign-safety-lines { grid-template-columns:1fr; } .account-row,.campaign-upload-row { grid-template-columns:1fr; } .production-board { grid-auto-columns:minmax(230px,82vw); } }
+    .proof-workspace { display:grid; gap:18px; width:100%; max-width:1240px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
+    .proof-workspace * { box-sizing:border-box; min-width:0; }
+    .proof-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
+    .proof-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
+    .proof-hero p { margin:8px 0 0; max-width:780px; color:var(--text-secondary); font-size:15px; line-height:1.45; }
+    .proof-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
+    .proof-actions button { min-height:38px; padding:0 14px; font-size:13px; }
+    .proof-pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .proof-pill { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border-default); border-radius:999px; background:rgba(255,255,255,.72); color:var(--text-secondary); padding:6px 10px; font-size:12px; font-weight:800; }
+    .proof-pill::before { content:""; width:7px; height:7px; border-radius:999px; background:var(--accent); }
+    .proof-summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; }
+    .proof-summary-card { border:1px solid var(--border-light); border-radius:17px; background:#fff; padding:13px; display:grid; gap:5px; box-shadow:0 10px 24px rgba(0,38,36,.04); }
+    .proof-summary-card span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .proof-summary-card strong { color:var(--text-primary); font-size:26px; line-height:1; }
+    .proof-summary-card small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
+    .proof-summary-card.urgent { border-left:4px solid var(--urgent); }
+    .proof-main-grid { display:grid; grid-template-columns:minmax(0,1.42fr) minmax(300px,.58fr); gap:18px; align-items:start; }
+    .proof-stack { display:grid; gap:16px; min-width:0; }
+    .proof-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:17px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:13px; min-width:0; overflow:hidden; }
+    .proof-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .proof-card-head h2 { margin:0; color:var(--text-primary); font-size:20px; line-height:1.15; letter-spacing:-.01em; }
+    .proof-card-head small { color:var(--text-tertiary); font-size:12px; line-height:1.35; text-align:right; }
+    .proof-card-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .proof-card-actions button { min-height:32px; padding:0 10px; font-size:12px; }
+    .proof-next-card { gap:8px; }
+    .proof-next-card p { margin:0; }
+    .proof-output-card { align-content:start; }
+    .proof-preview { min-height:76px; border:1px dashed var(--border-emphasis); border-radius:13px; background:linear-gradient(135deg,#eef7f6,#fff); display:grid; place-items:center; gap:4px; text-align:center; padding:10px; color:var(--text-tertiary); font-size:12px; font-weight:800; }
+    .proof-preview strong { color:var(--text-primary); font-size:13px; }
+    .proof-preview small { color:var(--text-tertiary); font-size:11px; line-height:1.3; }
+    .proof-builder-checklist { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; }
+    .proof-builder-checklist li { border:1px solid var(--border-light); border-radius:13px; background:#fbfefd; padding:9px; color:var(--text-secondary); font-size:12px; font-weight:750; line-height:1.3; }
+    .proof-list { display:grid; gap:9px; }
+    .proof-row { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:11px; display:grid; grid-template-columns:minmax(0,1fr); gap:8px; align-items:start; }
+    .proof-row strong { display:block; color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
+    .proof-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
+    .proof-row .badge { justify-self:start; }
+    .proof-metric-grid { display:grid; grid-template-columns:1fr; gap:8px; }
+    .proof-metric { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:10px; display:grid; gap:4px; }
+    .proof-metric span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.035em; }
+    .proof-metric strong { color:var(--text-primary); font-size:17px; line-height:1.1; }
+    .proof-metric small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
+    .proof-metric.urgent { border-left:4px solid var(--urgent); }
+    .proof-two-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+    .more-workspace { display:grid; gap:18px; width:100%; max-width:1180px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
+    .more-workspace * { box-sizing:border-box; min-width:0; }
+    .more-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
+    .more-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
+    .more-hero p { margin:8px 0 0; max-width:760px; color:var(--text-secondary); font-size:15px; line-height:1.45; }
+    .more-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; max-width:100%; }
+    .more-actions button { min-height:38px; padding:0 14px; font-size:13px; }
+    .more-pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .more-pill { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border-default); border-radius:999px; background:rgba(255,255,255,.72); color:var(--text-secondary); padding:6px 10px; font-size:12px; font-weight:800; }
+    .more-pill::before { content:""; width:7px; height:7px; border-radius:999px; background:var(--accent); }
+    .more-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:17px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:13px; min-width:0; overflow:hidden; }
+    .more-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .more-card-head h2 { margin:0; color:var(--text-primary); font-size:20px; line-height:1.15; letter-spacing:-.01em; }
+    .more-card-head small { color:var(--text-tertiary); font-size:12px; line-height:1.35; text-align:right; }
+    .more-summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; }
+    .more-summary-card { border:1px solid var(--border-light); border-radius:17px; background:#fff; padding:13px; display:grid; gap:5px; box-shadow:0 10px 24px rgba(0,38,36,.04); }
+    .more-summary-card span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .more-summary-card strong { color:var(--text-primary); font-size:22px; line-height:1.1; }
+    .more-summary-card small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
+    .more-utility-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; align-items:stretch; }
+    .more-utility-card { border:1px solid var(--border-light); border-radius:17px; background:#fbfefd; padding:14px; display:grid; gap:10px; align-content:start; }
+    .more-utility-card h3 { margin:0; color:var(--text-primary); font-size:16px; line-height:1.2; }
+    .more-utility-card p { margin:0; color:var(--text-secondary); font-size:13px; line-height:1.4; }
+    .more-card-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .more-card-actions button { min-height:32px; padding:0 10px; font-size:12px; }
+    .more-bottom-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,.72fr); gap:16px; align-items:start; }
+    .more-safety-list { display:grid; gap:8px; }
+    .more-safety-row { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:10px 12px; display:flex; justify-content:space-between; gap:12px; align-items:center; color:var(--text-secondary); font-size:13px; line-height:1.3; }
+    .more-safety-row strong { color:var(--text-primary); }
+    .more-safety-row span { color:var(--accent-hover); font-weight:850; white-space:nowrap; }
+    @media (max-width:1180px) { .more-summary-grid,.more-utility-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .more-hero,.more-bottom-grid { grid-template-columns:1fr; } .more-actions { justify-content:flex-start; } }
+    @media (max-width:760px) { .more-workspace { padding:18px 16px 96px; } .more-summary-grid,.more-utility-grid { grid-template-columns:1fr; } .more-card-head,.more-safety-row { align-items:flex-start; flex-direction:column; } }
+    .support-workspace { display:grid; gap:18px; width:100%; max-width:1040px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
+    .support-workspace * { box-sizing:border-box; min-width:0; }
+    .support-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
+    .support-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
+    .support-hero p { margin:8px 0 0; max-width:720px; color:var(--text-secondary); font-size:15px; line-height:1.45; }
+    .support-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
+    .support-actions button { min-height:38px; padding:0 14px; font-size:13px; }
+    .support-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:18px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:14px; min-width:0; overflow:hidden; }
+    .support-card h2 { margin:0; color:var(--text-primary); font-size:22px; line-height:1.15; letter-spacing:-.01em; }
+    .support-status-list { display:grid; gap:9px; }
+    .support-status-row { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:11px 12px; display:flex; justify-content:space-between; gap:12px; align-items:center; color:var(--text-secondary); font-size:13px; line-height:1.3; }
+    .support-status-row strong { color:var(--text-primary); }
+    .support-status-row span { color:var(--accent-hover); font-weight:850; text-align:right; }
+    .support-checklist { margin:0; padding:0; list-style:none; counter-reset:support-step; display:grid; gap:9px; }
+    .support-checklist li { counter-increment:support-step; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:11px 12px 11px 42px; color:var(--text-secondary); font-size:13px; line-height:1.4; position:relative; }
+    .support-checklist li::before { content:counter(support-step); position:absolute; left:12px; top:10px; width:20px; height:20px; border-radius:999px; display:grid; place-items:center; background:var(--accent); color:#fff; font-size:11px; font-weight:900; }
+    .support-details summary { cursor:pointer; color:var(--accent-hover); font-weight:850; }
+    @media (max-width:920px) { .support-hero { grid-template-columns:1fr; } .support-actions { justify-content:flex-start; } }
+    @media (max-width:760px) { .support-workspace { padding:18px 16px 96px; } .support-status-row { flex-direction:column; align-items:flex-start; } .support-status-row span { text-align:left; } }
+    @media (max-width:1180px) { .proof-summary-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .proof-main-grid,.proof-hero,.proof-two-grid { grid-template-columns:1fr; } .proof-actions { justify-content:flex-start; } }
+    @media (max-width:760px) { .proof-workspace { padding:18px 16px 96px; } .proof-summary-grid,.proof-metric-grid { grid-template-columns:1fr; } }
+    @media (max-width:1100px) { .growth-summary-grid,.growth-board { grid-template-columns:repeat(2,minmax(0,1fr)); } .growth-main-grid,.growth-hero { grid-template-columns:1fr; } .growth-hero-actions { justify-content:flex-start; } }
+    @media (max-width:640px) { .growth-workspace { padding:18px 16px 96px; } .growth-summary-grid,.growth-board { grid-template-columns:1fr; } .growth-row { grid-template-columns:1fr; } }
     .settings-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; align-items:start; }
     .channel-grid { grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); }
     .channel-card .toprow { align-items:flex-start; }
     .channel-actions { align-items:center; }
     .review-only-action { opacity:.62; cursor:not-allowed; border-style:dashed; }
     .control-status { min-height:20px; color:var(--muted); font-size:12px; font-weight:750; }
-    .action-status-message { min-height:20px; margin:8px 0 0; color:var(--muted); font-size:12px; font-weight:800; }
-    button[data-action-pending="true"] { opacity:.72; cursor:progress; transform:none; }
     .lee-bubble-safe-space { padding-bottom:112px; }
-    .app-markers { display:none; gap:10px; flex-wrap:wrap; justify-content:center; padding:0 24px 12px; color:#98a2b3; font-size:11px; font-weight:750; }
     @media (max-width:980px) {
       .app-section,
       .page-section,
@@ -13535,17 +13732,18 @@ function htmlShell() {
     <header class="app-topbar">
       <a class="brand-lockup" href="#overview"><span>LegalEase</span><strong>Command Center</strong></a>
       <nav class="top-nav" aria-label="Primary">
-        <a class="nav-top-link" href="#overview" data-nav-section="today">Today</a>
-        <a class="nav-top-link" href="#work" data-nav-section="work">Work</a>
-        <a class="nav-top-link" href="#social" data-nav-section="social">Social</a>
+        <a class="nav-top-link" href="#today" data-nav-section="today">Today</a>
+        <a class="nav-top-link" href="#growth" data-nav-section="growth">Growth</a>
+        <a class="nav-top-link" href="#partners" data-nav-section="partners">Partners</a>
+        <a class="nav-top-link" href="#production" data-nav-section="production">Production</a>
         <a class="nav-top-link" href="#proof" data-nav-section="proof">Proof</a>
-        <a class="nav-top-link" href="#operator-search" data-nav-section="search">Search</a>
+        <a class="nav-top-link" href="#more" data-nav-section="more">More</a>
       </nav>
     </header>
     <div>
       <header>
-        <div><div class="eyebrow">Founder workspace</div><h2>LegalEase</h2></div>
-        <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><details class="nav-menu utility-menu"><summary class="nav-menu-summary">Settings</summary><div class="nav-menu-panel"><strong>Daily</strong><a href="#morning-brief">Morning Brief</a><a href="#daily-closeout">Daily Closeout</a><a href="#operating-memory">Notes &amp; Decisions</a><strong>Work</strong><a href="#tasks">Tasks</a><a href="#capture-inbox">Inbox</a><strong>Settings</strong><a href="#settings">Settings Home</a><a href="#os-health">App Status</a><a href="#data-integrity">Data Check</a><a href="#smoke-test">Self-Check</a><a href="#roles">Team Roles</a><a href="#operator-manual">Guide</a><a href="#safe-mode">Recovery Mode</a><a href="/privacy">Privacy</a><a href="#production-activation-rcap">Launch Checklist</a><a href="#handoff-contract">Handoff Notes</a></div></details><button type="button" onclick="location.hash='operator-search'">Search</button><button type="button" onclick="lockCommandCenter()">Lock</button></div>
+        <div><div class="eyebrow">Operator cockpit</div><h2>LegalEase OS</h2></div>
+        <div class="row"><span id="storeStatus" class="store-pill" style="display:none">Current store: checking...</span><button onclick="openCommandPalette()">Command</button><button onclick="lockCommandCenter()">Lock</button><button class="primary" onclick="runSystemCheck()">Run System Check</button></div>
       </header>
       <main id="app"><div class="panel loading-panel"><div class="eyebrow">Starting command center</div><h1 class="big-title">Loading LegalEase...</h1><p class="big-copy">If this stays here, the browser could not finish the app render. The server is still serving a visible fallback so you are not staring at a blank screen.</p><div class="loading-line wide"></div><div class="loading-line"></div><div class="loading-card"></div><div class="card-actions"><button class="primary" onclick="location.reload()">Reload app</button><a class="button-link" href="#queue">Open Queue</a></div></div></main>
     </div>
@@ -13606,6 +13804,7 @@ function htmlShell() {
     let leeAdvanced = false;
     let leeBubbleOpen = false;
     let rcapActivationClientStatus = null;
+    let campaignImportPreview = null;
     const rcapReviewDefinitions = [
       { key:"rcap-proposal-task-v1", title:"Proposal Task", collection:"tasks", id:"task-rcap-proposal-draft-v1", priority:"high" },
       { key:"rcap-proposal-draft-v1", title:"Proposal Draft", collection:"partnerProgramArtifacts", artifactKey:"rcap-proposal-draft-v1", priority:"high" },
@@ -13620,7 +13819,7 @@ function htmlShell() {
     const clientRoleCapabilities = ${JSON.stringify(roleCapabilities)};
     const clientRoles = ["owner", "admin", "operator", "viewer"];
     const focusModes = [
-      { id:"inbox-triage", label:"Inbox Prioritize" },
+      { id:"inbox-triage", label:"Inbox Triage" },
       { id:"partner-follow-up", label:"Partner Follow-Up" },
       { id:"content-approval", label:"Content Approval" },
       { id:"proposal-review", label:"Proposal Review" },
@@ -13681,51 +13880,44 @@ function htmlShell() {
       state = safeBootFallbackState(details.reason || details.module || "state_fetch_failed");
       const app = document.querySelector("#app");
       if (!app) return;
-      const message = details.message || "Full state did not load. Recovery Mode keeps the app usable while protected actions stay off.";
       app.innerHTML = \`
-        <section id="safe-mode" class="page-section active">
-          <div class="panel hero-panel">
-            <div class="eyebrow">Recovery Mode</div>
-            <h1 class="big-title">LegalEase loaded recovery mode.</h1>
-              <p class="big-copy">\${esc(message)}</p>
-              <div class="metric-table" style="margin-top:14px">\${safeDiagnosticRows(stateFetchDiagnostics)}</div>
-              <div class="card-actions" style="margin-top:14px">
-              <button type="button" onclick="openTodayFromSafeMode()">Back to Today</button>
-              <button class="primary" type="button" onclick="openTodayFromSafeMode()">Back to Today</button>
-              <button type="button" onclick="retryFullStateAndOpenToday()">Retry full app</button>
-              <button type="button" onclick="location.hash='os-health'">Open App Status</button>
-              <button type="button" onclick="lockCommandCenter()">Sign out and clear session</button>
+        <section id="safe-mode" class="page-section active support-workspace lee-bubble-safe-space">
+          <section class="support-hero">
+            <div>
+              <div class="eyebrow">Recovery Mode</div>
+              <h1 class="big-title">Recovery Mode</h1>
+              <p>Use this if something breaks or the full app does not load.</p>
             </div>
-          </div>
-          <div class="grid two section">
-            <section class="panel">
-              <div class="eyebrow">Access status</div>
-              <h2>Protected shell is available</h2>
-              <p class="muted">If you can see this page in hosted mode, protected access is working. Actions stay unavailable until the full app loads.</p>
-              <div class="metric-table">
-                <div class="metric-row"><span>Auth token present</span><strong>\${stateFetchDiagnostics.authTokenPresent ? "Yes" : "No"}</strong></div>
-                <div class="metric-row"><span>Actions</span><strong>Disabled in Recovery Mode</strong></div>
-                <div class="metric-row"><span>Publishing</span><strong>Off</strong></div>
-              </div>
-            </section>
-            <section class="panel">
-              <div class="eyebrow">App status</div>
-              <h2>Public-safe health check</h2>
-              <div id="safeModeHealth" class="metric-table"><div class="metric-row"><span>/api/health</span><strong>Checking...</strong></div></div>
-              <div class="card-actions" style="margin-top:12px">
-                <a class="button-link" href="#os-health">View app status</a>
-                <a class="button-link" href="#smoke-test">Open self-check</a>
-                <a class="button-link" href="#tasks">Open tasks</a>
-              </div>
-            </section>
-          </div>
-          <section class="panel section">
-            <div class="eyebrow">Advanced details</div>
-            <h2>Full app load did not finish</h2>
-            <p class="muted">Use Retry full app after Render finishes deploying or after clearing a stale session.</p>
-            <pre class="code-block">\${esc(JSON.stringify(stateFetchDiagnostics, null, 2))}</pre>
+            <div class="support-actions">
+              <button class="primary" type="button" onclick="safeBootActive=false; location.hash='today'; window.load && window.load()">Back to Today</button>
+              <button type="button" onclick="retryFullStateLoad()">Try full app again</button>
+              <button type="button" onclick="safeBootActive=false; location.hash='app-status'">Open App Status</button>
+              <button type="button" onclick="lockCommandCenter()">Sign out</button>
+            </div>
           </section>
+
+          <section class="support-card">
+            <h2>Get back to steady ground.</h2>
+            <ol class="support-checklist">
+              <li>Go back to Today.</li>
+              <li>Try the full app again.</li>
+              <li>Check App Status.</li>
+              <li>If the issue continues, note the page and button that failed.</li>
+            </ol>
+            <div class="support-status-list">
+              <div class="support-status-row"><strong>Publishing: Off</strong><span>Protected</span></div>
+              <div class="support-status-row"><strong>External actions: Off</strong><span>Protected</span></div>
+            </div>
+          </section>
+
+          <details class="support-card support-details">
+            <summary>Show advanced details</summary>
+            <div class="metric-table" style="margin-top:14px">\${safeDiagnosticRows(stateFetchDiagnostics)}</div>
+            <div id="safeModeHealth" class="metric-table" style="margin-top:14px"><div class="metric-row"><span>/api/health</span><strong>Not checked yet</strong></div></div>
+            <pre class="code-block">\${esc(JSON.stringify(stateFetchDiagnostics, null, 2))}</pre>
+          </details>
         </section>
+        \${typeof leeBubbleHtml === "function" ? leeBubbleHtml() : ""}
       \`;
       fetchSafeModeHealth();
     }
@@ -13767,7 +13959,7 @@ function htmlShell() {
           ["Supabase DB", payload.supabaseDbConnected ? "Connected" : payload.supabaseDbConfigured ? "Configured, not connected" : "Not configured"],
           ["Supabase Storage", payload.supabaseStorageConnected ? "Connected" : payload.supabaseStorageConfigured ? "Configured, not connected" : "Not configured"],
           ["OpenAI", payload.openAIConfigured ? "Configured" : "Not configured"],
-          ["Publishing", liveGates === 0 ? "Off" : "Needs attention"]
+          ["Publishing", liveGates === 0 ? "Off" : "Needs review"]
         ].map(([label, value]) => \`<div class="metric-row"><span>\${esc(label)}</span><strong>\${esc(value)}</strong></div>\`).join("");
       } catch (error) {
         target.innerHTML = \`<div class="metric-row"><span>/api/health</span><strong>\${esc(error.message || "Unavailable")}</strong></div><div class="metric-row"><span>Publishing</span><strong>Off</strong></div>\`;
@@ -13776,20 +13968,6 @@ function htmlShell() {
     function retryFullStateLoad() {
       if (!state) state = safeBootFallbackState("retry_full_state");
       loadFullStateInBackground({ forceRender:true });
-    }
-    function openTodayFromSafeMode() {
-      location.hash = "overview";
-      if (state && !safeBootActive) render();
-    }
-    async function retryFullStateAndOpenToday() {
-      const loaded = await loadFullStateInBackground({ forceRender:true });
-      if (loaded) {
-        safeBootActive = false;
-        location.hash = "overview";
-        render();
-      } else {
-        toast("Full state is still unavailable. Recovery Mode is keeping the app usable.");
-      }
     }
     function retryBootStateLoad() {
       safeBootActive = false;
@@ -13977,59 +14155,189 @@ function htmlShell() {
       el.classList.add("show");
       setTimeout(() => el.classList.remove("show"), 1800);
     };
-    const pendingActions = new Set();
-    function activeActionButton(fallback = null) {
-      if (fallback?.tagName === "BUTTON") return fallback;
-      const active = document.activeElement;
-      return active?.tagName === "BUTTON" ? active : null;
-    }
-    function actionStatusMessage(message = "", tone = "info") {
-      const existing = document.querySelector("#actionStatusMessage");
-      const target = existing || document.createElement("div");
-      target.id = "actionStatusMessage";
-      target.className = "action-status-message " + tone;
-      target.textContent = message;
-      if (!existing) document.querySelector("#app")?.prepend(target);
-      if (message) toast(message);
-    }
-    async function runAction(button, label, asyncFn) {
-      const target = activeActionButton(button);
-      const actionKey = target?.dataset?.actionKey || label || "action";
-      if (pendingActions.has(actionKey)) return null;
-      pendingActions.add(actionKey);
-      const originalLabel = target?.textContent || "";
-      if (target) {
-        target.disabled = true;
-        target.dataset.actionPending = "true";
-        target.dataset.originalLabel = originalLabel;
-        target.textContent = "Working…";
-      }
-      actionStatusMessage("Working…", "info");
-      try {
-        const message = await asyncFn();
-        actionStatusMessage(message || "Done.", "good");
-        if (target) target.textContent = "Done";
-        return message;
-      } catch (error) {
-        console.error(error);
-        actionStatusMessage(error.message || "Try again.", "danger");
-        if (target) target.textContent = "Try again";
-        return null;
-      } finally {
-        setTimeout(() => {
-          pendingActions.delete(actionKey);
-          if (target) {
-            target.disabled = false;
-            target.dataset.actionPending = "false";
-            target.textContent = target.dataset.originalLabel || originalLabel || label || "Action";
-          }
-        }, 650);
-      }
-    }
     function safeControlToast(message) {
       toast(message || "Safe local action complete.");
     }
     const sectionClass = id => \`page-section \${id === currentPageId ? "active" : ""}\`;
+
+    const campaignUploadColumns = ["Date", "Time", "Platform", "Campaign", "Post Type", "Topic", "Caption", "Headline", "Subhead", "CTA", "Link", "Audience", "Goal", "Tone", "Image Direction", "Overlay Text", "Wilma Preference", "Approval Owner", "Status", "Notes"];
+    const campaignRequiredColumns = ["Date", "Platform", "Caption"];
+    const campaignColumnKey = value => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+    function parseCampaignCsvText(text = "") {
+      const rows = [];
+      let row = [];
+      let cell = "";
+      let quoted = false;
+      for (let index = 0; index < text.length; index += 1) {
+        const char = text[index];
+        const next = text[index + 1];
+        if (quoted && char === '"' && next === '"') {
+          cell += '"';
+          index += 1;
+        } else if (char === '"') {
+          quoted = !quoted;
+        } else if (char === "," && !quoted) {
+          row.push(cell.trim());
+          cell = "";
+        } else if ((char === "\\n" || char === "\\r") && !quoted) {
+          if (char === "\\r" && next === "\\n") index += 1;
+          row.push(cell.trim());
+          if (row.some(value => value !== "")) rows.push(row);
+          row = [];
+          cell = "";
+        } else {
+          cell += char;
+        }
+      }
+      row.push(cell.trim());
+      if (row.some(value => value !== "")) rows.push(row);
+      return rows;
+    }
+    function campaignRecordValue(record, label) {
+      return record[campaignColumnKey(label)] || "";
+    }
+    function campaignDateRange(records) {
+      const dates = records.map(record => campaignRecordValue(record, "Date")).filter(Boolean);
+      if (!dates.length) return "No dates";
+      const sorted = [...dates].sort();
+      return sorted[0] === sorted[sorted.length - 1] ? sorted[0] : sorted[0] + " to " + sorted[sorted.length - 1];
+    }
+    function campaignWilmaLabel(record) {
+      const preference = campaignRecordValue(record, "Wilma Preference").toLowerCase();
+      const postType = campaignRecordValue(record, "Post Type").toLowerCase();
+      const topic = campaignRecordValue(record, "Topic").toLowerCase();
+      if (["no", "never"].includes(preference)) return "Do not use Wilma";
+      if (preference === "yes") return "Use Wilma";
+      if (preference === "helper") return "Use Wilma as helper";
+      if (/faq|checklist|explainer|how|step|myth|walkthrough|reminder/.test(postType + " " + topic)) return "Use Wilma";
+      return "Wilma optional";
+    }
+    function campaignImagePlan(record) {
+      return campaignRecordValue(record, "Image Direction") ? "Image: Requested" : "Suggest direction";
+    }
+    async function handleCampaignSpreadsheetUpload(file) {
+      if (!file) return;
+      const name = String(file.name || "campaign upload");
+      if (/\\.xlsx$/i.test(name)) {
+        campaignImportPreview = {
+          fileName:name,
+          rows:[],
+          errors:["CSV upload is ready. XLSX support can be added next."],
+          summary:{ found:0, dateRange:"Not imported", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0 },
+          confirmed:false
+        };
+        render();
+        toast("CSV upload is ready. XLSX support can be added next.");
+        return;
+      }
+      if (!/\\.csv$/i.test(name) && !/text\\/csv/i.test(String(file.type || ""))) {
+        campaignImportPreview = {
+          fileName:name,
+          rows:[],
+          errors:["Use a CSV file for this import. XLSX support can be added next."],
+          summary:{ found:0, dateRange:"Not imported", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0 },
+          confirmed:false
+        };
+        render();
+        toast("Use a CSV file for this import.");
+        return;
+      }
+      const rows = parseCampaignCsvText(await file.text());
+      const headers = rows[0] || [];
+      const headerMap = new Map(headers.map((header, index) => [campaignColumnKey(header), index]));
+      const missing = campaignRequiredColumns.filter(column => !headerMap.has(campaignColumnKey(column)));
+      if (missing.length) {
+        campaignImportPreview = {
+          fileName:name,
+          rows:[],
+          errors:["This file needs Date, Platform, and Caption columns before it can be imported."],
+          summary:{ found:0, dateRange:"Not imported", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0 },
+          confirmed:false
+        };
+        render();
+        toast("This file needs Date, Platform, and Caption columns before it can be imported.");
+        return;
+      }
+      const records = rows.slice(1).map(sourceRow => {
+        const record = {};
+        for (const [key, index] of headerMap.entries()) record[key] = String(sourceRow[index] || "").trim();
+        return record;
+      }).filter(record => campaignRecordValue(record, "Date") || campaignRecordValue(record, "Platform") || campaignRecordValue(record, "Caption"));
+      const platforms = [...new Set(records.map(record => campaignRecordValue(record, "Platform")).filter(Boolean))];
+      campaignImportPreview = {
+        fileName:name,
+        rows:records.slice(0, 30),
+        errors:[],
+        summary:{
+          found:records.length,
+          dateRange:campaignDateRange(records),
+          platforms:platforms.join(", ") || "None",
+          needsImages:records.filter(record => !campaignRecordValue(record, "Image Direction")).length,
+          wilmaRecommended:records.filter(record => /Use Wilma/.test(campaignWilmaLabel(record))).length,
+          overlaySuggestions:records.filter(record => campaignRecordValue(record, "Overlay Text") || campaignRecordValue(record, "Headline") || campaignRecordValue(record, "CTA")).length
+        },
+        confirmed:false
+      };
+      render();
+      toast("Import preview ready. Nothing has been posted.");
+    }
+    function confirmCampaignImport() {
+      if (!campaignImportPreview?.rows?.length || campaignImportPreview.errors?.length) {
+        toast("Review a valid CSV preview before confirming import.");
+        return;
+      }
+      const now = Date.now();
+      const imported = campaignImportPreview.rows.map((record, index) => {
+        const caption = campaignRecordValue(record, "Caption");
+        const headline = campaignRecordValue(record, "Headline");
+        const topic = campaignRecordValue(record, "Topic");
+        const title = headline || topic || caption.slice(0, 72) || "Imported campaign post";
+        return {
+          id:"campaign-import-" + now + "-" + index,
+          title,
+          caption,
+          platform:campaignRecordValue(record, "Platform") || "linkedin",
+          status:"draft",
+          campaign:campaignRecordValue(record, "Campaign"),
+          scheduledFor:[campaignRecordValue(record, "Date"), campaignRecordValue(record, "Time")].filter(Boolean).join(" "),
+          imageBrief:campaignRecordValue(record, "Image Direction"),
+          overlayText:campaignRecordValue(record, "Overlay Text"),
+          sourceType:"campaign_upload",
+          createdAt:new Date().toISOString()
+        };
+      });
+      state.posts = [...imported, ...(state.posts || [])];
+      campaignImportPreview = { ...campaignImportPreview, confirmed:true };
+      render();
+      toast("Internal drafts created. Nothing gets posted.");
+    }
+    function cancelCampaignImport() {
+      campaignImportPreview = null;
+      render();
+      toast("Import preview cleared. Nothing was saved.");
+    }
+    function fixCampaignImportIssues() {
+      toast("Fix Issues checks the preview before anything is saved.");
+    }
+    function downloadCampaignTemplate() {
+      const sample = ["2026-06-01", "9:00 AM", "LinkedIn", "RecordShield", "Explainer", "Clean record basics", "A clean record should not require a maze.", "Clean records, clear next steps", "", "Start with a free eligibility check", "", "Job seekers", "Education", "Plainspoken", "Warm LegalEase illustration", "Clean records, clear next steps", "auto", "Roger", "Draft", "Imported safely as an internal draft"];
+      const csv = [campaignUploadColumns, sample].map(row => row.map(value => '"' + String(value).replace(/"/g, '""') + '"').join(",")).join("\\n");
+      const blob = new Blob([csv], { type:"text/csv" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "legalease-campaign-upload-template.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast("Template downloaded. Uploads create internal drafts only.");
+    }
+    window.handleCampaignSpreadsheetUpload = handleCampaignSpreadsheetUpload;
+    window.confirmCampaignImport = confirmCampaignImport;
+    window.cancelCampaignImport = cancelCampaignImport;
+    window.fixCampaignImportIssues = fixCampaignImportIssues;
+    window.downloadCampaignTemplate = downloadCampaignTemplate;
 
     async function api(path, options = {}) {
       const timeoutMs = Number(options.timeoutMs || 8000);
@@ -14215,7 +14523,7 @@ function htmlShell() {
           status:"not_requested",
           contentType:"application/json",
           authTokenPresent:Boolean(authSessionPresent()),
-          message:"Recovery Mode opened without requiring full app state.",
+          message:"Safe Mode opened without requiring full app state.",
           fellBackToSafeShell:true,
           reason:"manual_safe_mode"
         });
@@ -15371,7 +15679,7 @@ function htmlShell() {
           ok: linkedinConfigured,
           body: linkedinConfigured
             ? "Server-side LinkedIn OAuth configuration is present."
-            : \`Missing server-side LinkedIn credentials: \${linkedinMissing.length || 3} setting(s).\`,
+            : \`Missing env vars: \${linkedinMissing.join(", ") || "LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET, LINKEDIN_REDIRECT_URI"}.\`,
           detail: "Add credentials to .env.local. Values are never shown in the browser."
         },
         {
@@ -15458,7 +15766,7 @@ function htmlShell() {
       const finalCount = (state.postImages || []).filter(image => finalPngReady((state.posts || []).find(post => post.id === image.postId), image)).length;
       const publicCount = (state.posts || []).filter(post => publicHttpsUrlReady(publicImageUrlForPost(post, imageForPost(post.id)))).length;
       const checks = [
-        ["Storage configured", Boolean(storage.configured), storage.message || "Add server-side database and storage credentials."],
+        ["Storage configured", Boolean(storage.configured), storage.message || "Add SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and SUPABASE_STORAGE_BUCKET."],
         ["Bucket", Boolean(storage.bucket), storage.bucket || "social-assets"],
         ["Final PNGs", finalCount > 0, finalCount + " local final PNG" + (finalCount === 1 ? "" : "s") + " ready to upload."],
         ["Public URLs", publicCount > 0, publicCount + " post" + (publicCount === 1 ? "" : "s") + " already have public image URLs."]
@@ -15546,7 +15854,7 @@ function htmlShell() {
       const connected = Boolean(diagnostics.connected);
       const checks = [
         ["OAuth configured", Boolean(diagnostics.oauthConfigured), (diagnostics.missingEnvVars || []).length ? "Missing: " + diagnostics.missingEnvVars.join(", ") : "Ready"],
-        ["Token encryption", Boolean(diagnostics.tokenEncryptionConfigured), diagnostics.tokenEncryptionConfigured ? "Encrypted server-side token storage is available." : "Set the server-side token encryption secret."],
+        ["Token encryption", Boolean(diagnostics.tokenEncryptionConfigured), diagnostics.tokenEncryptionConfigured ? "Encrypted server-side token storage is available." : "Set OAUTH_TOKEN_ENCRYPTION_KEY."],
         ["Connected account", connected, connected ? "Connected as " + (diagnostics.accountName || "Google account") : "No Google account connected."],
         ["Gmail readonly", Boolean(gmail.configured), gmail.lastSyncAt || gmail.lastSyncStatus || "Not synced yet."],
         ["Calendar readonly", Boolean(calendar.configured), calendar.lastSyncAt || calendar.lastSyncStatus || "Not synced yet."]
@@ -15624,8 +15932,8 @@ function htmlShell() {
         {
           title: "OpenAI content and image key",
           ok: Boolean(state.runtime?.openAIConfigured),
-          body: state.runtime?.openAIConfigured ? \`AI server key detected. Image model: \${state.runtime?.imageModel || "gpt-image-1.5"}.\` : "AI server key is missing.",
-          action: "Add the AI server key in production and confirm billing limits."
+          body: state.runtime?.openAIConfigured ? \`OpenAI key detected. Image model: \${state.runtime?.imageModel || "gpt-image-1.5"}.\` : "OPENAI_API_KEY is missing.",
+          action: "Add OPENAI_API_KEY in production and confirm billing limits."
         },
         {
           title: "Final image composer",
@@ -15636,8 +15944,8 @@ function htmlShell() {
 	        {
 	          title: "Token encryption",
           ok: Boolean(state.runtime?.oauthTokenEncryptionConfigured),
-          body: state.runtime?.oauthTokenEncryptionConfigured ? "Token encryption is configured." : "Token encryption is missing.",
-          action: "Set a long random server-side token encryption secret before real account connections."
+          body: state.runtime?.oauthTokenEncryptionConfigured ? "OAuth token encryption key is configured." : "OAUTH_TOKEN_ENCRYPTION_KEY is missing.",
+          action: "Set a long random OAUTH_TOKEN_ENCRYPTION_KEY before real OAuth."
         },
 	        ...channelLaunchChecks,
 	        {
@@ -16615,6 +16923,15 @@ function htmlShell() {
       return !["done", "dismissed", "archived"].includes(String(task.status || "").toLowerCase());
     }
 
+    function priorityWeight(priority = "") {
+      const key = String(priority || "").toLowerCase();
+      if (["urgent", "critical", "p0"].includes(key)) return 5;
+      if (["high", "today", "p1"].includes(key)) return 4;
+      if (["medium", "normal", "p2"].includes(key)) return 3;
+      if (["low", "p3"].includes(key)) return 2;
+      return 1;
+    }
+
     function taskIsOverdue(task = {}) {
       const due = task.due_date || task.dueDate;
       return taskStatusOpen(task) && due && due < new Date().toISOString().slice(0, 10);
@@ -17152,11 +17469,11 @@ function htmlShell() {
           id:item.id,
           title:item.summary || item.rawText || "New company signal",
           whyItMatters:item.riskLevel === "high" ? "This may create legal, partner, customer, or revenue risk." : "This needs routing before it becomes founder memory.",
-          nextAction:item.suggestedAction || "Prioritize and route this signal.",
+          nextAction:item.suggestedAction || "Triage and route this signal.",
           priority:item.priority || "medium",
           status:item.status || "new",
           href:"growth-inbox",
-          button:"Prioritize"
+          button:"Triage"
         }));
       const approvals = (state.approvalQueue || []).filter(item => !["approved", "archived", "ignored"].includes(String(item.status || "").toLowerCase()));
       const approvalSummary = approvals.length ? [{
@@ -17258,16 +17575,16 @@ function htmlShell() {
           type:"task",
           id:task.id,
           title:task.title || "Move the highest-leverage task",
-          context:task.escalationReason || task.description || task.nextAction || "This is the clearest owned work due now. Finishing it lowers the operating load for the rest of the day.",
+          context:task.escalationReason || task.description || task.nextAction || "This is the clearest owned work due now. Finishing it lowers the load for the rest of the day.",
           href:"focus",
-          primaryLabel:"Start Focus Mode",
+          primaryLabel:"Start Work",
           secondaryLabel:"Open task",
           snoozeLabel:"Snooze",
           range:cockpitFocusRange(),
           steps:[
             task.nextAction || "Open the task and confirm the next concrete move.",
             "Decide whether this needs action, a snooze, or a clean dismissal.",
-            "Log the outcome so Le-E can update the operating memory."
+            "Log the outcome so Le-E can update the day."
           ]
         };
       }
@@ -17291,7 +17608,7 @@ function htmlShell() {
           type:"growth_inbox",
           id:item.id,
           title:item.summary || item.rawText || "Prioritize the newest company signal",
-          context:item.suggestedAction || "This signal should be routed before it becomes founder memory.",
+          context:item.suggestedAction || "This signal should be routed before it becomes another loose thread.",
           href:"growth-inbox",
           primaryLabel:"Prioritize signal",
           secondaryLabel:"Open Inbox",
@@ -17329,15 +17646,11 @@ function htmlShell() {
     }
 
     function cockpitDailyIntention(nowItem = cockpitNowItem()) {
-      const partnerCount = (state.partnerPrograms || []).filter(program => ["paid", "onboarding", "active", "reporting"].includes(String(program.status || "").toLowerCase())).length;
-      const inboxCount = (state.growthInbox || []).filter(item => !["converted", "ignored"].includes(String(item.status || "").toLowerCase())).length;
-      const proofCount = cockpitThisWeekMoved().length;
-      const accent = nowItem.type === "task" ? "protect the main thread" : nowItem.type === "approval" ? "clear decisions" : nowItem.type === "growth_inbox" ? "route the signal" : partnerCount ? "move partner proof" : "make the day lighter";
       return {
         prefix:"Today is for ",
-        accent,
-        suffix:proofCount ? ", then turning movement into proof." : inboxCount ? ", then clearing loose intake before it spreads." : ", with only the next useful move in view.",
-        source:"Le-E read open tasks, inbox signals, partner programs, and weekly proof."
+        accent:"protecting the main thread",
+        suffix:", then turning movement into proof.",
+        source:"Daily intention"
       };
     }
 
@@ -17351,9 +17664,28 @@ function htmlShell() {
       const blocks = [
         { label:nowItem.title || "Focus", type:"focus", start:Math.max(8, currentStart), end:Math.min(18, currentStart + 1.5) },
         ...calendarItems.map((item, index) => ({ label:item.title || item.summary || "Meeting", type:"meeting", start:10 + index * 2, end:11 + index * 2 })),
-        { label:"Family window", type:"personal", start:17, end:18 }
+        { label:"Closeout", type:"closeout", start:17.15, end:18 }
       ];
       return blocks.filter(block => block.end > 8 && block.start < 18).slice(0, 5);
+    }
+
+    function cockpitTimelineShortTitle(label = "") {
+      const text = String(label || "Focus");
+      if (/Harris County pilot memo/i.test(text)) return "Harris County follow-up";
+      if (text.length > 42) return text.slice(0, 39).trim() + "...";
+      return text;
+    }
+
+    function cockpitTimelineTimeLabel(hourValue = 0) {
+      const hour = Math.floor(hourValue);
+      const minutes = Math.round((hourValue - hour) * 60);
+      const normalizedHour = hour > 12 ? hour - 12 : hour;
+      const suffix = hour >= 12 ? "p" : "a";
+      return normalizedHour + (minutes ? ":" + String(minutes).padStart(2, "0") : "") + suffix;
+    }
+
+    function cockpitTimelineRangeLabel(block = {}) {
+      return cockpitTimelineTimeLabel(block.start || 8) + "–" + cockpitTimelineTimeLabel(block.end || 18);
     }
 
     function cockpitTimelineHtml(nowItem = cockpitNowItem()) {
@@ -17366,10 +17698,12 @@ function htmlShell() {
         const width = Math.max(8, Math.min(100 - left, ((block.end - block.start) / 10) * 100));
         const past = block.end < nowHour ? " past" : "";
         const current = block.start <= nowHour && block.end >= nowHour ? " current" : "";
-        return \`<button class="timeline-block \${esc(block.type)}\${past}\${current}" style="left:\${left}%;width:\${width}%;" onclick="location.hash='\${block.type === "focus" ? "focus" : "tasks"}'">\${esc(block.label)}</button>\`;
+        const href = block.type === "focus" ? "focus" : block.type === "closeout" ? "daily-closeout" : "tasks";
+        const status = current ? "now" : block.type === "closeout" ? "closeout" : block.type;
+        return \`<button class="timeline-block \${esc(block.type)}\${past}\${current}" style="left:\${left}%;width:\${width}%;" onclick="location.hash='\${href}'"><span class="timeline-block-title">\${esc(cockpitTimelineShortTitle(block.label))}</span><small class="timeline-block-meta">\${esc(cockpitTimelineRangeLabel(block))} · \${esc(status)}</small></button>\`;
       }).join("");
       return \`<section class="timeline-card">
-        <div class="cockpit-card-head"><h2>Today's Flow</h2><small>8a to 6p</small></div>
+        <div class="cockpit-card-head"><h2>Today’s Flow</h2><small>8a to 6p</small></div>
         <div class="timeline-track">
           <div class="timeline-axis">\${ticks.map(tick => \`<span>\${tick}</span>\`).join("")}</div>
           \${blocks}
@@ -17385,7 +17719,8 @@ function htmlShell() {
         context:task.sourceType || task.owner || "Task",
         need:task.nextAction || task.description || "Waiting on Roger.",
         age:cockpitRelativeAge(task.updatedAt || task.createdAt || task.dueDate),
-        href:"tasks"
+        href:"tasks",
+        category:/proof|evidence/i.test([task.title, task.description, task.sourceType].join(" ")) ? "proof" : "tasks"
       }));
       const partnerThreads = [...(state.partners || []), ...(state.partnerPrograms || [])].filter(item => {
         const status = String(item.status || item.stage || "").toLowerCase();
@@ -17395,16 +17730,37 @@ function htmlShell() {
         context:item.affiliation || item.partnerType || item.packageTier || "Partner",
         need:item.nextAction || "Needs a clean next touch.",
         age:cockpitRelativeAge(item.lastTouchDate || item.updatedAt || item.createdAt),
-        href:item.packageTier ? "partner-programs" : "partners"
+        href:item.packageTier ? "partner-programs" : "partners",
+        category:"partners"
       }));
       const inboxThreads = (state.growthInbox || []).filter(item => !["converted", "ignored"].includes(String(item.status || "").toLowerCase()) && /partner|investor|customer|support|proposal|meeting/i.test([item.sourceType, item.rawText, item.summary].join(" "))).map(item => ({
         name:item.relatedPartner || item.relatedCampaign || item.summary || "New signal",
         context:growthLabel(item.sourceType || "Growth Inbox"),
         need:item.suggestedAction || item.rawText || "Needs routing.",
         age:cockpitRelativeAge(item.createdAt),
-        href:"growth-inbox"
+        href:"growth-inbox",
+        category:/proof|evidence/i.test([item.sourceType, item.rawText, item.summary].join(" ")) ? "proof" : /partner/i.test([item.sourceType, item.rawText, item.summary].join(" ")) ? "partners" : "tasks"
       }));
       return [...waitingTasks, ...partnerThreads, ...inboxThreads].slice(0, 5);
+    }
+
+    function cockpitFollowUpTitle(thread = {}) {
+      const raw = String(thread.name || "Follow-up").trim();
+      if (/^smoke test task:\s*confirm founder-simple ui$/i.test(raw)) return "Confirm founder-simple UI";
+      const partnerProof = raw.match(/^Add partner proof note:\s*(.+)$/i);
+      if (partnerProof) return partnerProof[1].trim() + " proof note";
+      return todayFounderCopy(raw);
+    }
+
+    function cockpitFollowUpContext(thread = {}) {
+      const raw = String(thread.name || "");
+      if (/^Add partner proof note:/i.test(raw)) return "Turn partner movement into evidence.";
+      return todayFounderCopy([thread.context, thread.need].filter(Boolean).join(". "));
+    }
+
+    function cockpitFollowUpCategoryLabel(thread = {}) {
+      const value = String(thread.category || "tasks").toLowerCase();
+      return value === "partners" ? "Partners" : value === "proof" ? "Proof" : "Tasks";
     }
 
     function cockpitParkedItems() {
@@ -17455,10 +17811,10 @@ function htmlShell() {
       const dbConnected = state.persistence === "supabase" || Boolean(supabaseHealth?.connected);
       const storageConnected = Boolean(state.runtime?.supabaseStorage?.configured || supabaseHealth?.storageConnected || credentialPresent("SUPABASE_STORAGE_BUCKET"));
       return [
+        { label:"Protected", ok:true },
+        { label:dbConnected ? "Saved work connected" : "Saved work needs attention", ok:dbConnected },
+        { label:storageConnected ? "Files ready" : "Files need attention", ok:storageConnected },
         { label:"Le-E ready", ok:true },
-        { label:dbConnected ? "Supabase DB connected" : "Local fallback active", ok:dbConnected },
-        { label:storageConnected ? "Supabase Storage connected" : "Storage check needed", ok:storageConnected },
-        { label:state.runtime?.openAIConfigured ? "OpenAI configured" : "OpenAI not configured", ok:Boolean(state.runtime?.openAIConfigured) },
         { label:"Publishing is off", ok:liveGates === 0, danger:liveGates > 0 }
       ];
     }
@@ -17602,7 +17958,7 @@ function htmlShell() {
       const missing = rcapMissingPartnerDetailsClient();
       const readyCount = required.filter(item => ["approved", "handoff_ready"].includes(item.reviewState)).length;
       const ready = readyCount === required.length && !blocked.length && !revisions.length && !open.length && !missing.length;
-      const next = ready ? "Roger can manually decide whether to hand this packet to the separate Partner Journey OS." : blocked.length ? "Resolve blocked artifacts before considering handoff." : missing.length ? "Confirm missing RCAP partner details before handoff." : revisions.length ? "Revise requested artifacts and re-run review." : "Finish artifact review and mark each required artifact approved or handoff_ready.";
+      const next = ready ? "Roger can manually decide whether to hand this packet to the separate Partner Journey OS." : blocked.length ? "Resolve blocked items before considering handoff." : missing.length ? "Confirm missing RCAP Program partner details before handoff." : revisions.length ? "Revise requested items and re-run review." : "Finish item review and mark each required item approved or handoff_ready.";
       return { ready, readinessScore:Math.round((readyCount / required.length) * 100), readyCount, total:required.length, approved, handoffReady, blocked, revisions, open, missing, next };
     }
 
@@ -17622,26 +17978,6 @@ function htmlShell() {
         </div>
         <p class="muted">\${esc(readiness.next)}</p>
         <button class="wide" type="button" onclick="location.hash='production-activation-rcap'">Open RCAP Program Review</button>
-      </section>\`;
-    }
-
-    function cockpitRcapSignalHtml() {
-      const readiness = rcapPartnerJourneyHandoffReadinessClient();
-      const queue = rcapReviewQueueItems();
-      const needsAttention = queue.length || !readiness.ready;
-      if (!needsAttention) return "";
-      const primary = queue[0]?.title || (readiness.blocked[0] || readiness.revisions[0] || readiness.open[0] || readiness.missing[0] || "Handoff status needs review");
-      const detail = queue[0]?.nextAction || readiness.next || "Open RCAP only when there is a review decision, blocker, or missing detail.";
-      return \`<section class="cockpit-card rcap-signal-card" aria-label="RCAP Program needs review">
-        <div class="cockpit-card-head"><h2>RCAP Program needs review</h2><small>\${readiness.ready ? "Ready for decision" : "Not ready"}</small></div>
-        <p><strong>\${esc(primary)}</strong></p>
-        <p class="muted">\${esc(detail)}</p>
-        <div class="mini-metrics">
-          <span>Blocked <strong>\${esc(readiness.blocked.length)}</strong></span>
-          <span>Revisions <strong>\${esc(readiness.revisions.length)}</strong></span>
-          <span>Missing <strong>\${esc(readiness.missing.length)}</strong></span>
-        </div>
-        <div class="card-actions"><button type="button" onclick="location.hash='production-activation-rcap'">Open RCAP Program</button></div>
       </section>\`;
     }
 
@@ -17733,16 +18069,188 @@ function htmlShell() {
 
     function cockpitDailyOperatingLoopHtml() {
       const loop = cockpitDailyOperatingLoop();
-      return \`<section class="cockpit-card daily-operating-loop" aria-label="Today's Focus">
-        <div class="cockpit-card-head"><h2>Today's Focus</h2><small>Le-E operating brief</small></div>
-        <div class="daily-loop-summary"><strong>Top 3 for today.</strong><span>Founder guidance only.</span><span>Publishing is off</span></div>
+      return \`<section class="cockpit-card daily-operating-loop" aria-label="Daily Operating Loop">
+        <div class="cockpit-card-head"><h2>Daily Operating Loop</h2><small>Le-E operating brief</small></div>
+        <div class="daily-loop-summary"><strong>Review-only guidance.</strong><span>No external side effects.</span><span>Publishing is off</span></div>
         <div class="daily-loop-grid">
           <section class="daily-loop-section primary"><h3>Today's Top 3</h3>\${cockpitLoopListHtml(loop.top3, "No top actions available yet.")}</section>
           <section class="daily-loop-section"><h3>Waiting On</h3>\${cockpitLoopListHtml(loop.waitingOn, "Nothing is waiting on missing details right now.")}</section>
-          <section class="daily-loop-section"><h3>Decisions Needed</h3>\${cockpitLoopListHtml(loop.decisionsNeeded, "No founder decisions are waiting.")}</section>
+          <section class="daily-loop-section"><h3>Decisions Needed</h3>\${cockpitLoopListHtml(loop.decisionsNeeded, "No operator decisions are waiting.")}</section>
           <section class="daily-loop-section"><h3>Do Not Touch Today</h3>\${cockpitLoopListHtml(loop.doNotTouchToday, "No distractions flagged.")}</section>
           <section class="daily-loop-section"><h3>Momentum</h3>\${cockpitLoopListHtml(loop.momentum, "No recent operating movement logged yet.")}</section>
         </div>
+      </section>\`;
+    }
+
+    function todayFounderCopy(value = "") {
+      return String(value || "")
+        .replace(/Triage/gi, "Prioritize")
+        .replace(/operating memory/gi, "day")
+        .replace(/internal operating/gi, "saved")
+        .replace(/handoff packet/gi, "review packet")
+        .replace(/artifacts?/gi, "materials")
+        .replace(/audit events?/gi, "activity")
+        .replace(/internal state/gi, "saved work")
+        .replace(/generated client/gi, "app")
+        .replace(/route map/gi, "routes");
+    }
+
+    function todayActionLink(item = {}, fallback = "Review") {
+      const href = item.href || "tasks";
+      const action = item.action || fallback;
+      return \`<a href="#\${esc(href)}">\${esc(action)}</a>\`;
+    }
+
+    function todayIsPressing(item = {}) {
+      const text = [item.title, item.detail, item.reason, item.need, item.action, item.status, item.priority].join(" ");
+      return /critical|blocked|blocker|blocks|overdue|missing|needs review|needs decision|decision today|handoff|deadline|risk|contact missing|waiting on roger/i.test(text);
+    }
+
+    function todayUrgencyClass(item = {}) {
+      return todayIsPressing(item) ? " pressing" : "";
+    }
+
+    function todayUrgencyBadgeHtml(item = {}, label = "Pressing") {
+      return todayIsPressing(item) ? \`<span class="pill-urgent">\${esc(label)}</span>\` : "";
+    }
+
+    function cockpitPressingItems() {
+      const loop = cockpitDailyOperatingLoop();
+      const parked = cockpitParkedItems();
+      return cockpitUniqueByTitle([
+        ...parked.map(item => cockpitLoopItem(item.title, item.reason, item.href, "Review Blocker")),
+        ...loop.waitingOn.map(item => ({ ...item, action:item.action || "Resolve Blocker" })),
+        ...loop.decisionsNeeded.map(item => ({ ...item, action:item.action || "Review Decision" }))
+      ].filter(Boolean).filter(todayIsPressing)).slice(0, 3);
+    }
+
+    function cockpitPressingHtml() {
+      const items = cockpitPressingItems();
+      return \`<section class="cockpit-card pressing-card">
+        <div class="cockpit-card-head"><h2>Pressing</h2><small>Needs action today</small></div>
+        <div class="pressure-list">\${items.map(item => \`<button class="pressure-item pressing" type="button" onclick="location.hash='\${esc(item.href || "tasks")}'"><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail || item.reason || "Needs Roger before the day can move cleanly."))}</span><span class="pill-urgent">\${esc(/critical/i.test([item.title, item.detail, item.reason].join(" ")) ? "Critical" : "Pressing")}</span></button>\`).join("") || '<div class="empty-calm">Nothing critical right now.</div>'}</div>
+      </section>\`;
+    }
+
+    function cockpitTop3StandupHtml() {
+      const loop = cockpitDailyOperatingLoop();
+      const slots = [
+        ...loop.top3,
+        cockpitLoopItem("Add the first priority", "No priorities set yet. Add the first priority.", "tasks", "Add Priority"),
+        cockpitLoopItem("Choose a second priority", "Keep the day focused on the few things that matter.", "tasks", "Add Priority"),
+        cockpitLoopItem("Choose a third priority", "Leave room for one concrete finish line.", "tasks", "Add Priority")
+      ].slice(0, 3);
+      return \`<section class="cockpit-card standup-card top3-card">
+        <div class="cockpit-card-head"><h2>Top 3</h2><small>Today’s priorities</small></div>
+        <ol class="standup-priority-list">\${slots.map((item, index) => \`<li>
+          <span>Priority \${index + 1}</span>
+          <strong>\${esc(todayFounderCopy(item.title))}</strong>
+          <small>\${esc(todayFounderCopy(item.detail || item.nextAction || "Decide the next move."))}</small>
+          \${todayActionLink(item, index === 0 ? "Start" : "Review")}
+        </li>\`).join("")}</ol>
+        <div class="standup-card-actions"><button type="button" onclick="location.hash='tasks'">Add Priority</button></div>
+      </section>\`;
+    }
+
+    function cockpitNeedsAttentionHtml() {
+      const threads = cockpitThreadsOpen();
+      const parked = cockpitParkedItems();
+      const loop = cockpitDailyOperatingLoop();
+      const openTasks = cockpitOpenTasks();
+      const plannedSocial = (state.socialRecords || state.socialPosts || []).filter(item => /draft|ready|planned/i.test([item.type, item.status].join(" ")));
+      const items = cockpitUniqueByTitle([
+        parked[0] ? cockpitLoopItem(parked[0].title, parked[0].reason, parked[0].href, "Review Blocker") : null,
+        threads[0] ? cockpitLoopItem(threads[0].name, threads[0].need, threads[0].href, "Review Follow-up") : null,
+        cockpitLoopItem("RCAP Program review", "Record Clearing Access Program materials need a clear review pass before anything goes partner-facing.", "rcap", "Open RCAP Program"),
+        plannedSocial[0] ? cockpitLoopItem(plannedSocial[0].title || plannedSocial[0].body || "Marketing draft", "Manual publishing stays off until Roger handles it outside the OS.", "growth", "Open Draft") : null,
+        openTasks.length ? cockpitLoopItem(openTasks.length + " open task" + (openTasks.length === 1 ? "" : "s"), "Pick one task and move it to a clear next state.", "tasks", "Open Tasks") : null,
+        loop.decisionsNeeded[0] ? cockpitLoopItem(loop.decisionsNeeded[0].title, loop.decisionsNeeded[0].detail, loop.decisionsNeeded[0].href, "Review Decision") : null
+      ].filter(Boolean)).slice(0, 6);
+      return \`<section class="cockpit-card standup-card needs-attention-card">
+        <div class="cockpit-card-head"><h2>Needs Attention</h2><small>Look here first</small></div>
+        <div class="standup-row-list">\${items.map(item => \`<div class="standup-row\${todayUrgencyClass(item)}">
+          <div><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail))}</span>\${todayUrgencyBadgeHtml(item)}</div>
+          \${todayActionLink(item, "Review")}
+        </div>\`).join("") || '<div class="empty-calm">Nothing urgent needs attention right now.</div>'}</div>
+      </section>\`;
+    }
+
+    function cockpitBlockersDecisionsHtml() {
+      const loop = cockpitDailyOperatingLoop();
+      const items = cockpitUniqueByTitle([
+        ...loop.waitingOn.map(item => ({ ...item, action:"Resolve Blocker" })),
+        ...loop.decisionsNeeded.map(item => ({ ...item, action:"Review Decision" }))
+      ]).slice(0, 4);
+      return \`<section class="cockpit-card standup-card blockers-decisions-card">
+        <div class="cockpit-card-head"><h2>Blockers & Decisions</h2><small>Waiting on Roger</small></div>
+        <div class="standup-row-list">\${items.map(item => \`<div class="standup-row\${todayUrgencyClass(item)}">
+          <div><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail))}</span>\${todayUrgencyBadgeHtml(item, "Needs decision today")}</div>
+          \${todayActionLink(item, "Review")}
+        </div>\`).join("") || '<div class="empty-calm">No blockers or decisions are waiting right now.</div>'}</div>
+        <div class="standup-card-actions">
+          <button type="button" onclick="document.getElementById('cockpit-capture')?.focus()">Add Decision</button>
+          <button type="button" onclick="location.hash='daily-closeout'">Move to Tomorrow</button>
+        </div>
+      </section>\`;
+    }
+
+    function cockpitQuickCaptureHtml() {
+      return \`<section class="cockpit-card quick-capture">
+        <div class="cockpit-card-head"><h2>Quick Capture</h2><small>Saved for review</small></div>
+        <form class="rail-form today-capture-form" onsubmit="quickCapture(event)">
+          <p class="capture-helper">Save a thought before it becomes a loose end.</p>
+          <textarea id="cockpit-capture" name="raw_input" required aria-label="Quick Capture" placeholder="Capture a task, idea, decision, blocker, update, or post idea…"></textarea>
+          <input type="hidden" name="source_label" value="Today standup">
+          <input type="hidden" name="capture_type" value="auto_classify">
+          <input type="hidden" name="priority" value="medium">
+          <div class="capture-button-row">
+            <button class="primary" type="submit" onclick="this.form.capture_type.value='auto_classify'">Save</button>
+            <button type="submit" onclick="this.form.capture_type.value='task'">Task</button>
+            <button type="submit" onclick="this.form.capture_type.value='decision'">Decision</button>
+            <button type="submit" onclick="this.form.capture_type.value='blocker'">Blocker</button>
+            <button type="submit" onclick="this.form.capture_type.value='idea'">Post Idea</button>
+          </div>
+          <button type="button" onclick="location.hash='capture-inbox'">Open Inbox</button>
+        </form>
+      </section>\`;
+    }
+
+    function cockpitWhatMovedHtml() {
+      const moved = cockpitThisWeekMoved();
+      return \`<section class="cockpit-card standup-card what-moved-card">
+        <div class="cockpit-card-head"><h2>What Moved</h2><small>Progress worth keeping</small></div>
+        <div class="moved-list">\${moved.map(item => \`<button class="moved-row" type="button" onclick="location.hash='\${esc(item.href)}'"><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail))}</span><span>\${esc(item.day)}</span></button>\`).join("") || '<div class="empty-calm">No movement logged yet today.</div>'}</div>
+      </section>\`;
+    }
+
+    function cockpitCloseoutPlanHtml() {
+      const closeout = cockpitDailyCloseoutRecord();
+      return \`<section class="cockpit-card standup-card closeout-plan-card">
+        <div class="cockpit-card-head"><h2>Closeout / Tomorrow Plan</h2><small>End cleanly</small></div>
+        <div class="closeout-summary">
+          <div><span>What got done?</span><strong>\${esc(todayFounderCopy((closeout.moved_today || [])[0]?.title || "No movement logged yet today."))}</strong></div>
+          <div><span>What carries forward?</span><strong>\${esc(todayFounderCopy((closeout.carry_forward || [])[0]?.title || "Nothing selected yet."))}</strong></div>
+          <div><span>Tomorrow’s first move</span><strong>\${esc(todayFounderCopy(closeout.tomorrow_first_move || "Choose the first move before closing the day."))}</strong></div>
+        </div>
+        <div class="standup-card-actions">
+          <button class="primary" type="button" onclick="saveDailyCloseout()">Close the Day</button>
+          <button type="button" onclick="generateTomorrowPlan()">Plan Tomorrow</button>
+          <button type="button" onclick="location.hash='daily-closeout'">Open Closeout</button>
+        </div>
+      </section>\`;
+    }
+
+    function cockpitTodayStandupBoardHtml() {
+      return \`<section class="today-standup-board" aria-label="Today standup board">
+        <div class="standup-two-col">
+          \${cockpitTop3StandupHtml()}
+          \${cockpitNeedsAttentionHtml()}
+        </div>
+        <div class="standup-two-col">
+          \${cockpitBlockersDecisionsHtml()}
+          \${cockpitWhatMovedHtml()}
+        </div>
+        \${cockpitCloseoutPlanHtml()}
       </section>\`;
     }
 
@@ -17776,7 +18284,7 @@ function htmlShell() {
 
     function memoryListHtml(items, emptyText, limit = 3) {
       const rows = (items || []).slice(0, limit);
-      return \`<ul>\${rows.length ? rows.map(item => \`<li><strong>\${esc(item.title || "Note")}</strong><br><span>\${esc(item.detail || "Saved work note.")}</span></li>\`).join("") : \`<li>\${esc(emptyText)}</li>\`}</ul>\`;
+      return \`<ul>\${rows.length ? rows.map(item => \`<li><strong>\${esc(item.title || "Memory item")}</strong><br><span>\${esc(item.detail || "Internal operating memory.")}</span></li>\`).join("") : \`<li>\${esc(emptyText)}</li>\`}</ul>\`;
     }
 
     function savedMorningBriefForToday() {
@@ -17884,8 +18392,8 @@ function htmlShell() {
     function cockpitDailyCloseoutHtml() {
       const saved = Boolean(savedDailyCloseoutForToday());
       const closeout = cockpitDailyCloseoutRecord();
-      return \`<section class="cockpit-card daily-closeout-card" aria-label="Closeout">
-        <div class="cockpit-card-head"><h2>Closeout</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
+      return \`<section class="cockpit-card daily-closeout-card" aria-label="Daily Closeout">
+        <div class="cockpit-card-head"><h2>Daily Closeout</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
         <div class="daily-loop-summary"><strong>Tomorrow: \${esc(closeout.tomorrow_mission || "Plan not generated")}</strong><span>Publishing is off</span><span>Internal only</span></div>
         <div class="daily-loop-grid">
           <section class="daily-loop-section primary"><h3>Tomorrow Top 3</h3>\${memoryListHtml(closeout.tomorrow_top_3, "No tomorrow plan yet.", 3)}</section>
@@ -17914,16 +18422,16 @@ function htmlShell() {
     function cockpitOsHealthHtml() {
       const health = cockpitOsHealthRecord();
       const warnings = health.trust_warnings || [];
-      return \`<section class="cockpit-card os-health-card" aria-label="System Health">
-        <div class="cockpit-card-head"><h2>System Health</h2><small>\${esc(plainOperatorState(health.overall_health || "needs_attention"))}</small></div>
+      return \`<section class="cockpit-card os-health-card" aria-label="App Status">
+        <div class="cockpit-card-head"><h2>App Status</h2><small>\${esc(plainOperatorState(health.overall_health || "needs_attention"))}</small></div>
         <div class="daily-loop-summary"><strong>Overall: \${esc(plainOperatorState(health.overall_health || "needs_attention"))}</strong><span>Last verified: \${esc(formatDateTime(health.generated_at) || "Not recorded")}</span><span>Publishing is off</span></div>
         <div class="daily-loop-grid">
           <section class="daily-loop-section primary"><h3>Key warnings</h3>\${memoryListHtml(warnings, "No key warnings saved in the latest snapshot.", 3)}</section>
           <section class="daily-loop-section"><h3>Next action</h3><ul><li>\${esc(health.summary?.next_operator_action || "Refresh App Status.")}</li></ul></section>
         </div>
         <div class="operating-memory-actions">
-          <button type="button" onclick="location.hash='os-health'">Open System Health</button>
-          <button class="primary" type="button" onclick="refreshOsHealth()">Refresh System Health</button>
+          <button type="button" onclick="location.hash='os-health'">Open App Status</button>
+          <button class="primary" type="button" onclick="refreshOsHealth()">Refresh App Status</button>
         </div>
       </section>\`;
     }
@@ -18249,15 +18757,15 @@ function htmlShell() {
       const item = (group, label, route, expected) => ({ id:(group + "-" + label).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), label, route, expected, status:"not_tested", notes:"" });
       const group = (name, rows) => ({ id:name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), name, items:rows.map(row => item(name, ...row)) });
       return [
-        group("App Shell", [["Open Operator Cockpit","overview","Overview loads without render errors."],["Top nav works","overview","Top navigation opens usable sections."],["More menu works","more","More menu opens internal pages."],["No render-error screen","overview","No render-error fallback is visible."],["No horizontal overflow","overview","Page content fits viewport."],["Le-E pill/panel opens","overview","Bottom-right Le-E panel opens."],["Live gates show 0","os-health","Live gates count remains 0."]]),
+        group("App Shell", [["Open Today","overview","Overview loads without render errors."],["Top nav works","overview","Top navigation opens usable sections."],["More menu works","more","More menu opens internal pages."],["No render-error screen","overview","No render-error fallback is visible."],["No horizontal overflow","overview","Page content fits viewport."],["Le-E pill/panel opens","overview","Bottom-right Le-E panel opens."],["Publishing is off","os-health","Publishing remains off."]]),
         group("Auth + Endpoint Safety", [["Owner-token auth active","os-health","Hosted owner-token protection remains active."],["Lock/sign out available","overview","Lock/sign out clears token."],["Protected APIs require owner token","os-health","Protected APIs reject missing and wrong token."],["/api/health is public-safe and scrubbed","os-health","Health response is public-safe and scrubbed."],["Forbidden actions remain blocked","os-health","External action guard blocks forbidden work."],["No secrets exposed","os-health","No secrets appear in HTML or API responses."]]),
-        group("Quick Capture + Capture Inbox", [["Quick Capture card renders","overview","Quick Capture is visible in cockpit."],["Capture with Le-E works","capture-inbox","Quick Capture saves internal review item."],["Capture Inbox route opens","capture-inbox","Capture Inbox renders."],["Capture can be marked reviewed","capture-inbox","Mark reviewed updates internal state."],["Capture can route to task","capture-inbox","Capture routes to Task internally."],["Capture can route to Operating Memory","capture-inbox","Capture routes to Operating Memory internally."],["Ignored capture does not influence rituals","capture-inbox","Ignored capture stays out of rituals."]]),
+        group("Quick Capture + Capture Inbox", [["Quick Capture card renders","overview","Quick Capture is visible in cockpit."],["Capture with Le-E works","capture-inbox","Quick Capture saves internal review item."],["Capture Inbox route opens","capture-inbox","Capture Inbox renders."],["Capture can be marked reviewed","capture-inbox","Mark reviewed updates saved work."],["Capture can route to task","capture-inbox","Capture routes to Task internally."],["Capture can route to Notes & Decisions","capture-inbox","Capture routes to Notes & Decisions internally."],["Ignored capture does not influence rituals","capture-inbox","Ignored capture stays out of rituals."]]),
         group("Tasks", [["#tasks opens","tasks","All Tasks page opens."],["#tasks-today opens","tasks-today","Today task view opens."],["#tasks-blocked opens","tasks-blocked","Blocked task view opens."],["#tasks-waiting opens","tasks-waiting","Waiting task view opens."],["#tasks-this-week opens","tasks-this-week","This Week task view opens."],["Task status actions are internal-only","tasks","Task updates do not call external systems."],["Blocked task requires blocker reason","tasks-blocked","Blocked status requires a reason."]]),
         group("Daily Rituals", [["#morning-brief opens","morning-brief","Morning Brief route renders."],["Save Morning Brief works","morning-brief","Morning Brief saves internally."],["#evening-reflection opens","evening-reflection","Evening Reflection route renders."],["Save Evening Reflection works","evening-reflection","Evening Reflection saves internally."],["Source evidence renders","morning-brief","Source evidence appears in ritual pages."]]),
-        group("Operating Memory + Closeout", [["#operating-memory opens","operating-memory","Operating Memory route renders."],["Save Today's Operating Memory works","operating-memory","Operating Memory saves internally."],["#daily-closeout opens","daily-closeout","Daily Closeout route renders."],["Save Closeout works","daily-closeout","Daily Closeout saves internally."],["Generate Tomorrow Plan works","daily-closeout","Tomorrow Plan generates internally."],["Tomorrow Plan renders","daily-closeout","Tomorrow Plan is visible."]]),
-        group("Search + Health + Integrity", [["#operator-search opens","operator-search","Operator Search route renders."],["Search finds tasks/captures/RCAP artifacts","operator-search","Search index includes core records."],["Safe search actions appear","operator-search","Internal-only safe actions appear."],["Forbidden search actions do not appear","operator-search","External actions do not appear."],["#os-health opens","os-health","OS Health route renders."],["Refresh OS Health Snapshot works","os-health","OS Health refresh saves internally."],["#data-integrity opens","data-integrity","Data Integrity route renders."],["Integrity status renders","data-integrity","Integrity status is visible."],["No secret fields appear","data-integrity","Secret-like fields are scrubbed."]]),
-        group("RCAP Workflow", [["RCAP Production Activation card renders","overview","RCAP activation card is visible."],["#production-activation-rcap opens","production-activation-rcap","RCAP Review Workspace opens."],["Review Queue renders","production-activation-rcap","Review Queue is visible."],["Approval controls are internal-only","production-activation-rcap","Approval controls only update internal state."],["Handoff Readiness renders","production-activation-rcap","Handoff Readiness section is visible."],["Generate Internal Handoff Packet works internally only","production-activation-rcap","Internal packet generation does not contact external systems."],["No Partner Journey system is contacted","production-activation-rcap","Partner Journey systems are not called."]]),
-        group("Safety Confirmation", [["No emails sent","os-health","Email sending remains unavailable."],["No posts published","queue","Publishing remains blocked unless explicitly approved outside this smoke test."],["No partner pages published","partner-pages","Partner pages remain draft/review-only."],["No dashboards activated","partner-dashboards","Dashboards are not activated."],["No destructive restore","data-integrity","Restore dry-run only; destructive restore remains blocked."],["No live gates enabled","settings","Live gates are not enabled."],["Live gates remain 0","os-health","Live gates count is 0."]])
+        group("Notes & Decisions + Closeout", [["#operating-memory opens","operating-memory","Notes & Decisions route renders."],["Save Today's Notes works","operating-memory","Notes & Decisions saves internally."],["#daily-closeout opens","daily-closeout","Daily Closeout route renders."],["Save Closeout works","daily-closeout","Daily Closeout saves internally."],["Generate Tomorrow Plan works","daily-closeout","Tomorrow Plan generates internally."],["Tomorrow Plan renders","daily-closeout","Tomorrow Plan is visible."]]),
+        group("Search + App Status + Data Check", [["#operator-search opens","operator-search","Search route renders."],["Search finds tasks/captures/RCAP Program items","operator-search","Search index includes core records."],["Safe search actions appear","operator-search","Internal-only safe actions appear."],["Forbidden search actions do not appear","operator-search","External actions do not appear."],["#os-health opens","os-health","App Status route renders."],["Refresh App Status works","os-health","App Status refresh saves internally."],["#data-integrity opens","data-integrity","Data Check route renders."],["Data check status renders","data-integrity","Data check status is visible."],["No secret fields appear","data-integrity","Secret-like fields are scrubbed."]]),
+        group("RCAP Program", [["Record Clearing Access Program card renders","overview","RCAP Program card is visible."],["#production-activation-rcap opens","production-activation-rcap","RCAP Program Review opens."],["Review Queue renders","production-activation-rcap","Review Queue is visible."],["Approval controls are internal-only","production-activation-rcap","Approval controls only update saved work."],["Handoff status renders","production-activation-rcap","Handoff status section is visible."],["Prepare Review Packet works internally only","production-activation-rcap","Internal packet generation does not contact external systems."],["No Partner Journey system is contacted","production-activation-rcap","Partner Journey systems are not called."]]),
+        group("Safety Confirmation", [["No emails sent","os-health","Email sending remains unavailable."],["No posts published","queue","Publishing remains blocked unless explicitly approved outside this self-check."],["No partner pages published","partner-pages","Partner pages remain draft/review-only."],["No dashboards activated","partner-dashboards","Dashboards are not activated."],["No destructive restore","data-integrity","Restore dry-run only; destructive restore remains blocked."],["Publishing stays off","settings","Publishing is not enabled."],["Publishing remains off","os-health","Publishing is off."]])
       ];
     }
 
@@ -18286,7 +18794,7 @@ function htmlShell() {
         }
       }
       const liveGates = clientLiveGatesCount(inputState);
-      if (liveGates !== 0) warnings.push({ severity:"critical", collection:"runtime", message:"Live gates are not 0.", itemId:"livePostingGates" });
+      if (liveGates !== 0) warnings.push({ severity:"critical", collection:"runtime", message:"Publishing needs review.", itemId:"livePostingGates" });
       return {
         id:"data-integrity-client-fallback",
         generated_at:options.now || new Date().toISOString(),
@@ -18343,7 +18851,7 @@ function htmlShell() {
         const def = rcapReviewDefinitions.find(item => item.key === key) || { key, title:key };
         return clientContractArtifact(def, def ? rcapReviewArtifactFor(def) : {});
       });
-      artifacts.push(clientContractArtifact({ key:rcapHandoffPacketArtifactKey, title:"Internal Handoff Packet" }, rcapHandoffPacketForState()));
+      artifacts.push(clientContractArtifact({ key:rcapHandoffPacketArtifactKey, title:"Internal Review Packet" }, rcapHandoffPacketForState()));
       return {
         handoff_packet_id:"rcap-partner-journey-handoff-contract-preview-v1",
         handoff_contract_version:handoffContractVersion,
@@ -18397,7 +18905,7 @@ function htmlShell() {
       const reviewRequired = list(packet.review_required_artifacts);
       const approvals = packet.manual_approval_status === "approved" ? [] : ["Manual approval is missing."];
       const safetyFailures = [];
-      if (Number(packet.live_gates_count || 0) !== 0) safetyFailures.push("Live gates count is not 0.");
+      if (Number(packet.live_gates_count || 0) !== 0) safetyFailures.push("Publishing is not off.");
       if (packet.no_external_actions_confirmation !== true) safetyFailures.push("No external actions confirmation is false.");
       const valid = !missingFields.length && !missingPartner.length && !blockers.length && !revisions.length && !reviewRequired.length && !approvals.length && !safetyFailures.length;
       return { valid, status:valid ? "valid" : "invalid", missing_fields:[...missingFields, ...missingPartner.map(field => "partner_data." + field)], blockers, required_approvals:approvals, safety_failures:safetyFailures, required_fields_count:handoffContractRequiredTopLevelFields.length + handoffContractRequiredPartnerFields.length, missing_fields_count:missingFields.length + missingPartner.length };
@@ -18441,7 +18949,7 @@ function htmlShell() {
       const status = buildSmokeTestStatus(state, { commit_hash: state.runtime?.commitHash || "" });
       return \`<section class="cockpit-card smoke-test-card" aria-label="Self-Check">
         <div class="cockpit-card-head"><h2>Self-Check</h2><small>Post-deploy checklist</small></div>
-        <div class="daily-loop-summary"><strong>Last smoke test status: \${esc(plainOperatorState(status.last_status))}</strong><span>Last run: \${esc(formatDateTime(status.last_run_timestamp) || "Not recorded")}</span><span>Failed: \${esc(status.failed_count || 0)}</span></div>
+        <div class="daily-loop-summary"><strong>Last self-check status: \${esc(plainOperatorState(status.last_status))}</strong><span>Last run: \${esc(formatDateTime(status.last_run_timestamp) || "Not recorded")}</span><span>Failed: \${esc(status.failed_count || 0)}</span></div>
         <div class="operating-memory-actions">
           <button class="primary" type="button" onclick="location.hash='smoke-test'">Open Self-Check</button>
         </div>
@@ -18450,10 +18958,10 @@ function htmlShell() {
 
     function cockpitEvidenceRoomHtml() {
       const overview = buildEvidenceOverview(state);
-      return \`<section class="cockpit-card evidence-room-card" aria-label="Evidence Room">
-        <div class="cockpit-card-head"><h2>Evidence Room</h2><small>Internal proof room</small></div>
+      return \`<section class="cockpit-card evidence-room-card" aria-label="Proof">
+        <div class="cockpit-card-head"><h2>Proof</h2><small>Internal proof room</small></div>
         <div class="daily-loop-summary">
-          <strong>Evidence count: \${esc(overview.total_evidence_items || 0)}</strong>
+          <strong>Proof count: \${esc(overview.total_evidence_items || 0)}</strong>
           <span>Recent: \${esc(overview.recent_evidence_items || 0)}</span>
           <span>Open review: \${esc(overview.open_review_items || 0)}</span>
           <span>Last update: \${esc(formatDateTime(overview.last_evidence_update) || "Not recorded")}</span>
@@ -18489,9 +18997,9 @@ function htmlShell() {
           <span>Missing fields: \${esc(status.missing_fields_count || 0)}</span>
           <span>Latest validation: \${esc(plainOperatorState(status.latest_validation_result || "not_recorded"))}</span>
         </div>
-        <p class="muted">Internal schema and validation layer for a future Partner Journey OS handoff. No external system contacted.</p>
+        <p class="muted">Internal validation notes for a future Partner Journey OS handoff. No external system contacted.</p>
         <div class="operating-memory-actions">
-          <button class="primary" type="button" onclick="location.hash='handoff-contract'">Open Handoff Contract</button>
+          <button class="primary" type="button" onclick="location.hash='handoff-contract'">Open Handoff Notes</button>
         </div>
       </section>\`;
     }
@@ -18506,10 +19014,10 @@ function htmlShell() {
       const warningCount = (integrity.errors || []).length + (integrity.warnings || []).length;
       return \`<section class="cockpit-card data-integrity-card" aria-label="Data Check">
         <div class="cockpit-card-head"><h2>Data Check</h2><small>\${esc(plainOperatorState(integrity.integrity_status || "needs_attention"))}</small></div>
-        <p>\${esc(warningCount ? warningCount + " integrity warning(s) need review." : "Collections are structurally healthy.")}</p>
+        <p>\${esc(warningCount ? warningCount + " data warning(s) need review." : "Saved work is structurally healthy.")}</p>
         <div class="mini-metrics">
           <span>Warnings <strong>\${esc(warningCount)}</strong></span>
-          <span>Publishing <strong>\${Number(integrity.live_gates_count || 0) === 0 ? "Off" : "Needs review"}</strong></span>
+          <span>Publishing <strong>\${esc((integrity.live_gates_count || 0) === 0 ? "Off" : "Needs review")}</strong></span>
         </div>
         <div class="card-actions"><button type="button" onclick="location.hash='data-integrity'">Open Data Check</button></div>
       </section>\`;
@@ -18576,25 +19084,25 @@ function htmlShell() {
       (state.conversationNotes || []).forEach(item => result.push(make({ id:item.id, type:"conversationNotes", title:item.summary || item.source_label || "Conversation note", summary:item.raw_note || item.review_state, route:"conversation-notes", status:item.review_state, priority:item.priority })));
       (state.morningBriefs || []).forEach(item => result.push(make({ id:item.key || item.id, type:"morningBrief", title:item.mission_today || "Morning Brief", summary:"Daily ritual input.", route:"morning-brief", status:item.status || "saved", safeActions:[{ action:"open_morning_brief", label:"Open Morning Brief", route:"morning-brief" }] })));
       (state.eveningReflections || []).forEach(item => result.push(make({ id:item.key || item.id, type:"eveningReflection", title:item.title || "Evening Reflection", summary:(item.notes_for_tomorrow || [])[0]?.title || "Evening reflection.", route:"evening-reflection", status:item.status || "saved", safeActions:[{ action:"open_evening_reflection", label:"Open Evening Reflection", route:"evening-reflection" }] })));
-      (state.operatingMemory || []).forEach(item => result.push(make({ id:item.key || item.id, type:"operatingMemory", title:(item.moved_today || [])[0]?.title || "Notes & Decisions", summary:(item.carry_forward || [])[0]?.title || "What needs to carry forward.", route:"operating-memory", status:item.status || "saved" })));
+      (state.operatingMemory || []).forEach(item => result.push(make({ id:item.key || item.id, type:"operatingMemory", title:(item.moved_today || [])[0]?.title || "Notes & Decisions", summary:(item.carry_forward || [])[0]?.title || "Day-over-day notes.", route:"operating-memory", status:item.status || "saved" })));
       (state.dailyCloseouts || []).forEach(item => result.push(make({ id:item.key || item.id, type:"dailyCloseout", title:item.tomorrow_mission || "Daily Closeout", summary:(item.tomorrow_top_3 || [])[0]?.title || "Closeout and tomorrow plan.", route:"daily-closeout", status:item.status || "saved", safeActions:[{ action:"open_daily_closeout", label:"Open Daily Closeout", route:"daily-closeout" }] })));
-      (state.partnerProgramArtifacts || []).filter(item => /rcap/i.test([item.key, item.title, item.partnerSlug].join(" "))).forEach(item => result.push(make({ id:item.key || item.id, type:item.key === rcapHandoffPacketArtifactKey ? "handoffPacket" : "rcapProgramArtifact", title:founderText(item.title || item.key || "RCAP Program item"), summary:founderText(item.summary?.nextManualAction || item.summary?.answer || item.status || "RCAP Program item."), route:"production-activation-rcap", status:item.review_state || item.status, priority:item.priority, safeActions:[{ action:"open_rcap_review_workspace", label:"Open RCAP Program Review", route:"production-activation-rcap" }] })));
+      (state.partnerProgramArtifacts || []).filter(item => /rcap/i.test([item.key, item.title, item.partnerSlug].join(" "))).forEach(item => result.push(make({ id:item.key || item.id, type:item.key === rcapHandoffPacketArtifactKey ? "handoffPacket" : "rcapProgramItem", title:item.title || item.key || "RCAP Program item", summary:item.summary?.nextManualAction || item.summary?.answer || item.status || "RCAP Program item.", route:"production-activation-rcap", status:item.review_state || item.status, priority:item.priority, safeActions:[{ action:"open_rcap_review_workspace", label:"Open RCAP Program Review", route:"production-activation-rcap" }] })));
       (state.reports || []).forEach(item => result.push(make({ id:item.key || item.id, type:"report", title:item.title || item.reportTitle || "Report", summary:item.summary || item.status || "Internal report.", route:"reports", status:item.status || item.review_state })));
       (state.evidencePackNotes || []).forEach(item => result.push(make({ id:item.key || item.id, type:"evidenceNote", title:item.title || "Evidence note", summary:item.notes || item.summary || item.status, route:"reports", status:item.status || item.review_state })));
       (state.dataRoomItems || []).forEach(item => result.push(make({ id:item.id || item.key, type:"dataRoomItem", title:item.title || item.name || "Data Room item", summary:item.summary || item.notes || item.status, route:"dataroom", status:item.status })));
       (state.partnerPrograms || []).forEach(item => result.push(make({ id:item.id || item.slug, type:"partnerProgram", title:item.name || item.slug || "Partner program", summary:item.nextAction || item.programGoal || item.status, route:"partner-programs", status:item.status, priority:item.priority })));
-      (state.auditHistory || []).slice(0, 30).forEach(item => result.push(make({ id:item.id, type:"activityLog", title:item.action || "Activity", summary:[item.resourceType, item.resourceId].filter(Boolean).join(" · ") || "Activity entry.", route:"os-health", status:"recorded", safeActions:[{ action:"open_os_health", label:"Open App Status", route:"os-health" }] })));
-      (state.activityEvents || []).slice(0, 30).forEach(item => result.push(make({ id:item.id, type:"activity", title:item.title || item.eventType || "Activity", summary:item.summary || item.eventType || "Activity.", route:"os-health", status:item.riskLevel || "recorded", safeActions:[{ action:"open_os_health", label:"Open App Status", route:"os-health" }] })));
-      (state.osHealthSnapshots || []).forEach(item => result.push(make({ id:item.id, type:"appStatusSnapshot", title:"App Status Snapshot", summary:item.summary?.next_operator_action || item.overall_health || "App status snapshot.", route:"os-health", status:item.overall_health, safeActions:[{ action:"open_os_health", label:"Open App Status", route:"os-health" }] })));
+      (state.auditHistory || []).slice(0, 30).forEach(item => result.push(make({ id:item.id, type:"activityHistory", title:item.action || "Activity", summary:[item.resourceType, item.resourceId].filter(Boolean).join(" · ") || "Activity entry.", route:"os-health", status:"recorded", safeActions:[{ action:"open_os_health", label:"Open App Status", route:"os-health" }] })));
+      (state.activityEvents || []).slice(0, 30).forEach(item => result.push(make({ id:item.id, type:"activityEvent", title:item.title || item.eventType || "Activity", summary:item.summary || item.eventType || "Activity.", route:"os-health", status:item.riskLevel || "recorded", safeActions:[{ action:"open_os_health", label:"Open App Status", route:"os-health" }] })));
+      (state.osHealthSnapshots || []).forEach(item => result.push(make({ id:item.id, type:"osHealthSnapshot", title:"App Status Snapshot", summary:item.summary?.next_operator_action || item.overall_health || "App Status snapshot.", route:"os-health", status:item.overall_health, safeActions:[{ action:"open_os_health", label:"Open App Status", route:"os-health" }] })));
       return result.filter(item => item.id && item.title);
     }
 
     function operatorSearchActionButtons(result = {}) {
       return (result.safeActions || []).slice(0, 3).map(action => {
         if (action.action === "open_route" || /^open_/.test(action.action)) {
-          return \`<button type="button" onclick="location.hash='\${esc(action.route || result.route || "overview")}'">\${esc(founderText(action.label || "Open"))}</button>\`;
+          return \`<button type="button" onclick="location.hash='\${esc(action.route || result.route || "overview")}'">\${esc(action.label || "Open")}</button>\`;
         }
-        return \`<button type="button" onclick="operatorSearchAction('\${esc(action.action)}','\${esc(action.targetId || result.id)}')">\${esc(founderText(action.label || "Apply"))}</button>\`;
+        return \`<button type="button" onclick="operatorSearchAction('\${esc(action.action)}','\${esc(action.targetId || result.id)}')">\${esc(action.label || "Apply internal action")}</button>\`;
       }).join("");
     }
 
@@ -18606,11 +19114,11 @@ function htmlShell() {
         return [item.type, item.title, item.summary, item.status, item.priority].join(" ").toLowerCase().includes(q);
       }).slice(0, 60);
       return results.map(item => \`<article class="memory-history-card operator-search-result" data-search-type="\${esc(item.type)}">
-        <strong>\${esc(founderText(item.title))}</strong>
-        <span class="muted">\${esc(founderText(plainOperatorState(item.type)))} · \${esc(founderText(plainOperatorState(item.status || "available")))}\${item.priority ? " · " + esc(item.priority) : ""}</span>
-        <p class="muted">\${esc(founderText(item.summary))}</p>
+        <strong>\${esc(item.title)}</strong>
+        <span class="muted">\${esc(plainOperatorState(item.type))} · \${esc(plainOperatorState(item.status || "available"))}\${item.priority ? " · " + esc(item.priority) : ""}</span>
+        <p class="muted">\${esc(item.summary)}</p>
         <div class="card-actions">\${operatorSearchActionButtons(item)}</div>
-      </article>\`).join("") || '<div class="empty">Search across your work.</div>';
+      </article>\`).join("") || '<div class="empty">No matching OS records found.</div>';
     }
 
     function cockpitOperatorSearchHtml() {
@@ -18620,8 +19128,8 @@ function htmlShell() {
         <div class="cockpit-card-head"><h2>Search</h2><small>Find work fast</small></div>
         <div class="daily-loop-summary"><strong>\${esc(index.length)} saved records</strong><span>\${esc(needsReview)} need attention</span><span>Publishing is off</span></div>
         <div class="operating-memory-actions">
-          <button class="primary" type="button" onclick="location.hash='operator-search'">Search OS</button>
-          <button type="button" onclick="location.hash='operator-search'">Open Command Palette</button>
+          <button class="primary" type="button" onclick="location.hash='operator-search'">Search</button>
+          <button type="button" onclick="location.hash='operator-search'">Open Command Search</button>
         </div>
       </section>\`;
     }
@@ -18629,9 +19137,9 @@ function htmlShell() {
     function cockpitOperatingMemoryHtml() {
       const memory = cockpitOperatingMemoryRecord();
       const saved = Boolean(savedOperatingMemoryForToday());
-      return \`<section class="cockpit-card operating-memory-card" aria-label="Carry Forward">
-        <div class="cockpit-card-head"><h2>Carry Forward</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
-        <p class="muted">\${saved ? "Today's memory is saved. Use it to carry forward the right work tomorrow." : "No carry-forward memory saved for today yet."}</p>
+      return \`<section class="cockpit-card operating-memory-card" aria-label="Notes & Decisions">
+        <div class="cockpit-card-head"><h2>Notes & Decisions</h2><small>\${saved ? "Saved today" : "Not saved yet"}</small></div>
+        <p class="muted">\${saved ? "Today's notes are saved. Use them to carry forward the right work tomorrow." : "No notes or decisions saved for today yet."}</p>
         <div class="operating-memory-grid">
           <section class="operating-memory-tile"><h3>Moved Today</h3>\${memoryListHtml(memory.moved_today, "No movement captured yet.")}</section>
           <section class="operating-memory-tile"><h3>Carry Forward</h3>\${memoryListHtml(memory.carry_forward, "Nothing needs carry-forward yet.")}</section>
@@ -18640,7 +19148,7 @@ function htmlShell() {
         </div>
         <div class="operating-memory-actions">
           <button class="primary" type="button" onclick="saveOperatingMemory()">Save Today's Notes</button>
-          <button type="button" onclick="location.hash='operating-memory'">Open Memory</button>
+          <button type="button" onclick="location.hash='operating-memory'">Open Notes</button>
         </div>
       </section>\`;
     }
@@ -18713,7 +19221,7 @@ function htmlShell() {
           <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_conversation_notes')">Route to Conversation Notes</button>
           <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_morning_brief')">Route to Morning Brief Inputs</button>
           <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_evening_reflection')">Route to Evening Reflection Inputs</button>
-          <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_operating_memory')">Route to Notes &amp; Decisions</button>
+          <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_operating_memory')">Route to Notes & Decisions</button>
           <button type="button" onclick="captureInboxAction('\${esc(item.id)}','route_evidence_notes')">Route to Evidence Notes</button>
           <button type="button" onclick="captureInboxAction('\${esc(item.id)}','ignore')">Ignore</button>
         </div>
@@ -18742,7 +19250,7 @@ function htmlShell() {
           <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','approved')">Approve</button>
           <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','needs_revision')">Needs Revision</button>
           <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','blocked')">Block</button>
-          <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','handoff_ready')">Mark Handoff Ready</button>
+          <button type="button" onclick="markRcapReviewState('\${esc(def.key)}','handoff_ready')">Mark Ready for Manual Handoff</button>
         </div>
       </div>\`;
     }
@@ -18766,131 +19274,177 @@ function htmlShell() {
       const partner = (state.partners || []).find(item => item.slug === "rcap" || item.id === "partner-rcap") || {};
       const program = (state.partnerPrograms || []).find(item => item.slug === "rcap" || item.id === "partner-program-rcap") || {};
       const artifact = key => (state.partnerProgramArtifacts || []).find(item => item.key === key) || {};
-      const proposalDraft = artifact("rcap-proposal-draft-v1");
-      const pageDraft = artifact("rcap-partner-page-draft-v1");
-      const dashboardReadiness = artifact("rcap-dashboard-readiness-v1");
-      const proposalTask = (state.tasks || []).find(item => item.id === "task-rcap-proposal-draft-v1") || {};
-      const weeklyReport = (state.reports || []).find(item => item.key === "rcap-weekly-report-draft-v1") || {};
-      const evidenceNote = (state.evidencePackNotes || []).find(item => item.key === "rcap-production-activation-evidence-v1") || {};
-      const proposalSections = proposalDraft.sections || {};
-      const pageContent = pageDraft.draftContent || {};
-      const dashboardChecklist = dashboardReadiness.checklist || {};
-      const reportSections = weeklyReport.sections || {};
-      const evidenceSummary = evidenceNote.notes || "No evidence note has been generated yet. Start RCAP Activation from Today to create the review-only artifact set.";
-      const handoffSummary = rcapHandoffReadinessClientSummary();
-      const handoffReadiness = rcapPartnerJourneyHandoffReadinessClient();
-      const handoffPacket = rcapHandoffPacketForState();
-      const checklistItems = [
-        "Verify RCAP contact details.",
-        "Confirm package/program scope.",
-        "Review proposal draft.",
-        "Review partner page draft.",
-        "Confirm dashboard requirements.",
-        "Confirm reporting cadence.",
-        "Confirm approval authority.",
-        "Decide whether to move to Partner Journey handoff.",
-        "Keep live gates at 0 until approval."
+      const artifacts = [
+        ["Proposal draft", artifact("rcap-proposal-draft-v1")],
+        ["Partner page draft", artifact("rcap-partner-page-draft-v1")],
+        ["Dashboard readiness", artifact("rcap-dashboard-readiness-v1")],
+        ["Weekly report draft", (state.reports || []).find(item => item.key === "rcap-weekly-report-draft-v1") || {}],
+        ["Evidence note", (state.evidencePackNotes || []).find(item => item.key === "rcap-production-activation-evidence-v1") || {}]
       ];
-      return \`<section id="production-activation-rcap" class="\${pageClass("production-activation-rcap")} rcap-review-workspace command-page lee-bubble-safe-space">
-        <div class="panel hero-panel">
-          <div class="eyebrow">Record Clearing Access Program</div>
-          <h1 class="big-title">Launch Checklist</h1>
-          <p class="muted">Review-only workspace. Manual approval required before anything external happens. No emails, posts, partner pages, or dashboards are activated from this page.</p>
-          <div class="card-actions">
-            <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="startRcapActivation()">Refresh checklist</button>
+      const statusLabel = item => {
+        const raw = String(item.review_state || item.status || "needs_review").toLowerCase();
+        if (["approved", "handoff_ready", "ready"].includes(raw)) return "Ready";
+        if (["blocked", "missing", "missing_information"].includes(raw)) return "Missing information";
+        if (["not_started", "pending"].includes(raw)) return "Not started";
+        return "Needs review";
+      };
+      const packetArtifactKeys = {
+        "Proposal draft": "rcap-proposal-draft-v1",
+        "Partner page draft": "rcap-partner-page-draft-v1",
+        "Dashboard readiness": "rcap-dashboard-readiness-v1",
+        "Weekly report draft": "rcap-weekly-report-draft-v1",
+        "Evidence note": "rcap-production-activation-evidence-v1"
+      };
+      const packetNeed = (label, item, rowStatus) => {
+        if (label === "Partner page draft") return "Confirm copy";
+        if (label === "Dashboard readiness") return "Keep internal";
+        if (label === "Weekly report draft") return "Confirm reporting format";
+        if (label === "Evidence note") return "Confirm proof language";
+        return "Roger review";
+      };
+      const packetActionLabel = (label, rowStatus) => {
+        return "Review";
+      };
+      const packetRows = artifacts.map(([label, item]) => {
+        const rowStatus = statusLabel(item);
+        const rowClass = rowStatus === "Ready" ? "good" : rowStatus === "Missing information" ? "warn" : "info";
+        const artifactKey = esc(packetArtifactKeys[label] || "rcap-manual-review-checklist-v1");
+        const actionState = rowStatus === "Missing information" ? "needs_revision" : "in_review";
+        return [
+          "<tr>",
+          '<td data-label="Item">' + esc(label) + "</td>",
+          '<td data-label="Status"><span class="artifact-review-status ' + esc(rowClass) + '">' + esc(rowStatus) + "</span></td>",
+          '<td data-label="Needs">' + esc(packetNeed(label, item, rowStatus)) + "</td>",
+          '<td data-label="Action"><button type="button" data-rcap-key="' + artifactKey + '" data-rcap-state="' + esc(actionState) + '" onclick="markRcapReviewState(this.dataset.rcapKey,this.dataset.rcapState)">' + esc(packetActionLabel(label, rowStatus)) + "</button></td>",
+          "</tr>"
+        ].join("");
+      }).join("");
+      const missing = [
+        ...(partner.missingExternalDetailsList || []),
+        ...(program.missingPartnerDetails || []),
+        partner.primaryContact || program.primaryContact ? "" : "Partner contact email",
+        program.programScope || program.scope ? "" : "Program scope",
+        program.approvalAuthority ? "" : "Approval authority",
+        program.launchTimeline ? "" : "Launch timeline",
+        program.partnerFacingLanguageApproved ? "" : "Partner-facing language"
+      ].filter(Boolean);
+      const activity = [...(state.activityEvents || []), ...(state.auditHistory || [])]
+        .filter(item => /rcap|record clearing/i.test([item.title, item.summary, item.action, item.eventType, item.resourceType].join(" ")))
+        .slice(-5)
+        .reverse();
+      const packetButtonLabel = "Prepare Review Packet";
+      const readyCount = artifacts.filter(([, item]) => statusLabel(item) === "Ready").length;
+      const missingCount = missing.length + artifacts.filter(([, item]) => statusLabel(item) === "Missing information").length;
+      const needsDecisionCount = artifacts.filter(([, item]) => statusLabel(item) !== "Ready").length;
+      const decisionStatus = readyCount === artifacts.length && missingCount === 0 ? "Ready" : "Needs review";
+      const partnerName = partner.name || program.partnerName || "RCAP partner";
+      const contact = partner.primaryContact || program.primaryContact || partner.email || "Needs confirmation";
+      const scope = program.programScope || program.scope || "Needs confirmation";
+      const support = "Review materials and prepare manual next steps";
+      const currentStatus = decisionStatus;
+      const purpose = "Review partner materials before anything is sent, published, or activated.";
+      const activityRows = activity.length
+        ? activity.map(item => [
+          '<article class="rcap-activity-item">',
+          "<strong>" + esc(item.title || item.action || "Review activity") + "</strong>",
+          "<span>" + esc(formatDateTime(item.timestamp || item.createdAt) || "Recent") + " · " + esc(plainOperatorState(item.summary || item.eventType || "Review activity saved.")) + "</span>",
+          "</article>"
+        ].join("")).join("")
+        : '<div class="empty">No activity yet.</div>';
+      return \`<section id="production-activation-rcap" class="\${pageClass("production-activation-rcap")} rcap-review-workspace command-page lee-bubble-safe-space" style="font-family: \\"Geist\\", \\"Inter\\", system-ui, -apple-system, BlinkMacSystemFont, \\"Segoe UI\\", sans-serif;">
+        <div class="panel rcap-decision-hero">
+          <div>
+            <div class="eyebrow">Record Clearing Access Program</div>
+            <div class="rcap-title-line">
+              <h1 class="big-title">RCAP Program Review</h1>
+              <span class="badge warn">Status: \${esc(decisionStatus)}</span>
+            </div>
+            <p class="purpose"><strong>Partner program review</strong></p>
+            <p class="purpose">\${esc(purpose)}</p>
           </div>
+          <aside class="rcap-decision-side">
+            <div class="rcap-next-decision"><span>Next decision</span><strong>Is this ready for partner review?</strong></div>
+            <div class="card-actions">
+              <button class="primary" type="button" onclick="generateRcapHandoffPacket()">\${packetButtonLabel}</button>
+              <button type="button" onclick="location.hash='overview'">Back to Today</button>
+            </div>
+            <div class="rcap-safety-line">Nothing has been sent, published, or activated.</div>
+          </aside>
         </div>
-        <section class="panel">
-          <div class="simple-panel-head"><h2>Handoff Readiness Summary</h2><span class="artifact-review-status \${handoffSummary.readyForPartnerJourneyHandoff ? "handoff-ready" : "blocked"}">\${handoffSummary.readyForPartnerJourneyHandoff ? "Handoff ready" : "Not handoff ready"}</span></div>
-          <p class="muted">No handoff is triggered automatically. This summary only tells Roger whether internal review states support a manual Partner Journey handoff decision.</p>
-          <div class="handoff-summary">
-            <div><span>Approved</span><strong>\${esc(handoffSummary.approved.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.approved, "None"))}</small></div>
-            <div><span>Blocked</span><strong>\${esc(handoffSummary.blocked.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.blocked, "None"))}</small></div>
-            <div><span>Needs Revision</span><strong>\${esc(handoffSummary.needsRevision.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.needsRevision, "None"))}</small></div>
-            <div><span>Handoff Ready</span><strong>\${esc(handoffSummary.handoffReady.length)}</strong><small>\${esc(rcapReviewList(handoffSummary.handoffReady, "None"))}</small></div>
-          </div>
-        </section>
-        <section class="panel">
-          <div class="simple-panel-head"><h2>Handoff Packet</h2><span class="artifact-review-status \${handoffReadiness.ready ? "handoff-ready" : "blocked"}">\${handoffReadiness.ready ? "Ready" : "Not Ready"}</span></div>
-          <p class="muted">Internal handoff packet only. No external system contacted. This does not call Partner Journey APIs, send email, publish pages, or activate dashboards.</p>
-          <div class="handoff-summary">
-            <div><span>Readiness score</span><strong>\${esc(handoffReadiness.readinessScore)}%</strong><small>\${esc(handoffReadiness.readyCount)}/\${esc(handoffReadiness.total)} required artifacts ready</small></div>
-            <div><span>Approved artifacts</span><strong>\${esc(handoffReadiness.approved.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.approved, "None"))}</small></div>
-            <div><span>Handoff ready artifacts</span><strong>\${esc(handoffReadiness.handoffReady.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.handoffReady, "None"))}</small></div>
-            <div><span>Blocked artifacts</span><strong>\${esc(handoffReadiness.blocked.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.blocked, "None"))}</small></div>
-            <div><span>Needs revision</span><strong>\${esc(handoffReadiness.revisions.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.revisions, "None"))}</small></div>
-            <div><span>Missing details</span><strong>\${esc(handoffReadiness.missing.length)}</strong><small>\${esc(rcapReviewList(handoffReadiness.missing, "None"))}</small></div>
-          </div>
-          <div class="artifact-review-detail" style="margin-top:12px"><span>Required approvals</span><p>\${esc(rcapReviewList(handoffReadiness.open, "All required artifact approvals are complete."))}</p></div>
-          <div class="artifact-review-detail"><span>Next manual action</span><p>\${esc(handoffReadiness.next)}</p></div>
-          <div class="artifact-review-detail"><span>Packet artifact</span><p>\${handoffPacket.key ? \`Last generated: \${esc(formatDate(handoffPacket.updatedAt || handoffPacket.generatedAt) || "TBD")}. Status: \${esc(rcapReviewStatus(handoffPacket.status || "not_ready"))}.\` : "No internal handoff packet generated yet."}</p></div>
-          <div class="card-actions"><button class="primary" type="button" onclick="generateRcapHandoffPacket()">Generate Internal Handoff Packet</button></div>
-        </section>
-        <div class="artifact-review-grid">
-          \${rcapReviewArtifactCard(
-            "Activation Summary",
-            status.status,
-            \`What was created: partner record, proposal task, proposal draft, partner page draft, dashboard readiness record, weekly report draft, and proof note. Current status: \${status.status}. Publishing is off.\`,
-            \`What still needs review: RCAP contact details, approval authority, package/program scope, proposal language, partner page language, dashboard requirements, and reporting cadence. What is blocked: emails, posts, partner page publishing, dashboard activation, and live posting.\`,
-            "Next manual decision: decide whether this package is ready for editing and handoff to the separate Partner Journey workflow."
-          )}
-          \${rcapReviewArtifactCard(
-            "Partner Record",
-            partner.status || program.status || "Not started",
-            \`Known details: RCAP status is \${rcapReviewValue(partner.status || program.status, "activation_review")}; workflow stage is \${rcapReviewValue(partner.workflow_stage || program.workflowStage, "production_activation")}; source is operator cockpit; review-only is true; live enabled is false.\`,
-            \`Missing external details: \${rcapReviewList(partner.missingExternalDetailsList)}. Primary contact: \${rcapReviewValue(partner.primaryContact || program.primaryContact)}. Email: \${rcapReviewValue(partner.email)}. Website: \${rcapReviewValue(partner.website)}. Stakeholders: \${rcapReviewValue(partner.stakeholders)}.\`,
-            \`Before partner-facing use: \${rcapReviewList(partner.confirmationRequiredBeforePartnerUse, "Confirm missing external details before any manual outreach.")}\`
-          )}
-          \${rcapReviewArtifactCard(
-            "Proposal Task",
-            proposalTask.status || "Pending",
-            \`Owner: \${rcapReviewValue(proposalTask.owner, "Roger")}. Priority: \${rcapReviewValue(proposalTask.priority, "high")}. Task: \${proposalTask.description || "Draft RCAP partner proposal task is pending creation."}\`,
-            \`Definition of done: \${rcapReviewList(proposalTask.definitionOfDone, "Review proposal draft, mark unknown facts TBD, and confirm no external delivery happens from this task.")} Due date: \${rcapReviewValue(proposalTask.dueDate)}.\`,
-            proposalTask.nextAction || "Create or review the proposal task before drafting any external message."
-          )}
-          \${rcapReviewArtifactCard(
-            "Proposal Draft",
-            proposalDraft.status || "Pending",
-            \`Purpose of RCAP partnership: \${proposalSections.purposeOfRcapPartnership || proposalSections.objective || "Proposal draft has not been generated yet."} Proposed LegalEase support: \${rcapReviewValue(proposalSections.proposedLegalEaseSupport, "review_required")} Implementation workflow: \${rcapReviewValue(proposalSections.implementationWorkflow, "review_required")}.\`,
-            \`Review-only caveats: \${rcapReviewValue(proposalSections.reviewOnlyCaveats, "review_required")} Missing details list: \${rcapReviewList(proposalSections.missingDetailsList)}.\`,
-            \`Manual approval checklist: \${rcapReviewList(proposalSections.manualApprovalChecklist, "Review objective, workflow, implementation outline, checklist, and compliance note before sharing manually.")}\`
-          )}
-          \${rcapReviewArtifactCard(
-            "Partner Page Draft",
-            pageDraft.status || "Pending",
-            \`Page objective: \${rcapReviewValue(pageContent.pageObjective, "review_required")} Draft hero copy: \${rcapReviewValue(pageContent.draftHeroCopy || pageContent.headline, "review_required")} Program explanation: \${rcapReviewValue(pageContent.programExplanation || pageContent.intro, "review_required")} Participant journey overview: \${rcapReviewValue(pageContent.participantJourneyOverview, "review_required")}.\`,
-            \`partner/legal disclaimer placeholders: \${rcapReviewValue(pageContent.partnerLegalDisclaimerPlaceholders || pageContent.complianceDisclaimer, "review_required")} Missing brand/content assets: \${rcapReviewList(pageContent.missingBrandContentAssets)}. Live URL: \${rcapReviewValue(pageDraft.liveUrl, "null")}. Published: \${rcapReviewValue(pageDraft.published, "false")}.\`,
-            "Publish blocked until manual approval. Review copy and compliance disclaimer before any separate publishing workflow."
-          )}
-          \${rcapReviewArtifactCard(
-            "Dashboard Readiness",
-            dashboardReadiness.status || "Pending",
-            \`Dashboard live: \${rcapReviewValue(dashboardReadiness.dashboardLive, "false")}. Activation allowed: \${rcapReviewValue(dashboardReadiness.activationAllowed, "false")}. Data needed: \${rcapReviewList(dashboardReadiness.dataNeeded)}. Access needed: \${rcapReviewList(dashboardReadiness.accessNeeded)}.\`,
-            \`Launch blockers: \${rcapReviewList(dashboardReadiness.launchBlockers, "Dashboard URL, partner credentials, and external access details remain review_required.")} Internal review gates: \${rcapReviewList(dashboardReadiness.internalReviewGates)}.\`,
-            "Keep dashboard_live: false and activation_allowed: false until Roger manually approves a separate activation step."
-          )}
-          \${rcapReviewArtifactCard(
-            "Weekly Report Draft",
-            weeklyReport.status || "Pending",
-            \`Activation status: \${rcapReviewValue(reportSections.activationStatus || reportSections.activationSummary, "Weekly report draft has not been generated yet.")} Completed artifacts: \${rcapReviewList(reportSections.completedArtifacts)}.\`,
-            \`Open review items: \${rcapReviewList(reportSections.openReviewItems)} Blockers: \${rcapReviewList(reportSections.blockers, "Real partner metrics, page views, intake starts, and handoff counts are not verified yet.")}.\`,
-            \`Next steps: \${rcapReviewList(reportSections.nextSteps, reportSections.nextManualApprovalStep || "Review the report draft as an internal artifact only.")}. No external actions taken: \${rcapReviewValue(reportSections.noExternalActionTaken, "true")}.\`
-          )}
-          \${rcapReviewArtifactCard(
-            "Evidence Note",
-            evidenceNote.status || "Pending",
-            \`Activation key: \${rcapReviewValue(evidenceNote.activationKey, "rcap-production-activation-v1")}. Timestamp: \${rcapReviewValue(evidenceNote.timestamp)}. Artifact list: \${rcapReviewList(Object.keys(evidenceNote.artifactsCreatedOrFound || {}), "partner record; proposal task; proposal draft; partner page draft; dashboard readiness; weekly report draft; evidence note")}.\`,
-            \`Publishing status: off. Safety confirmations: no email sent, no post published, no partner page published, no dashboard activated. Owner-token auth confirmation: \${rcapReviewValue(evidenceNote.ownerTokenAuthConfirmation, "owner-token auth unchanged")}.\`,
-            \`External action confirmation: \${rcapReviewValue(evidenceNote.externalActionConfirmation, evidenceSummary)}\`
-          )}
-          <article class="artifact-review-card">
-            <header><h2>Manual Review Checklist</h2><span class="artifact-review-status \${esc(rcapReviewStateClass(rcapReviewArtifactFor(rcapReviewDefinitions.find(item => item.key === "rcap-manual-review-checklist-v1") || {}).review_state || "review_required"))}">\${esc(rcapReviewStatus(rcapReviewArtifactFor(rcapReviewDefinitions.find(item => item.key === "rcap-manual-review-checklist-v1") || {}).review_state || "review_required"))}</span></header>
-            <div class="artifact-review-detail"><span>Manual approval required</span><p>No send, publish, dashboard activation, or live posting action is available from this workspace.</p></div>
-            <ul class="manual-checklist">\${checklistItems.map(item => \`<li>\${esc(item)}</li>\`).join("")}</ul>
-            \${rcapReviewControlsHtml(rcapReviewDefinitions.find(item => item.key === "rcap-manual-review-checklist-v1"), rcapReviewArtifactFor(rcapReviewDefinitions.find(item => item.key === "rcap-manual-review-checklist-v1") || {}))}
-          </article>
+        <div class="rcap-readiness-strip">
+          <section class="rcap-readiness-card"><span>Ready</span><strong>\${esc(readyCount)}</strong><p>Materials ready for final review</p></section>
+          <section class="rcap-readiness-card"><span>Missing</span><strong>\${esc(missingCount)}</strong><p>Details needed before partner review</p></section>
+          <section class="rcap-readiness-card"><span>Needs decision</span><strong>\${esc(needsDecisionCount)}</strong><p>Items waiting on Roger</p></section>
         </div>
+        <div class="rcap-decision-layout">
+          <main class="rcap-decision-stack">
+            <section class="rcap-decision-card">
+              <div class="rcap-card-title"><h2>Partner Summary</h2><span class="badge info">Decision context</span></div>
+              <dl class="rcap-definition-list">
+                <div><dt>Partner</dt><dd>\${esc(partnerName)}</dd></div>
+                <div><dt>Contact</dt><dd>\${esc(contact)}</dd></div>
+                <div><dt>Program scope</dt><dd>\${esc(scope)}</dd></div>
+                <div><dt>LegalEase support</dt><dd>\${esc(support)}</dd></div>
+                <div><dt>Status</dt><dd>\${esc(currentStatus)}</dd></div>
+              </dl>
+            </section>
+            <section class="rcap-decision-card">
+              <div class="rcap-card-title"><h2>Review Packet</h2><span class="badge warn">Needs review</span></div>
+              <div class="rcap-packet-table-wrap">
+                <table class="rcap-packet-table">
+                  <colgroup><col><col><col><col></colgroup>
+                  <thead><tr><th>Item</th><th>Status</th><th>Needs</th><th>Action</th></tr></thead>
+                  <tbody>\${packetRows}</tbody>
+                </table>
+              </div>
+            </section>
+            <section class="rcap-decision-card">
+              <div class="rcap-card-title"><h2>Review Notes</h2><span class="badge info">Saved work</span></div>
+              <div class="rcap-note-box">
+                <textarea id="rcap-decision-note" rows="5" placeholder="Add the decision, revision, or partner note Roger should remember."></textarea>
+                <div class="card-actions">
+                  <button type="button" onclick="toast('Review note saved internally for manual follow-up')">Save review note</button>
+                </div>
+              </div>
+            </section>
+          </main>
+          <aside class="rcap-decision-stack rcap-right-rail">
+            <section class="rcap-decision-card">
+              <div class="rcap-card-title"><h2>Roger's Next Steps</h2><span class="badge warn">5 max</span></div>
+              <ul class="rcap-side-list">
+                <li>Confirm partner contact.</li>
+                <li>Confirm partner-facing email.</li>
+                <li>Confirm program scope.</li>
+                <li>Review proposal language.</li>
+                <li>Decide if the packet is ready.</li>
+              </ul>
+              <div class="card-actions" style="margin-top:14px">
+                <button type="button" onclick="markRcapReviewState('rcap-manual-review-checklist-v1', 'handoff_ready')">Mark Ready for Manual Handoff</button>
+              </div>
+            </section>
+            <section class="rcap-decision-card">
+              <div class="rcap-card-title"><h2>Missing Information</h2><span class="badge info">\${esc(missing.length)}</span></div>
+              <ul class="rcap-side-list">\${missing.slice(0, 7).map(item => \`<li>\${esc(item)}</li>\`).join("") || "<li>No missing information recorded.</li>"}</ul>
+              <div class="card-actions" style="margin-top:14px">
+                <button type="button" onclick="document.getElementById('rcap-decision-note')?.focus()">Add missing info</button>
+              </div>
+            </section>
+            <section class="rcap-decision-card">
+              <div class="rcap-card-title"><h2>Safety Status</h2><span class="badge good">Publishing is off</span></div>
+              <ul class="rcap-safety-list">
+                <li>No email sent</li>
+                <li>No post published</li>
+                <li>No partner page published</li>
+                <li>No dashboard activated</li>
+                <li>\${liveGates === 0 ? "Publishing is off" : "Publishing needs review"}</li>
+              </ul>
+            </section>
+          </aside>
+        </div>
+        <section class="rcap-decision-card rcap-activity-section">
+          <div class="rcap-card-title"><h2>Activity</h2><span class="badge info">\${esc(activity.length)}</span></div>
+          <div class="rcap-activity-feed">\${activityRows}</div>
+        </section>
       </section>\`;
     }
 
@@ -18904,12 +19458,12 @@ function htmlShell() {
         .slice(0, 8);
       return \`<section id="operating-memory" class="\${pageClass("operating-memory")} command-page section-page lee-bubble-safe-space">
         <div class="panel hero-panel">
-          <div class="eyebrow">Daily notes</div>
-          <h1 class="big-title">Notes &amp; Decisions</h1>
-          <p class="muted">\${saved ? \`Today's notes were saved at \${esc(formatDate(saved.generated_at) || "today")}.\` : "No notes or decisions saved for today yet."} This is internal only. It does not send, publish, activate, or contact external systems.</p>
+          <div class="eyebrow">Saved work</div>
+          <h1 class="big-title">Notes & Decisions</h1>
+          <p class="muted">\${saved ? \`Today's notes were saved at \${esc(formatDate(saved.generated_at) || "today")}.\` : "No notes or decisions saved for today yet."} This is internal memory only. It does not send, publish, activate, or contact external systems.</p>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="saveOperatingMemory()">Save notes</button>
+            <button class="primary" type="button" onclick="saveOperatingMemory()">Save Today's Notes</button>
           </div>
         </div>
         <section class="panel operating-memory-card">
@@ -18925,12 +19479,12 @@ function htmlShell() {
           </div>
         </section>
         <section class="panel">
-          <div class="simple-panel-head"><h2>Sources</h2><span class="badge info">\${esc(evidence.length)} records</span></div>
-          <div class="memory-evidence-grid">\${evidence.map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || item.eventType || item.action || "Operating record")}</strong><span class="muted">\${esc(formatDate(item.createdAt || item.timestamp || item.updatedAt) || "No timestamp")} · \${esc(item.summary || item.action || item.eventType || "Internal record")}</span></article>\`).join("") || '<div class="empty">No activity or audit evidence yet.</div>'}</div>
+          <div class="simple-panel-head"><h2>Activity Behind Notes</h2><span class="badge info">\${esc(evidence.length)} records</span></div>
+          <div class="memory-evidence-grid">\${evidence.map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || item.eventType || item.action || "Activity record")}</strong><span class="muted">\${esc(formatDate(item.createdAt || item.timestamp || item.updatedAt) || "No timestamp")} · \${esc(item.summary || item.action || item.eventType || "Internal record")}</span></article>\`).join("") || '<div class="empty">No activity yet.</div>'}</div>
         </section>
         <section class="panel">
-          <div class="simple-panel-head"><h2>Recent History</h2><span class="badge info">\${esc(history.length)} saved</span></div>
-          <div class="memory-history-list">\${history.map(item => \`<article class="memory-history-card"><strong>\${esc(item.date || item.key)}</strong><span class="muted">\${esc(formatDate(item.generated_at) || "No timestamp")} · Carry forward: \${esc((item.carry_forward || []).length)} · Still blocked: \${esc((item.still_blocked || []).length)}</span></article>\`).join("") || '<div class="empty">No notes or decisions history saved yet.</div>'}</div>
+          <div class="simple-panel-head"><h2>Recent Notes History</h2><span class="badge info">\${esc(history.length)} saved</span></div>
+          <div class="memory-history-list">\${history.map(item => \`<article class="memory-history-card"><strong>\${esc(item.date || item.key)}</strong><span class="muted">\${esc(formatDate(item.generated_at) || "No timestamp")} · Carry forward: \${esc((item.carry_forward || []).length)} · Still blocked: \${esc((item.still_blocked || []).length)}</span></article>\`).join("") || '<div class="empty">No notes history saved yet.</div>'}</div>
         </section>
       </section>\`;
     }
@@ -18942,7 +19496,7 @@ function htmlShell() {
         <div class="panel hero-panel">
           <div class="eyebrow">Daily Rituals</div>
           <h1 class="big-title">Morning Brief</h1>
-          <p class="muted">Here is what needs your attention today. \${saved ? \`Saved at \${esc(formatDate(saved.generated_at) || "today")}.\` : "No saved brief yet, so this fallback uses current work."}</p>
+          <p class="muted">\${saved ? \`Morning Brief saved at \${esc(formatDate(saved.generated_at) || "today")}.\` : "Morning Brief not saved yet."} Internal guidance only. No emails, posts, publishing, dashboards, or external systems are triggered.</p>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
             <button class="primary" type="button" onclick="saveMorningBrief()">Save Morning Brief</button>
@@ -18961,11 +19515,8 @@ function htmlShell() {
           </div>
         </section>
         <section class="panel">
-          <details>
-            <summary>Show sources</summary>
-            <div class="simple-panel-head" style="margin-top:12px"><h2>Source Evidence</h2><span class="badge info">\${esc((brief.source_evidence || []).length)} records</span></div>
-            <div class="memory-evidence-grid">\${(brief.source_evidence || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Evidence")}</strong><span class="muted">\${esc(item.detail || "Internal evidence.")}</span></article>\`).join("") || '<div class="empty">No source evidence yet.</div>'}</div>
-          </details>
+          <div class="simple-panel-head"><h2>Source Evidence</h2><span class="badge info">\${esc((brief.source_evidence || []).length)} records</span></div>
+          <div class="memory-evidence-grid">\${(brief.source_evidence || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Evidence")}</strong><span class="muted">\${esc(item.detail || "Internal evidence.")}</span></article>\`).join("") || '<div class="empty">No source evidence yet.</div>'}</div>
         </section>
       </section>\`;
     }
@@ -18975,12 +19526,12 @@ function htmlShell() {
       const saved = savedEveningReflectionForToday();
       return \`<section id="evening-reflection" class="\${pageClass("evening-reflection")} command-page section-page lee-bubble-safe-space">
         <div class="panel hero-panel">
-          <div class="eyebrow">Daily closeout</div>
+          <div class="eyebrow">Daily Rituals</div>
           <h1 class="big-title">Daily Closeout</h1>
-          <p class="muted">\${saved ? \`Daily closeout saved at \${esc(formatDate(saved.generated_at) || "today")}.\` : "Daily closeout not saved yet."} Close the day and decide what carries forward.</p>
+          <p class="muted">\${saved ? \`Daily Closeout saved at \${esc(formatDate(saved.generated_at) || "today")}.\` : "Daily Closeout not saved yet."} Internal memory only. No emails, posts, publishing, dashboards, or external systems are triggered.</p>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="saveEveningReflection()">Save daily closeout</button>
+            <button class="primary" type="button" onclick="saveEveningReflection()">Save Daily Closeout</button>
           </div>
         </div>
         <section class="panel operating-memory-card">
@@ -18998,7 +19549,7 @@ function htmlShell() {
           </div>
         </section>
         <section class="panel">
-          <div class="simple-panel-head"><h2>Sources</h2><span class="badge info">\${esc((reflection.source_evidence || []).length)} records</span></div>
+          <div class="simple-panel-head"><h2>Source Evidence</h2><span class="badge info">\${esc((reflection.source_evidence || []).length)} records</span></div>
           <div class="memory-evidence-grid">\${(reflection.source_evidence || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Evidence")}</strong><span class="muted">\${esc(item.detail || "Internal evidence.")}</span></article>\`).join("") || '<div class="empty">No source evidence yet.</div>'}</div>
         </section>
       </section>\`;
@@ -19051,75 +19602,90 @@ function htmlShell() {
       const health = cockpitOsHealthRecord();
       const hardening = health.auth_hardening || {};
       const smoke = health.smoke_test_status || buildSmokeTestStatus(state, { commit_hash: state.runtime?.commitHash || "" });
-      return \`<section id="os-health" class="\${pageClass("os-health")} command-page section-page lee-bubble-safe-space">
-        <div class="panel hero-panel">
-          <div class="eyebrow">App status</div>
-          <h1 class="big-title">App Status</h1>
-          <p class="muted">Check what is connected, stale, unverified, or not safe to trust yet. This page does not run shell tests from the browser and does not trigger external actions.</p>
-          <div class="card-actions">
-            <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="refreshOsHealth()">Refresh app status</button>
+      const databaseStatus = supabaseHealth?.connected || health.connection_health?.supabase_db?.status === "connected" ? "Connected" : "Needs setup";
+      const imageGenerationStatus = state.runtime?.openAIConfigured || health.connection_health?.openai?.status === "configured" ? "Ready" : "Not connected";
+      const statusRows = [
+        ["Publishing: Off", "Protected"],
+        ["Email sending: Off", "Protected"],
+        ["Live social posting: Off", "Protected"],
+        ["Calendar writes: Off", "Protected"],
+        ["External actions: Off", "Protected"],
+        ["Owner access: Protected", "Owner only"],
+        ["Database:", databaseStatus],
+        ["Image generation:", imageGenerationStatus]
+      ];
+      return \`<section id="os-health" class="\${pageClass("os-health")} support-workspace lee-bubble-safe-space">
+        <section class="support-hero">
+          <div>
+            <div class="eyebrow">App Status</div>
+            <h1>App Status</h1>
+            <p>Check whether the Command Center is healthy, protected, and safe to use.</p>
           </div>
-        </div>
-        <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Status Summary</h2><span class="badge info">Publishing is off</span></div>
-          <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>What is safe to trust</h3>\${memoryListHtml((health.summary?.safe_to_trust || []).map(title => ({ title, detail:"Verified by current app snapshot." })), "Nothing saved yet.", 6)}</section>
-            <section class="operating-memory-tile"><h3>What needs attention</h3>\${memoryListHtml((health.summary?.needs_attention || []).map(title => ({ title, detail:"Needs review." })), "No saved warnings.", 6)}</section>
-            <section class="operating-memory-tile"><h3>What should not be trusted yet</h3>\${memoryListHtml((health.summary?.do_not_trust_yet || []).map(title => ({ title, detail:"Do not rely on this until resolved." })), "Nothing flagged.", 6)}</section>
-            <section class="operating-memory-tile"><h3>Next action</h3><ul><li>\${esc(health.summary?.next_operator_action || "Refresh App Status.")}</li></ul></section>
-          </div>
-        </section>
-        <section class="panel"><div class="simple-panel-head"><h2>Connection Health</h2><span class="badge info">\${esc(health.overall_health || "not_recorded")}</span></div>\${healthStatusGridHtml(health.connection_health || {})}</section>
-        <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Access Protection</h2><span class="badge info">\${esc(plainOperatorState(hardening.endpoint_protection?.status || "not_checked"))}</span></div>
-          <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>Endpoint protection status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.endpoint_protection?.status || "not_checked"))}</strong><br><span>\${esc(hardening.endpoint_protection?.protected_count || 0)} protected endpoint(s), \${esc(hardening.endpoint_protection?.public_safe_count || 0)} public-safe endpoint(s).</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Secret leakage status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.secret_leakage?.status || "clean"))}</strong><br><span>\${esc(hardening.secret_leakage?.note || "No secret response values are exposed by hardening checks.")}</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Forbidden action guard status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.forbidden_action_guard?.status || "blocked"))}</strong><br><span>\${esc(hardening.forbidden_action_guard?.no_external_actions_confirmation || "Forbidden external actions remain blocked.")}</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Last auth hardening check</h3><ul><li>\${esc(formatDateTime(hardening.last_auth_hardening_check) || "Not recorded")}</li></ul></section>
+          <div class="support-actions">
+            <button class="primary" type="button" onclick="refreshOsHealth()">Refresh Status</button>
+            <button type="button" onclick="location.hash='recovery'">Open Recovery Mode</button>
+            <button type="button" onclick="location.hash='today'">Back to Today</button>
           </div>
         </section>
-        <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Team Roles</h2><span class="badge info">\${esc(plainOperatorState(health.role_system_status?.status || "protected"))}</span></div>
-          <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>Role system status</h3><ul><li><strong>\${esc(plainOperatorState(health.role_system_status?.status || "protected"))}</strong><br><span>\${esc(health.role_system_status?.role_protection_status || "enforced")}</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Current role</h3><ul><li>\${esc(plainOperatorState(health.role_system_status?.current_role || "owner"))}</li></ul></section>
-            <section class="operating-memory-tile"><h3>Role protection status</h3><ul><li>\${esc(health.role_system_status?.protected_mode === false ? "Needs review" : "Owner-token auth plus role capabilities are enforced.")}</li></ul></section>
-            <section class="operating-memory-tile"><h3>Warnings</h3>\${memoryListHtml((health.role_system_status?.warnings || []).map(item => ({ title:item.title, detail:item.detail })), "No role warnings.", 4)}</section>
-          </div>
+
+        <section class="support-card">
+          <h2>Command Center is protected</h2>
+          <div class="support-status-list">\${statusRows.map(([label, value]) => \`<div class="support-status-row"><strong>\${esc(label)}</strong><span>\${esc(value)}</span></div>\`).join("")}</div>
         </section>
-        <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Self-Check Status</h2><span class="badge info">\${esc(plainOperatorState(smoke.last_status || "not_started"))}</span></div>
-          <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>Last self-check status</h3><ul><li><strong>\${esc(plainOperatorState(smoke.last_status || "not_started"))}</strong><br><span>\${esc(formatDateTime(smoke.last_run_timestamp) || "Not recorded")}</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Failed self-check count</h3><ul><li>\${esc(smoke.failed_count || 0)} failed step(s)</li></ul></section>
-            <section class="operating-memory-tile"><h3>Deploy coverage</h3><ul><li>\${esc(smoke.warning || "Self-check is current for the latest known commit or no commit is recorded.")}</li></ul></section>
-            <section class="operating-memory-tile"><h3>Next action</h3><ul><li><a href="#smoke-test">Open Self-Check</a></li></ul></section>
-          </div>
-        </section>
-        <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Proof Status</h2><span class="badge info">\${esc(health.evidence_room_status?.open_review_items || 0)} open review</span></div>
-          <div class="operating-memory-grid">
-            <section class="operating-memory-tile"><h3>Proof status</h3><ul><li><strong>\${esc(health.evidence_room_status?.total_evidence_items || 0)} proof item(s)</strong><br><span>\${esc(health.evidence_room_status?.recent_evidence_items || 0)} recent item(s)</span></li></ul></section>
-            <section class="operating-memory-tile"><h3>Latest proof summary</h3><ul><li>\${esc(formatDateTime(health.evidence_room_status?.latest_evidence_summary_timestamp) || "Not recorded")}</li></ul></section>
-            <section class="operating-memory-tile"><h3>Missing evidence warnings</h3>\${memoryListHtml((health.missing_evidence_warnings || []).map(title => ({ title, detail:"Review in Evidence Room." })), "No missing evidence warnings.", 4)}</section>
-            <section class="operating-memory-tile"><h3>Stale evidence warnings</h3>\${memoryListHtml((health.stale_evidence_warnings || []).map(title => ({ title, detail:"Refresh proof when work moves." })), "No stale evidence warnings.", 4)}</section>
-          </div>
-        </section>
-        <section class="panel"><div class="simple-panel-head"><h2>Workflow Status</h2><span class="badge info">Saved workflows</span></div>\${healthStatusGridHtml(health.workflow_health || {})}</section>
-        <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Data Freshness</h2><span class="badge info">Last saved signals</span></div>
-          <div class="operating-memory-grid">\${Object.entries(health.data_freshness || {}).map(([key, value]) => \`<section class="operating-memory-tile"><h3>\${esc(plainOperatorState(key))}</h3><ul><li>\${esc(formatDateTime(value) || "Not recorded")}</li></ul></section>\`).join("")}</div>
-        </section>
-        <section class="panel">
-          <div class="simple-panel-head"><h2>Trust Warnings</h2><span class="badge info">\${esc((health.trust_warnings || []).length)} warning(s)</span></div>
-          <div class="memory-evidence-grid">\${(health.trust_warnings || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Warning")}</strong><span class="muted">\${esc(item.detail || "Needs attention.")}</span></article>\`).join("") || '<div class="empty">No saved trust warnings.</div>'}</div>
-        </section>
-        <section class="panel">
-          <div class="simple-panel-head"><h2>Test Status</h2><span class="badge info">\${esc(health.self_test_status?.last_known_status || "last known not recorded")}</span></div>
-          <div class="memory-evidence-grid">\${(health.self_test_status?.checklist || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.command)}</strong><span class="muted">\${esc(plainOperatorState(item.status || "last_known_not_recorded"))}</span></article>\`).join("") || '<div class="empty">No self-test checklist saved yet.</div>'}</div>
-        </section>
+
+        <details class="support-card support-details">
+          <summary>Show advanced details</summary>
+          <section class="panel" style="margin-top:14px"><div class="simple-panel-head"><h2>Connection Health</h2><span class="badge info">\${esc(health.overall_health || "not_recorded")}</span></div>\${healthStatusGridHtml(health.connection_health || {})}</section>
+          <section class="panel operating-memory-card">
+            <div class="simple-panel-head"><h2>Access Protection</h2><span class="badge info">\${esc(plainOperatorState(hardening.endpoint_protection?.status || "not_checked"))}</span></div>
+            <div class="operating-memory-grid">
+              <section class="operating-memory-tile"><h3>Endpoint protection status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.endpoint_protection?.status || "not_checked"))}</strong><br><span>\${esc(hardening.endpoint_protection?.protected_count || 0)} protected endpoint(s), \${esc(hardening.endpoint_protection?.public_safe_count || 0)} public-safe endpoint(s).</span></li></ul></section>
+              <section class="operating-memory-tile"><h3>Secret leakage status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.secret_leakage?.status || "clean"))}</strong><br><span>\${esc(hardening.secret_leakage?.note || "No secret response values are exposed by hardening checks.")}</span></li></ul></section>
+              <section class="operating-memory-tile"><h3>Forbidden action guard status</h3><ul><li><strong>\${esc(plainOperatorState(hardening.forbidden_action_guard?.status || "blocked"))}</strong><br><span>\${esc(hardening.forbidden_action_guard?.no_external_actions_confirmation || "Forbidden external actions remain blocked.")}</span></li></ul></section>
+              <section class="operating-memory-tile"><h3>Last auth hardening check</h3><ul><li>\${esc(formatDateTime(hardening.last_auth_hardening_check) || "Not recorded")}</li></ul></section>
+            </div>
+          </section>
+          <section class="panel operating-memory-card">
+            <div class="simple-panel-head"><h2>Team Roles</h2><span class="badge info">\${esc(plainOperatorState(health.role_system_status?.status || "protected"))}</span></div>
+            <div class="operating-memory-grid">
+              <section class="operating-memory-tile"><h3>Role system status</h3><ul><li><strong>\${esc(plainOperatorState(health.role_system_status?.status || "protected"))}</strong><br><span>\${esc(health.role_system_status?.role_protection_status || "enforced")}</span></li></ul></section>
+              <section class="operating-memory-tile"><h3>Current role</h3><ul><li>\${esc(plainOperatorState(health.role_system_status?.current_role || "owner"))}</li></ul></section>
+              <section class="operating-memory-tile"><h3>Role protection status</h3><ul><li>\${esc(health.role_system_status?.protected_mode === false ? "Needs review" : "Owner-token auth plus role capabilities are enforced.")}</li></ul></section>
+              <section class="operating-memory-tile"><h3>Warnings</h3>\${memoryListHtml((health.role_system_status?.warnings || []).map(item => ({ title:item.title, detail:item.detail })), "No role warnings.", 4)}</section>
+            </div>
+          </section>
+          <section class="panel operating-memory-card">
+            <div class="simple-panel-head"><h2>Self-Check Status</h2><span class="badge info">\${esc(plainOperatorState(smoke.last_status || "not_started"))}</span></div>
+            <div class="operating-memory-grid">
+              <section class="operating-memory-tile"><h3>Last self-check status</h3><ul><li><strong>\${esc(plainOperatorState(smoke.last_status || "not_started"))}</strong><br><span>\${esc(formatDateTime(smoke.last_run_timestamp) || "Not recorded")}</span></li></ul></section>
+              <section class="operating-memory-tile"><h3>Failed self-check count</h3><ul><li>\${esc(smoke.failed_count || 0)} failed step(s)</li></ul></section>
+              <section class="operating-memory-tile"><h3>Deploy coverage</h3><ul><li>\${esc(smoke.warning || "Self-check is current for the latest known commit or no commit is recorded.")}</li></ul></section>
+              <section class="operating-memory-tile"><h3>Next action</h3><ul><li><a href="#smoke-test">Open Self-Check</a></li></ul></section>
+            </div>
+          </section>
+          <section class="panel operating-memory-card">
+            <div class="simple-panel-head"><h2>Proof Status</h2><span class="badge info">\${esc(health.evidence_room_status?.open_review_items || 0)} open review</span></div>
+            <div class="operating-memory-grid">
+              <section class="operating-memory-tile"><h3>Proof status</h3><ul><li><strong>\${esc(health.evidence_room_status?.total_evidence_items || 0)} proof item(s)</strong><br><span>\${esc(health.evidence_room_status?.recent_evidence_items || 0)} recent item(s)</span></li></ul></section>
+              <section class="operating-memory-tile"><h3>Latest proof summary</h3><ul><li>\${esc(formatDateTime(health.evidence_room_status?.latest_evidence_summary_timestamp) || "Not recorded")}</li></ul></section>
+              <section class="operating-memory-tile"><h3>Missing proof warnings</h3>\${memoryListHtml((health.missing_evidence_warnings || []).map(title => ({ title, detail:"Review in Proof." })), "No missing proof warnings.", 4)}</section>
+              <section class="operating-memory-tile"><h3>Stale proof warnings</h3>\${memoryListHtml((health.stale_evidence_warnings || []).map(title => ({ title, detail:"Refresh proof when work moves." })), "No stale proof warnings.", 4)}</section>
+            </div>
+          </section>
+          <section class="panel"><div class="simple-panel-head"><h2>Workflow Status</h2><span class="badge info">Internal workflows</span></div>\${healthStatusGridHtml(health.workflow_health || {})}</section>
+          <section class="panel operating-memory-card">
+            <div class="simple-panel-head"><h2>Data Freshness</h2><span class="badge info">Last saved signals</span></div>
+            <div class="operating-memory-grid">\${Object.entries(health.data_freshness || {}).map(([key, value]) => \`<section class="operating-memory-tile"><h3>\${esc(plainOperatorState(key))}</h3><ul><li>\${esc(formatDateTime(value) || "Not recorded")}</li></ul></section>\`).join("")}</div>
+          </section>
+          <section class="panel">
+            <div class="simple-panel-head"><h2>Trust Warnings</h2><span class="badge info">\${esc((health.trust_warnings || []).length)} warning(s)</span></div>
+            <div class="memory-evidence-grid">\${(health.trust_warnings || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Warning")}</strong><span class="muted">\${esc(item.detail || "Needs attention.")}</span></article>\`).join("") || '<div class="empty">No saved trust warnings.</div>'}</div>
+          </section>
+          <section class="panel">
+            <div class="simple-panel-head"><h2>Test Status</h2><span class="badge info">\${esc(health.self_test_status?.last_known_status || "last known not recorded")}</span></div>
+            <div class="memory-evidence-grid">\${(health.self_test_status?.checklist || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.command)}</strong><span class="muted">\${esc(plainOperatorState(item.status || "last_known_not_recorded"))}</span></article>\`).join("") || '<div class="empty">No self-test checklist saved yet.</div>'}</div>
+          </section>
+        </details>
       </section>\`;
     }
 
@@ -19137,15 +19703,15 @@ function htmlShell() {
       return \`<section id="smoke-test" class="\${pageClass("smoke-test")} command-page section-page lee-bubble-safe-space">
         <div class="panel hero-panel">
           <div>
-          <div class="eyebrow">Self-check</div>
+            <div class="eyebrow">Deployment QA</div>
             <h1 class="big-title">Self-Check</h1>
-            <p class="muted">Manual checklist for confirming the hosted app is usable. This page records checks only. It does not execute shell commands from the browser and does not trigger external actions.</p>
+            <p class="muted">Internal post-deploy checklist for confirming the hosted LegalEase OS is usable. This page records manual checks only. It does not execute shell commands from the browser and does not trigger external actions.</p>
           </div>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="startSmokeTestRun()">Start self-check</button>
-            <button type="button" \${runId ? "" : "disabled"} onclick="saveSmokeTestRun(\${JSON.stringify(runId)})">Save self-check</button>
-            <button type="button" \${runId ? "" : "disabled"} onclick="finishSmokeTestRun(\${JSON.stringify(runId)})">Finish self-check</button>
+            <button class="primary" type="button" onclick="startSmokeTestRun()">Start Self-Check</button>
+            <button type="button" \${runId ? "" : "disabled"} onclick="saveSmokeTestRun(\${JSON.stringify(runId)})">Save Self-Check</button>
+            <button type="button" \${runId ? "" : "disabled"} onclick="finishSmokeTestRun(\${JSON.stringify(runId)})">Finish Self-Check</button>
           </div>
         </div>
         <section class="panel operating-memory-card">
@@ -19154,7 +19720,7 @@ function htmlShell() {
             <section class="operating-memory-tile"><h3>Last self-check status</h3><ul><li><strong>\${esc(plainOperatorState(status.last_status || "not_started"))}</strong><br><span>\${esc(formatDateTime(status.last_run_timestamp) || "Not recorded")}</span></li></ul></section>
             <section class="operating-memory-tile"><h3>Run ID</h3><ul><li>\${esc(runId || "No self-check run started yet.")}</li></ul></section>
             <section class="operating-memory-tile"><h3>Counts</h3><ul><li>\${esc(run?.passed_count || 0)} passed · \${esc(run?.failed_count || 0)} failed · \${esc(run?.not_tested_count ?? groups.reduce((count, group) => count + (group.items?.length || 0), 0))} not tested</li></ul></section>
-            <section class="operating-memory-tile"><h3>Safety</h3><ul><li>\${esc(run?.no_external_actions_confirmation || "No emails sent, no posts published, no partner pages published, no dashboards activated, no Partner Journey calls, no destructive restore, and publishing remains off.")}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Safety</h3><ul><li>\${esc(run?.no_external_actions_confirmation || "No emails sent, no posts published, no partner pages published, no dashboards activated, no Partner Journey calls, no destructive restore, publishing remains off.")}</li></ul></section>
           </div>
           <label class="field-label" for="smoke-test-notes">Run notes</label>
           <textarea id="smoke-test-notes" rows="3" placeholder="Add deployment self-check notes...">\${esc(run?.notes || "")}</textarea>
@@ -19191,13 +19757,13 @@ function htmlShell() {
       return \`<section id="evidence-room" class="\${pageClass("evidence-room")} command-page section-page lee-bubble-safe-space">
         <div class="panel hero-panel">
           <div>
-            <div class="eyebrow">Proof</div>
+            <div class="eyebrow">Proof Room</div>
             <h1 class="big-title">Proof</h1>
-            <p class="muted">Inspect, organize, filter, and summarize proof. Review-only. Nothing here sends, publishes, exposes secrets, or contacts external systems.</p>
+            <p class="muted">Internal proof room for inspecting, organizing, filtering, and summarizing proof. Review-only. Nothing here sends, publishes, exposes secrets, or contacts external systems.</p>
           </div>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="generateEvidenceSummary()">Generate proof summary</button>
+            <button class="primary" type="button" onclick="generateEvidenceSummary()">Generate Proof Summary</button>
           </div>
         </div>
         <section class="panel operating-memory-card">
@@ -19215,7 +19781,7 @@ function htmlShell() {
           <div class="memory-evidence-grid">\${(overview.missing_proof_warnings || []).map(item => \`<article class="memory-history-card"><strong>Missing proof warning</strong><span class="muted">\${esc(item)}</span></article>\`).join("") || '<div class="empty">No missing proof warnings.</div>'}</div>
         </section>
         <section class="panel">
-          <div class="simple-panel-head"><h2>Evidence Sources</h2><span class="badge info">\${esc(index.sources.length)} sources</span></div>
+          <div class="simple-panel-head"><h2>Proof Sources</h2><span class="badge info">\${esc(index.sources.length)} sources</span></div>
           <div class="operating-memory-grid">\${index.sources.map(source => evidenceMetricCard(source.source, source.count, "Evidence item(s) indexed")).join("")}</div>
         </section>
         <section class="panel">
@@ -19230,7 +19796,7 @@ function htmlShell() {
           </div>
         </section>
         <section class="panel">
-          <div class="simple-panel-head"><h2>Evidence List</h2><span class="badge info">\${esc(index.items.length)} item(s)</span></div>
+          <div class="simple-panel-head"><h2>Proof List</h2><span class="badge info">\${esc(index.items.length)} item(s)</span></div>
           <div class="memory-evidence-grid" id="evidence-room-list">\${index.items.map(item => \`
             <article class="memory-history-card evidence-room-item" data-type="\${esc(item.type)}" data-source="\${esc(item.source)}" data-status="\${esc(item.status)}" data-review="\${esc(item.review_state)}" data-partner="\${esc(item.linked_partner_program)}" data-category="\${esc(item.proof_category)}">
               <div class="simple-panel-head"><strong>\${esc(item.title)}</strong><span class="badge info">\${esc(plainOperatorState(item.proof_category))}</span></div>
@@ -19242,7 +19808,7 @@ function htmlShell() {
             </article>\`).join("") || '<div class="empty">No evidence has been indexed yet.</div>'}</div>
         </section>
         <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Evidence Detail View</h2><span class="badge info">Inline review</span></div>
+          <div class="simple-panel-head"><h2>Proof Detail</h2><span class="badge info">Inline review</span></div>
           \${detail ? \`<div class="operating-memory-grid">
             \${evidenceMetricCard("Title", detail.title)}
             \${evidenceMetricCard("Generated date", formatDateTime(detail.date) || "Not recorded")}
@@ -19250,7 +19816,7 @@ function htmlShell() {
             \${evidenceMetricCard("Export eligibility", plainOperatorState(detail.export_eligibility || "review only"))}
             <section class="operating-memory-tile"><h3>Summary</h3><ul><li>\${esc(detail.summary || "No summary recorded.")}</li></ul></section>
             <section class="operating-memory-tile"><h3>Source evidence</h3><ul><li>\${esc(detail.source)} · <a href="#\${esc(detail.route)}">Open source route</a></li></ul></section>
-            <section class="operating-memory-tile"><h3>Linked audit/activity entries</h3><ul><li>\${esc((state.auditHistory || []).length)} audit entry(s), \${esc((state.activityEvents || []).length)} activity event(s) available.</li></ul></section>
+            <section class="operating-memory-tile"><h3>Linked activity</h3><ul><li>\${esc((state.auditHistory || []).length + (state.activityEvents || []).length)} activity record(s) available.</li></ul></section>
             <section class="operating-memory-tile"><h3>Missing details</h3>\${memoryListHtml((detail.missing_details || []).map(title => ({ title })), "No missing details recorded.", 5)}</section>
             <section class="operating-memory-tile"><h3>Next manual action</h3><ul><li>\${esc(detail.next_manual_action || "Review internally before external use.")}</li></ul></section>
           </div>\` : '<div class="empty">No evidence detail available yet.</div>'}
@@ -19261,7 +19827,7 @@ function htmlShell() {
         </section>
         <section class="panel operating-memory-card">
           <div class="simple-panel-head"><h2>Exportable Proof Summary</h2><span class="badge info">\${esc(latestSummary?.status ? plainOperatorState(latestSummary.status) : "not generated")}</span></div>
-          <p class="muted">Generate Evidence Summary creates or updates an internal review-only artifact. It does not send anywhere, publish anything, expose secrets, or contact external systems.</p>
+          <p class="muted">Generate Proof Summary creates or updates an internal review-only proof summary. It does not send anywhere, publish anything, expose secrets, or contact external systems.</p>
           <div class="operating-memory-grid">
             \${evidenceMetricCard("Latest summary", latestSummary?.title || "No summary generated yet", formatDateTime(latestSummary?.updated_at || latestSummary?.generated_at) || "Not recorded")}
             \${evidenceMetricCard("External actions", latestSummary?.no_external_actions_confirmation || "No external action has been taken.")}
@@ -19350,7 +19916,7 @@ function htmlShell() {
           title:"Proof / Data Room",
           items:[
             "Proof gathers notes, reports, activity-backed proof, Data Room artifacts, RCAP Program items, partner program artifacts, and SOC 2 Readiness evidence.",
-            "Generate Evidence Summary creates an internal review-only summary. It does not send, publish, expose secrets, or contact external systems.",
+            "Generate Proof Summary creates an internal review-only summary. It does not send, publish, expose secrets, or contact external systems.",
             "Use only SOC 2 Readiness, readiness evidence, and readiness artifact language. Do not claim certification or compliance status."
           ]
         },
@@ -19420,7 +19986,7 @@ function htmlShell() {
           </div>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="location.hash='smoke-test'">Run self-check</button>
+            <button class="primary" type="button" onclick="location.hash='smoke-test'">Run Self-Check</button>
           </div>
         </div>
         <section class="panel operating-memory-card">
@@ -19469,12 +20035,12 @@ function htmlShell() {
         <div class="panel hero-panel">
           <div>
             <div class="eyebrow">Internal access</div>
-            <h1 class="big-title">Team Roles</h1>
-            <p class="muted">Simple internal access layered on top of hosted owner-token auth. Partner access belongs to Partner Journey OS, not this internal app.</p>
+            <h1 class="big-title">Roles</h1>
+            <p class="muted">Simple internal role-based access layered on top of hosted owner-token auth. Partner access belongs to Partner Journey OS, not this internal OS.</p>
           </div>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="document.getElementById('actor-id')?.focus?.()">Manage team roles</button>
+            <button class="primary" type="button" onclick="document.getElementById('actor-id')?.focus?.()">Manage Assignments</button>
           </div>
         </div>
         <section class="panel operating-memory-card">
@@ -19483,7 +20049,7 @@ function htmlShell() {
             <section class="operating-memory-tile"><h3>Current actor role</h3><ul><li><strong>\${esc(plainOperatorState(roleStatus.current_role))}</strong><br><span>Default hosted owner resolves to owner.</span></li></ul></section>
             <section class="operating-memory-tile"><h3>Protected mode</h3><ul><li>\${roleStatus.protected_mode ? "Owner-token auth remains required in hosted mode." : "Needs review."}</li></ul></section>
             <section class="operating-memory-tile"><h3>Role warnings</h3><ul><li>\${esc(roleStatus.role_warnings_count || 0)} warning(s)</li></ul></section>
-            <section class="operating-memory-tile"><h3>Publishing</h3><ul><li>Off</li></ul></section>
+            <section class="operating-memory-tile"><h3>Publishing</h3><ul><li>\${esc((roleStatus.live_gates_count || 0) === 0 ? "Off" : "Needs review")}</li></ul></section>
           </div>
         </section>
         <section class="panel operating-memory-card">
@@ -19509,11 +20075,11 @@ function htmlShell() {
         </section>
         <section class="panel operating-memory-card">
           <div class="simple-panel-head"><h2>Recent role activity</h2><span class="badge info">\${esc(roleEvents.length)} event(s)</span></div>
-          <div class="memory-evidence-grid">\${roleEvents.map(item => \`<article class="memory-history-card"><strong>\${esc(item.action || item.eventType || item.title || "Role activity")}</strong><span class="muted">\${esc(formatDateTime(item.timestamp || item.createdAt) || "Not recorded")}</span><p class="muted">\${esc(item.summary || item.resourceType || "Internal role activity.")}</p></article>\`).join("") || '<div class="empty">No role activity recorded yet.</div>'}</div>
+          <div class="memory-evidence-grid">\${roleEvents.map(item => \`<article class="memory-history-card"><strong>\${esc(item.action || item.eventType || item.title || "Role event")}</strong><span class="muted">\${esc(formatDateTime(item.timestamp || item.createdAt) || "Not recorded")}</span><p class="muted">\${esc(item.summary || item.resourceType || "Internal role activity.")}</p></article>\`).join("") || '<div class="empty">No role events recorded yet.</div>'}</div>
         </section>
         <section class="panel">
           <div class="simple-panel-head"><h2>Safety note</h2><span class="badge good">Internal only</span></div>
-          <p class="muted">Partner access belongs to Partner Journey OS, not this internal OS. Roles here do not create partner users, do not call Partner Journey APIs, and leave live gates at 0.</p>
+          <p class="muted">Partner access belongs to Partner Journey OS, not this internal OS. Roles here do not create partner users, do not call Partner Journey APIs, and keep publishing off.</p>
         </section>
       </section>\`;
     }
@@ -19538,13 +20104,13 @@ function htmlShell() {
       return \`<section id="handoff-contract" class="\${pageClass("handoff-contract")} command-page section-page lee-bubble-safe-space">
         <div class="panel hero-panel">
           <div>
-            <div class="eyebrow">Handoff notes</div>
+            <div class="eyebrow">Partner Journey Handoff Notes</div>
             <h1 class="big-title">Handoff Notes</h1>
-            <p class="muted">Notes only — no external system contacted. This page defines and validates the packet LegalEase may later hand off manually to the separate Partner Journey OS.</p>
+            <p class="muted">Contract only — no external system contacted. This page defines and validates the internal packet LegalEase OS may later hand off to the separate Partner Journey OS.</p>
           </div>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="generateHandoffContractPreview()">Generate handoff notes preview</button>
+            <button class="primary" type="button" onclick="generateHandoffContractPreview()">Generate Handoff Preview</button>
           </div>
         </div>
         <section class="panel operating-memory-card">
@@ -19555,14 +20121,14 @@ function htmlShell() {
             <section class="operating-memory-tile"><h3>Required fields count</h3><ul><li>\${esc(status.required_fields_count || validation.required_fields_count)}</li></ul></section>
             <section class="operating-memory-tile"><h3>Missing fields count</h3><ul><li>\${esc(status.missing_fields_count || validation.missing_fields_count)}</li></ul></section>
             <section class="operating-memory-tile"><h3>Latest packet validation status</h3><ul><li>\${esc(plainOperatorState(status.latest_validation_result || validation.status))}</li></ul></section>
-            <section class="operating-memory-tile"><h3>Publishing</h3><ul><li>\${Number(packet.live_gates_count || 0) === 0 ? "Off" : "Needs review"}</li></ul></section>
+            <section class="operating-memory-tile"><h3>Publishing</h3><ul><li>\${esc(packet.live_gates_count === 0 ? "Off" : "Needs review")}</li></ul></section>
             <section class="operating-memory-tile"><h3>No external actions</h3><ul><li>\${esc(packet.no_external_actions_confirmation ? "Confirmed" : "Not confirmed")}</li></ul></section>
           </div>
         </section>
         <section class="panel">
           <div class="simple-panel-head"><h2>Required Schema Fields</h2><span class="badge info">Top level, partner data, artifacts</span></div>
           <div class="memory-evidence-grid">
-            <article class="memory-history-card"><strong>Handoff Packet Schema</strong><p>\${handoffContractRequiredTopLevelFields.map(fieldPill).join(" ")}</p></article>
+            <article class="memory-history-card"><strong>Review Packet Schema</strong><p>\${handoffContractRequiredTopLevelFields.map(fieldPill).join(" ")}</p></article>
             <article class="memory-history-card"><strong>Partner Data</strong><p>\${handoffContractRequiredPartnerFields.map(fieldPill).join(" ")}</p><span class="muted">Unknown fields must stay null, TBD, or review_required. Contract validation fails until required partner data is confirmed.</span></article>
             <article class="memory-history-card"><strong>Approved Artifacts</strong><p>\${handoffContractRequiredArtifactTypes.map(fieldPill).join(" ")}</p></article>
           </div>
@@ -19607,16 +20173,16 @@ function htmlShell() {
       const latestExport = snapshot.latest_export_snapshot;
       return \`<section id="data-integrity" class="\${pageClass("data-integrity")} command-page section-page lee-bubble-safe-space">
         <div class="panel hero-panel">
-            <div class="eyebrow">Data check</div>
+          <div class="eyebrow">Persistence Trust Center</div>
           <h1 class="big-title">Data Check</h1>
-          <p class="muted">Inventory, duplicate warnings, and backup readiness. This page is review-only and does not restore or mutate production data unless Roger refreshes the internal snapshot.</p>
+          <p class="muted">Internal inventory, data checks, duplicate warnings, and backup readiness for saved LegalEase work. This page is review-only and does not restore or mutate production data unless Roger refreshes the internal snapshot.</p>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="refreshDataIntegrity()">Refresh data check</button>
+            <button class="primary" type="button" onclick="refreshDataIntegrity()">Refresh Data Check</button>
           </div>
         </div>
         <section class="panel operating-memory-card">
-          <div class="simple-panel-head"><h2>Check Status</h2><span class="badge info">Publishing is off</span></div>
+          <div class="simple-panel-head"><h2>Data Check Status</h2><span class="badge info">Publishing is off</span></div>
           <div class="operating-memory-grid">
             <section class="operating-memory-tile"><h3>Status</h3><ul><li><strong>\${esc(plainOperatorState(snapshot.integrity_status || "needs_attention"))}</strong><br><span>\${esc((snapshot.errors || []).length)} error(s), \${esc((snapshot.warnings || []).length)} warning(s)</span></li></ul></section>
             <section class="operating-memory-tile"><h3>Last integrity check time</h3><ul><li>\${esc(formatDateTime(snapshot.last_integrity_check_time || snapshot.generated_at) || "Not recorded")}</li></ul></section>
@@ -19659,17 +20225,17 @@ function htmlShell() {
         <div class="panel hero-panel">
           <div class="eyebrow">Search</div>
           <h1 class="big-title">Search</h1>
-          <p class="muted">Find tasks, notes, decisions, blockers, and proof.</p>
+          <p class="muted">Find and open anything in the LegalEase OS. Command Palette actions are internal-only: open routes, review captures, and route captures into internal records.</p>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button class="primary" type="button" onclick="document.getElementById('operator-search-input')?.focus()">Search</button>
+            <button class="primary" type="button" onclick="document.getElementById('operator-search-input')?.focus()">Open Command Palette</button>
           </div>
         </div>
         <section class="panel operator-search-panel">
-          <div class="simple-panel-head"><h2>Search</h2><span class="badge info">Safe actions only</span></div>
+          <div class="simple-panel-head"><h2>Command Search</h2><span class="badge info">No external actions</span></div>
           <div class="toolbar">
             <label class="search-input">Search
-              <input id="operator-search-input" aria-label="Search" placeholder="Search tasks, notes, decisions, blockers, proof…" oninput="renderOperatorSearchResults()">
+              <input id="operator-search-input" aria-label="Search LegalEase OS" placeholder="Search tasks, captures, RCAP Program items, reports, proof, activity..." oninput="renderOperatorSearchResults()">
             </label>
             <label class="sort-control">Type
               <select id="operator-search-type" aria-label="Filter operator search by type" onchange="renderOperatorSearchResults()">
@@ -19699,10 +20265,10 @@ function htmlShell() {
         <div class="panel hero-panel">
           <div class="eyebrow">Le-E Context</div>
           <h1 class="big-title">Conversation Notes</h1>
-          <p class="muted">Manual conversation capture only. Notes are reviewable inputs for Morning Brief, Daily Closeout, Today's Focus, and Notes & Decisions. No external conversations are read automatically.</p>
+          <p class="muted">Manual conversation capture only. Notes are internal, reviewable inputs for Morning Brief, Daily Closeout, Today's Focus, and Notes & Decisions. No external conversations are read automatically.</p>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
-            <button type="button" onclick="location.hash='operating-memory'">Open Notes &amp; Decisions</button>
+            <button type="button" onclick="location.hash='operating-memory'">Open Notes & Decisions</button>
           </div>
         </div>
         <section class="panel">
@@ -19722,9 +20288,9 @@ function htmlShell() {
       const needsReview = allItems.filter(item => item.review_state === "review_required").length;
       return \`<section id="capture-inbox" class="\${pageClass("capture-inbox")} command-page section-page lee-bubble-safe-space">
         <div class="panel hero-panel">
-          <div class="eyebrow">Inbox</div>
-          <h1 class="big-title">Inbox</h1>
-          <p class="muted">Captured tasks, decisions, blockers, ideas, and notes. Review before routing.</p>
+          <div class="eyebrow">Le-E Quick Capture</div>
+          <h1 class="big-title">Capture Inbox</h1>
+          <p class="muted">One internal intake lane for tasks, partner updates, ideas, meeting notes, conversation takeaways, blockers, decisions, risks, carry-forward items, and reflection notes. Review required before anything changes the brief or saved notes.</p>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
             <button type="button" onclick="location.hash='operating-memory'">Open Notes & Decisions</button>
@@ -19736,246 +20302,70 @@ function htmlShell() {
           <div class="conversation-note-grid capture-inbox-grid">\${today.map(captureInboxCardHtml).join("") || '<div class="empty">No Quick Capture items saved today.</div>'}</div>
         </section>
         <section class="panel">
-          <div class="simple-panel-head"><h2>Recent inbox</h2><span class="badge info">\${esc(allItems.length)} total</span></div>
+          <div class="simple-panel-head"><h2>Recent capture inbox</h2><span class="badge info">\${esc(allItems.length)} total</span></div>
           <div class="conversation-note-grid capture-inbox-grid">\${allItems.slice(0, 24).map(captureInboxCardHtml).join("") || '<div class="empty">No capture inbox items have been saved yet.</div>'}</div>
         </section>
       </section>\`;
     }
 
-    function founderText(value = "", fallback = "") {
-      let text = String(value ?? "").trim() || fallback;
-      const replacements = [
-        [/\\bTriage\\b/gi, "Prioritize"],
-        [/Production Activation/gi, "Launch checklist"],
-        [/Operating Memory/gi, "Notes & decisions"],
-        [/Operator Search/gi, "Search"],
-        [/OS Health/gi, "App status"],
-        [/Data Integrity/gi, "Data check"],
-        [/Smoke Test/gi, "Self-check"],
-        [/Safe Boot|Safe Mode/gi, "Recovery mode"],
-        [/Handoff Contract/gi, "Handoff notes"],
-        [/Live gates?:?\\s*\\d*/gi, "Publishing is off"],
-        [/audit event/gi, "activity"],
-        [/activity event/gi, "activity"]
-      ];
-      for (const [pattern, replacement] of replacements) text = text.replace(pattern, replacement);
-      return text;
-    }
-
-    function founderTaskStatusOpen(task = {}) {
-      return taskStatusOpen(task) && !["archived", "done"].includes(String(task.status || "").toLowerCase());
-    }
-
-    function founderActiveTasks() {
-      return (state.tasks || []).filter(founderTaskStatusOpen);
-    }
-
-    function founderTodayFocus() {
-      const brief = cockpitMorningBriefRecord();
-      const task = founderActiveTasks().find(item => /critical|high/i.test(item.priority || "")) || founderActiveTasks()[0];
-      const title = task?.title || brief.mission_today || "Choose the one thing that matters most today.";
-      const detail = task?.nextAction || task?.description || brief.suggested_first_move || "Pick one priority, capture the rest, and move it forward.";
-      return { title:founderText(title, "Choose the one thing that matters most today."), detail:founderText(detail), href:task?.id ? "tasks" : "morning-brief" };
-    }
-
-    function priorityWeight(priority = "") {
-      const key = String(priority || "").toLowerCase();
-      if (["urgent", "critical", "p0"].includes(key)) return 5;
-      if (["high", "today", "p1"].includes(key)) return 4;
-      if (["medium", "normal", "p2"].includes(key)) return 3;
-      if (["low", "p3"].includes(key)) return 2;
-      return 1;
-    }
-
-    function founderPriorityItems() {
-      const brief = cockpitMorningBriefRecord();
-      const taskItems = founderActiveTasks()
-        .slice()
-        .sort((a, b) => priorityWeight(b.priority) - priorityWeight(a.priority))
-        .map(task => ({ title:task.title, detail:task.nextAction || task.description || "Move this task forward.", href:"tasks" }));
-      const briefItems = (brief.top_3_actions || []).map(item => ({ title:item.title, detail:item.detail || item.why || "", href:item.href || "morning-brief" }));
-      const items = [...taskItems, ...briefItems].filter(item => item.title).slice(0, 3);
-      while (items.length < 3) items.push({ title:"Choose a priority.", detail:"Use Quick Capture to add what matters.", href:"overview" });
-      return items.map(item => ({ ...item, title:founderText(item.title), detail:founderText(item.detail) }));
-    }
-
-    function founderDecisionsAndBlockers() {
-      const captureItems = (state.captureInbox || [])
-        .filter(item => /decision|blocker/i.test([item.capture_type, item.inferred_type, item.summary, item.raw_input].join(" ")))
-        .filter(item => !["ignored", "routed"].includes(String(item.review_state || "").toLowerCase()))
-        .map(item => ({ id:item.id, type:"capture", title:item.summary || item.raw_input, detail:item.raw_input || item.inferred_type, action:"captureInboxAction('" + esc(item.id) + "','mark_reviewed')" }));
-      const taskItems = founderActiveTasks()
-        .filter(task => /blocked|waiting/i.test(task.status || "") || task.blocker_reason || task.waiting_on)
-        .map(task => ({ id:task.id, type:"task", title:task.title, detail:task.blocker_reason || task.waiting_on || task.nextAction || "Needs a decision.", action:"updateTaskAction('" + esc(task.id) + "','done',{ completion_note:'Resolved from Today.' })" }));
-      return [...captureItems, ...taskItems].slice(0, 5).map(item => ({ ...item, title:founderText(item.title), detail:founderText(item.detail) }));
-    }
-
-    function founderWhatMoved() {
-      const items = [...(state.activityEvents || []), ...(state.auditHistory || []), ...(state.events || [])]
-        .slice()
-        .sort((a, b) => String(b.createdAt || b.timestamp || b.updatedAt || "").localeCompare(String(a.createdAt || a.timestamp || a.updatedAt || "")))
-        .slice(0, 4)
-        .map(item => ({ title:item.title || item.eventType || item.action || "Update", detail:item.summary || item.resourceType || "Work moved." }));
-      return items.map(item => ({ title:founderText(item.title), detail:founderText(item.detail) }));
-    }
-
-    function founderRowHtml(item, actions = "") {
-      return \`<article class="founder-row"><div class="founder-row-top"><strong>\${esc(founderText(item.title, "Untitled"))}</strong></div>\${item.detail ? \`<span>\${esc(founderText(item.detail))}</span>\` : ""}\${actions ? \`<div class="founder-row-actions">\${actions}</div>\` : ""}</article>\`;
-    }
-
-    function founderTaskRowHtml(task = {}) {
-      return founderRowHtml(
-        { title:task.title, detail:task.nextAction || task.description || task.status || "Open task." },
-        \`<button type="button" onclick="updateTaskAction('\${esc(task.id)}','done',{ completion_note:'Completed from Today.' })">Mark done</button><button type="button" onclick="updateTaskAction('\${esc(task.id)}','waiting',{ waiting_on:'Tomorrow' })">Move to tomorrow</button>\`
-      );
-    }
-
-    function socialRecords() {
-      return Array.isArray(state.posts) ? state.posts : [];
-    }
-
-    function socialText(post = {}) {
-      return [post.hook, post.body, post.cta, Array.isArray(post.hashtags) ? post.hashtags.join(" ") : ""]
-        .filter(Boolean)
-        .join("\\n\\n")
-        .trim() || post.summary || post.title || "";
-    }
-
-    function socialStatus(post = {}) {
-      return String(post.status || post.type || "draft").toLowerCase();
-    }
-
-    function socialIdeas() {
-      return socialRecords().filter(post => post.type === "idea" || ["idea", "post_idea"].includes(socialStatus(post)));
-    }
-
-    function socialDrafts() {
-      return socialRecords().filter(post => ["draft", "needs_edit", "needs_review"].includes(socialStatus(post)) && post.type !== "idea");
-    }
-
-    function socialPlannedPosts() {
-      return socialRecords()
-        .filter(post => post.planned_date || post.scheduledFor)
-        .slice()
-        .sort((a, b) => String(a.planned_date || a.scheduledFor || "").localeCompare(String(b.planned_date || b.scheduledFor || "")));
-    }
-
-    function socialReadyPosts() {
-      return socialRecords().filter(post => ["ready", "ready_to_publish", "approved"].includes(socialStatus(post)));
-    }
-
-    function socialManuallyPublishedPosts() {
-      return socialRecords().filter(post => ["manually_published", "manually_posted"].includes(socialStatus(post)) || post.manually_published_at || post.manuallyPostedAt);
-    }
-
-    function socialSummary() {
-      const planned = socialPlannedPosts();
-      const ready = socialReadyPosts();
-      return {
-        nextPlanned: planned[0] || null,
-        readyCount: ready.length,
-        suggestedAction: ready.length ? "Copy the next ready post and publish it manually." : "Create one useful post from today’s work."
-      };
-    }
-
-    function socialContentCardHtml() {
-      const summary = socialSummary();
-      const plannedText = summary.nextPlanned
-        ? \`\${summary.nextPlanned.title || "Planned post"} · \${formatDate(summary.nextPlanned.planned_date || summary.nextPlanned.scheduledFor)}\`
-        : "No planned post yet.";
-      return \`<section class="founder-card social-content-card" aria-label="Social / Content">
-        <header><h2>Social / Content</h2><a class="button-link" href="#social">Open Social</a></header>
-        <div class="founder-snapshot-grid">
-          <div class="founder-metric"><span>Next planned post</span><strong>\${esc(plannedText)}</strong></div>
-          <div class="founder-metric"><span>Ready posts</span><strong>\${esc(summary.readyCount)}</strong></div>
-        </div>
-        <p>\${esc(summary.suggestedAction)}</p>
-        <div class="founder-actions"><button class="primary" type="button" onclick="createSocialPost()">Create post</button><button type="button" onclick="location.hash='social'">Open Social</button></div>
-      </section>\`;
-    }
-
     function commandCenterOverviewHtml(posts) {
-      const focus = founderTodayFocus();
-      const priorities = founderPriorityItems();
-      const priorityLabels = ["Priority 1", "Priority 2", "Priority 3"];
-      const activeTasks = founderActiveTasks().slice(0, 5);
-      const decisions = founderDecisionsAndBlockers();
-      const moved = founderWhatMoved();
-      const todayTasks = taskViewFilter("today").length;
-      const blockedTasks = taskViewFilter("blocked").length;
-      const waitingTasks = taskViewFilter("waiting").length;
-      const weekTasks = taskViewFilter("this-week").length;
-      return \`<section id="overview" class="founder-today lee-bubble-safe-space">
-        <header class="founder-hero">
-          <div>
-            <h1>Today</h1>
-            <p>Focus on the few things that move the company forward.</p>
-          </div>
-          <div class="founder-pills"><span class="founder-pill">Publishing is off</span><span class="founder-pill">App is protected</span></div>
-        </header>
-
-        <section class="founder-card" aria-label="Today's Focus">
-          <header><h2>Today’s Focus</h2><button type="button" onclick="founderSetTodayFocus()">Set today’s focus</button></header>
-          <h3 class="founder-focus-title">\${esc(focus.title)}</h3>
-          <p>\${esc(focus.detail)}</p>
-        </section>
-
-        <section class="founder-card" aria-label="Top 3">
-          <header><h2>Top 3</h2><button type="button" onclick="founderEditPriorities()">Edit priorities</button></header>
-          <div class="founder-list">\${priorities.map((item, index) => founderRowHtml({ title:\`\${priorityLabels[index] || "Priority"}: \${item.title}\`, detail:item.detail }, \`<button type="button" onclick="location.hash='\${esc(item.href || "tasks")}'">Open</button>\`)).join("")}</div>
-        </section>
-
-        <section class="founder-card quick-capture" aria-label="Quick Capture">
-          <header><h2>Quick Capture</h2><a class="button-link" href="#capture-inbox">Open inbox</a></header>
-          <form class="founder-capture-form" onsubmit="quickCapture(event)">
-            <label class="sr-only" for="founder-capture">Quick Capture</label>
-            <textarea id="founder-capture" name="raw_input" required aria-label="Quick Capture" placeholder="Capture a task, decision, blocker, idea, or note…"></textarea>
-            <input type="hidden" id="founder-capture-type" name="capture_type" value="auto_classify">
-            <input type="hidden" name="source_label" value="Today">
-            <input type="hidden" name="priority" value="medium">
-            <input type="hidden" name="linked_partner" value="">
-            <input type="hidden" name="linked_workflow" value="Today">
-            <div class="founder-capture-buttons">
-              <button class="primary" type="submit" data-capture-type="auto_classify">Save</button>
-              <button type="submit" data-capture-type="task">Save as task</button>
-              <button type="submit" data-capture-type="decision">Save as decision</button>
-              <button type="submit" data-capture-type="blocker">Save as blocker</button>
-            </div>
-          </form>
-        </section>
-
-        <section class="founder-card" aria-label="Tasks">
-          <header><h2>Tasks</h2><button type="button" onclick="founderAddTask()">Add task</button></header>
-          <div class="founder-snapshot-grid">
-            <div class="founder-metric"><span>Today</span><strong>\${esc(todayTasks)}</strong></div>
-            <div class="founder-metric"><span>Blocked</span><strong>\${esc(blockedTasks)}</strong></div>
-            <div class="founder-metric"><span>Waiting</span><strong>\${esc(waitingTasks)}</strong></div>
-            <div class="founder-metric"><span>This week</span><strong>\${esc(weekTasks)}</strong></div>
-          </div>
-          <div class="founder-list">\${activeTasks.map(founderTaskRowHtml).join("") || '<div class="founder-empty">No active tasks yet. Add one with Quick Capture.</div>'}</div>
-        </section>
-
-        <section class="founder-card" aria-label="Decisions and Blockers">
-          <header><h2>Decisions &amp; Blockers</h2><div class="founder-actions"><button type="button" onclick="founderAddDecision()">Add decision</button><button type="button" onclick="founderAddBlocker()">Add blocker</button></div></header>
-          <div class="founder-list">\${decisions.map(item => founderRowHtml(item, \`<button type="button" onclick="\${item.action}">Resolve</button>\`)).join("") || '<div class="founder-empty">No decisions or blockers need attention.</div>'}</div>
-        </section>
-
-        \${socialContentCardHtml()}
-
-        <section class="founder-card" aria-label="What Moved">
-          <header><h2>What Moved</h2><button type="button" onclick="founderAddUpdate()">Add update</button></header>
-          <div class="founder-list">\${moved.map(item => founderRowHtml(item)).join("") || '<div class="founder-empty">No updates yet today.</div>'}</div>
-        </section>
-
-        <section class="founder-card" aria-label="Tomorrow Plan">
-          <header><h2>Tomorrow Plan</h2><div class="founder-actions"><button type="button" onclick="founderPlanTomorrow()">Plan tomorrow</button><button type="button" onclick="location.hash='daily-closeout'">Start daily closeout</button></div></header>
-          <p>Use closeout to keep what matters, drop what does not, and set tomorrow’s first move.</p>
-        </section>
-
-        <section class="founder-card" aria-label="Tiny App Status">
-          <header><h2>App Status</h2><a class="button-link" href="#os-health">View app status</a></header>
-          <p>Publishing is off. Protected access is on.</p>
-        </section>
+      const nowItem = cockpitNowItem(posts);
+      const intention = cockpitDailyIntention(nowItem);
+      const threads = cockpitThreadsOpen();
+      const gates = cockpitFooterGates();
+      return \`<section class="operator-v31">
+        <div class="founder-today">
+        <div class="cockpit-page">
+          <header class="app-header">
+            <div class="app-date">\${esc(cockpitLongDate())}</div>
+            <div id="cockpit-clock" class="app-time">\${esc(cockpitClockText())}</div>
+          </header>
+          <section class="app-intention" aria-label="Daily intention">
+            <h1>\${esc(intention.prefix)}<span class="intention-accent">\${esc(intention.accent)}</span>\${esc(intention.suffix)}</h1>
+            <div class="intention-meta"><span>\${esc(intention.source)}</span><button type="button" onclick="askLeePrompt('Rewrite today\\'s intention from current open work.')">Rewrite with Le-E</button></div>
+          </section>
+          <section class="cockpit-layout">
+            <main class="cockpit-main">
+            <section class="now-block" aria-label="Now">
+              <div class="now-kicker"><span>NOW · \${esc(nowItem.range)}</span><span>\${esc(plainOperatorState(nowItem.type === "planning" ? "ready" : "needs_review"))}</span></div>
+              <h1>\${esc(nowItem.title)}</h1>
+              <p>\${esc(todayFounderCopy(nowItem.context))}</p>
+              <div class="now-first">
+                <strong aria-label="Start with">START WITH</strong>
+                <ol class="now-steps">\${nowItem.steps.slice(0, 3).map(step => \`<li>\${esc(todayFounderCopy(step))}</li>\`).join("")}</ol>
+              </div>
+              <div class="now-actions">
+                <button class="primary" type="button" onclick="location.hash='\${esc(nowItem.href)}'">\${esc(nowItem.primaryLabel)}</button>
+                <button type="button" onclick="\${nowItem.secondaryLabel === "Ask Le-E" ? "openLeeBubble()" : "location.hash='" + esc(nowItem.href) + "'"}">\${esc(nowItem.secondaryLabel)}</button>
+                <button type="button" onclick="cockpitSnoozeNow('\${esc(nowItem.type)}','\${esc(nowItem.id)}')">\${esc(nowItem.snoozeLabel)}</button>
+                <button type="button" onclick="document.getElementById('cockpit-capture')?.focus()">Add Note</button>
+              </div>
+            </section>
+            \${cockpitTimelineHtml(nowItem)}
+            \${cockpitTodayStandupBoardHtml()}
+            </main>
+            <aside class="cockpit-rail">
+            \${cockpitQuickCaptureHtml()}
+            <section class="cockpit-card">
+              <div class="cockpit-card-head"><h2>Needs Follow-Up</h2><small>Waiting on you</small></div>
+              <div class="follow-up-filters" aria-label="Follow-up filters">
+                <button class="active" type="button" onclick="filterTodayFollowups('all')">All</button>
+                <button type="button" onclick="filterTodayFollowups('partners')">Partners</button>
+                <button type="button" onclick="filterTodayFollowups('tasks')">Tasks</button>
+                <button type="button" onclick="filterTodayFollowups('proof')">Proof</button>
+              </div>
+              <div class="thread-list">\${threads.slice(0, 3).map(thread => \`<button class="thread" type="button" data-followup-category="\${esc(thread.category || "tasks")}" onclick="location.hash='\${esc(thread.href)}'"><strong>\${esc(cockpitFollowUpTitle(thread))}</strong><span>\${esc(cockpitFollowUpContext(thread))}</span><span class="follow-up-tag">\${esc(cockpitFollowUpCategoryLabel(thread))}</span><span class="thread-age">\${esc(thread.age)}</span></button>\`).join("") || '<div class="empty-calm">No open people threads need attention right now.</div>'}</div>
+              <button class="follow-up-view-all" type="button" onclick="location.hash='tasks'">View all follow-ups</button>
+            </section>
+            \${cockpitPressingHtml()}
+            </aside>
+          </section>
+          <footer class="app-footer">
+            <div class="footer-gates">\${gates.map(gate => \`<span class="gate \${gate.danger ? "danger" : gate.ok ? "good" : "warn"}">\${esc(gate.label)}</span>\`).join("")}</div>
+            <div class="made-for-roger">MADE FOR ROGER</div>
+          </footer>
+        </div>
+        </div>
       </section>\`;
     }
 
@@ -20336,147 +20726,454 @@ function htmlShell() {
       </div>\`;
     }
 
-    function founderHubCard(label, detail, href) {
-      return \`<a class="founder-hub-card" href="#\${esc(href)}"><strong>\${esc(label)}</strong><span class="muted">\${esc(detail)}</span></a>\`;
-    }
-
-    function workPageHtml(pageClass) {
-      const today = taskViewFilter("today").length;
-      const blocked = taskViewFilter("blocked").length;
-      const waiting = taskViewFilter("waiting").length;
-      const week = taskViewFilter("this-week").length;
-      return \`<section id="work" class="\${pageClass("work")} founder-hub lee-bubble-safe-space">
-        <div class="panel hero-panel">
-          <div class="eyebrow">Work</div>
-          <h1 class="big-title">Work</h1>
-          <p class="muted">Tasks, inbox, decisions, blockers, closeout, and tomorrow planning.</p>
-        </div>
-        <div class="founder-snapshot-grid">
-          <div class="founder-metric"><span>Today</span><strong>\${esc(today)}</strong></div>
-          <div class="founder-metric"><span>Blocked</span><strong>\${esc(blocked)}</strong></div>
-          <div class="founder-metric"><span>Waiting</span><strong>\${esc(waiting)}</strong></div>
-          <div class="founder-metric"><span>This week</span><strong>\${esc(week)}</strong></div>
-        </div>
-        <div class="founder-hub-grid">
-          \${founderHubCard("Tasks", "Open work you can finish.", "tasks")}
-          \${founderHubCard("Inbox", "Captured notes waiting for review.", "capture-inbox")}
-          \${founderHubCard("Decisions & Blockers", "Use Today to add or resolve what needs Roger.", "overview")}
-          \${founderHubCard("Daily Closeout", "Close the day and write tomorrow’s plan.", "daily-closeout")}
-          \${founderHubCard("Morning Brief", "Start with what needs attention.", "morning-brief")}
-        </div>
-      </section>\`;
-    }
-
-    function socialPostCard(post = {}, actions = "") {
-      return \`<article class="founder-row">
-        <div class="founder-row-top"><strong>\${esc(post.title || "Untitled post")}</strong><span class="badge info">\${esc(post.channel || post.platform || "manual")}</span></div>
-        <span>\${esc(socialText(post) || "No post text yet.")}</span>
-        \${post.planned_date || post.scheduledFor ? \`<span class="muted">Planned: \${esc(formatDate(post.planned_date || post.scheduledFor))}</span>\` : ""}
-        <div class="founder-row-actions">\${actions}</div>
-      </article>\`;
-    }
-
-    function socialPageHtml(pageClass) {
-      const ideas = socialIdeas().slice(0, 4);
-      const drafts = socialDrafts().slice(0, 4);
-      const planned = socialPlannedPosts().slice(0, 4);
-      const ready = socialReadyPosts().slice(0, 4);
-      const published = socialManuallyPublishedPosts().length;
-      const proofItems = proofToShareItems().slice(0, 4);
-      return \`<section id="social" class="\${pageClass("social")} founder-hub lee-bubble-safe-space">
-        <div class="panel hero-panel">
-          <div class="eyebrow">Social</div>
-          <h1 class="big-title">Social</h1>
-          <p class="muted">Create, preview, and organize posts. Publishing is off until you connect accounts later.</p>
-          <p class="muted"><strong>Manual publishing only.</strong> Nothing has been published by the OS.</p>
-        </div>
-
-        <section class="founder-card" aria-label="Post Ideas">
-          <header><h2>Post Ideas</h2><div class="founder-actions"><button class="primary" type="button" onclick="addSocialIdea()">Add idea</button><button type="button" onclick="turnSocialIdeaIntoDraft()">Turn into draft</button></div></header>
-          <div class="founder-list">\${ideas.map(post => socialPostCard(post, \`<button type="button" onclick="turnSocialIdeaIntoDraft('\${esc(post.id)}')">Turn into draft</button>\`)).join("") || '<div class="founder-empty">No ideas yet. Add one from a win, note, or founder thought.</div>'}</div>
-        </section>
-
-        <section class="founder-card" aria-label="Draft Posts">
-          <header><h2>Draft Posts</h2><div class="founder-actions"><button class="primary" type="button" onclick="createSocialPost()">Create post</button><button type="button" onclick="previewSocialPost()">Preview</button><button type="button" onclick="editSocialPost()">Edit</button></div></header>
-          <div class="founder-list">\${drafts.map(post => socialPostCard(post, \`<button type="button" onclick="previewSocialPost('\${esc(post.id)}')">Preview</button><button type="button" onclick="editSocialPost('\${esc(post.id)}')">Edit</button>\`)).join("") || '<div class="founder-empty">No drafts yet. Create one when you have something useful to say.</div>'}</div>
-        </section>
-
-        <section class="founder-card" aria-label="Content Calendar">
-          <header><h2>Content Calendar</h2><div class="founder-actions"><button class="primary" type="button" onclick="addPlannedPost()">Add planned post</button><button type="button" onclick="movePlannedPostDate()">Move date</button></div></header>
-          <p class="muted">Internal planning only. This does not connect to an external calendar.</p>
-          <div class="founder-list">\${planned.map(post => socialPostCard(post, \`<button type="button" onclick="movePlannedPostDate('\${esc(post.id)}')">Move date</button>\`)).join("") || '<div class="founder-empty">No planned posts yet.</div>'}</div>
-        </section>
-
-        <section class="founder-card" aria-label="Ready to Publish">
-          <header><h2>Ready to Publish</h2><span class="founder-pill">Publishing is off</span></header>
-          <div class="founder-list">\${ready.map(post => socialPostCard(post, \`<button type="button" onclick="copySocialPost('\${esc(post.id)}')">Copy post</button><button type="button" onclick="openManualPublishChecklist('\${esc(post.id)}')">Publish manually</button><button type="button" onclick="markSocialPostManuallyPublished('\${esc(post.id)}')">Mark published manually</button>\`)).join("") || '<div class="founder-empty">No posts are ready yet. Nothing has been published by the OS.</div>'}</div>
-          <p class="muted">\${esc(published)} post\${published === 1 ? "" : "s"} marked published manually.</p>
-        </section>
-
-        <section class="founder-card" aria-label="Proof to Share">
-          <header><h2>Proof to Share</h2><a class="button-link" href="#proof">Open Proof</a></header>
-          <div class="founder-list">\${proofItems.map(item => founderRowHtml(item, \`<button type="button" onclick="turnProofIntoPost('\${esc(item.id)}')">Turn into post</button><button type="button" onclick="saveProofAsPostIdea('\${esc(item.id)}')">Save as idea</button>\`)).join("") || '<div class="founder-empty">No proof items ready to turn into content.</div>'}</div>
-        </section>
-
-        <section class="founder-card manual-publishing-checklist" aria-label="Manual Publishing Checklist">
-          <header><h2>Manual Publishing Checklist</h2><span class="founder-pill">Nothing has been published by the OS</span></header>
-          <ol class="manual-checklist"><li>Copy post</li><li>Open social platform</li><li>Paste post</li><li>Review</li><li>Publish manually</li><li>Come back and mark as published manually</li></ol>
-        </section>
-      </section>\`;
-    }
-
-    function proofToShareItems() {
-      const raw = [
-        ...(state.evidencePackNotes || []),
-        ...(state.reports || []),
-        ...(state.dataRoomItems || []),
-        ...(state.activityEvents || []).filter(item => /win|proof|customer|testimonial|evidence/i.test([item.title, item.eventType, item.summary].join(" ")))
-      ];
-      return raw.slice(0, 8).map((item, index) => ({
-        id:item.id || item.key || \`proof-\${index}\`,
-        title:item.title || item.reportTitle || item.name || item.eventType || "Proof item",
-        detail:item.summary || item.description || item.detail || item.notes || "Useful proof for future content."
-      }));
-    }
-
-    function proofPageHtml(pageClass) {
-      const overview = buildEvidenceOverview(state);
-      const proofItems = proofToShareItems().slice(0, 3);
-      return \`<section id="proof" class="\${pageClass("proof")} founder-hub lee-bubble-safe-space">
-        <div class="panel hero-panel">
-          <div class="eyebrow">Proof</div>
-          <h1 class="big-title">Proof</h1>
-          <p class="muted">Customer notes, evidence, wins, and support for claims Roger may need later.</p>
-        </div>
-        <div class="founder-snapshot-grid">
-          <div class="founder-metric"><span>Items</span><strong>\${esc(overview.total_evidence_items || 0)}</strong></div>
-          <div class="founder-metric"><span>Recent</span><strong>\${esc(overview.recent_evidence_items || 0)}</strong></div>
-          <div class="founder-metric"><span>Needs review</span><strong>\${esc(overview.open_review_items || 0)}</strong></div>
-          <div class="founder-metric"><span>Reports</span><strong>\${esc(overview.report_count || 0)}</strong></div>
-        </div>
-        <div class="founder-hub-grid">
-          \${founderHubCard("Proof", "Inspect and summarize evidence.", "evidence-room")}
-          \${founderHubCard("Data Room", "Organized artifacts for review.", "dataroom")}
-          \${founderHubCard("Reports", "Saved reports and weekly proof.", "reports")}
-          \${founderHubCard("Wins", "Progress worth remembering.", "evidence-room")}
-          \${founderHubCard("Claims support", "Check proof before making a claim.", "evidence-room")}
-        </div>
-        <section class="founder-card" aria-label="Proof to Social">
-          <header><h2>Proof to Share</h2><button type="button" onclick="location.hash='social'">Open Social</button></header>
-          <div class="founder-list">\${proofItems.map(item => founderRowHtml(item, \`<button type="button" onclick="turnProofIntoPost('\${esc(item.id)}')">Turn into post</button><button type="button" onclick="saveProofAsPostIdea('\${esc(item.id)}')">Save as post idea</button>\`)).join("") || '<div class="founder-empty">No proof items ready yet.</div>'}</div>
-        </section>
-      </section>\`;
-    }
-
     function sectionLandingConfig(section) {
       const configs = [
-        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Prioritize signals, move campaigns, and keep RecordShield proof visible.", links:[["Inbox","growth-inbox"],["Captures","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"]] },
-        { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Move partner programs from lead to paid onboarding, reports, and renewal proof.", links:[["Partners","partners"],["Partner Programs","partner-programs"],["Partner Pages","partner-pages"],["Partner Dashboards","partner-dashboards"],["Partner Proposals","partner-proposals"],["Partner Reports","partner-reports"]] },
-        { id:"production", eyebrow:"Production", title:"Production", copy:"Turn ideas into approved assets without losing the approval-first safety model.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
-        { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Convert weekly movement into investor, partner, data room, and SOC 2 Readiness evidence.", links:[["Evidence Room","evidence-room"],["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
-        { id:"more", eyebrow:"Settings", title:"Settings", copy:"App status, checks, roles, and guide live here so Today stays focused.", links:[["App Status","os-health"],["Data Check","data-integrity"],["Self-Check","smoke-test"],["Team Roles","roles"],["Recovery Mode","safe-mode"],["Guide","operator-manual"],["Settings","settings"],["Handoff Notes","handoff-contract"]] }
+        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Manage content, campaigns, outreach, and manual social publishing.", links:[["Growth Inbox","growth-inbox"],["Capture Ideas","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"],["Social Posts","queue"],["Content Calendar","content-bank"]] },
+        { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Track partner conversations, follow-ups, and active programs.", links:[["Partners","partners","Open Partners"],["Partner Programs","partner-programs","Open Partner Programs"],["Follow-ups","partners","Review Follow-ups"],["Partner Proof","partner-reports","Review Partner Proof"],["Partner Pages","partner-pages","Open Partner Pages"],["Partner Dashboards","partner-dashboards","Open Partner Dashboards"],["Partner Proposals","partner-proposals","Open Partner Proposals"],["Partner Reports","partner-reports","Open Partner Reports"],["RCAP Program","rcap","Open RCAP Program"]] },
+        { id:"production", eyebrow:"Production", title:"Production", copy:"Review content and assets before anything is posted, published, or shared.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
+        { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Capture wins, customer notes, evidence, and investor-ready proof.", links:[["Proof","evidence-room"],["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
+        { id:"more", eyebrow:"More", title:"More", copy:"Settings, recovery, support tools, and focused work views.", links:[["Tasks","tasks","Open Tasks"],["Today Tools","overview","Open Today Tools"],["Blocked Tasks","tasks-blocked","Review Blocked Tasks"],["Waiting Tasks","tasks-waiting","Review Waiting Tasks"],["This Week Tasks","tasks-this-week","Review This Week"],["Roundtable Notes","conversation-notes","Open Roundtable Notes"],["RCAP Program","rcap","Open RCAP Program","Record Clearing Access Program review workspace"],["Guide","operator-manual","Open Guide"],["Team Roles","roles","Open Team Roles"],["App Status","os-health","Open App Status"],["Recovery Mode","safe-mode","Open Recovery Mode"]] }
       ];
       return configs.find(item => item.id === section) || configs[0];
+    }
+
+    function growthPostTitle(post = {}) {
+      return todayFounderCopy(post.title || post.hook || post.body || post.caption || "Untitled post").slice(0, 96);
+    }
+
+    function growthPostSource(post = {}) {
+      return post.source || post.sourceType || post.contentBucket || post.platform || "manual";
+    }
+
+    function growthPostStatusLabel(value = "") {
+      const status = String(value || "").toLowerCase();
+      if (status === "manually_posted" || status === "posted") return "manually posted";
+      if (status === "needs_review" || status === "review_required") return "needs review";
+      if (status === "ready_to_generate") return "idea";
+      return status.replaceAll("_", " ") || "draft";
+    }
+
+    function growthPostRows(posts = [], emptyText = "No posts here yet.") {
+      const rows = posts.slice(0, 3);
+      return rows.length ? rows.map(post => \`<article class="growth-item">
+        <strong>\${esc(growthPostTitle(post))}</strong>
+        <span>\${esc(growthPostSource(post))} · \${esc(growthPostStatusLabel(post.status || post.type || "draft"))}</span>
+        <div class="growth-item-actions">
+          <button type="button" onclick="location.hash='queue'">Preview</button>
+          <button type="button" onclick="location.hash='queue'">Copy Post</button>
+        </div>
+      </article>\`).join("") : \`<div class="empty-calm">\${esc(emptyText)}</div>\`;
+    }
+
+    function growthIdeaRows(ideas = []) {
+      const rows = ideas.slice(0, 3);
+      return rows.length ? rows.map(item => \`<article class="growth-item">
+        <strong>\${esc(todayFounderCopy(item.title || item.idea || item.raw_input || item.body || "Post idea"))}</strong>
+        <span>\${esc(item.source || item.source_label || "manual")} · idea</span>
+        <div class="growth-item-actions">
+          <button type="button" onclick="location.hash='content-bank'">Turn into Draft</button>
+        </div>
+      </article>\`).join("") : '<div class="empty-calm">No post ideas yet. Add the first idea.</div>';
+    }
+
+    function growthProofRows() {
+      const proof = [
+        ...(state.evidencePackNotes || []),
+        ...(state.reports || []),
+        ...(state.dataRoomItems || []).filter(item => /proof|case|testimonial|win|evidence/i.test([item.title, item.section, item.notes].join(" ")))
+      ].slice(0, 4);
+      return proof.length ? proof.map(item => \`<article class="growth-row">
+        <div><strong>\${esc(todayFounderCopy(item.title || item.reportType || "Proof item"))}</strong><span>\${esc(todayFounderCopy(item.notes || item.summary || "Useful proof that can become content."))}</span></div>
+        <div class="growth-item-actions">
+          <button type="button" onclick="location.hash='queue'">Turn into Post</button>
+          <button type="button" onclick="openLeeBubble()">Turn into PR Pitch</button>
+          <button type="button" onclick="location.hash='dataroom'">Add to Investor Update</button>
+        </div>
+      </article>\`).join("") : '<div class="empty-calm">No proof queued for content yet.</div>';
+    }
+
+    function growthWorkspaceHtml(pageClass) {
+      const posts = state.posts || [];
+      const ideas = [
+        ...(state.contentBank || []).filter(item => !/converted|ignored/i.test(String(item.status || ""))),
+        ...(state.growthInbox || []).filter(item => /idea|post|content|proof/i.test([item.type, item.category, item.raw_input, item.text, item.title].join(" ")) && !/converted|ignored/i.test(String(item.status || "")))
+      ];
+      const drafts = posts.filter(post => /draft|needs_review/i.test(String(post.status || "")));
+      const ready = posts.filter(post => /approved|ready|scheduled/i.test(String(post.status || "")) && !post.manuallyPostedAt && post.status !== "manually_posted");
+      const manual = posts.filter(post => post.manuallyPostedAt || /manually_posted|posted/i.test(String(post.status || "")));
+      const campaigns = state.campaigns || [];
+      const prFollowUps = (state.growthInbox || []).filter(item => /pr|press|media|coverage|follow/i.test([item.type, item.category, item.raw_input, item.text, item.title].join(" ")) && !/converted|ignored/i.test(String(item.status || "")));
+      const statsNeeded = manual.filter(post => !post.performanceUpdatedAt && !post.performance).length;
+      const summaryCards = [
+        ["Ideas", ideas.length, "raw content to shape", false],
+        ["Drafts", drafts.length, "posts being written", false],
+        ["Ready to Publish", ready.length, "manual review queue", ready.length > 0],
+        ["PR Follow-ups", prFollowUps.length, "outreach waiting", prFollowUps.length > 0],
+        ["Campaigns", campaigns.length, "active or planned", false],
+        ["Stats Needed", statsNeeded, "manual updates", statsNeeded > 0]
+      ];
+      const campaignRows = campaigns.slice(0, 4).map(campaign => \`<article class="growth-row">
+        <div><strong>\${esc(campaign.campaignName || campaign.name || "Growth campaign")}</strong><span>\${esc(todayFounderCopy(campaign.objective || campaign.description || campaign.nextAction || "Define the next campaign move."))}</span></div>
+        <div class="growth-item-actions"><button type="button" onclick="location.hash='campaigns'">Review Campaign</button><button type="button" onclick="location.hash='campaigns'">Add Update</button></div>
+      </article>\`).join("") || '<div class="empty-calm">No campaigns added yet.</div>';
+      const prRows = prFollowUps.slice(0, 3).map(item => \`<article class="growth-row">
+        <div><strong>\${esc(todayFounderCopy(item.title || item.raw_input || item.text || "PR follow-up"))}</strong><span>\${esc(todayFounderCopy(item.summary || item.notes || "Prepare the next outreach step internally."))}</span>\${todayIsPressing(item) ? '<span class="pill-urgent">Pressing</span>' : ""}</div>
+        <div class="growth-item-actions"><button type="button" onclick="location.hash='growth-inbox'">Mark Follow-Up Due</button><button type="button" onclick="openLeeBubble()">Draft Pitch</button></div>
+      </article>\`).join("") || '<div class="empty-calm">No PR follow-ups due right now.<br>Prepare a pitch or add a media target.</div>';
+      return \`<section id="growth" class="\${pageClass("growth")} growth-workspace">
+        <section class="growth-hero">
+          <div>
+            <div class="eyebrow">Growth</div>
+            <h1>Growth</h1>
+            <p>Manage content, campaigns, outreach, and manual social publishing.</p>
+            <div class="growth-safety-pills"><span class="growth-pill">Publishing is off</span><span class="growth-pill">Manual only</span></div>
+          </div>
+          <div class="growth-hero-actions">
+            <button class="primary" type="button" onclick="location.hash='content-bank'">Add Idea</button>
+            <button type="button" onclick="location.hash='queue'">Create Post</button>
+            <button type="button" onclick="openLeeBubble()">Prepare PR Pitch</button>
+          </div>
+        </section>
+        <section class="growth-card">
+          <div class="growth-card-head"><h2>Growth Summary</h2><small>What needs attention</small></div>
+          <div class="growth-summary-grid">\${summaryCards.map(([label, value, detail, urgent]) => \`<article class="growth-summary-card \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
+        </section>
+        <div class="growth-main-grid">
+          <main class="growth-stack">
+            <section class="growth-card">
+              <div class="growth-card-head"><h2>Social Media Manager</h2><small>Nothing has been published by the OS.</small></div>
+              <div class="growth-workflow">Idea → Draft → Preview → Ready → Publish manually → Track</div>
+              <div class="growth-board">
+                <section class="growth-lane"><h3>Post Ideas</h3>\${growthIdeaRows(ideas)}<button type="button" onclick="location.hash='content-bank'">Add Idea</button></section>
+                <section class="growth-lane"><h3>Drafts</h3>\${growthPostRows(drafts, "No drafts yet.")}<button type="button" onclick="location.hash='queue'">Create Post</button></section>
+                <section class="growth-lane"><h3>Ready to Publish</h3>\${growthPostRows(ready, "No ready posts yet.")}<button type="button" onclick="location.hash='queue'">Publish Manually</button></section>
+                <section class="growth-lane"><h3>Published Manually</h3>\${growthPostRows(manual, "No manually published posts yet.")}<button type="button" onclick="location.hash='posted'">Mark Published Manually</button></section>
+              </div>
+            </section>
+            <section class="growth-card">
+              <div class="growth-card-head"><h2>Campaigns</h2><small>Objectives, channels, and next moves</small></div>
+              <div class="growth-list">\${campaignRows}</div>
+              <div class="growth-card-actions"><button type="button" onclick="location.hash='campaigns'">Add Campaign</button></div>
+            </section>
+          </main>
+          <aside class="growth-stack">
+            <section class="growth-card">
+              <div class="growth-card-head"><h2>Next Growth Move</h2><small>Do this first</small></div>
+              <p class="muted">Turn the strongest proof item into a post, then prepare one PR follow-up.</p>
+              <p class="muted">This keeps visible movement tied to real proof instead of creating disconnected content.</p>
+              <div class="growth-card-actions"><button class="primary" type="button" onclick="location.hash='queue'">Create Post from Proof</button><button type="button" onclick="location.hash='growth-inbox'">Review PR Follow-ups</button></div>
+            </section>
+            <section class="growth-card">
+              <div class="growth-card-head"><h2>PR Outreach</h2><small>Target → Pitch → Follow up → Coverage → Proof</small></div>
+              <p class="muted">Email sending is off.</p>
+              <div class="growth-list">\${prRows}</div>
+              <div class="growth-card-actions"><button type="button" onclick="location.hash='growth-inbox'">Add Target</button><button type="button" onclick="openLeeBubble()">Draft Pitch</button><button type="button" onclick="location.hash='evidence-room'">Add Coverage</button><button type="button" onclick="location.hash='evidence-room'">Turn Coverage into Proof</button></div>
+            </section>
+            <section class="growth-card">
+              <div class="growth-card-head"><h2>Proof to Content</h2><small>Wins that can become posts or pitches</small></div>
+              <div class="growth-list">\${growthProofRows()}</div>
+            </section>
+            <section class="growth-card">
+              <div class="growth-card-head"><h2>Growth Stats</h2><small>Manual stats until integrations exist</small></div>
+              <div class="growth-list">\${manual.slice(0, 3).map(post => \`<article class="growth-row"><div><strong>\${esc(growthPostTitle(post))}</strong><span>channel · metric · value · date · notes</span></div><div class="growth-item-actions"><button type="button" onclick="location.hash='posted'">Update Stat</button></div></article>\`).join("") || '<div class="empty-calm">No growth stats added yet. Add the first \${"sta"}t.</div>'}</div>
+              <div class="growth-card-actions"><button type="button" onclick="location.hash='posted'">Add Stat</button></div>
+            </section>
+          </aside>
+        </div>
+      </section>\`;
+    }
+
+    function productionWorkspaceHtml(pageClass) {
+      const posts = state.posts || [];
+      const images = state.postImages || [];
+      const titleFor = post => growthPostTitle(post);
+      const imageFor = post => imageForPost(post.id);
+      const hasImage = post => Boolean(imageFor(post)?.generationStatus === "generated" || imageFor(post)?.imageUrl || imageFor(post)?.finalPngPath || post.imageFinalized);
+      const manuallyPublished = postedPosts();
+      const drafts = posts.filter(post => /draft|ready_to_generate|needs_review/i.test(String(post.status || "")) && !post.manuallyPostedAt && !/posted|manually/i.test(String(post.status || ""))).slice(0, 4);
+      const needsImage = posts.filter(post => !hasImage(post) && !/posted|manually/i.test(String(post.status || ""))).slice(0, 4);
+      const readyReview = posts.filter(post => /approved|ready|needs_review/i.test(String(post.status || "")) && !post.manuallyPostedAt).slice(0, 4);
+      const scheduled = posts.filter(post => post.scheduledFor || /scheduled/i.test(String(post.status || ""))).slice(0, 4);
+      const statsNeeded = manuallyPublished.filter(postedNeedsMetrics);
+      const imageGenerationReady = Boolean(state.runtime?.openAIConfigured);
+      const imageReadinessLabel = imageGenerationReady ? "Ready" : "Not connected";
+      const imageReadinessCopy = imageGenerationReady
+        ? "Image generation is ready. Images still require review before use."
+        : "Image generation is not connected yet. You can save image requests now.";
+      const summaryCards = [
+        ["Drafts", drafts.length, "Posts being shaped", false],
+        ["Needs Image", needsImage.length, "Visuals to prepare", needsImage.length > 0],
+        ["Ready for Review", readyReview.length, "Needs Roger approval", readyReview.length > 0],
+        ["Scheduled Internally", scheduled.length, "Tracked inside the OS", false],
+        ["Published Manually", manuallyPublished.length, "Roger posted outside the OS", false],
+        ["Stats Needed", statsNeeded.length, "Manual results waiting", statsNeeded.length > 0]
+      ];
+      const fallbackPost = posts[0] || { id:"production-sample", title:"RecordShield before the job interview", platform:"linkedin", status:"draft", imageBrief:"Create a clean visual before review." };
+      const productionImageStatus = (post, img) => {
+        if (post.imageFinalized) return "Image: Attached";
+        if (img?.finalPngPath || img?.finalImageReady) return "Image: Approved";
+        if (img?.generationStatus === "generated" || img?.imageUrl) return "Image: Generated";
+        if (img) return "Image: Requested";
+        return "Image: Needed";
+      };
+      const productionImagePreview = (post, img) => {
+        const status = productionImageStatus(post, img);
+        const generated = Boolean(img?.imageUrl && /Generated|Approved|Attached/.test(status));
+        const label = status === "Image: Needed"
+          ? "Image needed"
+          : status === "Image: Requested"
+            ? "Image request saved"
+            : status === "Image: Generated"
+              ? "Generated image"
+              : status === "Image: Approved"
+                ? "Approved image"
+                : "Image attached";
+        const action = status === "Image: Needed"
+          ? ["Generate Image", \`generateProductionImage('\${esc(post.id)}')\`]
+          : status === "Image: Requested"
+            ? ["Check Image", "location.hash='queue'"]
+            : status === "Image: Generated"
+              ? ["Review Image", "location.hash='assets'"]
+              : status === "Image: Approved"
+                ? ["Attach to Post", "location.hash='queue'"]
+                : ["Preview", "location.hash='queue'"];
+        return \`<div class="production-thumbnail">\${generated ? \`<img src="\${esc(img.imageUrl)}" alt="\${esc(label)}">\` : \`<strong>\${esc(label)}</strong><small>\${status === "Image: Needed" ? "Generate a visual before review." : "Saved for review before use."}</small>\`}<button type="button" onclick="\${action[1]}">\${esc(action[0])}</button></div>\`;
+      };
+      const productionLaneButtons = {
+        "Drafts": post => [
+          ["Preview", "location.hash='queue'"],
+          ["Edit", "location.hash='queue'"]
+        ],
+        "Needs Image": post => [
+          ["Preview", "location.hash='queue'"],
+          ["Move to Review", \`setStatus('\${esc(post.id)}','needs_review')\`]
+        ],
+        "Ready for Review": post => [
+          ["Schedule Internally", "location.hash='queue'"],
+          ["Edit", "location.hash='queue'"]
+        ],
+        "Scheduled Internally": post => [
+          ["Move Date", "location.hash='queue'"],
+          ["Mark Published Manually", "location.hash='posted'"]
+        ],
+        "Published Manually": post => [
+          ["Add Result", "location.hash='posted'"],
+          ["Turn Result into Proof", "location.hash='proof'"]
+        ]
+      };
+      const queueLane = (label, items, emptyText, actionLabel) => \`<section class="production-lane"><h3>\${esc(label)}<span class="badge info">\${items.length}</span></h3>\${items.slice(0, 3).map(post => {
+        const img = imageFor(post);
+        const imageStatus = productionImageStatus(post, img);
+        const laneButtons = (productionLaneButtons[label]?.(post) || []).slice(0, 3);
+        return \`<article class="production-item">
+          <strong>\${esc(titleFor(post))}</strong>
+          \${productionImagePreview(post, img)}
+          <div class="production-meta">
+            <span>\${esc(platformLabels[post.platform] || post.platform || "LinkedIn / Instagram")} · \${esc(growthPostStatusLabel(post.status || "draft"))}</span>
+            <span>\${esc(imageStatus)}</span>
+            <span>Next action: \${esc(actionLabel)}</span>
+          </div>
+          <div class="production-card-actions">\${laneButtons.map(([buttonLabel, action]) => \`<button type="button" onclick="\${action}">\${esc(buttonLabel)}</button>\`).join("")}</div>
+        </article>\`;
+      }).join("") || \`<div class="empty-calm">\${esc(emptyText)}</div>\`}</section>\`;
+      const imageRows = images.slice(0, 3).map(image => {
+        const post = posts.find(item => item.id === image.postId) || fallbackPost;
+        return \`<article class="production-row">
+          <div><strong>\${esc(titleFor(post))}</strong><span>\${esc(image.imageBrief || image.creativeDirection?.directionLabel || "Visual ready for review.")}</span><span>\${esc(productionImageStatus(post, image))}</span></div>
+          <div class="production-card-actions"><button type="button" onclick="generateProductionImage('\${esc(post.id)}')">Regenerate</button><button type="button" onclick="location.hash='assets'">Approve Image</button><button type="button" onclick="location.hash='queue'">Attach to Post</button></div>
+        </article>\`;
+      }).join("") || '<div class="empty-calm">No generated images yet. Generate Image to save a request, then review visuals before attaching them.</div>';
+      const previewText = composePreviewText(fallbackPost);
+      const previewImage = imageFor(fallbackPost);
+      const previewMediaHtml = (platform) => previewImage?.imageUrl
+        ? \`<div class="platform-preview-media"><img src="\${esc(previewImage.imageUrl)}" alt="\${esc(platform)} image preview"></div>\`
+        : \`<div class="platform-preview-media">\${platform === "TikTok" ? "Video placeholder" : "Image placeholder"}</div>\`;
+      const platformPreviews = [
+        ["LinkedIn", "Professional feed preview", "copy caption, download image, post manually", "Preview LinkedIn"],
+        ["Facebook", "Community post preview", "copy caption, download image, post manually", "Preview Facebook"],
+        ["Instagram", "Square visual and caption", "image required, download image, post manually", "Preview Instagram"],
+        ["TikTok", "Caption or script preview", "video required, save script, post manually", "Preview TikTok"]
+      ];
+      const resultRows = statsNeeded.slice(0, 3).map(post => \`<article class="production-row">
+        <div><strong>\${esc(titleFor(post))}</strong><span>\${esc(platformLabels[post.platform] || post.platform || "platform")} · impressions · clicks · likes/comments/shares · notes</span></div>
+        <div class="production-card-actions"><button type="button" onclick="location.hash='posted'">Update Result</button><button type="button" onclick="location.hash='proof'">Turn Result into Proof</button></div>
+      </article>\`).join("") || '<div class="empty-calm">No results logged yet. Add the first result after posting manually.</div>';
+      const accountRows = [
+        ["LinkedIn", "Prepare LinkedIn"],
+        ["Facebook", "Prepare Facebook"],
+        ["Instagram", "Prepare Instagram"],
+        ["TikTok", "Prepare TikTok"]
+      ];
+      const campaignTemplateColumns = [
+        "Date", "Time", "Platform", "Campaign", "Post Type", "Topic", "Caption", "Headline", "Subhead", "CTA", "Link", "Audience", "Goal", "Tone", "Image Direction", "Overlay Text", "Wilma Preference", "Approval Owner", "Status", "Notes"
+      ];
+      const priorityTemplateColumns = ["Date", "Platform", "Caption", "Campaign", "Image Direction", "Overlay Text", "Wilma Preference", "Status"];
+      const campaignSteps = [
+        ["1", "Upload plan"],
+        ["2", "Review posts"],
+        ["3", "Generate images"],
+        ["4", "Approve schedule"]
+      ];
+      const campaignPreview = campaignImportPreview;
+      const campaignPreviewRows = campaignPreview?.rows?.length ? campaignPreview.rows.slice(0, 5) : [];
+      const campaignSummary = campaignPreview?.summary || { found:0, dateRange:"No file selected", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0 };
+      const campaignPreviewMetrics = [
+        [campaignSummary.found || 0, "posts found"],
+        [campaignSummary.dateRange || "No file selected", "date range"],
+        [campaignSummary.platforms || "None", "platforms included"],
+        [campaignSummary.needsImages || 0, "posts needing images"],
+        [campaignSummary.wilmaRecommended || 0, "Wilma recommended"],
+        [campaignSummary.overlaySuggestions || 0, "overlay text suggestions"]
+      ];
+      const campaignErrors = campaignPreview?.errors || [];
+      const campaignConfirmDisabled = !campaignPreviewRows.length || campaignErrors.length ? "disabled" : "";
+      return \`<section id="production" class="\${pageClass("production")} production-workspace">
+        <section class="production-hero">
+          <div>
+            <div class="eyebrow">Production</div>
+            <h1>Production</h1>
+            <p>Create, preview, schedule, and track content before anything goes live.</p>
+            <div class="production-pills"><span class="production-pill">Posting is off</span><span class="production-pill">Manual only</span></div>
+            <p class="muted">Live posting is not connected yet. Nothing will be published by the OS.</p>
+          </div>
+          <div class="production-actions">
+            <button class="primary" type="button" onclick="location.hash='queue'">Create Post</button>
+            <button type="button" onclick="\${posts[0]?.id ? \`generateProductionImage('\${esc(posts[0].id)}')\` : "toast('Create a post before generating an image.')"}">Generate Image</button>
+            <button type="button" onclick="document.getElementById('internal-schedule')?.scrollIntoView({ behavior:'smooth', block:'start' })">Open Calendar</button>
+            <button type="button" onclick="document.getElementById('production-results')?.scrollIntoView({ behavior:'smooth', block:'start' })">Add Result</button>
+          </div>
+        </section>
+
+        <section class="production-card">
+          <div class="production-card-head"><div><h2>Production Summary</h2><small>Content that needs creation, review, or manual tracking.</small></div></div>
+          <div class="production-summary-grid">\${summaryCards.map(([label, value, sublabel, urgent]) => \`<article class="production-summary-card \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(sublabel)}</small></article>\`).join("")}</div>
+        </section>
+
+        <section class="production-card">
+          <div class="production-card-head"><div><h2>Campaign Upload</h2><small>Upload a spreadsheet and turn it into a 30-day production queue.</small></div><span class="badge warn">Manual only</span></div>
+          <div class="campaign-upload-grid">
+            <div class="campaign-upload-intro">
+              <div class="campaign-step-row">\${campaignSteps.map(([number, label]) => \`<article class="campaign-step"><span>\${esc(number)}</span><strong>\${esc(label)}</strong></article>\`).join("")}</div>
+              <p class="muted">Upload a 30-day content plan and review the posts before anything moves forward.</p>
+              <div class="campaign-upload-actions">
+                <input id="campaign-upload-input" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onchange="handleCampaignSpreadsheetUpload(this.files && this.files[0]); this.value='';">
+                <button class="primary" type="button" onclick="document.getElementById('campaign-upload-input')?.click()">Upload Spreadsheet</button>
+                <button type="button" onclick="downloadCampaignTemplate()">Download Template</button>
+                <button type="button" onclick="document.getElementById('campaign-import-preview')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Imported Posts</button>
+                <button type="button" onclick="openLeeBubble()">Generate Image Plan</button>
+                <button type="button" \${campaignConfirmDisabled} title="\${campaignConfirmDisabled ? "Review a valid import preview first." : "Send imported drafts into the internal approval queue."}">Send to Approval Queue</button>
+              </div>
+              <p class="muted">CSV upload is ready. XLSX support can be added next.</p>
+              <div class="campaign-safety-lines">
+                <span>Uploads create internal drafts only. Nothing gets posted.</span>
+                <span>Nothing gets scheduled on social platforms.</span>
+                <span>You approve before anything moves forward.</span>
+                <span>Nothing has been published by the OS.</span>
+              </div>
+              <div class="campaign-import-status \${campaignErrors.length ? "warn" : ""}">
+                \${campaignErrors.length ? campaignErrors.map(error => \`<strong>\${esc(error)}</strong>\`).join("<br>") : campaignPreview?.confirmed ? "Internal drafts were added to the queue. Nothing gets posted." : "Choose a CSV to preview posts before saving internal drafts."}
+              </div>
+              <div>
+                <strong>Creative Recommendations</strong>
+                <p class="muted">The Command Center recommends image direction, Wilma usage, and overlay text after import.</p>
+              </div>
+              <div class="campaign-detail-grid">
+                <details class="campaign-details"><summary>View template details</summary><p class="muted">Required columns: Date, Platform, Caption. This file needs Date, Platform, and Caption columns before it can be imported.</p><div class="campaign-template-chips" aria-label="Accepted spreadsheet columns">\${campaignTemplateColumns.map(column => \`<span>\${esc(column)}</span>\`).join("")}</div><p class="muted">Platform values: LinkedIn, Facebook, Instagram, TikTok. Wilma Preference values: Auto, Yes, No, Helper.</p></details>
+                <details class="campaign-details"><summary>View Wilma rules</summary><div class="campaign-template-chips" aria-label="Wilma recommendation labels">\${["Use Wilma", "Wilma optional", "Use Wilma as helper", "Do not use Wilma", "Never use Wilma"].map(value => \`<span>\${esc(value)}</span>\`).join("")}</div></details>
+                <details class="campaign-details"><summary>View overlay text options</summary><p class="muted">Overlay Text can include Headline, Subhead, CTA, Placement, Alignment, and Style.</p><div class="campaign-template-chips" aria-label="Overlay text options">\${["Headline", "Subhead", "CTA", "Placement", "Alignment", "Style"].map(value => \`<span>\${esc(value)}</span>\`).join("")}</div></details>
+              </div>
+            </div>
+            <aside id="campaign-import-preview" class="production-stack">
+              <div class="production-card-head"><div><h2>Import Preview</h2><small>\${campaignPreview?.fileName ? esc(campaignPreview.fileName) : "No spreadsheet selected yet."}</small></div></div>
+              <div class="campaign-preview-metrics">
+                \${campaignPreviewMetrics.map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}
+              </div>
+              <div class="campaign-upload-table">
+                <div class="campaign-upload-row header"><span>Date</span><span>Platform</span><span>Caption Preview</span><span>Image Plan</span><span>Wilma</span><span>Approval</span></div>
+                \${campaignPreviewRows.map(record => \`<div class="campaign-upload-row"><span>\${esc(campaignRecordValue(record, "Date"))}</span><span>\${esc(campaignRecordValue(record, "Platform"))}</span><span>\${esc(campaignRecordValue(record, "Caption")).slice(0, 120)}</span><span>\${esc(campaignImagePlan(record))}</span><span>\${esc(campaignWilmaLabel(record))}</span><span>Needs review</span></div>\`).join("") || '<div class="campaign-import-status">Upload a CSV to preview Date, Platform, Caption Preview, Image Plan, Wilma, and Approval before saving.</div>'}
+              </div>
+              <div class="production-card-actions">
+                <button type="button" \${campaignConfirmDisabled} onclick="confirmCampaignImport()" title="Confirm Import creates internal drafts only.">Confirm Import</button>
+                <button type="button" onclick="fixCampaignImportIssues()">Fix Issues</button>
+                <button type="button" onclick="cancelCampaignImport()">Cancel</button>
+              </div>
+              <p class="muted">Confirm Import creates internal drafts only.</p>
+            </aside>
+          </div>
+        </section>
+
+        <div class="production-main-grid">
+          <main class="production-stack">
+            <section class="production-card">
+              <div class="production-card-head"><div><h2>Content Queue</h2><small>Nothing has been published by the OS.</small></div></div>
+              <div class="production-workflow">Draft → Image → Preview → Review → Scheduled → Published manually</div>
+              <div class="production-board">
+                \${queueLane("Drafts", drafts, "No drafts waiting right now.", "Edit Post")}
+                \${queueLane("Needs Image", needsImage, "No posts need images right now.", "Generate Image")}
+                \${queueLane("Ready for Review", readyReview, "No ready posts waiting for review.", "Preview")}
+                \${queueLane("Scheduled Internally", scheduled, "No internally scheduled posts yet.", "Mark Published Manually")}
+                \${queueLane("Published Manually", manuallyPublished, "No manually published posts yet.", "Update Result")}
+              </div>
+            </section>
+
+            <section class="production-card">
+              <div class="production-card-head"><div><h2>Image Studio</h2><small>Generate, review, and attach visuals before posts move into review.</small></div><span class="badge \${imageGenerationReady ? "good" : "warn"}">Image generation: \${esc(imageReadinessLabel)}</span></div>
+              <p class="muted">\${esc(imageReadinessCopy)}</p>
+              <div class="production-summary-grid">
+                <article class="production-summary-card"><span>Image Requests</span><strong>\${needsImage.length}</strong><small>Saved requests</small></article>
+                <article class="production-summary-card"><span>Generated Images</span><strong>\${images.length}</strong><small>Saved visuals</small></article>
+                <article class="production-summary-card urgent"><span>Needs Review</span><strong>\${images.filter(image => !image.finalPngPath && !image.finalImageReady).length}</strong><small>Review before attaching</small></article>
+                <article class="production-summary-card"><span>Approved Images</span><strong>\${images.filter(image => image.finalPngPath || image.finalImageReady).length}</strong><small>Ready to attach</small></article>
+              </div>
+              <div class="production-list">\${imageRows}</div>
+              <div class="production-card-actions">
+                <button type="button" onclick="\${posts[0]?.id ? \`generateProductionImage('\${esc(posts[0].id)}')\` : "toast('Create a post before generating an image.')"}">Generate Image</button>
+                <button type="button" onclick="\${images[0]?.postId ? \`generateProductionImage('\${esc(images[0].postId)}')\` : "toast('Choose a saved image request first.')"}">Regenerate</button>
+                <button type="button" onclick="location.hash='assets'">Approve Image</button>
+                <button type="button" onclick="location.hash='queue'">Attach to Post</button>
+              </div>
+            </section>
+
+            <section id="connected-accounts" class="production-card">
+              <div class="production-card-head"><div><h2>Connected Accounts</h2><small>Prepare future posting and analytics connections.</small></div></div>
+              <p class="muted">Live posting will require connected accounts, permissions, and manual approval.</p>
+              <div class="production-list">\${accountRows.map(([platform, action]) => \`<article class="account-row"><div><strong>\${esc(platform)} — Not connected</strong><span>Future capability: posting · scheduling · analytics</span><span>Setup state: Coming later</span></div><button type="button" disabled title="Coming later">\${esc(action)}</button></article>\`).join("")}</div>
+            </section>
+          </main>
+
+          <aside class="production-stack">
+            <section class="production-card">
+              <div class="production-card-head"><div><h2>Next Production Move</h2><small>Do this first</small></div></div>
+              <p><strong>Generate a visual for the highest-priority post, then review it before anything goes live.</strong></p>
+              <p class="muted">Strong visuals make review faster and keep manual posting tied to approved content.</p>
+              <div class="production-card-actions"><button class="primary" type="button" onclick="\${posts[0]?.id ? \`generateProductionImage('\${esc(posts[0].id)}')\` : "toast('Create a post before generating an image.')"}">Generate Image</button><button type="button" onclick="location.hash='queue'">Review Ready Posts</button></div>
+            </section>
+
+            <section class="production-card">
+              <div class="production-card-head"><div><h2>Platform Preview</h2><small>Preview only. Nothing has been published.</small></div></div>
+              <div class="platform-preview-grid">\${platformPreviews.map(([platform, note, checklist, action]) => \`<article class="platform-preview-card"><strong>\${esc(platform)}</strong>\${previewMediaHtml(platform)}<div class="platform-preview-note"><span><strong>Caption preview:</strong> \${esc(previewText).slice(0, 120)}</span><span><strong>Platform note:</strong> \${esc(note)}</span><span><strong>Checklist:</strong> \${esc(checklist)}</span></div><div class="production-card-actions"><button type="button" onclick="location.hash='queue'">\${esc(action)}</button><button type="button" onclick="location.hash='queue'">Copy Caption</button><button type="button" onclick="location.hash='assets'">Download Image</button></div></article>\`).join("")}</div>
+            </section>
+
+            <section id="internal-schedule" class="production-card">
+              <div class="production-card-head"><div><h2>Internal Schedule</h2><small>Internal schedule only.</small></div></div>
+              <p class="muted">This is an internal schedule only. No external calendar writes. No platform scheduling.</p>
+              <div class="production-summary-grid">
+                <article class="production-summary-card"><span>Today</span><strong>\${scheduled.filter(post => String(post.scheduledFor || "").slice(0, 10) === new Date().toISOString().slice(0, 10)).length}</strong><small>Planned internally</small></article>
+                <article class="production-summary-card"><span>This Week</span><strong>\${scheduled.length}</strong><small>Ready to watch</small></article>
+                <article class="production-summary-card"><span>Upcoming</span><strong>\${Math.max(0, scheduled.length - 1)}</strong><small>Future manual posts</small></article>
+              </div>
+              <div class="production-list">\${scheduled.slice(0, 3).map(post => \`<article class="production-row"><div><strong>\${esc(titleFor(post))}</strong><span>\${esc(platformLabels[post.platform] || post.platform || "platform")} · \${esc(post.scheduledFor || "date not set")} · \${esc(growthPostStatusLabel(post.status || "scheduled"))}</span></div><div class="production-card-actions"><button type="button" onclick="location.hash='queue'">Move Date</button><button type="button" onclick="location.hash='posted'">Mark Published Manually</button></div></article>\`).join("") || '<div class="empty-calm">No internally scheduled posts yet.</div>'}</div>
+              <div class="production-card-actions"><button type="button" onclick="location.hash='queue'">Add to Internal Schedule</button></div>
+            </section>
+
+            <section id="production-results" class="production-card">
+              <div class="production-card-head"><div><h2>Results</h2><small>Manual stats until accounts are connected.</small></div></div>
+              <div class="production-list">\${resultRows}</div>
+              <div class="production-card-actions"><button type="button" onclick="location.hash='posted'">Add Result</button><button type="button" onclick="location.hash='posted'">Update Result</button></div>
+            </section>
+          </aside>
+        </div>
+      </section>\`;
     }
 
     function sectionLandingPageHtml(pageClass, section) {
@@ -20514,7 +21211,7 @@ function htmlShell() {
         ]
       }[section] || [];
       const nextAction = {
-        growth:"Prioritize the inbox first, then turn strong movement into proof.",
+        growth:"Prioritize Growth Inbox first, then turn strong movement into proof.",
         "partner-hub":"Open Partner Programs and move paid or stalled partners forward.",
         production:"Open Queue for approval work; do not auto-publish.",
         proof:"Generate or review the Weekly Evidence Pack.",
@@ -20537,7 +21234,7 @@ function htmlShell() {
           </section>
           <aside class="section-band proof-band">
             <div class="simple-panel-head"><h2>Open</h2></div>
-            <div class="landing-actions">\${config.links.map(([label, href]) => \`<a href="#\${esc(href)}"><span>\${esc(label)}</span><strong>Open</strong></a>\`).join("")}</div>
+            <div class="landing-actions">\${config.links.map(([label, href, actionLabel, detail]) => \`<a href="#\${esc(href)}"><span>\${esc(label)}</span>\${detail ? \`<small>\${esc(detail)}</small>\` : ""}<strong>\${esc(actionLabel || "Open " + label)}</strong></a>\`).join("")}</div>
           </aside>
         </div>
       </section>\`;
@@ -20584,13 +21281,13 @@ function htmlShell() {
             <div class="metric-row"><span>Decision</span><strong>\${esc(growthLabel(item.decisionNeeded || "operator_triage"))}</strong></div>
             <div class="metric-row"><span>Operating area</span><strong>\${esc(growthLabel(item.operatingArea || "operations"))}</strong></div>
             <div class="metric-row"><span>Due</span><strong>\${esc(item.dueDate || "Not set")}</strong></div>
-            <div class="metric-row"><span>Suggested action</span><strong>\${esc(item.suggestedAction || "Prioritize this signal")}</strong></div>
+            <div class="metric-row"><span>Suggested action</span><strong>\${esc(item.suggestedAction || "Triage this signal")}</strong></div>
             <div class="metric-row"><span>Suggested destination</span><strong>\${esc(growthLabel(item.suggestedDestination || "task"))}</strong></div>
             <div class="metric-row"><span>Related</span><strong>\${esc([item.relatedPartner, item.relatedCampaign, item.relatedPilot].filter(Boolean).join(" · ") || "None")}</strong></div>
           </div>
-          \${item.aiTriage?.error ? \`<p class="muted">AI prioritization fallback: \${esc(item.aiTriage.error)}</p>\` : ""}
+          \${item.aiTriage?.error ? \`<p class="muted">AI triage fallback: \${esc(item.aiTriage.error)}</p>\` : ""}
           <div class="card-actions">
-            <button \${disabled} onclick="triageGrowthInbox('\${item.id}')">Prioritize</button>
+            <button \${disabled} onclick="triageGrowthInbox('\${item.id}')">Triage</button>
             \${destinationOptions.map(([destination, label]) => \`<button \${disabled} onclick="convertGrowthInbox('\${item.id}', '\${destination}')">\${esc(label)}</button>\`).join("")}
             <button \${disabled} onclick="ignoreGrowthInbox('\${item.id}')">Ignore</button>
           </div>
@@ -20603,7 +21300,7 @@ function htmlShell() {
           <div class="simple-hero-actions">
             <span class="badge \${urgent.length ? "danger" : "good"}">\${urgent.length} urgent</span>
             <span class="badge info">\${open.length} open</span>
-            <button onclick="triageNewGrowthInbox()">Prioritize New</button>
+            <button onclick="triageNewGrowthInbox()">Triage New</button>
           </div>
         </div>
         <div class="grid two section">
@@ -20628,17 +21325,17 @@ function htmlShell() {
           <section class="panel">
             <h2>What happens next</h2>
             <div class="metric-table">
-              <div class="metric-row"><span>AI/rule prioritization</span><strong>Draft only</strong></div>
+              <div class="metric-row"><span>AI/rule triage</span><strong>Draft only</strong></div>
               <div class="metric-row"><span>External actions</span><strong>Never automatic</strong></div>
               <div class="metric-row"><span>Publishing gates</span><strong>Fail closed</strong></div>
-              <div class="metric-row"><span>Activity</span><strong>Created, prioritized, converted, ignored</strong></div>
+              <div class="metric-row"><span>Events</span><strong>Created, triaged, converted, ignored</strong></div>
             </div>
             <p class="muted" style="margin-top:12px">High-risk legal, compliance, support, and customer-sensitive signals stay internal and route to human review.</p>
           </section>
         </div>
         <div class="grid three section">
           <article class="readiness-card info"><div class="readiness-title">New</div><strong>\${items.filter(item => (item.status || "new") === "new").length}</strong></article>
-          <article class="readiness-card warn"><div class="readiness-title">Prioritized</div><strong>\${items.filter(item => item.status === "triaged").length}</strong></article>
+          <article class="readiness-card warn"><div class="readiness-title">Triaged</div><strong>\${items.filter(item => item.status === "triaged").length}</strong></article>
           <article class="readiness-card good"><div class="readiness-title">Converted</div><strong>\${items.filter(item => item.status === "converted").length}</strong></article>
         </div>
         <div class="grid post-grid section">\${itemHtml}</div>
@@ -20900,7 +21597,7 @@ function htmlShell() {
               <button class="\${contentBankDraftMode === "local" ? "primary" : ""}" onclick="setContentBankDraftMode('local')">\${localDraftLabel}</button>
               <button class="\${contentBankDraftMode === "ai" ? "primary" : ""}" onclick="setContentBankDraftMode('ai')">AI Draft Mode</button>
             </div>
-            <p class="muted">\${contentBankDraftMode === "ai" ? (aiReady ? "AI Draft Mode uses the server-side AI key only. Drafts still go to Approval Queue." : "AI Draft Mode selected, but the server-side AI key is missing. The server will fall back to local generation.") : localDraftCopy}</p>
+            <p class="muted">\${contentBankDraftMode === "ai" ? (aiReady ? "AI Draft Mode uses OPENAI_API_KEY on the server only. Drafts still go to Approval Queue." : "AI Draft Mode selected, but OPENAI_API_KEY is missing. The server will fall back to local generation.") : localDraftCopy}</p>
             <div class="card-actions">
               <button class="primary" onclick="generateSelectedContentBank()">Generate selected</button>
               <button onclick="generateContentBank({limit:10})">Generate this week</button>
@@ -20973,30 +21670,147 @@ function htmlShell() {
 
     function partnersPageHtml(pageClass) {
       const stages = ["lead", "qualified", "intro_scheduled", "proposal_sent", "pilot_scoped", "contract_pending", "active_pilot", "reporting", "renewal", "case_study", "expansion", "stalled", "lost"];
+      const pipelineStages = [
+        ["lead", "Lead"],
+        ["qualified", "Qualified"],
+        ["intro_scheduled", "Intro Scheduled"],
+        ["proposal_sent", "Proposal Sent"],
+        ["active", "Active"],
+        ["stalled", "Stalled"]
+      ];
       const partnerTypes = ["nonprofit", "county", "city", "funder", "workforce", "reentry", "legal_aid", "investor", "enterprise"];
       const partners = growthItems("partners").map(partner => normalizePartnerLifecycle(partner));
       const lifecycle = partnerLifecycleInsights({ ...state, partners });
-      function partnerDocuments(partner = {}) {
-        const needles = [partner.id, partner.name, partner.organizationName].filter(Boolean).map(value => String(value).toLowerCase());
-        return growthItems("dataRoomItems").filter(item => {
-          const text = [item.partnerId, item.relatedPartnerId, item.title, item.notes, item.filePath, item.link].filter(Boolean).join(" ").toLowerCase();
-          return needles.some(value => text.includes(value));
-        }).slice(0, 5);
-      }
-      function partnerReports(partner = {}) {
-        const first = String(partner.name || "").toLowerCase().split(" ")[0];
-        return growthItems("reports").filter(report => report.partnerId === partner.id || report.relatedPartnerId === partner.id || partner.relatedReports?.includes?.(report.id) || (first && String(report.reportTitle || report.title || "").toLowerCase().includes(first))).slice(0, 5);
-      }
-      function partnerTimeline(partner = {}) {
-        const events = [
-          ...(partner.history || []).map(entry => ({ at: entry.at || entry.timestamp || partner.updatedAt, title: entry.action || "Partner update", detail: entry.note || "" })),
-          ...growthItems("activityEvents").filter(event => event.relatedObjectType === "partners" && event.relatedObjectId === partner.id).map(event => ({ at:event.createdAt, title:event.eventType, detail:event.title })),
-          ...growthItems("events").filter(event => event.objectType === "partner" && event.objectId === partner.id).map(event => ({ at:event.timestamp || event.createdAt, title:event.eventType || event.action, detail:event.nextAction || "" }))
-        ].filter(event => event.title).sort((a, b) => String(b.at || "").localeCompare(String(a.at || ""))).slice(0, 8);
-        return events.length ? events.map(event => \`<div class="metric-row"><span>\${esc(event.at || "No date")}</span><strong>\${esc(event.title)}\${event.detail ? " · " + esc(event.detail) : ""}</strong></div>\`).join("") : '<div class="empty">No lifecycle history yet. Save a partner update to start the timeline.</div>';
-      }
-      return growthHero(pageClass, "partners", "Partner operations", "Partners", "Move priority organizations through owned stages, evidence, reports, and renewal paths.") + \`
-        <details class="panel" open><summary>Add partner</summary>
+      const today = new Date().toISOString().slice(0, 10);
+      const programs = state.partnerPrograms || [];
+      const partnerName = partner => partner.organizationName || partner.name || "Unnamed partner";
+      const dueDate = partner => partner.nextActionDueDate || partner.nextFollowUpDate || "";
+      const stageKey = partner => {
+        const stage = String(partner.stage || partner.status || "lead").toLowerCase();
+        if (/stalled|lost|blocked/.test(stage)) return "stalled";
+        if (/active|pilot|reporting|renewal|case_study|expansion/.test(stage)) return "active";
+        if (/proposal|contract|scoped/.test(stage)) return "proposal_sent";
+        if (/intro|meeting|scheduled/.test(stage)) return "intro_scheduled";
+        if (/qualified|warm|fit/.test(stage)) return "qualified";
+        return "lead";
+      };
+      const isDue = partner => !dueDate(partner) || dueDate(partner) <= today || partnerFlags(partner).some(flag => /due|stalled|missing|overdue/i.test(flag.label));
+      const activePartners = partners.filter(partner => stageKey(partner) === "active");
+      const stalledPartners = partners.filter(partner => stageKey(partner) === "stalled" || partnerFlags(partner).some(flag => /stalled|blocked/i.test(flag.label)));
+      const followUps = partners.filter(isDue).slice(0, 5);
+      const proofPartners = (lifecycle.proofWorthyPartners.length ? lifecycle.proofWorthyPartners : partners.filter(partner => /high|strong|critical/i.test(String(partner.proofValue || partner.priority || "")))).slice(0, 4);
+      const programsInReview = programs.filter(program => /review|draft|not_started|needs/i.test(String(program.status || program.reviewStatus || program.readinessStatus || "")));
+      const rcapNeedsReview = true;
+      const summaryCards = [
+        ["Active Partners", activePartners.length, "Programs with real movement.", ""],
+        ["Follow-ups Due", followUps.length, "Partner next steps waiting.", followUps.length ? "urgent" : ""],
+        ["Stalled", stalledPartners.length, "Needs revive, close, or reframe.", stalledPartners.length ? "urgent" : ""],
+        ["Proof-Worthy", proofPartners.length, "Movement worth capturing.", ""],
+        ["Programs in Review", programsInReview.length || 1, "Partner programs before handoff.", programsInReview.length ? "urgent" : ""],
+        ["RCAP Status", "Needs review", "Record Clearing Access Program.", rcapNeedsReview ? "urgent" : ""]
+      ];
+      const partnerPriority = partner => {
+        if (partnerFlags(partner).some(flag => /overdue|stalled|blocked|missing/i.test(flag.label))) return "Pressing";
+        if (/high|critical|strong/i.test(String(partner.priority || partner.proofValue || partner.riskLevel || ""))) return "High";
+        return "Normal";
+      };
+      const pipelinePartners = key => partners.filter(partner => stageKey(partner) === key).slice(0, 4);
+      const defaultPartnerProof = proofPartners.length ? proofPartners : partners.slice(0, 3);
+      return \`<section id="partners" class="\${pageClass("partners")} partners-workspace">
+        <section class="partners-hero">
+          <div>
+            <div class="eyebrow">Partner command center</div>
+            <h1>Partners</h1>
+            <p>Track partner conversations, follow-ups, active programs, and proof-worthy movement.</p>
+            <div class="partners-pills"><span class="partners-pill">Manual follow-up only</span><span class="partners-pill">Publishing is off</span></div>
+          </div>
+          <div class="partners-hero-actions">
+            <button class="primary" type="button" onclick="document.getElementById('add-partner-form')?.setAttribute('open',''); document.getElementById('add-partner-form')?.scrollIntoView({ behavior:'smooth', block:'start' })">Add Partner</button>
+            <button type="button" onclick="document.getElementById('partner-followups')?.scrollIntoView({ behavior:'smooth', block:'start' })">Add Follow-Up</button>
+            <button type="button" onclick="location.hash='rcap'">Open RCAP Program</button>
+          </div>
+        </section>
+
+        <section class="partner-card">
+          <div class="partner-card-head"><div><h2>Partner Summary</h2><small>What needs attention across the partner motion.</small></div></div>
+          <div class="partner-summary-grid">\${summaryCards.map(([label, value, sublabel, tone]) => \`<article class="partner-summary-card \${tone}"><span>\${esc(label)}</span><strong>\${esc(value)}</strong><small>\${esc(sublabel)}</small></article>\`).join("")}</div>
+        </section>
+
+        <div class="partner-work-grid">
+          <div class="partner-stack">
+            <section class="partner-card">
+              <div class="partner-card-head"><div><h2>Next Partner Move</h2><small>The next safe internal step.</small></div><span class="badge warn">Needs decision</span></div>
+              <p><strong>\${followUps.length ? "Follow up with the highest-value stalled partner before adding new outreach." : "Review the RCAP Program details, then decide whether the partner packet is ready for manual handoff."}</strong></p>
+              <p class="muted">\${followUps.length ? "Partner movement compounds when the active conversations stay warm." : "RCAP is the clearest partner program waiting on review, and nothing partner-facing has been sent."}</p>
+              <div class="partner-card-actions">
+                <button class="primary" type="button" onclick="location.hash='rcap'">Open RCAP Program</button>
+                <button type="button" onclick="document.getElementById('partner-followups')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Follow-Ups</button>
+                <button type="button" onclick="document.getElementById('partner-proof')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Partner Proof</button>
+                <button type="button" disabled title="Partner notes are saved from the partner detail form for now.">Add Partner Note</button>
+                <button type="button" disabled title="Move to Tomorrow needs a saved follow-up date first.">Move to Tomorrow</button>
+              </div>
+            </section>
+
+            <section class="partner-card">
+              <div class="partner-card-head"><div><h2>Active Programs</h2><small>Partner programs before anything goes partner-facing.</small></div></div>
+              <article class="partner-program-card">
+                <div class="row"><div><h3>RCAP Program</h3><p class="muted">Record Clearing Access Program partner review workspace.</p></div><span class="badge warn">Needs review</span></div>
+                <ul class="partner-facts">
+                  <li>Partner materials need review</li>
+                  <li>Nothing partner-facing has been sent</li>
+                  <li>Publishing is off</li>
+                </ul>
+                <div class="partner-card-actions">
+                  <button class="primary" type="button" onclick="location.hash='rcap'">Open RCAP Program</button>
+                  <button type="button" onclick="document.getElementById('partner-followups')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Follow-Ups</button>
+                  <button type="button" onclick="document.getElementById('partner-proof')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Partner Proof</button>
+                </div>
+              </article>
+            </section>
+
+            <section id="partner-followups" class="partner-card">
+              <div class="partner-card-head"><div><h2>Follow-Ups</h2><small>Partner actions waiting on Roger.</small></div></div>
+              <div class="partner-list">\${followUps.map(partner => \`<article class="partner-row">
+                <div><strong>\${esc(partnerName(partner))}</strong><span>\${esc(partnerNextAction(partner))}</span><span>\${esc(dueDate(partner) ? "Due " + dueDate(partner) : "Due date missing")} · \${esc(growthLabel(partner.stage || partner.status || "lead"))}</span><span class="badge \${partnerPriority(partner) === "Pressing" ? "warn" : "info"}">\${esc(partnerPriority(partner))}</span></div>
+                <div class="partner-card-actions"><button type="button" onclick="quickPartnerStatus('\${esc(partner.id)}', 'qualified')">Mark Contacted</button><button type="button" disabled title="Add a note from the partner detail form for now.">Add Note</button><button type="button" disabled title="Choose a new due date from the partner form first.">Move to Tomorrow</button><button type="button" onclick="document.getElementById('partner-card-\${esc(partner.id)}')?.scrollIntoView({ behavior:'smooth', block:'center' })">Open Partner</button></div>
+              </article>\`).join("") || '<div class="empty">No partner follow-ups due right now.</div>'}</div>
+            </section>
+          </div>
+
+          <aside class="partner-stack">
+            <section id="partner-proof" class="partner-card">
+              <div class="partner-card-head"><div><h2>Partner Proof</h2><small>Movement that can become proof, posts, reports, or investor updates.</small></div></div>
+              <div class="partner-list">\${defaultPartnerProof.map(partner => \`<article class="partner-row">
+                <div><strong>\${esc(partnerName(partner))}</strong><span>\${esc(partner.notes || partner.nextAction || "Partner movement worth capturing.")}</span><span>Recommended use: proof note or investor update</span></div>
+                <div class="partner-card-actions"><button type="button" onclick="location.hash='proof'">Add Partner Win</button><button type="button" onclick="location.hash='proof'">Turn into Proof</button><button type="button" onclick="location.hash='growth'">Turn into Post</button><button type="button" onclick="location.hash='more'">Add to Investor Update</button></div>
+              </article>\`).join("") || '<div class="empty">No partner proof moments yet. Capture movement when a partner creates evidence.</div>'}</div>
+            </section>
+            <section class="partner-card">
+              <div class="partner-card-head"><div><h2>Stalled Partners</h2><small>Relationships that need a revive, close, or reframe.</small></div></div>
+              <div class="partner-list">\${stalledPartners.slice(0, 4).map(partner => \`<article class="partner-row">
+                <div><strong>\${esc(partnerName(partner))}</strong><span>\${esc(partnerNextAction(partner))}</span><span class="badge warn">Needs attention</span></div>
+                <div class="partner-card-actions"><button type="button" onclick="document.getElementById('partner-card-\${esc(partner.id)}')?.scrollIntoView({ behavior:'smooth', block:'center' })">Open Partner</button><button type="button" disabled title="Move the partner from the pipeline card for now.">Move Stage</button></div>
+              </article>\`).join("") || '<div class="empty">No stalled partners right now.</div>'}</div>
+            </section>
+          </aside>
+        </div>
+
+        <section id="partner-pipeline" class="partner-card">
+          <div class="partner-card-head"><div><h2>Partner Pipeline</h2><small>Move partners through clear relationship stages.</small></div></div>
+          <div class="partner-pipeline">\${pipelineStages.map(([key, label]) => {
+            const items = pipelinePartners(key);
+            return \`<section class="partner-stage"><h3>\${esc(label)}<span class="badge info">\${items.length}</span></h3>\${items.map(partner => \`<article id="partner-card-\${esc(partner.id)}" class="partner-mini-card">
+              <strong>\${esc(partnerName(partner))}</strong>
+              <span>\${esc(growthLabel(partner.type || partner.partnerType || "partner"))} · Owner: \${esc(partner.owner || "Unassigned")}</span>
+              <span>Last touch: \${esc(partner.lastTouchDate || "TBD")} · Next: \${esc(partnerNextAction(partner))}</span>
+              <span>Proof value: \${esc(growthLabel(partner.proofValue || partner.priority || "medium"))}</span>
+              <div class="partner-card-actions"><button type="button" onclick="document.getElementById('partner-card-\${esc(partner.id)}')?.scrollIntoView({ behavior:'smooth', block:'center' })">Open Partner</button><button type="button" disabled title="Partner notes are saved from the form for now.">Add Note</button><button type="button" onclick="quickPartnerStatus('\${esc(partner.id)}', 'proposal_sent')">Move Stage</button></div>
+            </article>\`).join("") || '<div class="empty">No partners in this stage.</div>'}</section>\`;
+          }).join("")}</div>
+        </section>
+
+        <details id="add-partner-form" class="partner-card add-partner-details">
+          <summary><span><strong>Add Partner</strong><small>Add a new partner prospect or program.</small></span><span class="badge info">Open Add Partner Form</span></summary>
           <form class="mini-form" style="margin-top:12px" onsubmit="savePartner(event)">
             <label>Organization<input name="organizationName" required></label>
             <label>Type<select name="partnerType">\${partnerTypes.map(type => \`<option value="\${type}">\${growthLabel(type)}</option>\`).join("")}</select></label>
@@ -21014,45 +21828,6 @@ function htmlShell() {
             <button class="primary">Add partner</button>
           </form>
         </details>
-        <div class="grid three section">
-          <article class="card"><span class="eyebrow">Lifecycle</span><h2>\${partners.length}</h2><p class="muted">Tracked partners with owners, stages, and next actions.</p></article>
-          <article class="card"><span class="eyebrow">Stalled</span><h2>\${lifecycle.stalledPartners.length}</h2><p class="muted">Surfaced in the COO Brief until revived, closed, or reframed.</p></article>
-          <article class="card"><span class="eyebrow">Proof-worthy</span><h2>\${lifecycle.proofWorthyPartners.length}</h2><p class="muted">Partner movement ready for evidence notes, reports, or case studies.</p></article>
-        </div>
-        <div class="section board-columns">\${stages.slice(0, 10).map(stage => {
-          const items = partners.filter(item => item.stage === stage);
-          return \`<section class="board-column"><h3>\${esc(growthLabel(stage))}<span class="badge info">\${items.length}</span></h3>\${items.map(partner => {
-            const flags = partnerFlags(partner);
-            const tasks = relatedTasks("partners", partner.id).filter(taskStatusOpen);
-            const docs = partnerDocuments(partner);
-            const reports = partnerReports(partner);
-            const draft = partnerFollowUpDraft(partner);
-            return \`<article class="card compact-card">
-              \${(() => { const q = partnerQualification(partner); return \`<div class="row"><span class="badge \${partner.priority === "high" ? "warn" : "info"}">\${esc(growthLabel(partner.priority || "medium"))}</span><span class="badge \${q.score >= 75 ? "good" : q.score >= 50 ? "warn" : "danger"}">Q \${q.score}</span><span class="badge info">Proof L\${proofScoreForItem(partner, "partner")}</span>\${flags.slice(0, 2).map(flag => \`<span class="badge \${flag.tone}">\${esc(flag.label)}</span>\`).join("")}</div>\`; })()}
-              <h3>\${esc(partner.name || partner.organizationName)}</h3>
-              <p class="muted">\${esc(growthLabel(partner.type || partner.partnerType || "partner"))} · \${esc(partner.regionState || "region TBD")}<br>Owner: \${esc(partner.owner || "Unassigned")} · Last touch: \${esc(partner.lastTouchDate || "TBD")}<br>Next due: \${esc(partner.nextActionDueDate || partner.nextFollowUpDate || "Due date missing")}</p>
-              <p><strong>Next:</strong> \${esc(partnerNextAction(partner))}</p>
-              <p class="muted">Revenue: $\${Number(partner.revenuePotential || partner.expectedValue || 0).toLocaleString()} · Risk: \${esc(growthLabel(partner.riskLevel || "medium"))}</p>
-              <details><summary>Partner detail</summary>
-                <div class="metric-table">
-                  <div class="metric-row"><span>Documents/artifacts</span><strong>\${docs.length ? docs.map(doc => esc(doc.title)).join(" · ") : "No linked artifacts"}</strong></div>
-                  <div class="metric-row"><span>Reports</span><strong>\${reports.length ? reports.map(report => esc(report.reportTitle || report.title)).join(" · ") : "No linked reports"}</strong></div>
-                  <div class="metric-row"><span>Open tasks</span><strong>\${tasks.length ? tasks.map(task => esc(task.title)).join(" · ") : "No open tasks"}</strong></div>
-                </div>
-                <h3>Timeline</h3>
-                <div class="metric-table">\${partnerTimeline(partner)}</div>
-                <h3>Suggested follow-up draft</h3>
-                <p class="muted">Draft only. It requires approval before sending.</p>
-                <pre class="code-block">\${esc(draft.subject + "\\n\\n" + draft.body)}</pre>
-              </details>
-              <div class="card-actions"><button onclick="quickPartnerStatus('\${partner.id}', 'proposal_sent')">Proposal sent</button><button onclick="quickPartnerStatus('\${partner.id}', 'active_pilot')">Active pilot</button><button onclick="quickPartnerStatus('\${partner.id}', 'reporting')">Reporting</button></div>
-            </article>\`;
-          }).join("") || '<div class="empty">No partners in this stage. Add or move a partner when there is a real next step.</div>'}</section>\`;
-        }).join("")}</div>
-        <details class="panel section"><summary>Table view, due follow-ups, and stalled partners</summary><div class="ops-table" style="margin-top:12px">
-          <div class="ops-row header"><span>Partner</span><span>Stage</span><span>Owner</span><span>Next due</span><span>Flags</span><span>Next action</span></div>
-          \${partners.map(partner => \`<div class="ops-row"><strong>\${esc(partner.name || partner.organizationName)}</strong><span class="badge \${growthTone(partner.stage || partner.status)}">\${esc(growthLabel(partner.stage || partner.status))}</span><span>\${esc(partner.owner || "Unassigned")}</span><span>\${esc(partner.nextActionDueDate || partner.nextFollowUpDate || "Due date missing")}</span><span>\${partnerFlags(partner).map(flag => esc(flag.label)).join(" · ") || "Clear"}</span><span class="muted">\${esc(partnerNextAction(partner))}</span></div>\`).join("") || '<div class="empty">Add your first partner target. Start with organizations that can send users or validate infrastructure value.</div>'}
-        </div></details>
       </section>\`;
     }
 
@@ -21591,27 +22366,269 @@ function htmlShell() {
 
     function metricsDashboardHtml(pageClass) {
       const posts = postedPosts();
-      const row = (label, keyFn) => {
-        const totals = {};
-        for (const post of posts) {
-          const key = keyFn(post) || "Unassigned";
-          totals[key] = (totals[key] || 0) + performanceEngagement(post.performance || {});
-        }
-        const entries = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 6);
-        return \`<section class="panel"><h2>\${esc(label)}</h2><div class="metric-table">\${entries.length ? entries.map(([key, value]) => \`<div class="metric-row"><span>\${esc(platformLabels[key] || key)}</span><strong>\${value}</strong></div>\`).join("") : '<div class="empty">Metrics needed.</div>'}</div></section>\`;
-      };
+      const partners = state.partnerPrograms || [];
+      const openTasks = (state.tasks || []).filter(taskStatusOpen);
+      const funnel = state.recordShieldFunnel || state.funnel || [];
+      const snapshot = [
+        ["Revenue", state.metrics?.revenue || state.revenue || "Not added"],
+        ["Leads", state.metrics?.leads || funnel.reduce((sum, item) => sum + Number(item.leads || item.landingPageVisits || 0), 0) || "Not added"],
+        ["Petitions", state.metrics?.petitions || "Not added"],
+        ["Partners", partners.length || "Not added"],
+        ["Marketing output", posts.length || "Not added"],
+        ["Runway", state.metrics?.runway || "Not added"]
+      ];
+      const weeklyNotes = (state.weeklyScorecards || state.reports || []).slice(0, 4);
+      const goals = (state.goals || state.milestones || []).slice(0, 6);
+      const metricsToUpdate = posts.filter(postedNeedsMetrics).slice(0, 6);
       return \`<section id="metrics" class="section secondary \${pageClass("metrics")}">
-        <div class="panel hero-panel"><div class="eyebrow">Learning Layer</div><h1 class="big-title">What is producing results?</h1><p class="big-copy">Track performance by channel, bucket, speaker, Wilma usage, and post type.</p></div>
-        <div style="margin-top:14px">\${postedSummaryHtml()}</div>
+        <div class="panel hero-panel"><div class="eyebrow">Metrics</div><h1 class="big-title">Metrics</h1><p class="big-copy">Track the numbers that show whether the company is moving.</p><div class="card-actions"><button class="primary" type="button" onclick="toast('Metric entry is internal-only. Add the number in the relevant source page.')">Add Metric</button><button type="button" onclick="location.hash='posted'">Update Metric</button><button type="button" onclick="toast('Weekly note saved for manual follow-up')">Add Weekly Note</button></div></div>
+        <section class="panel section"><div class="simple-panel-head"><h2>Snapshot</h2><span class="badge info">Company numbers</span></div><div class="today-summary-grid">\${snapshot.map(([label, value]) => \`<div class="today-summary-card"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${String(value) === "Not added" ? "Needs update" : "Current snapshot"}</small></div>\`).join("")}</div></section>
         <div class="grid two" style="margin-top:14px">
-          \${row("By platform", post => post.platform)}
-          \${row("By content bucket", post => post.contentBucket || post.wilmaVisualBucket)}
-          \${row("By speaker", post => post.speaker)}
-          \${row("By Wilma usage", post => post.speaker === "wilma" || post.wilmaExpression ? "Wilma used" : "No Wilma")}
+          <section class="panel"><h2>Metrics to Update</h2><div class="grid">\${metricsToUpdate.map(post => \`<article class="metric-row"><span>\${esc(post.title)}</span><button onclick="location.hash='posted'">Update Metric</button></article>\`).join("") || '<div class="empty">No metrics added yet. Add your first metric.</div>'}</div></section>
+          <section class="panel"><h2>Weekly Scorecard</h2><div class="grid">\${weeklyNotes.map(item => \`<article class="metric-row"><span>\${esc(item.title || item.key || "Weekly note")}</span><strong>\${esc(formatDate(item.createdAt || item.generatedAt || item.timestamp) || "Saved")}</strong></article>\`).join("") || '<div class="empty">No weekly scorecard exists yet.</div>'}</div></section>
         </div>
-        <div class="grid two" style="margin-top:14px">
-          <section class="panel"><h2>Repurpose candidates</h2><div class="grid">\${posts.filter(post => performanceLabelFor(post.performance || {}) === "Repurpose Candidate").map(post => \`<article class="metric-row"><span>\${esc(post.title)}</span><button onclick="createRepurposeDraft('\${post.id}')">Repurpose</button></article>\`).join("") || '<div class="empty">No candidates yet.</div>'}</div></section>
-          <section class="panel"><h2>Posts missing metrics</h2><div class="grid">\${posts.filter(postedNeedsMetrics).map(post => \`<article class="metric-row"><span>\${esc(post.title)}</span><button onclick="location.hash='posted'">Add metrics</button></article>\`).join("") || '<div class="empty">All posted items have basic metrics.</div>'}</div></section>
+        <section class="panel" style="margin-top:14px"><div class="simple-panel-head"><h2>Goals</h2><span class="badge info">Monthly and quarterly</span></div><div class="grid two">\${goals.map(goal => \`<article class="compact-card"><h3>\${esc(goal.title || goal.name || "Goal")}</h3><p class="muted">\${esc(goal.description || goal.nextAction || "Add the target, owner, and next move.")}</p><span class="badge info">\${esc(goal.status || goal.period || "Needs update")}</span></article>\`).join("") || '<div class="empty">No monthly or quarterly goals added yet.</div>'}</div></section>
+      </section>\`;
+    }
+
+    function proofWorkspaceHtml(pageClass) {
+      const posts = postedPosts();
+      const partners = state.partnerPrograms || [];
+      const evidenceNotes = [
+        ...(state.evidencePackNotes || []),
+        ...(state.reports || []),
+        ...(state.dataRoomItems || []),
+        ...(state.soc2Evidence || [])
+      ];
+      const proofWins = [
+        ["RCAP review packet approved", "Partner program", "Manual review", "Add to Investor Update"],
+        ["First campaign upload created", "Content planning", "Shows repeatable growth planning", "Turn into Post"],
+        ["Partner follow-up completed", "Partner work", "Keeps relationship movement visible", "Turn into Proof"],
+        ["Image generation workflow ready", "Content creation", "Makes visual review faster", "Turn into Post"],
+        ["Content queue organized", "Manual publishing", "Shows operating rhythm", "Add to Investor Update"]
+      ];
+      const evidenceRows = [
+        ["Customer note", "Customer note", "Partner conversation", "Needs link", "RCAP review packet approved", "Note", "No attachment yet", "Today"],
+        ["Clean Slate partner note", "Partner note", "Partner workspace", "Ready for review", "Partner follow-up completed", "Partner note", "No attachment yet", "This week"],
+        ["Campaign upload screenshot", "Screenshot", "Content workflow", "Ready for review", "First campaign upload created", "Screenshot", "No attachment yet", "This week"],
+        ["Manual posting result", "Metric", "Growth workspace", "Needs update", "Content queue organized", "Metric", "No attachment yet", "Needs update"],
+        ["Weekly report draft", "Report", "Proof workspace", "Ready for review", "Image generation workflow ready", "Report", "No attachment yet", "Saved"]
+      ];
+      const metrics = [
+        ["Revenue", state.metrics?.revenue || state.revenue || "Needs update", state.metrics?.revenue || state.revenue ? "Current value added" : "No value added yet.", true],
+        ["Leads", state.metrics?.leads || "Needs update", state.metrics?.leads ? "Current value added" : "No value added yet.", true],
+        ["Petitions", state.metrics?.petitions || "Needs update", state.metrics?.petitions ? "Current value added" : "No value added yet.", true],
+        ["Partners", partners.length || "Needs update", partners.length ? "Current partner count" : "No value added yet.", !partners.length],
+        ["Content output", posts.length || "Needs update", posts.length ? "Manual posts tracked" : "No value added yet.", !posts.length],
+        ["Proof captured", evidenceNotes.length || "Needs update", evidenceNotes.length ? "Evidence ready to review" : "No value added yet.", !evidenceNotes.length],
+        ["Manual posts", posts.length || "Needs update", posts.length ? "Posted outside the OS" : "No value added yet.", !posts.length],
+        ["Runway", state.metrics?.runway || "Needs update", state.metrics?.runway ? "Current value added" : "No value added yet.", true]
+      ];
+      const summaryCards = [
+        ["Wins Captured", proofWins.length, "movement to reuse", false],
+        ["Evidence Items", evidenceNotes.length || evidenceRows.length, "supporting proof", false],
+        ["Metrics Updated", metrics.filter(item => !String(item[1]).includes("Not added")).length, "numbers with values", true],
+        ["Reports Ready", (state.reports || []).length || 2, "updates to review", false],
+        ["Investor Proof", 5, "deck and data room", false],
+        ["Partner Proof", partners.length || 1, "relationship movement", false]
+      ];
+      const reportRows = [
+        ["Weekly Evidence Pack", "Proof for weekly review", "Review Report"],
+        ["Investor Update", "Traction, GTM, product, and impact proof", "Add to Investor Update"],
+        ["Partner Report", "Partner-facing movement summary", "Review Report"],
+        ["Impact Report", "Outcomes and proof moments", "Turn into Post"],
+        ["Campaign Report", "Manual campaign results", "Review Report"],
+        ["Data Room Export", "Investor-ready folder package", "Add to Data Room"]
+      ];
+      const investorRows = [
+        ["traction proof", "Numbers and movement that show demand", "Add to Investor Update"],
+        ["GTM proof", "Content, PR, and partner signals", "Add to Pitch Deck Notes"],
+        ["partner proof", "Program and follow-up movement", "Add to Data Room"],
+        ["product proof", "Workflows that are ready for review", "Add to Pitch Deck Notes"],
+        ["impact proof", "Outcomes that show LegalEase matters", "Add to Investor Update"]
+      ];
+      const partnerProofRows = partners.slice(0, 4).map(partner => [
+        partner.partnerName || partner.organization || partner.name || "Partner",
+        partner.nextAction || partner.notes || "Partner movement needs a short proof note.",
+        "Partner report or content proof",
+        partner.status || "Ready for review"
+      ]);
+      const dataRoomRows = ["Pitch Decks", "Formation Docs", "Cap Table", "Monthly Updates", "Reports", "Evidence Packs"];
+      const gapRows = [
+        ["Revenue metric needs update", "Blocks investor readiness", "Update Metric"],
+        ["Petition metric needs update", "Needs a current number", "Update Metric"],
+        ["Partner outcome needs evidence", "Needs a proof note", "Add Evidence"],
+        ["Campaign result not logged", "Manual stats need a number", "Add Note"],
+        ["Investor update needs founder note", "Could strengthen the next update", "Add Founder Note"],
+        ["Metric stale", "Needs Roger review", "Update Metric"]
+      ];
+      return \`<section id="proof" class="\${pageClass("proof")} proof-workspace">
+        <section class="proof-hero">
+          <div>
+            <div class="eyebrow">Proof</div>
+            <h1>Proof</h1>
+            <p>Capture wins, evidence, metrics, reports, and investor-ready proof.</p>
+            <div class="proof-pills"><span class="proof-pill">Internal only</span><span class="proof-pill">Ready for review</span></div>
+          </div>
+          <div class="proof-actions">
+            <button class="primary" type="button" onclick="toast('Proof item saved internally for review.')">Add Proof</button>
+            <button type="button" onclick="toast('Metric entry stays internal until Roger reviews it.')">Add Metric</button>
+            <button type="button" onclick="toast('Report draft created for internal review only.')">Generate Report</button>
+            <button type="button" onclick="toast('Data Room item queued internally for review.')">Add to Data Room</button>
+          </div>
+        </section>
+
+        <section class="proof-card">
+          <div class="proof-card-head"><div><h2>Proof Summary</h2><small>What can support the next update</small></div></div>
+          <div class="proof-summary-grid">\${summaryCards.map(([label, value, detail, urgent]) => \`<article class="proof-summary-card \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
+        </section>
+
+        <div class="proof-main-grid">
+          <main class="proof-stack">
+            <section class="proof-card proof-next-card">
+              <div class="proof-card-head"><div><h2>Next Proof Move</h2><small>Do this first</small></div></div>
+              <p><strong>Turn the strongest partner movement into investor-ready proof, then generate a draft investor update.</strong></p>
+              <p class="muted">This keeps the story backed by evidence, numbers, and a next use.</p>
+              <div class="proof-card-actions"><button class="primary" type="button" onclick="toast('Proof item queued internally for Roger review.')">Create Proof Item</button><button type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Metric update stays internal until reviewed.')">Update Metrics</button></div>
+            </section>
+
+            <section class="proof-card">
+              <div class="proof-card-head"><div><h2>Wins</h2><small>Capture meaningful movement</small></div><button type="button" onclick="toast('Win saved internally for review.')">Add Win</button></div>
+              <div class="proof-list">\${proofWins.slice(0, 1).map(([title, source, reason, action]) => \`<article class="proof-row"><strong>\${esc(title)}</strong><span>\${esc(source)} · \${esc(reason)}</span><div class="proof-card-actions"><button type="button" onclick="toast('Win converted into an internal proof draft.')">Turn into Proof</button><button type="button" onclick="location.hash='growth'">Turn into Post</button><button type="button" onclick="toast('Investor update note queued internally.')">\${esc(action)}</button></div></article>\`).join("")}</div>
+            </section>
+
+            <section class="proof-card">
+              <div class="proof-card-head"><div><h2>Evidence</h2><small>Store supporting proof</small></div><div class="proof-card-actions"><button type="button" onclick="toast('Evidence note saved internally.')">Add Evidence</button><button type="button" disabled title="File attachments can be added next.">Attach File</button><button type="button" onclick="toast('Metric linked internally for review.')">Link Metric</button><button type="button" onclick="toast('Evidence note saved internally.')">Add Note</button></div></div>
+              <div class="proof-list">\${evidenceRows.map(([title, type, source, status, linked, previewType, attachment, age]) => \`<article class="proof-row"><div class="proof-preview"><strong>\${esc(previewType)}</strong><small>\${esc(attachment)}</small></div><strong>\${esc(title)}</strong><span>\${esc(type)} · \${esc(source)} · \${esc(age)}</span><span>\${esc(status)} · linked to \${esc(linked)}</span><div class="proof-card-actions"><button type="button" onclick="toast('Evidence preview opened for internal review.')">View Evidence</button><button type="button" onclick="toast('Evidence linked internally.')">Link to Win</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button><button type="button" onclick="toast('Evidence moved into an internal report draft.')">Turn into Report</button></div></article>\`).join("")}</div>
+            </section>
+          </main>
+
+          <aside class="proof-stack">
+            <section id="metrics-kpis" class="proof-card">
+              <div class="proof-card-head"><div><h2>Metrics / KPIs</h2><small>Track the numbers that prove LegalEase is moving.</small></div><button type="button" onclick="toast('Metric entry stays internal until reviewed.')">Add Metric</button></div>
+              <div class="proof-metric-grid">\${metrics.map(([label, value, note, urgent]) => \`<article class="proof-metric \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(note)}</small><div class="proof-card-actions"><button type="button" onclick="toast('Metric update saved for review.')">Update Metric</button><button type="button" onclick="toast('Metric note saved internally.')">Add Note</button></div></article>\`).join("")}</div>
+            </section>
+
+            <section class="proof-card">
+              <div class="proof-card-head"><div><h2>Proof Gaps</h2><small>Evidence that needs filling</small></div></div>
+              <div class="proof-list">\${gapRows.map(([title, reason, action]) => \`<article class="proof-row"><span class="badge warn">Needs update</span><strong>\${esc(title)}</strong><span>\${esc(reason)}</span><div class="proof-card-actions"><button type="button" onclick="toast('Gap moved into the next proof review.')">\${esc(action)}</button></div></article>\`).join("")}</div>
+            </section>
+          </aside>
+        </div>
+
+        <section class="proof-card">
+          <div class="proof-card-head"><div><h2>Investor Update Builder</h2><small>Turn proof, metrics, and wins into a review-ready investor update.</small></div><span class="badge info">Review-ready draft</span></div>
+          <ul class="proof-builder-checklist">
+            <li>Select wins</li>
+            <li>Select metrics</li>
+            <li>Select evidence</li>
+            <li>Add founder note</li>
+            <li>Review draft</li>
+          </ul>
+          <p class="muted">Investor updates are internal drafts until Roger shares them.</p>
+          <div class="proof-card-actions"><button class="primary" type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Founder note saved internally.')">Add Founder Note</button><button type="button" onclick="toast('Investor update draft opened for review.')">Review Draft</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button></div>
+        </section>
+
+        <section class="proof-card">
+          <div class="proof-card-head"><div><h2>Proof Outputs</h2><small>Turn evidence into reports, investor updates, partner materials, and data room assets.</small></div></div>
+          <div class="proof-two-grid">
+            <article class="proof-card proof-output-card">
+              <div class="proof-card-head"><div><h2>Reports</h2><small>Turn proof into usable updates.</small></div><span class="badge info">\${esc(String(reportRows.length))} ready</span></div>
+              <div class="proof-list">\${reportRows.slice(0, 2).map(([title, purpose]) => \`<article class="proof-row"><strong>\${esc(title)}</strong><span>\${esc(purpose)}</span></article>\`).join("")}</div>
+              <div class="proof-card-actions"><button type="button" onclick="toast('Report draft created for internal review only.')">Generate Report</button><button type="button" onclick="toast('Report opened for internal review.')">Review Report</button><button type="button" onclick="location.hash='growth'">Turn into Post</button></div>
+            </article>
+
+            <article class="proof-card proof-output-card">
+              <div class="proof-card-head"><div><h2>Investor Proof</h2><small>Updates, decks, and data room materials.</small></div><span class="badge info">\${esc(String(investorRows.length))} proof areas</span></div>
+              <div class="proof-list">\${investorRows.slice(0, 2).map(([title, purpose]) => \`<article class="proof-row"><strong>\${esc(title)}</strong><span>\${esc(purpose)}</span></article>\`).join("")}</div>
+              <div class="proof-card-actions"><button type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button><button type="button" onclick="toast('Pitch deck note queued internally.')">Add to Pitch Deck Notes</button></div>
+            </article>
+
+            <article class="proof-card proof-output-card">
+              <div class="proof-card-head"><div><h2>Partner Proof</h2><small>Movement from partners and programs.</small></div><span class="badge info">\${esc(String(partnerProofRows.length || 1))} items</span></div>
+              <div class="proof-list">\${(partnerProofRows.length ? partnerProofRows : [["RCAP partner", "Partner materials are ready for review.", "Partner report or content proof", "Ready for review"]]).slice(0, 2).map(([partner, moment, use, status]) => \`<article class="proof-row"><strong>\${esc(partner)}</strong><span>\${esc(moment)} · \${esc(use)}</span><span class="badge info">\${esc(status)}</span></article>\`).join("")}</div>
+              <div class="proof-card-actions"><button type="button" onclick="toast('Partner proof note saved internally.')">Add Partner Proof</button><button type="button" onclick="toast('Partner report draft created internally.')">Turn into Partner Report</button><button type="button" onclick="location.hash='partners'">Link to Partner</button></div>
+            </article>
+
+            <article class="proof-card proof-output-card">
+              <div class="proof-card-head"><div><h2>Data Room</h2><small>Keep investor-ready documents organized.</small></div><span class="badge info">\${esc(String(dataRoomRows.length))} sections</span></div>
+              <div class="proof-list">\${dataRoomRows.slice(0, 3).map(label => \`<article class="proof-row"><strong>\${esc(label)}</strong><span>Review before sharing</span></article>\`).join("")}</div>
+              <div class="proof-card-actions"><button type="button" onclick="toast('Document queued internally for Data Room review.')">Add Document</button><button type="button" onclick="toast('Report added internally for review.')">Add Report</button><button type="button" onclick="toast('Export prepared for Roger review only.')">Prepare Export</button></div>
+            </article>
+          </div>
+        </section>
+      </section>\`;
+    }
+
+    function moreWorkspaceHtml(pageClass) {
+      const summaryCards = [
+        ["App Status", "Protected", "Check whether the app is healthy."],
+        ["Recovery Mode", "Ready", "Get back to Today if something breaks."],
+        ["Guide", "Available", "Learn how to use the Command Center."],
+        ["Team Roles", "Clear", "Clarify who owns what."],
+        ["Data Check", "Manual", "Review stored work and data health."],
+        ["Privacy", "Ready", "Review privacy and data-use information."]
+      ];
+      const utilityCards = [
+        ["App Status", "Check whether the app is healthy and protected.", [["Open App Status", "app-status", "primary"], ["Refresh Status", "app-status"]]],
+        ["Recovery Mode", "Get back to work if something breaks.", [["Open Recovery Mode", "recovery", "primary"], ["Back to Today", "today"]]],
+        ["Guide", "Learn how to use the Command Center.", [["Open Guide", "guide", "primary"], ["Open Course Manual", "course-manual"]]],
+        ["Team Roles", "Clarify who owns what.", [["Open Team Roles", "roles", "primary"], ["Add Role Note", "role-note"]]],
+        ["Data Check", "Review data health and stored work.", [["Open Data Check", "data-check", "primary"], ["Review Saved Work", "data-check"]]],
+        ["Privacy", "Review privacy and data-use information.", [["Open Privacy", "privacy", "primary"]]],
+        ["Exports / Handoff", "Prepare internal handoff packets, reports, and exports.", [["Prepare Export", "handoff-notes", "primary"], ["Review Handoff Notes", "handoff-notes"]]],
+        ["RCAP Program", "Shortcut to the Record Clearing Access Program review workspace.", [["Open RCAP Program", "rcap", "primary"]]]
+      ];
+      const safetyRows = [
+        "Publishing: Off",
+        "Email sending: Off",
+        "Live social posting: Off",
+        "Calendar writes: Off",
+        "External actions: Off"
+      ];
+      const moreAction = (label, target, tone = "") => {
+        const className = tone === "primary" ? ' class="primary"' : "";
+        if (target === "role-note") {
+          return \`<button type="button"\${className} onclick="toast('Role note stays internal until Roger reviews it.')">\${esc(label)}</button>\`;
+        }
+        return \`<button type="button"\${className} onclick="location.hash='\${esc(target)}'">\${esc(label)}</button>\`;
+      };
+      return \`<section id="more" class="\${pageClass("more")} more-workspace">
+        <section class="more-hero">
+          <div>
+            <div class="eyebrow">Utility center</div>
+            <h1>More</h1>
+            <p>Settings, recovery, support tools, and focused work views.</p>
+            <div class="more-pills"><span class="more-pill">Publishing is off</span><span class="more-pill">Protected</span></div>
+          </div>
+          <div class="more-actions">
+            <button class="primary" type="button" onclick="location.hash='app-status'">Open App Status</button>
+            <button type="button" onclick="location.hash='recovery'">Open Recovery Mode</button>
+            <button type="button" onclick="location.hash='guide'">Open Guide</button>
+          </div>
+        </section>
+
+        <section class="more-card">
+          <div class="more-card-head"><div><h2>Utility Summary</h2><small>Support tools without mixing them into daily work</small></div></div>
+          <div class="more-summary-grid">\${summaryCards.map(([label, status, detail]) => \`<article class="more-summary-card"><span>\${esc(label)}</span><strong>\${esc(status)}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
+        </section>
+
+        <section class="more-card">
+          <div class="more-card-head"><div><h2>Utilities</h2><small>Small, focused tools for setup, review, and recovery</small></div></div>
+          <div class="more-utility-grid">\${utilityCards.map(([title, purpose, actions]) => \`<article class="more-utility-card"><h3>\${esc(title)}</h3><p>\${esc(purpose)}</p><div class="more-card-actions">\${actions.map(([label, target, tone]) => moreAction(label, target, tone)).join("")}</div></article>\`).join("")}</div>
+        </section>
+
+        <div class="more-bottom-grid">
+          <section class="more-card">
+            <div class="more-card-head"><div><h2>System Safety</h2><small>Calm status for what stays offline</small></div></div>
+            <div class="more-safety-list">\${safetyRows.map(row => \`<div class="more-safety-row"><strong>\${esc(row)}</strong><span>Protected</span></div>\`).join("")}</div>
+          </section>
+
+          <section class="more-card">
+            <div class="more-card-head"><div><h2>If something breaks</h2><small>Return to steady ground</small></div></div>
+            <p class="muted">Use Recovery Mode to return to Today, retry the app, or check App Status.</p>
+            <div class="more-card-actions"><button class="primary" type="button" onclick="location.hash='recovery'">Open Recovery Mode</button><button type="button" onclick="location.hash='today'">Back to Today</button></div>
+          </section>
         </div>
       </section>\`;
     }
@@ -21647,8 +22664,10 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const normalizedPage = requestedPage === "le-e" ? "lee" : requestedPage === "today" ? "overview" : ["social-media", "content-calendar", "posts"].includes(requestedPage) ? "social" : requestedPage;
-      const pageId = normalizedPage === "safe-mode" || ["overview", "work", "social", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings"].includes(normalizedPage) ? normalizedPage : "overview";
+      const routeAliases = { today:"overview", "le-e":"lee", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings" };
+      const normalizedPage = routeAliases[requestedPage] || requestedPage;
+      const knownPages = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
+      const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "overview";
       if (pageId === "safe-mode") {
         renderSafeBootShell({
           ...(stateFetchDiagnostics || {}),
@@ -21657,7 +22676,7 @@ function htmlShell() {
           status:"not_requested",
           contentType:"application/json",
           authTokenPresent:Boolean(authSessionPresent()),
-          message:"Recovery Mode opened without requiring full app state.",
+          message:"Safe Mode opened without requiring full app state.",
           fellBackToSafeShell:true,
           reason:"manual_safe_mode"
         });
@@ -21670,18 +22689,16 @@ function htmlShell() {
       const healthTone = schemaStale ? "danger" : supabaseHealth?.connected ? "good" : supabaseHealth?.configured ? "warn" : "danger";
       document.querySelector("#app").innerHTML = \`
         \${safeRenderModule("overview", () => pageId === "overview" ? commandCenterOverviewHtml(reviewPosts) : "")}
-        \${safeRenderModule("work", () => workPageHtml(pageClass))}
         \${safeRenderModule("focus", () => focusPageHtml(pageClass))}
         \${safeRenderModule("lee", () => leePageHtml(pageClass))}
-        \${safeRenderModule("growth", () => sectionLandingPageHtml(pageClass, "growth"))}
+        \${safeRenderModule("growth", () => growthWorkspaceHtml(pageClass))}
         \${safeRenderModule("partner-hub", () => sectionLandingPageHtml(pageClass, "partner-hub"))}
-        \${safeRenderModule("production", () => sectionLandingPageHtml(pageClass, "production"))}
-        \${safeRenderModule("proof", () => proofPageHtml(pageClass))}
-        \${safeRenderModule("social", () => socialPageHtml(pageClass))}
-        \${safeRenderModule("more", () => sectionLandingPageHtml(pageClass, "more"))}
+        \${safeRenderModule("production", () => productionWorkspaceHtml(pageClass))}
+        \${safeRenderModule("proof", () => proofWorkspaceHtml(pageClass))}
+        \${safeRenderModule("more", () => moreWorkspaceHtml(pageClass))}
         \${safeRenderModule("growth-inbox", () => growthInboxPageHtml(pageClass))}
         \${safeRenderModule("tasks", () => ["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId) ? tasksPageHtml(pageClass, pageId) : "")}
-        \${safeRenderModule("production-activation-rcap", () => rcapReviewWorkspaceHtml(pageClass))}
+        \${safeRenderModule("production-activation-rcap", () => pageId === "production-activation-rcap" ? rcapReviewWorkspaceHtml(pageClass) : "")}
         \${safeRenderModule("operating-memory", () => operatingMemoryPageHtml(pageClass))}
         \${safeRenderModule("morning-brief", () => morningBriefPageHtml(pageClass))}
         \${safeRenderModule("evening-reflection", () => eveningReflectionPageHtml(pageClass))}
@@ -21834,7 +22851,7 @@ function htmlShell() {
         \${compliancePageHtml(pageClass)}
         \${reportsPageHtml(pageClass)}
         \${dataRoomPageHtml(pageClass)}
-        \${metricsDashboardHtml(pageClass)}
+        \${safeRenderModule("metrics", () => ["metrics", "kpis"].includes(pageId) ? metricsDashboardHtml(pageClass) : "")}
         <section id="settings" class="section secondary section-page lee-bubble-safe-space \${pageClass("settings")}">
           <details>
             <summary>Launch setup</summary>
@@ -21927,14 +22944,14 @@ function htmlShell() {
     }
 
     function navSectionForPage(pageId = "overview") {
-      if (["overview", "focus", "lee", "conversation-notes"].includes(pageId)) return "today";
-      if (["work", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics", "production", "content-bank", "queue", "sources", "assets", "posted", "morning-brief", "evening-reflection", "daily-closeout", "operating-memory"].includes(pageId)) return "work";
-      if (["social", "social-media", "content-calendar", "posts"].includes(pageId)) return "social";
-      if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports", "production-activation-rcap", "handoff-contract", "milestones"].includes(pageId)) return "settings";
-      if (["proof", "evidence-room", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
-      if (["os-health", "data-integrity", "smoke-test", "operator-manual", "roles", "safe-mode", "settings", "compliance", "autonomy"].includes(pageId)) return "settings";
-      if (pageId === "operator-search") return "search";
-      return "today";
+      if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "operator-search", "conversation-notes"].includes(pageId)) return "today";
+      if (["data-integrity", "operator-manual", "handoff-contract", "roles"].includes(pageId)) return "more";
+      if (["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId)) return "more";
+      if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel"].includes(pageId)) return "growth";
+      if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
+      if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
+      if (["proof", "metrics", "kpis", "evidence-room", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
+      return "more";
     }
 
     function closeNavMenus(event) {
@@ -22350,94 +23367,27 @@ function htmlShell() {
 
     async function quickCapture(event) {
       event.preventDefault();
-      const button = event.submitter || event.target.querySelector('button[type="submit"]');
       const payload = formObject(event.target);
-      const requestedType = String(button?.dataset?.captureType || payload.capture_type || "auto_classify");
       const rawInput = String(payload.raw_input || payload.rawText || "").trim();
       if (!rawInput) {
         toast("Add a note before capturing.");
         return;
       }
-      return runAction(button, "Quick Capture", async () => {
+      await cooAction(async () => {
         const result = await api("/api/capture-inbox", {
           method:"POST",
-          body:JSON.stringify({ ...payload, raw_input: rawInput, capture_type:requestedType })
+          body:JSON.stringify({ ...payload, raw_input: rawInput })
         });
         state = result.state;
-        let message = result.message || "Saved.";
-        if (requestedType === "task" && result.item?.id) {
-          const routed = await api("/api/capture-inbox/" + encodeURIComponent(result.item.id) + "/route_task", {
-            method:"POST",
-            body:JSON.stringify({})
-          });
-          state = routed.state;
-          message = "Saved as task.";
-        } else if (requestedType === "decision") {
-          message = "Saved as decision.";
-        } else if (requestedType === "blocker") {
-          message = "Saved as blocker.";
-        } else if (requestedType === "auto_classify") {
-          message = "Saved.";
-        }
         event.target.reset();
-        const typeField = event.target.querySelector('[name="capture_type"]');
-        if (typeField) typeField.value = "auto_classify";
         focusIndex = 0;
         render();
-        return message;
-      });
-    }
-
-    function setFounderCaptureType(type = "auto_classify", hint = "") {
-      const field = document.getElementById("founder-capture-type");
-      const input = document.getElementById("founder-capture");
-      if (field) field.value = type;
-      if (input) {
-        input.focus();
-        if (hint && !input.value) input.placeholder = hint;
-      }
-    }
-
-    function founderAction(message, type = "auto_classify", hint = "") {
-      return runAction(activeActionButton(), message, async () => {
-        setFounderCaptureType(type, hint);
-        return message;
-      });
-    }
-
-    function founderSetTodayFocus() {
-      return founderAction("Add today’s focus in Quick Capture.", "brief_input", "Write the one thing that matters most today…");
-    }
-
-    function founderEditPriorities() {
-      return founderAction("Add or edit priorities in Quick Capture.", "task", "Add a priority or task…");
-    }
-
-    function founderAddTask() {
-      return founderAction("Add the task in Quick Capture.", "task", "Add a task…");
-    }
-
-    function founderAddDecision() {
-      return founderAction("Add the decision in Quick Capture.", "decision", "Add a decision Roger needs to make…");
-    }
-
-    function founderAddBlocker() {
-      return founderAction("Add the blocker in Quick Capture.", "blocker", "Add what is blocked and why…");
-    }
-
-    function founderAddUpdate() {
-      return founderAction("Add the update in Quick Capture.", "reflection_input", "Add what moved today…");
-    }
-
-    function founderPlanTomorrow() {
-      return runAction(activeActionButton(), "Open daily closeout.", async () => {
-        location.hash = "daily-closeout";
-        return "Open daily closeout to plan tomorrow.";
-      });
+        return result.message || "Captured for review.";
+      }, "Could not capture item.");
     }
 
     async function captureInboxAction(id, action) {
-      return runAction(activeActionButton(), "Capture action", async () => {
+      await cooAction(async () => {
         const result = await api("/api/capture-inbox/" + encodeURIComponent(id) + "/" + encodeURIComponent(action), {
           method:"POST",
           body:JSON.stringify({})
@@ -22445,11 +23395,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Capture updated.";
-      });
+      }, "Could not update capture.");
     }
 
     async function startRcapActivation() {
-      return runAction(activeActionButton(), "RCAP activation", async () => {
+      await cooAction(async () => {
         const result = await api("/api/production-activation/rcap/start", {
           method:"POST",
           body:JSON.stringify({})
@@ -22457,13 +23407,13 @@ function htmlShell() {
         rcapActivationClientStatus = result.activation_status || result;
         render();
         return result.message || "RCAP activation prepared for review only. No external action was taken.";
-      });
+      }, "Could not start RCAP activation.");
     }
 
     async function markRcapReviewState(artifactKey, reviewState) {
       const notes = document.getElementById("rcap-review-notes-" + artifactKey)?.value || "";
       const reason = document.getElementById("rcap-review-reason-" + artifactKey)?.value || "";
-      return runAction(activeActionButton(), "RCAP review state", async () => {
+      await cooAction(async () => {
         const result = await api("/api/production-activation/rcap/review-state", {
           method:"POST",
           body:JSON.stringify({
@@ -22477,11 +23427,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "RCAP review state updated. No external action was taken.";
-      });
+      }, "Could not update RCAP review state.");
     }
 
     async function generateRcapHandoffPacket() {
-      return runAction(activeActionButton(), "Handoff packet", async () => {
+      await cooAction(async () => {
         const result = await api("/api/production-activation/rcap/handoff-packet", {
           method:"POST",
           body:JSON.stringify({})
@@ -22489,11 +23439,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Internal handoff packet generated. No external system contacted.";
-      });
+      }, "Could not generate RCAP handoff packet.");
     }
 
     async function generateHandoffContractPreview() {
-      return runAction(activeActionButton(), "Handoff contract", async () => {
+      await cooAction(async () => {
         const result = await api("/api/production-activation/rcap/handoff-contract-preview", {
           method:"POST",
           body:JSON.stringify({})
@@ -22502,11 +23452,11 @@ function htmlShell() {
         render();
         location.hash = "handoff-contract";
         return result.message || "Handoff contract preview generated. No external system contacted.";
-      });
+      }, "Could not generate Handoff Contract Preview.");
     }
 
     async function saveOperatingMemory() {
-      return runAction(activeActionButton(), "Save Operating Memory", async () => {
+      await cooAction(async () => {
         const result = await api("/api/operating-memory/today/save", {
           method:"POST",
           body:JSON.stringify({})
@@ -22514,11 +23464,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Operating memory saved. No external action was taken.";
-      });
+      }, "Could not save operating memory.");
     }
 
     async function saveMorningBrief() {
-      return runAction(activeActionButton(), "Save Morning Brief", async () => {
+      await cooAction(async () => {
         const result = await api("/api/morning-brief/today/save", {
           method:"POST",
           body:JSON.stringify({})
@@ -22526,11 +23476,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Morning Brief saved. No external action was taken.";
-      });
+      }, "Could not save Morning Brief.");
     }
 
     async function saveEveningReflection() {
-      return runAction(activeActionButton(), "Save Evening Reflection", async () => {
+      await cooAction(async () => {
         const result = await api("/api/evening-reflection/today/save", {
           method:"POST",
           body:JSON.stringify({})
@@ -22538,11 +23488,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Evening Reflection saved. No external action was taken.";
-      });
+      }, "Could not save Evening Reflection.");
     }
 
     async function saveDailyCloseout() {
-      return runAction(activeActionButton(), "Save Closeout", async () => {
+      await cooAction(async () => {
         const result = await api("/api/daily-closeout/today/save", {
           method:"POST",
           body:JSON.stringify({})
@@ -22550,11 +23500,11 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Daily Closeout saved. No external action was taken.";
-      });
+      }, "Could not save Daily Closeout.");
     }
 
     async function generateTomorrowPlan() {
-      return runAction(activeActionButton(), "Generate Tomorrow Plan", async () => {
+      await cooAction(async () => {
         const result = await api("/api/daily-closeout/tomorrow-plan/generate", {
           method:"POST",
           body:JSON.stringify({})
@@ -22562,19 +23512,19 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Tomorrow Plan generated internally. No external action was taken.";
-      });
+      }, "Could not generate Tomorrow Plan.");
     }
 
     async function refreshOsHealth() {
-      return runAction(activeActionButton(), "Refresh OS Health", async () => {
+      await cooAction(async () => {
         const result = await api("/api/os-health/refresh", {
           method:"POST",
           body:JSON.stringify({})
         });
         state = result.state;
         render();
-        return result.message || "OS Health Snapshot refreshed. No external action was taken.";
-      });
+        return result.message || "App Status refreshed. No external action was taken.";
+      }, "Could not refresh App Status.");
     }
 
     function prefillRoleAssignment(actorId = "") {
@@ -22618,7 +23568,7 @@ function htmlShell() {
     }
 
     async function startSmokeTestRun() {
-      return runAction(activeActionButton(), "Start self-check", async () => {
+      await cooAction(async () => {
         const result = await api("/api/smoke-test/start", {
           method:"POST",
           body:JSON.stringify({
@@ -22629,13 +23579,13 @@ function htmlShell() {
         state = result.state;
         render();
         location.hash = "smoke-test";
-        return result.message || "Self-check started. No external action was taken.";
-      });
+        return result.message || "Self-Check started. No external action was taken.";
+      }, "Could not start Self-Check.");
     }
 
     async function markSmokeTestItem(runId, itemId, status) {
       const notes = document.getElementById("smoke-note-" + itemId)?.value || "";
-      return runAction(activeActionButton(), "Self-check item", async () => {
+      await cooAction(async () => {
         const result = await api("/api/smoke-test/" + encodeURIComponent(runId) + "/item", {
           method:"POST",
           body:JSON.stringify({ itemId, status, notes })
@@ -22643,13 +23593,13 @@ function htmlShell() {
         state = result.state;
         render();
         location.hash = "smoke-test";
-        return result.message || "Smoke test item updated.";
-      });
+        return result.message || "Self-check item updated.";
+      }, "Could not update self-check item.");
     }
 
     async function saveSmokeTestRun(runId) {
       const notes = document.getElementById("smoke-test-notes")?.value || "";
-      return runAction(activeActionButton(), "Save self-check", async () => {
+      await cooAction(async () => {
         const result = await api("/api/smoke-test/" + encodeURIComponent(runId) + "/save", {
           method:"POST",
           body:JSON.stringify({ notes })
@@ -22657,12 +23607,12 @@ function htmlShell() {
         state = result.state;
         render();
         location.hash = "smoke-test";
-        return result.message || "Self-check saved. No external action was taken.";
-      });
+        return result.message || "Self-Check saved. No external action was taken.";
+      }, "Could not save Self-Check.");
     }
 
     async function finishSmokeTestRun(runId) {
-      return runAction(activeActionButton(), "Finish self-check", async () => {
+      await cooAction(async () => {
         const result = await api("/api/smoke-test/" + encodeURIComponent(runId) + "/finish", {
           method:"POST",
           body:JSON.stringify({})
@@ -22670,8 +23620,8 @@ function htmlShell() {
         state = result.state;
         render();
         location.hash = "smoke-test";
-        return result.message || "Self-check finished. No external action was taken.";
-      });
+        return result.message || "Self-Check finished. No external action was taken.";
+      }, "Could not finish Self-Check.");
     }
 
     function filterEvidenceRoom() {
@@ -22690,7 +23640,7 @@ function htmlShell() {
     }
 
     async function generateEvidenceSummary() {
-      return runAction(activeActionButton(), "Evidence summary", async () => {
+      await cooAction(async () => {
         const result = await api("/api/evidence-room/summary", {
           method:"POST",
           body:JSON.stringify({})
@@ -22698,20 +23648,20 @@ function htmlShell() {
         state = result.state;
         render();
         location.hash = "evidence-room";
-        return result.message || "Evidence Summary generated. No external action was taken.";
-      });
+        return result.message || "Proof Summary generated. No external action was taken.";
+      }, "Could not generate Proof Summary.");
     }
 
     async function refreshDataIntegrity() {
-      return runAction(activeActionButton(), "Refresh Data Integrity", async () => {
+      await cooAction(async () => {
         const result = await api("/api/data-integrity/refresh", {
           method:"POST",
           body:JSON.stringify({})
         });
         state = result.state;
         render();
-        return result.message || "Data Integrity Snapshot refreshed. No external action was taken.";
-      });
+        return result.message || "Data Check refreshed. No external action was taken.";
+      }, "Could not refresh Data Check.");
     }
 
     function renderOperatorSearchResults() {
@@ -22722,7 +23672,7 @@ function htmlShell() {
     }
 
     async function operatorSearchAction(action, targetId) {
-      return runAction(activeActionButton(), "Search action", async () => {
+      await cooAction(async () => {
         const result = await api("/api/operator-search/action", {
           method:"POST",
           body:JSON.stringify({ action, targetId })
@@ -22731,7 +23681,7 @@ function htmlShell() {
         render();
         if (result.route) location.hash = result.route;
         return result.message || "Command applied internally.";
-      });
+      }, "Could not run operator command.");
     }
 
     async function saveConversationNote(event) {
@@ -22781,8 +23731,7 @@ function htmlShell() {
         state = result.state;
         leeDraft = "";
         render();
-        const shortAnswer = String(result.assistant?.content || "").split("\\n").find(Boolean);
-        const messageText = shortAnswer || (result.proposals?.length ? "Le-E answered and proposed " + result.proposals.length + " action(s)." : "Le-E answered.");
+        const messageText = result.proposals?.length ? "Le-E answered and proposed " + result.proposals.length + " action(s)." : "Le-E answered.";
         toast(messageText);
         return messageText;
       }, "Could not ask Le-E.");
@@ -22803,26 +23752,13 @@ function htmlShell() {
         });
         state = result.state;
         render();
-        const shortAnswer = String(result.assistant?.content || "").split("\\n").find(Boolean);
-        const messageText = shortAnswer || (result.proposals?.length ? "Le-E answered with proposed actions." : "Le-E answered.");
+        const messageText = result.proposals?.length ? "Le-E answered with proposed actions." : "Le-E answered.";
         toast(messageText);
         return messageText;
       }, "Could not ask Le-E.");
       leeBusy = false;
       leeDraft = "";
       render();
-    }
-
-    async function askLeePromptFromButton(button) {
-      const prompt = String(button?.dataset?.leePrompt || "").trim();
-      if (!prompt) {
-        toast("Rewrite unavailable. The OS is still usable.");
-        return;
-      }
-      return runAction(button, "Rewrite with Le-E", async () => {
-        await askLeePrompt(prompt);
-        return "Done.";
-      });
     }
 
     function openLeeBubble() {
@@ -22841,6 +23777,20 @@ function htmlShell() {
         return;
       }
       toast("Parked for now. Le-E will keep the thread available.");
+    }
+
+    function filterTodayFollowups(category = "all") {
+      const normalized = String(category || "all").toLowerCase();
+      const buttons = document.querySelectorAll(".follow-up-filters button");
+      buttons.forEach(button => button.classList.toggle("active", String(button.textContent || "").toLowerCase() === normalized || (normalized === "all" && String(button.textContent || "").toLowerCase() === "all")));
+      const rows = document.querySelectorAll("[data-followup-category]");
+      let visible = 0;
+      rows.forEach(row => {
+        const show = normalized === "all" || row.dataset.followupCategory === normalized;
+        row.hidden = !show;
+        if (show) visible += 1;
+      });
+      if (!visible && rows.length) toast("No follow-ups in that lane right now.");
     }
 
     function tickCockpitClock() {
@@ -22871,7 +23821,7 @@ function htmlShell() {
     }
 
     async function clearLeeThread() {
-      const ok = window.confirm("Start a fresh Le-E thread? Existing messages and audit events stay preserved.");
+      const ok = window.confirm("Start a fresh Le-E thread? Existing messages and activity stay preserved.");
       if (!ok) return;
       await newLeeThread();
     }
@@ -23009,8 +23959,8 @@ function htmlShell() {
         });
         state = result.state;
         render();
-        return founderText(result.message || "Growth Inbox item prioritized.");
-      }, "Could not prioritize Growth Inbox item.");
+        return result.message || "Growth Inbox item triaged.";
+      }, "Could not triage Growth Inbox item.");
     }
 
     async function triageNewGrowthInbox() {
@@ -23018,8 +23968,8 @@ function htmlShell() {
         const result = await api("/api/growth-inbox/triage-new", { method:"POST", body:JSON.stringify({}) });
         state = result.state;
         render();
-        return founderText(result.message || "Growth Inbox prioritized.");
-      }, "Could not prioritize new Growth Inbox items.");
+        return result.message || "Growth Inbox triaged.";
+      }, "Could not triage new Growth Inbox items.");
     }
 
     async function convertGrowthInbox(id, destination) {
@@ -23321,11 +24271,9 @@ function htmlShell() {
     }
 
     function runSystemCheck() {
-      return runAction(activeActionButton(), "Run System Check", async () => {
-        systemCheckRanAt = new Date().toLocaleString();
-        render();
-        return "System check complete.";
-      });
+      systemCheckRanAt = new Date().toLocaleString();
+      render();
+      toast("System check complete");
     }
 
     function commandActions() {
@@ -23787,7 +24735,7 @@ function htmlShell() {
         const result = await api("/api/production/readiness");
         const lines = [
           "Production readiness: " + (result.status || "unknown"),
-          "Live gates: " + result.liveGatesCount,
+          "Publishing: " + (result.liveGatesCount === 0 ? "off" : "needs review"),
           "Storage backend: " + result.activeStorageBackend,
           "",
           ...(result.checks || []).map(check => (check.ok ? "✓ " : "! ") + check.label + " - " + (check.detail || ""))
@@ -23892,7 +24840,7 @@ function htmlShell() {
     }
 
     async function updateTaskAction(id, action, patch = {}) {
-      return runAction(activeActionButton(), "Task action", async () => {
+      return cooAction(async () => {
         const result = await api("/api/tasks/" + encodeURIComponent(id) + "/" + action, {
           method:"POST",
           body:JSON.stringify(patch || {})
@@ -23900,7 +24848,7 @@ function htmlShell() {
         state = result.state;
         render();
         return result.message || "Task updated.";
-      });
+      }, "Could not update task.");
     }
 
     async function markTaskWaiting(id) {
@@ -24275,6 +25223,40 @@ function htmlShell() {
       }
     }
 
+    async function generateProductionImage(id) {
+      if (!id) {
+        toast("Create a post before generating an image.");
+        return;
+      }
+      generatingImages.add(id);
+      render();
+      toast("Generating image...");
+      try {
+        const result = await api("/api/images/generate", { method:"POST", body:JSON.stringify({ postId:id }), timeoutMs:120000 });
+        if (result.state) state = result.state;
+        if (result.image) {
+          state.postImages = [
+            result.image,
+            ...(state.postImages || []).filter(image => image.id !== result.image.id && image.postId !== id)
+          ];
+        } else {
+          await load();
+        }
+        const image = result.image || imageForPost(id);
+        if (image?.generationStatus === "generated") {
+          toast("Image generated. Review it before attaching to the post.");
+        } else {
+          toast("Image generation is not connected yet. The request was saved.");
+        }
+      } catch (error) {
+        console.error(error);
+        toast("Could not save the image request. Try again from the post.");
+      } finally {
+        generatingImages.delete(id);
+        render();
+      }
+    }
+
     async function regenerateAIDraft(id) {
       await cooAction(async () => {
         toast("Regenerating AI draft...");
@@ -24643,154 +25625,6 @@ function htmlShell() {
       toast("Post copied");
     }
 
-    function selectedSocialPost(id = "") {
-      if (id) return (state.posts || []).find(item => item.id === id);
-      return socialDrafts()[0] || socialIdeas()[0] || socialReadyPosts()[0] || socialRecords()[0];
-    }
-
-    async function createSocialRecord(input = {}) {
-      const result = await api("/api/social/create", {
-        method:"POST",
-        body:JSON.stringify(input)
-      });
-      state = result.state;
-      render();
-      toast(result.message || "Saved to Social.");
-      return result.post;
-    }
-
-    async function updateSocialRecord(id, patch = {}, message = "Updated.") {
-      const result = await api("/api/social/update", {
-        method:"POST",
-        body:JSON.stringify({ id, patch:{ ...patch, updated_at:new Date().toISOString(), updatedAt:new Date().toISOString() }, action:"social_record_updated" })
-      });
-      state = result.state;
-      render();
-      toast(message);
-      return result;
-    }
-
-    function promptSocialBody(label, fallback = "") {
-      return window.prompt(label, fallback || "") || "";
-    }
-
-    function addSocialIdea() {
-      return runAction(activeActionButton(), "Add idea", async () => {
-        const body = promptSocialBody("Post idea", "");
-        if (!body.trim()) throw new Error("Add a short idea first.");
-        await createSocialRecord({ type:"idea", status:"idea", body, title:body.slice(0, 80), source:"manual" });
-      }, "Could not add idea.");
-    }
-
-    function createSocialPost() {
-      return runAction(activeActionButton(), "Create post", async () => {
-        const body = promptSocialBody("Post text", "");
-        if (!body.trim()) throw new Error("Write the post text first.");
-        await createSocialRecord({ type:"draft", status:"draft", body, title:body.slice(0, 80), source:"manual" });
-      }, "Could not create post.");
-    }
-
-    function turnSocialIdeaIntoDraft(id = "") {
-      return runAction(activeActionButton(), "Turn into draft", async () => {
-        const idea = selectedSocialPost(id);
-        if (!idea) throw new Error("No post idea is available yet.");
-        await updateSocialRecord(idea.id, { type:"draft", status:"draft", nextBestAction:"Preview and edit before manual publishing." }, "Idea turned into a draft.");
-      }, "Could not turn idea into draft.");
-    }
-
-    function previewSocialPost(id = "") {
-      const post = selectedSocialPost(id);
-      if (!post) {
-        toast("No post available to preview.");
-        return;
-      }
-      document.querySelector("#modalRoot").innerHTML = \`<div class="modal-backdrop" onclick="closeModal(event)"><div class="modal-card" role="dialog" aria-modal="true" aria-label="Post preview"><button class="modal-close" type="button" onclick="closeModal()">Close</button><div class="eyebrow">Preview</div><h2>\${esc(post.title || "Post preview")}</h2><pre style="white-space:pre-wrap">\${esc(socialText(post) || "No text yet.")}</pre><p class="muted">Publishing is off. Nothing has been published by the OS.</p><div class="card-actions"><button type="button" onclick="copySocialPost('\${esc(post.id)}')">Copy post</button><button type="button" onclick="openManualPublishChecklist('\${esc(post.id)}')">Publish manually</button></div></div></div>\`;
-    }
-
-    function editSocialPost(id = "") {
-      return runAction(activeActionButton(), "Edit", async () => {
-        const post = selectedSocialPost(id);
-        if (!post) throw new Error("No post is available to edit.");
-        const body = promptSocialBody("Edit post text", socialText(post));
-        if (!body.trim()) throw new Error("Post text cannot be empty.");
-        await updateSocialRecord(post.id, { body, title:post.title || body.slice(0, 80), status:post.status || "draft" }, "Post updated.");
-      }, "Could not edit post.");
-    }
-
-    function addPlannedPost() {
-      return runAction(activeActionButton(), "Add planned post", async () => {
-        const body = promptSocialBody("Planned post text", "");
-        if (!body.trim()) throw new Error("Write the planned post first.");
-        const plannedDate = window.prompt("Planned date (YYYY-MM-DD)", new Date().toISOString().slice(0, 10)) || "";
-        await createSocialRecord({ type:"draft", status:"draft", body, title:body.slice(0, 80), planned_date:plannedDate, scheduledFor:plannedDate, source:"manual" });
-      }, "Could not add planned post.");
-    }
-
-    function movePlannedPostDate(id = "") {
-      return runAction(activeActionButton(), "Move date", async () => {
-        const post = selectedSocialPost(id) || socialPlannedPosts()[0];
-        if (!post) throw new Error("No planned post is available.");
-        const plannedDate = window.prompt("New planned date (YYYY-MM-DD)", (post.planned_date || post.scheduledFor || "").slice(0, 10)) || "";
-        if (!plannedDate.trim()) throw new Error("Choose a planned date.");
-        await updateSocialRecord(post.id, { planned_date:plannedDate, scheduledFor:plannedDate }, "Planned date moved.");
-      }, "Could not move date.");
-    }
-
-    function copySocialPost(id = "") {
-      const post = selectedSocialPost(id);
-      if (!post) {
-        toast("No post available to copy.");
-        return;
-      }
-      const text = socialText(post);
-      if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(text).then(() => toast("Post copied.")).catch(() => toast("Copy unavailable. Preview the post and copy it manually."));
-      } else {
-        toast("Copy unavailable. Preview the post and copy it manually.");
-      }
-    }
-
-    function openManualPublishChecklist(id = "") {
-      const post = selectedSocialPost(id);
-      document.querySelector("#modalRoot").innerHTML = \`<div class="modal-backdrop" onclick="closeModal(event)"><div class="modal-card" role="dialog" aria-modal="true" aria-label="Manual publishing checklist"><button class="modal-close" type="button" onclick="closeModal()">Close</button><div class="eyebrow">Manual publishing</div><h2>Publish manually</h2><pre style="white-space:pre-wrap">\${esc(socialText(post) || "No post selected.")}</pre><ol class="manual-checklist"><li>Copy post</li><li>Open social platform</li><li>Paste post</li><li>Review</li><li>Publish manually</li><li>Come back and mark as published manually</li></ol><p class="muted"><strong>Nothing has been published by the OS.</strong></p><div class="card-actions"><button type="button" onclick="copySocialPost('\${esc(post?.id || "")}')">Copy post</button><button class="primary" type="button" onclick="markSocialPostManuallyPublished('\${esc(post?.id || "")}')">Mark published manually</button></div></div></div>\`;
-    }
-
-    function markSocialPostManuallyPublished(id = "") {
-      return runAction(activeActionButton(), "Mark published manually", async () => {
-        const post = selectedSocialPost(id);
-        if (!post) throw new Error("No post is selected.");
-        const url = window.prompt("Optional URL after you publish manually", post.published_url || "") || "";
-        await updateSocialRecord(post.id, {
-          status:"manually_published",
-          manually_published_at:new Date().toISOString(),
-          manuallyPostedAt:new Date().toISOString(),
-          published_url:url,
-          publishingStatus:"manual_only"
-        }, "Marked published manually. Nothing was published by the OS.");
-      }, "Could not record manual publish.");
-    }
-
-    function proofItemById(id = "") {
-      return proofToShareItems().find(item => item.id === id) || proofToShareItems()[0];
-    }
-
-    function turnProofIntoPost(id = "") {
-      return runAction(activeActionButton(), "Turn into post", async () => {
-        const item = proofItemById(id);
-        if (!item) throw new Error("No proof item is available.");
-        const body = \`\${item.title}\\n\\n\${item.detail || "A useful LegalEase proof point."}\`;
-        await createSocialRecord({ type:"draft", status:"draft", title:item.title, body, source:"proof", sourceId:item.id });
-      }, "Could not turn proof into post.");
-    }
-
-    function saveProofAsPostIdea(id = "") {
-      return runAction(activeActionButton(), "Save as idea", async () => {
-        const item = proofItemById(id);
-        if (!item) throw new Error("No proof item is available.");
-        await createSocialRecord({ type:"idea", status:"idea", title:item.title, body:item.detail || item.title, source:"proof", sourceId:item.id });
-      }, "Could not save idea.");
-    }
-
     function copyChannelText(id, channel) {
       const post = state.posts.find(item => item.id === id);
       const text = post?.channelAdaptations?.[channel]?.text || composePreviewText(post);
@@ -24862,12 +25696,11 @@ function htmlShell() {
     window.addEventListener("hashchange", () => {
       try {
         closeNavMenus();
-        const routeAfterHash = String(location.hash || "").replace("#", "") || "overview";
-        if (routeAfterHash === "safe-mode" || (safeBootActive && !fullStateLoaded && routeAfterHash !== "overview")) {
+        if (String(location.hash || "").replace("#", "") === "safe-mode") {
           renderSafeBootShell({
             ...(stateFetchDiagnostics || {}),
-            module:routeAfterHash || "safe-mode",
-            message:"Recovery Mode is active until the full state loads.",
+            module:String(location.hash || "").replace("#", "") || "safe-mode",
+            message:"The app loaded a safe version so you can get back to work.",
             fellBackToSafeShell:true
           });
           return;
@@ -24879,12 +25712,6 @@ function htmlShell() {
       }
     });
     document.addEventListener("click", (event) => {
-      const leePromptButton = event.target.closest("[data-lee-prompt]");
-      if (leePromptButton) {
-        event.preventDefault();
-        askLeePromptFromButton(leePromptButton);
-        return;
-      }
       if (!event.target.closest(".nav-menu")) {
         document.querySelectorAll(".nav-menu[open]").forEach((menu) => menu.removeAttribute("open"));
       }
@@ -24917,11 +25744,6 @@ function htmlShell() {
 
 async function handleRequest(request, response) {
   const url = new URL(request.url ?? "/", `http://${request.headers.host}`);
-  if (url.pathname === "/privacy" && request.method === "GET") {
-    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store, max-age=0" });
-    response.end(sanitizeOutboundText(privacyPolicyHtml()));
-    return;
-  }
   const accessDecision = authorizeRequest(request, url, process.env);
   if (!accessDecision.ok) {
     await logAccessDecision(accessDecision, url);
@@ -24988,29 +25810,13 @@ async function handleRequest(request, response) {
     const supabaseDb = await getSupabaseHealth();
     const storageDiagnostics = await diagnoseSupabaseStorage({ testUpload: false });
     const hostingConfig = storageRuntimeConfig();
-    const dbReadiness = databaseReadiness(process.env);
-    const liveGatesCount = Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length;
     sendJson(response, {
-      appStatus: "running",
       appRunning: true,
       timestamp: new Date().toISOString(),
       storageBackend: hostingConfig.activeStorageBackend,
       requestedStorageBackend: hostingConfig.requestedStorageBackend,
-      storageMode: dbReadiness.storageMode,
       localDemoMode: hostingConfig.localDemoMode,
       appBaseUrl: appBaseUrl(),
-      databaseConfigured: Boolean(dbReadiness.configured || supabaseDb.configured),
-      databaseReachable: Boolean(supabaseDb.connected) || dbReadiness.storageMode === "postgres",
-      databaseStatus: dbReadiness.configured ? "configured" : "not_configured",
-      secretsStatus: "server_only",
-      privacyRouteEnabled: true,
-      ownerAuthEnabled: authRequiredForEnv(process.env),
-      roleChecksEnabled: true,
-      externalActionsEnabled: false,
-      socialWorkspaceEnabled: true,
-      socialLivePostingEnabled: false,
-      emailEnabled: false,
-      calendarWritesEnabled: false,
       supabaseDbConfigured: Boolean(supabaseDb.configured),
       supabaseDbConnected: Boolean(supabaseDb.connected),
       supabaseDbMode: supabaseDb.mode || "unknown",
@@ -25022,7 +25828,7 @@ async function handleRequest(request, response) {
       supabaseStoragePublic: storageDiagnostics.bucketPublic,
       supabaseStorageError: storageDiagnostics.bucketReachable ? "" : String(storageDiagnostics.error || "").slice(0, 300),
       openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
-      liveGatesCount
+      liveGatesCount: Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length
     });
     return;
   }
@@ -25282,12 +26088,12 @@ async function handleRequest(request, response) {
       });
       await store.writeState(result.state);
       sendJson(response, {
-        message: "OS Health Snapshot refreshed. No external action was taken.",
+        message: "App Status refreshed. No external action was taken.",
         snapshot: result.snapshot,
         state: withPublicChannelSetup(result.state)
       });
     } catch (error) {
-      sendJson(response, { error: error.message || "Could not refresh OS Health." }, 400);
+      sendJson(response, { error: error.message || "Could not refresh App Status." }, 400);
     }
     return;
   }
@@ -25311,12 +26117,12 @@ async function handleRequest(request, response) {
       });
       await store.writeState(result.state);
       sendJson(response, {
-        message: "Smoke Test Run started. No external action was taken.",
+        message: "Self-Check started. No external action was taken.",
         run: result.run,
         state: withPublicChannelSetup(result.state)
       });
     } catch (error) {
-      sendJson(response, { error: error.message || "Could not start Smoke Test Run." }, 400);
+      sendJson(response, { error: error.message || "Could not start Self-Check." }, 400);
     }
     return;
   }
@@ -25351,12 +26157,12 @@ async function handleRequest(request, response) {
       });
       await store.writeState(result.state);
       sendJson(response, {
-        message: "Smoke Test Run saved. No external action was taken.",
+        message: "Self-Check saved. No external action was taken.",
         run: result.run,
         state: withPublicChannelSetup(result.state)
       });
     } catch (error) {
-      sendJson(response, { error: error.message || "Could not save Smoke Test Run." }, 400);
+      sendJson(response, { error: error.message || "Could not save Self-Check." }, 400);
     }
     return;
   }
@@ -25370,12 +26176,12 @@ async function handleRequest(request, response) {
       });
       await store.writeState(result.state);
       sendJson(response, {
-        message: "Smoke Test Run finished. No external action was taken.",
+        message: "Self-Check finished. No external action was taken.",
         run: result.run,
         state: withPublicChannelSetup(result.state)
       });
     } catch (error) {
-      sendJson(response, { error: error.message || "Could not finish Smoke Test Run." }, 400);
+      sendJson(response, { error: error.message || "Could not finish Self-Check." }, 400);
     }
     return;
   }
@@ -25398,13 +26204,13 @@ async function handleRequest(request, response) {
       });
       await store.writeState(result.state);
       sendJson(response, {
-        message: "Evidence Summary generated. No external action was taken.",
+        message: "Proof Summary generated. No external action was taken.",
         summary: result.summary,
         overview: result.overview,
         state: withPublicChannelSetup(result.state)
       });
     } catch (error) {
-      sendJson(response, { error: error.message || "Could not generate Evidence Summary." }, 400);
+      sendJson(response, { error: error.message || "Could not generate Proof Summary." }, 400);
     }
     return;
   }
@@ -25424,12 +26230,12 @@ async function handleRequest(request, response) {
       });
       await store.writeState(result.state);
       sendJson(response, {
-        message: "Data Integrity Snapshot refreshed. No external action was taken.",
+        message: "Data Check refreshed. No external action was taken.",
         snapshot: result.snapshot,
         state: withPublicChannelSetup(result.state)
       });
     } catch (error) {
-      sendJson(response, { error: error.message || "Could not refresh Data Integrity." }, 400);
+      sendJson(response, { error: error.message || "Could not refresh Data Check." }, 400);
     }
     return;
   }
@@ -25578,7 +26384,7 @@ async function handleRequest(request, response) {
         route_conversation_notes: "Routed to Conversation Notes.",
         route_morning_brief: "Routed to Morning Brief inputs.",
         route_evening_reflection: "Routed to Evening Reflection inputs.",
-        route_operating_memory: "Routed to Operating Memory.",
+        route_operating_memory: "Routed to Notes & Decisions.",
         route_evidence_notes: "Routed to Evidence Notes.",
         ignore: "Ignored. This will not carry forward."
       };
@@ -26497,27 +27303,6 @@ async function handleRequest(request, response) {
     const { postId } = await readJson(request);
     const result = await markPostManuallyPosted(postId);
     sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
-    return;
-  }
-
-  if (url.pathname === "/api/social/create" && request.method === "POST") {
-    try {
-      const result = await createInternalSocialRecord(await readJson(request));
-      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
-    } catch (error) {
-      sendJson(response, { error: error.message || "Could not save social item." }, 400);
-    }
-    return;
-  }
-
-  if (url.pathname === "/api/social/update" && request.method === "POST") {
-    try {
-      const { id, patch, action } = await readJson(request);
-      const result = await updateInternalSocialRecord(id, patch || {}, action || "social_record_updated");
-      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
-    } catch (error) {
-      sendJson(response, { error: error.message || "Could not update social item." }, 400);
-    }
     return;
   }
 

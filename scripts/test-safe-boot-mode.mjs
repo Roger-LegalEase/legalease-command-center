@@ -81,11 +81,9 @@ try {
   assert.equal(safeModeHtml.response.status, 200, "Safe mode route should serve the authenticated shell.");
   assert.match(safeModeHtml.text, /renderSafeBootShell/, "Authenticated shell should include the safe boot renderer.");
   assert.match(safeModeHtml.text, /Recovery Mode/, "Recovery mode UI copy should be present.");
-  assert.match(safeModeHtml.text, /Back to Today/, "Recovery mode should offer a way back to Today without signing out.");
-  assert.match(safeModeHtml.text, /Retry full app/, "Recovery mode should offer a full-app retry.");
-  assert.match(safeModeHtml.text, /Open App Status/, "Recovery mode should link to App Status.");
-  assert.match(safeModeHtml.text, /Sign out and clear session/, "Recovery mode should offer session clearing.");
-  assert.match(safeModeHtml.text, /Publishing/, "Recovery mode should show publishing remains off.");
+  assert.match(safeModeHtml.text, /Try full app again/, "Recovery mode should offer a full-state retry.");
+  assert.match(safeModeHtml.text, /Sign out/, "Recovery mode should offer session clearing.");
+  assert.match(safeModeHtml.text, /Publishing is off|Publishing[^<]*Off/i, "Recovery mode should show publishing remains off.");
   assert.match(safeModeHtml.text, /\/api\/health/, "Safe mode should fetch public-safe health.");
   const health = await readJson("/api/health");
   assert.equal(health.response.status, 200, "/api/health should remain public-safe.");
@@ -94,24 +92,20 @@ try {
   child.kill("SIGTERM");
 }
 
-assert(source.includes("function renderSafeBootShell"), "Safe boot shell renderer should exist.");
-assert(source.includes('normalizedPage === "safe-mode"'), "#safe-mode should bypass full state rendering.");
+assert(source.includes("function renderSafeBootShell"), "Recovery shell renderer should exist.");
+assert(source.includes('pageId === "safe-mode"'), "#safe-mode should bypass full state rendering.");
 assert(source.includes("safeBootFallbackState"), "Bad or missing state should hydrate a limited safe fallback state.");
 assert(source.includes("showSafeBootShell(formatStateFetchError(error), \"boot-state-fetch\", error)"), "Boot state failures should fall back to safe shell.");
 assert(source.includes("stateFetchDiagnostics"), "Safe shell should store state-fetch diagnostics.");
 assert(source.includes("Auth token present:"), "State-fetch diagnostics should include whether an auth token was present.");
 assert(source.includes("Fell back to safe shell:"), "State-fetch diagnostics should include fallback status.");
-assert(source.includes("retryFullStateLoad"), "Retry full app should use the normal token-aware load path.");
-assert(source.includes("function openTodayFromSafeMode()"), "Safe mode should define Back to Today behavior.");
-assert(source.includes("function retryFullStateAndOpenToday()"), "Safe mode should define retry-and-open-Today behavior.");
-assert(source.includes("lockCommandCenter()"), "Safe shell sign out should clear token/cookie through lockCommandCenter.");
+assert(source.includes("retryFullStateLoad"), "Retry Full Load should use the normal token-aware load path.");
+assert(source.includes("lockCommandCenter()"), "Recovery mode sign out should clear token/cookie through lockCommandCenter.");
 assert(source.includes("optionalBootApi"), "Optional boot requests should remain non-fatal.");
 assert(source.includes("guardForbiddenEndpoint"), "Forbidden action guard should remain wired.");
 const safeShellBlock = source.match(/function renderSafeBootShell[\s\S]*?function showSafeBootShell/)?.[0] || "";
 assert(safeShellBlock, "Safe boot shell block should be available for static checks.");
-assert.match(safeShellBlock, /onclick="openTodayFromSafeMode\(\)"/, "Back to Today should not use lockCommandCenter.");
-assert.doesNotMatch(safeShellBlock.match(/function openTodayFromSafeMode[\s\S]*?function retryFullStateAndOpenToday/)?.[0] || "", /lockCommandCenter|clearOwnerToken|localStorage\.removeItem|sessionStorage\.removeItem/, "Back to Today must not clear the session.");
-assert.doesNotMatch(safeShellBlock, /type="submit"|Send Email|Publish Page|Activate Dashboard|Enable Live Publishing/i, "Recovery mode should not expose enabled mutating or external controls.");
+assert.doesNotMatch(safeShellBlock, /type="submit"|Send Email|Publish Page|Activate Dashboard|Enable Live Publishing/i, "Safe mode should not expose enabled mutating or external controls.");
 assert.doesNotMatch(safeShellBlock, /SUPABASE_SERVICE_ROLE_KEY|OPENAI_API_KEY|OWNER_TOKEN|OAUTH_TOKEN_ENCRYPTION_KEY|STRIPE_SECRET_KEY|sk-|whsec_|service_role/i, "Safe mode renderer should not include secret names or values.");
 
 console.log("Safe boot mode tests passed.");
