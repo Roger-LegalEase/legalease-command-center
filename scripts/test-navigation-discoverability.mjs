@@ -21,7 +21,7 @@ const topNav = source.slice(shellStart, shellEnd);
 const renderBlock = functionBlock("render()");
 const sectionConfig = functionBlock("sectionLandingConfig");
 const partnersPage = functionBlock("partnersPageHtml");
-const metricsPage = functionBlock("metricsDashboardHtml");
+const proofPage = functionBlock("proofWorkspaceHtml");
 const safeMode = functionBlock("renderSafeBootShell");
 
 const primaryLinks = [
@@ -53,9 +53,10 @@ assert(source.includes('link.dataset.navSection === navSectionForPage(pageId)'),
 assert(!source.includes('.nav-menu[open] > .nav-menu-summary'), "Open nav menus should not create an additional active state");
 
 assert(renderBlock.includes('today:"overview"'), "#today should route to Today/Overview");
-assert(renderBlock.includes('kpis:"metrics"'), "#kpis should route to Metrics");
+assert(renderBlock.includes('metrics:"proof"'), "#metrics should route to Proof / Metrics");
+assert(renderBlock.includes('kpis:"proof"'), "#kpis should route to Proof / Metrics");
 assert(renderBlock.includes('rcap:"production-activation-rcap"'), "#rcap should route to RCAP Program Review");
-assert(renderBlock.includes('"metrics", "kpis"].includes(pageId)'), "#metrics/#kpis should render Metrics");
+assert(renderBlock.includes('safeRenderModule("proof", () => proofWorkspaceHtml(pageClass))'), "#metrics/#kpis should render Metrics under Proof");
 assert(renderBlock.includes('pageId === "production-activation-rcap" ? rcapReviewWorkspaceHtml(pageClass) : ""'), "Only RCAP routes should render RCAP Program Review");
 
 for (const [route, label] of [
@@ -67,8 +68,8 @@ for (const [route, label] of [
   assert(sectionConfig.includes(`id:"${route}"`) && sectionConfig.includes(`title:"${label}"`), `#${route} should render ${label}`);
 }
 assert(partnersPage.includes("Partners"), "#partners should render the Partners page");
-assert(metricsPage.includes('<h1 class="big-title">Metrics</h1>'), "#metrics/#kpis should render Metrics, not Production or RCAP");
-assert(!metricsPage.includes("RCAP Program Review"), "Metrics should not render RCAP content");
+assert(proofPage.includes("Metrics / KPIs"), "#metrics/#kpis should render Metrics / KPIs inside Proof");
+assert(!proofPage.includes("RCAP Program Review"), "Proof / Metrics should not render RCAP content");
 assert(safeMode.includes('<h1 class="big-title">Recovery Mode</h1>'), "#safe-mode should render Recovery Mode");
 
 for (const block of [partnersPage, sectionConfig]) {

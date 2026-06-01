@@ -13605,6 +13605,52 @@ function htmlShell() {
     .account-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; margin-top:3px; }
     @media (max-width:1180px) { .production-summary-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .production-main-grid,.production-hero,.campaign-upload-grid { grid-template-columns:1fr; } .production-actions { justify-content:flex-start; } }
     @media (max-width:760px) { .production-workspace { max-width:calc(100vw - 20px); padding:18px 12px 96px; } .production-summary-grid,.platform-preview-grid,.campaign-preview-metrics,.campaign-step-row,.campaign-safety-lines { grid-template-columns:1fr; } .account-row,.campaign-upload-row { grid-template-columns:1fr; } .production-board { grid-auto-columns:minmax(230px,82vw); } }
+    .proof-workspace { display:grid; gap:18px; width:100%; max-width:1240px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
+    .proof-workspace * { box-sizing:border-box; min-width:0; }
+    .proof-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
+    .proof-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
+    .proof-hero p { margin:8px 0 0; max-width:780px; color:var(--text-secondary); font-size:15px; line-height:1.45; }
+    .proof-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
+    .proof-actions button { min-height:38px; padding:0 14px; font-size:13px; }
+    .proof-pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .proof-pill { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border-default); border-radius:999px; background:rgba(255,255,255,.72); color:var(--text-secondary); padding:6px 10px; font-size:12px; font-weight:800; }
+    .proof-pill::before { content:""; width:7px; height:7px; border-radius:999px; background:var(--accent); }
+    .proof-summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; }
+    .proof-summary-card { border:1px solid var(--border-light); border-radius:17px; background:#fff; padding:13px; display:grid; gap:5px; box-shadow:0 10px 24px rgba(0,38,36,.04); }
+    .proof-summary-card span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .proof-summary-card strong { color:var(--text-primary); font-size:26px; line-height:1; }
+    .proof-summary-card small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
+    .proof-summary-card.urgent { border-left:4px solid var(--urgent); }
+    .proof-main-grid { display:grid; grid-template-columns:minmax(0,1.42fr) minmax(300px,.58fr); gap:18px; align-items:start; }
+    .proof-stack { display:grid; gap:16px; min-width:0; }
+    .proof-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:17px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:13px; min-width:0; overflow:hidden; }
+    .proof-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .proof-card-head h2 { margin:0; color:var(--text-primary); font-size:20px; line-height:1.15; letter-spacing:-.01em; }
+    .proof-card-head small { color:var(--text-tertiary); font-size:12px; line-height:1.35; text-align:right; }
+    .proof-card-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .proof-card-actions button { min-height:32px; padding:0 10px; font-size:12px; }
+    .proof-next-card { gap:8px; }
+    .proof-next-card p { margin:0; }
+    .proof-output-card { align-content:start; }
+    .proof-preview { min-height:76px; border:1px dashed var(--border-emphasis); border-radius:13px; background:linear-gradient(135deg,#eef7f6,#fff); display:grid; place-items:center; gap:4px; text-align:center; padding:10px; color:var(--text-tertiary); font-size:12px; font-weight:800; }
+    .proof-preview strong { color:var(--text-primary); font-size:13px; }
+    .proof-preview small { color:var(--text-tertiary); font-size:11px; line-height:1.3; }
+    .proof-builder-checklist { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; }
+    .proof-builder-checklist li { border:1px solid var(--border-light); border-radius:13px; background:#fbfefd; padding:9px; color:var(--text-secondary); font-size:12px; font-weight:750; line-height:1.3; }
+    .proof-list { display:grid; gap:9px; }
+    .proof-row { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:11px; display:grid; grid-template-columns:minmax(0,1fr); gap:8px; align-items:start; }
+    .proof-row strong { display:block; color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
+    .proof-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
+    .proof-row .badge { justify-self:start; }
+    .proof-metric-grid { display:grid; grid-template-columns:1fr; gap:8px; }
+    .proof-metric { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:10px; display:grid; gap:4px; }
+    .proof-metric span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.035em; }
+    .proof-metric strong { color:var(--text-primary); font-size:17px; line-height:1.1; }
+    .proof-metric small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
+    .proof-metric.urgent { border-left:4px solid var(--urgent); }
+    .proof-two-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+    @media (max-width:1180px) { .proof-summary-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .proof-main-grid,.proof-hero,.proof-two-grid { grid-template-columns:1fr; } .proof-actions { justify-content:flex-start; } }
+    @media (max-width:760px) { .proof-workspace { padding:18px 16px 96px; } .proof-summary-grid,.proof-metric-grid { grid-template-columns:1fr; } }
     @media (max-width:1100px) { .growth-summary-grid,.growth-board { grid-template-columns:repeat(2,minmax(0,1fr)); } .growth-main-grid,.growth-hero { grid-template-columns:1fr; } .growth-hero-actions { justify-content:flex-start; } }
     @media (max-width:640px) { .growth-workspace { padding:18px 16px 96px; } .growth-summary-grid,.growth-board { grid-template-columns:1fr; } .growth-row { grid-template-columns:1fr; } }
     .settings-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; align-items:start; }
@@ -22278,6 +22324,175 @@ function htmlShell() {
       </section>\`;
     }
 
+    function proofWorkspaceHtml(pageClass) {
+      const posts = postedPosts();
+      const partners = state.partnerPrograms || [];
+      const evidenceNotes = [
+        ...(state.evidencePackNotes || []),
+        ...(state.reports || []),
+        ...(state.dataRoomItems || []),
+        ...(state.soc2Evidence || [])
+      ];
+      const proofWins = [
+        ["RCAP review packet approved", "Partner program", "Manual review", "Add to Investor Update"],
+        ["First campaign upload created", "Content planning", "Shows repeatable growth planning", "Turn into Post"],
+        ["Partner follow-up completed", "Partner work", "Keeps relationship movement visible", "Turn into Proof"],
+        ["Image generation workflow ready", "Content creation", "Makes visual review faster", "Turn into Post"],
+        ["Content queue organized", "Manual publishing", "Shows operating rhythm", "Add to Investor Update"]
+      ];
+      const evidenceRows = [
+        ["Customer note", "Customer note", "Partner conversation", "Needs link", "RCAP review packet approved", "Note", "No attachment yet", "Today"],
+        ["Clean Slate partner note", "Partner note", "Partner workspace", "Ready for review", "Partner follow-up completed", "Partner note", "No attachment yet", "This week"],
+        ["Campaign upload screenshot", "Screenshot", "Content workflow", "Ready for review", "First campaign upload created", "Screenshot", "No attachment yet", "This week"],
+        ["Manual posting result", "Metric", "Growth workspace", "Needs update", "Content queue organized", "Metric", "No attachment yet", "Needs update"],
+        ["Weekly report draft", "Report", "Proof workspace", "Ready for review", "Image generation workflow ready", "Report", "No attachment yet", "Saved"]
+      ];
+      const metrics = [
+        ["Revenue", state.metrics?.revenue || state.revenue || "Needs update", state.metrics?.revenue || state.revenue ? "Current value added" : "No value added yet.", true],
+        ["Leads", state.metrics?.leads || "Needs update", state.metrics?.leads ? "Current value added" : "No value added yet.", true],
+        ["Petitions", state.metrics?.petitions || "Needs update", state.metrics?.petitions ? "Current value added" : "No value added yet.", true],
+        ["Partners", partners.length || "Needs update", partners.length ? "Current partner count" : "No value added yet.", !partners.length],
+        ["Content output", posts.length || "Needs update", posts.length ? "Manual posts tracked" : "No value added yet.", !posts.length],
+        ["Proof captured", evidenceNotes.length || "Needs update", evidenceNotes.length ? "Evidence ready to review" : "No value added yet.", !evidenceNotes.length],
+        ["Manual posts", posts.length || "Needs update", posts.length ? "Posted outside the OS" : "No value added yet.", !posts.length],
+        ["Runway", state.metrics?.runway || "Needs update", state.metrics?.runway ? "Current value added" : "No value added yet.", true]
+      ];
+      const summaryCards = [
+        ["Wins Captured", proofWins.length, "movement to reuse", false],
+        ["Evidence Items", evidenceNotes.length || evidenceRows.length, "supporting proof", false],
+        ["Metrics Updated", metrics.filter(item => !String(item[1]).includes("Not added")).length, "numbers with values", true],
+        ["Reports Ready", (state.reports || []).length || 2, "updates to review", false],
+        ["Investor Proof", 5, "deck and data room", false],
+        ["Partner Proof", partners.length || 1, "relationship movement", false]
+      ];
+      const reportRows = [
+        ["Weekly Evidence Pack", "Proof for weekly review", "Review Report"],
+        ["Investor Update", "Traction, GTM, product, and impact proof", "Add to Investor Update"],
+        ["Partner Report", "Partner-facing movement summary", "Review Report"],
+        ["Impact Report", "Outcomes and proof moments", "Turn into Post"],
+        ["Campaign Report", "Manual campaign results", "Review Report"],
+        ["Data Room Export", "Investor-ready folder package", "Add to Data Room"]
+      ];
+      const investorRows = [
+        ["traction proof", "Numbers and movement that show demand", "Add to Investor Update"],
+        ["GTM proof", "Content, PR, and partner signals", "Add to Pitch Deck Notes"],
+        ["partner proof", "Program and follow-up movement", "Add to Data Room"],
+        ["product proof", "Workflows that are ready for review", "Add to Pitch Deck Notes"],
+        ["impact proof", "Outcomes that show LegalEase matters", "Add to Investor Update"]
+      ];
+      const partnerProofRows = partners.slice(0, 4).map(partner => [
+        partner.partnerName || partner.organization || partner.name || "Partner",
+        partner.nextAction || partner.notes || "Partner movement needs a short proof note.",
+        "Partner report or content proof",
+        partner.status || "Ready for review"
+      ]);
+      const dataRoomRows = ["Pitch Decks", "Formation Docs", "Cap Table", "Monthly Updates", "Reports", "Evidence Packs"];
+      const gapRows = [
+        ["Revenue metric needs update", "Blocks investor readiness", "Update Metric"],
+        ["Petition metric needs update", "Needs a current number", "Update Metric"],
+        ["Partner outcome needs evidence", "Needs a proof note", "Add Evidence"],
+        ["Campaign result not logged", "Manual stats need a number", "Add Note"],
+        ["Investor update needs founder note", "Could strengthen the next update", "Add Founder Note"],
+        ["Metric stale", "Needs Roger review", "Update Metric"]
+      ];
+      return \`<section id="proof" class="\${pageClass("proof")} proof-workspace">
+        <section class="proof-hero">
+          <div>
+            <div class="eyebrow">Proof</div>
+            <h1>Proof</h1>
+            <p>Capture wins, evidence, metrics, reports, and investor-ready proof.</p>
+            <div class="proof-pills"><span class="proof-pill">Internal only</span><span class="proof-pill">Ready for review</span></div>
+          </div>
+          <div class="proof-actions">
+            <button class="primary" type="button" onclick="toast('Proof item saved internally for review.')">Add Proof</button>
+            <button type="button" onclick="toast('Metric entry stays internal until Roger reviews it.')">Add Metric</button>
+            <button type="button" onclick="toast('Report draft created for internal review only.')">Generate Report</button>
+            <button type="button" onclick="toast('Data Room item queued internally for review.')">Add to Data Room</button>
+          </div>
+        </section>
+
+        <section class="proof-card">
+          <div class="proof-card-head"><div><h2>Proof Summary</h2><small>What can support the next update</small></div></div>
+          <div class="proof-summary-grid">\${summaryCards.map(([label, value, detail, urgent]) => \`<article class="proof-summary-card \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
+        </section>
+
+        <div class="proof-main-grid">
+          <main class="proof-stack">
+            <section class="proof-card proof-next-card">
+              <div class="proof-card-head"><div><h2>Next Proof Move</h2><small>Do this first</small></div></div>
+              <p><strong>Turn the strongest partner movement into investor-ready proof, then generate a draft investor update.</strong></p>
+              <p class="muted">This keeps the story backed by evidence, numbers, and a next use.</p>
+              <div class="proof-card-actions"><button class="primary" type="button" onclick="toast('Proof item queued internally for Roger review.')">Create Proof Item</button><button type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Metric update stays internal until reviewed.')">Update Metrics</button></div>
+            </section>
+
+            <section class="proof-card">
+              <div class="proof-card-head"><div><h2>Wins</h2><small>Capture meaningful movement</small></div><button type="button" onclick="toast('Win saved internally for review.')">Add Win</button></div>
+              <div class="proof-list">\${proofWins.slice(0, 1).map(([title, source, reason, action]) => \`<article class="proof-row"><strong>\${esc(title)}</strong><span>\${esc(source)} · \${esc(reason)}</span><div class="proof-card-actions"><button type="button" onclick="toast('Win converted into an internal proof draft.')">Turn into Proof</button><button type="button" onclick="location.hash='growth'">Turn into Post</button><button type="button" onclick="toast('Investor update note queued internally.')">\${esc(action)}</button></div></article>\`).join("")}</div>
+            </section>
+
+            <section class="proof-card">
+              <div class="proof-card-head"><div><h2>Evidence</h2><small>Store supporting proof</small></div><div class="proof-card-actions"><button type="button" onclick="toast('Evidence note saved internally.')">Add Evidence</button><button type="button" disabled title="File attachments can be added next.">Attach File</button><button type="button" onclick="toast('Metric linked internally for review.')">Link Metric</button><button type="button" onclick="toast('Evidence note saved internally.')">Add Note</button></div></div>
+              <div class="proof-list">\${evidenceRows.map(([title, type, source, status, linked, previewType, attachment, age]) => \`<article class="proof-row"><div class="proof-preview"><strong>\${esc(previewType)}</strong><small>\${esc(attachment)}</small></div><strong>\${esc(title)}</strong><span>\${esc(type)} · \${esc(source)} · \${esc(age)}</span><span>\${esc(status)} · linked to \${esc(linked)}</span><div class="proof-card-actions"><button type="button" onclick="toast('Evidence preview opened for internal review.')">View Evidence</button><button type="button" onclick="toast('Evidence linked internally.')">Link to Win</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button><button type="button" onclick="toast('Evidence moved into an internal report draft.')">Turn into Report</button></div></article>\`).join("")}</div>
+            </section>
+          </main>
+
+          <aside class="proof-stack">
+            <section id="metrics-kpis" class="proof-card">
+              <div class="proof-card-head"><div><h2>Metrics / KPIs</h2><small>Track the numbers that prove LegalEase is moving.</small></div><button type="button" onclick="toast('Metric entry stays internal until reviewed.')">Add Metric</button></div>
+              <div class="proof-metric-grid">\${metrics.map(([label, value, note, urgent]) => \`<article class="proof-metric \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(note)}</small><div class="proof-card-actions"><button type="button" onclick="toast('Metric update saved for review.')">Update Metric</button><button type="button" onclick="toast('Metric note saved internally.')">Add Note</button></div></article>\`).join("")}</div>
+            </section>
+
+            <section class="proof-card">
+              <div class="proof-card-head"><div><h2>Proof Gaps</h2><small>Evidence that needs filling</small></div></div>
+              <div class="proof-list">\${gapRows.map(([title, reason, action]) => \`<article class="proof-row"><span class="badge warn">Needs update</span><strong>\${esc(title)}</strong><span>\${esc(reason)}</span><div class="proof-card-actions"><button type="button" onclick="toast('Gap moved into the next proof review.')">\${esc(action)}</button></div></article>\`).join("")}</div>
+            </section>
+          </aside>
+        </div>
+
+        <section class="proof-card">
+          <div class="proof-card-head"><div><h2>Investor Update Builder</h2><small>Turn proof, metrics, and wins into a review-ready investor update.</small></div><span class="badge info">Review-ready draft</span></div>
+          <ul class="proof-builder-checklist">
+            <li>Select wins</li>
+            <li>Select metrics</li>
+            <li>Select evidence</li>
+            <li>Add founder note</li>
+            <li>Review draft</li>
+          </ul>
+          <p class="muted">Investor updates are internal drafts until Roger shares them.</p>
+          <div class="proof-card-actions"><button class="primary" type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Founder note saved internally.')">Add Founder Note</button><button type="button" onclick="toast('Investor update draft opened for review.')">Review Draft</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button></div>
+        </section>
+
+        <section class="proof-card">
+          <div class="proof-card-head"><div><h2>Proof Outputs</h2><small>Turn evidence into reports, investor updates, partner materials, and data room assets.</small></div></div>
+          <div class="proof-two-grid">
+            <article class="proof-card proof-output-card">
+              <div class="proof-card-head"><div><h2>Reports</h2><small>Turn proof into usable updates.</small></div><span class="badge info">\${esc(String(reportRows.length))} ready</span></div>
+              <div class="proof-list">\${reportRows.slice(0, 2).map(([title, purpose]) => \`<article class="proof-row"><strong>\${esc(title)}</strong><span>\${esc(purpose)}</span></article>\`).join("")}</div>
+              <div class="proof-card-actions"><button type="button" onclick="toast('Report draft created for internal review only.')">Generate Report</button><button type="button" onclick="toast('Report opened for internal review.')">Review Report</button><button type="button" onclick="location.hash='growth'">Turn into Post</button></div>
+            </article>
+
+            <article class="proof-card proof-output-card">
+              <div class="proof-card-head"><div><h2>Investor Proof</h2><small>Updates, decks, and data room materials.</small></div><span class="badge info">\${esc(String(investorRows.length))} proof areas</span></div>
+              <div class="proof-list">\${investorRows.slice(0, 2).map(([title, purpose]) => \`<article class="proof-row"><strong>\${esc(title)}</strong><span>\${esc(purpose)}</span></article>\`).join("")}</div>
+              <div class="proof-card-actions"><button type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button><button type="button" onclick="toast('Pitch deck note queued internally.')">Add to Pitch Deck Notes</button></div>
+            </article>
+
+            <article class="proof-card proof-output-card">
+              <div class="proof-card-head"><div><h2>Partner Proof</h2><small>Movement from partners and programs.</small></div><span class="badge info">\${esc(String(partnerProofRows.length || 1))} items</span></div>
+              <div class="proof-list">\${(partnerProofRows.length ? partnerProofRows : [["RCAP partner", "Partner materials are ready for review.", "Partner report or content proof", "Ready for review"]]).slice(0, 2).map(([partner, moment, use, status]) => \`<article class="proof-row"><strong>\${esc(partner)}</strong><span>\${esc(moment)} · \${esc(use)}</span><span class="badge info">\${esc(status)}</span></article>\`).join("")}</div>
+              <div class="proof-card-actions"><button type="button" onclick="toast('Partner proof note saved internally.')">Add Partner Proof</button><button type="button" onclick="toast('Partner report draft created internally.')">Turn into Partner Report</button><button type="button" onclick="location.hash='partners'">Link to Partner</button></div>
+            </article>
+
+            <article class="proof-card proof-output-card">
+              <div class="proof-card-head"><div><h2>Data Room</h2><small>Keep investor-ready documents organized.</small></div><span class="badge info">\${esc(String(dataRoomRows.length))} sections</span></div>
+              <div class="proof-list">\${dataRoomRows.slice(0, 3).map(label => \`<article class="proof-row"><strong>\${esc(label)}</strong><span>Review before sharing</span></article>\`).join("")}</div>
+              <div class="proof-card-actions"><button type="button" onclick="toast('Document queued internally for Data Room review.')">Add Document</button><button type="button" onclick="toast('Report added internally for review.')">Add Report</button><button type="button" onclick="toast('Export prepared for Roger review only.')">Prepare Export</button></div>
+            </article>
+          </div>
+        </section>
+      </section>\`;
+    }
+
     function render() {
       const c = counts();
       const queueStatuses = ["draft", "needs_review", "approved", "scheduled", "failed", "blocked_channel_not_connected", "retry_ready", "posted", "manually_posted"];
@@ -22309,7 +22524,7 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const routeAliases = { today:"overview", "le-e":"lee", kpis:"metrics", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap" };
+      const routeAliases = { today:"overview", "le-e":"lee", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap" };
       const normalizedPage = routeAliases[requestedPage] || requestedPage;
       const knownPages = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "overview";
@@ -22339,7 +22554,7 @@ function htmlShell() {
         \${safeRenderModule("growth", () => growthWorkspaceHtml(pageClass))}
         \${safeRenderModule("partner-hub", () => sectionLandingPageHtml(pageClass, "partner-hub"))}
         \${safeRenderModule("production", () => productionWorkspaceHtml(pageClass))}
-        \${safeRenderModule("proof", () => sectionLandingPageHtml(pageClass, "proof"))}
+        \${safeRenderModule("proof", () => proofWorkspaceHtml(pageClass))}
         \${safeRenderModule("more", () => sectionLandingPageHtml(pageClass, "more"))}
         \${safeRenderModule("growth-inbox", () => growthInboxPageHtml(pageClass))}
         \${safeRenderModule("tasks", () => ["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId) ? tasksPageHtml(pageClass, pageId) : "")}
@@ -22593,10 +22808,10 @@ function htmlShell() {
       if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "operator-search", "conversation-notes"].includes(pageId)) return "today";
       if (["data-integrity", "operator-manual", "handoff-contract", "roles"].includes(pageId)) return "more";
       if (["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId)) return "more";
-      if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "metrics"].includes(pageId)) return "growth";
+      if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
       if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
-      if (["proof", "evidence-room", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
+      if (["proof", "metrics", "kpis", "evidence-room", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
       return "more";
     }
 

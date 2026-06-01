@@ -21,7 +21,7 @@ const routeStart = source.indexOf("const routeAliases");
 assert(routeStart >= 0, "routeAliases should exist in render");
 const routeBlock = source.slice(routeStart, source.indexOf("const pageClass", routeStart));
 const rcapBlock = functionBlock("rcapReviewWorkspaceHtml");
-const metricsBlock = functionBlock("metricsDashboardHtml");
+const proofBlock = functionBlock("proofWorkspaceHtml");
 const sectionConfigBlock = functionBlock("sectionLandingConfig");
 
 const hiddenMarkers = ["topnav-fixed-v1", "app-layout-stable-v1", "button-audit-v1"];
@@ -32,18 +32,20 @@ for (const marker of hiddenMarkers) {
 }
 
 assert(routeBlock.includes('today:"overview"'), "#today should render the Today/Overview page");
-assert(routeBlock.includes('kpis:"metrics"'), "#kpis should render Metrics");
+assert(routeBlock.includes('metrics:"proof"'), "#metrics should render Proof / Metrics");
+assert(routeBlock.includes('kpis:"proof"'), "#kpis should render Proof / Metrics");
 assert(routeBlock.includes('marketing:"growth"'), "#marketing should render Growth/Marketing");
 assert(routeBlock.includes('social:"growth"'), "#social should render Growth/Marketing");
 assert(routeBlock.includes('rcap:"production-activation-rcap"'), "#rcap should render RCAP Program Review");
 
 assert(source.includes('pageId === "production-activation-rcap" ? rcapReviewWorkspaceHtml(pageClass) : ""'), "RCAP Program Review should render only on RCAP routes");
-assert(source.includes('["metrics", "kpis"].includes(pageId)'), "Metrics/KPIs route should render the metrics page");
+assert(source.includes('safeRenderModule("proof", () => proofWorkspaceHtml(pageClass))'), "Metrics/KPIs route should render the Proof workspace");
 
-assert.match(metricsBlock, /<h1 class="big-title">Metrics<\/h1>/, "Metrics page should have a Metrics title");
-assert.match(metricsBlock, /Track the numbers that show whether the company is moving\./, "Metrics page should explain its purpose");
-assert.match(metricsBlock, /No metrics added yet\. Add your first metric\./, "Metrics page should have a useful empty state");
-assert.doesNotMatch(metricsBlock, /RCAP Program Review|Record Clearing Access Program/, "Metrics page should not include RCAP content");
+assert.match(proofBlock, /Metrics \/ KPIs/, "Proof should include Metrics / KPIs");
+assert.match(proofBlock, /Track the numbers that prove LegalEase is moving\./, "Metrics / KPIs should explain its purpose");
+assert.match(proofBlock, /Needs update/, "Metrics / KPIs should have useful missing states");
+assert.match(proofBlock, /No value added yet\./, "Metrics / KPIs should explain missing values quietly");
+assert.doesNotMatch(proofBlock, /RCAP Program Review|Record Clearing Access Program/, "Proof / Metrics should not include RCAP content");
 
 assert.match(sectionConfigBlock, /title:"Growth"/, "Growth route should render Growth page");
 assert.match(sectionConfigBlock, /title:"Partners"/, "Partners route should render Partners page");
