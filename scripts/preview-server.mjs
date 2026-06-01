@@ -13528,6 +13528,75 @@ function htmlShell() {
     .add-partner-details summary small { display:block; color:var(--text-tertiary); margin-top:2px; }
     @media (max-width:1180px) { .partner-summary-grid,.partner-pipeline { grid-template-columns:repeat(3,minmax(0,1fr)); } .partner-work-grid,.partners-hero { grid-template-columns:1fr; } .partners-hero-actions { justify-content:flex-start; } }
     @media (max-width:760px) { .partners-workspace { padding:18px 16px 96px; } .partner-summary-grid,.partner-pipeline { grid-template-columns:1fr; } .partner-row { grid-template-columns:1fr; } }
+    .production-workspace { display:grid; gap:18px; width:100%; max-width:1240px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
+    .production-workspace * { box-sizing:border-box; min-width:0; }
+    .production-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
+    .production-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
+    .production-hero p { margin:8px 0 0; max-width:780px; color:var(--text-secondary); font-size:15px; line-height:1.45; }
+    .production-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
+    .production-actions button { min-height:38px; padding:0 14px; font-size:13px; }
+    .production-pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .production-pill { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border-default); border-radius:999px; background:rgba(255,255,255,.72); color:var(--text-secondary); padding:6px 10px; font-size:12px; font-weight:800; }
+    .production-pill::before { content:""; width:7px; height:7px; border-radius:999px; background:var(--accent); }
+    .production-summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; }
+    .production-summary-card { border:1px solid var(--border-light); border-radius:17px; background:#fff; padding:13px; display:grid; gap:5px; box-shadow:0 10px 24px rgba(0,38,36,.04); }
+    .production-summary-card span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+    .production-summary-card strong { color:var(--text-primary); font-size:26px; line-height:1; }
+    .production-summary-card small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
+    .production-summary-card.urgent { border-left:4px solid var(--urgent); }
+    .production-main-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(320px,.75fr); gap:18px; align-items:start; }
+    .production-stack { display:grid; gap:16px; min-width:0; }
+    .production-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:17px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:13px; min-width:0; overflow:hidden; }
+    .production-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .production-card-head h2 { margin:0; color:var(--text-primary); font-size:20px; line-height:1.15; letter-spacing:-.01em; }
+    .production-card-head small { color:var(--text-tertiary); font-size:12px; line-height:1.35; text-align:right; }
+    .production-card-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .production-card-actions button { min-height:32px; padding:0 10px; font-size:12px; }
+    .production-workflow { display:flex; flex-wrap:wrap; gap:7px; color:var(--accent-hover); font-size:12px; font-weight:850; }
+    .production-board { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(240px,260px); gap:14px; overflow-x:auto; overflow-y:hidden; max-width:100%; padding:2px 2px 10px; scroll-snap-type:x proximity; overscroll-behavior-x:contain; }
+    .production-board::-webkit-scrollbar { height:8px; }
+    .production-board::-webkit-scrollbar-thumb { background:rgba(0,169,157,.22); border-radius:999px; }
+    .production-lane { border:1px solid var(--border-light); border-radius:16px; background:#fbfefd; padding:12px; display:grid; gap:10px; align-content:start; min-width:240px; scroll-snap-align:start; }
+    .production-lane h3 { margin:0; display:flex; justify-content:space-between; gap:8px; align-items:center; color:var(--text-primary); font-size:14px; line-height:1.2; }
+    .production-item { border:1px solid var(--border-light); border-radius:14px; background:#fff; padding:12px; display:grid; gap:9px; }
+    .production-item strong { color:var(--text-primary); font-size:13.5px; line-height:1.28; overflow-wrap:break-word; }
+    .production-item span { color:var(--text-tertiary); font-size:11.5px; line-height:1.35; overflow-wrap:break-word; }
+    .production-thumbnail { min-height:118px; border:1px dashed var(--border-emphasis); border-radius:13px; background:linear-gradient(135deg,#eef7f6,#fff); display:grid; gap:7px; place-items:center; text-align:center; padding:10px; overflow:hidden; }
+    .production-thumbnail img { width:100%; height:118px; object-fit:cover; border-radius:10px; display:block; }
+    .production-thumbnail strong { font-size:12px; color:var(--text-primary); }
+    .production-thumbnail small { color:var(--text-tertiary); font-size:11px; line-height:1.3; }
+    .production-thumbnail button { min-height:28px; padding:0 9px; font-size:11.5px; }
+    .production-meta { display:grid; gap:3px; }
+    .campaign-upload-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(300px,.9fr); gap:14px; align-items:start; }
+    .campaign-template-chips { display:flex; flex-wrap:wrap; gap:6px; }
+    .campaign-template-chips span { border:1px solid var(--border-light); border-radius:999px; background:#fbfefd; color:var(--text-secondary); font-size:11px; font-weight:750; padding:5px 8px; }
+    .campaign-step-row { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+    .campaign-step { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:10px; display:grid; gap:4px; }
+    .campaign-step span { color:var(--accent-hover); font-size:11px; font-weight:900; }
+    .campaign-step strong { color:var(--text-primary); font-size:12.5px; line-height:1.25; }
+    .campaign-preview-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .campaign-preview-metric { border:1px solid var(--border-light); border-radius:13px; background:#fbfefd; padding:10px; display:grid; gap:3px; }
+    .campaign-preview-metric strong { color:var(--text-primary); font-size:20px; line-height:1; }
+    .campaign-preview-metric span { color:var(--text-tertiary); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.035em; }
+    .campaign-upload-table { display:grid; gap:7px; overflow-x:auto; max-width:100%; padding-bottom:4px; }
+    .campaign-upload-row { display:grid; grid-template-columns:82px 78px minmax(190px,1fr) 104px 110px 104px; gap:8px; align-items:center; min-width:720px; border:1px solid var(--border-light); border-radius:12px; background:#fbfefd; padding:9px; color:var(--text-secondary); font-size:11.5px; line-height:1.3; }
+    .campaign-upload-row.header { background:#fff; color:var(--text-tertiary); font-weight:850; text-transform:uppercase; letter-spacing:.035em; }
+    .campaign-upload-row.header span { white-space:nowrap; }
+    .creative-engine-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .campaign-details summary { cursor:pointer; color:var(--accent-hover); font-weight:850; font-size:12px; margin-top:8px; }
+    .production-list { display:grid; gap:9px; }
+    .production-row { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:11px; display:grid; grid-template-columns:minmax(0,1fr); gap:10px; align-items:start; }
+    .production-row strong { display:block; color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
+    .production-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
+    .platform-preview-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .platform-preview-card { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:12px; display:grid; gap:9px; }
+    .platform-preview-media { min-height:104px; border-radius:13px; border:1px dashed var(--border-emphasis); background:linear-gradient(135deg,#eef7f6,#fff); display:grid; place-items:center; color:var(--text-tertiary); font-size:12px; font-weight:850; overflow:hidden; }
+    .platform-preview-media img { width:100%; height:104px; object-fit:cover; display:block; }
+    .platform-preview-note { display:grid; gap:3px; color:var(--text-tertiary); font-size:11.5px; line-height:1.35; }
+    .account-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:11px; }
+    .account-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; margin-top:3px; }
+    @media (max-width:1180px) { .production-summary-grid,.creative-engine-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .production-main-grid,.production-hero,.campaign-upload-grid { grid-template-columns:1fr; } .production-actions { justify-content:flex-start; } }
+    @media (max-width:760px) { .production-workspace { padding:18px 16px 96px; } .production-summary-grid,.platform-preview-grid,.creative-engine-grid,.campaign-preview-metrics,.campaign-step-row { grid-template-columns:1fr; } .account-row,.campaign-upload-row { grid-template-columns:1fr; } .production-board { grid-auto-columns:minmax(230px,82vw); } }
     @media (max-width:1100px) { .growth-summary-grid,.growth-board { grid-template-columns:repeat(2,minmax(0,1fr)); } .growth-main-grid,.growth-hero { grid-template-columns:1fr; } .growth-hero-actions { justify-content:flex-start; } }
     @media (max-width:640px) { .growth-workspace { padding:18px 16px 96px; } .growth-summary-grid,.growth-board { grid-template-columns:1fr; } .growth-row { grid-template-columns:1fr; } }
     .settings-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; align-items:start; }
@@ -20513,6 +20582,286 @@ function htmlShell() {
       </section>\`;
     }
 
+    function productionWorkspaceHtml(pageClass) {
+      const posts = state.posts || [];
+      const images = state.postImages || [];
+      const titleFor = post => growthPostTitle(post);
+      const imageFor = post => imageForPost(post.id);
+      const hasImage = post => Boolean(imageFor(post)?.generationStatus === "generated" || imageFor(post)?.imageUrl || imageFor(post)?.finalPngPath || post.imageFinalized);
+      const manuallyPublished = postedPosts();
+      const drafts = posts.filter(post => /draft|ready_to_generate|needs_review/i.test(String(post.status || "")) && !post.manuallyPostedAt && !/posted|manually/i.test(String(post.status || ""))).slice(0, 4);
+      const needsImage = posts.filter(post => !hasImage(post) && !/posted|manually/i.test(String(post.status || ""))).slice(0, 4);
+      const readyReview = posts.filter(post => /approved|ready|needs_review/i.test(String(post.status || "")) && !post.manuallyPostedAt).slice(0, 4);
+      const scheduled = posts.filter(post => post.scheduledFor || /scheduled/i.test(String(post.status || ""))).slice(0, 4);
+      const statsNeeded = manuallyPublished.filter(postedNeedsMetrics);
+      const imageGenerationReady = Boolean(state.runtime?.openAIConfigured);
+      const imageReadinessLabel = imageGenerationReady ? "Ready" : "Not connected";
+      const imageReadinessCopy = imageGenerationReady
+        ? "Image generation is ready. Images still require review before use."
+        : "Image generation is not connected yet. You can save image requests now.";
+      const summaryCards = [
+        ["Drafts", drafts.length, "Posts being shaped", false],
+        ["Needs Image", needsImage.length, "Visuals to prepare", needsImage.length > 0],
+        ["Ready for Review", readyReview.length, "Needs Roger approval", readyReview.length > 0],
+        ["Scheduled Internally", scheduled.length, "Tracked inside the OS", false],
+        ["Published Manually", manuallyPublished.length, "Roger posted outside the OS", false],
+        ["Stats Needed", statsNeeded.length, "Manual results waiting", statsNeeded.length > 0]
+      ];
+      const fallbackPost = posts[0] || { id:"production-sample", title:"RecordShield before the job interview", platform:"linkedin", status:"draft", imageBrief:"Create a clean visual before review." };
+      const productionImageStatus = (post, img) => {
+        if (post.imageFinalized) return "Image: Attached";
+        if (img?.finalPngPath || img?.finalImageReady) return "Image: Approved";
+        if (img?.generationStatus === "generated" || img?.imageUrl) return "Image: Generated";
+        if (img) return "Image: Requested";
+        return "Image: Needed";
+      };
+      const productionImagePreview = (post, img) => {
+        const status = productionImageStatus(post, img);
+        const generated = Boolean(img?.imageUrl && /Generated|Approved|Attached/.test(status));
+        const label = status === "Image: Needed"
+          ? "Image needed"
+          : status === "Image: Requested"
+            ? "Image request saved"
+            : status === "Image: Generated"
+              ? "Generated image"
+              : status === "Image: Approved"
+                ? "Approved image"
+                : "Image attached";
+        const action = status === "Image: Needed"
+          ? ["Generate Image", \`generateProductionImage('\${esc(post.id)}')\`]
+          : status === "Image: Requested"
+            ? ["Check Image", "location.hash='queue'"]
+            : status === "Image: Generated"
+              ? ["Review Image", "location.hash='assets'"]
+              : status === "Image: Approved"
+                ? ["Attach to Post", "location.hash='queue'"]
+                : ["Preview", "location.hash='queue'"];
+        return \`<div class="production-thumbnail">\${generated ? \`<img src="\${esc(img.imageUrl)}" alt="\${esc(label)}">\` : \`<strong>\${esc(label)}</strong><small>\${status === "Image: Needed" ? "Generate a visual before review." : "Saved for review before use."}</small>\`}<button type="button" onclick="\${action[1]}">\${esc(action[0])}</button></div>\`;
+      };
+      const productionLaneButtons = {
+        "Drafts": post => [
+          ["Preview", "location.hash='queue'"],
+          ["Edit", "location.hash='queue'"]
+        ],
+        "Needs Image": post => [
+          ["Preview", "location.hash='queue'"],
+          ["Move to Review", \`setStatus('\${esc(post.id)}','needs_review')\`]
+        ],
+        "Ready for Review": post => [
+          ["Schedule Internally", "location.hash='queue'"],
+          ["Edit", "location.hash='queue'"]
+        ],
+        "Scheduled Internally": post => [
+          ["Move Date", "location.hash='queue'"],
+          ["Mark Published Manually", "location.hash='posted'"]
+        ],
+        "Published Manually": post => [
+          ["Add Result", "location.hash='posted'"],
+          ["Turn Result into Proof", "location.hash='proof'"]
+        ]
+      };
+      const queueLane = (label, items, emptyText, actionLabel) => \`<section class="production-lane"><h3>\${esc(label)}<span class="badge info">\${items.length}</span></h3>\${items.slice(0, 3).map(post => {
+        const img = imageFor(post);
+        const imageStatus = productionImageStatus(post, img);
+        const laneButtons = (productionLaneButtons[label]?.(post) || []).slice(0, 3);
+        return \`<article class="production-item">
+          <strong>\${esc(titleFor(post))}</strong>
+          \${productionImagePreview(post, img)}
+          <div class="production-meta">
+            <span>\${esc(platformLabels[post.platform] || post.platform || "LinkedIn / Instagram")} · \${esc(growthPostStatusLabel(post.status || "draft"))}</span>
+            <span>\${esc(imageStatus)}</span>
+            <span>Next action: \${esc(actionLabel)}</span>
+          </div>
+          <div class="production-card-actions">\${laneButtons.map(([buttonLabel, action]) => \`<button type="button" onclick="\${action}">\${esc(buttonLabel)}</button>\`).join("")}</div>
+        </article>\`;
+      }).join("") || \`<div class="empty-calm">\${esc(emptyText)}</div>\`}</section>\`;
+      const imageRows = images.slice(0, 3).map(image => {
+        const post = posts.find(item => item.id === image.postId) || fallbackPost;
+        return \`<article class="production-row">
+          <div><strong>\${esc(titleFor(post))}</strong><span>\${esc(image.imageBrief || image.creativeDirection?.directionLabel || "Visual ready for review.")}</span><span>\${esc(productionImageStatus(post, image))}</span></div>
+          <div class="production-card-actions"><button type="button" onclick="generateProductionImage('\${esc(post.id)}')">Regenerate</button><button type="button" onclick="location.hash='assets'">Approve Image</button><button type="button" onclick="location.hash='queue'">Attach to Post</button></div>
+        </article>\`;
+      }).join("") || '<div class="empty-calm">No generated images yet. Generate Image to save a request, then review visuals before attaching them.</div>';
+      const previewText = composePreviewText(fallbackPost);
+      const previewImage = imageFor(fallbackPost);
+      const previewMediaHtml = (platform) => previewImage?.imageUrl
+        ? \`<div class="platform-preview-media"><img src="\${esc(previewImage.imageUrl)}" alt="\${esc(platform)} image preview"></div>\`
+        : \`<div class="platform-preview-media">\${platform === "TikTok" ? "Video placeholder" : "Image placeholder"}</div>\`;
+      const platformPreviews = [
+        ["LinkedIn", "Professional feed preview", "copy caption, download image, post manually", "Preview LinkedIn"],
+        ["Facebook", "Community post preview", "copy caption, download image, post manually", "Preview Facebook"],
+        ["Instagram", "Square visual and caption", "image required, download image, post manually", "Preview Instagram"],
+        ["TikTok", "Caption or script preview", "video required, save script, post manually", "Preview TikTok"]
+      ];
+      const resultRows = statsNeeded.slice(0, 3).map(post => \`<article class="production-row">
+        <div><strong>\${esc(titleFor(post))}</strong><span>\${esc(platformLabels[post.platform] || post.platform || "platform")} · impressions · clicks · likes/comments/shares · notes</span></div>
+        <div class="production-card-actions"><button type="button" onclick="location.hash='posted'">Update Result</button><button type="button" onclick="location.hash='proof'">Turn Result into Proof</button></div>
+      </article>\`).join("") || '<div class="empty-calm">No results logged yet. Add the first result after posting manually.</div>';
+      const accountRows = [
+        ["LinkedIn", "Prepare LinkedIn"],
+        ["Facebook", "Prepare Facebook"],
+        ["Instagram", "Prepare Instagram"],
+        ["TikTok", "Prepare TikTok"]
+      ];
+      const campaignTemplateColumns = [
+        "Date", "Time", "Platform", "Campaign", "Post Type", "Topic", "Caption", "Headline", "Subhead", "CTA", "Link", "Audience", "Goal", "Tone", "Image Direction", "Overlay Text", "Wilma Preference", "Approval Owner", "Status", "Notes"
+      ];
+      const priorityTemplateColumns = ["Date", "Time", "Platform", "Caption", "Campaign", "Image Direction", "Overlay Text", "Wilma Preference", "Status"];
+      const campaignPreviewRows = [
+        ["2026-06-01", "LinkedIn", "Fresh Start", "Explainer", "A clean record should not require a maze.", "Image requested", "Use Wilma", "Needs review"],
+        ["2026-06-03", "Instagram", "RecordShield", "Proof / win", "Fresh Start Campaign produced the first proof loop.", "Image requested", "Do not use Wilma", "Needs review"],
+        ["2026-06-05", "TikTok", "Wilma", "FAQ", "Do old records disappear automatically?", "Image requested", "Use Wilma as helper", "Needs review"]
+      ];
+      const creativeEngineCards = [
+        ["Creative Recommendations", "For each imported post, the Command Center recommends the creative type, visual treatment, Wilma usage, overlay text, and image direction."],
+        ["Wilma Recommendations", "Use Wilma · Wilma optional · Use Wilma as helper · Do not use Wilma · Never use Wilma"],
+        ["Overlay Text", "Add editable headline, subhead, and CTA text for generated visuals. Headline · Subhead · CTA · Placement · Alignment · Style"]
+      ];
+      const campaignSteps = [
+        ["1", "Upload content plan"],
+        ["2", "Review imported posts"],
+        ["3", "Generate image plan"],
+        ["4", "Send to approval queue"]
+      ];
+      return \`<section id="production" class="\${pageClass("production")} production-workspace">
+        <section class="production-hero">
+          <div>
+            <div class="eyebrow">Production</div>
+            <h1>Production</h1>
+            <p>Create, preview, schedule, and track content before anything goes live.</p>
+            <div class="production-pills"><span class="production-pill">Posting is off</span><span class="production-pill">Manual only</span></div>
+            <p class="muted">Live posting is not connected yet. Nothing will be published by the OS.</p>
+          </div>
+          <div class="production-actions">
+            <button class="primary" type="button" onclick="location.hash='queue'">Create Post</button>
+            <button type="button" onclick="\${posts[0]?.id ? \`generateProductionImage('\${esc(posts[0].id)}')\` : "toast('Create a post before generating an image.')"}">Generate Image</button>
+            <button type="button" onclick="document.getElementById('internal-schedule')?.scrollIntoView({ behavior:'smooth', block:'start' })">Open Calendar</button>
+            <button type="button" onclick="document.getElementById('production-results')?.scrollIntoView({ behavior:'smooth', block:'start' })">Add Result</button>
+          </div>
+        </section>
+
+        <section class="production-card">
+          <div class="production-card-head"><div><h2>Production Summary</h2><small>Content that needs creation, review, or manual tracking.</small></div></div>
+          <div class="production-summary-grid">\${summaryCards.map(([label, value, sublabel, urgent]) => \`<article class="production-summary-card \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(sublabel)}</small></article>\`).join("")}</div>
+        </section>
+
+        <section class="production-card">
+          <div class="production-card-head"><div><h2>Campaign Upload</h2><small>Upload a 30-day content plan and turn it into a review-ready production queue.</small></div><span class="badge warn">Uploads create internal drafts only.</span></div>
+          <div class="campaign-upload-grid">
+            <div class="production-stack">
+              <div class="campaign-step-row">\${campaignSteps.map(([number, label]) => \`<article class="campaign-step"><span>\${esc(number)}</span><strong>\${esc(label)}</strong></article>\`).join("")}</div>
+              <div class="production-card-actions">
+                <button type="button" disabled title="Spreadsheet upload is planned for internal import review.">Upload Spreadsheet</button>
+                <button type="button" onclick="toast('Template guidance is visible in Campaign Upload.')">Download Template</button>
+                <button type="button" onclick="document.getElementById('campaign-import-preview')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Imported Posts</button>
+                <button type="button" onclick="openLeeBubble()">Generate Image Plan</button>
+                <button type="button" disabled title="Confirm Import must be reviewed before approval routing.">Send to Approval Queue</button>
+              </div>
+              <p class="muted">This is an internal schedule only. Nothing has been posted or scheduled on social platforms.</p>
+              <div>
+                <strong>Spreadsheet Template</strong>
+                <p class="muted">Required columns: Date, Time, Platform, Caption, Campaign, Image Direction, Overlay Text, Wilma Preference, Status</p>
+                <div class="campaign-template-chips" aria-label="Key spreadsheet columns">\${priorityTemplateColumns.map(column => \`<span>\${esc(column)}</span>\`).join("")}</div>
+                <details class="campaign-details"><summary>View all columns</summary><div class="campaign-template-chips" aria-label="All spreadsheet columns">\${campaignTemplateColumns.map(column => \`<span>\${esc(column)}</span>\`).join("")}</div></details>
+              </div>
+              <div class="campaign-template-chips" aria-label="Allowed Wilma preference values">
+                \${["Wilma Preference", "Auto", "Yes", "No", "Helper", "LinkedIn", "Facebook", "Instagram", "TikTok"].map(value => \`<span>\${esc(value)}</span>\`).join("")}
+              </div>
+              <p class="muted">Wilma is recommended for explainers, checklists, and friendly guidance. She is not recommended for serious impact stories, policy commentary, or trauma-sensitive posts.</p>
+              <div class="creative-engine-grid">\${creativeEngineCards.map(([title, detail]) => \`<article class="production-summary-card"><span>\${esc(title)}</span><small>\${esc(detail)}</small></article>\`).join("")}</div>
+            </div>
+            <aside id="campaign-import-preview" class="production-stack">
+              <div class="production-card-head"><div><h2>Import Preview</h2><small>No spreadsheet has been imported yet. Sample preview only.</small></div></div>
+              <div class="campaign-preview-metrics">
+                \${[["30", "posts found"], ["30", "scheduled internally"], ["18", "need images"], ["7", "Wilma recommended"], ["5", "Wilma not recommended"], ["12", "overlay text suggestions"], ["0", "published"]].map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(value)}</strong><span>\${esc(label)}</span></article>\`).join("")}
+              </div>
+              <div class="campaign-upload-table">
+                <div class="campaign-upload-row header"><span>Date</span><span>Platform</span><span>Caption Preview</span><span>Image Plan</span><span>Wilma</span><span>Approval</span></div>
+                \${campaignPreviewRows.map(([date, platform, campaign, postType, caption, imageStatus, wilma, approval]) => \`<div class="campaign-upload-row"><span>\${esc(date)}</span><span>\${esc(platform)}</span><span>\${esc(campaign)} · \${esc(postType)} · \${esc(caption)}</span><span>\${esc(imageStatus)}</span><span>\${esc(wilma)}</span><span>\${esc(approval)}</span></div>\`).join("")}
+              </div>
+              <div class="production-card-actions">
+                <button type="button" disabled title="Upload and preview a spreadsheet before confirming import.">Confirm Import</button>
+                <button type="button" onclick="toast('Fix Issues will open after a real import preview exists.')">Fix Issues</button>
+                <button type="button" onclick="toast('Import preview cleared. Nothing was saved.')">Cancel Import</button>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <div class="production-main-grid">
+          <main class="production-stack">
+            <section class="production-card">
+              <div class="production-card-head"><div><h2>Content Queue</h2><small>Nothing has been published by the OS.</small></div></div>
+              <div class="production-workflow">Draft → Image → Preview → Review → Scheduled → Published manually</div>
+              <div class="production-board">
+                \${queueLane("Drafts", drafts, "No drafts waiting right now.", "Edit Post")}
+                \${queueLane("Needs Image", needsImage, "No posts need images right now.", "Generate Image")}
+                \${queueLane("Ready for Review", readyReview, "No ready posts waiting for review.", "Preview")}
+                \${queueLane("Scheduled Internally", scheduled, "No internally scheduled posts yet.", "Mark Published Manually")}
+                \${queueLane("Published Manually", manuallyPublished, "No manually published posts yet.", "Update Result")}
+              </div>
+            </section>
+
+            <section class="production-card">
+              <div class="production-card-head"><div><h2>Image Studio</h2><small>Generate, review, and attach visuals before posts move into review.</small></div><span class="badge \${imageGenerationReady ? "good" : "warn"}">Image generation: \${esc(imageReadinessLabel)}</span></div>
+              <p class="muted">\${esc(imageReadinessCopy)}</p>
+              <div class="production-summary-grid">
+                <article class="production-summary-card"><span>Image Requests</span><strong>\${needsImage.length}</strong><small>Saved requests</small></article>
+                <article class="production-summary-card"><span>Generated Images</span><strong>\${images.length}</strong><small>Saved visuals</small></article>
+                <article class="production-summary-card urgent"><span>Needs Review</span><strong>\${images.filter(image => !image.finalPngPath && !image.finalImageReady).length}</strong><small>Review before attaching</small></article>
+                <article class="production-summary-card"><span>Approved Images</span><strong>\${images.filter(image => image.finalPngPath || image.finalImageReady).length}</strong><small>Ready to attach</small></article>
+              </div>
+              <div class="production-list">\${imageRows}</div>
+              <div class="production-card-actions">
+                <button type="button" onclick="\${posts[0]?.id ? \`generateProductionImage('\${esc(posts[0].id)}')\` : "toast('Create a post before generating an image.')"}">Generate Image</button>
+                <button type="button" onclick="\${images[0]?.postId ? \`generateProductionImage('\${esc(images[0].postId)}')\` : "toast('Choose a saved image request first.')"}">Regenerate</button>
+                <button type="button" onclick="location.hash='assets'">Approve Image</button>
+                <button type="button" onclick="location.hash='queue'">Attach to Post</button>
+              </div>
+            </section>
+
+            <section id="connected-accounts" class="production-card">
+              <div class="production-card-head"><div><h2>Connected Accounts</h2><small>Prepare future posting and analytics connections.</small></div></div>
+              <p class="muted">Live posting will require connected accounts, permissions, and manual approval.</p>
+              <div class="production-list">\${accountRows.map(([platform, action]) => \`<article class="account-row"><div><strong>\${esc(platform)} — Not connected</strong><span>Future capability: posting · scheduling · analytics</span><span>Setup state: Coming later</span></div><button type="button" disabled title="Coming later">\${esc(action)}</button></article>\`).join("")}</div>
+            </section>
+          </main>
+
+          <aside class="production-stack">
+            <section class="production-card">
+              <div class="production-card-head"><div><h2>Next Production Move</h2><small>Do this first</small></div></div>
+              <p><strong>Generate a visual for the highest-priority post, then review it before anything goes live.</strong></p>
+              <p class="muted">Strong visuals make review faster and keep manual posting tied to approved content.</p>
+              <div class="production-card-actions"><button class="primary" type="button" onclick="\${posts[0]?.id ? \`generateProductionImage('\${esc(posts[0].id)}')\` : "toast('Create a post before generating an image.')"}">Generate Image</button><button type="button" onclick="location.hash='queue'">Review Ready Posts</button></div>
+            </section>
+
+            <section class="production-card">
+              <div class="production-card-head"><div><h2>Platform Preview</h2><small>Preview only. Nothing has been published.</small></div></div>
+              <div class="platform-preview-grid">\${platformPreviews.map(([platform, note, checklist, action]) => \`<article class="platform-preview-card"><strong>\${esc(platform)}</strong>\${previewMediaHtml(platform)}<div class="platform-preview-note"><span><strong>Caption preview:</strong> \${esc(previewText).slice(0, 120)}</span><span><strong>Platform note:</strong> \${esc(note)}</span><span><strong>Checklist:</strong> \${esc(checklist)}</span></div><div class="production-card-actions"><button type="button" onclick="location.hash='queue'">\${esc(action)}</button><button type="button" onclick="location.hash='queue'">Copy Caption</button><button type="button" onclick="location.hash='assets'">Download Image</button></div></article>\`).join("")}</div>
+            </section>
+
+            <section id="internal-schedule" class="production-card">
+              <div class="production-card-head"><div><h2>Internal Schedule</h2><small>Internal schedule only.</small></div></div>
+              <p class="muted">This is an internal schedule only. No external calendar writes. No platform scheduling.</p>
+              <div class="production-summary-grid">
+                <article class="production-summary-card"><span>Today</span><strong>\${scheduled.filter(post => String(post.scheduledFor || "").slice(0, 10) === new Date().toISOString().slice(0, 10)).length}</strong><small>Planned internally</small></article>
+                <article class="production-summary-card"><span>This Week</span><strong>\${scheduled.length}</strong><small>Ready to watch</small></article>
+                <article class="production-summary-card"><span>Upcoming</span><strong>\${Math.max(0, scheduled.length - 1)}</strong><small>Future manual posts</small></article>
+              </div>
+              <div class="production-list">\${scheduled.slice(0, 3).map(post => \`<article class="production-row"><div><strong>\${esc(titleFor(post))}</strong><span>\${esc(platformLabels[post.platform] || post.platform || "platform")} · \${esc(post.scheduledFor || "date not set")} · \${esc(growthPostStatusLabel(post.status || "scheduled"))}</span></div><div class="production-card-actions"><button type="button" onclick="location.hash='queue'">Move Date</button><button type="button" onclick="location.hash='posted'">Mark Published Manually</button></div></article>\`).join("") || '<div class="empty-calm">No internally scheduled posts yet.</div>'}</div>
+              <div class="production-card-actions"><button type="button" onclick="location.hash='queue'">Add to Internal Schedule</button></div>
+            </section>
+
+            <section id="production-results" class="production-card">
+              <div class="production-card-head"><div><h2>Results</h2><small>Manual stats until accounts are connected.</small></div></div>
+              <div class="production-list">\${resultRows}</div>
+              <div class="production-card-actions"><button type="button" onclick="location.hash='posted'">Add Result</button><button type="button" onclick="location.hash='posted'">Update Result</button></div>
+            </section>
+          </aside>
+        </div>
+      </section>\`;
+    }
+
     function sectionLandingPageHtml(pageClass, section) {
       const config = sectionLandingConfig(section);
       const activeApprovals = (state.approvalQueue || []).filter(item => !["approved", "archived", "ignored"].includes(String(item.status || "").toLowerCase()));
@@ -21788,7 +22137,7 @@ function htmlShell() {
         \${safeRenderModule("lee", () => leePageHtml(pageClass))}
         \${safeRenderModule("growth", () => growthWorkspaceHtml(pageClass))}
         \${safeRenderModule("partner-hub", () => sectionLandingPageHtml(pageClass, "partner-hub"))}
-        \${safeRenderModule("production", () => sectionLandingPageHtml(pageClass, "production"))}
+        \${safeRenderModule("production", () => productionWorkspaceHtml(pageClass))}
         \${safeRenderModule("proof", () => sectionLandingPageHtml(pageClass, "proof"))}
         \${safeRenderModule("more", () => sectionLandingPageHtml(pageClass, "more"))}
         \${safeRenderModule("growth-inbox", () => growthInboxPageHtml(pageClass))}
@@ -24313,6 +24662,40 @@ function htmlShell() {
       } catch (error) {
         toast("Image generation failed. See image card.");
         console.error(error);
+      } finally {
+        generatingImages.delete(id);
+        render();
+      }
+    }
+
+    async function generateProductionImage(id) {
+      if (!id) {
+        toast("Create a post before generating an image.");
+        return;
+      }
+      generatingImages.add(id);
+      render();
+      toast("Generating image...");
+      try {
+        const result = await api("/api/images/generate", { method:"POST", body:JSON.stringify({ postId:id }), timeoutMs:120000 });
+        if (result.state) state = result.state;
+        if (result.image) {
+          state.postImages = [
+            result.image,
+            ...(state.postImages || []).filter(image => image.id !== result.image.id && image.postId !== id)
+          ];
+        } else {
+          await load();
+        }
+        const image = result.image || imageForPost(id);
+        if (image?.generationStatus === "generated") {
+          toast("Image generated. Review it before attaching to the post.");
+        } else {
+          toast("Image generation is not connected yet. The request was saved.");
+        }
+      } catch (error) {
+        console.error(error);
+        toast("Could not save the image request. Try again from the post.");
       } finally {
         generatingImages.delete(id);
         render();
