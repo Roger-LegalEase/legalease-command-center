@@ -17558,7 +17558,80 @@ function htmlShell() {
       return label(start) + " to " + label(end);
     }
 
+    function cockpitTodayOperatingSeedData() {
+      return {
+        intention:{
+          accent:"closing the highest-trust follow-ups",
+          suffix:", then turning movement into execution."
+        },
+        now:{
+          title:"Send We Must Vote report",
+          context:"This is the most urgent trust-building deliverable. It keeps partner momentum alive and creates proof for the OS.",
+          href:"tasks",
+          primaryLabel:"Start Work",
+          secondaryLabel:"Add Note",
+          snoozeLabel:"Snooze",
+          steps:[
+            "Pull the latest RCAP / expungement status details.",
+            "Draft the report in plain language.",
+            "Send or prepare for review today."
+          ]
+        },
+        flow:[
+          { label:"Morning: Send We Must Vote report", type:"focus", start:8, end:10 },
+          { label:"Midday: RCAP co-branded page template", type:"focus", start:11, end:12.5 },
+          { label:"Afternoon: Checkr integration", type:"focus", start:13.5, end:15 },
+          { label:"Late day: Investor update draft and NBA proposal outline", type:"focus", start:15.25, end:16.75 },
+          { label:"Closeout: Log what moved, blockers, and tomorrow’s first move", type:"closeout", start:17.15, end:18 }
+        ],
+        top3:[
+          cockpitLoopItem("Finish co-branded RCAP web page template", "Define and finish the minimum partner-facing template internally before anything goes live.", "production", "Start Work"),
+          cockpitLoopItem("Finish Checkr integration", "Move the integration to the next safe internal milestone without enabling external actions.", "tasks", "Start Work"),
+          cockpitLoopItem("NBA proposal", "Clarify the scope and turn the strongest angle into a proposal outline.", "partners", "Review")
+        ],
+        pressing:[
+          cockpitLoopItem("Send We Must Vote report", "Urgent trust-building deliverable that keeps partner momentum alive.", "tasks", "Start Work"),
+          cockpitLoopItem("Investor updates", "Needs decision today so proof and movement do not stay scattered.", "proof", "Generate Investor Update")
+        ],
+        followups:[
+          { name:"Harris County meeting", context:"Partner follow-up", need:"Confirm meeting outcome and next action.", age:"today", href:"partners", category:"partners" },
+          { name:"Clean Slate Initiative", context:"Partner follow-up", need:"Clarify collaboration path and next proof note.", age:"today", href:"partners", category:"partners" },
+          { name:"Urban League", context:"Partner follow-up", need:"Decide next outreach step and owner.", age:"today", href:"partners", category:"partners" },
+          { name:"Chicago", context:"Partner follow-up", need:"Capture the next concrete follow-up.", age:"today", href:"partners", category:"partners" }
+        ],
+        tasks:[
+          cockpitLoopItem("Send press release and photo to BlackPR", "Prepare the release and photo package internally for review. No email is sent.", "growth", "Add Task"),
+          cockpitLoopItem("Build 30-day social media content plan", "Create the internal plan before any manual posting step.", "production", "Add Task"),
+          cockpitLoopItem("Compile national expungement clinic list", "Build the list as internal research for partner and proof work.", "partners", "Add Task")
+        ],
+        blockers:[
+          cockpitLoopItem("Paying Quantum Pulse", "Payment decision is blocking clarity on what can move next.", "more", "Resolve Blocker")
+        ],
+        decisions:[
+          cockpitLoopItem("Decide what minimum RCAP template must include before it is done", "Define the smallest complete co-branded page template before calling it finished.", "production", "Review Decision"),
+          cockpitLoopItem("Decide whether Checkr launch needs to be staged or fully active", "Choose the safer launch path before moving integration work forward.", "tasks", "Review Decision"),
+          cockpitLoopItem("Decide NBA proposal scope: sponsorship, partnership, pilot, or full platform pitch", "Pick the proposal frame so the outline does not sprawl.", "partners", "Review Decision"),
+          cockpitLoopItem("Decide Quantum Pulse payment plan / whether anything is blocked until payment is handled", "Resolve the payment path and any blocked work before closeout.", "more", "Review Decision")
+        ]
+      };
+    }
+
     function cockpitNowItem(posts = []) {
+      const seed = cockpitTodayOperatingSeedData();
+      if (seed.now) {
+        return {
+          type:"task",
+          id:"today-seed-we-must-vote-report",
+          title:seed.now.title,
+          context:seed.now.context,
+          href:seed.now.href,
+          primaryLabel:seed.now.primaryLabel,
+          secondaryLabel:seed.now.secondaryLabel,
+          snoozeLabel:seed.now.snoozeLabel,
+          range:cockpitFocusRange(),
+          steps:seed.now.steps
+        };
+      }
       const openTasks = (state.tasks || []).filter(taskStatusOpen);
       const rankedTasks = openTasks.slice().sort((a, b) => {
         const rank = { critical:5, high:4, medium:3, low:2 };
@@ -17646,15 +17719,18 @@ function htmlShell() {
     }
 
     function cockpitDailyIntention(nowItem = cockpitNowItem()) {
+      const seed = cockpitTodayOperatingSeedData();
       return {
         prefix:"Today is for ",
-        accent:"protecting the main thread",
-        suffix:", then turning movement into proof.",
+        accent:seed.intention.accent,
+        suffix:seed.intention.suffix,
         source:"Daily intention"
       };
     }
 
     function cockpitTimelineBlocks(nowItem = cockpitNowItem()) {
+      const seed = cockpitTodayOperatingSeedData();
+      if (seed.flow?.length) return seed.flow;
       const now = new Date();
       const hour = now.getHours();
       const currentStart = Math.min(16.5, Math.max(8, hour + (now.getMinutes() / 60)));
@@ -17714,6 +17790,7 @@ function htmlShell() {
     }
 
     function cockpitThreadsOpen() {
+      const seed = cockpitTodayOperatingSeedData();
       const waitingTasks = (state.tasks || []).filter(task => taskStatusOpen(task) && /roger|partner|investor|follow/i.test([task.owner, task.title, task.description, task.sourceType].join(" "))).map(task => ({
         name:task.title || "Open task",
         context:task.sourceType || task.owner || "Task",
@@ -17741,7 +17818,7 @@ function htmlShell() {
         href:"growth-inbox",
         category:/proof|evidence/i.test([item.sourceType, item.rawText, item.summary].join(" ")) ? "proof" : /partner/i.test([item.sourceType, item.rawText, item.summary].join(" ")) ? "partners" : "tasks"
       }));
-      return [...waitingTasks, ...partnerThreads, ...inboxThreads].slice(0, 5);
+      return [...seed.followups, ...waitingTasks, ...partnerThreads, ...inboxThreads].slice(0, 8);
     }
 
     function cockpitFollowUpTitle(thread = {}) {
@@ -18015,6 +18092,7 @@ function htmlShell() {
     }
 
     function cockpitDailyOperatingLoop() {
+      const seed = cockpitTodayOperatingSeedData();
       const queue = rcapReviewQueueItems();
       const readiness = rcapPartnerJourneyHandoffReadinessClient();
       const openTasks = cockpitOpenTasks();
@@ -18030,6 +18108,7 @@ function htmlShell() {
       if (openTasks.length) topCandidates.push(cockpitLoopItem(openTasks[0].title || "Open task needs attention", openTasks[0].nextAction || openTasks[0].description || "An internal task is still open.", "tasks", "Open Tasks"));
 
       const top3 = cockpitUniqueByTitle([
+        ...seed.top3,
         ...topCandidates,
         cockpitLoopItem("Review RCAP Program handoff packet", "Use the internal packet to decide what still needs Roger before any Partner Journey handoff.", "production-activation-rcap", "Review"),
         cockpitLoopItem("Clear one open task", "Pick the highest leverage internal task and move it to a clear next state.", "tasks", "Open Tasks"),
@@ -18037,11 +18116,15 @@ function htmlShell() {
       ]).slice(0, 3);
 
       const waitingOn = cockpitUniqueByTitle([
+        ...seed.pressing,
+        ...seed.blockers,
+        ...seed.tasks,
         ...readiness.missing.map(detail => cockpitLoopItem(detail, "Missing RCAP Program partner detail blocks handoff readiness.", "production-activation-rcap", "Review")),
         ...blocked.map(item => cockpitLoopItem(item.title, item.nextAction || "Blocked pending founder review.", "production-activation-rcap", "Review"))
       ]).slice(0, 5);
 
       const decisionsNeeded = cockpitUniqueByTitle([
+        ...seed.decisions,
         ...reviewRequired.map(item => cockpitLoopItem(item.title, "Choose an internal review state before handoff can be evaluated.", "production-activation-rcap", "Review")),
         ...revisions.map(item => cockpitLoopItem(item.title, "Decide what revision is needed, then update the review state.", "production-activation-rcap", "Review")),
         cockpitLoopItem("RCAP Program handoff", readiness.ready ? "Ready for a manual handoff decision. No external system is contacted." : readiness.next, "production-activation-rcap", "Review")
@@ -18148,7 +18231,12 @@ function htmlShell() {
           <small>\${esc(todayFounderCopy(item.detail || item.nextAction || "Decide the next move."))}</small>
           \${todayActionLink(item, index === 0 ? "Start" : "Review")}
         </li>\`).join("")}</ol>
-        <div class="standup-card-actions"><button type="button" onclick="location.hash='tasks'">Add Priority</button></div>
+        <div class="standup-card-actions">
+          <button type="button" onclick="location.hash='tasks'">Add Priority</button>
+          <button type="button" onclick="toast('Priority edit saved internally for Roger review.')">Edit Priority</button>
+          <button type="button" onclick="toast('Priority marked done internally. No external calls were made.')">Mark Done</button>
+          <button type="button" onclick="toast('Priority moved to tomorrow internally.')">Move to Tomorrow</button>
+        </div>
       </section>\`;
     }
 
@@ -18172,6 +18260,10 @@ function htmlShell() {
           <div><strong>\${esc(todayFounderCopy(item.title))}</strong><span>\${esc(todayFounderCopy(item.detail))}</span>\${todayUrgencyBadgeHtml(item)}</div>
           \${todayActionLink(item, "Review")}
         </div>\`).join("") || '<div class="empty-calm">Nothing urgent needs attention right now.</div>'}</div>
+        <div class="standup-card-actions">
+          <button type="button" onclick="location.hash='tasks'">Add Task</button>
+          <button type="button" onclick="toast('Task marked done internally. No external calls were made.')">Mark Done</button>
+        </div>
       </section>\`;
     }
 
@@ -18188,6 +18280,8 @@ function htmlShell() {
           \${todayActionLink(item, "Review")}
         </div>\`).join("") || '<div class="empty-calm">No blockers or decisions are waiting right now.</div>'}</div>
         <div class="standup-card-actions">
+          <button type="button" onclick="document.getElementById('cockpit-capture')?.focus()">Add Blocker</button>
+          <button type="button" onclick="toast('Blocker resolved internally for Today review.')">Resolve Blocker</button>
           <button type="button" onclick="document.getElementById('cockpit-capture')?.focus()">Add Decision</button>
           <button type="button" onclick="location.hash='daily-closeout'">Move to Tomorrow</button>
         </div>
@@ -18205,6 +18299,7 @@ function htmlShell() {
           <input type="hidden" name="priority" value="medium">
           <div class="capture-button-row">
             <button class="primary" type="submit" onclick="this.form.capture_type.value='auto_classify'">Save</button>
+            <button type="submit" onclick="this.form.capture_type.value='task'">Add Task</button>
             <button type="submit" onclick="this.form.capture_type.value='task'">Task</button>
             <button type="submit" onclick="this.form.capture_type.value='decision'">Decision</button>
             <button type="submit" onclick="this.form.capture_type.value='blocker'">Blocker</button>
@@ -19612,7 +19707,12 @@ function htmlShell() {
         ["External actions: Off", "Protected"],
         ["Owner access: Protected", "Owner only"],
         ["Database:", databaseStatus],
-        ["Image generation:", imageGenerationStatus]
+        ["Image generation:", imageGenerationStatus],
+        ["Tasks and priorities:", "Ready"],
+        ["Calendar:", "Not connected / read-only planned"],
+        ["Email:", "Not connected / draft-only planned"],
+        ["Social accounts:", "Not connected"],
+        ["External actions:", "Off"]
       ];
       return \`<section id="os-health" class="\${pageClass("os-health")} support-workspace lee-bubble-safe-space">
         <section class="support-hero">
@@ -20355,6 +20455,7 @@ function htmlShell() {
                 <button type="button" onclick="filterTodayFollowups('proof')">Proof</button>
               </div>
               <div class="thread-list">\${threads.slice(0, 3).map(thread => \`<button class="thread" type="button" data-followup-category="\${esc(thread.category || "tasks")}" onclick="location.hash='\${esc(thread.href)}'"><strong>\${esc(cockpitFollowUpTitle(thread))}</strong><span>\${esc(cockpitFollowUpContext(thread))}</span><span class="follow-up-tag">\${esc(cockpitFollowUpCategoryLabel(thread))}</span><span class="thread-age">\${esc(thread.age)}</span></button>\`).join("") || '<div class="empty-calm">No open people threads need attention right now.</div>'}</div>
+              <button class="follow-up-view-all" type="button" onclick="toast('Follow-up saved internally for Today review.')">Add Follow-Up</button>
               <button class="follow-up-view-all" type="button" onclick="location.hash='tasks'">View all follow-ups</button>
             </section>
             \${cockpitPressingHtml()}
@@ -22586,6 +22687,35 @@ function htmlShell() {
         "Calendar writes: Off",
         "External actions: Off"
       ];
+      const moreImageGenerationStatus = state.runtime?.openAIConfigured ? "Ready" : "Needs setup";
+      const moreImageGenerationSafety = state.runtime?.openAIConfigured ? "Server-side only" : "Request saved";
+      const activationSections = [
+        ["Tasks & Priorities", "Ready", "Today can show priorities, tasks, blockers, decisions, and closeout notes.", "Outside task systems are not connected.", "Use Today to update work internally.", "Manual only"],
+        ["Google Calendar", "Read-only", "Calendar reads can help Today understand focus blocks.", "Calendar writes are off.", "Prepare the calendar checklist.", "No events or invites."],
+        ["Gmail / Email", "Draft-only", "Email drafts can be prepared for review.", "Email sending is off.", "Prepare the email checklist.", "No messages sent."],
+        ["Image Generation", moreImageGenerationStatus, "Server-side image generation can be used when configured.", "Missing setup saves an image request instead.", "Check image readiness.", moreImageGenerationSafety],
+        ["Social Accounts", "Not connected", "Platform checklists are available for future setup.", "No accounts are connected.", "Prepare each platform checklist.", "No account connection starts here."],
+        ["External Action Outbox", "Draft-only", "Future live actions can be reviewed before execution.", "Outbox does not execute actions in this pass.", "Review drafts and approvals.", "Outbox does not execute."],
+        ["Safety Switches", "Protected", "Safety state is visible.", "Enable controls are not available.", "Review Safety or Open App Status.", "Live actions stay off."]
+      ];
+      const outboxRows = [
+        ["Social post", "LinkedIn", "Draft post waiting for approval", "Roger", "Today", "Yes", "Live social posting: Off", "Draft"],
+        ["Email draft", "Partner follow-up", "Prepared email draft for review", "Roger", "Today", "Yes", "Email sending: Off", "Needs approval"],
+        ["Calendar request", "Internal schedule", "Calendar write request blocked", "Command Center", "Today", "Yes", "Calendar writes: Off", "Blocked"],
+        ["Calendar update", "Internal schedule", "Calendar update request blocked", "Command Center", "Today", "Yes", "Calendar writes: Off", "Blocked"],
+        ["Analytics sync", "Manual results", "Stats stay manual until accounts are connected", "Command Center", "Today", "Yes", "External actions: Off", "Draft"],
+        ["Image request", "Saved post", "Image request saved for review", "Roger", "Today", "Yes", "Server-side image route only", "Completed manually"]
+      ];
+      const socialSetupRows = [
+        ["LinkedIn", "Prepare LinkedIn"],
+        ["Facebook", "Prepare Facebook"],
+        ["Instagram", "Prepare Instagram"],
+        ["TikTok", "Prepare TikTok"]
+      ];
+      const activationAction = (label, message, tone = "") => {
+        const className = tone === "primary" ? ' class="primary"' : "";
+        return \`<button type="button"\${className} onclick="toast('\${esc(message)}')">\${esc(label)}</button>\`;
+      };
       const moreAction = (label, target, tone = "") => {
         const className = tone === "primary" ? ' class="primary"' : "";
         if (target === "role-note") {
@@ -22611,6 +22741,39 @@ function htmlShell() {
         <section class="more-card">
           <div class="more-card-head"><div><h2>Utility Summary</h2><small>Support tools without mixing them into daily work</small></div></div>
           <div class="more-summary-grid">\${summaryCards.map(([label, status, detail]) => \`<article class="more-summary-card"><span>\${esc(label)}</span><strong>\${esc(status)}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
+        </section>
+
+        <section id="activation-center" class="more-card">
+          <div class="more-card-head"><div><h2>Activation Center</h2><small>Prepare the Command Center for real daily use without turning on risky live actions too early.</small></div><span class="more-pill">Manual only</span></div>
+          <div class="more-summary-grid">\${activationSections.map(([title, status, ready, notReady, nextStep, safety]) => \`<article class="more-summary-card"><span>\${esc(title)}</span><small><b>Status:</b> \${esc(status)}<br><b>Ready:</b> \${esc(ready)}<br><b>Not ready:</b> \${esc(notReady)}<br><b>Next step:</b> \${esc(nextStep)}<br><b>Safety:</b> \${esc(safety)}</small></article>\`).join("")}</div>
+          <div class="more-card-actions">
+            \${activationAction("Prepare Calendar Connection", "Calendar readiness checklist opened. Calendar writes are off.", "primary")}
+            \${activationAction("Check Calendar Readiness", "Calendar readiness checked internally. No calendar service was contacted.")}
+            \${activationAction("Prepare Email Connection", "Email readiness checklist opened. Email sending is off.")}
+            \${activationAction("Check Email Readiness", "Email readiness checked internally. No email service was contacted.")}
+          </div>
+        </section>
+
+        <section class="more-card">
+          <div class="more-card-head"><div><h2>Social Accounts</h2><small>Future connection setup checklists only</small></div><span class="more-pill">Not connected</span></div>
+          <div class="more-utility-grid">
+            \${socialSetupRows.map(([platform, label]) => \`<article class="more-utility-card"><h3>\${esc(platform)}</h3><p>Future capabilities: preview, approval, scheduling, posting, analytics. Current status: Not connected.</p><div class="more-card-actions">\${activationAction(label, platform + " setup checklist opened. No connection starts here.")}</div></article>\`).join("")}
+          </div>
+        </section>
+
+        <section class="more-card">
+          <div class="more-card-head"><div><h2>External Action Outbox</h2><small>Every future live action must appear here before execution.</small></div><span class="more-pill">Draft-only</span></div>
+          <p class="muted">Outbox does not execute actions in this pass.</p>
+          <div class="more-pills"><span class="more-pill">Draft</span><span class="more-pill">Needs approval</span><span class="more-pill">Approved</span><span class="more-pill">Blocked</span><span class="more-pill">Completed manually</span></div>
+          <div class="more-utility-grid">\${outboxRows.map(([type, target, summary, requestedBy, createdAt, approval, notes, status]) => \`<article class="more-utility-card"><h3>\${esc(type)}</h3><p><strong>Type:</strong> \${esc(type)}<br><strong>Target:</strong> \${esc(target)}<br><strong>Summary:</strong> \${esc(summary)}<br><strong>Requested by:</strong> \${esc(requestedBy)}<br><strong>Created:</strong> \${esc(createdAt)}<br><strong>Approval:</strong> \${esc(approval)}<br><strong>Safety:</strong> \${esc(notes)}</p><span class="more-pill">\${esc(status)}</span></article>\`).join("")}</div>
+        </section>
+
+        <section class="more-card">
+          <div class="more-card-head"><div><h2>Safety Switches</h2><small>Visible state only; no enable controls yet</small></div><span class="more-pill">Protected</span></div>
+          <div class="more-safety-list">
+            \${["Live social posting: Off", "Email sending: Off", "Calendar writes: Off", "External actions: Off", "Connected dashboards: Off"].map(row => \`<div class="more-safety-row"><strong>\${esc(row)}</strong><span>Protected</span></div>\`).join("")}
+          </div>
+          <div class="more-card-actions"><button type="button" onclick="toast('Safety reviewed. Live actions remain off.')">Review Safety</button><button class="primary" type="button" onclick="location.hash='app-status'">Open App Status</button></div>
         </section>
 
         <section class="more-card">
