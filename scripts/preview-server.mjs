@@ -14064,6 +14064,15 @@ function htmlShell() {
     .channel-grid { grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); }
     .channel-card .toprow { align-items:flex-start; }
     .channel-actions { align-items:center; }
+    .rcap-connection-card { grid-column:1 / -1; }
+    .rcap-connection-card .toprow { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; }
+    .rcap-connection-card .toprow .badge { justify-self:end; white-space:nowrap; }
+    .rcap-connection-details { margin-top:2px; }
+    .rcap-connection-list { display:grid; margin-top:10px; border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; overflow:hidden; }
+    .rcap-connection-row { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:11px 12px; border-top:1px solid var(--border-light); min-width:0; }
+    .rcap-connection-row:first-child { border-top:0; }
+    .rcap-connection-row span:first-child { color:var(--text-primary); font-size:13px; font-weight:820; line-height:1.3; min-width:0; overflow-wrap:break-word; word-break:normal; }
+    .rcap-connection-row .badge { flex:0 0 auto; margin:0; white-space:nowrap; }
     .review-only-action { opacity:.62; cursor:not-allowed; border-style:dashed; }
     .control-status { min-height:20px; color:var(--muted); font-size:12px; font-weight:750; }
     .lee-bubble-safe-space { padding-bottom:112px; }
@@ -14081,6 +14090,9 @@ function htmlShell() {
       .section-page { padding:16px 16px 96px; }
       .content-filter-bar label { flex-basis:100%; }
       .lee-bubble-wrap { right:14px; bottom:14px; }
+      .rcap-connection-card .toprow { grid-template-columns:1fr; }
+      .rcap-connection-card .toprow .badge { justify-self:start; }
+      .rcap-connection-row { align-items:flex-start; flex-direction:column; gap:7px; }
     }
 
   </style>
@@ -15636,12 +15648,12 @@ function htmlShell() {
         <div class="channel-actions">
           <button type="button" class="primary" onclick="openRcapConnectionChecklist()">Prepare connection</button>
         </div>
-        <details id="rcap-connection-details">
+        <details id="rcap-connection-details" class="rcap-connection-details">
           <summary class="muted">Connection checklist</summary>
-          <div class="metric-table" style="margin-top:10px">
-            \${checklist.map(([label, status]) => \`<div class="metric-row"><span>\${esc(label)}</span><span class="badge warn">\${esc(status)}</span></div>\`).join("")}
+          <div class="rcap-connection-list">
+            \${checklist.map(([label, status]) => \`<div class="rcap-connection-row"><span>\${esc(label)}</span><span class="badge warn">\${esc(status)}</span></div>\`).join("")}
           </div>
-          <p class="muted" style="margin-top:10px">Use this checklist when the separate RCAP build is complete and ready for a safe Command Center connection review.</p>
+          <p class="muted" style="margin-top:10px">This is only a placeholder. Nothing connects or runs from here yet.</p>
         </details>
       </article>\`;
     }

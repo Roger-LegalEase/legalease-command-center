@@ -45,6 +45,12 @@ for (const required of [
 
 assert(rcapHelper.includes("rcap-connection-details"), "Prepare connection should open the checklist details panel.");
 assert(rcapHelper.includes("Nothing is connected yet"), "Prepare connection should clearly say nothing is connected.");
+assert(rcapCard.includes("rcap-connection-list"), "RCAP checklist should use the dedicated full-width checklist list.");
+assert(rcapCard.includes("rcap-connection-row"), "RCAP checklist items should render as readable rows.");
+assert(!rcapCard.includes("metric-table"), "RCAP checklist should not use the generic metric table layout.");
+assert(source.includes(".rcap-connection-card { grid-column:1 / -1; }"), "RCAP card should span the integrations grid.");
+assert(source.includes(".rcap-connection-row { display:flex;"), "RCAP checklist rows should use a readable row layout.");
+assert(source.includes("word-break:normal"), "RCAP checklist labels should not wrap letter by letter.");
 assert(routeAliases.includes('rcap:"production-activation-rcap"'), "#rcap route alias should remain preserved.");
 assert(!nav.includes(">RCAP<") && !nav.includes("RCAP Connection"), "RCAP should not become a top-level nav item.");
 
