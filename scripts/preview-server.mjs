@@ -14061,7 +14061,22 @@ function htmlShell() {
     @media (max-width:1100px) { .growth-summary-grid,.growth-board { grid-template-columns:repeat(2,minmax(0,1fr)); } .growth-hero { grid-template-columns:1fr; } .growth-hero-actions { justify-content:flex-start; } }
     @media (max-width:640px) { .growth-workspace { padding:18px 16px 96px; } .growth-summary-grid,.growth-board { grid-template-columns:1fr; } .growth-row { grid-template-columns:1fr; } }
     .settings-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; align-items:start; }
-    .channel-grid { grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); }
+    .channel-grid { display:grid; gap:10px; grid-template-columns:1fr; }
+    .channel-readiness-strip { border:1px solid rgba(0,169,157,.18); border-radius:16px; background:#fbfefd; padding:12px 14px; color:var(--text-secondary); font-size:13px; line-height:1.4; }
+    .channel-readiness-list { display:grid; gap:10px; margin-top:14px; }
+    .channel-row { border:1px solid var(--border-light); border-radius:16px; background:#fff; padding:14px; display:grid; grid-template-columns:minmax(0,1.35fr) minmax(150px,.42fr) minmax(150px,.38fr); gap:14px; align-items:center; box-shadow:0 8px 22px rgba(0,38,36,.035); min-width:0; }
+    .channel-row-main { min-width:0; display:grid; gap:4px; }
+    .channel-row-main h3 { margin:0; color:var(--text-primary); font-size:16px; line-height:1.2; letter-spacing:0; overflow-wrap:break-word; word-break:normal; }
+    .channel-row-main p { margin:0; color:var(--text-secondary); font-size:13px; line-height:1.4; max-width:68ch; overflow-wrap:break-word; word-break:normal; }
+    .channel-row-status { display:flex; justify-content:flex-start; min-width:0; }
+    .channel-row-status .badge { margin:0; white-space:normal; text-transform:none; line-height:1.2; }
+    .channel-row-action { display:flex; justify-content:flex-end; min-width:0; }
+    .channel-row-action button { min-height:34px; padding:0 12px; white-space:nowrap; }
+    .channel-row-details { grid-column:1 / -1; margin:2px 0 0; }
+    .channel-row-details summary { cursor:pointer; color:var(--accent-hover); font-size:12px; font-weight:850; }
+    .channel-row-detail-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:10px; }
+    .channel-row-detail-list div { border:1px solid var(--border-light); border-radius:12px; background:#fbfefd; padding:9px 10px; color:var(--text-secondary); font-size:12px; line-height:1.35; min-width:0; overflow-wrap:break-word; word-break:normal; }
+    .channel-row-detail-list strong { display:block; color:var(--text-primary); font-size:12px; margin-bottom:2px; }
     .channel-card .toprow { align-items:flex-start; }
     .channel-actions { align-items:center; }
     .rcap-connection-card { grid-column:1 / -1; }
@@ -14090,6 +14105,9 @@ function htmlShell() {
       .section-page { padding:16px 16px 96px; }
       .content-filter-bar label { flex-basis:100%; }
       .lee-bubble-wrap { right:14px; bottom:14px; }
+      .channel-row { grid-template-columns:1fr; align-items:start; }
+      .channel-row-status,.channel-row-action { justify-content:flex-start; }
+      .channel-row-detail-list { grid-template-columns:1fr; }
       .rcap-connection-card .toprow { grid-template-columns:1fr; }
       .rcap-connection-card .toprow .badge { justify-self:start; }
       .rcap-connection-row { align-items:flex-start; flex-direction:column; gap:7px; }
@@ -15582,6 +15600,11 @@ function htmlShell() {
 	    function channelCards() {
 	      const accountsByPlatform = new Map((state.socialAccounts || []).map(account => [account.platform, account]));
 	      const accounts = platforms.map(platform => accountsByPlatform.get(platform) || { platform, status:"not_connected", displayName:channelLabels[platform] });
+	      const channelAction = account => {
+	        if (account.platform === "linkedin") return '<button type="button" class="primary" onclick="connectLinkedIn()">Connect LinkedIn</button>';
+	        if (account.status === "connected") return \`<button type="button" class="primary" onclick="testChannel('\${account.platform}')">Review</button>\`;
+	        return \`<button type="button" class="primary" onclick="connectChannel('\${account.platform}')">Setup details</button>\`;
+	      };
 	      return accounts.map(account => {
         const label = channelLabels[account.platform] || account.displayName || account.platform;
         const status = account.status || "not_connected";
@@ -15589,39 +15612,32 @@ function htmlShell() {
         const missingEnv = setup.missingEnv || channelRequiredEnv[account.platform] || [];
         const oauthConfigured = Boolean(account.oauthConfigured || setup.configured);
         const connected = Boolean(account.connected || status === "connected");
-        const message = !oauthConfigured
-          ? "Connection needs setup before this can be used."
-          : connected
-            ? \`Connected as \${account.accountName || account.displayName || "account"}.\`
-            : account.lastTestMessage || "Ready to connect.";
-        const connectDisabled = !oauthConfigured && status !== "expired";
-        const testDisabled = !connected;
-	        const disconnectDisabled = !connected;
-	        const liveEnabled = Boolean(account.livePostingEnabled || state.runtime?.livePostingGates?.[account.platform]?.enabled);
-	        const metaNote = ["facebook", "instagram"].includes(account.platform)
-	          ? '<p class="muted" style="margin:6px 0 0">Connected through Meta. Select the Facebook Page and linked Instagram Business account when OAuth is wired.</p>'
-	          : "";
-	        return \`<article class="card channel-card">
-          <div class="toprow">
-            <div>
-              <h3>\${esc(label)}</h3>
-              <p class="muted" style="margin:6px 0 0">\${esc(channelDescriptions[account.platform] || "Social publishing channel.")}</p>
+        const detailNote = ["facebook", "instagram"].includes(account.platform)
+          ? "Connected through Meta when account setup is wired."
+          : account.platform === "linkedin"
+            ? "Prepare LinkedIn from Production or connect after owner sign-in and setup review."
+            : "Use setup details when this channel is ready to configure.";
+        const statusLabel = connected ? "Connected" : oauthConfigured ? "Ready to connect" : "Setup required";
+	        return \`<article class="channel-row">
+          <div class="channel-row-main">
+            <h3>\${esc(label)}</h3>
+            <p>\${esc(channelDescriptions[account.platform] || "Social publishing channel.")}</p>
+          </div>
+          <div class="channel-row-status"><span class="badge \${channelTone(status)}">\${esc(statusLabel)}</span></div>
+          <div class="channel-row-action">\${channelAction(account)}</div>
+          <details class="channel-row-details">
+            <summary>Setup details</summary>
+            <div class="channel-row-detail-list">
+              <div><strong>Account</strong>\${esc(account.accountName || "Not connected")}</div>
+              <div><strong>Connection path</strong>\${esc(detailNote)}</div>
+              <div><strong>Setup state</strong>\${oauthConfigured ? "Connection settings present" : "Needs setup"}</div>
+              <div><strong>Safety</strong>Manual review required before anything live can happen.</div>
+              <div><strong>Dry run</strong>\${esc(account.lastTestStatus || "Not run")}</div>
+              <div><strong>Last checked</strong>\${esc(account.lastTestedAt || "Never")}</div>
+              \${missingEnv.length ? \`<div><strong>Next setup step</strong>Review missing connection settings in the owner setup checklist.</div>\` : ""}
+              \${account.lastErrorSummary ? \`<div><strong>Last note</strong>\${esc(account.lastErrorSummary)}</div>\` : ""}
             </div>
-            <span class="badge \${channelTone(status)}">\${channelStatusLabel(status)}</span>
-	          </div>
-	          <p class="muted">\${esc(message)}</p>
-	          \${metaNote}
-          <p class="muted">Live posting: <strong>\${liveEnabled ? "Enabled" : "Disabled"}</strong> · Dry run: <strong>\${esc(account.lastTestStatus || "not run")}</strong></p>
-	          <div class="channel-actions">
-	            <button type="button" class="primary" \${connectDisabled ? "disabled" : ""} onclick="connectChannel('\${account.platform}')">Connect</button>
-	            <button type="button" \${testDisabled ? "disabled" : ""} onclick="testChannel('\${account.platform}')">Run Dry Test</button>
-	            <button type="button" \${disconnectDisabled ? "disabled" : ""} onclick="disconnectChannel('\${account.platform}')">Disconnect</button>
-              <button class="review-only-action" disabled aria-disabled="true" title="Manual approval required before live publishing can be enabled.">Enable live publishing</button>
-	          </div>
-	          <details>
-	            <summary class="muted">Advanced setup details</summary>
-	            <p class="muted">Account: \${esc(account.accountName || "not connected")}<br>Account ID: \${esc(account.accountId || account.externalAccountId || "not set")}<br>Scopes: \${esc((setup.scopes || account.scopes || []).join(", ") || "none")}<br>Missing env vars: \${esc(missingEnv.join(", ") || "none")}<br>Live gate env: \${esc((account.liveGateEnvVars || state.runtime?.livePostingGates?.[account.platform]?.envVars || []).join(" or ") || "none")}<br>Token expires: \${esc(account.tokenExpiresAt || "not set")}<br>Last tested: \${esc(account.lastTestedAt || "never")}<br>Last error: \${esc(account.lastErrorSummary || "none")}<br>OAuth configured: \${oauthConfigured ? "yes" : "no"}<br>\${esc(setup.notes || "")}</p>
-	          </details>
+          </details>
         </article>\`;
       }).join("");
     }
@@ -15636,20 +15652,18 @@ function htmlShell() {
         ["Document generation", "Not connected"],
         ["Command Center integration", "Needs connection"]
       ];
-      return \`<article class="card channel-card rcap-connection-card">
-        <div class="toprow">
-          <div>
-            <h3>RCAP Connection</h3>
-            <p class="muted" style="margin:6px 0 0">RCAP is being built separately. When it is ready, connect the partner pages, dashboards, Wilma eligibility chat, signup, Briefcase, and document generation here.</p>
-          </div>
-          <span class="badge warn">Not connected</span>
+      return \`<article class="channel-row rcap-connection-card">
+        <div class="channel-row-main">
+          <h3>RCAP Connection</h3>
+          <p>Future connection point for partner pages, dashboards, Wilma eligibility chat, signup, Briefcase, and document generation.</p>
         </div>
-        <p class="muted">This is a placeholder for the future RCAP integration path. Nothing is connected, generated, sent, filed, or published from this card.</p>
-        <div class="channel-actions">
+        <div class="channel-row-status"><span class="badge warn">Not connected</span></div>
+        <div class="channel-row-action">
           <button type="button" class="primary" onclick="openRcapConnectionChecklist()">Prepare connection</button>
         </div>
         <details id="rcap-connection-details" class="rcap-connection-details">
           <summary class="muted">Connection checklist</summary>
+          <p class="muted">RCAP is being built separately. Use this checklist when that build is ready for a safe Command Center connection review.</p>
           <div class="rcap-connection-list">
             \${checklist.map(([label, status]) => \`<div class="rcap-connection-row"><span>\${esc(label)}</span><span class="badge warn">\${esc(status)}</span></div>\`).join("")}
           </div>
@@ -23885,8 +23899,8 @@ function htmlShell() {
           </details>\`}
           <details open>
             <summary>Channels / Integrations</summary>
-            <p class="muted">Prepare account connections for review. Live posting stays off until a separate approval pass.</p>
-            <div class="grid channel-grid settings-card-grid" style="margin-top:14px">\${channelCards()}\${rcapConnectionCardHtml()}</div>
+            <div class="channel-readiness-strip" style="margin-top:12px"><strong>Safe mode:</strong> nothing posts, sends, files, or publishes automatically.</div>
+            <div class="channel-readiness-list">\${channelCards()}\${rcapConnectionCardHtml()}</div>
           </details>
           <details>
             <summary>System status</summary>

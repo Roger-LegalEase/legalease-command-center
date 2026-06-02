@@ -19,9 +19,19 @@ const routeAliases = source.match(/const routeAliases = \{([\s\S]*?)\};/)?.[1] |
 const settingsArea = source.match(/<section id="settings"[\s\S]*?\$\{leeBubbleHtml\(\)\}/)?.[0] || "";
 const rcapCard = functionBlock("rcapConnectionCardHtml");
 const rcapHelper = functionBlock("openRcapConnectionChecklist");
+const channelCards = functionBlock("channelCards");
 
 assert(settingsArea.includes("Channels / Integrations"), "Settings should expose Channels / Integrations.");
 assert(settingsArea.includes("rcapConnectionCardHtml()"), "Settings integrations should render RCAP Connection.");
+assert(settingsArea.includes("channel-readiness-strip"), "Channels should show one section-level safety strip.");
+assert(settingsArea.includes("channel-readiness-list"), "Channels should render as a calm readiness list.");
+assert(!settingsArea.includes("grid channel-grid settings-card-grid"), "Channels should not render the old cramped card grid.");
+assert(channelCards.includes("channel-row"), "Channels should render readable rows.");
+assert(!channelCards.includes("card channel-card"), "Channels should not render cramped channel cards.");
+assert(!channelCards.includes("Enable live publishing"), "Channels should not show live publishing controls in normal view.");
+assert(!channelCards.includes("Live posting:"), "Channels should not repeat live posting status on every row.");
+assert(!channelCards.includes("Run Dry Test"), "Channels should not show disabled dry-run controls on every row.");
+assert(!channelCards.includes("Disconnect"), "Channels should not show disabled disconnect controls on every row.");
 
 for (const required of [
   "RCAP Connection",

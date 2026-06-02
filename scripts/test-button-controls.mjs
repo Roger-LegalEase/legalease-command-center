@@ -19,9 +19,10 @@ assert.match(server, /type="button" onclick="connectGoogle\(\)"/, "Connect Googl
 assert.match(server, /type="button" onclick="syncGmail\(\)"/, "Sync Gmail should be an explicit button.");
 assert.match(server, /type="button" onclick="syncCalendar\(\)"/, "Sync Calendar should be an explicit button.");
 assert.match(server, /Google sync never sends email or creates calendar events/, "Google sync controls should state read-only safety.");
-assert.match(server, /Manual approval required/, "Review-only controls should explain approval requirement.");
-assert.match(server, /Live posting:\s*<strong>\\\$\{liveEnabled \? "Enabled" : "Disabled"\}<\/strong>/, "Live publishing card should show disabled status plainly.");
-assert.match(server, /<button class="review-only-action" disabled aria-disabled="true" title="Manual approval required before live publishing can be enabled.">Enable live publishing<\/button>/, "Enable live publishing must remain disabled/review-only.");
+assert.match(server, /Safe mode:<\/strong> nothing posts, sends, files, or publishes automatically/, "Channels should show one calm section-level safety state.");
+assert.match(server, /Manual review required before anything live can happen/, "Collapsed channel details should explain manual review.");
+assert.doesNotMatch(server, />Enable live publishing<\/button>/, "Enable live publishing should not appear as a normal visible control.");
+assert.doesNotMatch(server, /Live posting:\s*<strong>\\\$\{liveEnabled \? "Enabled" : "Disabled"\}<\/strong>/, "Channels should not repeat live posting status on every row.");
 assert.match(server, /onclick="startRcapActivation\(\)"/, "RCAP activation button should still be wired.");
 assert.match(server, /class="nav-top-link" href="#command" data-nav-section="command"/, "Command top nav link should route directly.");
 assert.match(server, /class="nav-top-link" href="#queue" data-nav-section="queue"/, "Queue top nav link should route directly.");
