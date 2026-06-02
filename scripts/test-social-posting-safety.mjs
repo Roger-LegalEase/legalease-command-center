@@ -16,11 +16,12 @@ function functionBlock(name) {
 
 const production = functionBlock("productionWorkspaceHtml");
 const queue = functionBlock("linkedinApprovalQueueHtml");
+const twitterXQueue = functionBlock("twitterXApprovalQueueHtml");
 const moreStart = source.indexOf("function moreWorkspaceHtml");
 const moreEnd = source.indexOf("function render()", moreStart);
 const more = source.slice(moreStart, moreEnd);
 const appStatus = functionBlock("osHealthPageHtml");
-const visibleUi = [production, queue, more, appStatus].join("\n");
+const visibleUi = [production, queue, twitterXQueue, more, appStatus].join("\n");
 
 for (const required of [
   "Live social posting: Off",
@@ -30,6 +31,8 @@ for (const required of [
   "Target:",
   "LinkedIn",
   "LinkedIn post prepared for approval",
+  "Twitter / X",
+  "Twitter / X post prepared for approval",
   "Approval:",
   "Required",
   "Safety:"
@@ -41,9 +44,11 @@ for (const forbidden of [
   "Post Now",
   "Publish Now",
   "Send to LinkedIn",
+  "Send to Twitter / X",
   "Connect OAuth",
   "Go Live",
   "LinkedIn API",
+  "Twitter / X API",
   "access token",
   "API key"
 ]) {

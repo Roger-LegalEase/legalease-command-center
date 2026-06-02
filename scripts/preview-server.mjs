@@ -20044,6 +20044,7 @@ function htmlShell() {
         ["Email:", "Not connected / draft-only planned"],
         ["Email readiness:", "Email drafts can be prepared for review. Email sending is off."],
         ["LinkedIn:", "Not connected / approval workflow ready"],
+        ["Twitter / X:", "Not connected / approval workflow ready"],
         ["Social accounts:", "Not connected"],
         ["Live social posting:", "Off"],
         ["External actions:", "Off"]
@@ -21199,6 +21200,7 @@ function htmlShell() {
           <button type="button" onclick="location.hash='queue'">Preview</button>
           <button type="button" onclick="location.hash='queue'">Copy Post</button>
           <button type="button" onclick="location.hash='production-linkedin-queue'">Move to LinkedIn Review</button>
+          <button type="button" onclick="location.hash='production-twitter-x-queue'">Move to Twitter / X Review</button>
         </div>
       </article>\`).join("") : \`<div class="empty-calm">\${esc(emptyText)}</div>\`;
     }
@@ -21370,6 +21372,57 @@ function htmlShell() {
       </section>\`;
     }
 
+    function twitterXApprovalQueueHtml(posts = [], images = []) {
+      const imageFor = post => images.find(image => image.postId === post.id || image.post_id === post.id) || null;
+      const titleFor = post => post.title || post.headline || post.topic || post.caption?.slice?.(0, 70) || "Twitter / X post";
+      const captionFor = post => composePreviewText(post) || post.caption || post.body || "Caption preview will appear after the post is drafted.";
+      const stageFor = post => {
+        const status = String(post.status || "").toLowerCase();
+        if (post.manuallyPostedAt || /manually_posted|posted/.test(status)) return "Published manually";
+        if (/scheduled/.test(status)) return "Scheduled internally";
+        if (/approved/.test(status)) return "Approved internally";
+        if (/needs_approval|approval/.test(status)) return "Needs approval";
+        if (/ready|review/.test(status)) return "Ready for review";
+        if (!imageFor(post) && /needs_image|image/.test(status)) return "Needs image";
+        return "Draft";
+      };
+      const imageStatusFor = (post, image) => {
+        if (!image) return "Image: Needed";
+        if (image.attachedToPost || post.imageAttachedAt) return "Image: Attached";
+        if (image.approvedAt || image.finalPngPath || image.finalImageReady) return "Image: Approved";
+        if (image.imageUrl || image.dataUrl || image.generatedAt) return "Image: Generated";
+        return "Image: Requested";
+      };
+      const queuePosts = posts.filter(post => {
+        const platformText = [post.platform, ...(post.targetChannels || []), post.channel].join(" ").toLowerCase();
+        return platformText.includes("twitter") || platformText.includes("x") || post.platform === "x";
+      }).slice(0, 5);
+      const fallbackPosts = queuePosts.length ? queuePosts : [{
+        id:"twitter-x-readiness-sample",
+        title:"A clean record should not require a maze",
+        caption:"A clean record should not require a maze. LegalEase turns confusion into the next clear step.",
+        status:"needs_approval",
+        platform:"x"
+      }];
+      const stageLabels = ["Draft", "Needs image", "Ready for review", "Needs approval", "Approved internally", "Scheduled internally", "Published manually"];
+      return \`<section id="production-twitter-x-queue" class="production-card">
+        <div class="production-card-head"><div><h2>Twitter / X Approval Queue</h2><small>Show which posts are ready for Twitter / X review.</small></div><span class="badge warn">No live posting</span></div>
+        <p class="muted">Twitter / X posting is not connected yet. Posts can be prepared and approved internally. Each item shows post title, caption preview, image status, approval status, platform: Twitter / X, next action, and safety note.</p>
+        <div class="production-workflow">\${stageLabels.join(" → ")}</div>
+        <div class="production-list">\${fallbackPosts.map(post => {
+          const image = imageFor(post);
+          const imageStatus = imageStatusFor(post, image);
+          const approvalStatus = stageFor(post);
+          const caption = captionFor(post);
+          const characterNote = caption.length <= 280 ? "Character count ready" : "Character count needs trimming";
+          return \`<article class="production-row">
+            <div><strong>\${esc(titleFor(post))}</strong><span><b>caption preview:</b> \${esc(caption).slice(0, 130)}</span><span><b>image status:</b> \${esc(imageStatus)} · <b>approval status:</b> \${esc(approvalStatus)}</span><span><b>platform: Twitter / X</b> · <b>next action:</b> Review internally · <b>safety note:</b> No live posting · \${esc(characterNote)}</span></div>
+            <div class="production-card-actions"><button type="button" onclick="location.hash='queue'">Preview</button><button type="button" onclick="location.hash='assets'">Review Image</button><button type="button" onclick="toast('Twitter / X post approved internally. No live posting occurred.')">Approve Internally</button><button type="button" onclick="location.hash='internal-schedule'">Schedule Internally</button><button type="button" onclick="location.hash='posted'">Mark Published Manually</button></div>
+          </article>\`;
+        }).join("")}</div>
+      </section>\`;
+    }
+
     function productionWorkspaceHtml(pageClass) {
       const posts = state.posts || [];
       const images = state.postImages || [];
@@ -21489,11 +21542,14 @@ function htmlShell() {
         ["LinkedIn", "Prepare LinkedIn", "Approval workflow ready"],
         ["Facebook", "Prepare Facebook"],
         ["Instagram", "Prepare Instagram"],
-        ["Twitter / X", "Prepare Twitter / X"]
+        ["Twitter / X", "Prepare Twitter / X", "Approval workflow ready"]
       ];
       const linkedInReadinessStatuses = ["Not connected", "Ready to configure", "Approval workflow ready", "Needs setup", "Error"];
       const linkedInFutureCapabilities = ["Preview LinkedIn post", "Review image", "Approve post", "Prepare scheduling", "Post only after future live connector is approved"];
       const linkedInDisabledCapabilities = ["Live posting", "Account connection", "Auto-posting", "Analytics sync", "Credential storage", "External scheduling"];
+      const twitterXReadinessStatuses = ["Not connected", "Ready to configure", "Approval workflow ready", "Needs setup", "Error"];
+      const twitterXFutureCapabilities = ["Preview Twitter / X post", "Review image", "Approve post", "Prepare scheduling", "Post only after future live connector is approved"];
+      const twitterXDisabledCapabilities = ["Live posting", "Account connection", "Auto-posting", "Analytics sync", "Credential storage", "External scheduling"];
       const campaignTemplateColumns = [
         "Date", "Time", "Platform", "Campaign", "Post Type", "Topic", "Caption", "Headline", "Subhead", "CTA", "Link", "Audience", "Goal", "Tone", "Image Direction", "Overlay Text", "Wilma Preference", "Approval Owner", "Status", "Notes"
       ];
@@ -21548,6 +21604,17 @@ function htmlShell() {
             <article class="production-summary-card urgent"><span>Explicitly disabled</span><strong>No live connector</strong><small>\${linkedInDisabledCapabilities.map(esc).join(" · ")}</small></article>
           </div>
           <div class="production-card-actions"><button type="button" onclick="document.getElementById('production-linkedin-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View LinkedIn Approval Queue</button><button type="button" onclick="location.hash='queue'">Preview LinkedIn Post</button><button type="button" onclick="toast('LinkedIn checklist opened internally. No connection starts here.')">Prepare LinkedIn</button></div>
+        </section>
+
+        <section class="production-card">
+          <div class="production-card-head"><div><h2>Twitter / X readiness</h2><small>Approval workflow ready</small></div><span class="badge warn">No live posting</span></div>
+          <p class="muted">Twitter / X posting is not connected yet. Posts can be prepared and approved internally.</p>
+          <div class="production-summary-grid">
+            <article class="production-summary-card"><span>Status values</span><strong>Approval workflow ready</strong><small>\${twitterXReadinessStatuses.map(esc).join(" · ")}</small></article>
+            <article class="production-summary-card"><span>Future capabilities</span><strong>Internal review</strong><small>\${twitterXFutureCapabilities.map(esc).join(" · ")}</small></article>
+            <article class="production-summary-card urgent"><span>Explicitly disabled</span><strong>No live connector</strong><small>\${twitterXDisabledCapabilities.map(esc).join(" · ")}</small></article>
+          </div>
+          <div class="production-card-actions"><button type="button" onclick="document.getElementById('production-twitter-x-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View Twitter / X Approval Queue</button><button type="button" onclick="location.hash='queue'">Preview Twitter / X Post</button><button type="button" onclick="toast('Twitter / X checklist opened internally. No connection starts here.')">Prepare Twitter / X</button></div>
         </section>
 
         <section class="production-card">
@@ -21640,10 +21707,13 @@ function htmlShell() {
               <p class="muted">Live posting will require connected accounts, permissions, and manual approval.</p>
               <div class="production-list">\${accountRows.map(([platform, action, status]) => platform === "LinkedIn"
                 ? \`<article class="account-row"><div><strong>LinkedIn — Not connected</strong><span>Status: Approval workflow ready</span><span>Next step: Prepare LinkedIn connection</span><span>Safety: No live posting</span></div><div class="production-card-actions"><button type="button" onclick="toast('LinkedIn checklist opened internally. No connection starts here.')">Prepare LinkedIn</button><button type="button" onclick="document.getElementById('production-linkedin-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View LinkedIn Approval Queue</button><button type="button" onclick="location.hash='queue'">Preview LinkedIn Post</button></div></article>\`
+                : platform === "Twitter / X"
+                ? \`<article class="account-row"><div><strong>Twitter / X — Not connected</strong><span>Status: Approval workflow ready</span><span>Next step: Prepare Twitter / X connection</span><span>Safety: No live posting</span></div><div class="production-card-actions"><button type="button" onclick="toast('Twitter / X checklist opened internally. No connection starts here.')">Prepare Twitter / X</button><button type="button" onclick="document.getElementById('production-twitter-x-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View Twitter / X Approval Queue</button><button type="button" onclick="location.hash='queue'">Preview Twitter / X Post</button></div></article>\`
                 : \`<article class="account-row"><div><strong>\${esc(platform)} — Not connected</strong><span>Future capability: posting · scheduling · analytics</span><span>Setup state: Coming later</span></div><button type="button" disabled title="Coming later">\${esc(action)}</button></article>\`).join("")}</div>
             </section>
 
             \${linkedinApprovalQueueHtml(posts, images)}
+            \${twitterXApprovalQueueHtml(posts, images)}
           </main>
 
           <aside class="production-stack">
@@ -23111,12 +23181,13 @@ function htmlShell() {
         ["Google Calendar", "Not connected / Read-only connected", "Calendar reads can help Today understand meetings and focus blocks.", "Calendar writes are off.", "Prepare Calendar Connection.", "Read-only. No events or invites."],
         ["Gmail / Email", "Not connected / Draft-only planned", "Email drafts can be prepared for review.", "Email sending is off.", "Prepare Email Connection.", "No messages sent."],
         ["Image Generation", moreImageGenerationStatus, "Server-side image generation can be used when configured.", "Missing setup saves an image request instead.", "Check image readiness.", moreImageGenerationSafety],
-        ["Social Accounts", "Not connected", "Platform checklists are available for future setup. LinkedIn approval workflow can prepare LinkedIn posts internally.", "No accounts are connected. No LinkedIn connection starts here.", "Prepare LinkedIn checklist. Prepare each platform checklist.", "No live posting."],
+        ["Social Accounts", "Not connected", "Platform checklists are available for future setup. LinkedIn and Twitter / X approval workflows can prepare posts internally.", "No accounts are connected. No LinkedIn or Twitter / X connection starts here.", "Prepare LinkedIn checklist. Prepare Twitter / X checklist. Prepare each platform checklist.", "No live posting."],
         ["External Action Outbox", "Draft-only", "Future live actions can be reviewed before execution.", "Outbox does not execute actions in this pass.", "Review drafts and approvals.", "Outbox does not execute."],
         ["Safety Switches", "Protected", "Safety state is visible.", "Enable controls are not available.", "Review Safety or Open App Status.", "Live actions stay off."]
       ];
       const outboxRows = [
         ["Social post", "LinkedIn", "LinkedIn post prepared for approval", "Roger", "Today", "Required", "Live social posting is off", "Needs approval"],
+        ["Social post", "Twitter / X", "Twitter / X post prepared for approval", "Roger", "Today", "Required", "Live social posting is off", "Needs approval"],
         ["Email draft", "Partner follow-up", "Prepared email draft for review", "Roger", "Today", "Yes", "Email sending: Off", "Needs approval"],
         ["Calendar request", "Internal schedule", "Calendar write request blocked", "Command Center", "Today", "Yes", "Calendar writes: Off", "Blocked"],
         ["Calendar update", "Internal schedule", "Calendar update request blocked", "Command Center", "Today", "Yes", "Calendar writes: Off", "Blocked"],
@@ -23127,7 +23198,7 @@ function htmlShell() {
         ["LinkedIn", "Prepare LinkedIn", "Approval workflow can prepare LinkedIn posts internally.", "No LinkedIn connection starts here.", "Prepare LinkedIn checklist.", "No live posting."],
         ["Facebook", "Prepare Facebook"],
         ["Instagram", "Prepare Instagram"],
-        ["Twitter / X", "Prepare Twitter / X"]
+        ["Twitter / X", "Prepare Twitter / X", "Approval workflow can prepare Twitter / X posts internally.", "No Twitter / X connection starts here.", "Prepare Twitter / X checklist.", "No live posting."]
       ];
       const activationAction = (label, message, tone = "") => {
         const className = tone === "primary" ? ' class="primary"' : "";
@@ -23177,6 +23248,8 @@ function htmlShell() {
           <div class="more-utility-grid">
             \${socialSetupRows.map(([platform, label, ready, notReady, nextStep, safety]) => platform === "LinkedIn"
               ? \`<article class="more-utility-card"><h3>LinkedIn</h3><p><strong>Status:</strong> Not connected<br><strong>Ready:</strong> \${esc(ready)}<br><strong>Not ready:</strong> \${esc(notReady)}<br><strong>Next step:</strong> \${esc(nextStep)}<br><strong>Safety:</strong> \${esc(safety)}</p><div class="more-card-actions">\${activationAction(label, "LinkedIn setup checklist opened. No connection starts here.")}</div></article>\`
+              : platform === "Twitter / X"
+              ? \`<article class="more-utility-card"><h3>Twitter / X</h3><p><strong>Status:</strong> Not connected<br><strong>Ready:</strong> \${esc(ready)}<br><strong>Not ready:</strong> \${esc(notReady)}<br><strong>Next step:</strong> \${esc(nextStep)}<br><strong>Safety:</strong> \${esc(safety)}</p><div class="more-card-actions">\${activationAction(label, "Twitter / X setup checklist opened. No connection starts here.")}</div></article>\`
               : \`<article class="more-utility-card"><h3>\${esc(platform)}</h3><p>Future capabilities: preview, approval, scheduling, posting, analytics. Current status: Not connected.</p><div class="more-card-actions">\${activationAction(label, platform + " setup checklist opened. No connection starts here.")}</div></article>\`).join("")}
           </div>
         </section>
