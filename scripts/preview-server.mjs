@@ -10700,6 +10700,87 @@ async function syncCalendarReadOnly() {
   return { ...result, message:`Calendar sync complete. ${result.importedCount} new events imported; ${result.suggestedCount} suggestions created.` };
 }
 
+function serverCalendarReadinessState(currentState = {}) {
+  const connector = (currentState.connectorStatus || []).find(item => item.connector === "calendar") || {};
+  const googleAccount = (currentState.socialAccounts || []).find(item => item.platform === "google_workspace") || {};
+  const hasServerToken = Boolean(process.env.GOOGLE_CALENDAR_ACCESS_TOKEN || process.env.CALENDAR_ACCESS_TOKEN || process.env.GOOGLE_ACCESS_TOKEN);
+  const readOnlyConnected = Boolean(connector.configured || googleAccount.connectedAt || hasServerToken);
+  const readyToConnect = googleOAuthConfigured();
+  const status = readOnlyConnected ? "Read-only connected" : readyToConnect ? "Ready to connect" : "Not connected";
+  return {
+    status,
+    connected: readOnlyConnected,
+    message: readOnlyConnected ? "Calendar read-only access is ready. Calendar writes are off." : "Calendar is not connected yet.",
+    safety: "Calendar reads can help Today understand your day. Calendar writes are off.",
+    capabilities: [
+      "Read today’s events",
+      "Read upcoming meetings",
+      "Detect focus windows",
+      "Suggest Today’s Flow blocks",
+      "Show meeting conflicts"
+    ],
+    disabled: [
+      "Create events",
+      "Edit events",
+      "Delete events",
+      "Send invites",
+      "Write to calendar"
+    ],
+    nextStep: readOnlyConnected ? "Check Calendar Readiness" : "Prepare Calendar Connection"
+  };
+}
+
+function eventTimeWindowForCalendar(event = {}) {
+  const raw = event.rawPayload || {};
+  return {
+    start: raw.startTime || event.startsAt || event.startTime || event.date || event.receivedAt || "",
+    end: raw.endTime || event.endsAt || event.endTime || ""
+  };
+}
+
+function publicCalendarEvent(event = {}) {
+  const times = eventTimeWindowForCalendar(event);
+  return {
+    time: times.start ? new Date(times.start).toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit" }) : "Time not set",
+    title: event.title || event.summary || "Calendar hold",
+    status: event.status || "read-only",
+    location: event.location || event.rawPayload?.location || "",
+    kind: /focus|block|hold/i.test([event.title, event.summary, event.eventType].join(" ")) ? "focus" : "meeting"
+  };
+}
+
+function calendarEventsFromState(currentState = {}, mode = "today") {
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + (mode === "upcoming" ? 14 : 1));
+  return [
+    ...(currentState.calendarSignals || []),
+    ...(currentState.googleCalendarSignals || []),
+    ...(currentState.automationEvents || []).filter(item => /calendar|meeting|call/i.test([item.source, item.sourceType, item.eventType, item.title, item.summary].join(" ")))
+  ].filter(item => {
+    const raw = eventTimeWindowForCalendar(item).start || item.receivedAt || "";
+    const timestamp = raw ? new Date(raw).getTime() : NaN;
+    if (!Number.isFinite(timestamp)) return mode === "upcoming";
+    return timestamp >= start.getTime() && timestamp < end.getTime();
+  }).slice(0, mode === "upcoming" ? 12 : 6).map(publicCalendarEvent);
+}
+
+function calendarStatusResponse(currentState = {}) {
+  const readiness = serverCalendarReadinessState(currentState);
+  const notConnectedMessage = "Calendar is not connected yet.";
+  return {
+    status: readiness.status,
+    message: readiness.connected ? readiness.message : notConnectedMessage,
+    safety: readiness.safety,
+    capabilities: readiness.capabilities,
+    disabled: readiness.disabled,
+    nextStep: readiness.nextStep,
+    liveGatesCount: 0
+  };
+}
+
 async function disconnectGoogleWorkspace() {
   return serializeStateMutation(async () => {
     const state = await store.readState();
@@ -17730,7 +17811,17 @@ function htmlShell() {
 
     function cockpitTimelineBlocks(nowItem = cockpitNowItem()) {
       const seed = cockpitTodayOperatingSeedData();
-      if (seed.flow?.length) return seed.flow;
+      const calendarBlocks = cockpitCalendarEventsForToday().slice(0, 3).map((item, index) => ({
+        label:item.title || "Calendar meeting",
+        type:item.kind === "focus" ? "focus" : item.kind === "hold" ? "hold" : "meeting",
+        start:10 + index * 2,
+        end:11 + index * 2
+      }));
+      if (seed.flow?.length) {
+        const internalPriorityBlocks = seed.flow.map(block => ({ ...block, source:"internal priorities" }));
+        if (!calendarBlocks.length) return internalPriorityBlocks;
+        return [...internalPriorityBlocks.slice(0, 2), ...calendarBlocks, ...internalPriorityBlocks.slice(-1)].slice(0, 5);
+      }
       const now = new Date();
       const hour = now.getHours();
       const currentStart = Math.min(16.5, Math.max(8, hour + (now.getMinutes() / 60)));
@@ -17786,6 +17877,88 @@ function htmlShell() {
           <div id="tl-now-marker" class="timeline-now" style="left:\${nowLeft}%"></div>
           <div id="tl-now-label" class="timeline-now-label" style="left:\${nowLeft}%">now</div>
         </div>
+      </section>\`;
+    }
+
+    function calendarReadinessState() {
+      const readOnlyConnected = Boolean(state.runtime?.calendarReadOnlyConnected);
+      const readyToConnect = Boolean(state.runtime?.calendarReadyToConnect);
+      const status = readOnlyConnected ? "Read-only connected" : readyToConnect ? "Ready to connect" : "Not connected";
+      return {
+        status,
+        statuses:["Not connected", "Ready to connect", "Read-only connected", "Needs setup", "Error"],
+        safety:"Calendar reads can help Today understand your day. Calendar writes are off.",
+        capabilities:[
+          "Read today’s events",
+          "Read upcoming meetings",
+          "Detect focus windows",
+          "Suggest Today’s Flow blocks",
+          "Show meeting conflicts"
+        ],
+        disabled:[
+          "Create events",
+          "Edit events",
+          "Delete events",
+          "Send invites",
+          "Write to calendar"
+        ],
+        nextStep:"Prepare Calendar Connection"
+      };
+    }
+
+    function cockpitCalendarEventTime(item = {}) {
+      const raw = item.rawPayload || {};
+      const value = raw.startTime || item.startTime || item.startsAt || item.date || item.receivedAt || "";
+      if (!value) return "Time not set";
+      try {
+        return new Date(value).toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit" });
+      } catch {
+        return "Time not set";
+      }
+    }
+
+    function cockpitCalendarEventsForToday() {
+      const events = [
+        ...(state.calendarSignals || []),
+        ...(state.googleCalendarSignals || []),
+        ...(state.automationEvents || []).filter(item => /calendar|meeting|call|focus|hold/i.test([item.source, item.sourceType, item.eventType, item.title, item.summary].join(" ")))
+      ];
+      return events.slice(0, 5).map(item => {
+        const text = [item.title, item.summary, item.eventType].join(" ");
+        return {
+          time:cockpitCalendarEventTime(item),
+          title:item.title || item.summary || "Calendar hold",
+          status:item.status || "read-only",
+          location:item.location || item.rawPayload?.location || "",
+          kind:/focus|block/i.test(text) ? "focus" : /hold/i.test(text) ? "hold" : "meeting"
+        };
+      });
+    }
+
+    function cockpitCalendarSuggestions(events = cockpitCalendarEventsForToday()) {
+      if (!events.length) return [
+        "You have a 90-minute focus window before your next meeting.",
+        "Do the We Must Vote report before the afternoon block.",
+        "Investor update draft fits in the late-day window.",
+        "Suggestions are internal only. No events are created."
+      ];
+      return [
+        "Review meeting conflicts before starting deep work.",
+        "Protect one open work window for the We Must Vote report.",
+        "Suggestions are internal only. No events are created."
+      ];
+    }
+
+    function cockpitCalendarReadHtml() {
+      const readiness = calendarReadinessState();
+      const events = cockpitCalendarEventsForToday();
+      const suggestions = cockpitCalendarSuggestions(events);
+      const disconnected = !events.length && readiness.status !== "Read-only connected";
+      return \`<section class="timeline-card calendar-read-card">
+        <div class="cockpit-card-head"><h2>Today’s Calendar</h2><small>\${esc(readiness.status)}</small></div>
+        <p class="muted">\${esc(readiness.safety)}</p>
+        \${disconnected ? '<div class="empty-calm">Calendar is not connected yet. Today’s Flow is using internal planning blocks.</div>' : \`<div class="calendar-read-list">\${events.map(event => \`<article class="calendar-read-item"><strong>\${esc(event.time)} · \${esc(event.title)}</strong><span>\${esc(event.status)} · \${esc(event.location || "No location")} · \${esc(event.kind)}</span></article>\`).join("")}</div>\`}
+        <div class="calendar-suggestions"><strong>Calendar suggestions</strong><ul>\${suggestions.slice(0, 3).map(item => \`<li>\${esc(item)}</li>\`).join("")}</ul></div>
       </section>\`;
     }
 
@@ -19710,6 +19883,7 @@ function htmlShell() {
         ["Image generation:", imageGenerationStatus],
         ["Tasks and priorities:", "Ready"],
         ["Calendar:", "Not connected / read-only planned"],
+        ["Calendar readiness:", "Calendar reads can help Today understand your day. Calendar writes are off."],
         ["Email:", "Not connected / draft-only planned"],
         ["Social accounts:", "Not connected"],
         ["External actions:", "Off"]
@@ -20442,6 +20616,7 @@ function htmlShell() {
               </div>
             </section>
             \${cockpitTimelineHtml(nowItem)}
+            \${cockpitCalendarReadHtml()}
             \${cockpitTodayStandupBoardHtml()}
             </main>
             <aside class="cockpit-rail">
@@ -22691,7 +22866,7 @@ function htmlShell() {
       const moreImageGenerationSafety = state.runtime?.openAIConfigured ? "Server-side only" : "Request saved";
       const activationSections = [
         ["Tasks & Priorities", "Ready", "Today can show priorities, tasks, blockers, decisions, and closeout notes.", "Outside task systems are not connected.", "Use Today to update work internally.", "Manual only"],
-        ["Google Calendar", "Read-only", "Calendar reads can help Today understand focus blocks.", "Calendar writes are off.", "Prepare the calendar checklist.", "No events or invites."],
+        ["Google Calendar", "Not connected / Read-only connected", "Calendar reads can help Today understand meetings and focus blocks.", "Calendar writes are off.", "Prepare Calendar Connection.", "Read-only. No events or invites."],
         ["Gmail / Email", "Draft-only", "Email drafts can be prepared for review.", "Email sending is off.", "Prepare the email checklist.", "No messages sent."],
         ["Image Generation", moreImageGenerationStatus, "Server-side image generation can be used when configured.", "Missing setup saves an image request instead.", "Check image readiness.", moreImageGenerationSafety],
         ["Social Accounts", "Not connected", "Platform checklists are available for future setup.", "No accounts are connected.", "Prepare each platform checklist.", "No account connection starts here."],
@@ -22745,6 +22920,7 @@ function htmlShell() {
 
         <section id="activation-center" class="more-card">
           <div class="more-card-head"><div><h2>Activation Center</h2><small>Prepare the Command Center for real daily use without turning on risky live actions too early.</small></div><span class="more-pill">Manual only</span></div>
+          <p class="muted">Calendar reads can help Today understand your day. Calendar writes are off.</p>
           <div class="more-summary-grid">\${activationSections.map(([title, status, ready, notReady, nextStep, safety]) => \`<article class="more-summary-card"><span>\${esc(title)}</span><small><b>Status:</b> \${esc(status)}<br><b>Ready:</b> \${esc(ready)}<br><b>Not ready:</b> \${esc(notReady)}<br><b>Next step:</b> \${esc(nextStep)}<br><b>Safety:</b> \${esc(safety)}</small></article>\`).join("")}</div>
           <div class="more-card-actions">
             \${activationAction("Prepare Calendar Connection", "Calendar readiness checklist opened. Calendar writes are off.", "primary")}
@@ -27128,6 +27304,36 @@ async function handleRequest(request, response) {
     } catch (error) {
       sendJson(response, { error: error.message || "Could not sync Google Calendar." }, 400);
     }
+    return;
+  }
+
+  if (url.pathname === "/api/calendar/status" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, calendarStatusResponse(currentState));
+    return;
+  }
+
+  if (url.pathname === "/api/calendar/today" && request.method === "GET") {
+    const currentState = await store.readState();
+    const status = calendarStatusResponse(currentState);
+    sendJson(response, {
+      ...status,
+      events: status.status === "Read-only connected" ? calendarEventsFromState(currentState, "today") : [],
+      message: status.status === "Read-only connected" ? "Calendar read-only events loaded for Today." : "Calendar is not connected yet.",
+      safety: "This is read-only. Calendar writes are off."
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/calendar/upcoming" && request.method === "GET") {
+    const currentState = await store.readState();
+    const status = calendarStatusResponse(currentState);
+    sendJson(response, {
+      ...status,
+      events: status.status === "Read-only connected" ? calendarEventsFromState(currentState, "upcoming") : [],
+      message: status.status === "Read-only connected" ? "Upcoming calendar items loaded read-only." : "Calendar is not connected yet.",
+      safety: "This is read-only. Calendar writes are off."
+    });
     return;
   }
 

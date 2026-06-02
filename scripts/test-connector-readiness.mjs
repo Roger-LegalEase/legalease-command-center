@@ -19,7 +19,7 @@ const appStatus = functionBlock("osHealthPageHtml");
 const production = functionBlock("productionWorkspaceHtml");
 
 for (const required of [
-  "Calendar reads can help Today understand focus blocks.",
+  "Calendar reads can help Today understand meetings and focus blocks.",
   "Calendar writes are off.",
   "Prepare Calendar Connection",
   "Check Calendar Readiness",
