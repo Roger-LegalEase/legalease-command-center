@@ -10,7 +10,7 @@ function functionBlock(name) {
   const start = source.indexOf(marker);
   assert(start >= 0, `${name} should exist`);
   const rest = source.slice(start);
-  const next = rest.slice(1).search(/\n    function [a-zA-Z0-9_$]+\(/);
+  const next = rest.slice(1).search(/\n\s*function [a-zA-Z0-9_$]+\(/);
   return next > 0 ? rest.slice(0, next + 1) : rest;
 }
 
@@ -23,12 +23,13 @@ const growth = functionBlock("growthWorkspaceHtml") + "\n" + functionBlock("grow
 
 for (const required of [
   "LinkedIn readiness",
-  "LinkedIn posting is not connected yet. Posts can be prepared and approved internally.",
-  "LinkedIn — Not connected",
+  "LinkedIn posting is installed but disabled unless LinkedIn is connected",
+  "LinkedIn —",
   "Status: Approval workflow ready",
-  "Next step: Prepare LinkedIn connection",
-  "Safety: No live posting",
-  "Prepare LinkedIn",
+  "Live posting:",
+  "Safety: Approved posts only",
+  "Connect LinkedIn",
+  "Check Status",
   "View LinkedIn Approval Queue",
   "Preview LinkedIn Post"
 ]) {
@@ -45,12 +46,11 @@ for (const required of [
   "Review image",
   "Approve post",
   "Prepare scheduling",
-  "Post only after future live connector is approved",
-  "Live posting",
-  "Account connection",
+  "Post only after final approval and safety switch",
+  "Bulk publishing",
+  "Unapproved posting",
   "Auto-posting",
   "Analytics sync",
-  "Credential storage",
   "External scheduling"
 ]) {
   assert(production.includes(required), `LinkedIn readiness model should include ${required}`);
@@ -58,7 +58,8 @@ for (const required of [
 
 for (const required of [
   "LinkedIn",
-  "Not connected / approval workflow ready",
+  "LinkedIn posting:",
+  "LinkedIn posting is installed but disabled.",
   "Social accounts:",
   "Not connected",
   "Live social posting:",
@@ -74,11 +75,11 @@ for (const required of [
   "Ready:",
   "Approval workflow can prepare LinkedIn posts internally.",
   "Not ready:",
-  "No LinkedIn connection starts here.",
+  "LinkedIn connection needs setup if credentials or safe token storage are missing.",
   "Next step:",
-  "Prepare LinkedIn checklist.",
-  "Safety:",
-  "No live posting."
+  "Check LinkedIn Status.",
+  "Safety state:",
+  "Approved posts only."
 ]) {
   assert(more.includes(required), `Activation Center should include LinkedIn readiness copy: ${required}`);
 }

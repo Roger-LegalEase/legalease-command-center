@@ -478,7 +478,7 @@ const channelRequiredEnv = {
 };
 
 const livePostingEnvKeys = {
-  linkedin: ["ENABLE_LIVE_LINKEDIN_POSTING"],
+  linkedin: ["LINKEDIN_LIVE_POSTING_ENABLED", "ENABLE_LIVE_LINKEDIN_POSTING"],
   x: ["ENABLE_LIVE_X_POSTING", "ENABLE_LIVE_TWITTER_POSTING"],
   facebook: ["ENABLE_LIVE_FACEBOOK_POSTING"],
   instagram: ["ENABLE_LIVE_INSTAGRAM_POSTING"],
@@ -1061,6 +1061,14 @@ const credentialSpecs = [
     description: "Required for LinkedIn OAuth.",
     nextAction: `Add ${key} to .env.local.`
   })),
+  ...["LINKEDIN_OWNER_ONLY", "LINKEDIN_TOKEN_ENCRYPTION_SECRET"].map((key) => ({
+    key,
+    label: `LinkedIn ${key.replace("LINKEDIN_", "").replaceAll("_", " ").toLowerCase()}`,
+    category: "linkedin",
+    severity: key === "LINKEDIN_OWNER_ONLY" ? "required" : "optional",
+    description: key === "LINKEDIN_OWNER_ONLY" ? "Keeps LinkedIn connection owner-only." : "Optional LinkedIn-specific token encryption secret.",
+    nextAction: key === "LINKEDIN_OWNER_ONLY" ? "Set LINKEDIN_OWNER_ONLY=true server-side." : "Use OAUTH_TOKEN_ENCRYPTION_KEY or set this optional secret server-side."
+  })),
   ...["META_APP_ID", "META_CLIENT_ID", "META_APP_SECRET", "META_CLIENT_SECRET", "META_REDIRECT_URI"].map((key) => ({
     key,
     label: `Meta ${key.replace("META_", "").replaceAll("_", " ").toLowerCase()}`,
@@ -1127,9 +1135,9 @@ function envValue(key) {
 
 function validLookingCredential(key, value) {
   if (!value) return false;
-  if (key.endsWith("_REDIRECT_URI")) return /^https?:\/\/.+\/api\/oauth\/[^/]+\/callback/i.test(value);
+  if (key.endsWith("_REDIRECT_URI")) return /^https?:\/\/.+\/api\/(?:oauth\/[^/]+|linkedin)\/callback/i.test(value);
   if (key === "SUPABASE_URL") return /^https:\/\/.+\.supabase\.co$/i.test(value);
-  if (key.startsWith("ENABLE_LIVE_") || key === "USE_SUPABASE_JS_STORE") return ["true", "false"].includes(String(value).toLowerCase());
+  if (key.startsWith("ENABLE_LIVE_") || key.endsWith("_LIVE_POSTING_ENABLED") || key === "LINKEDIN_OWNER_ONLY" || key === "USE_SUPABASE_JS_STORE") return ["true", "false"].includes(String(value).toLowerCase());
   if (key === "OAUTH_TOKEN_ENCRYPTION_KEY") return String(value).length >= 24;
   return String(value).trim().length >= 8;
 }
@@ -1312,7 +1320,7 @@ function withPublicChannelSetup(state) {
     postImages: (state.postImages || []).map(publicPostImage),
     runtime: {
       ...(state.runtime || {}),
-	      liveLinkedInPostingEnabled: process.env.ENABLE_LIVE_LINKEDIN_POSTING === "true",
+	      liveLinkedInPostingEnabled: linkedinLivePostingSwitchEnabled(),
 	      livePostingGates: Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)])),
 	      openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
       oauthTokenEncryptionConfigured: Boolean(process.env.OAUTH_TOKEN_ENCRYPTION_KEY),
@@ -5133,7 +5141,7 @@ function verifyOAuthState(platform, state) {
 }
 
 function tokenEncryptionKey() {
-  const raw = process.env.OAUTH_TOKEN_ENCRYPTION_KEY || "";
+  const raw = process.env.OAUTH_TOKEN_ENCRYPTION_KEY || process.env.LINKEDIN_TOKEN_ENCRYPTION_SECRET || "";
   if (!raw) return null;
   return crypto.createHash("sha256").update(raw).digest();
 }
@@ -5306,6 +5314,187 @@ function safeLinkedInError(error) {
     return "LinkedIn connection failed during secure OAuth exchange.";
   }
   return message.slice(0, 160);
+}
+
+function linkedinSafeTokenStorageReady() {
+  return Boolean(process.env.OAUTH_TOKEN_ENCRYPTION_KEY || process.env.LINKEDIN_TOKEN_ENCRYPTION_SECRET);
+}
+
+function linkedinLivePostingSwitchEnabled() {
+  return process.env.LINKEDIN_LIVE_POSTING_ENABLED === "true";
+}
+
+function linkedinSetupState(state = {}) {
+  const account = (state.socialAccounts || []).find((item) => item.platform === "linkedin") || { platform:"linkedin" };
+  const setup = channelSetup("linkedin");
+  const safe = safeChannelStatus(account);
+  const configured = Boolean(setup.configured);
+  const connected = Boolean(safe.connected && safe.hasStoredToken);
+  const safeTokenStorage = linkedinSafeTokenStorageReady();
+  let status = "Not connected";
+  if (!configured || !safeTokenStorage) status = "Needs setup";
+  else if (safe.status === "error") status = "Error";
+  else if (connected) status = "Connected";
+  return {
+    account,
+    setup,
+    safe,
+    configured,
+    connected,
+    safeTokenStorage,
+    status,
+    livePostingEnabled: linkedinLivePostingSwitchEnabled(),
+    approvalRequired: true,
+    accountLabel: connected ? safe.accountName || "LinkedIn account" : "",
+    lastChecked: new Date().toISOString()
+  };
+}
+
+function linkedinStatusPayload(state = {}) {
+  const status = linkedinSetupState(state);
+  return {
+    connected: status.connected,
+    status: status.status,
+    livePostingEnabled: status.livePostingEnabled,
+    approvalRequired: true,
+    accountLabel: status.accountLabel,
+    lastChecked: status.lastChecked,
+    safety: "Approved posts only. No automatic posting.",
+    message: status.status === "Needs setup" ? "LinkedIn connection needs setup." : status.connected ? "LinkedIn connected. Posting still requires approval." : "LinkedIn is not connected.",
+    postingState: status.livePostingEnabled ? "Ready behind approval" : "Off",
+    setupRequired: !status.configured || !status.safeTokenStorage,
+    missing: [
+      ...(status.setup.missingEnv || []),
+      ...(status.safeTokenStorage ? [] : ["Safe token storage is required before LinkedIn can be connected."])
+    ]
+  };
+}
+
+function linkedinPostStatusIsApproved(post = {}) {
+  return post.status === "approved" || /approved internally/i.test(String(post.approvalStatus || post.reviewStatus || ""));
+}
+
+function linkedinPostPlatformIsLinkedIn(post = {}) {
+  const targets = [post.platform, post.channel, ...(post.targetChannels || [])].filter(Boolean).map((value) => normalizePlatformName(value));
+  return targets.length ? targets.includes("linkedin") : false;
+}
+
+function linkedinImageApprovedOrOmitted(state = {}, post = {}) {
+  const image = imageForPostFromState(state, post.id);
+  if (!image) return true;
+  return Boolean(image.approvedAt || image.finalPngPath || image.finalImageReady || image.attachedToPost || post.imageAttachedAt || post.imageIntentionallyOmitted);
+}
+
+function linkedinCaptionForPost(post = {}) {
+  return composePublishText(post, "linkedin") || post.caption || post.body || "";
+}
+
+function linkedinPostSafetyBlocked(post = {}) {
+  const text = [post.title, post.caption, post.body, post.hook, post.cta, post.operatorNotes, post.complianceNotes].filter(Boolean).join(" ");
+  if (/guaranteed outcome|legal advice|guarantee|will clear your record/i.test(text)) return "Legal advice or guaranteed-outcome language needs review before posting.";
+  if (/high/i.test(String(post.complianceRisk || ""))) return "High-risk legal content needs final safety review before LinkedIn posting.";
+  return "";
+}
+
+function validateLinkedInApprovedPost(state = {}, post = {}, input = {}) {
+  const status = linkedinSetupState(state);
+  if (!status.connected) return { ok:false, reason:"LinkedIn is not connected." };
+  if (!status.livePostingEnabled) return { ok:false, reason:"LinkedIn live posting is disabled." };
+  if (!post?.id) return { ok:false, reason:"Post not found." };
+  if (!linkedinPostPlatformIsLinkedIn(post)) return { ok:false, reason:"Only LinkedIn posts can be posted through this route." };
+  if (!linkedinPostStatusIsApproved(post)) return { ok:false, reason:"Post must be Approved internally before LinkedIn posting." };
+  if (!linkedinImageApprovedOrOmitted(state, post)) return { ok:false, reason:"Image must be approved or intentionally omitted before LinkedIn posting." };
+  if (!linkedinCaptionForPost(post).trim()) return { ok:false, reason:"Caption is required before LinkedIn posting." };
+  const safetyBlock = linkedinPostSafetyBlocked(post);
+  if (safetyBlock) return { ok:false, reason:safetyBlock };
+  if (!input.finalConfirmation) return { ok:false, reason:"Final confirmation is required before posting to LinkedIn." };
+  if (post.postedByOsAt || post.linkedinPostId || post.status === "posted") return { ok:false, reason:"This item has already been posted." };
+  return { ok:true, status };
+}
+
+function linkedinOutboxEvent(state = {}, post = {}, patch = {}) {
+  const item = {
+    id: `outbox-linkedin-${post.id || crypto.randomUUID()}`,
+    type: "Social post",
+    target: "LinkedIn",
+    status: patch.outboxStatus || "Needs approval",
+    approval: "Required",
+    safety: "Approved posts only",
+    postId: post.id || "",
+    title: post.title || "LinkedIn post",
+    reason: patch.reason || "",
+    updatedAt: new Date().toISOString()
+  };
+  const existing = state.externalActionOutbox || [];
+  return [item, ...existing.filter((entry) => entry.id !== item.id)].slice(0, 200);
+}
+
+async function markLinkedInPublishBlocked(state = {}, post = {}, reason = "") {
+  const nextState = {
+    ...state,
+    externalActionOutbox: linkedinOutboxEvent(state, post, { outboxStatus: "Blocked", reason })
+  };
+  if (post?.id) {
+    nextState.posts = (nextState.posts || []).map((item) => item.id === post.id
+      ? { ...item, linkedinOutboxStatus:"Blocked", linkedinPublishBlockedReason:reason, updatedAt:new Date().toISOString() }
+      : item);
+  }
+  await store.writeState(nextState);
+  return nextState;
+}
+
+async function publishLinkedInApprovedPost(input = {}) {
+  let state = await store.readState();
+  const post = (state.posts || []).find((item) => item.id === input.postId);
+  const validation = validateLinkedInApprovedPost(state, post, input);
+  if (!validation.ok) {
+    state = await markLinkedInPublishBlocked(state, post || { id:input.postId, title:"LinkedIn post" }, validation.reason);
+    return { ok:false, state, status:"Blocked", message:`LinkedIn post was blocked: ${validation.reason}` };
+  }
+  const publishResult = process.env.LINKEDIN_MOCK_POSTING_ENABLED === "true"
+    ? { externalPostId:`mock-linkedin-${post.id}`, externalPostUrl:"", message:"Posted to LinkedIn." }
+    : await publishLinkedInPost({ state, post });
+  const timestamp = new Date().toISOString();
+  const nextState = {
+    ...state,
+    posts: (state.posts || []).map((item) => item.id === post.id
+      ? {
+          ...item,
+          status:"posted",
+          publishingStatus:"ready",
+          postedByOsAt:timestamp,
+          postedAt:timestamp,
+          publishedAt:timestamp,
+          postedBy:"Posted by OS",
+          linkedinPostId:publishResult.externalPostId || "",
+          externalPostId:publishResult.externalPostId || "",
+          externalPostUrl:publishResult.externalPostUrl || "",
+          linkedinOutboxStatus:"Posted",
+          updatedAt:timestamp
+        }
+      : item),
+    externalActionOutbox: linkedinOutboxEvent(state, post, { outboxStatus: "Posted" }),
+    activityEvents: [{
+      id:`activity-linkedin-post-${crypto.randomUUID().slice(0, 8)}`,
+      eventType:"LinkedIn post published",
+      title:post.title || "LinkedIn post",
+      relatedObjectType:"post",
+      relatedObjectId:post.id,
+      createdAt:timestamp
+    }, ...(state.activityEvents || [])].slice(0, 500),
+    auditHistory: [{
+      id:`audit-linkedin-post-${crypto.randomUUID().slice(0, 8)}`,
+      timestamp,
+      actor:"owner_token",
+      action:"linkedin post published after final approval",
+      resourceType:"post",
+      resourceId:post.id,
+      beforeValue:{ status:post.status },
+      afterValue:{ status:"posted", target:"LinkedIn", approval:"final confirmation" }
+    }, ...(state.auditHistory || [])].slice(0, 1000)
+  };
+  await store.writeState(nextState);
+  return { ok:true, state:nextState, status:"Posted", result:publishResult, message:"Posted to LinkedIn." };
 }
 
 function safeGoogleError(error) {
@@ -13112,6 +13301,7 @@ function htmlShell() {
     .next-action-card .primary { min-height:52px; border-radius:12px; font-size:15px; font-family:inherit; text-transform:none; }
     button,.button,.button-link { border-radius:10px; font-family:inherit; text-transform:none; letter-spacing:0; font-weight:800; }
     .primary, .button-link.primary { background:var(--le-navy); color:white; box-shadow:0 10px 20px rgba(8,20,95,.16); }
+    button.primary:disabled,.primary:disabled { background:#cbd5d6; color:#596070; border-color:#cbd5d6; box-shadow:none; opacity:.72; cursor:not-allowed; }
     button:hover,.button:hover,.button-link:hover { transform:translateY(-1px); }
     button:disabled { transform:none; }
     .readiness-card { border-radius:14px; margin:10px 0; padding:12px 14px; background:#F7FAF9; }
@@ -20051,6 +20241,10 @@ function htmlShell() {
       const smoke = health.smoke_test_status || buildSmokeTestStatus(state, { commit_hash: state.runtime?.commitHash || "" });
       const databaseStatus = supabaseHealth?.connected || health.connection_health?.supabase_db?.status === "connected" ? "Connected" : "Needs setup";
       const imageGenerationStatus = state.runtime?.openAIConfigured || health.connection_health?.openai?.status === "configured" ? "Ready" : "Not connected";
+      const appStatusLinkedIn = (state.socialAccounts || []).find(account => account.platform === "linkedin") || {};
+      const appStatusLinkedInConnected = Boolean(appStatusLinkedIn.connected || appStatusLinkedIn.status === "connected");
+      const appStatusLinkedInConnection = appStatusLinkedInConnected ? "Connected / approval workflow ready" : appStatusLinkedIn.setup?.configured ? "Not connected / approval workflow ready" : "Needs setup / approval workflow ready";
+      const appStatusLinkedInPosting = state.runtime?.liveLinkedInPostingEnabled ? "Ready behind approval" : "Off";
       const statusRows = [
         ["Publishing: Off", "Protected"],
         ["Email sending: Off", "Protected"],
@@ -20065,7 +20259,9 @@ function htmlShell() {
         ["Calendar readiness:", "Calendar reads can help Today understand your day. Calendar writes are off."],
         ["Email:", "Not connected / draft-only planned"],
         ["Email readiness:", "Email drafts can be prepared for review. Email sending is off."],
-        ["LinkedIn:", "Not connected / approval workflow ready"],
+        ["LinkedIn:", appStatusLinkedInConnection],
+        ["LinkedIn posting:", appStatusLinkedInPosting],
+        ["LinkedIn setup:", state.runtime?.liveLinkedInPostingEnabled ? "Approved posts only. No automatic posting." : "LinkedIn posting is installed but disabled."],
         ["Twitter / X:", "Not connected / approval workflow ready"],
         ["Social accounts:", "Not connected"],
         ["Live social posting:", "Off"],
@@ -21356,6 +21552,13 @@ function htmlShell() {
     }
 
     function linkedinApprovalQueueHtml(posts = [], images = []) {
+      const linkedinAccount = (state.socialAccounts || []).find(account => account.platform === "linkedin") || {};
+      const linkedinStatus = {
+        connected: Boolean(linkedinAccount.connected || linkedinAccount.status === "connected"),
+        livePostingEnabled: Boolean(state.runtime?.liveLinkedInPostingEnabled),
+        approvalRequired: true
+      };
+      const canPostToLinkedIn = post => post.status === "approved" && linkedinStatus.connected && linkedinStatus.livePostingEnabled;
       const imageFor = post => images.find(image => image.postId === post.id || image.post_id === post.id) || null;
       const titleFor = post => post.title || post.headline || post.topic || post.caption?.slice?.(0, 70) || "LinkedIn post";
       const captionFor = post => composePreviewText(post) || post.caption || post.body || "Caption preview will appear after the post is drafted.";
@@ -21386,19 +21589,28 @@ function htmlShell() {
         caption:"A clean record should not require a maze.",
         status:"needs_approval",
         platform:"linkedin"
+      }, {
+        id:"linkedin-approved-sample",
+        title:"RecordShield turns uncertainty into a clear next step",
+        caption:"RecordShield turns uncertainty into a clear next step before a background check becomes a barrier.",
+        status:"approved",
+        platform:"linkedin"
       }];
       const stageLabels = ["Draft", "Needs image", "Ready for review", "Needs approval", "Approved internally", "Scheduled internally", "Published manually"];
       return \`<section id="production-linkedin-queue" class="production-card">
-        <div class="production-card-head"><div><h2>LinkedIn Approval Queue</h2><small>Show which posts are ready for LinkedIn review.</small></div><span class="badge warn">No live posting</span></div>
-        <p class="muted">LinkedIn posting is not connected yet. Posts can be prepared and approved internally. Each item shows post title, caption preview, image status, approval status, platform: LinkedIn, next action, and safety note.</p>
+        <div class="production-card-head"><div><h2>LinkedIn Approval Queue</h2><small>Show which posts are ready for LinkedIn review.</small></div><span class="badge \${linkedinStatus.connected && linkedinStatus.livePostingEnabled ? "good" : "warn"}">\${linkedinStatus.connected && linkedinStatus.livePostingEnabled ? "Ready behind approval" : "No live posting"}</span></div>
+        <p class="muted">LinkedIn posting is installed but disabled unless LinkedIn is connected and the server-side safety switch is enabled. Each item shows post title, caption preview, image status, approval status, platform: LinkedIn, next action, and safety note.</p>
         <div class="production-workflow">\${stageLabels.join(" → ")}</div>
         <div class="production-list">\${fallbackPosts.map(post => {
           const image = imageFor(post);
           const imageStatus = imageStatusFor(post, image);
           const approvalStatus = stageFor(post);
+          const liveAction = post.status === "approved" ? canPostToLinkedIn(post)
+            ? \`<button class="primary" type="button" onclick="showLinkedInPostConfirmation('\${esc(post.id)}')">Post to LinkedIn</button>\`
+            : \`<button type="button" disabled title="Connect LinkedIn and enable live posting after final review.">Post to LinkedIn unavailable</button>\` : "";
           return \`<article class="production-row">
             <div><strong>\${esc(titleFor(post))}</strong><span><b>caption preview:</b> \${esc(captionFor(post)).slice(0, 130)}</span><span><b>image status:</b> \${esc(imageStatus)} · <b>approval status:</b> \${esc(approvalStatus)}</span><span><b>platform: LinkedIn</b> · <b>next action:</b> Review internally · <b>safety note:</b> No live posting</span></div>
-            <div class="production-card-actions"><button type="button" onclick="location.hash='queue'">Preview</button><button type="button" onclick="location.hash='assets'">Review Image</button><button type="button" onclick="toast('LinkedIn post approved internally. No live posting occurred.')">Approve Internally</button><button type="button" onclick="location.hash='internal-schedule'">Schedule Internally</button><button type="button" onclick="location.hash='posted'">Mark Published Manually</button></div>
+            <div class="production-card-actions"><button type="button" onclick="location.hash='queue'">Preview</button><button type="button" onclick="location.hash='assets'">Review Image</button><button type="button" onclick="toast('LinkedIn post approved internally. No live posting occurred.')">Approve Internally</button><button type="button" onclick="location.hash='internal-schedule'">Schedule Internally</button><button type="button" onclick="location.hash='posted'">Mark Published Manually</button>\${liveAction}</div>
           </article>\`;
         }).join("")}</div>
       </section>\`;
@@ -21576,9 +21788,12 @@ function htmlShell() {
         ["Instagram", "Prepare Instagram"],
         ["Twitter / X", "Prepare Twitter / X", "Approval workflow ready"]
       ];
+      const productionLinkedInAccount = (state.socialAccounts || []).find(account => account.platform === "linkedin") || {};
+      const productionLinkedInConnected = Boolean(productionLinkedInAccount.connected || productionLinkedInAccount.status === "connected");
+      const productionLinkedInPosting = state.runtime?.liveLinkedInPostingEnabled ? "Ready behind approval" : "Off";
       const linkedInReadinessStatuses = ["Not connected", "Ready to configure", "Approval workflow ready", "Needs setup", "Error"];
-      const linkedInFutureCapabilities = ["Preview LinkedIn post", "Review image", "Approve post", "Prepare scheduling", "Post only after future live connector is approved"];
-      const linkedInDisabledCapabilities = ["Live posting", "Account connection", "Auto-posting", "Analytics sync", "Credential storage", "External scheduling"];
+      const linkedInFutureCapabilities = ["Preview LinkedIn post", "Review image", "Approve post", "Prepare scheduling", "Post only after final approval and safety switch"];
+      const linkedInDisabledCapabilities = ["Bulk publishing", "Auto-posting", "Analytics sync", "External scheduling", "Unapproved posting"];
       const twitterXReadinessStatuses = ["Not connected", "Ready to configure", "Approval workflow ready", "Needs setup", "Error"];
       const twitterXFutureCapabilities = ["Preview Twitter / X post", "Review image", "Approve post", "Prepare scheduling", "Post only after future live connector is approved"];
       const twitterXDisabledCapabilities = ["Live posting", "Account connection", "Auto-posting", "Analytics sync", "Credential storage", "External scheduling"];
@@ -21628,14 +21843,14 @@ function htmlShell() {
         </section>
 
         <section class="production-card">
-          <div class="production-card-head"><div><h2>LinkedIn readiness</h2><small>Approval workflow ready</small></div><span class="badge warn">No live posting</span></div>
-          <p class="muted">LinkedIn posting is not connected yet. Posts can be prepared and approved internally.</p>
+          <div class="production-card-head"><div><h2>LinkedIn readiness</h2><small>Approval workflow ready</small></div><span class="badge warn">Live posting: \${esc(productionLinkedInPosting)}</span></div>
+          <p class="muted">LinkedIn posting is installed but disabled unless LinkedIn is connected, the post is approved internally, and Roger gives final confirmation.</p>
           <div class="production-summary-grid">
             <article class="production-summary-card"><span>Status values</span><strong>Approval workflow ready</strong><small>\${linkedInReadinessStatuses.map(esc).join(" · ")}</small></article>
             <article class="production-summary-card"><span>Future capabilities</span><strong>Internal review</strong><small>\${linkedInFutureCapabilities.map(esc).join(" · ")}</small></article>
-            <article class="production-summary-card urgent"><span>Explicitly disabled</span><strong>No live connector</strong><small>\${linkedInDisabledCapabilities.map(esc).join(" · ")}</small></article>
+            <article class="production-summary-card urgent"><span>Explicitly disabled</span><strong>Unsafe posting</strong><small>\${linkedInDisabledCapabilities.map(esc).join(" · ")}</small></article>
           </div>
-          <div class="production-card-actions"><button type="button" onclick="document.getElementById('production-linkedin-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View LinkedIn Approval Queue</button><button type="button" onclick="location.hash='queue'">Preview LinkedIn Post</button><button type="button" onclick="toast('LinkedIn checklist opened internally. No connection starts here.')">Prepare LinkedIn</button></div>
+          <div class="production-card-actions"><button type="button" onclick="document.getElementById('production-linkedin-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View LinkedIn Approval Queue</button><button type="button" onclick="location.hash='queue'">Preview LinkedIn Post</button><button type="button" onclick="connectLinkedIn()">Connect LinkedIn</button><button type="button" onclick="checkLinkedInStatus()">Check Status</button></div>
         </section>
 
         <section class="production-card">
@@ -21738,7 +21953,7 @@ function htmlShell() {
               <div class="production-card-head"><div><h2>Connected Accounts</h2><small>Prepare future posting and analytics connections.</small></div></div>
               <p class="muted">Live posting will require connected accounts, permissions, and manual approval.</p>
               <div class="production-list">\${accountRows.map(([platform, action, status]) => platform === "LinkedIn"
-                ? \`<article class="account-row"><div><strong>LinkedIn — Not connected</strong><span>Status: Approval workflow ready</span><span>Next step: Prepare LinkedIn connection</span><span>Safety: No live posting</span></div><div class="production-card-actions"><button type="button" onclick="toast('LinkedIn checklist opened internally. No connection starts here.')">Prepare LinkedIn</button><button type="button" onclick="document.getElementById('production-linkedin-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View LinkedIn Approval Queue</button><button type="button" onclick="location.hash='queue'">Preview LinkedIn Post</button></div></article>\`
+                ? \`<article class="account-row"><div><strong>LinkedIn — \${productionLinkedInConnected ? "Connected" : "Not connected"}</strong><span>Status: Approval workflow ready</span><span>Live posting: \${esc(productionLinkedInPosting)}</span><span>Safety: Approved posts only</span></div><div class="production-card-actions"><button type="button" onclick="showLinkedInSetupChecklist()">Prepare LinkedIn</button><button type="button" onclick="connectLinkedIn()">Connect LinkedIn</button><button type="button" onclick="checkLinkedInStatus()">Check Status</button><button type="button" onclick="document.getElementById('production-linkedin-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View LinkedIn Approval Queue</button></div></article>\`
                 : platform === "Twitter / X"
                 ? \`<article class="account-row"><div><strong>Twitter / X — Not connected</strong><span>Status: Approval workflow ready</span><span>Next step: Prepare Twitter / X connection</span><span>Safety: No live posting</span></div><div class="production-card-actions"><button type="button" onclick="toast('Twitter / X checklist opened internally. No connection starts here.')">Prepare Twitter / X</button><button type="button" onclick="document.getElementById('production-twitter-x-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View Twitter / X Approval Queue</button><button type="button" onclick="location.hash='queue'">Preview Twitter / X Post</button></div></article>\`
                 : \`<article class="account-row"><div><strong>\${esc(platform)} — Not connected</strong><span>Future capability: posting · scheduling · analytics</span><span>Setup state: Coming later</span></div><button type="button" disabled title="Coming later">\${esc(action)}</button></article>\`).join("")}</div>
@@ -23213,12 +23428,15 @@ function htmlShell() {
         ["Google Calendar", "Not connected / Read-only connected", "Calendar reads can help Today understand meetings and focus blocks.", "Calendar writes are off.", "Prepare Calendar Connection.", "Read-only. No events or invites."],
         ["Gmail / Email", "Not connected / Draft-only planned", "Email drafts can be prepared for review.", "Email sending is off.", "Prepare Email Connection.", "No messages sent."],
         ["Image Generation", moreImageGenerationStatus, "Server-side image generation can be used when configured.", "Missing setup saves an image request instead.", "Check image readiness.", moreImageGenerationSafety],
-        ["Social Accounts", "Not connected", "Platform checklists are available for future setup. LinkedIn and Twitter / X approval workflows can prepare posts internally.", "No accounts are connected. No LinkedIn or Twitter / X connection starts here.", "Prepare LinkedIn checklist. Prepare Twitter / X checklist. Prepare each platform checklist.", "No live posting."],
+        ["Social Accounts", "LinkedIn: Not connected / Connected / Needs setup", "LinkedIn and Twitter / X approval workflows can prepare posts internally.", "LinkedIn posting is installed but disabled until connection, approval, and the server safety switch are ready.", "Connect LinkedIn. Check LinkedIn Status. Prepare Twitter / X checklist.", "Approved posts only."],
         ["External Action Outbox", "Draft-only", "Future live actions can be reviewed before execution.", "Outbox does not execute actions in this pass.", "Review drafts and approvals.", "Outbox does not execute."],
         ["Safety Switches", "Protected", "Safety state is visible.", "Enable controls are not available.", "Review Safety or Open App Status.", "Live actions stay off."]
       ];
       const outboxRows = [
-        ["Social post", "LinkedIn", "LinkedIn post prepared for approval", "Roger", "Today", "Required", "Live social posting is off", "Needs approval"],
+        ["Social post", "LinkedIn", "LinkedIn post prepared for approval", "Roger", "Today", "Required", "Approved posts only", "Needs approval"],
+        ["Social post", "LinkedIn", "Approved LinkedIn post waiting for final confirmation", "Roger", "Today", "Required", "Approved posts only", "Approved"],
+        ["Social post", "LinkedIn", "LinkedIn post published after final confirmation", "Roger", "Today", "Required", "Approved posts only", "Posted"],
+        ["Social post", "LinkedIn", "LinkedIn post blocked until setup is complete", "Roger", "Today", "Required", "Reason visible before retry", "Blocked"],
         ["Social post", "Twitter / X", "Twitter / X post prepared for approval", "Roger", "Today", "Required", "Live social posting is off", "Needs approval"],
         ["Email draft", "Partner follow-up", "Prepared email draft for review", "Roger", "Today", "Yes", "Email sending: Off", "Needs approval"],
         ["Calendar request", "Internal schedule", "Calendar write request blocked", "Command Center", "Today", "Yes", "Calendar writes: Off", "Blocked"],
@@ -23227,7 +23445,7 @@ function htmlShell() {
         ["Image request", "Saved post", "Image request saved for review", "Roger", "Today", "Yes", "Server-side image route only", "Completed manually"]
       ];
       const socialSetupRows = [
-        ["LinkedIn", "Prepare LinkedIn", "Approval workflow can prepare LinkedIn posts internally.", "No LinkedIn connection starts here.", "Prepare LinkedIn checklist.", "No live posting."],
+        ["LinkedIn", "Connect LinkedIn", "Approval workflow can prepare LinkedIn posts internally.", "LinkedIn connection needs setup if credentials or safe token storage are missing.", "Check LinkedIn Status.", "Approved posts only."],
         ["Facebook", "Prepare Facebook"],
         ["Instagram", "Prepare Instagram"],
         ["Twitter / X", "Prepare Twitter / X", "Approval workflow can prepare Twitter / X posts internally.", "No Twitter / X connection starts here.", "Prepare Twitter / X checklist.", "No live posting."]
@@ -23279,7 +23497,7 @@ function htmlShell() {
           <div class="more-card-head"><div><h2>Social Accounts</h2><small>Future connection setup checklists only</small></div><span class="more-pill">Not connected</span></div>
           <div class="more-utility-grid">
             \${socialSetupRows.map(([platform, label, ready, notReady, nextStep, safety]) => platform === "LinkedIn"
-              ? \`<article class="more-utility-card"><h3>LinkedIn</h3><p><strong>Status:</strong> Not connected<br><strong>Ready:</strong> \${esc(ready)}<br><strong>Not ready:</strong> \${esc(notReady)}<br><strong>Next step:</strong> \${esc(nextStep)}<br><strong>Safety:</strong> \${esc(safety)}</p><div class="more-card-actions">\${activationAction(label, "LinkedIn setup checklist opened. No connection starts here.")}</div></article>\`
+              ? \`<article class="more-utility-card"><h3>LinkedIn</h3><p><strong>Status:</strong> Not connected / Connected / Needs setup<br><strong>Connected state:</strong> Not connected<br><strong>Ready:</strong> \${esc(ready)}<br><strong>Next setup step:</strong> \${esc(nextStep)}<br><strong>Safety state:</strong> \${esc(safety)}</p><div class="more-card-actions"><button type="button" onclick="connectLinkedIn()">Connect LinkedIn</button><button type="button" onclick="checkLinkedInStatus()">Check LinkedIn Status</button></div></article>\`
               : platform === "Twitter / X"
               ? \`<article class="more-utility-card"><h3>Twitter / X</h3><p><strong>Status:</strong> Not connected<br><strong>Ready:</strong> \${esc(ready)}<br><strong>Not ready:</strong> \${esc(notReady)}<br><strong>Next step:</strong> \${esc(nextStep)}<br><strong>Safety:</strong> \${esc(safety)}</p><div class="more-card-actions">\${activationAction(label, "Twitter / X setup checklist opened. No connection starts here.")}</div></article>\`
               : \`<article class="more-utility-card"><h3>\${esc(platform)}</h3><p>Future capabilities: preview, approval, scheduling, posting, analytics. Current status: Not connected.</p><div class="more-card-actions">\${activationAction(label, platform + " setup checklist opened. No connection starts here.")}</div></article>\`).join("")}
@@ -25081,6 +25299,78 @@ function htmlShell() {
       </div>\`;
     }
 
+    function showLinkedInPostConfirmation(id) {
+      const post = state.posts.find(item => item.id === id);
+      const root = document.querySelector("#modalRoot");
+      if (!post || !root) {
+        toast("LinkedIn post is not available.");
+        return;
+      }
+      const image = imageForPost(id);
+      root.innerHTML = \`<div class="modal-backdrop" role="presentation">
+        <div class="modal-panel" role="dialog" aria-modal="true" aria-label="Post to LinkedIn confirmation">
+          <div class="toprow">
+            <div><div class="eyebrow">LinkedIn final approval</div><h2>Post to LinkedIn?</h2></div>
+            <button onclick="closePublishDialog()">Close</button>
+          </div>
+          <div class="modal-grid">
+            <div class="publish-preview">\${image?.imageUrl ? \`<img src="\${esc(image.finalPngUrl || image.imageUrl)}" alt="LinkedIn image preview">\` : '<span class="muted">No image attached</span>'}</div>
+            <div>
+              <p class="muted"><strong>Post:</strong> \${esc(post.title || "LinkedIn post")}<br><strong>Platform:</strong> LinkedIn<br><strong>Status:</strong> Approved internally</p>
+              <p class="post-body">\${esc(composePreviewText(post) || post.caption || post.body || "Caption preview missing.").slice(0, 700)}</p>
+              <div class="grid">
+                \${["Approved internally", "LinkedIn connected", "Live posting switch enabled", "Final confirmation required"].map(item => \`<div class="metric-row"><span>\${esc(item)}</span><span class="badge info">Required</span></div>\`).join("")}
+              </div>
+              <p class="readiness-card danger"><strong>This will publish to LinkedIn.</strong> Confirm only when Roger has approved the caption and image.</p>
+              <label class="muted" style="display:flex;gap:10px;align-items:flex-start;margin-top:12px"><input id="linkedin-final-confirmation" type="checkbox" onchange="document.getElementById('linkedin-confirm-post-button').disabled = !this.checked"> <span>I understand this will post to LinkedIn.</span></label>
+            </div>
+          </div>
+          <div class="dialog-actions">
+            <button onclick="closePublishDialog()">Cancel</button>
+            <button id="linkedin-confirm-post-button" class="primary" disabled onclick="confirmLinkedInPost('\${esc(post.id)}')">Confirm and Post to LinkedIn</button>
+          </div>
+        </div>
+      </div>\`;
+    }
+
+    function showLinkedInSetupChecklist(status = {}) {
+      const root = document.querySelector("#modalRoot");
+      if (!root) {
+        toast("LinkedIn setup checklist opened.");
+        return;
+      }
+      const setupStatus = status.status || "Not connected";
+      const setupMessage = status.message || "LinkedIn connection needs setup.";
+      const missing = Array.isArray(status.missing) && status.missing.length
+        ? \`<div class="readiness-card warn"><strong>Setup blocked:</strong> \${esc(setupMessage)}<br>\${status.missing.map(item => esc(item)).join("<br>")}</div>\`
+        : \`<div class="readiness-card good"><strong>Ready to connect:</strong> Sign in as owner, then start the LinkedIn connection flow.</div>\`;
+      const checklist = [
+        "LinkedIn app created",
+        "Redirect URL added under Auth",
+        "Render env vars added",
+        "Manual deploy completed",
+        "Live posting remains off"
+      ];
+      root.innerHTML = \`<div class="modal-backdrop" role="presentation">
+        <div class="modal-panel" role="dialog" aria-modal="true" aria-label="LinkedIn setup checklist">
+          <div class="toprow">
+            <div><div class="eyebrow">LinkedIn setup</div><h2>Prepare LinkedIn</h2></div>
+            <button onclick="closePublishDialog()">Close</button>
+          </div>
+          <p class="muted">Use this checklist before connecting LinkedIn. Live posting stays off until Roger enables the server-side safety switch later.</p>
+          <div class="grid">
+            \${checklist.map(item => \`<div class="metric-row"><span>\${esc(item)}</span><span class="badge info">Check</span></div>\`).join("")}
+          </div>
+          \${missing}
+          <p class="muted"><strong>Current LinkedIn state:</strong> \${esc(setupStatus)}<br><strong>Safety:</strong> Approved posts only. Live social posting: Off.</p>
+          <div class="dialog-actions">
+            <button onclick="closePublishDialog()">Close</button>
+            <button class="primary" onclick="connectLinkedIn()">Connect LinkedIn</button>
+          </div>
+        </div>
+      </div>\`;
+    }
+
     function closePublishDialog() {
       pendingPublishId = "";
       document.querySelector("#modalRoot").innerHTML = "";
@@ -26113,6 +26403,27 @@ function htmlShell() {
       }
     }
 
+    async function confirmLinkedInPost(id) {
+      const confirmed = Boolean(document.getElementById("linkedin-final-confirmation")?.checked);
+      if (!confirmed) {
+        toast("Check the LinkedIn final confirmation before posting.");
+        return;
+      }
+      try {
+        const result = await api("/api/linkedin/publish", {
+          method:"POST",
+          body:JSON.stringify({ postId:id, finalConfirmation:true })
+        });
+        state = result.state;
+        closePublishDialog();
+        render();
+        toast(result.message || "Posted to LinkedIn.");
+      } catch (error) {
+        const raw = error?.message || String(error);
+        toast(raw.replace(/^\\{\\"error\\":\\"?|\\{\\\"error\\\":\\\"?|\\\"\\}$/g, "").slice(0, 180));
+      }
+    }
+
     async function retryPost(id) {
       const result = await api(\`/api/posts/\${id}/retry\`, { method:"POST" });
       state = result.state;
@@ -26282,6 +26593,36 @@ function htmlShell() {
         return;
       }
       window.location.href = \`/api/oauth/\${platform}/start\`;
+    }
+
+    async function checkLinkedInStatus() {
+      const result = await api("/api/linkedin/status");
+      toast(result.message || ("LinkedIn status: " + (result.status || "Not connected")));
+    }
+
+    async function connectLinkedIn() {
+      try {
+        const status = await api("/api/linkedin/status");
+        if (status.setupRequired || status.status === "Needs setup") {
+          showLinkedInSetupChecklist(status);
+          toast("LinkedIn connection needs setup.");
+          return;
+        }
+        const result = await api("/api/linkedin/connect?format=json");
+        if (result.authorizationUrl) {
+          window.location.href = result.authorizationUrl;
+          return;
+        }
+        toast(result.message || "LinkedIn connection needs setup.");
+      } catch (error) {
+        const message = error?.status === 401
+          ? "Sign in as owner before connecting LinkedIn."
+          : /setup|required|missing/i.test(error?.message || "")
+          ? "LinkedIn connection needs setup."
+          : (error?.message || "LinkedIn connection needs setup.");
+        toast(message);
+        if (message === "LinkedIn connection needs setup.") showLinkedInSetupChecklist(error?.payload || {});
+      }
     }
 
     async function prepareEmailDraft(title = "Email draft", target = "Manual follow-up") {
@@ -28001,6 +28342,146 @@ async function handleRequest(request, response) {
       state: withPublicChannelSetup(result.state),
       message: result.message
     });
+    return;
+  }
+
+  if (url.pathname === "/api/linkedin/status" && request.method === "GET") {
+    sendJson(response, linkedinStatusPayload(await store.readState()));
+    return;
+  }
+
+  if (url.pathname === "/api/linkedin/connect" && request.method === "GET") {
+    const currentState = await store.readState();
+    const status = linkedinSetupState(currentState);
+    const wantsJson = url.searchParams.get("format") === "json";
+    if (!status.configured) {
+      sendJson(response, {
+        ...linkedinStatusPayload(currentState),
+        error:"LinkedIn connection needs setup."
+      }, 400);
+      return;
+    }
+    if (!status.safeTokenStorage) {
+      sendJson(response, {
+        ...linkedinStatusPayload(currentState),
+        error:"Safe token storage is required before LinkedIn can be connected."
+      }, 400);
+      return;
+    }
+    const state = signOAuthState("linkedin");
+    const authorizationUrl = linkedinAuthorizationUrl({ state });
+    if (wantsJson) {
+      sendJson(response, {
+        status:"Ready",
+        message:"LinkedIn connection is ready to start.",
+        authorizationUrl,
+        livePostingEnabled:linkedinLivePostingSwitchEnabled(),
+        safety:"Approved posts only. Live social posting stays off until the safety switch is enabled."
+      });
+      return;
+    }
+    response.writeHead(302, { location: authorizationUrl });
+    response.end();
+    return;
+  }
+
+  if (url.pathname === "/api/linkedin/callback" && request.method === "GET") {
+    const currentState = await store.readState();
+    const status = linkedinSetupState(currentState);
+    if (!status.configured || !status.safeTokenStorage) {
+      sendJson(response, {
+        ...linkedinStatusPayload(currentState),
+        error: status.configured ? "Safe token storage is required before LinkedIn can be connected." : "LinkedIn connection needs setup."
+      }, 400);
+      return;
+    }
+    if (url.searchParams.get("error")) {
+      const safeError = safeLinkedInError(url.searchParams.get("error_description") || url.searchParams.get("error"));
+      const state = await store.updateSocialAccount("linkedin", {
+        status:"error",
+        displayName:"LinkedIn",
+        lastErrorSummary:safeError,
+        lastError:safeError,
+        lastTestStatus:"error",
+        lastTestMessage:safeError,
+        lastTestedAt:new Date().toISOString(),
+        oauthConfigured:true
+      });
+      sendJson(response, { state:withPublicChannelSetup(state), status:"Error", message:safeError }, 400);
+      return;
+    }
+    const verified = verifyOAuthState("linkedin", url.searchParams.get("state"));
+    if (!verified.ok) {
+      const state = await store.updateSocialAccount("linkedin", {
+        status:"error",
+        displayName:"LinkedIn",
+        lastErrorSummary:verified.error,
+        lastError:verified.error,
+        lastTestStatus:"error",
+        lastTestMessage:verified.error,
+        lastTestedAt:new Date().toISOString(),
+        oauthConfigured:true
+      });
+      sendJson(response, { state:withPublicChannelSetup(state), status:"Error", message:verified.error }, 400);
+      return;
+    }
+    if (!url.searchParams.get("code")) {
+      sendJson(response, { status:"Error", message:"LinkedIn OAuth callback is missing an authorization code." }, 400);
+      return;
+    }
+    try {
+      const tokenPayload = await exchangeLinkedInCode(url.searchParams.get("code"));
+      const profile = await fetchLinkedInUserInfo(tokenPayload.access_token);
+      const existingAccount = (currentState.socialAccounts || []).find((account) => account.platform === "linkedin") || {};
+      const accountName = profile.name || [profile.given_name, profile.family_name].filter(Boolean).join(" ") || profile.email || "LinkedIn account";
+      const tokenExpiresAt = tokenPayload.expires_in ? new Date(Date.now() + Number(tokenPayload.expires_in) * 1000).toISOString() : "";
+      const state = await store.updateSocialAccount("linkedin", {
+        status:"connected",
+        displayName:"LinkedIn",
+        accountName,
+        accountId:profile.sub || "",
+        externalAccountId:profile.sub || "",
+        accessTokenEncrypted:encryptToken(tokenPayload.access_token || ""),
+        refreshTokenEncrypted:tokenPayload.refresh_token ? encryptToken(tokenPayload.refresh_token) : existingAccount.refreshTokenEncrypted || "",
+        tokenExpiresAt,
+        connectedAt:new Date().toISOString(),
+        lastTestStatus:"connected",
+        lastTestMessage:"LinkedIn connected. Posting still requires approval.",
+        lastErrorSummary:"",
+        lastError:"",
+        lastTestedAt:new Date().toISOString(),
+        oauthConfigured:true,
+        scopes:channelSetup("linkedin").scopes
+      });
+      response.writeHead(302, { location:"/?linkedin=connected#production" });
+      response.end();
+    } catch (error) {
+      const safeError = safeLinkedInError(error);
+      const state = await store.updateSocialAccount("linkedin", {
+        status:"error",
+        displayName:"LinkedIn",
+        lastErrorSummary:safeError,
+        lastError:safeError,
+        lastTestStatus:"error",
+        lastTestMessage:safeError,
+        lastTestedAt:new Date().toISOString(),
+        oauthConfigured:true
+      });
+      sendJson(response, { state:withPublicChannelSetup(state), status:"Error", message:safeError }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/linkedin/publish" && request.method === "POST") {
+    const input = await readJson(request);
+    const result = await publishLinkedInApprovedPost(input || {});
+    sendJson(response, {
+      ok:result.ok,
+      status:result.status,
+      message:result.message,
+      result:result.result,
+      state:withPublicChannelSetup(result.state)
+    }, result.ok ? 200 : 400);
     return;
   }
 
