@@ -15,7 +15,8 @@ function functionBlock(name) {
 }
 
 const today = functionBlock("commandCenterOverviewHtml");
-const intention = functionBlock("cockpitDailyIntention");
+const todaySeed = functionBlock("cockpitTodayOperatingSeedData");
+const intention = todaySeed + "\n" + functionBlock("cockpitDailyIntention");
 const timeline = functionBlock("cockpitTimelineHtml");
 const timelineBlocks = functionBlock("cockpitTimelineBlocks");
 const todayHelpers = [
@@ -37,8 +38,8 @@ assert(renderBlock.includes('today:"overview"'), "#today should route to the Tod
 assert(today.includes("operator-v31"), "Today should keep the existing LegalEase cockpit visual style");
 assert(today.includes("app-intention"), "Today should keep the large intention hero");
 assert(intention.includes("Today is for"), "Today hero should use the Today is for framing");
-assert(intention.includes("protecting the main thread"), "Today hero should use the corrected protecting phrase");
-assert(intention.includes("turning movement into proof"), "Today hero should keep the proof outcome");
+assert(intention.includes("closing the highest-trust follow-ups"), "Today hero should use Roger's current follow-up intention");
+assert(intention.includes("turning movement into execution"), "Today hero should use Roger's current execution outcome");
 assert(today.includes("Rewrite with Le-E"), "Today hero should keep the Le-E rewrite action");
 assert(today.includes('aria-label="Now"'), "Today should include the Now / Current Focus block");
 assert(today.includes("Start with"), "Now block should include the Start with list");
