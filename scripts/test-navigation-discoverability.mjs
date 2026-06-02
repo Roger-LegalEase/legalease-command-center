@@ -26,11 +26,10 @@ const safeMode = functionBlock("renderSafeBootShell");
 
 const primaryLinks = [
   ["Today", "#today", "today"],
-  ["Growth", "#growth", "growth"],
-  ["Partners", "#partners", "partners"],
-  ["Production", "#production", "production"],
-  ["Proof", "#proof", "proof"],
-  ["More", "#more", "more"]
+  ["Command", "#command", "command"],
+  ["Queue", "#queue", "queue"],
+  ["Sources", "#sources", "sources"],
+  ["Settings", "#settings", "settings"]
 ];
 
 for (const [label, href, section] of primaryLinks) {
@@ -41,8 +40,8 @@ for (const [label, href, section] of primaryLinks) {
   );
 }
 
-assert.equal((topNav.match(/class="nav-top-link"/g) || []).length, 6, "Top nav should expose exactly six primary links");
-assert.equal((topNav.match(/data-nav-section="/g) || []).length, 6, "Top nav should expose exactly six active-state targets");
+assert.equal((topNav.match(/class="nav-top-link"/g) || []).length, 5, "Top nav should expose exactly five primary links");
+assert.equal((topNav.match(/data-nav-section="/g) || []).length, 5, "Top nav should expose exactly five active-state targets");
 assert(!topNav.includes("<details"), "Top nav should not use dropdown preview details");
 assert(!topNav.includes("nav-menu-panel"), "Top nav should not render floating preview panels");
 for (const label of ["Production Home", "Proof Home", "Partners Home", "More Home", "Growth Home"]) {
@@ -53,6 +52,7 @@ assert(source.includes('link.dataset.navSection === navSectionForPage(pageId)'),
 assert(!source.includes('.nav-menu[open] > .nav-menu-summary'), "Open nav menus should not create an additional active state");
 
 assert(renderBlock.includes('today:"overview"'), "#today should route to Today/Overview");
+assert(renderBlock.includes('command:"growth"'), "#command should route to the founder command workspace");
 assert(renderBlock.includes('metrics:"proof"'), "#metrics should route to Proof / Metrics");
 assert(renderBlock.includes('kpis:"proof"'), "#kpis should route to Proof / Metrics");
 assert(renderBlock.includes('rcap:"production-activation-rcap"'), "#rcap should route to RCAP Program Review");

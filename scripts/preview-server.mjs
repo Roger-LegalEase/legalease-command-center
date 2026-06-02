@@ -14091,11 +14091,10 @@ function htmlShell() {
       <a class="brand-lockup" href="#overview"><span>LegalEase</span><strong>Command Center</strong></a>
       <nav class="top-nav" aria-label="Primary">
         <a class="nav-top-link" href="#today" data-nav-section="today">Today</a>
-        <a class="nav-top-link" href="#growth" data-nav-section="growth">Growth</a>
-        <a class="nav-top-link" href="#partners" data-nav-section="partners">Partners</a>
-        <a class="nav-top-link" href="#production" data-nav-section="production">Production</a>
-        <a class="nav-top-link" href="#proof" data-nav-section="proof">Proof</a>
-        <a class="nav-top-link" href="#more" data-nav-section="more">More</a>
+        <a class="nav-top-link" href="#command" data-nav-section="command">Command</a>
+        <a class="nav-top-link" href="#queue" data-nav-section="queue">Queue</a>
+        <a class="nav-top-link" href="#sources" data-nav-section="sources">Sources</a>
+        <a class="nav-top-link" href="#settings" data-nav-section="settings">Settings</a>
       </nav>
     </header>
     <div>
@@ -23622,7 +23621,7 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const requestedPage = String(location.hash || "#overview").replace("#", "");
-      const routeAliases = { today:"overview", "le-e":"lee", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings" };
+      const routeAliases = { today:"overview", command:"growth", "le-e":"lee", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings" };
       const normalizedPage = routeAliases[requestedPage] || requestedPage;
       const knownPages = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "overview";
@@ -23842,7 +23841,7 @@ function htmlShell() {
           </details>\`}
           <details>
             <summary>Channels</summary>
-            <p class="muted">Connect once. After that, approved scheduled posts can publish without you touching platform settings.</p>
+            <p class="muted">Prepare account connections for review. Live posting stays off until a separate approval pass.</p>
             <div class="grid channel-grid settings-card-grid" style="margin-top:14px">\${channelCards()}</div>
           </details>
           <details>
@@ -23902,14 +23901,12 @@ function htmlShell() {
     }
 
     function navSectionForPage(pageId = "overview") {
-      if (["overview", "focus", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "operator-search", "conversation-notes"].includes(pageId)) return "today";
-      if (["data-integrity", "operator-manual", "handoff-contract", "roles"].includes(pageId)) return "more";
-      if (["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId)) return "more";
-      if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel"].includes(pageId)) return "growth";
-      if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports"].includes(pageId)) return "partners";
-      if (["production", "content-bank", "queue", "sources", "assets", "posted"].includes(pageId)) return "production";
-      if (["proof", "metrics", "kpis", "evidence-room", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
-      return "more";
+      if (["overview", "focus", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout"].includes(pageId)) return "today";
+      if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports", "production", "production-activation-rcap"].includes(pageId)) return "command";
+      if (["queue", "posted", "reports"].includes(pageId)) return "queue";
+      if (["sources", "content-bank", "assets", "proof", "metrics", "kpis", "evidence-room", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "sources";
+      if (["settings", "more", "data-integrity", "operator-manual", "handoff-contract", "roles", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "autonomy", "automation", "os-health", "smoke-test", "operator-search", "conversation-notes"].includes(pageId)) return "settings";
+      return "settings";
     }
 
     function closeNavMenus(event) {
