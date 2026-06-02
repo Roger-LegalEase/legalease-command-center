@@ -15614,6 +15614,38 @@ function htmlShell() {
       }).join("");
     }
 
+    function rcapConnectionCardHtml() {
+      const checklist = [
+        ["Partner landing pages", "Waiting"],
+        ["Partner dashboards", "Waiting"],
+        ["Wilma eligibility chat", "Needs connection"],
+        ["End-user signup", "Needs connection"],
+        ["End-user dashboard / Briefcase", "Not connected"],
+        ["Document generation", "Not connected"],
+        ["Command Center integration", "Needs connection"]
+      ];
+      return \`<article class="card channel-card rcap-connection-card">
+        <div class="toprow">
+          <div>
+            <h3>RCAP Connection</h3>
+            <p class="muted" style="margin:6px 0 0">RCAP is being built separately. When it is ready, connect the partner pages, dashboards, Wilma eligibility chat, signup, Briefcase, and document generation here.</p>
+          </div>
+          <span class="badge warn">Not connected</span>
+        </div>
+        <p class="muted">This is a placeholder for the future RCAP integration path. Nothing is connected, generated, sent, filed, or published from this card.</p>
+        <div class="channel-actions">
+          <button type="button" class="primary" onclick="openRcapConnectionChecklist()">Prepare connection</button>
+        </div>
+        <details id="rcap-connection-details">
+          <summary class="muted">Connection checklist</summary>
+          <div class="metric-table" style="margin-top:10px">
+            \${checklist.map(([label, status]) => \`<div class="metric-row"><span>\${esc(label)}</span><span class="badge warn">\${esc(status)}</span></div>\`).join("")}
+          </div>
+          <p class="muted" style="margin-top:10px">Use this checklist when the separate RCAP build is complete and ready for a safe Command Center connection review.</p>
+        </details>
+      </article>\`;
+    }
+
     function channelFor(platform) {
       return (state.socialAccounts || []).find(account => account.platform === platform) || {};
     }
@@ -23839,10 +23871,10 @@ function htmlShell() {
             <p class="muted">Optional startup data for the LegalEase six-month operating plan. This adds missing seed records and keeps user-created data.</p>
             <div style="margin-top:14px">\${sixMonthSeedHtml()}</div>
           </details>\`}
-          <details>
-            <summary>Channels</summary>
+          <details open>
+            <summary>Channels / Integrations</summary>
             <p class="muted">Prepare account connections for review. Live posting stays off until a separate approval pass.</p>
-            <div class="grid channel-grid settings-card-grid" style="margin-top:14px">\${channelCards()}</div>
+            <div class="grid channel-grid settings-card-grid" style="margin-top:14px">\${channelCards()}\${rcapConnectionCardHtml()}</div>
           </details>
           <details>
             <summary>System status</summary>
@@ -26640,6 +26672,15 @@ function htmlShell() {
         return;
       }
       window.location.href = \`/api/oauth/\${platform}/start\`;
+    }
+
+    function openRcapConnectionChecklist() {
+      const details = document.getElementById("rcap-connection-details");
+      if (details) {
+        details.open = true;
+        details.scrollIntoView({ behavior:"smooth", block:"center" });
+      }
+      toast("RCAP connection checklist opened. Nothing is connected yet.");
     }
 
     async function checkLinkedInStatus() {
