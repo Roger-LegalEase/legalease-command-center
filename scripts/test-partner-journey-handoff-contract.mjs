@@ -76,7 +76,7 @@ function baseState() {
         linkedin: { enabled: false },
         facebook: { enabled: false },
         instagram: { enabled: false },
-        tiktok: { enabled: false },
+        twitter_x: { enabled: false },
         x: { enabled: false }
       }
     },

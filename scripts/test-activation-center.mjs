@@ -24,6 +24,7 @@ for (const required of [
   "Gmail / Email",
   "Image Generation",
   "Social Accounts",
+  "Twitter / X",
   "External Action Outbox",
   "Safety Switches",
   "Ready",
@@ -35,6 +36,9 @@ for (const required of [
 ]) {
   assert(more.includes(required), `Activation Center should include ${required}`);
 }
+
+assert(!more.includes("TikTok"), "Activation Center should not include TikTok");
+assert(!more.includes("Prepare TikTok"), "Activation Center should not include Prepare TikTok");
 
 for (const label of [
   "Status:",

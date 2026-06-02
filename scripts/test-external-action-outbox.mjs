@@ -30,6 +30,7 @@ for (const required of [
   "Approved",
   "Blocked",
   "Completed manually",
+  "LinkedIn",
   "Type",
   "Target",
   "Summary",
@@ -41,6 +42,8 @@ for (const required of [
 ]) {
   assert(more.includes(required), `External Action Outbox should include ${required}`);
 }
+
+assert(!more.includes("TikTok"), "External Action Outbox should not include TikTok");
 
 for (const forbidden of [
   "social_post",

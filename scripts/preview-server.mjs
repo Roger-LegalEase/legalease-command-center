@@ -453,13 +453,12 @@ function logOpenAIImageConfigStatus() {
   console.log(`- local fallback: ${status.allowLocalImageFallback}`);
 }
 
-const platforms = ["linkedin", "x", "facebook", "instagram", "tiktok", "threads"];
+const platforms = ["linkedin", "x", "facebook", "instagram", "threads"];
 const platformLabels = {
   linkedin: "LinkedIn",
-  x: "X / Twitter",
+  x: "Twitter / X",
   facebook: "Facebook Page",
   instagram: "Instagram",
-  tiktok: "TikTok",
   threads: "Threads"
 };
 const channelLabels = platformLabels;
@@ -468,7 +467,6 @@ const channelDescriptions = {
   x: "Short observations, punchy takes, founder voice, sharp LegalEase POV.",
   facebook: "Community trust, local updates, plain-English education, partner posts.",
   instagram: "Image-first Wilma explainers, myth checks, campaign posters, community trust.",
-  tiktok: "Short-form video-ready explainers and campaign clips. Fails closed until connector is implemented.",
   threads: "Plain-English commentary, myth checks, short conversations."
 };
 const channelRequiredEnv = {
@@ -476,7 +474,6 @@ const channelRequiredEnv = {
   x: ["X_CLIENT_ID", "X_CLIENT_SECRET", "X_REDIRECT_URI"],
   facebook: ["META_CLIENT_ID", "META_CLIENT_SECRET", "META_REDIRECT_URI"],
   instagram: ["META_CLIENT_ID", "META_CLIENT_SECRET", "META_REDIRECT_URI"],
-  tiktok: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REDIRECT_URI"],
   threads: ["THREADS_CLIENT_ID", "THREADS_CLIENT_SECRET", "THREADS_REDIRECT_URI"]
 };
 
@@ -485,7 +482,6 @@ const livePostingEnvKeys = {
   x: ["ENABLE_LIVE_X_POSTING", "ENABLE_LIVE_TWITTER_POSTING"],
   facebook: ["ENABLE_LIVE_FACEBOOK_POSTING"],
   instagram: ["ENABLE_LIVE_INSTAGRAM_POSTING"],
-  tiktok: ["ENABLE_LIVE_TIKTOK_POSTING"],
   threads: ["ENABLE_LIVE_THREADS_POSTING"]
 };
 
@@ -979,7 +975,6 @@ function accountEnvAccessToken(platform = "") {
   if (platform === "instagram") return process.env.INSTAGRAM_ACCESS_TOKEN || process.env.META_PAGE_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || "";
   if (platform === "threads") return process.env.THREADS_ACCESS_TOKEN || "";
   if (platform === "x") return process.env.X_ACCESS_TOKEN || process.env.TWITTER_ACCESS_TOKEN || "";
-  if (platform === "tiktok") return process.env.TIKTOK_ACCESS_TOKEN || "";
   return "";
 }
 
@@ -988,7 +983,6 @@ function accountEnvId(platform = "") {
   if (platform === "instagram") return process.env.INSTAGRAM_USER_ID || process.env.IG_USER_ID || "";
   if (platform === "threads") return process.env.THREADS_USER_ID || "";
   if (platform === "x") return process.env.X_USER_ID || process.env.TWITTER_USER_ID || "";
-  if (platform === "tiktok") return process.env.TIKTOK_USER_ID || process.env.TIKTOK_OPEN_ID || "";
   return "";
 }
 
@@ -1093,28 +1087,20 @@ const credentialSpecs = [
   })),
   ...["X_CLIENT_ID", "X_CLIENT_SECRET", "X_REDIRECT_URI", "TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_TOKEN_SECRET"].map((key) => ({
     key,
-    label: `X / Twitter ${key.replace(/^X_|^TWITTER_/, "").replaceAll("_", " ").toLowerCase()}`,
+    label: `Twitter / X ${key.replace(/^X_|^TWITTER_/, "").replaceAll("_", " ").toLowerCase()}`,
     category: "x",
     severity: key.startsWith("X_") ? "required" : "optional",
-    description: "Required later for X / Twitter OAuth or API posting.",
-    nextAction: `Add ${key} to .env.local when enabling X / Twitter.`
+    description: "Required later for Twitter / X OAuth or API posting.",
+    nextAction: `Add ${key} to .env.local when enabling Twitter / X.`
   })),
   {
     key: "X_ACCESS_TOKEN",
-    label: "X / Twitter access token",
+    label: "Twitter / X access token",
     category: "x",
     severity: "required",
     description: "Server-side OAuth 2 user token for X live publishing.",
-    nextAction: "Add X_ACCESS_TOKEN to .env.local when enabling X / Twitter."
+    nextAction: "Add X_ACCESS_TOKEN to .env.local when enabling Twitter / X."
   },
-  ...["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REDIRECT_URI", "TIKTOK_ACCESS_TOKEN", "TIKTOK_OPEN_ID"].map((key) => ({
-    key,
-    label: `TikTok ${key.replace("TIKTOK_", "").replaceAll("_", " ").toLowerCase()}`,
-    category: "tiktok",
-    severity: key === "TIKTOK_ACCESS_TOKEN" || key === "TIKTOK_OPEN_ID" ? "recommended" : "required",
-    description: "Required later for TikTok live publishing. TikTok remains fail-closed until the connector is implemented.",
-    nextAction: `Add ${key} to .env.local only after TikTok app approval and connector implementation.`
-  })),
   ...Object.values(livePostingEnvKeys).flat().map((key) => ({
     key,
     label: key.replace("ENABLE_LIVE_", "").replace("_POSTING", "").replaceAll("_", " ") + " live gate",
@@ -1546,12 +1532,11 @@ function composePublishText(post, channel = post.platform) {
 
 function normalizePlatformName(value = "") {
   const text = String(value || "").trim().toLowerCase();
-  if (["twitter", "x/twitter", "x-twitter", "x"].includes(text)) return "x";
+  if (["twitter", "twitter/x", "twitter-x", "x/twitter", "x-twitter", "x"].includes(text)) return "x";
   if (text.includes("linkedin")) return "linkedin";
   if (text.includes("facebook")) return "facebook";
   if (text.includes("instagram")) return "instagram";
   if (text.includes("thread")) return "threads";
-  if (text.includes("tiktok")) return "tiktok";
   return platforms.includes(text) ? text : "";
 }
 
@@ -1655,7 +1640,7 @@ function parseContentBankIdeas(input = "") {
 
 function platformHookForIdea(idea = {}, platform = "linkedin") {
   if (platform === "x") return `${idea.title}: ${String(idea.rawIdea || "").split(".")[0] || "make the next step clearer"}.`;
-  if (platform === "instagram" || platform === "tiktok") return idea.title;
+  if (platform === "instagram") return idea.title;
   return idea.title;
 }
 
@@ -1752,7 +1737,7 @@ Rules:
 - No fake partner/government claims.
 - No claims that a court will approve anything.
 - If compliance risk is high, rewrite the draft to be safer and set complianceRewrite.
-- Keep X/Twitter under 260 characters if platform is X / Twitter.
+- Keep Twitter / X under 260 characters if platform is Twitter / X.
 - Do not include final image text. Creative brief can describe art direction only.`;
 }
 
@@ -4080,8 +4065,8 @@ function channelDryRun(post, image, channel, safeChannel = {}) {
     livePostingEnabled: livePostingEnabledForChannel(channel),
     characterCount: charCount,
     imageAspectRatio: aspectRatio || "unknown",
-    requiresPublicHttpsImage: ["instagram", "threads", "tiktok"].includes(channel),
-    publicHttpsImageReady: !["instagram", "threads", "tiktok"].includes(channel) || publicHttpsUrlIsReady(explicitHostedUrl || publicImageUrl),
+    requiresPublicHttpsImage: ["instagram", "threads"].includes(channel),
+    publicHttpsImageReady: !["instagram", "threads"].includes(channel) || publicHttpsUrlIsReady(explicitHostedUrl || publicImageUrl),
     publicImageUrlPresent: Boolean(explicitHostedUrl || publicImageUrl),
     publicImageUrl: explicitHostedUrl || publicImageUrl,
     publicAppBaseUrlReady: publicHttpsAppBaseUrlIsReady(),
@@ -4096,7 +4081,7 @@ function channelDryRun(post, image, channel, safeChannel = {}) {
     { key: "caption", label: "Caption", ok: Boolean(text), reason: `${result.displayName} caption is missing.` },
     { key: "final_png", label: "Final PNG", ok: finalReady, reason: `${result.displayName} needs a final PNG before posting.` },
     { key: "public_https_image", label: "Public HTTPS image URL", ok: result.publicHttpsImageReady, reason: `${result.displayName} needs a public HTTPS image URL. Upload the final PNG to Supabase Storage first.` },
-    { key: "copy_length", label: "Copy length", ok: channel !== "x" || charCount <= 280, reason: "X / Twitter post text is over 280 characters." },
+    { key: "copy_length", label: "Copy length", ok: channel !== "x" || charCount <= 280, reason: "Twitter / X post text is over 280 characters." },
     { key: "square_image", label: "Square image", ok: channel !== "instagram" || squareImage, reason: "Instagram requires a square final PNG for MVP." }
   ];
   result.checks = checks;
@@ -4115,13 +4100,13 @@ function channelDryRun(post, image, channel, safeChannel = {}) {
     return { ...result, status: "blocked", message: `${result.displayName} needs a final PNG before posting.` };
   }
   if (channel === "x" && charCount > 280) {
-    return { ...result, status: "blocked", message: "X / Twitter post text is over 280 characters." };
+    return { ...result, status: "blocked", message: "Twitter / X post text is over 280 characters." };
   }
   if (channel === "instagram" && !squareImage) {
     return { ...result, status: "blocked", message: "Instagram requires a square final PNG for MVP." };
   }
   if (result.threadCandidate) {
-    return { ...result, status: "warning", message: "X / Twitter text passes, but it is a thread candidate over 240 characters." };
+    return { ...result, status: "warning", message: "Twitter / X text passes, but it is a thread candidate over 240 characters." };
   }
   return result;
 }
@@ -4759,8 +4744,8 @@ async function publishXPost({ state, post }) {
   const accessToken = storedOrEnvAccessToken(state, "x");
   const image = imageForPostFromState(state, post.id);
   const text = channelPublishText(post, "x");
-  if (!text) throw new Error("X / Twitter post text is missing.");
-  if (text.length > 280) throw new Error("X / Twitter post text is over 280 characters.");
+  if (!text) throw new Error("Twitter / X post text is missing.");
+  if (text.length > 280) throw new Error("Twitter / X post text is over 280 characters.");
   const mediaId = await uploadXImage({ accessToken, image });
   const body = {
     text,
@@ -4771,7 +4756,7 @@ async function publishXPost({ state, post }) {
   return {
     externalPostId,
     externalPostUrl: externalPostId ? `https://x.com/i/web/status/${externalPostId}` : "",
-    message: mediaId ? "Published to X / Twitter with image." : "Published to X / Twitter as text-only post."
+    message: mediaId ? "Published to Twitter / X with image." : "Published to Twitter / X as text-only post."
   };
 }
 
@@ -4781,7 +4766,6 @@ async function publishToChannel({ state, post, channel }) {
   if (channel === "instagram") return publishInstagramPost({ state, post });
   if (channel === "threads") return publishThreadsPost({ state, post });
   if (channel === "x") return publishXPost({ state, post });
-  if (channel === "tiktok") throw new Error("TikTok publishing connector is not implemented yet. This channel fails closed.");
   throw new Error(`${channelLabels[channel] || channel} publishing is not implemented.`);
 }
 
@@ -5115,7 +5099,6 @@ function oauthSigningSecret(platform) {
   if (platform === "google_workspace") return process.env.GOOGLE_CLIENT_SECRET || "";
   if (platform === "facebook" || platform === "instagram" || platform === "threads") return process.env.META_CLIENT_SECRET || process.env.THREADS_CLIENT_SECRET || "";
   if (platform === "x") return process.env.X_CLIENT_SECRET || "";
-  if (platform === "tiktok") return process.env.TIKTOK_CLIENT_SECRET || "";
   return "";
 }
 
@@ -5410,7 +5393,7 @@ const repurposeFormats = [
   { id: "carousel_outline", label: "Carousel outline version" },
   { id: "linkedin_version", label: "LinkedIn version" },
   { id: "instagram_version", label: "Instagram version" },
-  { id: "x_version", label: "X/Twitter version" }
+  { id: "x_version", label: "Twitter / X version" }
 ];
 
 const sourceTypes = [
@@ -5466,7 +5449,7 @@ const finalExportPlatformFormats = [
   { id: "instagram-portrait", label: "Instagram Portrait", platform: "instagram", width: 1080, height: 1350 },
   { id: "linkedin-square", label: "LinkedIn Square", platform: "linkedin", width: 1200, height: 1200 },
   { id: "linkedin-landscape", label: "LinkedIn Landscape", platform: "linkedin", width: 1200, height: 627 },
-  { id: "x-twitter-landscape", label: "X/Twitter Landscape", platform: "x", width: 1600, height: 900 }
+  { id: "x-twitter-landscape", label: "Twitter / X Landscape", platform: "x", width: 1600, height: 900 }
 ];
 
 const narrativeInfrastructurePreset = {
@@ -8037,7 +8020,7 @@ function starterImagePrompt({ variantLabel, contentBucket, visualBucket, hook, s
     `Support idea: ${supportLine}`,
     `Overlay text suggestion for the app compositor: ${overlayText}`,
     `Metadata label suggestion for the app compositor: ${metadataLabel}`,
-    "Export recommendation: 1:1 square PNG for LinkedIn, Facebook, X / Twitter, and Instagram MVP.",
+    "Export recommendation: 1:1 square PNG for LinkedIn, Facebook, Twitter / X, and Instagram MVP.",
     "Do not render readable text, logos, wordmarks, fake metadata, numbers, captions, or pseudo-letters inside the generated image. Leave clean blank regions for the app to overlay exact text afterward.",
     "Banned motifs: fake LegalEase logos, fake Wilma, scales of justice, gavels, courthouse silhouettes, jail bars, handcuffs, mugshots, AI robots, generic flat vector people, Canva infographic cards, generic legal icons, generic startup gradients, and random UI dashboards."
   ].join("\n\n");
@@ -14387,6 +14370,23 @@ function htmlShell() {
     function campaignImagePlan(record) {
       return campaignRecordValue(record, "Image Direction") ? "Image: Requested" : "Suggest direction";
     }
+    function campaignPlatformLabel(value = "") {
+      const text = String(value || "").trim().toLowerCase();
+      if (["x", "twitter", "twitter / x", "twitter/x", "x / twitter", "x/twitter"].includes(text)) return "Twitter / X";
+      if (text.includes("linkedin")) return "LinkedIn";
+      if (text.includes("facebook")) return "Facebook";
+      if (text.includes("instagram")) return "Instagram";
+      return String(value || "").trim();
+    }
+    function campaignPlatformErrors(records = []) {
+      const values = records.map(record => campaignRecordValue(record, "Platform")).filter(Boolean);
+      if (values.some(value => String(value).toLowerCase().includes("tiktok"))) {
+        return ["TikTok is not active in this version. Use Twitter / X instead."];
+      }
+      const allowed = new Set(["linkedin", "facebook", "instagram", "twitter / x", "twitter", "x", "x / twitter"]);
+      const unsupported = values.filter(value => !allowed.has(String(value).trim().toLowerCase()));
+      return unsupported.length ? ["Use LinkedIn, Facebook, Instagram, or Twitter / X for Platform."] : [];
+    }
     async function handleCampaignSpreadsheetUpload(file) {
       if (!file) return;
       const name = String(file.name || "campaign upload");
@@ -14435,11 +14435,12 @@ function htmlShell() {
         for (const [key, index] of headerMap.entries()) record[key] = String(sourceRow[index] || "").trim();
         return record;
       }).filter(record => campaignRecordValue(record, "Date") || campaignRecordValue(record, "Platform") || campaignRecordValue(record, "Caption"));
-      const platforms = [...new Set(records.map(record => campaignRecordValue(record, "Platform")).filter(Boolean))];
+      const platforms = [...new Set(records.map(record => campaignPlatformLabel(campaignRecordValue(record, "Platform"))).filter(Boolean))];
+      const platformErrors = campaignPlatformErrors(records);
       campaignImportPreview = {
         fileName:name,
         rows:records.slice(0, 30),
-        errors:[],
+        errors:platformErrors,
         summary:{
           found:records.length,
           dateRange:campaignDateRange(records),
@@ -14468,7 +14469,7 @@ function htmlShell() {
           id:"campaign-import-" + now + "-" + index,
           title,
           caption,
-          platform:campaignRecordValue(record, "Platform") || "linkedin",
+          platform:normalizePlatformName(campaignRecordValue(record, "Platform")) || "linkedin",
           status:"draft",
           campaign:campaignRecordValue(record, "Campaign"),
           scheduledFor:[campaignRecordValue(record, "Date"), campaignRecordValue(record, "Time")].filter(Boolean).join(" "),
@@ -15436,7 +15437,7 @@ function htmlShell() {
 	        if (!account.configured && !account.oauthConfigured) issues.push(\`\${platformLabels[channel] || channel} needs OAuth setup.\`);
 	        else if (!account.connected) issues.push(\`\${platformLabels[channel] || channel} is not connected.\`);
 	        const channelText = post.channelAdaptations?.[channel]?.text || composePreviewText(post);
-	        if (channel === "x" && channelText.length > 280) issues.push("X / Twitter copy is over 280 characters.");
+	        if (channel === "x" && channelText.length > 280) issues.push("Twitter / X copy is over 280 characters.");
 	        if (channel === "instagram" && image && image.aspectRatio !== "1:1" && !(image.finalImageWidth && image.finalImageWidth === image.finalImageHeight)) {
 	          issues.push("Instagram needs a square final PNG.");
 	        }
@@ -15909,7 +15910,7 @@ function htmlShell() {
         linkedin: "LinkedIn",
         meta: "Meta / Facebook + Instagram",
         threads: "Threads",
-        x: "X / Twitter",
+        x: "Twitter / X",
         "live-gate": "Live posting gates"
       };
       return groups.map(group => {
@@ -16145,7 +16146,7 @@ function htmlShell() {
           <div>
             <div class="eyebrow">Launch checklist</div>
             <h2 style="margin:4px 0 0">\${done}/\${checks.length} ready for 24-hour launch</h2>
-	            <p class="muted" style="margin:8px 0 0">Target: LinkedIn, X / Twitter, Facebook Page, and Instagram with conservative per-channel gates.</p>
+	            <p class="muted" style="margin:8px 0 0">Target: LinkedIn, Twitter / X, Facebook Page, and Instagram with conservative per-channel gates.</p>
           </div>
           <button onclick="checkPublishingQueue()">Run readiness check</button>
         </div>
@@ -21421,12 +21422,12 @@ function htmlShell() {
       const previewImage = imageFor(fallbackPost);
       const previewMediaHtml = (platform) => previewImage?.imageUrl
         ? \`<div class="platform-preview-media"><img src="\${esc(previewImage.imageUrl)}" alt="\${esc(platform)} image preview"></div>\`
-        : \`<div class="platform-preview-media">\${platform === "TikTok" ? "Video placeholder" : "Image placeholder"}</div>\`;
+        : \`<div class="platform-preview-media">Image placeholder</div>\`;
       const platformPreviews = [
         ["LinkedIn", "Professional feed preview", "copy caption, download image, post manually", "Preview LinkedIn"],
         ["Facebook", "Community post preview", "copy caption, download image, post manually", "Preview Facebook"],
         ["Instagram", "Square visual and caption", "image required, download image, post manually", "Preview Instagram"],
-        ["TikTok", "Caption or script preview", "video required, save script, post manually", "Preview TikTok"]
+        ["Twitter / X", "Short post preview", "copy caption, download image, post manually", "Preview Twitter / X"]
       ];
       const resultRows = statsNeeded.slice(0, 3).map(post => \`<article class="production-row">
         <div><strong>\${esc(titleFor(post))}</strong><span>\${esc(platformLabels[post.platform] || post.platform || "platform")} · impressions · clicks · likes/comments/shares · notes</span></div>
@@ -21436,7 +21437,7 @@ function htmlShell() {
         ["LinkedIn", "Prepare LinkedIn"],
         ["Facebook", "Prepare Facebook"],
         ["Instagram", "Prepare Instagram"],
-        ["TikTok", "Prepare TikTok"]
+        ["Twitter / X", "Prepare Twitter / X"]
       ];
       const campaignTemplateColumns = [
         "Date", "Time", "Platform", "Campaign", "Post Type", "Topic", "Caption", "Headline", "Subhead", "CTA", "Link", "Audience", "Goal", "Tone", "Image Direction", "Overlay Text", "Wilma Preference", "Approval Owner", "Status", "Notes"
@@ -21512,7 +21513,7 @@ function htmlShell() {
                 <p class="muted">The Command Center recommends image direction, Wilma usage, and overlay text after import.</p>
               </div>
               <div class="campaign-detail-grid">
-                <details class="campaign-details"><summary>View template details</summary><p class="muted">Required columns: Date, Platform, Caption. This file needs Date, Platform, and Caption columns before it can be imported.</p><div class="campaign-template-chips" aria-label="Accepted spreadsheet columns">\${campaignTemplateColumns.map(column => \`<span>\${esc(column)}</span>\`).join("")}</div><p class="muted">Platform values: LinkedIn, Facebook, Instagram, TikTok. Wilma Preference values: Auto, Yes, No, Helper.</p></details>
+                <details class="campaign-details"><summary>View template details</summary><p class="muted">Required columns: Date, Platform, Caption. This file needs Date, Platform, and Caption columns before it can be imported.</p><div class="campaign-template-chips" aria-label="Accepted spreadsheet columns">\${campaignTemplateColumns.map(column => \`<span>\${esc(column)}</span>\`).join("")}</div><p class="muted">Platform values: LinkedIn, Facebook, Instagram, Twitter / X. Wilma Preference values: Auto, Yes, No, Helper.</p></details>
                 <details class="campaign-details"><summary>View Wilma rules</summary><div class="campaign-template-chips" aria-label="Wilma recommendation labels">\${["Use Wilma", "Wilma optional", "Use Wilma as helper", "Do not use Wilma", "Never use Wilma"].map(value => \`<span>\${esc(value)}</span>\`).join("")}</div></details>
                 <details class="campaign-details"><summary>View overlay text options</summary><p class="muted">Overlay Text can include Headline, Subhead, CTA, Placement, Alignment, and Style.</p><div class="campaign-template-chips" aria-label="Overlay text options">\${["Headline", "Subhead", "CTA", "Placement", "Alignment", "Style"].map(value => \`<span>\${esc(value)}</span>\`).join("")}</div></details>
               </div>
@@ -21524,7 +21525,7 @@ function htmlShell() {
               </div>
               <div class="campaign-upload-table">
                 <div class="campaign-upload-row header"><span>Date</span><span>Platform</span><span>Caption Preview</span><span>Image Plan</span><span>Wilma</span><span>Approval</span></div>
-                \${campaignPreviewRows.map(record => \`<div class="campaign-upload-row"><span>\${esc(campaignRecordValue(record, "Date"))}</span><span>\${esc(campaignRecordValue(record, "Platform"))}</span><span>\${esc(campaignRecordValue(record, "Caption")).slice(0, 120)}</span><span>\${esc(campaignImagePlan(record))}</span><span>\${esc(campaignWilmaLabel(record))}</span><span>Needs review</span></div>\`).join("") || '<div class="campaign-import-status">Upload a CSV to preview Date, Platform, Caption Preview, Image Plan, Wilma, and Approval before saving.</div>'}
+                \${campaignPreviewRows.map(record => \`<div class="campaign-upload-row"><span>\${esc(campaignRecordValue(record, "Date"))}</span><span>\${esc(campaignPlatformLabel(campaignRecordValue(record, "Platform")))}</span><span>\${esc(campaignRecordValue(record, "Caption")).slice(0, 120)}</span><span>\${esc(campaignImagePlan(record))}</span><span>\${esc(campaignWilmaLabel(record))}</span><span>Needs review</span></div>\`).join("") || '<div class="campaign-import-status">Upload a CSV to preview Date, Platform, Caption Preview, Image Plan, Wilma, and Approval before saving.</div>'}
               </div>
               <div class="production-card-actions">
                 <button type="button" \${campaignConfirmDisabled} onclick="confirmCampaignImport()" title="Confirm Import creates internal drafts only.">Confirm Import</button>
@@ -22022,7 +22023,7 @@ function htmlShell() {
           <form class="panel" onsubmit="importContentBank(event)">
             <h2>Paste ideas</h2>
             <p class="muted">Use markdown blocks, CSV-style text, or JSON. Generated drafts go to Approval Queue.</p>
-            <textarea name="ideas" rows="12" placeholder="Title: Clean Slate is infrastructure&#10;Idea: Explain why policy is only step one and implementation is the next phase.&#10;Bucket: Implementation Layer&#10;Platforms: LinkedIn, X, Facebook&#10;CTA: Learn more&#10;Wilma: no&#10;Risk: medium&#10;Creative: clean editorial graphic showing policy to process gap"></textarea>
+            <textarea name="ideas" rows="12" placeholder="Title: Clean Slate is infrastructure&#10;Idea: Explain why policy is only step one and implementation is the next phase.&#10;Bucket: Implementation Layer&#10;Platforms: LinkedIn, Twitter / X, Facebook&#10;CTA: Learn more&#10;Wilma: no&#10;Risk: medium&#10;Creative: clean editorial graphic showing policy to process gap"></textarea>
             <div class="card-actions"><button class="primary">Save Ideas</button></div>
           </form>
           <section class="panel">
@@ -23056,7 +23057,7 @@ function htmlShell() {
         ["LinkedIn", "Prepare LinkedIn"],
         ["Facebook", "Prepare Facebook"],
         ["Instagram", "Prepare Instagram"],
-        ["TikTok", "Prepare TikTok"]
+        ["Twitter / X", "Prepare Twitter / X"]
       ];
       const activationAction = (label, message, tone = "") => {
         const className = tone === "primary" ? ' class="primary"' : "";
@@ -24853,17 +24854,17 @@ function htmlShell() {
       const account = channelFor(channel);
       const gate = state.runtime?.livePostingGates?.[channel] || {};
       const serverRun = post.channelDryRuns?.[channel] || post.channelReadiness?.[channel] || null;
-      const publicRequired = ["instagram", "threads", "tiktok"].includes(channel);
+      const publicRequired = ["instagram", "threads"].includes(channel);
       const publicImageUrl = publicImageUrlForPost(post, image);
       const localChecks = [
-        { label:"Publisher adapter", ok:channel !== "tiktok", reason:"TikTok connector is not implemented yet." },
+        { label:"Publisher adapter", ok:["linkedin", "facebook", "instagram", "threads", "x"].includes(channel), reason:"Publishing connector is not implemented yet." },
         { label:"Live gate", ok:Boolean(gate.enabled), reason:"Missing live gate" },
         { label:"Token/account", ok:Boolean(account.connected || account.status === "connected"), reason:"Missing token or account ID" },
         { label:"Public HTTPS image", ok:!publicRequired || publicHttpsUrlReady(publicImageUrl), reason:"Upload public image first" },
         { label:"Caption", ok:Boolean(composePreviewText(post)), reason:"Caption missing" },
         { label:"Final PNG", ok:finalPngReady(post, image), reason:"Missing final PNG" },
         { label:"Preview confirmed", ok:Boolean(post.finalPreviewConfirmed), reason:"Preview not confirmed" },
-        { label:"X / Twitter length", ok:channel !== "x" || (post.channelAdaptations?.x?.text || composePreviewText(post)).length <= 280, reason:"X / Twitter copy is over 280 characters." }
+        { label:"Twitter / X length", ok:channel !== "x" || (post.channelAdaptations?.x?.text || composePreviewText(post)).length <= 280, reason:"Twitter / X copy is over 280 characters." }
       ];
       const checks = Array.isArray(serverRun?.checks) && serverRun.checks.length
         ? serverRun.checks.map(check => ({ label:check.label, ok:Boolean(check.ok), reason:check.reason || "Needs setup" }))

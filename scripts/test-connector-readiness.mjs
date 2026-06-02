@@ -34,10 +34,13 @@ for (const required of [
   "Prepare LinkedIn",
   "Prepare Facebook",
   "Prepare Instagram",
-  "Prepare TikTok"
+  "Prepare Twitter / X"
 ]) {
   assert(more.includes(required), `Connector readiness should include ${required}`);
 }
+
+assert(!more.includes("TikTok"), "Connector readiness should not include TikTok");
+assert(!more.includes("Prepare TikTok"), "Connector readiness should not include Prepare TikTok");
 
 for (const required of [
   "Tasks and priorities:",
@@ -51,7 +54,9 @@ for (const required of [
 }
 
 assert(production.includes("Prepare LinkedIn"), "Production Connected Accounts should include Prepare LinkedIn");
-assert(production.includes("Prepare TikTok"), "Production Connected Accounts should include Prepare TikTok");
+assert(production.includes("Prepare Twitter / X"), "Production Connected Accounts should include Prepare Twitter / X");
+assert(production.includes("Twitter / X") && production.includes("Not connected"), "Production Connected Accounts should include Twitter / X");
+assert(!production.includes("TikTok"), "Production Connected Accounts should not include TikTok");
 assert(!source.includes("startOAuth"), "No OAuth should start in this pass");
 assert(!source.includes("google.calendar.events.insert"), "Calendar writes should not be enabled");
 assert(!source.includes("gmail.users.messages.send"), "Email sending should not be enabled");

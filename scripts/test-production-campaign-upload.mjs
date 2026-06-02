@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const source = readFileSync(join(process.cwd(), "scripts", "preview-server.mjs"), "utf8");
+const course = readFileSync(join(process.cwd(), "docs", "course", "LegalEase_Command_Center_Course.html"), "utf8");
 
 function functionBlock(name) {
   const marker = `function ${name}`;
@@ -53,6 +54,12 @@ for (const required of [
   assert(production.includes(required), `Production Campaign Upload should include ${required}`);
 }
 
+assert(production.includes("Platform values: LinkedIn, Facebook, Instagram, Twitter / X."), "Campaign Upload platform guidance should include Twitter / X");
+assert(!production.includes("Platform values: LinkedIn, Facebook, Instagram, TikTok."), "Campaign Upload platform guidance should not include TikTok");
+assert(course.includes("Twitter / X"), "Course platform references should include Twitter / X");
+assert(!course.includes("TikTok"), "Course platform references should not include TikTok");
+assert(!course.includes("tiktok"), "Course platform references should not include lowercase tiktok");
+
 for (const forbidden of [
   "Time, Platform, Campaign, Post Type, Topic, Caption, Headline",
   "Creative Recommendation Engine",
@@ -74,6 +81,8 @@ for (const forbidden of [
   "overlayStyle",
   "Post Now",
   "Publish Now",
+  "TikTok",
+  "tiktok",
   "OAuth",
   "token",
   "webhook",

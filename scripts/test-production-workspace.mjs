@@ -40,7 +40,7 @@ for (const required of [
   "LinkedIn",
   "Facebook",
   "Instagram",
-  "TikTok",
+  "Twitter / X",
   "Posting is off",
   "Manual only",
   "Nothing has been published by the OS",
@@ -67,7 +67,7 @@ for (const required of [
   "Prepare LinkedIn",
   "Prepare Facebook",
   "Prepare Instagram",
-  "Prepare TikTok",
+  "Prepare Twitter / X",
   "Live posting will require connected accounts, permissions, and manual approval."
 ]) {
   assert(production.includes(required), `Production workspace should include ${required}`);
@@ -94,7 +94,7 @@ for (const action of [
   "Preview LinkedIn",
   "Preview Facebook",
   "Preview Instagram",
-  "Preview TikTok",
+  "Preview Twitter / X",
   "Copy Caption",
   "Download Image",
   "Add to Internal Schedule",
@@ -120,7 +120,9 @@ for (const forbidden of [
   "Schedule to LinkedIn",
   "Schedule to Facebook",
   "Schedule to Instagram",
-  "Schedule to TikTok",
+  "Schedule to Twitter / X",
+  "TikTok",
+  "tiktok",
   "API status",
   "OAuth",
   "token",

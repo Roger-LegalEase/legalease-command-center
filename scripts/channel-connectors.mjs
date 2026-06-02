@@ -26,16 +26,10 @@ const connectorConfig = {
     notes: "Threads can remain available later, but Instagram is the MVP Meta priority."
   },
   x: {
-    label: "X / Twitter",
+    label: "Twitter / X",
     requiredEnv: ["X_CLIENT_ID", "X_CLIENT_SECRET", "X_REDIRECT_URI"],
     scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
     notes: "Requires an approved X developer app with write access."
-  },
-  tiktok: {
-    label: "TikTok",
-    requiredEnv: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REDIRECT_URI"],
-    scopes: ["video.upload", "video.publish"],
-    notes: "Requires a TikTok developer app, content posting approval, and a dedicated publishing connector. This app fails closed until that connector is implemented."
   }
 };
 
