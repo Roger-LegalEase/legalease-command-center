@@ -10,7 +10,7 @@ function functionBlock(name) {
   const start = source.indexOf(marker);
   assert(start >= 0, `${name} should exist`);
   const rest = source.slice(start);
-  const next = rest.slice(1).search(/\n    function [a-zA-Z0-9_$]+\(/);
+  const next = rest.slice(1).search(/\n\s*function [a-zA-Z0-9_$]+\(/);
   return next > 0 ? rest.slice(0, next + 1) : rest;
 }
 
@@ -60,8 +60,8 @@ for (const compactCopy of [
   assert(more.includes(compactCopy), `Activation cards should use compact founder copy: ${compactCopy}`);
 }
 
-assert(!more.includes("Next setup step:"), "Activation cards should not use verbose setup labels");
-assert(!more.includes("Safety state:"), "Activation cards should not use verbose safety labels");
+assert(!more.includes("Next setup step:</strong> Prepare"), "Generic activation cards should not use verbose setup labels");
+assert(more.includes("Safety state:"), "LinkedIn activation card should show the approved connector safety state");
 
 for (const safety of [
   "Live social posting: Off",

@@ -14028,8 +14028,14 @@ function htmlShell() {
     .more-safety-row { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:10px 12px; display:flex; justify-content:space-between; gap:12px; align-items:center; color:var(--text-secondary); font-size:13px; line-height:1.3; }
     .more-safety-row strong { color:var(--text-primary); }
     .more-safety-row span { color:var(--accent-hover); font-weight:850; white-space:nowrap; }
+    .readiness-detail-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:12px; }
+    .readiness-detail-card { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:12px; min-width:0; }
+    .readiness-detail-card strong { display:block; color:var(--text-primary); font-size:13px; margin-bottom:4px; }
+    .readiness-detail-card small { color:var(--text-secondary); line-height:1.35; overflow-wrap:anywhere; }
+    .more-summary-card details,.more-utility-card details,.production-card details { margin-top:10px; }
+    .more-summary-card summary,.more-utility-card summary,.production-card summary { cursor:pointer; color:var(--accent-hover); font-weight:850; font-size:12px; }
     @media (max-width:1180px) { .more-summary-grid,.more-utility-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .more-hero,.more-bottom-grid { grid-template-columns:1fr; } .more-actions { justify-content:flex-start; } }
-    @media (max-width:760px) { .more-workspace { padding:18px 16px 96px; } .more-summary-grid,.more-utility-grid { grid-template-columns:1fr; } .more-card-head,.more-safety-row { align-items:flex-start; flex-direction:column; } }
+    @media (max-width:760px) { .more-workspace { padding:18px 16px 96px; } .more-summary-grid,.more-utility-grid,.readiness-detail-grid { grid-template-columns:1fr; } .more-card-head,.more-safety-row { align-items:flex-start; flex-direction:column; } }
     .support-workspace { display:grid; gap:18px; width:100%; max-width:1040px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
     .support-workspace * { box-sizing:border-box; min-width:0; }
     .support-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
@@ -15573,10 +15579,10 @@ function htmlShell() {
         const oauthConfigured = Boolean(account.oauthConfigured || setup.configured);
         const connected = Boolean(account.connected || status === "connected");
         const message = !oauthConfigured
-          ? \`Missing configuration: \${missingEnv.join(", ") || "server credentials"}.\`
+          ? "Connection needs setup before this can be used."
           : connected
             ? \`Connected as \${account.accountName || account.displayName || "account"}.\`
-            : account.lastTestMessage || "Ready to connect with OAuth.";
+            : account.lastTestMessage || "Ready to connect.";
         const connectDisabled = !oauthConfigured && status !== "expired";
         const testDisabled = !connected;
 	        const disconnectDisabled = !connected;
@@ -15602,7 +15608,7 @@ function htmlShell() {
               <button class="review-only-action" disabled aria-disabled="true" title="Manual approval required before live publishing can be enabled.">Enable live publishing</button>
 	          </div>
 	          <details>
-	            <summary class="muted">Admin details</summary>
+	            <summary class="muted">Advanced setup details</summary>
 	            <p class="muted">Account: \${esc(account.accountName || "not connected")}<br>Account ID: \${esc(account.accountId || account.externalAccountId || "not set")}<br>Scopes: \${esc((setup.scopes || account.scopes || []).join(", ") || "none")}<br>Missing env vars: \${esc(missingEnv.join(", ") || "none")}<br>Live gate env: \${esc((account.liveGateEnvVars || state.runtime?.livePostingGates?.[account.platform]?.envVars || []).join(" or ") || "none")}<br>Token expires: \${esc(account.tokenExpiresAt || "not set")}<br>Last tested: \${esc(account.lastTestedAt || "never")}<br>Last error: \${esc(account.lastErrorSummary || "none")}<br>OAuth configured: \${oauthConfigured ? "yes" : "no"}<br>\${esc(setup.notes || "")}</p>
 	          </details>
         </article>\`;
@@ -16085,14 +16091,18 @@ function htmlShell() {
           <div>
             <div class="eyebrow">Production readiness</div>
             <h2 style="margin:4px 0 0">Real operations status</h2>
-            <p class="muted" style="margin:8px 0 0">Hosted operations should use Supabase, owner-token access, encrypted OAuth tokens, OpenAI, audit/event memory, and zero live posting gates.</p>
+            <p class="muted" style="margin:8px 0 0">Check hosted setup before real operations. Live posting stays off.</p>
           </div>
           <span class="badge \${blockers.length ? "warn" : "good"}">\${blockers.length ? blockers.length + " blocker" + (blockers.length === 1 ? "" : "s") : "Ready"}</span>
         </div>
         <div class="metric-table" style="margin-top:14px">
           \${checks.map(check => \`<div class="metric-row"><span>\${esc(check.label)}<br><small class="muted">\${esc(check.detail || "")}</small></span><span class="badge \${check.ok ? "good" : "warn"}">\${check.ok ? "Ready" : "Fix"}</span></div>\`).join("") || '<div class="empty">Production readiness snapshot is not available yet.</div>'}
         </div>
-        <div class="card-actions" style="margin-top:14px"><button onclick="openProductionReadiness()">Open JSON Snapshot</button><button onclick="location.hash='growth-inbox'">Open Growth Inbox</button><button onclick="location.hash='tasks'">Open Tasks</button></div>
+        <details style="margin-top:12px">
+          <summary class="muted">Advanced readiness details</summary>
+          <p class="muted">Hosted operations should use protected owner access, encrypted connection storage, OpenAI, audit/event memory, and zero live posting gates.</p>
+        </details>
+        <div class="card-actions" style="margin-top:14px"><button onclick="openProductionReadiness()">Open Readiness Details</button><button onclick="location.hash='growth-inbox'">Open Growth Inbox</button><button onclick="location.hash='tasks'">Open Tasks</button></div>
       </div>\`;
     }
 
@@ -21845,22 +21855,38 @@ function htmlShell() {
         <section class="production-card">
           <div class="production-card-head"><div><h2>LinkedIn readiness</h2><small>Approval workflow ready</small></div><span class="badge warn">Live posting: \${esc(productionLinkedInPosting)}</span></div>
           <p class="muted">LinkedIn posting is installed but disabled unless LinkedIn is connected, the post is approved internally, and Roger gives final confirmation.</p>
-          <div class="production-summary-grid">
-            <article class="production-summary-card"><span>Status values</span><strong>Approval workflow ready</strong><small>\${linkedInReadinessStatuses.map(esc).join(" · ")}</small></article>
-            <article class="production-summary-card"><span>Future capabilities</span><strong>Internal review</strong><small>\${linkedInFutureCapabilities.map(esc).join(" · ")}</small></article>
-            <article class="production-summary-card urgent"><span>Explicitly disabled</span><strong>Unsafe posting</strong><small>\${linkedInDisabledCapabilities.map(esc).join(" · ")}</small></article>
+          <div class="more-safety-list">
+            <div class="more-safety-row"><strong>Account</strong><span>\${productionLinkedInConnected ? "Connected" : "Not connected"}</span></div>
+            <div class="more-safety-row"><strong>Status: Approval workflow ready</strong><span>Internal review</span></div>
+            <div class="more-safety-row"><strong>Safety: Approved posts only</strong><span>No live posting</span></div>
           </div>
+          <details>
+            <summary>Show setup details</summary>
+            <div class="readiness-detail-grid">
+              <article class="readiness-detail-card"><strong>Status values</strong><small>\${linkedInReadinessStatuses.map(esc).join(" · ")}</small></article>
+              <article class="readiness-detail-card"><strong>Future capabilities</strong><small>\${linkedInFutureCapabilities.map(esc).join(" · ")}</small></article>
+              <article class="readiness-detail-card"><strong>Explicitly disabled</strong><small>\${linkedInDisabledCapabilities.map(esc).join(" · ")}</small></article>
+            </div>
+          </details>
           <div class="production-card-actions"><button type="button" onclick="document.getElementById('production-linkedin-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View LinkedIn Approval Queue</button><button type="button" onclick="location.hash='queue'">Preview LinkedIn Post</button><button type="button" onclick="connectLinkedIn()">Connect LinkedIn</button><button type="button" onclick="checkLinkedInStatus()">Check Status</button></div>
         </section>
 
         <section class="production-card">
           <div class="production-card-head"><div><h2>Twitter / X readiness</h2><small>Approval workflow ready</small></div><span class="badge warn">No live posting</span></div>
           <p class="muted">Twitter / X posting is not connected yet. Posts can be prepared and approved internally.</p>
-          <div class="production-summary-grid">
-            <article class="production-summary-card"><span>Status values</span><strong>Approval workflow ready</strong><small>\${twitterXReadinessStatuses.map(esc).join(" · ")}</small></article>
-            <article class="production-summary-card"><span>Future capabilities</span><strong>Internal review</strong><small>\${twitterXFutureCapabilities.map(esc).join(" · ")}</small></article>
-            <article class="production-summary-card urgent"><span>Explicitly disabled</span><strong>No live connector</strong><small>\${twitterXDisabledCapabilities.map(esc).join(" · ")}</small></article>
+          <div class="more-safety-list">
+            <div class="more-safety-row"><strong>Account</strong><span>Not connected</span></div>
+            <div class="more-safety-row"><strong>Status: Approval workflow ready</strong><span>Internal review</span></div>
+            <div class="more-safety-row"><strong>Safety</strong><span>No live posting</span></div>
           </div>
+          <details>
+            <summary>Show setup details</summary>
+            <div class="readiness-detail-grid">
+              <article class="readiness-detail-card"><strong>Status values</strong><small>\${twitterXReadinessStatuses.map(esc).join(" · ")}</small></article>
+              <article class="readiness-detail-card"><strong>Future capabilities</strong><small>\${twitterXFutureCapabilities.map(esc).join(" · ")}</small></article>
+              <article class="readiness-detail-card"><strong>Explicitly disabled</strong><small>\${twitterXDisabledCapabilities.map(esc).join(" · ")}</small></article>
+            </div>
+          </details>
           <div class="production-card-actions"><button type="button" onclick="document.getElementById('production-twitter-x-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View Twitter / X Approval Queue</button><button type="button" onclick="location.hash='queue'">Preview Twitter / X Post</button><button type="button" onclick="toast('Twitter / X checklist opened internally. No connection starts here.')">Prepare Twitter / X</button></div>
         </section>
 
@@ -22046,16 +22072,16 @@ function htmlShell() {
             <h1>\${esc(config.title)}</h1>
             <p>\${esc(config.copy)}</p>
           </div>
-          <div class="operator-strip-status"><span class="operator-status-label warn">Next action</span><button class="primary" onclick="location.hash='\${esc(config.links[0]?.[1] || "overview")}'">Open first</button></div>
+          <div class="operator-strip-status"><span class="operator-status-label warn">Next action</span><button class="primary" onclick="location.hash='\${esc(config.links[0]?.[1] || "overview")}'">Start here</button></div>
         </section>
         <div class="landing-grid section">
           <section class="section-band">
-            <div class="simple-panel-head"><h2>Snapshot</h2><button onclick="location.hash='overview'">Today</button></div>
+            <div class="simple-panel-head"><h2>Current work</h2><button onclick="location.hash='overview'">Today</button></div>
             <div class="today-summary-grid">\${metrics.map(([label, value, detail]) => \`<div class="today-summary-card"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></div>\`).join("")}</div>
-            <article class="compact-card" style="margin-top:10px"><h3>Recommended move</h3><p class="muted">\${esc(nextAction)}</p></article>
+            <article class="compact-card" style="margin-top:10px"><h3>Next move</h3><p class="muted">\${esc(nextAction)}</p></article>
           </section>
           <aside class="section-band proof-band">
-            <div class="simple-panel-head"><h2>Open</h2></div>
+            <div class="simple-panel-head"><h2>Work areas</h2></div>
             <div class="landing-actions">\${config.links.map(([label, href, actionLabel, detail]) => \`<a href="#\${esc(href)}"><span>\${esc(label)}</span>\${detail ? \`<small>\${esc(detail)}</small>\` : ""}<strong>\${esc(actionLabel || "Open " + label)}</strong></a>\`).join("")}</div>
           </aside>
         </div>
@@ -23445,7 +23471,7 @@ function htmlShell() {
         ["Image request", "Saved post", "Image request saved for review", "Roger", "Today", "Yes", "Server-side image route only", "Completed manually"]
       ];
       const socialSetupRows = [
-        ["LinkedIn", "Connect LinkedIn", "Approval workflow can prepare LinkedIn posts internally.", "LinkedIn connection needs setup if credentials or safe token storage are missing.", "Check LinkedIn Status.", "Approved posts only."],
+        ["LinkedIn", "Connect LinkedIn", "Approval workflow can prepare LinkedIn posts internally.", "LinkedIn connection needs setup if required connection settings or safe account storage are missing.", "Check LinkedIn Status.", "Approved posts only."],
         ["Facebook", "Prepare Facebook"],
         ["Instagram", "Prepare Instagram"],
         ["Twitter / X", "Prepare Twitter / X", "Approval workflow can prepare Twitter / X posts internally.", "No Twitter / X connection starts here.", "Prepare Twitter / X checklist.", "No live posting."]
@@ -23461,6 +23487,33 @@ function htmlShell() {
         }
         return \`<button type="button"\${className} onclick="location.hash='\${esc(target)}'">\${esc(label)}</button>\`;
       };
+      const activationSectionHtml = ([title, status, ready, notReady, nextStep, safety]) => \`<article class="more-summary-card">
+        <span>\${esc(title)}</span>
+        <strong>Status: \${esc(status)}</strong>
+        <small>\${esc(ready)}</small>
+        <details>
+          <summary>Setup details</summary>
+          <small><b>Ready:</b> \${esc(ready)}<br><b>Not ready:</b> \${esc(notReady)}<br><b>Next step:</b> \${esc(nextStep)}<br><b>Safety:</b> \${esc(safety)}</small>
+        </details>
+      </article>\`;
+      const socialSetupHtml = ([platform, label, ready, notReady, nextStep, safety]) => {
+        if (platform === "LinkedIn") {
+          return \`<article class="more-utility-card"><h3>LinkedIn</h3><p><strong>Status:</strong> Not connected / Connected / Needs setup<br>\${esc(ready)}</p><details><summary>Connection details</summary><p><strong>Connected state:</strong> Not connected<br><strong>Ready:</strong> \${esc(ready)}<br><strong>Not ready:</strong> \${esc(notReady)}<br><strong>Next setup step:</strong> \${esc(nextStep)}<br><strong>Safety state:</strong> \${esc(safety)}</p></details><div class="more-card-actions"><button type="button" onclick="showLinkedInSetupChecklist()">Prepare LinkedIn</button><button type="button" onclick="connectLinkedIn()">Connect LinkedIn</button><button type="button" onclick="checkLinkedInStatus()">Check LinkedIn Status</button></div></article>\`;
+        }
+        if (platform === "Twitter / X") {
+          return \`<article class="more-utility-card"><h3>Twitter / X</h3><p><strong>Status:</strong> Not connected<br>\${esc(ready)}</p><details><summary>Connection details</summary><p><strong>Ready:</strong> \${esc(ready)}<br><strong>Not ready:</strong> \${esc(notReady)}<br><strong>Next step:</strong> \${esc(nextStep)}<br><strong>Safety:</strong> \${esc(safety)}</p></details><div class="more-card-actions">\${activationAction(label, "Twitter / X setup checklist opened. No connection starts here.")}</div></article>\`;
+        }
+        return \`<article class="more-utility-card"><h3>\${esc(platform)}</h3><p><strong>Status:</strong> Not connected<br>Future capabilities: preview, approval, scheduling, posting, analytics.</p><div class="more-card-actions">\${activationAction(label, platform + " setup checklist opened. No connection starts here.")}</div></article>\`;
+      };
+      const outboxRowHtml = ([type, target, summary, requestedBy, createdAt, approval, notes, status]) => \`<article class="more-utility-card">
+        <h3>\${esc(type)}</h3>
+        <p><strong>Target:</strong> \${esc(target)}<br><strong>Summary:</strong> \${esc(summary)}</p>
+        <span class="more-pill">\${esc(status)}</span>
+        <details>
+          <summary>Review details</summary>
+          <p><strong>Type:</strong> \${esc(type)}<br><strong>Requested by:</strong> \${esc(requestedBy)}<br><strong>Created:</strong> \${esc(createdAt)}<br><strong>Approval:</strong> \${esc(approval)}<br><strong>Safety:</strong> \${esc(notes)}</p>
+        </details>
+      </article>\`;
       return \`<section id="more" class="\${pageClass("more")} more-workspace">
         <section class="more-hero">
           <div>
@@ -23484,7 +23537,7 @@ function htmlShell() {
         <section id="activation-center" class="more-card">
           <div class="more-card-head"><div><h2>Activation Center</h2><small>Prepare the Command Center for real daily use without turning on risky live actions too early.</small></div><span class="more-pill">Manual only</span></div>
           <p class="muted">Calendar reads can help Today understand your day. Calendar writes are off.</p>
-          <div class="more-summary-grid">\${activationSections.map(([title, status, ready, notReady, nextStep, safety]) => \`<article class="more-summary-card"><span>\${esc(title)}</span><small><b>Status:</b> \${esc(status)}<br><b>Ready:</b> \${esc(ready)}<br><b>Not ready:</b> \${esc(notReady)}<br><b>Next step:</b> \${esc(nextStep)}<br><b>Safety:</b> \${esc(safety)}</small></article>\`).join("")}</div>
+          <div class="more-summary-grid">\${activationSections.map(activationSectionHtml).join("")}</div>
           <div class="more-card-actions">
             \${activationAction("Prepare Calendar Connection", "Calendar readiness checklist opened. Calendar writes are off.", "primary")}
             \${activationAction("Check Calendar Readiness", "Calendar readiness checked internally. No calendar service was contacted.")}
@@ -23495,12 +23548,9 @@ function htmlShell() {
 
         <section class="more-card">
           <div class="more-card-head"><div><h2>Social Accounts</h2><small>Future connection setup checklists only</small></div><span class="more-pill">Not connected</span></div>
+          <p class="muted">Platform checklists are available for future setup. No accounts are connected.</p>
           <div class="more-utility-grid">
-            \${socialSetupRows.map(([platform, label, ready, notReady, nextStep, safety]) => platform === "LinkedIn"
-              ? \`<article class="more-utility-card"><h3>LinkedIn</h3><p><strong>Status:</strong> Not connected / Connected / Needs setup<br><strong>Connected state:</strong> Not connected<br><strong>Ready:</strong> \${esc(ready)}<br><strong>Next setup step:</strong> \${esc(nextStep)}<br><strong>Safety state:</strong> \${esc(safety)}</p><div class="more-card-actions"><button type="button" onclick="connectLinkedIn()">Connect LinkedIn</button><button type="button" onclick="checkLinkedInStatus()">Check LinkedIn Status</button></div></article>\`
-              : platform === "Twitter / X"
-              ? \`<article class="more-utility-card"><h3>Twitter / X</h3><p><strong>Status:</strong> Not connected<br><strong>Ready:</strong> \${esc(ready)}<br><strong>Not ready:</strong> \${esc(notReady)}<br><strong>Next step:</strong> \${esc(nextStep)}<br><strong>Safety:</strong> \${esc(safety)}</p><div class="more-card-actions">\${activationAction(label, "Twitter / X setup checklist opened. No connection starts here.")}</div></article>\`
-              : \`<article class="more-utility-card"><h3>\${esc(platform)}</h3><p>Future capabilities: preview, approval, scheduling, posting, analytics. Current status: Not connected.</p><div class="more-card-actions">\${activationAction(label, platform + " setup checklist opened. No connection starts here.")}</div></article>\`).join("")}
+            \${socialSetupRows.map(socialSetupHtml).join("")}
           </div>
         </section>
 
@@ -23510,7 +23560,7 @@ function htmlShell() {
           <div class="more-card-head"><div><h2>External Action Outbox</h2><small>Every future live action must appear here before execution.</small></div><span class="more-pill">Draft-only</span></div>
           <p class="muted">Outbox does not execute actions in this pass.</p>
           <div class="more-pills"><span class="more-pill">Draft</span><span class="more-pill">Needs approval</span><span class="more-pill">Approved</span><span class="more-pill">Blocked</span><span class="more-pill">Completed manually</span></div>
-          <div class="more-utility-grid">\${outboxRows.map(([type, target, summary, requestedBy, createdAt, approval, notes, status]) => \`<article class="more-utility-card"><h3>\${esc(type)}</h3><p><strong>Type:</strong> \${esc(type)}<br><strong>Target:</strong> \${esc(target)}<br><strong>Summary:</strong> \${esc(summary)}<br><strong>Requested by:</strong> \${esc(requestedBy)}<br><strong>Created:</strong> \${esc(createdAt)}<br><strong>Approval:</strong> \${esc(approval)}<br><strong>Safety:</strong> \${esc(notes)}</p><span class="more-pill">\${esc(status)}</span></article>\`).join("")}</div>
+          <div class="more-utility-grid">\${outboxRows.map(outboxRowHtml).join("")}</div>
         </section>
 
         <section class="more-card">

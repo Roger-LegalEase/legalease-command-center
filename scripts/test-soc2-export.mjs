@@ -83,9 +83,27 @@ async function main() {
     assert.ok(Array.isArray(snapshotJson.typeIChecklist), "snapshot should include Type I checklist");
     assert.ok(snapshotJson.readinessBand, "snapshot should include a plain-English readiness band");
 
-    const stateBeforeReviewResponse = await fetch(`${baseUrl}/api/state`);
-    const stateBeforeReview = await stateBeforeReviewResponse.json();
-    const targetEvidence = (stateBeforeReview.soc2Evidence || [])[0];
+    const evidenceId = `soc2-test-evidence-${Date.now()}`;
+    const testEvidenceResponse = await fetch(`${baseUrl}/api/growth/upsert`, {
+      method:"POST",
+      headers:{ "content-type":"application/json" },
+      body:JSON.stringify({
+        collection:"soc2Evidence",
+        item:{
+          id:evidenceId,
+          evidenceTitle:"SOC 2 QA evidence review fixture",
+          controlArea:"Evidence Collection",
+          sourceSystem:"QA",
+          owner:"QA",
+          evidenceStatus:"Draft",
+          evidenceQuality:"Acceptable",
+          collectionDate:new Date().toISOString().slice(0, 10)
+        }
+      })
+    });
+    assert.equal(testEvidenceResponse.status, 200, "test should create an isolated evidence record");
+    const testEvidence = await testEvidenceResponse.json();
+    const targetEvidence = testEvidence.item;
     assert.ok(targetEvidence?.id, "test needs an evidence record to review");
 
     const readyResponse = await fetch(`${baseUrl}/api/soc2/evidence/${encodeURIComponent(targetEvidence.id)}/review`, {

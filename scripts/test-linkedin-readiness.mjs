@@ -75,7 +75,7 @@ for (const required of [
   "Ready:",
   "Approval workflow can prepare LinkedIn posts internally.",
   "Not ready:",
-  "LinkedIn connection needs setup if credentials or safe token storage are missing.",
+  "LinkedIn connection needs setup if required connection settings or safe account storage are missing.",
   "Next step:",
   "Check LinkedIn Status.",
   "Safety state:",
