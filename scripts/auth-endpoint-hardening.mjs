@@ -27,6 +27,10 @@ const endpointPurpose = [
   [/^POST \/api\/data-integrity\/refresh$/, "Refresh internal Data Integrity snapshot."],
   [/^GET \/api\/operating-memory\/today$/, "Read today's Operating Memory."],
   [/^POST \/api\/operating-memory\/today\/save$/, "Save today's Operating Memory internally."],
+  [/^GET \/api\/email\/status$/, "Read email readiness without contacting email services."],
+  [/^GET \/api\/email\/inbox-summary$/, "Read internal email summary placeholders or imported summaries only."],
+  [/^GET \/api\/email\/follow-ups$/, "Read internal email follow-up placeholders or imported summaries only."],
+  [/^POST \/api\/email\/draft$/, "Prepare an internal email draft for review without sending."],
   [/^GET \/api\/production-activation\/rcap$/, "Read internal RCAP activation status."],
   [/^POST \/api\/production-activation\/rcap\/start$/, "Start review-only RCAP activation workflow."],
   [/^POST \/api\/production-activation\/rcap\/review-state$/, "Update RCAP review state internally."],
@@ -42,7 +46,7 @@ const forbiddenEndpointRules = [
   {
     id: "send-email",
     label: "send email",
-    pattern: /\/api\/(email|mail|gmail\/send)|send[-_]?email/i,
+    pattern: /\/api\/(?:email|mail)\/(?:send|send-now|forward|delete|archive|label|modify)|\/api\/gmail\/send|send[-_]?email/i,
     reason: "Email sending is forbidden from the Command Center hardening layer."
   },
   {

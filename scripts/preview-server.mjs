@@ -10781,6 +10781,90 @@ function calendarStatusResponse(currentState = {}) {
   };
 }
 
+function serverEmailReadinessState(currentState = {}) {
+  const connector = (currentState.connectorStatus || []).find(item => item.connector === "gmail" || item.connector === "email") || {};
+  const readDraftConnected = Boolean(currentState.runtime?.emailReadDraftConnected || connector.emailReadDraftConnected);
+  const readyToConnect = googleOAuthConfigured();
+  const status = readDraftConnected ? "Read/draft connected" : readyToConnect ? "Ready to connect" : "Not connected";
+  return {
+    status,
+    connected: readDraftConnected,
+    statusValues: [
+      "Not connected",
+      "Ready to connect",
+      "Read-only planned",
+      "Draft-only planned",
+      "Read/draft connected",
+      "Needs setup",
+      "Error"
+    ],
+    message: readDraftConnected ? "Email readiness is available for summaries and internal drafts." : "Email is not connected yet.",
+    safety: "Email drafts can be prepared for review. Email sending is off.",
+    capabilities: [
+      "Read email summaries",
+      "Find important threads",
+      "Prepare reply drafts",
+      "Prepare outbound drafts",
+      "Link email follow-ups to Today / Partners / Proof",
+      "Flag unanswered partner/investor messages"
+    ],
+    disabled: [
+      "Send email",
+      "Auto-reply",
+      "Forward email",
+      "Delete email",
+      "Archive email",
+      "Label email",
+      "Modify inbox"
+    ],
+    nextStep: readDraftConnected ? "Check Email Readiness" : "Prepare Email Connection"
+  };
+}
+
+function emailThreadsFromState(currentState = {}) {
+  return (currentState.automationEvents || [])
+    .filter(item => /gmail|email/i.test([item.source, item.sourceType, item.eventType].join(" ")))
+    .slice(0, 8)
+    .map(item => ({
+      title: item.title || "Email thread",
+      summary: String(item.summary || "Email summary available after connection.").slice(0, 180),
+      receivedAt: item.receivedAt || item.createdAt || "",
+      suggestedAction: item.suggestedAction || "Review internally and prepare a draft if needed.",
+      safety: "Email sending is off."
+    }));
+}
+
+function emailStatusResponse(currentState = {}) {
+  const readiness = serverEmailReadinessState(currentState);
+  return {
+    status: readiness.status,
+    message: readiness.connected ? readiness.message : "Email is not connected yet.",
+    safety: readiness.safety,
+    capabilities: readiness.capabilities,
+    disabled: readiness.disabled,
+    nextStep: readiness.nextStep,
+    liveGatesCount: 0
+  };
+}
+
+function emailDraftResponse(payload = {}) {
+  const title = String(payload.title || payload.subject || "Email draft").slice(0, 120);
+  const target = String(payload.target || payload.recipient || "Manual recipient").slice(0, 120);
+  return {
+    draft: {
+      id: `email-draft-${crypto.randomUUID().slice(0, 8)}`,
+      title,
+      target,
+      status: "Needs review",
+      states: ["Draft needed", "Draft prepared", "Needs review", "Approved to send manually", "Sent manually"],
+      internalOnly: true
+    },
+    message: "Email draft saved internally for Roger review. No message was sent.",
+    safety: "Drafts are internal until Roger reviews them. Email sending is off.",
+    liveGatesCount: 0
+  };
+}
+
 async function disconnectGoogleWorkspace() {
   return serializeStateMutation(async () => {
     const state = await store.readState();
@@ -13230,6 +13314,13 @@ function htmlShell() {
     .thread strong,.parked-item strong,.moved-row strong { font-size:13px; line-height:1.25; }
     .thread span,.parked-item span,.moved-row span { color:var(--text-tertiary); font-size:11.5px; line-height:1.35; }
     .thread-age { color:var(--accent); font-weight:800; }
+    .email-followup-list { display:grid; gap:9px; margin-top:10px; }
+    .email-followup-row { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:11px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; }
+    .email-followup-copy { display:grid; gap:4px; min-width:0; }
+    .email-followup-title { color:var(--text-primary); font-size:13px; line-height:1.25; font-weight:850; overflow-wrap:break-word; }
+    .email-followup-status { width:max-content; max-width:100%; border:1px solid rgba(0,169,157,.16); border-radius:999px; background:rgba(0,169,157,.08); color:var(--accent-hover); padding:2px 7px; font-size:10px; font-weight:850; line-height:1.1; }
+    .email-followup-detail { color:var(--text-tertiary); font-size:11.5px; line-height:1.35; overflow-wrap:break-word; }
+    .email-followup-row button { min-height:31px; padding:0 10px; font-size:12px; white-space:nowrap; }
     .urgent,.critical,.pressing { border-color:var(--urgent-border); }
     .status-urgent,.pill-urgent { display:inline-flex; width:max-content; max-width:100%; align-items:center; border:1px solid var(--urgent-border); border-radius:999px; background:var(--urgent-soft); color:var(--urgent); padding:3px 7px; font-size:10px; font-weight:850; line-height:1; }
     .standup-row.urgent,.standup-row.critical,.standup-row.pressing { border-left:4px solid var(--urgent); padding-left:9px; }
@@ -17962,6 +18053,71 @@ function htmlShell() {
       </section>\`;
     }
 
+    function emailReadinessState() {
+      const readDraftConnected = Boolean(state.runtime?.emailReadDraftConnected);
+      const readyToConnect = Boolean(state.runtime?.emailReadyToConnect);
+      const status = readDraftConnected ? "Read/draft connected" : readyToConnect ? "Ready to connect" : "Not connected";
+      return {
+        status,
+        statuses:["Not connected", "Ready to connect", "Read-only planned", "Draft-only planned", "Read/draft connected", "Needs setup", "Error"],
+        safety:"Email drafts can be prepared for review. Email sending is off.",
+        fallback:"Email is not connected yet. Follow-ups are using internal planning items.",
+        capabilities:[
+          "Read email summaries",
+          "Find important threads",
+          "Prepare reply drafts",
+          "Prepare outbound drafts",
+          "Link email follow-ups to Today / Partners / Proof",
+          "Flag unanswered partner/investor messages"
+        ],
+        disabled:[
+          "Send email",
+          "Auto-reply",
+          "Forward email",
+          "Delete email",
+          "Archive email",
+          "Label email",
+          "Modify inbox"
+        ],
+        nextStep:"Prepare Email Connection"
+      };
+    }
+
+    function cockpitEmailFollowupsHtml() {
+      const readiness = emailReadinessState();
+      const rows = [
+        ["Partner follow-up", "Draft needed", "Review Harris County / Clean Slate follow-up context.", "Prepare Draft", "prepareEmailDraft('Partner follow-up draft','Today follow-up')"],
+        ["Investor update", "Needs review", "Prepare language internally before Roger sends manually.", "Review Draft", "toast('Draft opened for internal review.')"]
+      ];
+      return \`<section class="timeline-card email-followups-card">
+        <div class="cockpit-card-head"><h2>Email Follow-Ups</h2><small>\${esc(readiness.status)}</small></div>
+        <p class="muted">\${esc(readiness.safety)}</p>
+        <div class="empty-calm">\${esc(readiness.fallback)}</div>
+        <div class="email-followup-list">\${rows.map(([title, status, detail, actionLabel, action]) => \`<article class="email-followup-row"><div class="email-followup-copy"><strong class="email-followup-title">\${esc(title)}</strong><span class="email-followup-status">\${esc(status)}</span><span class="email-followup-detail">\${esc(detail)}</span></div><button type="button" onclick="\${action}">\${esc(actionLabel)}</button></article>\`).join("")}</div>
+        <div class="card-actions"><button type="button" onclick="location.hash='tasks'">Review internal follow-ups</button></div>
+      </section>\`;
+    }
+
+    function cockpitEmailDraftWorkflowHtml() {
+      const states = [
+        ["Draft Needed", "Prepare reply", "Manual step only."],
+        ["Draft Prepared", "Ready for review", "Manual step only."],
+        ["Needs Review", "Roger approval needed", "Manual step only."],
+        ["Approved to Send Manually", "Manual send only", "Roger sends outside the OS."],
+        ["Sent Manually", "Logged after Roger sends", "No email was sent by the OS."]
+      ];
+      return \`<section id="email-draft-workflow" class="more-card">
+        <div class="more-card-head"><div><h2>Email Draft Workflow</h2><small>Prepare replies and outbound drafts without sending messages.</small></div><span class="more-pill">Draft-only</span></div>
+        <p class="muted">Drafts are internal until Roger reviews them. Email sending is off.</p>
+        <div class="more-summary-grid">\${states.map(([stateLabel, value, detail]) => \`<article class="more-summary-card"><span>\${esc(stateLabel)}</span><strong>\${esc(value)}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
+        <div class="more-card-actions">
+          <button class="primary" type="button" onclick="prepareEmailDraft('Partner follow-up draft','Partner follow-up')">Prepare Draft</button>
+          <button type="button" onclick="toast('Draft opened for internal review.')">Review Draft</button>
+          <button type="button" onclick="toast('Marked sent manually. Email sending remains off in the OS.')">Mark Sent Manually</button>
+        </div>
+      </section>\`;
+    }
+
     function cockpitThreadsOpen() {
       const seed = cockpitTodayOperatingSeedData();
       const waitingTasks = (state.tasks || []).filter(task => taskStatusOpen(task) && /roger|partner|investor|follow/i.test([task.owner, task.title, task.description, task.sourceType].join(" "))).map(task => ({
@@ -19885,6 +20041,7 @@ function htmlShell() {
         ["Calendar:", "Not connected / read-only planned"],
         ["Calendar readiness:", "Calendar reads can help Today understand your day. Calendar writes are off."],
         ["Email:", "Not connected / draft-only planned"],
+        ["Email readiness:", "Email drafts can be prepared for review. Email sending is off."],
         ["Social accounts:", "Not connected"],
         ["External actions:", "Off"]
       ];
@@ -20617,6 +20774,7 @@ function htmlShell() {
             </section>
             \${cockpitTimelineHtml(nowItem)}
             \${cockpitCalendarReadHtml()}
+            \${cockpitEmailFollowupsHtml()}
             \${cockpitTodayStandupBoardHtml()}
             </main>
             <aside class="cockpit-rail">
@@ -22054,6 +22212,18 @@ function htmlShell() {
           </div>
 
           <aside class="partner-stack">
+            <section class="partner-card">
+              <div class="partner-card-head"><div><h2>Partner Email Follow-Ups</h2><small>Draft-only readiness</small></div><span class="badge info">Not connected</span></div>
+              <p class="muted">Email is not connected yet. Partner follow-ups remain internal.</p>
+              <p class="muted">Email drafts can be prepared for review. Email sending is off.</p>
+              <div class="partner-list">
+                <article class="partner-row">
+                  <div><strong>Partner follow-up draft</strong><span>Draft needed · Review the partner context before Roger sends anything manually.</span></div>
+                  <div class="partner-card-actions"><button type="button" onclick="prepareEmailDraft('Partner follow-up draft','Partner follow-up')">Prepare Draft</button><button type="button" onclick="document.getElementById('partner-followups')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Follow-Ups</button></div>
+                </article>
+              </div>
+            </section>
+
             <section id="partner-proof" class="partner-card">
               <div class="partner-card-head"><div><h2>Partner Proof</h2><small>Movement that can become proof, posts, reports, or investor updates.</small></div></div>
               <div class="partner-list">\${defaultPartnerProof.map(partner => \`<article class="partner-row">
@@ -22685,6 +22855,7 @@ function htmlShell() {
       ];
       const evidenceRows = [
         ["Customer note", "Customer note", "Partner conversation", "Needs link", "RCAP review packet approved", "Note", "No attachment yet", "Today"],
+        ["Partner follow-up email note", "Email note", "Partner conversation", "Needs review", "Partner follow-up completed", "Email note", "No attachment yet", "Today"],
         ["Clean Slate partner note", "Partner note", "Partner workspace", "Ready for review", "Partner follow-up completed", "Partner note", "No attachment yet", "This week"],
         ["Campaign upload screenshot", "Screenshot", "Content workflow", "Ready for review", "First campaign upload created", "Screenshot", "No attachment yet", "This week"],
         ["Manual posting result", "Metric", "Growth workspace", "Needs update", "Content queue organized", "Metric", "No attachment yet", "Needs update"],
@@ -22867,7 +23038,7 @@ function htmlShell() {
       const activationSections = [
         ["Tasks & Priorities", "Ready", "Today can show priorities, tasks, blockers, decisions, and closeout notes.", "Outside task systems are not connected.", "Use Today to update work internally.", "Manual only"],
         ["Google Calendar", "Not connected / Read-only connected", "Calendar reads can help Today understand meetings and focus blocks.", "Calendar writes are off.", "Prepare Calendar Connection.", "Read-only. No events or invites."],
-        ["Gmail / Email", "Draft-only", "Email drafts can be prepared for review.", "Email sending is off.", "Prepare the email checklist.", "No messages sent."],
+        ["Gmail / Email", "Not connected / Draft-only planned", "Email drafts can be prepared for review.", "Email sending is off.", "Prepare Email Connection.", "No messages sent."],
         ["Image Generation", moreImageGenerationStatus, "Server-side image generation can be used when configured.", "Missing setup saves an image request instead.", "Check image readiness.", moreImageGenerationSafety],
         ["Social Accounts", "Not connected", "Platform checklists are available for future setup.", "No accounts are connected.", "Prepare each platform checklist.", "No account connection starts here."],
         ["External Action Outbox", "Draft-only", "Future live actions can be reviewed before execution.", "Outbox does not execute actions in this pass.", "Review drafts and approvals.", "Outbox does not execute."],
@@ -22936,6 +23107,8 @@ function htmlShell() {
             \${socialSetupRows.map(([platform, label]) => \`<article class="more-utility-card"><h3>\${esc(platform)}</h3><p>Future capabilities: preview, approval, scheduling, posting, analytics. Current status: Not connected.</p><div class="more-card-actions">\${activationAction(label, platform + " setup checklist opened. No connection starts here.")}</div></article>\`).join("")}
           </div>
         </section>
+
+        \${cockpitEmailDraftWorkflowHtml()}
 
         <section class="more-card">
           <div class="more-card-head"><div><h2>External Action Outbox</h2><small>Every future live action must appear here before execution.</small></div><span class="more-pill">Draft-only</span></div>
@@ -25933,6 +26106,16 @@ function htmlShell() {
       window.location.href = \`/api/oauth/\${platform}/start\`;
     }
 
+    async function prepareEmailDraft(title = "Email draft", target = "Manual follow-up") {
+      const result = await api("/api/email/draft", {
+        method:"POST",
+        body:JSON.stringify({ title, target })
+      });
+      state = result.state || state;
+      render();
+      toast(result.message || "Email draft saved internally for Roger review. No message was sent.");
+    }
+
     async function testChannel(platform) {
       const account = (state.socialAccounts || []).find(item => item.platform === platform);
       if (!account?.connected) {
@@ -27334,6 +27517,57 @@ async function handleRequest(request, response) {
       message: status.status === "Read-only connected" ? "Upcoming calendar items loaded read-only." : "Calendar is not connected yet.",
       safety: "This is read-only. Calendar writes are off."
     });
+    return;
+  }
+
+  if (url.pathname === "/api/email/status" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, emailStatusResponse(currentState));
+    return;
+  }
+
+  if (url.pathname === "/api/email/inbox-summary" && request.method === "GET") {
+    const currentState = await store.readState();
+    const status = emailStatusResponse(currentState);
+    sendJson(response, {
+      ...status,
+      threads: status.status === "Read/draft connected" ? emailThreadsFromState(currentState) : [],
+      message: status.status === "Read/draft connected" ? "Email summaries loaded for internal review." : "Email is not connected yet.",
+      safety: "Email drafts can be prepared for review. Email sending is off."
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/email/follow-ups" && request.method === "GET") {
+    const currentState = await store.readState();
+    const status = emailStatusResponse(currentState);
+    sendJson(response, {
+      ...status,
+      followUps: status.status === "Read/draft connected" ? emailThreadsFromState(currentState) : [],
+      message: status.status === "Read/draft connected" ? "Email follow-ups loaded for internal review." : "Email is not connected yet.",
+      safety: "Email sending is off."
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/email/draft" && request.method === "POST") {
+    const payload = await readJson(request);
+    const currentState = await store.readState();
+    const result = emailDraftResponse(payload || {});
+    const now = new Date().toISOString();
+    const draft = {
+      ...result.draft,
+      createdAt: now,
+      updatedAt: now,
+      body: String(payload.body || payload.summary || "").slice(0, 1200),
+      safety: result.safety
+    };
+    const nextState = analyzeOperations({
+      ...currentState,
+      emailDrafts: [draft, ...(currentState.emailDrafts || [])].slice(0, 100)
+    });
+    await store.writeState(nextState);
+    sendJson(response, { ...result, draft, state: withPublicChannelSetup(nextState) });
     return;
   }
 
