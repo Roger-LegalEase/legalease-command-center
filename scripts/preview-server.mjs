@@ -13613,7 +13613,7 @@ function htmlShell() {
     .growth-summary-card strong { color:var(--text-primary); font-size:26px; line-height:1; }
     .growth-summary-card small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
     .growth-summary-card.urgent { border-left:4px solid var(--urgent); }
-    .growth-main-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(320px,.75fr); gap:18px; align-items:start; }
+    .growth-main-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(360px,.82fr); gap:20px; align-items:start; }
     .growth-stack { display:grid; gap:16px; min-width:0; }
     .growth-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:17px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:13px; min-width:0; overflow:hidden; }
     .growth-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
@@ -13634,6 +13634,12 @@ function htmlShell() {
     .growth-row strong { display:block; color:var(--text-primary); font-size:13px; line-height:1.25; }
     .growth-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; }
     .growth-row .pill-urgent { justify-self:start; margin-top:4px; }
+    .growth-main-grid > aside .growth-card { align-content:start; }
+    .growth-main-grid > aside .growth-row { grid-template-columns:1fr; align-items:start; gap:12px; padding:13px; }
+    .growth-main-grid > aside .growth-row > div { min-width:0; display:grid; gap:5px; }
+    .growth-main-grid > aside .growth-row span { overflow-wrap:anywhere; word-break:normal; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; }
+    .growth-main-grid > aside .growth-item-actions { width:100%; justify-content:flex-start; align-items:flex-start; }
+    .growth-main-grid > aside .growth-item-actions button { flex:0 1 auto; white-space:normal; line-height:1.2; }
     .partners-workspace { display:grid; gap:18px; width:100%; max-width:1240px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
     .partners-workspace * { box-sizing:border-box; min-width:0; }
     .partners-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
@@ -13855,7 +13861,8 @@ function htmlShell() {
     @media (max-width:760px) { .support-workspace { padding:18px 16px 96px; } .support-status-row { flex-direction:column; align-items:flex-start; } .support-status-row span { text-align:left; } }
     @media (max-width:1180px) { .proof-summary-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .proof-main-grid,.proof-hero,.proof-two-grid { grid-template-columns:1fr; } .proof-actions { justify-content:flex-start; } }
     @media (max-width:760px) { .proof-workspace { padding:18px 16px 96px; } .proof-summary-grid,.proof-metric-grid { grid-template-columns:1fr; } }
-    @media (max-width:1100px) { .growth-summary-grid,.growth-board { grid-template-columns:repeat(2,minmax(0,1fr)); } .growth-main-grid,.growth-hero { grid-template-columns:1fr; } .growth-hero-actions { justify-content:flex-start; } }
+    @media (max-width:1180px) { .growth-main-grid { grid-template-columns:1fr; } }
+    @media (max-width:1100px) { .growth-summary-grid,.growth-board { grid-template-columns:repeat(2,minmax(0,1fr)); } .growth-hero { grid-template-columns:1fr; } .growth-hero-actions { justify-content:flex-start; } }
     @media (max-width:640px) { .growth-workspace { padding:18px 16px 96px; } .growth-summary-grid,.growth-board { grid-template-columns:1fr; } .growth-row { grid-template-columns:1fr; } }
     .settings-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; align-items:start; }
     .channel-grid { grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); }
@@ -18495,8 +18502,22 @@ function htmlShell() {
       </section>\`;
     }
 
-    function todayFounderCopy(value = "") {
-      return String(value || "")
+    function founderReadableText(value = "", fallback = "") {
+      if (value == null || value === "") return fallback;
+      if (Array.isArray(value)) {
+        const text = value.map(item => founderReadableText(item, "")).filter(Boolean).join(" ");
+        return text || fallback;
+      }
+      if (typeof value === "object") {
+        const preferred = value.title || value.headline || value.summary || value.description || value.notes || value.body || value.text || value.status || value.reportTitle || value.reportType;
+        if (preferred && preferred !== value) return founderReadableText(preferred, fallback);
+        return fallback;
+      }
+      return String(value || fallback || "");
+    }
+
+    function todayFounderCopy(value = "", fallback = "") {
+      return founderReadableText(value, fallback)
         .replace(/Triage/gi, "Prioritize")
         .replace(/operating memory/gi, "day")
         .replace(/internal operating/gi, "saved")
@@ -18505,7 +18526,8 @@ function htmlShell() {
         .replace(/audit events?/gi, "activity")
         .replace(/internal state/gi, "saved work")
         .replace(/generated client/gi, "app")
-        .replace(/route map/gi, "routes");
+        .replace(/route map/gi, "routes")
+        .replace(/weekly_evidence_pack/gi, "Weekly evidence pack");
     }
 
     function todayActionLink(item = {}, fallback = "Review") {
@@ -21216,6 +21238,16 @@ function htmlShell() {
       </article>\`).join("") : '<div class="empty-calm">No post ideas yet. Add the first idea.</div>';
     }
 
+    function growthProofTitle(item = {}) {
+      if (item.reportType === "weekly_evidence_pack") return "Weekly evidence pack ready for review.";
+      return todayFounderCopy(item.title || item.reportTitle || item.reportType || item.section || "Proof item", "Proof item");
+    }
+
+    function growthProofBody(item = {}) {
+      if (item.reportType === "weekly_evidence_pack") return "Evidence pack can become a post, pitch, or investor update.";
+      return todayFounderCopy(item.notes || item.summary || item.description || item.status, "Useful proof that can become content.");
+    }
+
     function growthProofRows() {
       const proof = [
         ...(state.evidencePackNotes || []),
@@ -21223,7 +21255,7 @@ function htmlShell() {
         ...(state.dataRoomItems || []).filter(item => /proof|case|testimonial|win|evidence/i.test([item.title, item.section, item.notes].join(" ")))
       ].slice(0, 4);
       return proof.length ? proof.map(item => \`<article class="growth-row">
-        <div><strong>\${esc(todayFounderCopy(item.title || item.reportType || "Proof item"))}</strong><span>\${esc(todayFounderCopy(item.notes || item.summary || "Useful proof that can become content."))}</span></div>
+        <div><strong>\${esc(growthProofTitle(item))}</strong><span>\${esc(growthProofBody(item))}</span></div>
         <div class="growth-item-actions">
           <button type="button" onclick="location.hash='queue'">Turn into Post</button>
           <button type="button" onclick="openLeeBubble()">Turn into PR Pitch</button>
