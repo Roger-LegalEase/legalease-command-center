@@ -31,74 +31,66 @@ assert(routeAliases.includes('posts:"growth"') || routeAliases.includes('posts: 
 assert(activeGrowthRender.includes("growthWorkspaceHtml(pageClass)"), "#growth should render the Growth workspace");
 
 for (const required of [
-  "Growth",
-  "Manage content, campaigns, outreach, and manual social publishing.",
-  "Growth Summary",
-  "Ideas",
+  "Command",
+  "Move campaigns, partners, channels, and launch work from one place.",
+  "Safe mode: nothing sends or publishes automatically.",
+  "Command Summary",
   "Drafts",
-  "Ready to Publish",
+  "Queue",
+  "Proof",
   "PR Follow-ups",
-  "Campaigns",
+  "Channels",
   "Stats Needed",
-  "Next Growth Move",
-  "Create Post from Proof",
-  "Review PR Follow-ups",
-  "Social Media Manager",
-  "Idea → Draft → Preview → Ready → Publish manually → Track",
-  "Post Ideas",
-  "Published Manually",
-  "PR Outreach",
-  "Email sending is off.",
-  "No PR follow-ups due right now.",
-  "Prepare a pitch or add a media target.",
-  "Proof to Content",
-  "Growth Stats",
-  "No growth stats added yet. Add the first",
-  "Publishing is off",
-  "Manual only",
+  "Next move",
+  "Open Queue",
+  "Review proof",
+  "Workstreams",
+  "Drafts and launch ideas waiting for review.",
+  "Partner pushes, onboarding, and follow-ups.",
+  "LinkedIn, X, Meta, Threads, and RCAP connection status.",
+  "Connection point is ready for when RCAP is complete.",
+  "PR targets and follow-ups before anything is sent.",
+  "Evidence, reports, and wins that can become content or investor updates.",
+  "Review snapshot",
+  "Detailed social workflow",
   "Nothing has been published by the OS"
 ]) {
   assert(growth.includes(required), `Growth workspace should include ${required}`);
 }
 
 for (const action of [
-  "Add Idea",
-  "Create Post",
-  "Prepare PR Pitch",
+  "Open Queue",
+  "Review proof",
+  "Open Partners",
+  "Open Settings",
+  "Open connection",
+  "Review outreach",
+  "Open Sources",
   "Turn into Draft",
   "Preview",
   "Copy Post",
-  "Publish Manually",
+  "Review in Queue",
   "Mark Published Manually",
-  "Add Target",
-  "Draft Pitch",
-  "Mark Follow-Up Due",
-  "Add Coverage",
-  "Turn Coverage into Proof",
-  "Add Campaign",
-  "Review Campaign",
-  "Add Update",
-  "Turn into Post",
-  "Turn into PR Pitch",
-  "Add to Investor Update",
-  "Add Stat",
-  "Update Stat"
+  "Move to LinkedIn Review",
+  "Move to Twitter / X Review"
 ]) {
   assert(growth.includes(action), `Growth workspace should include action ${action}`);
 }
 
 assert(!growth.includes("Prepare Email"), "Growth visible UI should say Draft Pitch, not Prepare Email");
-assert(growth.includes("growth-board"), "Growth should keep Social Media Manager as a board");
-assert.match(source, /\.growth-board\s*\{[^}]*gap:\s*14px/s, "Social Media Manager columns should have extra breathing room");
-assert.match(source, /\.growth-item-actions\s*\{[^}]*gap:\s*8px/s, "Growth item actions should not feel squeezed");
+assert(!growth.includes("Social Media Manager"), "Command should not expose the old Social Media Manager heading.");
+assert(!growth.includes("Next Growth Move"), "Command should use Next move instead of Next Growth Move.");
+assert(!growth.includes("PR Outreach"), "Command should summarize outreach instead of rendering the old PR panel.");
+assert(growth.includes("command-detail-workflow"), "Detailed social workflow should be available behind a collapsed details section.");
+assert(growth.includes("growth-board"), "Detailed social workflow should still preserve the old board internally.");
+assert.match(source, /\.command-workstream-grid\s*\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/s, "Command workstreams should render as readable summary cards.");
+assert.match(source, /\.command-next-card\s*\{[^}]*display:grid/s, "Command should have a dedicated Next move card.");
 
 for (const forbidden of [
   "API status",
   "OAuth",
   "token",
   "webhook",
-  "boost",
-  "ads",
   "risk score",
   "compliance score",
   "campaign complexity",
@@ -111,6 +103,10 @@ for (const forbidden of [
   "route map"
 ]) {
   assert(!growth.includes(forbidden), `Growth normal UI should not include ${forbidden}`);
+}
+
+for (const forbiddenPattern of [/\bboost\b/i, /\bads\b/i]) {
+  assert(!forbiddenPattern.test(growth), `Growth normal UI should not include ${forbiddenPattern}`);
 }
 
 assert(source.includes("leeBubbleHtml"), "Le-E bubble should remain part of the app shell");

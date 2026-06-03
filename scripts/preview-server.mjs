@@ -13830,6 +13830,19 @@ function htmlShell() {
     .growth-main-grid > aside .growth-row span { overflow-wrap:anywhere; word-break:normal; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; }
     .growth-main-grid > aside .growth-item-actions { width:100%; justify-content:flex-start; align-items:flex-start; }
     .growth-main-grid > aside .growth-item-actions button { flex:0 1 auto; white-space:normal; line-height:1.2; }
+    .command-next-card { display:grid; gap:12px; padding:20px; border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#fbfefd 64%,#edf8f6 100%); box-shadow:0 18px 42px rgba(0,38,36,.055); }
+    .command-next-card h2 { margin:0; color:var(--text-primary); font-size:24px; line-height:1.15; letter-spacing:-.01em; }
+    .command-next-card p { margin:0; color:var(--text-secondary); font-size:15px; line-height:1.45; max-width:76ch; }
+    .command-workstream-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    .command-workstream { border:1px solid var(--border-light); border-radius:17px; background:#fbfefd; padding:14px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:14px; align-items:center; min-width:0; }
+    .command-workstream strong { display:block; color:var(--text-primary); font-size:15px; line-height:1.2; margin-bottom:4px; }
+    .command-workstream span { display:block; color:var(--text-secondary); font-size:13px; line-height:1.4; overflow-wrap:break-word; word-break:normal; }
+    .command-workstream button { min-height:34px; padding:0 11px; white-space:nowrap; }
+    .command-snapshot-list { display:grid; gap:8px; }
+    .command-snapshot-row { border:1px solid var(--border-light); border-radius:14px; background:#fff; padding:10px 12px; display:flex; justify-content:space-between; gap:12px; align-items:center; color:var(--text-secondary); font-size:13px; line-height:1.35; }
+    .command-snapshot-row strong { color:var(--text-primary); }
+    .command-detail-workflow { border:1px solid var(--border-light); border-radius:16px; background:#fbfefd; padding:12px 14px; }
+    .command-detail-workflow summary { cursor:pointer; color:var(--accent-hover); font-weight:850; }
     .partners-workspace { display:grid; gap:18px; width:100%; max-width:1240px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
     .partners-workspace * { box-sizing:border-box; min-width:0; }
     .partners-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
@@ -14059,7 +14072,8 @@ function htmlShell() {
     @media (max-width:760px) { .proof-workspace { padding:18px 16px 96px; } .proof-summary-grid,.proof-metric-grid { grid-template-columns:1fr; } }
     @media (max-width:1180px) { .growth-main-grid { grid-template-columns:1fr; } }
     @media (max-width:1100px) { .growth-summary-grid,.growth-board { grid-template-columns:repeat(2,minmax(0,1fr)); } .growth-hero { grid-template-columns:1fr; } .growth-hero-actions { justify-content:flex-start; } }
-    @media (max-width:640px) { .growth-workspace { padding:18px 16px 96px; } .growth-summary-grid,.growth-board { grid-template-columns:1fr; } .growth-row { grid-template-columns:1fr; } }
+    @media (max-width:860px) { .command-workstream-grid { grid-template-columns:1fr; } .command-workstream { grid-template-columns:1fr; align-items:start; } }
+    @media (max-width:640px) { .growth-workspace { padding:18px 16px 96px; } .growth-summary-grid,.growth-board { grid-template-columns:1fr; } .growth-row,.command-snapshot-row { grid-template-columns:1fr; flex-direction:column; align-items:flex-start; } }
     .settings-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; align-items:start; }
     .channel-grid { display:grid; gap:10px; grid-template-columns:1fr; }
     .channel-readiness-strip { border:1px solid rgba(0,169,157,.18); border-radius:16px; background:#fbfefd; padding:12px 14px; color:var(--text-secondary); font-size:13px; line-height:1.4; }
@@ -21540,81 +21554,74 @@ function htmlShell() {
       const prFollowUps = (state.growthInbox || []).filter(item => /pr|press|media|coverage|follow/i.test([item.type, item.category, item.raw_input, item.text, item.title].join(" ")) && !/converted|ignored/i.test(String(item.status || "")));
       const statsNeeded = manual.filter(post => !post.performanceUpdatedAt && !post.performance).length;
       const summaryCards = [
-        ["Ideas", ideas.length, "raw content to shape", false],
         ["Drafts", drafts.length, "posts being written", false],
-        ["Ready to Publish", ready.length, "manual review queue", ready.length > 0],
+        ["Queue", drafts.length + ready.length, "items waiting for review", drafts.length + ready.length > 0],
+        ["Proof", (state.evidencePackNotes || []).length + (state.reports || []).length, "usable evidence", false],
         ["PR Follow-ups", prFollowUps.length, "outreach waiting", prFollowUps.length > 0],
-        ["Campaigns", campaigns.length, "active or planned", false],
+        ["Channels", platforms.length, "safe setup lanes", false],
         ["Stats Needed", statsNeeded, "manual updates", statsNeeded > 0]
       ];
-      const campaignRows = campaigns.slice(0, 4).map(campaign => \`<article class="growth-row">
-        <div><strong>\${esc(campaign.campaignName || campaign.name || "Growth campaign")}</strong><span>\${esc(todayFounderCopy(campaign.objective || campaign.description || campaign.nextAction || "Define the next campaign move."))}</span></div>
-        <div class="growth-item-actions"><button type="button" onclick="location.hash='campaigns'">Review Campaign</button><button type="button" onclick="location.hash='campaigns'">Add Update</button></div>
-      </article>\`).join("") || '<div class="empty-calm">No campaigns added yet.</div>';
-      const prRows = prFollowUps.slice(0, 3).map(item => \`<article class="growth-row">
-        <div><strong>\${esc(todayFounderCopy(item.title || item.raw_input || item.text || "PR follow-up"))}</strong><span>\${esc(todayFounderCopy(item.summary || item.notes || "Prepare the next outreach step internally."))}</span>\${todayIsPressing(item) ? '<span class="pill-urgent">Pressing</span>' : ""}</div>
-        <div class="growth-item-actions"><button type="button" onclick="location.hash='growth-inbox'">Mark Follow-Up Due</button><button type="button" onclick="openLeeBubble()">Draft Pitch</button></div>
-      </article>\`).join("") || '<div class="empty-calm">No PR follow-ups due right now.<br>Prepare a pitch or add a media target.</div>';
+      const snapshotRows = [
+        drafts.length ? \`\${drafts.length} drafts need review\` : "Draft queue is calm",
+        ready.length ? \`\${ready.length} posts are ready for manual review\` : "No posts are waiting to publish",
+        prFollowUps.length ? \`\${prFollowUps.length} outreach follow-ups need attention\` : "No PR follow-ups due right now",
+        statsNeeded ? \`\${statsNeeded} manual results need stats\` : "Manual stats are up to date",
+        "Live posting remains off"
+      ];
+      const nextCopy = ready.length
+        ? "Open Queue and review the posts that are ready for internal approval."
+        : prFollowUps.length
+          ? "Review the next outreach follow-up, then turn any movement into proof."
+          : "Open Queue, clear the next internal review item, then log what moved.";
+      const workstreams = [
+        ["Campaigns", "Drafts and launch ideas waiting for review.", "Open Queue", "queue"],
+        ["Partners", "Partner pushes, onboarding, and follow-ups.", "Open Partners", "partners"],
+        ["Channels", "LinkedIn, X, Meta, Threads, and RCAP connection status.", "Open Settings", "settings"],
+        ["RCAP Connection", "Connection point is ready for when RCAP is complete.", "Open connection", "settings"],
+        ["Outreach", "PR targets and follow-ups before anything is sent.", "Review outreach", "growth-inbox"],
+        ["Proof", "Evidence, reports, and wins that can become content or investor updates.", "Open Sources", "sources"]
+      ];
       return \`<section id="growth" class="\${pageClass("growth")} growth-workspace">
         <section class="growth-hero">
           <div>
-            <div class="eyebrow">Growth</div>
-            <h1>Growth</h1>
-            <p>Manage content, campaigns, outreach, and manual social publishing.</p>
-            <div class="growth-safety-pills"><span class="growth-pill">Publishing is off</span><span class="growth-pill">Manual only</span></div>
+            <div class="eyebrow">Command</div>
+            <h1>Command</h1>
+            <p>Move campaigns, partners, channels, and launch work from one place.</p>
+            <div class="growth-safety-pills"><span class="growth-pill">Safe mode: nothing sends or publishes automatically.</span></div>
           </div>
           <div class="growth-hero-actions">
-            <button class="primary" type="button" onclick="location.hash='content-bank'">Add Idea</button>
-            <button type="button" onclick="location.hash='queue'">Create Post</button>
-            <button type="button" onclick="openLeeBubble()">Prepare PR Pitch</button>
+            <button class="primary" type="button" onclick="location.hash='queue'">Open Queue</button>
+            <button type="button" onclick="location.hash='sources'">Open Sources</button>
           </div>
         </section>
         <section class="growth-card">
-          <div class="growth-card-head"><h2>Growth Summary</h2><small>What needs attention</small></div>
+          <div class="growth-card-head"><h2>Command Summary</h2><small>What needs attention</small></div>
           <div class="growth-summary-grid">\${summaryCards.map(([label, value, detail, urgent]) => \`<article class="growth-summary-card \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
         </section>
-        <div class="growth-main-grid">
-          <main class="growth-stack">
-            <section class="growth-card">
-              <div class="growth-card-head"><h2>Social Media Manager</h2><small>Nothing has been published by the OS.</small></div>
-              <div class="growth-workflow">Idea → Draft → Preview → Ready → Publish manually → Track</div>
-              <div class="growth-board">
-                <section class="growth-lane"><h3>Post Ideas</h3>\${growthIdeaRows(ideas)}<button type="button" onclick="location.hash='content-bank'">Add Idea</button></section>
-                <section class="growth-lane"><h3>Drafts</h3>\${growthPostRows(drafts, "No drafts yet.")}<button type="button" onclick="location.hash='queue'">Create Post</button></section>
-                <section class="growth-lane"><h3>Ready to Publish</h3>\${growthPostRows(ready, "No ready posts yet.")}<button type="button" onclick="location.hash='queue'">Publish Manually</button></section>
-                <section class="growth-lane"><h3>Published Manually</h3>\${growthPostRows(manual, "No manually published posts yet.")}<button type="button" onclick="location.hash='posted'">Mark Published Manually</button></section>
-              </div>
-            </section>
-            <section class="growth-card">
-              <div class="growth-card-head"><h2>Campaigns</h2><small>Objectives, channels, and next moves</small></div>
-              <div class="growth-list">\${campaignRows}</div>
-              <div class="growth-card-actions"><button type="button" onclick="location.hash='campaigns'">Add Campaign</button></div>
-            </section>
-          </main>
-          <aside class="growth-stack">
-            <section class="growth-card">
-              <div class="growth-card-head"><h2>Next Growth Move</h2><small>Do this first</small></div>
-              <p class="muted">Turn the strongest proof item into a post, then prepare one PR follow-up.</p>
-              <p class="muted">This keeps visible movement tied to real proof instead of creating disconnected content.</p>
-              <div class="growth-card-actions"><button class="primary" type="button" onclick="location.hash='queue'">Create Post from Proof</button><button type="button" onclick="location.hash='growth-inbox'">Review PR Follow-ups</button></div>
-            </section>
-            <section class="growth-card">
-              <div class="growth-card-head"><h2>PR Outreach</h2><small>Target → Pitch → Follow up → Coverage → Proof</small></div>
-              <p class="muted">Email sending is off.</p>
-              <div class="growth-list">\${prRows}</div>
-              <div class="growth-card-actions"><button type="button" onclick="location.hash='growth-inbox'">Add Target</button><button type="button" onclick="openLeeBubble()">Draft Pitch</button><button type="button" onclick="location.hash='evidence-room'">Add Coverage</button><button type="button" onclick="location.hash='evidence-room'">Turn Coverage into Proof</button></div>
-            </section>
-            <section class="growth-card">
-              <div class="growth-card-head"><h2>Proof to Content</h2><small>Wins that can become posts or pitches</small></div>
-              <div class="growth-list">\${growthProofRows()}</div>
-            </section>
-            <section class="growth-card">
-              <div class="growth-card-head"><h2>Growth Stats</h2><small>Manual stats until integrations exist</small></div>
-              <div class="growth-list">\${manual.slice(0, 3).map(post => \`<article class="growth-row"><div><strong>\${esc(growthPostTitle(post))}</strong><span>channel · metric · value · date · notes</span></div><div class="growth-item-actions"><button type="button" onclick="location.hash='posted'">Update Stat</button></div></article>\`).join("") || '<div class="empty-calm">No growth stats added yet. Add the first \${"sta"}t.</div>'}</div>
-              <div class="growth-card-actions"><button type="button" onclick="location.hash='posted'">Add Stat</button></div>
-            </section>
-          </aside>
-        </div>
+        <section class="command-next-card">
+          <div class="growth-card-head"><h2>Next move</h2><small>Do this first</small></div>
+          <p>\${esc(nextCopy)}</p>
+          <div class="growth-card-actions"><button class="primary" type="button" onclick="location.hash='queue'">Open Queue</button><button type="button" onclick="location.hash='proof'">Review proof</button></div>
+        </section>
+        <section class="growth-card">
+          <div class="growth-card-head"><h2>Workstreams</h2><small>Summary only</small></div>
+          <div class="command-workstream-grid">\${workstreams.map(([label, copy, action, href]) => \`<article class="command-workstream"><div><strong>\${esc(label)}</strong><span>\${esc(copy)}</span></div><button type="button" onclick="location.hash='\${esc(href)}'">\${esc(action)}</button></article>\`).join("")}</div>
+        </section>
+        <section class="growth-card">
+          <div class="growth-card-head"><h2>Review snapshot</h2><small>Plain status, not a dashboard</small></div>
+          <div class="command-snapshot-list">\${snapshotRows.map(row => \`<div class="command-snapshot-row"><strong>\${esc(row)}</strong><span>Internal only</span></div>\`).join("")}</div>
+        </section>
+        <details class="command-detail-workflow">
+          <summary>Detailed social workflow</summary>
+          <p class="muted">Queue-level visibility stays here for internal review. Nothing has been published by the OS.</p>
+          <div class="growth-workflow">Idea → Draft → Preview → Ready → Publish manually → Track</div>
+          <div class="growth-board" style="margin-top:12px">
+            <section class="growth-lane"><h3>Post Ideas</h3>\${growthIdeaRows(ideas)}<button type="button" onclick="location.hash='content-bank'">Add Idea</button></section>
+            <section class="growth-lane"><h3>Drafts</h3>\${growthPostRows(drafts, "No drafts yet.")}<button type="button" onclick="location.hash='queue'">Create Post</button></section>
+            <section class="growth-lane"><h3>Ready to Publish</h3>\${growthPostRows(ready, "No ready posts yet.")}<button type="button" onclick="location.hash='queue'">Review in Queue</button></section>
+            <section class="growth-lane"><h3>Published Manually</h3>\${growthPostRows(manual, "No manually published posts yet.")}<button type="button" onclick="location.hash='posted'">Mark Published Manually</button></section>
+          </div>
+        </details>
       </section>\`;
     }
 
