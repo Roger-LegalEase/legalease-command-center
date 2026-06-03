@@ -15786,7 +15786,7 @@ function htmlShell() {
         const detailNote = ["facebook", "instagram"].includes(account.platform)
           ? "Connected through Meta when account setup is wired."
           : account.platform === "linkedin"
-            ? "Prepare LinkedIn from Production or connect after owner sign-in and setup review."
+            ? "Use this Settings row to review setup details, then connect after owner sign-in and setup review."
             : "Use setup details when this channel is ready to configure.";
         const statusLabel = connected ? "Connected" : oauthConfigured ? "Ready to connect" : "Setup required";
 	        return \`<article class="channel-row">

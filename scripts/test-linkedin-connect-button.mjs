@@ -25,7 +25,8 @@ for (const required of [
   "Redirect URL added under Auth",
   "Render env vars added",
   "Manual deploy completed",
-  "Live posting remains off"
+  "Live posting remains off",
+  "Use this Settings row to review setup details, then connect after owner sign-in and setup review."
 ]) {
   assert(source.includes(required), `LinkedIn connect UI should include ${required}`);
 }
@@ -35,6 +36,7 @@ assert(production.includes("Connect LinkedIn"), "Production Connected Accounts s
 assert(production.includes("showLinkedInSetupChecklist()"), "Prepare LinkedIn should open the setup checklist");
 assert(production.includes("connectLinkedIn()"), "Connect LinkedIn should call the safe connect helper");
 assert(!production.includes("window.location.href='/api/linkedin/connect'"), "Connect LinkedIn should not navigate silently without owner auth handling");
+assert(!source.includes("Prepare LinkedIn from Production"), "Settings LinkedIn row should not send Roger back to Production for connection setup");
 
 assert(client.includes('api("/api/linkedin/status")'), "Connect helper should check LinkedIn status with owner auth");
 assert(client.includes('api("/api/linkedin/connect?format=json")'), "Connect helper should request an authorized OAuth URL");
