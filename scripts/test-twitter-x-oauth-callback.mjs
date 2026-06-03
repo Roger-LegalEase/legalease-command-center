@@ -37,7 +37,7 @@ assert(source.includes("Twitter / X connection could not be saved. Try again fro
 assert(source.includes("persistedXStatus.connected"), "callback should verify persisted Twitter / X status before success redirect");
 assert(!source.includes("Tweet Now"), "normal app source should not add Tweet Now controls");
 assert(!source.includes("Send to X"), "normal app source should not add Send to X controls");
-assert(connectorSource.includes('const X_BROWSER_AUTHORIZATION_URL = "https://twitter.com/i/oauth2/authorize"'), "Twitter / X browser authorization endpoint should be pinned to twitter.com");
+assert(connectorSource.includes('const X_BROWSER_AUTHORIZATION_URL = "https://x.com/i/oauth2/authorize"'), "Twitter / X browser authorization endpoint should be pinned to x.com");
 assert(connectorSource.includes("return `${X_BROWSER_AUTHORIZATION_URL}?${params.toString()}`"), "Twitter / X connect should build from the pinned browser authorization endpoint");
 assert(!connectorSource.includes("https://api.twitter.com/2/oauth2/authorize"), "Twitter / X browser authorization should never use the API authorization endpoint");
 assert(connectorSource.includes('tokenUrl: "https://api.x.com/2/oauth2/token"'), "Twitter / X token exchange should remain on the API token endpoint");
@@ -159,10 +159,10 @@ try {
   assert.equal(ownerConnect.status, 200, "owner-authenticated Twitter / X connect should start OAuth when setup is present");
   const ownerConnectJson = await ownerConnect.json();
   assert.equal(ownerConnectJson.livePostingEnabled, false, "Twitter / X connect should not enable live posting");
-  assert.ok(ownerConnectJson.authorizationUrl.startsWith("https://twitter.com/i/oauth2/authorize?"), "Twitter / X connect should redirect browsers to the X authorization screen");
+  assert.ok(ownerConnectJson.authorizationUrl.startsWith("https://x.com/i/oauth2/authorize?"), "Twitter / X connect should redirect browsers to the X authorization screen");
   assert.ok(!ownerConnectJson.authorizationUrl.startsWith("https://api.twitter.com/2/oauth2/authorize"), "Twitter / X connect should not redirect browsers to the API authorization endpoint");
   const authorizationUrl = new URL(ownerConnectJson.authorizationUrl);
-  assert.equal(authorizationUrl.origin, "https://twitter.com", "Twitter / X authorization URL should use the browser authorization host");
+  assert.equal(authorizationUrl.origin, "https://x.com", "Twitter / X authorization URL should use the browser authorization host");
   assert.equal(authorizationUrl.pathname, "/i/oauth2/authorize", "Twitter / X authorization URL should use the browser authorization path");
   assert.equal(authorizationUrl.searchParams.get("response_type"), "code", "Twitter / X connect should use OAuth authorization code flow");
   assert.ok(authorizationUrl.searchParams.get("client_id"), "Twitter / X connect should include a client id in the provider URL");
@@ -195,7 +195,7 @@ try {
   assert.deepEqual(diagnosticsJson.xRedirectUri, { host:baseHost, path:"/api/x/callback" }, "diagnostics should expose redirect URI host/path only");
   assert.deepEqual(diagnosticsJson.scopesRequested, ["tweet.read", "users.read", "offline.access"], "diagnostics should show read-only connection scopes");
   assert.equal(diagnosticsJson.codeChallengeMethod, "S256", "diagnostics should report S256 PKCE");
-  assert.deepEqual(diagnosticsJson.authEndpoint, { host:"twitter.com", path:"/i/oauth2/authorize" }, "diagnostics should expose provider host/path only");
+  assert.deepEqual(diagnosticsJson.authEndpoint, { host:"x.com", path:"/i/oauth2/authorize" }, "diagnostics should expose provider host/path only");
   assert.equal(`${diagnosticsJson.authEndpoint.host}${diagnosticsJson.authEndpoint.path}`, `${authorizationUrl.host}${authorizationUrl.pathname}`, "diagnostics and connect should use the same Twitter / X authorization endpoint");
   assert.equal(diagnosticsJson.setupReady, true, "diagnostics should report ready setup when env and token storage are configured");
   assert.equal(diagnosticsJson.authorizationUrlShape.responseType, "code", "diagnostics should verify authorization code flow");

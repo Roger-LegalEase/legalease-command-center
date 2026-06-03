@@ -1,4 +1,4 @@
-const X_BROWSER_AUTHORIZATION_URL = "https://twitter.com/i/oauth2/authorize";
+const X_BROWSER_AUTHORIZATION_URL = "https://x.com/i/oauth2/authorize";
 
 const connectorConfig = {
   linkedin: {
