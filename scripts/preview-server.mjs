@@ -37,6 +37,7 @@ import {
   mergeGoogleWorkspaceOutputs
 } from "./google-workspace.mjs";
 import {
+  channelConfig,
   channelSetup,
   channelSetupMessage,
   exchangeLinkedInCode,
@@ -5481,6 +5482,44 @@ function xStatusPayload(state = {}) {
       ...(status.setup.missingEnv || []),
       ...(status.safeTokenStorage ? [] : ["Safe token storage is required before Twitter / X can be connected."])
     ]
+  };
+}
+
+function safeUrlHostPath(value = "") {
+  try {
+    const parsed = new URL(value);
+    return { host: parsed.host, path: parsed.pathname };
+  } catch {
+    return { host:"", path:"" };
+  }
+}
+
+function xOAuthDiagnosticsPayload() {
+  const setup = channelSetup("x");
+  const config = channelConfig("x") || {};
+  const diagnosticAuthUrl = new URL(xAuthorizationUrl({
+    state:"diagnostic-state-present",
+    codeChallenge:"diagnostic-code-challenge-present"
+  }));
+  return {
+    xClientIdConfigured:Boolean(process.env.X_CLIENT_ID),
+    xClientIdPrefix:process.env.X_CLIENT_ID ? String(process.env.X_CLIENT_ID).slice(0, 4) : "",
+    xClientSecretConfigured:Boolean(process.env.X_CLIENT_SECRET),
+    xRedirectUriConfigured:Boolean(process.env.X_REDIRECT_URI),
+    xRedirectUri:safeUrlHostPath(process.env.X_REDIRECT_URI || ""),
+    scopesRequested:setup.scopes,
+    codeChallengeMethod:"S256",
+    authEndpoint:safeUrlHostPath(config.authorizationUrl || ""),
+    setupReady:Boolean(setup.configured && xSafeTokenStorageReady()),
+    safeTokenStorageConfigured:xSafeTokenStorageReady(),
+    authorizationUrlShape:{
+      responseType:diagnosticAuthUrl.searchParams.get("response_type") || "",
+      clientIdPresent:Boolean(diagnosticAuthUrl.searchParams.get("client_id")),
+      redirectUriMatchesConfigured:diagnosticAuthUrl.searchParams.get("redirect_uri") === (process.env.X_REDIRECT_URI || ""),
+      statePresent:Boolean(diagnosticAuthUrl.searchParams.get("state")),
+      codeChallengePresent:Boolean(diagnosticAuthUrl.searchParams.get("code_challenge")),
+      codeChallengeMethod:diagnosticAuthUrl.searchParams.get("code_challenge_method") || ""
+    }
   };
 }
 
@@ -16079,6 +16118,8 @@ function htmlShell() {
           ? "Connected through Meta when account setup is wired."
           : account.platform === "linkedin"
             ? "Use this Settings row to review setup details, then connect after owner sign-in and setup review."
+            : account.platform === "x"
+            ? "If X returns to login, verify User authentication settings, OAuth 2.0 Client ID/Secret, and the exact callback URL in X Developer Console."
             : "Use setup details when this channel is ready to configure.";
         const statusLabel = connected || linkedinReturn?.connected ? "Connected" : oauthConfigured ? "Ready to connect" : "Setup required";
         const linkedinRowNote = account.platform === "linkedin"
@@ -29125,6 +29166,11 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/x/status" && request.method === "GET") {
     sendJson(response, xStatusPayload(await store.readState()));
+    return;
+  }
+
+  if (url.pathname === "/api/x/oauth-diagnostics" && request.method === "GET") {
+    sendJson(response, xOAuthDiagnosticsPayload());
     return;
   }
 

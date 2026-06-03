@@ -28,10 +28,10 @@ const connectorConfig = {
   x: {
     label: "Twitter / X",
     requiredEnv: ["X_CLIENT_ID", "X_CLIENT_SECRET", "X_REDIRECT_URI"],
-    scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
+    scopes: ["tweet.read", "users.read", "offline.access"],
     authorizationUrl: "https://twitter.com/i/oauth2/authorize",
     tokenUrl: "https://api.x.com/2/oauth2/token",
-    notes: "Requires an approved X developer app with write access."
+    notes: "Requires OAuth 2.0 user authentication settings in the X Developer Console."
   }
 };
 

@@ -14,6 +14,7 @@ const port = Number(process.env.TEST_TWITTER_X_OAUTH_CALLBACK_PORT || 3478);
 const baseUrl = `http://127.0.0.1:${port}`;
 const ownerToken = "twitter-x-oauth-callback-owner-token-1234567890";
 const clientSecret = "twitter-x-oauth-callback-secret-1234567890";
+const baseHost = new URL(baseUrl).host;
 const dataDir = await mkdtemp(path.join(os.tmpdir(), "legalease-twitter-x-oauth-callback-"));
 const dataPath = path.join(dataDir, "social-command-center.json");
 const seedPath = path.join(dataDir, "social-command-center.seed.json");
@@ -22,6 +23,7 @@ await writeFile(seedPath, JSON.stringify({ settings:{}, posts:[], contentBank:[]
 
 assert(source.includes('url.pathname === "/api/x/status"'), "Twitter / X status route should exist");
 assert(source.includes('url.pathname === "/api/x/connect"'), "Twitter / X connect route should exist");
+assert(source.includes('url.pathname === "/api/x/oauth-diagnostics"'), "Twitter / X should expose a protected redacted OAuth diagnostics route");
 assert(source.includes('url.pathname === "/api/x/callback"'), "Twitter / X callback route should exist");
 assert(source.includes("xAuthorizationUrl({ state"), "Twitter / X connect should create an OAuth authorization URL");
 assert(source.includes("verifyOwnerStartedOAuthState(\"x\""), "Twitter / X callback should validate owner-started state");
@@ -111,6 +113,10 @@ try {
   assert.equal(connect.status, 401, "anonymous Twitter / X connect JSON route should remain protected");
   assert.equal((await connect.json()).error, "Authentication required.", "anonymous connect should return the protected API auth error");
 
+  const anonymousDiagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`);
+  assert.equal(anonymousDiagnostics.status, 401, "anonymous Twitter / X OAuth diagnostics should remain protected");
+  assert.equal((await anonymousDiagnostics.json()).error, "Authentication required.", "anonymous diagnostics should return the protected API auth error");
+
   const ownerConnect = await fetch(`${baseUrl}/api/x/connect?format=json`, {
     headers:{ "x-command-center-token":ownerToken }
   });
@@ -120,6 +126,11 @@ try {
   const authorizationUrl = new URL(ownerConnectJson.authorizationUrl);
   assert.match(authorizationUrl.hostname, /twitter\.com|x\.com/, "Twitter / X authorization URL should use the provider authorization host");
   assert.equal(authorizationUrl.searchParams.get("response_type"), "code", "Twitter / X connect should use OAuth authorization code flow");
+  assert.ok(authorizationUrl.searchParams.get("client_id"), "Twitter / X connect should include a client id in the provider URL");
+  assert.equal(authorizationUrl.searchParams.get("redirect_uri"), `${baseUrl}/api/x/callback`, "Twitter / X connect should send the exact configured redirect URI");
+  const requestedScopes = (authorizationUrl.searchParams.get("scope") || "").split(/\s+/).filter(Boolean);
+  assert.deepEqual(requestedScopes, ["tweet.read", "users.read", "offline.access"], "Twitter / X readiness should request read-only account scopes plus offline access");
+  assert.ok(!requestedScopes.includes("tweet.write"), "Twitter / X readiness should not request write scope");
   assert.ok(authorizationUrl.searchParams.get("code_challenge"), "Twitter / X connect should include a PKCE code challenge");
   assert.equal(authorizationUrl.searchParams.get("code_challenge_method"), "S256", "Twitter / X connect should use S256 PKCE");
   const stateParam = authorizationUrl.searchParams.get("state");
@@ -132,6 +143,32 @@ try {
   assert.equal(statePayload.returnTarget, "settings", "OAuth state should carry the Settings return target");
   assert.ok(statePayload.codeVerifierEncrypted, "OAuth state should carry encrypted PKCE verifier material");
   assert.ok(!JSON.stringify(ownerConnectJson).includes(clientSecret), "client secret should not appear in connect output");
+
+  const diagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`, {
+    headers:{ "x-command-center-token":ownerToken }
+  });
+  assert.equal(diagnostics.status, 200, "owner should be able to read redacted Twitter / X OAuth diagnostics");
+  const diagnosticsJson = await diagnostics.json();
+  assert.equal(diagnosticsJson.xClientIdConfigured, true, "diagnostics should report client id presence");
+  assert.equal(diagnosticsJson.xClientIdPrefix, "twit", "diagnostics should expose only the first four client id characters");
+  assert.equal(diagnosticsJson.xClientSecretConfigured, true, "diagnostics should report client secret presence without exposing it");
+  assert.equal(diagnosticsJson.xRedirectUriConfigured, true, "diagnostics should report redirect URI presence");
+  assert.deepEqual(diagnosticsJson.xRedirectUri, { host:baseHost, path:"/api/x/callback" }, "diagnostics should expose redirect URI host/path only");
+  assert.deepEqual(diagnosticsJson.scopesRequested, ["tweet.read", "users.read", "offline.access"], "diagnostics should show read-only connection scopes");
+  assert.equal(diagnosticsJson.codeChallengeMethod, "S256", "diagnostics should report S256 PKCE");
+  assert.deepEqual(diagnosticsJson.authEndpoint, { host:"twitter.com", path:"/i/oauth2/authorize" }, "diagnostics should expose provider host/path only");
+  assert.equal(diagnosticsJson.setupReady, true, "diagnostics should report ready setup when env and token storage are configured");
+  assert.equal(diagnosticsJson.authorizationUrlShape.responseType, "code", "diagnostics should verify authorization code flow");
+  assert.equal(diagnosticsJson.authorizationUrlShape.clientIdPresent, true, "diagnostics should verify the generated URL has a client id");
+  assert.equal(diagnosticsJson.authorizationUrlShape.redirectUriMatchesConfigured, true, "diagnostics should verify generated redirect URI matches configuration");
+  assert.equal(diagnosticsJson.authorizationUrlShape.statePresent, true, "diagnostics should verify state is present without exposing a real signed state");
+  assert.equal(diagnosticsJson.authorizationUrlShape.codeChallengePresent, true, "diagnostics should verify PKCE challenge is present");
+  assert.equal(diagnosticsJson.authorizationUrlShape.codeChallengeMethod, "S256", "diagnostics should verify PKCE challenge method");
+  const diagnosticsText = JSON.stringify(diagnosticsJson);
+  assert.ok(!diagnosticsText.includes(clientSecret), "diagnostics must not expose client secret");
+  assert.ok(!diagnosticsText.includes("twitter-x-callback-client-id"), "diagnostics must not expose full client id");
+  assert.ok(!diagnosticsText.includes(stateParam), "diagnostics must not expose signed state");
+  assert.ok(!diagnosticsText.includes(statePayload.codeVerifierEncrypted), "diagnostics must not expose encrypted verifier material");
 
   const missingState = await fetch(`${baseUrl}/api/x/callback?code=fake-code`, { redirect:"manual" });
   assertSettingsRedirect(missingState, "Twitter / X connection expired. Try again from Settings.", "missing callback state");
