@@ -9,8 +9,11 @@ const connectors = readFileSync(join(process.cwd(), "scripts", "channel-connecto
 for (const required of [
   'url.pathname === "/api/linkedin/connect"',
   'url.pathname === "/api/linkedin/callback"',
-  "signOAuthState(\"linkedin\")",
+  "signOAuthState(\"linkedin\",",
   "verifyOAuthState(\"linkedin\"",
+  "verifyOwnerStartedOAuthState(\"linkedin\"",
+  "ownerStarted:true",
+  "returnTarget:\"settings\"",
   "linkedinAuthorizationUrl({ state })",
   "exchangeLinkedInCode",
   "fetchLinkedInUserInfo",

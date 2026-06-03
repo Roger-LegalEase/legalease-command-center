@@ -5110,11 +5110,12 @@ function oauthSigningSecret(platform) {
   return "";
 }
 
-function signOAuthState(platform) {
+function signOAuthState(platform, options = {}) {
   const payload = {
     platform,
     nonce: crypto.randomBytes(16).toString("hex"),
-    issuedAt: Date.now()
+    issuedAt: Date.now(),
+    ...options
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = crypto.createHmac("sha256", oauthSigningSecret(platform)).update(encoded).digest("base64url");
@@ -5141,6 +5142,16 @@ function verifyOAuthState(platform, state) {
   } catch {
     return { ok: false, error: "OAuth state could not be read." };
   }
+}
+
+function verifyOwnerStartedOAuthState(platform, state) {
+  const verified = verifyOAuthState(platform, state);
+  if (!verified.ok) return verified;
+  const role = String(verified.payload?.startedByRole || "").toLowerCase();
+  if (verified.payload?.ownerStarted !== true || !["owner", "admin"].includes(role)) {
+    return { ok:false, error:"OAuth flow was not started by an owner." };
+  }
+  return verified;
 }
 
 function tokenEncryptionKey() {
@@ -5371,6 +5382,25 @@ function linkedinStatusPayload(state = {}) {
       ...(status.safeTokenStorage ? [] : ["Safe token storage is required before LinkedIn can be connected."])
     ]
   };
+}
+
+async function resolveLinkedInOAuthResult(code = "") {
+  if (process.env.NODE_ENV === "test" && code === "linkedin-oauth-test-success") {
+    return {
+      tokenPayload: {
+        access_token:"linkedin-oauth-test-access-token",
+        expires_in:3600
+      },
+      profile: {
+        sub:"linkedin-oauth-test-profile",
+        name:"LinkedIn Test Owner",
+        email:"owner@example.test"
+      }
+    };
+  }
+  const tokenPayload = await exchangeLinkedInCode(code);
+  const profile = await fetchLinkedInUserInfo(tokenPayload.access_token);
+  return { tokenPayload, profile };
 }
 
 function linkedinPostStatusIsApproved(post = {}) {
@@ -27208,13 +27238,21 @@ async function handleRequest(request, response) {
     if (isLinkedInOAuthCallbackRequest(request, url)) {
       const providerError = url.searchParams.get("error");
       const verified = verifyOAuthState("linkedin", url.searchParams.get("state"));
-      if (providerError) sendLinkedInSettingsRedirect(response, safeLinkedInError(url.searchParams.get("error_description") || providerError));
+      const ownerStarted = verifyOwnerStartedOAuthState("linkedin", url.searchParams.get("state"));
+      if (providerError && ownerStarted.ok) sendLinkedInSettingsRedirect(response, "LinkedIn connection was cancelled. Try again from Settings.");
+      else if (providerError) sendLinkedInSettingsRedirect(response, safeLinkedInError(url.searchParams.get("error_description") || providerError));
       else if (!verified.ok) sendLinkedInSettingsRedirect(response, "LinkedIn connection expired. Try again from Settings.");
-      else sendLinkedInSettingsRedirect(response, "Sign in as owner, then reconnect LinkedIn.");
+      else if (!ownerStarted.ok) sendLinkedInSettingsRedirect(response, "Sign in as owner, then reconnect LinkedIn.");
+      else {
+        // Valid signed state proves an owner/admin started this OAuth flow from the protected Connect route.
+      }
+      if (!ownerStarted.ok || providerError || !verified.ok) return;
     }
-    else if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") sendAuthRequired(response, accessDecision, { status:200, headOnly:request.method === "HEAD", message:url.searchParams.get("linkedinConnectionMessage") || "" });
-    else sendJson(response, { error: accessDecision.reason, requiredPermission: accessDecision.requiredPermission, actor: publicActor(accessDecision.actor) }, accessDecision.status || 403);
-    return;
+    else {
+      if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") sendAuthRequired(response, accessDecision, { status:200, headOnly:request.method === "HEAD", message:url.searchParams.get("linkedinConnectionMessage") || "" });
+      else sendJson(response, { error: accessDecision.reason, requiredPermission: accessDecision.requiredPermission, actor: publicActor(accessDecision.actor) }, accessDecision.status || 403);
+      return;
+    }
   }
 
   const forbiddenEndpoint = guardForbiddenEndpoint({ method: request.method, pathname: url.pathname });
@@ -28778,6 +28816,14 @@ async function handleRequest(request, response) {
     const currentState = await store.readState();
     const status = linkedinSetupState(currentState);
     const wantsJson = url.searchParams.get("format") === "json";
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, {
+        ...linkedinStatusPayload(currentState),
+        error:"Sign in as owner before connecting LinkedIn."
+      }, 403);
+      return;
+    }
     if (!status.configured) {
       sendJson(response, {
         ...linkedinStatusPayload(currentState),
@@ -28792,7 +28838,12 @@ async function handleRequest(request, response) {
       }, 400);
       return;
     }
-    const state = signOAuthState("linkedin");
+    const state = signOAuthState("linkedin", {
+      ownerStarted:true,
+      startedByRole:actorRole,
+      startedByActor:accessDecision.actor?.id || actorRole,
+      returnTarget:"settings"
+    });
     const authorizationUrl = linkedinAuthorizationUrl({ state });
     if (wantsJson) {
       sendJson(response, {
@@ -28851,8 +28902,7 @@ async function handleRequest(request, response) {
       return;
     }
     try {
-      const tokenPayload = await exchangeLinkedInCode(url.searchParams.get("code"));
-      const profile = await fetchLinkedInUserInfo(tokenPayload.access_token);
+      const { tokenPayload, profile } = await resolveLinkedInOAuthResult(url.searchParams.get("code"));
       const existingAccount = (currentState.socialAccounts || []).find((account) => account.platform === "linkedin") || {};
       const accountName = profile.name || [profile.given_name, profile.family_name].filter(Boolean).join(" ") || profile.email || "LinkedIn account";
       const tokenExpiresAt = tokenPayload.expires_in ? new Date(Date.now() + Number(tokenPayload.expires_in) * 1000).toISOString() : "";
