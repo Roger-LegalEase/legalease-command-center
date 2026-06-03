@@ -7288,6 +7288,118 @@ function sendAuthRequired(response, decision = {}, options = {}) {
 </html>`);
 }
 
+const legalPageUpdatedAt = "June 3, 2026";
+
+const publicLegalPages = {
+  privacy: {
+    title: "Privacy Policy",
+    intro: "LegalEase Command Center is used by LegalEase to manage internal operations and approved social media workflows.",
+    sections: [
+      ["Introduction", "This Privacy Policy explains how LegalEase handles information used with the LegalEase Command Center. The Command Center supports internal planning, connected account readiness, review workflows, and approved social media operations."],
+      ["Information we collect", "We may collect account profile details, workflow notes, uploaded source material, connected account status, and usage information needed to operate the Command Center. We do not use these pages to collect payment information."],
+      ["How we use information", "Information is used to operate the Command Center, manage internal workflows, prepare review-ready materials, improve safety controls, and support authorized LegalEase work."],
+      ["Connected accounts and OAuth", "When LegalEase connects a social account through OAuth, limited account information may be processed to complete the connection. Connected account tokens may be stored securely and encrypted. These tokens are used only to support authorized account connection, readiness checks, and approved workflow management."],
+      ["Social media integrations", "Social platform data is used only for authorized account connection, readiness/status checks, and approved internal workflow management. The app does not resell X data. Live posting remains disabled unless separately authorized by LegalEase."],
+      ["Data storage and security", "LegalEase uses reasonable safeguards to protect Command Center information, including access controls, protected server-side credentials, and encrypted connected-account storage where applicable."],
+      ["No sale of personal information", "The app does not sell personal information."],
+      ["Third-party services", "The Command Center may rely on trusted third-party infrastructure and platform services, including hosting, storage, OAuth providers, and connected social platforms. Those services may process information according to their own terms and policies."],
+      ["Data retention", "LegalEase keeps information only as long as reasonably needed for internal operations, compliance, safety review, legal obligations, or authorized business purposes."],
+      ["Contact", "Questions about this Privacy Policy can be sent to LegalEase through the contact channel provided by LegalEase."]
+    ]
+  },
+  terms: {
+    title: "Terms of Service",
+    intro: "The Command Center is an internal operations tool for LegalEase.",
+    sections: [
+      ["Acceptance of terms", "By accessing or using the LegalEase Command Center, you agree to these Terms of Service and any additional instructions provided by LegalEase."],
+      ["Purpose of the Command Center", "The Command Center is an internal operations tool for LegalEase. It supports planning, review, approval, connected account readiness, and internal workflow management."],
+      ["Authorized use", "Users must be authorized by LegalEase. Access may be limited, suspended, or removed at any time if use is not authorized or creates security, privacy, operational, or compliance risk."],
+      ["Connected accounts", "Connecting social accounts does not enable automatic live posting. Connected accounts are used only for authorized connection, readiness, review, and workflow-management purposes unless LegalEase separately authorizes additional capabilities."],
+      ["No unauthorized access", "Users may not attempt to access protected systems, credentials, account data, internal records, or connected platform information without LegalEase authorization."],
+      ["No resale or misuse of platform data", "Users may not misuse, resell, scrape, or redistribute data from connected platforms."],
+      ["Human approval and safety controls", "Any publishing, sending, or filing features must remain subject to separate authorization and safety controls. The Command Center is designed so sensitive external actions require human review and explicit authorization."],
+      ["Third-party services", "The Command Center may connect to or rely on third-party services, including social platforms, hosting, storage, and OAuth providers. Use of those services may also be governed by their own terms."],
+      ["Disclaimers", "The Command Center is provided for internal operational support. LegalEase does not promise that the tool will be uninterrupted, error-free, or suitable for every use case."],
+      ["Contact", "Questions about these Terms can be sent to LegalEase through the contact channel provided by LegalEase."]
+    ]
+  }
+};
+
+function publicLegalPageHtml(kind = "privacy") {
+  const page = publicLegalPages[kind] || publicLegalPages.privacy;
+  const sections = page.sections.map(([title, copy]) => `
+        <section class="legal-section">
+          <h2>${title}</h2>
+          <p>${copy}</p>
+        </section>`).join("");
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${page.title} | LegalEase</title>
+  <style>
+    :root{--ink:#020D66;--muted:#667085;--line:#B8D8D8;--paper:#fff;--bg:#E5EBEB;--orange:#F04800}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.55}
+    .page{min-height:100vh;padding:32px 18px 54px}
+    .shell{width:min(920px,100%);margin:0 auto}
+    header{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:24px}
+    .brand{font-weight:900;letter-spacing:-.02em;font-size:24px;color:var(--ink)}
+    .badge{border:1px solid var(--line);background:rgba(255,255,255,.68);color:var(--ink);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:800;white-space:nowrap}
+    main{background:var(--paper);border:1px solid var(--line);border-radius:22px;padding:clamp(24px,5vw,48px);box-shadow:0 22px 70px rgba(2,13,102,.10)}
+    .eyebrow{color:var(--orange);font-weight:900;letter-spacing:.13em;text-transform:uppercase;font-size:12px;margin:0 0 10px}
+    h1{font-size:clamp(36px,7vw,64px);line-height:.96;margin:0 0 14px;letter-spacing:-.03em}
+    .intro{font-size:clamp(18px,2.4vw,22px);color:#344054;max-width:760px;margin:0 0 30px}
+    .legal-section{border-top:1px solid var(--line);padding:20px 0}
+    .legal-section:first-of-type{border-top:0}
+    h2{font-size:20px;line-height:1.2;margin:0 0 8px;letter-spacing:-.01em}
+    p{margin:0;color:#475467}
+    footer{display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid var(--line);padding-top:20px;margin-top:10px;color:var(--muted);font-size:14px}
+    a{color:var(--ink);font-weight:800;text-decoration:none}
+    a:hover{text-decoration:underline}
+    @media (max-width:640px){header,footer{align-items:flex-start;flex-direction:column}.badge{white-space:normal}main{border-radius:16px}}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="shell">
+      <header>
+        <div class="brand">LegalEase</div>
+        <div class="badge">Public compliance page</div>
+      </header>
+      <main>
+        <p class="eyebrow">LegalEase Command Center</p>
+        <h1>${page.title}</h1>
+        <p class="intro">${page.intro}</p>
+        ${sections}
+        <section class="legal-section">
+          <h2>Last updated date</h2>
+          <p>${legalPageUpdatedAt}</p>
+        </section>
+        <footer>
+          <span>LegalEase</span>
+          <span><a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a></span>
+        </footer>
+      </main>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function sendPublicLegalPage(response, kind = "privacy", options = {}) {
+  response.writeHead(200, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "public, max-age=300"
+  });
+  if (options.headOnly) {
+    response.end();
+    return;
+  }
+  response.end(sanitizeOutboundText(publicLegalPageHtml(kind)));
+}
+
 async function logAccessDecision(decision = {}, url = {}) {
   if (decision.ok) return;
   try {
@@ -27460,6 +27572,10 @@ function htmlShell() {
 
 async function handleRequest(request, response) {
   const url = new URL(request.url ?? "/", `http://${request.headers.host}`);
+  if ((request.method === "GET" || request.method === "HEAD") && (url.pathname === "/privacy" || url.pathname === "/terms")) {
+    sendPublicLegalPage(response, url.pathname === "/terms" ? "terms" : "privacy", { headOnly:request.method === "HEAD" });
+    return;
+  }
   const accessDecision = authorizeRequest(request, url, process.env);
   if (!accessDecision.ok) {
     await logAccessDecision(accessDecision, url);
