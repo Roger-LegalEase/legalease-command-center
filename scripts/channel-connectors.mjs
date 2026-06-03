@@ -1,3 +1,5 @@
+const X_BROWSER_AUTHORIZATION_URL = "https://twitter.com/i/oauth2/authorize";
+
 const connectorConfig = {
   linkedin: {
     label: "LinkedIn",
@@ -29,7 +31,7 @@ const connectorConfig = {
     label: "Twitter / X",
     requiredEnv: ["X_CLIENT_ID", "X_CLIENT_SECRET", "X_REDIRECT_URI"],
     scopes: ["tweet.read", "users.read", "offline.access"],
-    authorizationUrl: "https://twitter.com/i/oauth2/authorize",
+    authorizationUrl: X_BROWSER_AUTHORIZATION_URL,
     tokenUrl: "https://api.x.com/2/oauth2/token",
     notes: "Requires OAuth 2.0 user authentication settings in the X Developer Console."
   }
@@ -140,7 +142,7 @@ export function xAuthorizationUrl({ state, codeChallenge }) {
     code_challenge: codeChallenge || "",
     code_challenge_method: "S256"
   });
-  return `${config.authorizationUrl}?${params.toString()}`;
+  return `${X_BROWSER_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 export async function exchangeXCode(code, codeVerifier) {
