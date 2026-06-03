@@ -29,6 +29,8 @@ const connectorConfig = {
     label: "Twitter / X",
     requiredEnv: ["X_CLIENT_ID", "X_CLIENT_SECRET", "X_REDIRECT_URI"],
     scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
+    authorizationUrl: "https://twitter.com/i/oauth2/authorize",
+    tokenUrl: "https://api.x.com/2/oauth2/token",
     notes: "Requires an approved X developer app with write access."
   }
 };
@@ -125,4 +127,55 @@ export async function fetchLinkedInUserInfo(accessToken) {
     throw new Error(payload.message || payload.error_description || payload.error || "LinkedIn account lookup failed.");
   }
   return payload;
+}
+
+export function xAuthorizationUrl({ state, codeChallenge }) {
+  const config = connectorConfig.x;
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: process.env.X_CLIENT_ID || "",
+    redirect_uri: process.env.X_REDIRECT_URI || "",
+    state,
+    scope: config.scopes.join(" "),
+    code_challenge: codeChallenge || "",
+    code_challenge_method: "S256"
+  });
+  return `${config.authorizationUrl}?${params.toString()}`;
+}
+
+export async function exchangeXCode(code, codeVerifier) {
+  const config = connectorConfig.x;
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    client_id: process.env.X_CLIENT_ID || "",
+    redirect_uri: process.env.X_REDIRECT_URI || "",
+    code_verifier: codeVerifier || ""
+  });
+  const headers = { "content-type": "application/x-www-form-urlencoded" };
+  if (process.env.X_CLIENT_SECRET) {
+    headers.authorization = "Basic " + Buffer.from(`${process.env.X_CLIENT_ID || ""}:${process.env.X_CLIENT_SECRET}`).toString("base64");
+  }
+  const response = await fetch(config.tokenUrl, {
+    method: "POST",
+    headers,
+    body
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error_description || payload.error || "Twitter / X token exchange failed.");
+  }
+  return payload;
+}
+
+export async function fetchXUserInfo(accessToken) {
+  const response = await fetch("https://api.x.com/2/users/me?user.fields=username,name", {
+    headers: { authorization: `Bearer ${accessToken}` }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = payload.errors?.[0] || payload.detail || payload.title || payload.error || {};
+    throw new Error(error.detail || error.message || payload.detail || payload.title || "Twitter / X account lookup failed.");
+  }
+  return payload.data || payload;
 }

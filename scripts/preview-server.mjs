@@ -40,9 +40,12 @@ import {
   channelSetup,
   channelSetupMessage,
   exchangeLinkedInCode,
+  exchangeXCode,
   fetchLinkedInUserInfo,
+  fetchXUserInfo,
   linkedinAuthorizationUrl,
-  publicChannelSetup
+  publicChannelSetup,
+  xAuthorizationUrl
 } from "./channel-connectors.mjs";
 import {
   applyLeeActionProposal,
@@ -5154,6 +5157,41 @@ function verifyOwnerStartedOAuthState(platform, state) {
   return verified;
 }
 
+function oauthStateCipherKey(platform) {
+  const secret = oauthSigningSecret(platform);
+  if (!secret) throw new Error(`${channelLabels[platform] || platform} OAuth setup is missing.`);
+  return crypto.createHash("sha256").update(secret).digest();
+}
+
+function encryptOAuthStateValue(platform, value = "") {
+  if (!value) return "";
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", oauthStateCipherKey(platform), iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return ["v1", iv.toString("base64url"), tag.toString("base64url"), encrypted.toString("base64url")].join(".");
+}
+
+function decryptOAuthStateValue(platform, value = "") {
+  if (!value) return "";
+  const [version, iv, tag, encrypted] = String(value).split(".");
+  if (version !== "v1" || !iv || !tag || !encrypted) throw new Error(`${channelLabels[platform] || platform} OAuth state could not be read.`);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", oauthStateCipherKey(platform), Buffer.from(iv, "base64url"));
+  decipher.setAuthTag(Buffer.from(tag, "base64url"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encrypted, "base64url")),
+    decipher.final()
+  ]).toString("utf8");
+}
+
+function createPkceVerifier() {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+function pkceChallenge(verifier = "") {
+  return crypto.createHash("sha256").update(verifier).digest("base64url");
+}
+
 function tokenEncryptionKey() {
   const raw = process.env.OAUTH_TOKEN_ENCRYPTION_KEY || process.env.LINKEDIN_TOKEN_ENCRYPTION_SECRET || "";
   if (!raw) return null;
@@ -5330,12 +5368,28 @@ function safeLinkedInError(error) {
   return message.slice(0, 160);
 }
 
+function safeXError(error) {
+  const message = String(error?.message || error || "Twitter / X connection failed.");
+  if (/token|secret|authorization|bearer|client|access_token|api key/i.test(message)) {
+    return "Twitter / X connection failed during secure OAuth exchange.";
+  }
+  return message.slice(0, 160);
+}
+
 function linkedinSafeTokenStorageReady() {
   return Boolean(process.env.OAUTH_TOKEN_ENCRYPTION_KEY || process.env.LINKEDIN_TOKEN_ENCRYPTION_SECRET);
 }
 
 function linkedinLivePostingSwitchEnabled() {
   return process.env.LINKEDIN_LIVE_POSTING_ENABLED === "true";
+}
+
+function xSafeTokenStorageReady() {
+  return Boolean(process.env.OAUTH_TOKEN_ENCRYPTION_KEY);
+}
+
+function xLivePostingSwitchEnabled() {
+  return livePostingEnabledForChannel("x");
 }
 
 function linkedinSetupState(state = {}) {
@@ -5384,6 +5438,52 @@ function linkedinStatusPayload(state = {}) {
   };
 }
 
+function xSetupState(state = {}) {
+  const account = (state.socialAccounts || []).find((item) => item.platform === "x") || { platform:"x" };
+  const setup = channelSetup("x");
+  const safe = safeChannelStatus(account);
+  const configured = Boolean(setup.configured);
+  const connected = Boolean(safe.connected && safe.hasStoredToken);
+  const safeTokenStorage = xSafeTokenStorageReady();
+  let status = "Not connected";
+  if (!configured || !safeTokenStorage) status = "Needs setup";
+  else if (safe.status === "error") status = "Error";
+  else if (connected) status = "Connected";
+  return {
+    account,
+    setup,
+    safe,
+    configured,
+    connected,
+    safeTokenStorage,
+    status,
+    livePostingEnabled: xLivePostingSwitchEnabled(),
+    approvalRequired: true,
+    accountLabel: connected ? safe.accountName || "Twitter / X account" : "",
+    lastChecked: new Date().toISOString()
+  };
+}
+
+function xStatusPayload(state = {}) {
+  const status = xSetupState(state);
+  return {
+    connected: status.connected,
+    status: status.status,
+    livePostingEnabled: status.livePostingEnabled,
+    approvalRequired: true,
+    accountLabel: status.accountLabel,
+    lastChecked: status.lastChecked,
+    safety: "Approved posts only. No automatic posting.",
+    message: status.status === "Needs setup" ? "Twitter / X connection needs setup." : status.connected ? "Twitter / X connected. Posting still requires approval." : "Twitter / X is not connected.",
+    postingState: status.livePostingEnabled ? "Ready behind approval" : "Off",
+    setupRequired: !status.configured || !status.safeTokenStorage,
+    missing: [
+      ...(status.setup.missingEnv || []),
+      ...(status.safeTokenStorage ? [] : ["Safe token storage is required before Twitter / X can be connected."])
+    ]
+  };
+}
+
 async function resolveLinkedInOAuthResult(code = "") {
   if (process.env.NODE_ENV === "test" && code === "linkedin-oauth-test-success") {
     return {
@@ -5400,6 +5500,26 @@ async function resolveLinkedInOAuthResult(code = "") {
   }
   const tokenPayload = await exchangeLinkedInCode(code);
   const profile = await fetchLinkedInUserInfo(tokenPayload.access_token);
+  return { tokenPayload, profile };
+}
+
+async function resolveXOAuthResult(code = "", codeVerifier = "") {
+  if (process.env.NODE_ENV === "test" && code === "twitter-x-oauth-test-success") {
+    return {
+      tokenPayload: {
+        access_token:"twitter-x-oauth-test-access-token",
+        refresh_token:"twitter-x-oauth-test-refresh-token",
+        expires_in:3600
+      },
+      profile: {
+        id:"twitter-x-oauth-test-profile",
+        username:"LegalEaseTest",
+        name:"LegalEase Twitter / X"
+      }
+    };
+  }
+  const tokenPayload = await exchangeXCode(code, codeVerifier);
+  const profile = await fetchXUserInfo(tokenPayload.access_token);
   return { tokenPayload, profile };
 }
 
@@ -6903,6 +7023,22 @@ function sendLinkedInSettingsRedirect(response, message = "LinkedIn connection n
 
 function isLinkedInOAuthCallbackRequest(request = {}, url = new URL("http://localhost/")) {
   return request.method === "GET" && url.pathname === "/api/linkedin/callback";
+}
+
+function xSettingsRedirectLocation(message = "Twitter / X connection needs setup.") {
+  return `/?xConnectionMessage=${encodeURIComponent(message)}#settings`;
+}
+
+function sendXSettingsRedirect(response, message = "Twitter / X connection needs setup.") {
+  response.writeHead(302, {
+    location: xSettingsRedirectLocation(message),
+    "cache-control": "no-store, max-age=0"
+  });
+  response.end();
+}
+
+function isXOAuthCallbackRequest(request = {}, url = new URL("http://localhost/")) {
+  return request.method === "GET" && url.pathname === "/api/x/callback";
 }
 
 function authDiagnosticsForRequest(request = {}) {
@@ -15924,12 +16060,13 @@ function htmlShell() {
 
 	    function channelCards() {
 	      const accountsByPlatform = new Map((state.socialAccounts || []).map(account => [account.platform, account]));
-	      const accounts = platforms.map(platform => accountsByPlatform.get(platform) || { platform, status:"not_connected", displayName:channelLabels[platform] });
-	      const channelAction = account => {
+      const accounts = platforms.map(platform => accountsByPlatform.get(platform) || { platform, status:"not_connected", displayName:channelLabels[platform] });
+      const channelAction = account => {
 	        if (account.platform === "linkedin") return '<button type="button" class="primary" onclick="connectLinkedIn()">Connect LinkedIn</button>';
+	        if (account.platform === "x" && account.status !== "connected" && (account.oauthConfigured || account.setup?.configured)) return '<button type="button" class="primary" onclick="connectX()">Connect X</button>';
 	        if (account.status === "connected") return \`<button type="button" class="primary" onclick="testChannel('\${account.platform}')">Review</button>\`;
 	        return \`<button type="button" class="primary" onclick="connectChannel('\${account.platform}')">Setup details</button>\`;
-	      };
+      };
 	      return accounts.map(account => {
         const label = channelLabels[account.platform] || account.displayName || account.platform;
         const status = account.status || "not_connected";
@@ -27072,6 +27209,29 @@ function htmlShell() {
       }
     }
 
+    async function connectX() {
+      try {
+        const status = await api("/api/x/status");
+        if (status.setupRequired || status.status === "Needs setup") {
+          toast("Twitter / X connection needs setup.");
+          return;
+        }
+        const result = await api("/api/x/connect?format=json");
+        if (result.authorizationUrl) {
+          window.location.href = result.authorizationUrl;
+          return;
+        }
+        toast(result.message || "Twitter / X connection needs setup.");
+      } catch (error) {
+        const message = error?.status === 401
+          ? "Sign in as owner before connecting Twitter / X."
+          : /setup|required|missing/i.test(error?.message || "")
+          ? "Twitter / X connection needs setup."
+          : (error?.message || "Twitter / X connection needs setup.");
+        toast(message);
+      }
+    }
+
     async function prepareEmailDraft(title = "Email draft", target = "Manual follow-up") {
       const result = await api("/api/email/draft", {
         method:"POST",
@@ -27248,8 +27408,21 @@ async function handleRequest(request, response) {
       }
       if (!ownerStarted.ok || providerError || !verified.ok) return;
     }
+    else if (isXOAuthCallbackRequest(request, url)) {
+      const providerError = url.searchParams.get("error");
+      const verified = verifyOAuthState("x", url.searchParams.get("state"));
+      const ownerStarted = verifyOwnerStartedOAuthState("x", url.searchParams.get("state"));
+      if (providerError && ownerStarted.ok) sendXSettingsRedirect(response, "Twitter / X connection was cancelled. Try again from Settings.");
+      else if (providerError) sendXSettingsRedirect(response, safeXError(url.searchParams.get("error_description") || providerError));
+      else if (!verified.ok) sendXSettingsRedirect(response, "Twitter / X connection expired. Try again from Settings.");
+      else if (!ownerStarted.ok) sendXSettingsRedirect(response, "Sign in as owner, then reconnect Twitter / X.");
+      else {
+        // Valid signed state proves an owner/admin started this OAuth flow from the protected Connect route.
+      }
+      if (!ownerStarted.ok || providerError || !verified.ok) return;
+    }
     else {
-      if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") sendAuthRequired(response, accessDecision, { status:200, headOnly:request.method === "HEAD", message:url.searchParams.get("linkedinConnectionMessage") || "" });
+      if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") sendAuthRequired(response, accessDecision, { status:200, headOnly:request.method === "HEAD", message:url.searchParams.get("linkedinConnectionMessage") || url.searchParams.get("xConnectionMessage") || "" });
       else sendJson(response, { error: accessDecision.reason, requiredPermission: accessDecision.requiredPermission, actor: publicActor(accessDecision.actor) }, accessDecision.status || 403);
       return;
     }
@@ -28946,6 +29119,154 @@ async function handleRequest(request, response) {
         oauthConfigured:true
       });
       sendLinkedInSettingsRedirect(response, safeError);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/x/status" && request.method === "GET") {
+    sendJson(response, xStatusPayload(await store.readState()));
+    return;
+  }
+
+  if (url.pathname === "/api/x/connect" && request.method === "GET") {
+    const currentState = await store.readState();
+    const status = xSetupState(currentState);
+    const wantsJson = url.searchParams.get("format") === "json";
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, {
+        ...xStatusPayload(currentState),
+        error:"Sign in as owner before connecting Twitter / X."
+      }, 403);
+      return;
+    }
+    if (!status.configured) {
+      sendJson(response, {
+        ...xStatusPayload(currentState),
+        error:"Twitter / X connection needs setup."
+      }, 400);
+      return;
+    }
+    if (!status.safeTokenStorage) {
+      sendJson(response, {
+        ...xStatusPayload(currentState),
+        error:"Safe token storage is required before Twitter / X can be connected."
+      }, 400);
+      return;
+    }
+    const codeVerifier = createPkceVerifier();
+    const state = signOAuthState("x", {
+      ownerStarted:true,
+      startedByRole:actorRole,
+      startedByActor:accessDecision.actor?.id || actorRole,
+      returnTarget:"settings",
+      codeVerifierEncrypted:encryptOAuthStateValue("x", codeVerifier)
+    });
+    const authorizationUrl = xAuthorizationUrl({ state, codeChallenge:pkceChallenge(codeVerifier) });
+    if (wantsJson) {
+      sendJson(response, {
+        status:"Ready",
+        message:"Twitter / X connection is ready to start.",
+        authorizationUrl,
+        livePostingEnabled:xLivePostingSwitchEnabled(),
+        safety:"Approved posts only. Live social posting stays off until the safety switch is enabled."
+      });
+      return;
+    }
+    response.writeHead(302, { location: authorizationUrl });
+    response.end();
+    return;
+  }
+
+  if (url.pathname === "/api/x/callback" && request.method === "GET") {
+    const currentState = await store.readState();
+    if (url.searchParams.get("error")) {
+      const safeError = safeXError(url.searchParams.get("error_description") || url.searchParams.get("error"));
+      await store.updateSocialAccount("x", {
+        status:"error",
+        displayName:"Twitter / X",
+        lastErrorSummary:safeError,
+        lastError:safeError,
+        lastTestStatus:"error",
+        lastTestMessage:safeError,
+        lastTestedAt:new Date().toISOString(),
+        oauthConfigured:true
+      });
+      sendXSettingsRedirect(response, safeError);
+      return;
+    }
+    const verified = verifyOwnerStartedOAuthState("x", url.searchParams.get("state"));
+    if (!verified.ok) {
+      await store.updateSocialAccount("x", {
+        status:"error",
+        displayName:"Twitter / X",
+        lastErrorSummary:verified.error,
+        lastError:verified.error,
+        lastTestStatus:"error",
+        lastTestMessage:verified.error,
+        lastTestedAt:new Date().toISOString(),
+        oauthConfigured:true
+      });
+      const genericValidState = verifyOAuthState("x", url.searchParams.get("state"));
+      sendXSettingsRedirect(response, genericValidState.ok ? "Sign in as owner, then reconnect Twitter / X." : "Twitter / X connection expired. Try again from Settings.");
+      return;
+    }
+    const status = xSetupState(currentState);
+    if (!status.configured || !status.safeTokenStorage) {
+      sendXSettingsRedirect(response, status.configured ? "Safe token storage is required before Twitter / X can be connected." : "Twitter / X connection needs setup.");
+      return;
+    }
+    if (!url.searchParams.get("code")) {
+      sendXSettingsRedirect(response, "Twitter / X connection expired. Try again from Settings.");
+      return;
+    }
+    try {
+      const codeVerifier = decryptOAuthStateValue("x", verified.payload?.codeVerifierEncrypted || "");
+      const { tokenPayload, profile } = await resolveXOAuthResult(url.searchParams.get("code"), codeVerifier);
+      const existingAccount = (currentState.socialAccounts || []).find((account) => account.platform === "x") || {};
+      const accountName = profile.name || profile.username || "Twitter / X account";
+      const accountId = profile.id || profile.sub || "";
+      const tokenExpiresAt = tokenPayload.expires_in ? new Date(Date.now() + Number(tokenPayload.expires_in) * 1000).toISOString() : "";
+      await store.updateSocialAccount("x", {
+        status:"connected",
+        displayName:"Twitter / X",
+        accountName,
+        accountId,
+        externalAccountId:accountId,
+        accessTokenEncrypted:encryptToken(tokenPayload.access_token || ""),
+        refreshTokenEncrypted:tokenPayload.refresh_token ? encryptToken(tokenPayload.refresh_token) : existingAccount.refreshTokenEncrypted || "",
+        tokenExpiresAt,
+        connectedAt:new Date().toISOString(),
+        lastTestStatus:"connected",
+        lastTestMessage:"Twitter / X connected. Posting still requires approval.",
+        lastErrorSummary:"",
+        lastError:"",
+        lastTestedAt:new Date().toISOString(),
+        oauthConfigured:true,
+        scopes:channelSetup("x").scopes
+      });
+      const persistedXStatus = xSetupState(await store.readState());
+      if (!persistedXStatus.connected) {
+        throw new Error("Twitter / X connection could not be saved. Try again from Settings.");
+      }
+      response.writeHead(302, {
+        location:xSettingsRedirectLocation("Twitter / X connected. Live posting remains off."),
+        "cache-control":"no-store, max-age=0"
+      });
+      response.end();
+    } catch (error) {
+      const safeError = safeXError(error);
+      await store.updateSocialAccount("x", {
+        status:"error",
+        displayName:"Twitter / X",
+        lastErrorSummary:safeError,
+        lastError:safeError,
+        lastTestStatus:"error",
+        lastTestMessage:safeError,
+        lastTestedAt:new Date().toISOString(),
+        oauthConfigured:true
+      });
+      sendXSettingsRedirect(response, safeError);
     }
     return;
   }
