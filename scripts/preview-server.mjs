@@ -5125,6 +5125,9 @@ function verifyOAuthState(platform, state) {
   if (!state || !state.includes(".")) return { ok: false, error: "OAuth state is missing or invalid." };
   const [encoded, signature] = state.split(".");
   const expected = crypto.createHmac("sha256", oauthSigningSecret(platform)).update(encoded).digest("base64url");
+  if (Buffer.byteLength(signature || "") !== Buffer.byteLength(expected || "")) {
+    return { ok: false, error: "OAuth state could not be verified." };
+  }
   if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
     return { ok: false, error: "OAuth state could not be verified." };
   }
@@ -6856,6 +6859,22 @@ function sendJson(response, payload, status = 200) {
   response.end(sanitizeOutboundText(JSON.stringify(payload)));
 }
 
+function linkedinSettingsRedirectLocation(message = "LinkedIn connection needs setup.") {
+  return `/?linkedinConnectionMessage=${encodeURIComponent(message)}#settings`;
+}
+
+function sendLinkedInSettingsRedirect(response, message = "LinkedIn connection needs setup.") {
+  response.writeHead(302, {
+    location: linkedinSettingsRedirectLocation(message),
+    "cache-control": "no-store, max-age=0"
+  });
+  response.end();
+}
+
+function isLinkedInOAuthCallbackRequest(request = {}, url = new URL("http://localhost/")) {
+  return request.method === "GET" && url.pathname === "/api/linkedin/callback";
+}
+
 function authDiagnosticsForRequest(request = {}) {
   const headers = request.headers || {};
   const ownerToken = normalizeToken(process.env.COMMAND_CENTER_OWNER_TOKEN || process.env.COMMAND_CENTER_ACCESS_TOKEN || "");
@@ -6875,6 +6894,8 @@ function authDiagnosticsForRequest(request = {}) {
 }
 
 function sendAuthRequired(response, decision = {}, options = {}) {
+  const helperMessage = String(options.message || "").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[char]));
+  const helperMessageHtml = helperMessage ? `<p class="auth-helper-message">${helperMessage}</p>` : "";
   response.writeHead(options.status || decision.status || 401, {
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store, max-age=0"
@@ -6902,6 +6923,7 @@ function sendAuthRequired(response, decision = {}, options = {}) {
     button{width:100%;margin-top:16px;border:0;border-radius:12px;padding:13px 16px;background:var(--ink);color:white;font-weight:850;cursor:pointer}
     button:disabled{opacity:.65;cursor:not-allowed}
     .helper{font-size:13px;color:var(--muted);margin-top:8px}
+    .auth-helper-message{border:1px solid var(--line);background:#F9FAF7;color:var(--ink);border-radius:12px;padding:10px 12px;font-weight:750;margin:0 0 18px}
     .message{display:none;margin-top:14px;border-radius:12px;padding:10px 12px;font-weight:750}
     .error{color:#B42318;background:#FEF3F2;border:1px solid #FECDCA}
     .success{color:#027A48;background:#ECFDF3;border:1px solid #ABEFC6}
@@ -6912,6 +6934,7 @@ function sendAuthRequired(response, decision = {}, options = {}) {
     <div class="eyebrow">Owner login</div>
     <h1>LegalEase Command Center</h1>
     <p>Hosted mode is protected. Unlock with the owner token configured in Render.</p>
+    ${helperMessageHtml}
     <form id="accessForm">
       <label>Owner access token
         <input id="ownerToken" type="password" autocomplete="current-password" required autofocus>
@@ -14237,6 +14260,7 @@ function htmlShell() {
     let leeBubbleOpen = false;
     let rcapActivationClientStatus = null;
     let campaignImportPreview = null;
+    let linkedinConnectionMessageShown = false;
     const rcapReviewDefinitions = [
       { key:"rcap-proposal-task-v1", title:"Proposal Task", collection:"tasks", id:"task-rcap-proposal-draft-v1", priority:"high" },
       { key:"rcap-proposal-draft-v1", title:"Proposal Draft", collection:"partnerProgramArtifacts", artifactKey:"rcap-proposal-draft-v1", priority:"high" },
@@ -14587,6 +14611,15 @@ function htmlShell() {
       el.classList.add("show");
       setTimeout(() => el.classList.remove("show"), 1800);
     };
+    function showLinkedInConnectionReturnMessage() {
+      if (linkedinConnectionMessageShown) return;
+      const params = new URLSearchParams(location.search || "");
+      const message = params.get("linkedinConnectionMessage");
+      if (!message) return;
+      linkedinConnectionMessageShown = true;
+      toast(message);
+      if (history.replaceState) history.replaceState(null, "", location.pathname + location.hash);
+    }
     function safeControlToast(message) {
       toast(message || "Safe local action complete.");
     }
@@ -14991,6 +15024,7 @@ function htmlShell() {
         stateFetchDiagnostics = null;
         window.__LE_BOOT.stage = "first-render";
         try { render(); } catch (renderError) { showRenderFailure(renderError.message || "Unknown render error", "first-render"); throw renderError; }
+        showLinkedInConnectionReturnMessage();
         window.__LE_BOOT.ready = true;
         if (window.__LE_BOOT.timeout) clearTimeout(window.__LE_BOOT.timeout);
       } catch (error) {
@@ -27079,7 +27113,14 @@ async function handleRequest(request, response) {
   const accessDecision = authorizeRequest(request, url, process.env);
   if (!accessDecision.ok) {
     await logAccessDecision(accessDecision, url);
-    if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") sendAuthRequired(response, accessDecision, { status:200, headOnly:request.method === "HEAD" });
+    if (isLinkedInOAuthCallbackRequest(request, url)) {
+      const providerError = url.searchParams.get("error");
+      const verified = verifyOAuthState("linkedin", url.searchParams.get("state"));
+      if (providerError) sendLinkedInSettingsRedirect(response, safeLinkedInError(url.searchParams.get("error_description") || providerError));
+      else if (!verified.ok) sendLinkedInSettingsRedirect(response, "LinkedIn connection expired. Try again from Settings.");
+      else sendLinkedInSettingsRedirect(response, "Sign in as owner, then reconnect LinkedIn.");
+    }
+    else if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") sendAuthRequired(response, accessDecision, { status:200, headOnly:request.method === "HEAD", message:url.searchParams.get("linkedinConnectionMessage") || "" });
     else sendJson(response, { error: accessDecision.reason, requiredPermission: accessDecision.requiredPermission, actor: publicActor(accessDecision.actor) }, accessDecision.status || 403);
     return;
   }
@@ -28678,17 +28719,9 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/linkedin/callback" && request.method === "GET") {
     const currentState = await store.readState();
-    const status = linkedinSetupState(currentState);
-    if (!status.configured || !status.safeTokenStorage) {
-      sendJson(response, {
-        ...linkedinStatusPayload(currentState),
-        error: status.configured ? "Safe token storage is required before LinkedIn can be connected." : "LinkedIn connection needs setup."
-      }, 400);
-      return;
-    }
     if (url.searchParams.get("error")) {
       const safeError = safeLinkedInError(url.searchParams.get("error_description") || url.searchParams.get("error"));
-      const state = await store.updateSocialAccount("linkedin", {
+      await store.updateSocialAccount("linkedin", {
         status:"error",
         displayName:"LinkedIn",
         lastErrorSummary:safeError,
@@ -28698,12 +28731,12 @@ async function handleRequest(request, response) {
         lastTestedAt:new Date().toISOString(),
         oauthConfigured:true
       });
-      sendJson(response, { state:withPublicChannelSetup(state), status:"Error", message:safeError }, 400);
+      sendLinkedInSettingsRedirect(response, safeError);
       return;
     }
     const verified = verifyOAuthState("linkedin", url.searchParams.get("state"));
     if (!verified.ok) {
-      const state = await store.updateSocialAccount("linkedin", {
+      await store.updateSocialAccount("linkedin", {
         status:"error",
         displayName:"LinkedIn",
         lastErrorSummary:verified.error,
@@ -28713,11 +28746,16 @@ async function handleRequest(request, response) {
         lastTestedAt:new Date().toISOString(),
         oauthConfigured:true
       });
-      sendJson(response, { state:withPublicChannelSetup(state), status:"Error", message:verified.error }, 400);
+      sendLinkedInSettingsRedirect(response, "LinkedIn connection expired. Try again from Settings.");
+      return;
+    }
+    const status = linkedinSetupState(currentState);
+    if (!status.configured || !status.safeTokenStorage) {
+      sendLinkedInSettingsRedirect(response, status.configured ? "Safe token storage is required before LinkedIn can be connected." : "LinkedIn connection needs setup.");
       return;
     }
     if (!url.searchParams.get("code")) {
-      sendJson(response, { status:"Error", message:"LinkedIn OAuth callback is missing an authorization code." }, 400);
+      sendLinkedInSettingsRedirect(response, "LinkedIn connection expired. Try again from Settings.");
       return;
     }
     try {
@@ -28744,11 +28782,14 @@ async function handleRequest(request, response) {
         oauthConfigured:true,
         scopes:channelSetup("linkedin").scopes
       });
-      response.writeHead(302, { location:"/?linkedin=connected#production" });
+      response.writeHead(302, {
+        location:linkedinSettingsRedirectLocation("LinkedIn connected. Live posting remains off."),
+        "cache-control":"no-store, max-age=0"
+      });
       response.end();
     } catch (error) {
       const safeError = safeLinkedInError(error);
-      const state = await store.updateSocialAccount("linkedin", {
+      await store.updateSocialAccount("linkedin", {
         status:"error",
         displayName:"LinkedIn",
         lastErrorSummary:safeError,
@@ -28758,7 +28799,7 @@ async function handleRequest(request, response) {
         lastTestedAt:new Date().toISOString(),
         oauthConfigured:true
       });
-      sendJson(response, { state:withPublicChannelSetup(state), status:"Error", message:safeError }, 400);
+      sendLinkedInSettingsRedirect(response, safeError);
     }
     return;
   }
