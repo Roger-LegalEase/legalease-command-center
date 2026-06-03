@@ -49,28 +49,46 @@ function bearerFromHeader(value = "") {
   return match ? match[1].trim() : "";
 }
 
-function tokenFromCookie(cookie = "") {
-  return clean(cookie).split(";").map((part) => part.trim()).find((part) => part.startsWith("leos_session="))?.slice("leos_session=".length) || "";
+function safeDecodeCookieValue(value = "") {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function tokensFromCookie(cookie = "") {
+  return clean(cookie)
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith("leos_session="))
+    .map((part) => normalizeToken(safeDecodeCookieValue(part.slice("leos_session=".length))))
+    .filter(Boolean);
+}
+
+export function tokenCandidatesFromRequest(request = {}) {
+  const headers = request.headers || {};
+  return [
+    headers["x-command-center-token"],
+    headers["x-leos-token"],
+    bearerFromHeader(headers.authorization || ""),
+    ...tokensFromCookie(headers.cookie || "")
+  ].map((token) => normalizeToken(token)).filter(Boolean);
 }
 
 export function tokenFromRequest(request = {}) {
-  const headers = request.headers || {};
-  return normalizeToken(
-    headers["x-command-center-token"]
-    || headers["x-leos-token"]
-    || bearerFromHeader(headers.authorization || "")
-    || tokenFromCookie(headers.cookie || "")
-  );
+  return tokenCandidatesFromRequest(request)[0] || "";
 }
 
 export function actorFromRequest(request = {}, env = process.env) {
   const required = authRequiredForEnv(env);
   const registry = tokenRegistryFromEnv(env);
-  const token = tokenFromRequest(request);
+  const tokenCandidates = tokenCandidatesFromRequest(request);
+  const token = tokenCandidates[0] || "";
   if (!required && !token) {
     return { id:"local_operator", role:"owner", label:"Local Operator", authenticated:true, authRequired:false, permissions:roleDefinitions.owner.can };
   }
-  const match = registry.find(([, value]) => value === token);
+  const match = registry.find(([, value]) => tokenCandidates.includes(value));
   if (!match) {
     return { id:"anonymous", role:"anonymous", label:"Anonymous", authenticated:false, authRequired:required, permissions:[] };
   }

@@ -138,6 +138,16 @@ try {
   const browserCookieDiagnosticsJson = await browserCookieDiagnostics.json();
   assert.equal(browserCookieDiagnosticsJson.xClientIdConfigured, true, "browser cookie diagnostics should return safe Twitter / X setup facts");
 
+  const duplicateCookieHeader = `leos_session=stale-owner-session; leos_session=${encodeURIComponent(ownerToken)}`;
+  const duplicateCookieAuthDiagnostics = await fetch(`${baseUrl}/api/auth/diagnostics`, {
+    headers:{ cookie:duplicateCookieHeader }
+  });
+  assert.equal((await duplicateCookieAuthDiagnostics.json()).tokenMatch, true, "auth diagnostics should recognize a valid owner session even when a stale duplicate cookie appears first");
+  const duplicateCookieXDiagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`, {
+    headers:{ cookie:duplicateCookieHeader }
+  });
+  assert.equal(duplicateCookieXDiagnostics.status, 200, "Twitter / X diagnostics should use the same valid owner-token proof when duplicate session cookies exist");
+
   const ownerConnect = await fetch(`${baseUrl}/api/x/connect?format=json`, {
     headers:{ "x-command-center-token":ownerToken }
   });

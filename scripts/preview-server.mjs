@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createStore, getSupabaseHealth, storageRuntimeConfig } from "./storage.mjs";
 import { analyzeOperations } from "./priority-engine.mjs";
 import { buildAutonomyGovernance, buildAutonomyReport, runAutonomyCycleOnState } from "./autonomy-engine.mjs";
-import { actorFromRequest, authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequest, publicActor, roleDefinitions, tokenFromRequest } from "./access-control.mjs";
+import { actorFromRequest, authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequest, publicActor, roleDefinitions, tokenCandidatesFromRequest, tokenFromRequest } from "./access-control.mjs";
 import {
   classifyGrowthInboxText,
   convertGrowthInboxItem,
@@ -7109,6 +7109,7 @@ function authDiagnosticsForRequest(request = {}) {
   const headers = request.headers || {};
   const ownerToken = normalizeToken(process.env.COMMAND_CENTER_OWNER_TOKEN || process.env.COMMAND_CENTER_ACCESS_TOKEN || "");
   const receivedToken = tokenFromRequest(request);
+  const receivedTokenCandidates = tokenCandidatesFromRequest(request);
   const authHeader = String(headers.authorization || "");
   const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
   const receivedBearerToken = normalizeToken(bearerMatch?.[1] || "");
@@ -7118,7 +7119,8 @@ function authDiagnosticsForRequest(request = {}) {
     configuredTokenLength: ownerToken.length,
     receivedAuthHeaderPresent: Boolean(authHeader),
     receivedBearerTokenLength: receivedBearerToken.length,
-    tokenMatch: Boolean(ownerToken && receivedToken && receivedToken === ownerToken),
+    receivedTokenCandidateCount: receivedTokenCandidates.length,
+    tokenMatch: Boolean(ownerToken && receivedTokenCandidates.includes(ownerToken)),
     requiredPermission: permissionForRequest("GET", "/api/state")
   };
 }
