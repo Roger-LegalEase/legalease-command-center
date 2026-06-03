@@ -17,6 +17,7 @@ function normalizeToken(value = "") {
 const publicPaths = [
   "/api/health",
   "/api/auth/diagnostics",
+  "/api/x/oauth-diagnostics",
   "/api/debug/env",
   "/api/storage/debug",
   "/api/storage/diagnostics"

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createStore, getSupabaseHealth, storageRuntimeConfig } from "./storage.mjs";
 import { analyzeOperations } from "./priority-engine.mjs";
 import { buildAutonomyGovernance, buildAutonomyReport, runAutonomyCycleOnState } from "./autonomy-engine.mjs";
-import { authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequest, publicActor, roleDefinitions, tokenFromRequest } from "./access-control.mjs";
+import { actorFromRequest, authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequest, publicActor, roleDefinitions, tokenFromRequest } from "./access-control.mjs";
 import {
   classifyGrowthInboxText,
   convertGrowthInboxItem,
@@ -5521,6 +5521,23 @@ function xOAuthDiagnosticsPayload() {
       codeChallengeMethod:diagnosticAuthUrl.searchParams.get("code_challenge_method") || ""
     }
   };
+}
+
+function xOAuthDiagnosticsAccessDecision(request = {}) {
+  const diagnostics = authDiagnosticsForRequest(request);
+  const actor = actorFromRequest(request, process.env);
+  const ownerOrAdmin = actor.authenticated && ["owner", "admin"].includes(String(actor.role || "").toLowerCase());
+  if (!ownerOrAdmin) {
+    return {
+      ok:false,
+      status: actor.authenticated ? 403 : 401,
+      actor,
+      requiredPermission:"admin",
+      reason: actor.authenticated ? "Owner or admin access required." : "Authentication required.",
+      diagnostics
+    };
+  }
+  return { ok:true, actor, requiredPermission:"admin", diagnostics };
 }
 
 async function resolveLinkedInOAuthResult(code = "") {
@@ -29170,6 +29187,15 @@ async function handleRequest(request, response) {
   }
 
   if (url.pathname === "/api/x/oauth-diagnostics" && request.method === "GET") {
+    const diagnosticsAccess = xOAuthDiagnosticsAccessDecision(request);
+    if (!diagnosticsAccess.ok) {
+      sendJson(response, {
+        error:diagnosticsAccess.reason,
+        requiredPermission:diagnosticsAccess.requiredPermission,
+        actor:publicActor(diagnosticsAccess.actor)
+      }, diagnosticsAccess.status || 403);
+      return;
+    }
     sendJson(response, xOAuthDiagnosticsPayload());
     return;
   }

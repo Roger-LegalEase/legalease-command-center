@@ -10,6 +10,7 @@ import { coreRecordsFromState } from "./storage.mjs";
 
 const rootDir = process.cwd();
 const source = readFileSync(path.join(rootDir, "scripts", "preview-server.mjs"), "utf8");
+const accessControlSource = readFileSync(path.join(rootDir, "scripts", "access-control.mjs"), "utf8");
 const port = Number(process.env.TEST_TWITTER_X_OAUTH_CALLBACK_PORT || 3478);
 const baseUrl = `http://127.0.0.1:${port}`;
 const ownerToken = "twitter-x-oauth-callback-owner-token-1234567890";
@@ -24,6 +25,8 @@ await writeFile(seedPath, JSON.stringify({ settings:{}, posts:[], contentBank:[]
 assert(source.includes('url.pathname === "/api/x/status"'), "Twitter / X status route should exist");
 assert(source.includes('url.pathname === "/api/x/connect"'), "Twitter / X connect route should exist");
 assert(source.includes('url.pathname === "/api/x/oauth-diagnostics"'), "Twitter / X should expose a protected redacted OAuth diagnostics route");
+assert(accessControlSource.includes('"/api/x/oauth-diagnostics"'), "Twitter / X OAuth diagnostics should be allowed through the top-level route gate for explicit owner/admin handling");
+assert(source.includes("xOAuthDiagnosticsAccessDecision"), "Twitter / X OAuth diagnostics should use its own owner/admin access decision");
 assert(source.includes('url.pathname === "/api/x/callback"'), "Twitter / X callback route should exist");
 assert(source.includes("xAuthorizationUrl({ state"), "Twitter / X connect should create an OAuth authorization URL");
 assert(source.includes("verifyOwnerStartedOAuthState(\"x\""), "Twitter / X callback should validate owner-started state");
@@ -116,6 +119,20 @@ try {
   const anonymousDiagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`);
   assert.equal(anonymousDiagnostics.status, 401, "anonymous Twitter / X OAuth diagnostics should remain protected");
   assert.equal((await anonymousDiagnostics.json()).error, "Authentication required.", "anonymous diagnostics should return the protected API auth error");
+
+  const browserAuthDiagnostics = await fetch(`${baseUrl}/api/auth/diagnostics`, {
+    headers:{ cookie:`leos_session=${encodeURIComponent(ownerToken)}` }
+  });
+  assert.equal(browserAuthDiagnostics.status, 200, "browser cookie auth diagnostics should remain reachable");
+  const browserAuthDiagnosticsJson = await browserAuthDiagnostics.json();
+  assert.equal(browserAuthDiagnosticsJson.tokenMatch, true, "browser cookie auth diagnostics should recognize the owner session");
+
+  const browserCookieDiagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`, {
+    headers:{ cookie:`leos_session=${encodeURIComponent(ownerToken)}` }
+  });
+  assert.equal(browserCookieDiagnostics.status, 200, "browser cookie owner session should be accepted for protected Twitter / X diagnostics");
+  const browserCookieDiagnosticsJson = await browserCookieDiagnostics.json();
+  assert.equal(browserCookieDiagnosticsJson.xClientIdConfigured, true, "browser cookie diagnostics should return safe Twitter / X setup facts");
 
   const ownerConnect = await fetch(`${baseUrl}/api/x/connect?format=json`, {
     headers:{ "x-command-center-token":ownerToken }
