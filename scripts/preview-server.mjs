@@ -28924,6 +28924,10 @@ async function handleRequest(request, response) {
         oauthConfigured:true,
         scopes:channelSetup("linkedin").scopes
       });
+      const persistedLinkedInStatus = linkedinSetupState(await store.readState());
+      if (!persistedLinkedInStatus.connected) {
+        throw new Error("LinkedIn connection could not be saved. Try again from Settings.");
+      }
       response.writeHead(302, {
         location:linkedinSettingsRedirectLocation("LinkedIn connected. Live posting remains off."),
         "cache-control":"no-store, max-age=0"

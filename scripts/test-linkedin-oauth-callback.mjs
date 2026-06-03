@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { coreRecordsFromState } from "./storage.mjs";
 
 const rootDir = process.cwd();
 const source = readFileSync(path.join(rootDir, "scripts", "preview-server.mjs"), "utf8");
@@ -22,8 +23,22 @@ await writeFile(seedPath, JSON.stringify({ settings:{}, posts:[], contentBank:[]
 assert(source.includes("linkedinConnectorBannerHtml"), "Settings should render a dedicated LinkedIn callback banner");
 assert(source.includes("LinkedIn was not connected. Sign in as owner, then try again."), "failed owner callback should make the not-connected state obvious");
 assert(source.includes("LinkedIn connected. Live posting remains off."), "successful callback should show connected state and live-posting safety");
+assert(source.includes("LinkedIn connection could not be saved. Try again from Settings."), "callback should not show connected if persistence cannot read the connection back");
+assert(source.includes("persistedLinkedInStatus.connected"), "callback should verify persisted LinkedIn status before success redirect");
 assert(source.includes("linkedin-return-note"), "LinkedIn row should include a return-state note near the row");
 assert(source.includes("bottom:128px"), "toast should sit above the Le-E bubble instead of overlapping it");
+
+const persistedSocialAccountRows = coreRecordsFromState({
+  socialAccounts: [
+    {
+      id: "channel-linkedin",
+      platform: "linkedin",
+      status: "connected",
+      accessTokenEncrypted: "v1.redacted"
+    }
+  ]
+}).filter((row) => row.collection === "socialAccounts");
+assert.equal(persistedSocialAccountRows.length, 1, "Supabase persistence should include social accounts so LinkedIn remains connected after refresh");
 
 function signedState({ platform = "linkedin", issuedAt = Date.now(), ownerStarted = false, startedByRole = "" } = {}) {
   const payload = {

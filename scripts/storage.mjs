@@ -24,6 +24,7 @@ const coreStateCollections = [
   "dataRoom",
   "metrics",
   "systemHealth",
+  "socialAccounts",
   "soc2AuditLogs",
   "auditHistory",
   "events",
