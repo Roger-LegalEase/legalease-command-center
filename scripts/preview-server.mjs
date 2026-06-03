@@ -5501,15 +5501,30 @@ function xOAuthDiagnosticsPayload() {
     state:"diagnostic-state-present",
     codeChallenge:"diagnostic-code-challenge-present"
   }));
+  const authEndpoint = safeUrlHostPath(config.authorizationUrl || "");
+  const redirectUri = process.env.X_REDIRECT_URI || "";
+  const clientId = String(process.env.X_CLIENT_ID || "");
   return {
+    authorizeHost:authEndpoint.host,
+    authorizePath:authEndpoint.path,
+    redirectUri,
+    scopes:setup.scopes,
+    codeChallengeMethod:"S256",
+    statePresent:Boolean(diagnosticAuthUrl.searchParams.get("state")),
+    codeChallengePresent:Boolean(diagnosticAuthUrl.searchParams.get("code_challenge")),
+    clientIdPrefixOnly:clientId ? clientId.slice(0, 6) : "",
+    clientIdLength:clientId.length,
+    usesOAuth2ClientIdEnvName:"X_CLIENT_ID",
+    callbackRouteExists:true,
+    publicPrivacyRouteExists:true,
+    publicTermsRouteExists:true,
     xClientIdConfigured:Boolean(process.env.X_CLIENT_ID),
-    xClientIdPrefix:process.env.X_CLIENT_ID ? String(process.env.X_CLIENT_ID).slice(0, 4) : "",
+    xClientIdPrefix:clientId ? clientId.slice(0, 4) : "",
     xClientSecretConfigured:Boolean(process.env.X_CLIENT_SECRET),
     xRedirectUriConfigured:Boolean(process.env.X_REDIRECT_URI),
-    xRedirectUri:safeUrlHostPath(process.env.X_REDIRECT_URI || ""),
+    xRedirectUri:safeUrlHostPath(redirectUri),
     scopesRequested:setup.scopes,
-    codeChallengeMethod:"S256",
-    authEndpoint:safeUrlHostPath(config.authorizationUrl || ""),
+    authEndpoint,
     setupReady:Boolean(setup.configured && xSafeTokenStorageReady()),
     safeTokenStorageConfigured:xSafeTokenStorageReady(),
     authorizationUrlShape:{

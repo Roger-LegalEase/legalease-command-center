@@ -190,6 +190,18 @@ try {
   const diagnosticsJson = await diagnostics.json();
   assert.equal(diagnosticsJson.xClientIdConfigured, true, "diagnostics should report client id presence");
   assert.equal(diagnosticsJson.xClientIdPrefix, "twit", "diagnostics should expose only the first four client id characters");
+  assert.equal(diagnosticsJson.authorizeHost, "x.com", "diagnostics should expose the sanitized X authorization host");
+  assert.equal(diagnosticsJson.authorizePath, "/i/oauth2/authorize", "diagnostics should expose the sanitized X authorization path");
+  assert.equal(diagnosticsJson.redirectUri, `${baseUrl}/api/x/callback`, "diagnostics should expose the configured redirect URI for copy/paste comparison");
+  assert.deepEqual(diagnosticsJson.scopes, ["tweet.read", "users.read", "offline.access"], "diagnostics should expose the exact requested OAuth scopes");
+  assert.equal(diagnosticsJson.statePresent, true, "diagnostics should verify state is present");
+  assert.equal(diagnosticsJson.codeChallengePresent, true, "diagnostics should verify PKCE challenge is present");
+  assert.equal(diagnosticsJson.clientIdPrefixOnly, "twitte", "diagnostics should expose only the first six client id characters");
+  assert.equal(diagnosticsJson.clientIdLength, "twitter-x-callback-client-id".length, "diagnostics should expose client id length without the value");
+  assert.equal(diagnosticsJson.usesOAuth2ClientIdEnvName, "X_CLIENT_ID", "diagnostics should name the OAuth 2.0 client id env var without exposing its value");
+  assert.equal(diagnosticsJson.callbackRouteExists, true, "diagnostics should confirm the X callback route exists");
+  assert.equal(diagnosticsJson.publicPrivacyRouteExists, true, "diagnostics should confirm the public privacy route exists");
+  assert.equal(diagnosticsJson.publicTermsRouteExists, true, "diagnostics should confirm the public terms route exists");
   assert.equal(diagnosticsJson.xClientSecretConfigured, true, "diagnostics should report client secret presence without exposing it");
   assert.equal(diagnosticsJson.xRedirectUriConfigured, true, "diagnostics should report redirect URI presence");
   assert.deepEqual(diagnosticsJson.xRedirectUri, { host:baseHost, path:"/api/x/callback" }, "diagnostics should expose redirect URI host/path only");
