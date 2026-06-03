@@ -6874,11 +6874,15 @@ function authDiagnosticsForRequest(request = {}) {
   };
 }
 
-function sendAuthRequired(response, decision = {}) {
-  response.writeHead(decision.status || 401, {
+function sendAuthRequired(response, decision = {}, options = {}) {
+  response.writeHead(options.status || decision.status || 401, {
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store, max-age=0"
   });
+  if (options.headOnly) {
+    response.end();
+    return;
+  }
   response.end(`<!doctype html>
 <html>
 <head>
@@ -27075,7 +27079,7 @@ async function handleRequest(request, response) {
   const accessDecision = authorizeRequest(request, url, process.env);
   if (!accessDecision.ok) {
     await logAccessDecision(accessDecision, url);
-    if (request.method === "GET" && url.pathname === "/") sendAuthRequired(response, accessDecision);
+    if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") sendAuthRequired(response, accessDecision, { status:200, headOnly:request.method === "HEAD" });
     else sendJson(response, { error: accessDecision.reason, requiredPermission: accessDecision.requiredPermission, actor: publicActor(accessDecision.actor) }, accessDecision.status || 403);
     return;
   }

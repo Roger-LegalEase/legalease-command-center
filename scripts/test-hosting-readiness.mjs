@@ -92,10 +92,12 @@ async function main() {
     const healthResponse = await fetch(`http://127.0.0.1:${renderPort}/api/health`);
     assert.equal(healthResponse.status, 200, "Render-bound health endpoint should still be reachable locally");
     const lockedResponse = await fetch(`http://127.0.0.1:${renderPort}/`);
-    assert.equal(lockedResponse.status, 401, "hosted root should remain protected without a token");
+    assert.equal(lockedResponse.status, 200, "hosted root should load the owner sign-in shell without a token");
+    assert.match(lockedResponse.headers.get("content-type") || "", /text\/html/i, "hosted root should return HTML, not JSON");
     const lockedHtml = await lockedResponse.text();
     assert.match(lockedHtml, /Owner access token/, "hosted lock screen should ask for owner token");
     assert.match(lockedHtml, /Unlock Command Center/, "hosted lock screen should include unlock button");
+    assert.doesNotMatch(lockedHtml, /"Authentication required|Authentication required/i, "hosted root should not render the raw API auth error");
     assert.match(lockedHtml, /localStorage\.setItem/, "hosted lock screen should store the token locally after successful validation");
     assert.match(lockedHtml, /Authorization/, "hosted lock screen should validate access with Authorization header");
 
