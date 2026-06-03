@@ -13284,6 +13284,32 @@ function htmlShell() {
     .queue-filter { margin:14px 0 6px; }
     .queue-filter button, .tabs .tab, .source-filter button { border-radius:999px; min-height:38px; background:white; border-color:rgba(8,20,95,.1); color:#475467; text-transform:none; font-family:inherit; font-weight:800; }
     .queue-filter button.primary, .tabs .tab.active { background:var(--le-navy); color:white; }
+    .queue-review-shell { display:grid; gap:16px; }
+    .queue-review-hero { display:grid; gap:14px; border:1px solid rgba(15,31,92,.1); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#fbfefd 70%,#edf8f6 100%); padding:22px; box-shadow:0 18px 42px rgba(15,31,92,.055); }
+    .queue-review-hero-head { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; }
+    .queue-review-hero-head p { max-width:760px; margin:8px 0 0; color:var(--muted); font-size:15px; line-height:1.45; }
+    .queue-safety-note { display:inline-flex; max-width:100%; align-items:center; border:1px solid rgba(0,169,157,.18); border-radius:999px; background:rgba(0,169,157,.08); color:#047A72; padding:8px 12px; font-size:13px; font-weight:850; line-height:1.25; }
+    .queue-summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+    .queue-summary-card { border:1px solid rgba(8,20,95,.08); border-radius:16px; background:white; padding:12px; display:grid; gap:5px; min-width:0; }
+    .queue-summary-card span { color:var(--muted); font-size:12px; font-weight:850; }
+    .queue-summary-card strong { color:var(--ink); font-size:26px; line-height:1; }
+    .queue-summary-card small { color:var(--muted); line-height:1.3; }
+    .queue-review-tabs { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .queue-review-tabs button { border-radius:999px; min-height:38px; background:white; border-color:rgba(8,20,95,.1); color:#475467; text-transform:none; font-family:inherit; font-weight:850; }
+    .queue-review-tabs button.active { background:var(--le-navy); color:white; }
+    .queue-review-list { display:grid; gap:10px; }
+    .queue-review-item { border:1px solid rgba(8,20,95,.09); border-radius:18px; background:white; padding:14px; display:grid; grid-template-columns:minmax(0,1fr) minmax(140px,auto); gap:14px; align-items:center; box-shadow:0 10px 26px rgba(15,31,92,.04); }
+    .queue-review-item-main { min-width:0; display:grid; gap:6px; }
+    .queue-review-kicker { display:flex; flex-wrap:wrap; gap:7px; align-items:center; color:var(--muted); font-size:12px; font-weight:850; }
+    .queue-review-item h3 { margin:0; color:var(--ink); font-size:18px; line-height:1.22; letter-spacing:0; overflow-wrap:break-word; }
+    .queue-review-item p { margin:0; color:var(--muted); font-size:14px; line-height:1.42; max-width:78ch; overflow-wrap:break-word; }
+    .queue-review-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
+    .queue-review-actions button { min-height:38px; white-space:nowrap; }
+    .queue-review-details { grid-column:1 / -1; border-top:1px solid rgba(8,20,95,.08); padding-top:10px; }
+    .queue-review-details summary { cursor:pointer; color:#475467; font-weight:850; }
+    .queue-review-details-body { margin-top:10px; display:grid; gap:10px; }
+    .queue-detail-workflow { border:1px solid rgba(8,20,95,.09); border-radius:18px; background:#fbfefd; padding:14px; }
+    .queue-detail-workflow summary { cursor:pointer; color:var(--accent-hover,#047A72); font-weight:900; }
     .queue-card { padding:22px; gap:14px; border-radius:18px; }
     .queue-title { font-size:24px; line-height:1.12; color:var(--ink); max-width:820px; }
     .simple-meta { color:var(--muted); font-size:14px; }
@@ -13383,6 +13409,7 @@ function htmlShell() {
     .funnel-stage { display:grid; gap:6px; padding:12px; border-radius:14px; background:#F4F7F6; border:1px solid rgba(8,20,95,.08); }
     .funnel-stage strong { color:var(--ink); font-size:20px; }
     @media (max-width:1100px) { .layout,.command,.post-grid,.three,.two,.calendar,.queue-card,.operator-review,.wilma-grid,.export-grid,.archive-grid,.executive-grid,.ops-row,.operator-legacy-grid,.landing-grid { grid-template-columns:1fr; } .app-topbar { min-height:auto; align-items:flex-start; flex-direction:column; padding:14px 18px; } .top-nav { width:100%; overflow:visible; align-items:flex-start; flex-wrap:wrap; justify-content:flex-start; } .nav-menu,.nav-top-link { flex:0 0 auto; } header,main { padding-left:18px; padding-right:18px; } .image-stage { position:static; order:-1; } .operator-preview .image-preview { min-height:300px; } .operator-command-strip { grid-template-columns:1fr; } .operator-strip-status { justify-content:flex-start; } }
+    @media (max-width:760px) { .queue-review-hero-head,.queue-review-item { grid-template-columns:1fr; display:grid; } .queue-review-actions { justify-content:flex-start; } .queue-safety-note { border-radius:14px; } }
     @media (max-width:1100px) { .mission-grid,.readiness-strip,.pipeline-board,.health-grid,.metric-table,.asset-library-grid,.modal-grid,.lee-shell { grid-template-columns:1fr; } .readiness-strip,.pipeline-board { overflow:visible; } .lee-message { max-width:100%; } }
 
     ${designSystem.interfaceCss}
@@ -15104,7 +15131,7 @@ function htmlShell() {
       if (status.key === "posted") return { label:"View Posted", action:"location.hash='posted'" };
       if (status.key === "blocked") return { label:"Review Blocker", action:workflow.action };
       if (status.key === "manual_kit") return { label:"Mark Manual Kit Ready", action:"markManualPostingKitReady('" + post.id + "')" };
-      if (status.key === "ready") return { label:"Publish Now", action:"publishNow('" + post.id + "')" };
+      if (status.key === "ready") return { label:"Review Publish Setup", action:"publishNow('" + post.id + "')" };
       return { label:workflow.actionLabel, action:workflow.action };
     }
 
@@ -15119,6 +15146,11 @@ function htmlShell() {
 
     function setQueueReadinessFilter(value) {
       queueReadinessFilter = ["all", "ready", "review", "blocked", "image", "final_png", "manual_kit", "posted"].includes(value) ? value : "all";
+      render();
+    }
+
+    function setQueueTypeFilter(value) {
+      queueOriginFilter = ["all", "posts", "followups", "reports", "proof", "partners"].includes(value) ? value : "all";
       render();
     }
 
@@ -15184,6 +15216,131 @@ function htmlShell() {
       };
       const [title, body] = messages[queueReadinessFilter] || messages.all;
       return \`<div class="panel muted"><h2>\${title}</h2><p>\${body}</p></div>\`;
+    }
+
+    function queueReviewSummaryCards(reviewPosts) {
+      const followUps = (state.growthInbox || []).filter(item => /follow|pr|press|media|outreach/i.test([item.type, item.category, item.title, item.text, item.raw_input, item.status].join(" ")) && !/converted|ignored|archived|done/i.test(String(item.status || "")));
+      const reports = (state.reports || []).filter(item => !/sent|archived/i.test(String(item.status || item.approvalStatus || "")));
+      const proof = [...(state.evidencePackNotes || []), ...(state.evidenceItems || [])].filter(Boolean);
+      const partners = (state.partners || []).filter(item => item.nextAction || /follow|review|waiting|needs/i.test([item.status, item.stage, item.notes].join(" ")));
+      const channelReviews = (state.socialAccounts || []).filter(account => !account.connected || /review|setup|not_connected|needs/i.test([account.status, account.connectionStatus, account.setupStatus].join(" ")));
+      return [
+        ["Posts", reviewPosts.length, "social drafts and manual posts"],
+        ["Partner follow-ups", followUps.length, "relationship work to review"],
+        ["PR drafts", followUps.filter(item => /pr|press|media/i.test([item.type, item.category, item.title, item.text, item.raw_input].join(" "))).length, "outreach before anything is sent"],
+        ["Reports", reports.length, "internal drafts and updates"],
+        ["Proof-to-content", proof.length, "evidence that can move forward"],
+        ["Channel reviews", channelReviews.length, "setup and approval checks"]
+      ];
+    }
+
+    function queueReviewStatusLabel(item) {
+      if (item.status) return statusLabels[item.status] || growthLabel(item.status);
+      if (item.approvalStatus) return growthLabel(item.approvalStatus);
+      if (item.reviewStatus) return growthLabel(item.reviewStatus);
+      return "Needs review";
+    }
+
+    function queueReviewRows(reviewPosts) {
+      const postRows = sortQueuePosts(reviewPosts).slice(0, 8).map(post => {
+        const image = imageForPost(post.id);
+        const status = simpleQueueStatus(post, image);
+        const channels = (post.targetChannels && post.targetChannels.length ? post.targetChannels : [post.platform]).filter(Boolean).map(channel => platformLabels[channel] || channel).join(", ") || "Post";
+        const context = String(post.body || post.hook || post.cta || "Review the post before it moves forward.").replace(/\\s+/g, " ").trim();
+        return {
+          id: "post-" + slugify(post.id || post.title || "post"),
+          type: "posts",
+          label: "Post",
+          title: post.title || post.hook || "Post draft",
+          context: context.length > 150 ? context.slice(0, 147).trim() + "..." : context,
+          status: status.label,
+          meta: channels,
+          action: "Review",
+          actionJs: "document.getElementById('queue-row-" + slugify(post.id || post.title || "post") + "').open = true",
+          details: \`<p class="muted"><strong>Next internal step:</strong> \${esc(workflowStageForPost(post, image).actionLabel)}<br><strong>Safety:</strong> approvals prepare work only.</p><div class="card-actions quiet-actions"><button type="button" onclick="\${workflowStageForPost(post, image).action}">\${esc(workflowStageForPost(post, image).actionLabel)}</button><button type="button" onclick="markCopyReviewed('\${post.id}')">Mark Reviewed</button></div>\`
+        };
+      });
+      const followUps = (state.growthInbox || []).filter(item => /follow|pr|press|media|outreach/i.test([item.type, item.category, item.title, item.text, item.raw_input, item.status].join(" ")) && !/converted|ignored|archived|done/i.test(String(item.status || ""))).slice(0, 4).map((item, index) => ({
+        id: "followup-" + index,
+        type: "followups",
+        label: /pr|press|media/i.test([item.type, item.category, item.title, item.text, item.raw_input].join(" ")) ? "PR draft" : "Follow-up",
+        title: item.title || item.raw_input || item.text || "Follow-up",
+        context: todayFounderCopy(item.summary || item.notes || "Review the next follow-up before anything is sent."),
+        status: queueReviewStatusLabel(item),
+        meta: item.owner || item.category || "Internal",
+        action: "Review",
+        actionJs: "location.hash='growth-inbox'",
+        details: "<p class=\\"muted\\">Follow-up work stays internal until Roger sends or shares outside the OS.</p>"
+      }));
+      const reports = (state.reports || []).filter(item => !/sent|archived/i.test(String(item.status || item.approvalStatus || ""))).slice(0, 4).map((item, index) => ({
+        id: "report-" + index,
+        type: "reports",
+        label: "Report",
+        title: item.reportTitle || item.title || "Report draft",
+        context: item.summary || item.notes || "Review the report before it becomes an update or data room item.",
+        status: queueReviewStatusLabel(item),
+        meta: item.reportType || "Internal",
+        action: "Review",
+        actionJs: "location.hash='reports'",
+        details: "<p class=\\"muted\\">Reports are internal drafts until Roger reviews and shares them manually.</p>"
+      }));
+      const proof = [...(state.evidencePackNotes || []), ...(state.evidenceItems || [])].filter(Boolean).slice(0, 4).map((item, index) => ({
+        id: "proof-" + index,
+        type: "proof",
+        label: "Proof",
+        title: item.title || item.evidenceTitle || item.name || "Proof item",
+        context: founderReadableText(item.summary || item.notes || item.body || "Evidence can become a post, pitch, report, or investor note."),
+        status: queueReviewStatusLabel(item),
+        meta: item.source || item.type || "Evidence",
+        action: "Review",
+        actionJs: "location.hash='proof'",
+        details: "<p class=\\"muted\\">Proof stays internal until it is turned into reviewed content or a report.</p>"
+      }));
+      const partners = (state.partners || []).filter(item => item.nextAction || /follow|review|waiting|needs/i.test([item.status, item.stage, item.notes].join(" "))).slice(0, 4).map((item, index) => ({
+        id: "partner-" + index,
+        type: "partners",
+        label: "Partner",
+        title: item.organizationName || item.name || "Partner follow-up",
+        context: item.nextAction || item.notes || "Review the partner movement and decide the next manual step.",
+        status: queueReviewStatusLabel(item),
+        meta: item.stage || item.status || "Partner work",
+        action: "Review",
+        actionJs: "location.hash='partners'",
+        details: "<p class=\\"muted\\">Partner work remains internal unless Roger manually sends or shares it.</p>"
+      }));
+      const all = [...postRows, ...followUps, ...reports, ...proof, ...partners];
+      return queueOriginFilter === "all" ? all : all.filter(item => item.type === queueOriginFilter);
+    }
+
+    function queueReviewListHtml(reviewPosts) {
+      const rows = queueReviewRows(reviewPosts);
+      if (!rows.length) return \`<div class="panel muted"><h2>Nothing needs review here right now.</h2><p>When posts, follow-ups, reports, proof, or partner work need Roger's attention, they will appear here.</p></div>\`;
+      return \`<div class="queue-review-list">\${rows.map(item => \`<article class="queue-review-item">
+        <div class="queue-review-item-main">
+          <div class="queue-review-kicker"><span>\${esc(item.label)}</span><span>·</span><span>\${esc(item.meta || "Internal")}</span><span class="badge info">\${esc(item.status)}</span></div>
+          <h3>\${esc(item.title)}</h3>
+          <p>\${esc(item.context)}</p>
+        </div>
+        <div class="queue-review-actions"><button class="primary" type="button" onclick="\${item.actionJs}">\${esc(item.action)}</button></div>
+        <details id="queue-row-\${esc(item.id)}" class="queue-review-details">
+          <summary>Open details</summary>
+          <div class="queue-review-details-body">\${item.details}</div>
+        </details>
+      </article>\`).join("")}</div>\`;
+    }
+
+    function queueReviewTabsHtml(reviewPosts) {
+      const cards = queueReviewSummaryCards(reviewPosts);
+      const countFor = {
+        all: cards.reduce((sum, item) => sum + Number(item[1] || 0), 0),
+        posts: cards.find(item => item[0] === "Posts")?.[1] || 0,
+        followups: cards.find(item => item[0] === "Partner follow-ups")?.[1] || 0,
+        reports: cards.find(item => item[0] === "Reports")?.[1] || 0,
+        proof: cards.find(item => item[0] === "Proof-to-content")?.[1] || 0,
+        partners: (state.partners || []).filter(item => item.nextAction || /follow|review|waiting|needs/i.test([item.status, item.stage, item.notes].join(" "))).length
+      };
+      const tabs = [["all", "All"], ["posts", "Posts"], ["followups", "Follow-ups"], ["reports", "Reports"], ["proof", "Proof"], ["partners", "Partners"]];
+      return \`<div class="queue-review-tabs" aria-label="Queue review filters">\${tabs.map(([key, label]) => \`<button type="button" class="\${queueOriginFilter === key ? "active" : ""}" onclick="setQueueTypeFilter('\${key}')">\${label} \${Number(countFor[key] || 0)}</button>\`).join("")}</div>\`;
     }
 
     function imageIsDiagnosticFallback(image) {
@@ -16614,9 +16771,7 @@ function htmlShell() {
       ];
       const primaryLabel = isGenerating
         ? "Generating image..."
-        : simpleStatus.key === "ready" && livePublishReady
-          ? "Publish Now"
-          : simpleStatus.key === "ready"
+        : simpleStatus.key === "ready"
             ? "Review Publish Setup"
             : simpleAction.label;
       const primaryAction = simpleStatus.key === "ready" ? "publishNow('" + post.id + "')" : simpleAction.action;
@@ -23755,13 +23910,26 @@ function htmlShell() {
         \${safeRenderModule("soc2-incidents", () => soc2IncidentsPageHtml(pageClass))}
         \${safeRenderModule("soc2-evidence", () => soc2EvidencePageHtml(pageClass))}
         \${safeRenderModule("soc2-policies", () => soc2PoliciesPageHtml(pageClass))}
-        <section id="queue" class="grid command \${pageClass("queue")}">
-          <div class="panel hero-panel">
-            <div>
-              <div class="eyebrow">Production</div>
-              <h1 class="big-title">Queue</h1>
+        <section id="queue" class="queue-review-shell \${pageClass("queue")}">
+          <div class="queue-review-hero">
+            <div class="queue-review-hero-head">
+              <div>
+                <div class="eyebrow">Review desk</div>
+                <h1 class="big-title">Queue</h1>
+                <p>Review posts, follow-ups, reports, and partner work before anything moves forward.</p>
+              </div>
+              <span class="queue-safety-note">Safe mode: approvals prepare work only. Nothing sends or publishes automatically.</span>
             </div>
-            \${dailyControlBarHtml(reviewPosts)}
+            <div class="queue-summary-grid">\${queueReviewSummaryCards(reviewPosts).map(([label, value, detail]) => \`<article class="queue-summary-card"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
+            \${queueReviewTabsHtml(reviewPosts)}
+          </div>
+          <section class="growth-card">
+            <div class="growth-card-head"><h2>Needs review</h2><small>One clear action per item</small></div>
+            \${queueReviewListHtml(reviewPosts)}
+          </section>
+          <details class="queue-detail-workflow">
+            <summary>Detailed production workflow</summary>
+            <p class="muted" style="margin:10px 0 0">Use this for image, export, readiness, and manual posting steps. It stays internal; no live posting controls are enabled.</p>
             <div class="toolbar">
               <button class="primary" onclick="createTomorrowQueue()">Add tomorrow's posts</button>
               <button onclick="toggleBulkMode()">\${bulkMode ? "Exit bulk mode" : "Bulk mode"}</button>
@@ -23785,7 +23953,7 @@ function htmlShell() {
             </div>
             \${bulkMode ? \`<div class="bulk-bar"><strong>\${selectedPosts.size} selected</strong><button onclick="bulkMarkReviewed()">Mark reviewed</button><button onclick="bulkCreateFinalPngs()">Create final PNGs</button><button onclick="bulkUploadPublicImages()">Upload public images</button><button onclick="bulkExportKits()">Export kits</button><button onclick="bulkMarkManualPosted()">Mark manual posted</button></div>\` : ""}
             <div class="queue-filter">
-              <span class="muted">Queue filter</span>
+              <span class="muted">Production filter</span>
               <button class="tab \${queueReadinessFilter === "all" ? "active" : ""}" onclick="setQueueReadinessFilter('all')">All \${reviewPosts.length}</button>
               <button class="tab \${queueReadinessFilter === "ready" ? "active" : ""}" onclick="setQueueReadinessFilter('ready')">Ready</button>
               <button class="tab \${queueReadinessFilter === "review" ? "active" : ""}" onclick="setQueueReadinessFilter('review')">Review</button>
@@ -23795,10 +23963,8 @@ function htmlShell() {
               <button class="tab \${queueReadinessFilter === "manual_kit" ? "active" : ""}" onclick="setQueueReadinessFilter('manual_kit')">Manual Kit</button>
               <button class="tab \${queueReadinessFilter === "posted" ? "active" : ""}" onclick="setQueueReadinessFilter('posted')">Posted</button>
             </div>
-          </div>
-          <div class="section">
-            <div class="grid post-grid">\${fallbackQueue.map(post => postCard(post)).join("") || queueEmptyHtml()}</div>
-          </div>
+            <div class="grid post-grid" style="margin-top:14px">\${fallbackQueue.map(post => postCard(post)).join("") || queueEmptyHtml()}</div>
+          </details>
           <div class="section secondary">
             <details>
               <summary>First Queue Review</summary>
@@ -23813,7 +23979,7 @@ function htmlShell() {
               <div style="margin-top:14px">\${todayReviewHtml()}</div>
             </details>
             <details>
-              <summary>Ready to publish</summary>
+              <summary>Ready for manual publishing review</summary>
               <div style="margin-top:14px">\${readyReviewHtml()}</div>
             </details>
           </div>
@@ -25388,9 +25554,9 @@ function htmlShell() {
       const image = readiness.image;
       const channelLabel = platformLabels[readiness.channel] || readiness.channel;
       root.innerHTML = \`<div class="modal-backdrop" role="presentation">
-        <div class="modal-panel" role="dialog" aria-modal="true" aria-label="Confirm live publish">
+        <div class="modal-panel" role="dialog" aria-modal="true" aria-label="Review live posting setup">
           <div class="toprow">
-            <div><div class="eyebrow">Publish Now</div><h2>This will post live to \${esc(channelLabel)}</h2></div>
+            <div><div class="eyebrow">Live posting review</div><h2>Review setup for \${esc(channelLabel)}</h2></div>
             <button onclick="closePublishDialog()">Close</button>
           </div>
           <div class="modal-grid">
@@ -25399,13 +25565,13 @@ function htmlShell() {
               <p class="muted"><strong>Account:</strong> \${esc(readiness.account.accountName || readiness.account.displayName || "not connected")}<br><strong>Post:</strong> \${esc(post.title)}<br><strong>Live gate:</strong> \${readiness.gate.enabled ? "enabled" : "disabled"}\${readiness.serverRun?.message ? \`<br><strong>Diagnostic:</strong> \${esc(readiness.serverRun.message)}\` : ""}</p>
               <p class="post-body">\${esc(composePreviewText(post)).slice(0, 700)}</p>
               <div class="grid">\${readiness.checks.map(check => \`<div class="metric-row"><span>\${esc(check.label)}\${check.ok ? "" : \`<br><small class="muted">\${esc(check.reason || "Needs setup")}</small>\`}</span><span class="badge \${check.ok ? "good" : "danger"}">\${check.ok ? "Ready" : "Blocked"}</span></div>\`).join("")}</div>
-              \${readiness.ready ? '<p class="readiness-card danger"><strong>This will post live.</strong> Confirm only when the caption, image, and account are correct.</p>' : \`<p class="readiness-card warn"><strong>Cannot publish yet.</strong><br>\${esc(readiness.missing.join(" · "))}</p>\`}
+              \${readiness.ready ? '<p class="readiness-card danger"><strong>Live posting is still disabled by policy.</strong> Roger must explicitly approve any future live connector pass.</p>' : \`<p class="readiness-card warn"><strong>Cannot move forward yet.</strong><br>\${esc(readiness.missing.join(" · "))}</p>\`}
             </div>
           </div>
           <div class="dialog-actions">
             <button onclick="closePublishDialog()">Cancel</button>
             <button onclick="location.hash='settings'; closePublishDialog()">Fix Setup</button>
-            <button class="primary" \${readiness.ready ? "" : "disabled"} onclick="confirmPublishNow('\${esc(post.id)}')">Confirm Publish</button>
+            <button class="primary" disabled onclick="toast('Live posting remains off.')">Live posting off</button>
           </div>
         </div>
       </div>\`;
