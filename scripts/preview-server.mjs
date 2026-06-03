@@ -13099,7 +13099,7 @@ function htmlShell() {
     .tabs { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 16px; }
     .tab { border-color:rgba(66,100,116,.28); background:rgba(66,100,116,.08); }
     .tab.active { background:var(--ink); color:white; }
-    .toast { position:fixed; right:20px; bottom:20px; background:var(--ink); color:white; padding:12px 14px; border-radius:7px; opacity:0; transform:translateY(8px); transition:.2s; z-index:10; }
+    .toast { position:fixed; right:24px; bottom:128px; max-width:min(360px,calc(100vw - 32px)); background:var(--ink); color:white; padding:12px 14px; border-radius:7px; opacity:0; transform:translateY(8px); transition:.2s; z-index:80; }
     .toast.show { opacity:1; transform:translateY(0); }
     html, body, .shell, main { max-width:100%; overflow-x:hidden; }
     .operator-today { display:block; width:100%; max-width:100%; }
@@ -14131,6 +14131,14 @@ function htmlShell() {
     .settings-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; align-items:start; }
     .channel-grid { display:grid; gap:10px; grid-template-columns:1fr; }
     .channel-readiness-strip { border:1px solid rgba(0,169,157,.18); border-radius:16px; background:#fbfefd; padding:12px 14px; color:var(--text-secondary); font-size:13px; line-height:1.4; }
+    .connector-message-banner { margin-top:12px; border:1px solid rgba(0,169,157,.22); border-radius:16px; background:#fbfefd; padding:12px 14px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:start; color:var(--text-secondary); box-shadow:0 8px 22px rgba(0,38,36,.035); }
+    .connector-message-banner.warn { border-color:rgba(217,119,6,.24); background:rgba(217,119,6,.07); }
+    .connector-message-banner.good { border-color:rgba(5,150,105,.22); background:rgba(5,150,105,.07); }
+    .connector-message-banner strong { display:block; color:var(--text-primary); font-size:14px; margin-bottom:2px; }
+    .connector-message-banner p { margin:0; line-height:1.4; font-size:13px; }
+    .connector-message-banner button { min-height:30px; padding:0 10px; white-space:nowrap; }
+    .linkedin-return-note { margin-top:4px !important; color:#047A72 !important; font-weight:760; }
+    .linkedin-return-note.warn { color:#92400E !important; }
     .channel-readiness-list { display:grid; gap:10px; margin-top:14px; }
     .channel-row { border:1px solid var(--border-light); border-radius:16px; background:#fff; padding:14px; display:grid; grid-template-columns:minmax(0,1.35fr) minmax(150px,.42fr) minmax(150px,.38fr); gap:14px; align-items:center; box-shadow:0 8px 22px rgba(0,38,36,.035); min-width:0; }
     .channel-row-main { min-width:0; display:grid; gap:4px; }
@@ -14173,9 +14181,11 @@ function htmlShell() {
       .section-page { padding:16px 16px 96px; }
       .content-filter-bar label { flex-basis:100%; }
       .lee-bubble-wrap { right:14px; bottom:14px; }
+      .toast { right:14px; bottom:104px; max-width:calc(100vw - 28px); }
       .channel-row { grid-template-columns:1fr; align-items:start; }
       .channel-row-status,.channel-row-action { justify-content:flex-start; }
       .channel-row-detail-list { grid-template-columns:1fr; }
+      .connector-message-banner { grid-template-columns:1fr; }
       .rcap-connection-card .toprow { grid-template-columns:1fr; }
       .rcap-connection-card .toprow .badge { justify-self:start; }
       .rcap-connection-row { align-items:flex-start; flex-direction:column; gap:7px; }
@@ -14261,6 +14271,7 @@ function htmlShell() {
     let rcapActivationClientStatus = null;
     let campaignImportPreview = null;
     let linkedinConnectionMessageShown = false;
+    let linkedinConnectionReturnMessage = "";
     const rcapReviewDefinitions = [
       { key:"rcap-proposal-task-v1", title:"Proposal Task", collection:"tasks", id:"task-rcap-proposal-draft-v1", priority:"high" },
       { key:"rcap-proposal-draft-v1", title:"Proposal Draft", collection:"partnerProgramArtifacts", artifactKey:"rcap-proposal-draft-v1", priority:"high" },
@@ -14611,14 +14622,76 @@ function htmlShell() {
       el.classList.add("show");
       setTimeout(() => el.classList.remove("show"), 1800);
     };
+    function linkedinConnectionMessageFromLocation() {
+      const params = new URLSearchParams(location.search || "");
+      return params.get("linkedinConnectionMessage") || "";
+    }
+    function linkedinConnectionReturnState(message = linkedinConnectionReturnMessage) {
+      const raw = String(message || "");
+      if (/connected/i.test(raw) && /live posting remains off/i.test(raw)) {
+        return {
+          raw,
+          title:"LinkedIn connected",
+          message:"LinkedIn connected. Live posting remains off.",
+          rowNote:"LinkedIn connected. Live posting remains off.",
+          tone:"good",
+          connected:true
+        };
+      }
+      if (/sign in as owner/i.test(raw)) {
+        return {
+          raw,
+          title:"LinkedIn was not connected",
+          message:"LinkedIn was not connected. Sign in as owner, then try again.",
+          rowNote:"LinkedIn was not connected. Sign in as owner, then try again.",
+          tone:"warn",
+          connected:false
+        };
+      }
+      if (/expired|state/i.test(raw)) {
+        return {
+          raw,
+          title:"LinkedIn connection expired",
+          message:"LinkedIn connection expired. Try again from Settings.",
+          rowNote:"LinkedIn connection expired. Try again from Settings.",
+          tone:"warn",
+          connected:false
+        };
+      }
+      if (/setup/i.test(raw)) {
+        return {
+          raw,
+          title:"LinkedIn needs setup",
+          message:"LinkedIn connection needs setup.",
+          rowNote:"LinkedIn connection needs setup.",
+          tone:"warn",
+          connected:false
+        };
+      }
+      if (!raw) return null;
+      return {
+        raw,
+        title:"LinkedIn connection update",
+        message:raw,
+        rowNote:raw,
+        tone:"warn",
+        connected:false
+      };
+    }
     function showLinkedInConnectionReturnMessage() {
       if (linkedinConnectionMessageShown) return;
-      const params = new URLSearchParams(location.search || "");
-      const message = params.get("linkedinConnectionMessage");
-      if (!message) return;
+      const message = linkedinConnectionMessageFromLocation();
+      if (!message && !linkedinConnectionReturnMessage) return;
+      if (message) linkedinConnectionReturnMessage = message;
+      const connectionState = linkedinConnectionReturnState();
       linkedinConnectionMessageShown = true;
-      toast(message);
+      toast(connectionState?.message || linkedinConnectionReturnMessage);
       if (history.replaceState) history.replaceState(null, "", location.pathname + location.hash);
+    }
+    function dismissLinkedInConnectionMessage() {
+      linkedinConnectionReturnMessage = "";
+      linkedinConnectionMessageShown = true;
+      render();
     }
     function safeControlToast(message) {
       toast(message || "Safe local action complete.");
@@ -15022,6 +15095,7 @@ function htmlShell() {
         fullStateLoaded = false;
         bootStateDiagnostics = { status:"loaded", endpoint:"/api/boot-state", loadedAt:new Date().toISOString(), heavyCollectionsDeferred:Boolean(state.heavyCollectionsDeferred) };
         stateFetchDiagnostics = null;
+        linkedinConnectionReturnMessage = linkedinConnectionReturnMessage || linkedinConnectionMessageFromLocation();
         window.__LE_BOOT.stage = "first-render";
         try { render(); } catch (renderError) { showRenderFailure(renderError.message || "Unknown render error", "first-render"); throw renderError; }
         showLinkedInConnectionReturnMessage();
@@ -15806,6 +15880,18 @@ function htmlShell() {
       </section>\`;
     }
 
+    function linkedinConnectorBannerHtml() {
+      const connectionState = linkedinConnectionReturnState();
+      if (!connectionState) return "";
+      return \`<div class="connector-message-banner \${esc(connectionState.tone)}" role="status" aria-live="polite">
+        <div>
+          <strong>\${esc(connectionState.title)}</strong>
+          <p>\${esc(connectionState.message)}</p>
+        </div>
+        <button type="button" onclick="dismissLinkedInConnectionMessage()">Dismiss</button>
+      </div>\`;
+    }
+
 	    function channelCards() {
 	      const accountsByPlatform = new Map((state.socialAccounts || []).map(account => [account.platform, account]));
 	      const accounts = platforms.map(platform => accountsByPlatform.get(platform) || { platform, status:"not_connected", displayName:channelLabels[platform] });
@@ -15821,16 +15907,21 @@ function htmlShell() {
         const missingEnv = setup.missingEnv || channelRequiredEnv[account.platform] || [];
         const oauthConfigured = Boolean(account.oauthConfigured || setup.configured);
         const connected = Boolean(account.connected || status === "connected");
+        const linkedinReturn = account.platform === "linkedin" ? linkedinConnectionReturnState() : null;
         const detailNote = ["facebook", "instagram"].includes(account.platform)
           ? "Connected through Meta when account setup is wired."
           : account.platform === "linkedin"
             ? "Use this Settings row to review setup details, then connect after owner sign-in and setup review."
             : "Use setup details when this channel is ready to configure.";
-        const statusLabel = connected ? "Connected" : oauthConfigured ? "Ready to connect" : "Setup required";
+        const statusLabel = connected || linkedinReturn?.connected ? "Connected" : oauthConfigured ? "Ready to connect" : "Setup required";
+        const linkedinRowNote = account.platform === "linkedin"
+          ? (linkedinReturn?.rowNote || (connected ? "Live posting remains off." : "Not connected. Use Connect LinkedIn after owner sign-in."))
+          : "";
 	        return \`<article class="channel-row">
           <div class="channel-row-main">
             <h3>\${esc(label)}</h3>
             <p>\${esc(channelDescriptions[account.platform] || "Social publishing channel.")}</p>
+            \${linkedinRowNote ? \`<p class="linkedin-return-note \${esc(linkedinReturn?.tone || (connected ? "good" : "warn"))}">\${esc(linkedinRowNote)}</p>\` : ""}
           </div>
           <div class="channel-row-status"><span class="badge \${channelTone(status)}">\${esc(statusLabel)}</span></div>
           <div class="channel-row-action">\${channelAction(account)}</div>
@@ -24111,6 +24202,7 @@ function htmlShell() {
           <details open>
             <summary>Channels / Integrations</summary>
             <div class="channel-readiness-strip" style="margin-top:12px"><strong>Safe mode:</strong> nothing posts, sends, files, or publishes automatically.</div>
+            \${linkedinConnectorBannerHtml()}
             <div class="channel-readiness-list">\${channelCards()}\${rcapConnectionCardHtml()}</div>
           </details>
           <details>

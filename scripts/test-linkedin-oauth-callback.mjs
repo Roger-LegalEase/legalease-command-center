@@ -2,11 +2,13 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 const rootDir = process.cwd();
+const source = readFileSync(path.join(rootDir, "scripts", "preview-server.mjs"), "utf8");
 const port = Number(process.env.TEST_LINKEDIN_OAUTH_CALLBACK_PORT || 3468);
 const baseUrl = `http://127.0.0.1:${port}`;
 const ownerToken = "linkedin-oauth-callback-owner-token-1234567890";
@@ -16,6 +18,12 @@ const dataPath = path.join(dataDir, "social-command-center.json");
 const seedPath = path.join(dataDir, "social-command-center.seed.json");
 
 await writeFile(seedPath, JSON.stringify({ settings:{}, posts:[], contentBank:[], socialAccounts:[], soc2AuditLogs:[] }, null, 2));
+
+assert(source.includes("linkedinConnectorBannerHtml"), "Settings should render a dedicated LinkedIn callback banner");
+assert(source.includes("LinkedIn was not connected. Sign in as owner, then try again."), "failed owner callback should make the not-connected state obvious");
+assert(source.includes("LinkedIn connected. Live posting remains off."), "successful callback should show connected state and live-posting safety");
+assert(source.includes("linkedin-return-note"), "LinkedIn row should include a return-state note near the row");
+assert(source.includes("bottom:128px"), "toast should sit above the Le-E bubble instead of overlapping it");
 
 function signedState({ platform = "linkedin", issuedAt = Date.now() } = {}) {
   const payload = {
