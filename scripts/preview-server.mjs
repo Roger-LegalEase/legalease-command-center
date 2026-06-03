@@ -40,11 +40,15 @@ import {
   channelConfig,
   channelSetup,
   channelSetupMessage,
+  exchangeMetaCode,
+  exchangeMetaLongLivedToken,
   exchangeLinkedInCode,
   exchangeXCode,
   fetchLinkedInUserInfo,
   fetchXUserInfo,
   linkedinAuthorizationUrl,
+  metaAuthorizationUrl,
+  metaOAuthScopes,
   publicChannelSetup,
   xAuthorizationUrl
 } from "./channel-connectors.mjs";
@@ -703,8 +707,12 @@ function graphApiVersion() {
   return process.env.META_GRAPH_VERSION || "v24.0";
 }
 
+function graphBaseUrl() {
+  return String(process.env.META_GRAPH_BASE_URL || "https://graph.facebook.com").replace(/\/+$/, "");
+}
+
 function graphUrl(pathname = "") {
-  return `https://graph.facebook.com/${graphApiVersion()}${pathname}`;
+  return `${graphBaseUrl()}/${graphApiVersion()}${pathname}`;
 }
 
 function threadsGraphUrl(pathname = "") {
@@ -734,8 +742,11 @@ function appBaseUrl() {
 function finalImagePublicUrl(image = {}) {
   const value = String(
     image.publicImageUrl ||
+    image.public_image_url ||
     image.assetBundleUsed?.finalImage?.publicImageUrl ||
+    image.assetBundleUsed?.finalImage?.public_image_url ||
     image.finalExportKit?.publicImageUrl ||
+    image.finalExportKit?.public_image_url ||
     image.finalImageUrl ||
     image.finalPngUrl ||
     image.imageUrl ||
@@ -749,10 +760,15 @@ function finalImagePublicUrl(image = {}) {
 function explicitPublicImageUrl(post = {}, image = {}) {
   return String(
     post.publicImageUrl ||
+    post.public_image_url ||
     post.finalExportKit?.publicImageUrl ||
+    post.finalExportKit?.public_image_url ||
     image.publicImageUrl ||
+    image.public_image_url ||
     image.assetBundleUsed?.finalImage?.publicImageUrl ||
+    image.assetBundleUsed?.finalImage?.public_image_url ||
     image.finalExportKit?.publicImageUrl ||
+    image.finalExportKit?.public_image_url ||
     ""
   ).trim();
 }
@@ -772,8 +788,19 @@ function publicHttpsUrlIsReady(value = "") {
   return /^https:\/\//i.test(String(value || "")) && !/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(String(value || ""));
 }
 
+function validatePublicSocialImageUrl(value = "") {
+  const raw = String(value || "").trim();
+  if (!publicHttpsUrlIsReady(raw)) return false;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === "https:" && !["localhost", "127.0.0.1", "0.0.0.0"].includes(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function supabaseStorageBucket() {
-  return process.env.SUPABASE_STORAGE_BUCKET || "social-assets";
+  return process.env.SOCIAL_PUBLIC_ASSETS_BUCKET || process.env.SUPABASE_STORAGE_BUCKET || "social-public-assets";
 }
 
 function supabaseServiceRoleKeyStatus() {
@@ -1038,12 +1065,12 @@ const credentialSpecs = [
     nextAction: "Add SUPABASE_SERVICE_ROLE_KEY for server-side persistence."
   },
   {
-    key: "SUPABASE_STORAGE_BUCKET",
-    label: "Supabase Storage bucket",
+    key: "SOCIAL_PUBLIC_ASSETS_BUCKET",
+    label: "Social public assets bucket",
     category: "supabase",
     severity: "required",
     description: "Public bucket used to host final PNGs for social platforms.",
-    nextAction: "Set SUPABASE_STORAGE_BUCKET=social-assets and make the bucket public."
+    nextAction: "Set SOCIAL_PUBLIC_ASSETS_BUCKET=social-public-assets and make the bucket public."
   },
   ...["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI", "APP_BASE_URL"].map((key) => ({
     key,
@@ -1139,7 +1166,7 @@ function envValue(key) {
 
 function validLookingCredential(key, value) {
   if (!value) return false;
-  if (key.endsWith("_REDIRECT_URI")) return /^https?:\/\/.+\/api\/(?:oauth\/[^/]+|linkedin)\/callback/i.test(value);
+  if (key.endsWith("_REDIRECT_URI")) return /^https?:\/\/.+\/api\/(?:oauth\/[^/]+|linkedin|x|meta)\/callback/i.test(value);
   if (key === "SUPABASE_URL") return /^https:\/\/.+\.supabase\.co$/i.test(value);
   if (key.startsWith("ENABLE_LIVE_") || key.endsWith("_LIVE_POSTING_ENABLED") || key === "LINKEDIN_OWNER_ONLY" || key === "USE_SUPABASE_JS_STORE") return ["true", "false"].includes(String(value).toLowerCase());
   if (key === "OAUTH_TOKEN_ENCRYPTION_KEY") return String(value).length >= 24;
@@ -1261,9 +1288,13 @@ function publicPostImage(image = {}) {
 	    finalPngPath: image.finalPngPath || "",
       localFinalPngPath: image.localFinalPngPath || image.finalPngPath || image.assetBundleUsed?.finalImage?.localPath || "",
       publicImageUrl: image.publicImageUrl || image.assetBundleUsed?.finalImage?.publicImageUrl || "",
+      public_image_url: image.public_image_url || image.publicImageUrl || image.assetBundleUsed?.finalImage?.public_image_url || image.assetBundleUsed?.finalImage?.publicImageUrl || "",
       publicImageUploadedAt: image.publicImageUploadedAt || image.assetBundleUsed?.finalImage?.uploadedAt || "",
+      public_image_uploaded_at: image.public_image_uploaded_at || image.publicImageUploadedAt || image.assetBundleUsed?.finalImage?.uploadedAt || "",
       supabaseStorageBucket: image.supabaseStorageBucket || image.assetBundleUsed?.finalImage?.storageBucket || "",
+      public_image_storage_bucket: image.public_image_storage_bucket || image.supabaseStorageBucket || image.assetBundleUsed?.finalImage?.public_image_storage_bucket || image.assetBundleUsed?.finalImage?.storageBucket || "",
       supabaseStorageObjectPath: image.supabaseStorageObjectPath || image.assetBundleUsed?.finalImage?.storageObjectPath || "",
+      public_image_storage_path: image.public_image_storage_path || image.supabaseStorageObjectPath || image.assetBundleUsed?.finalImage?.public_image_storage_path || image.assetBundleUsed?.finalImage?.storageObjectPath || "",
 	    finalPngFileSize: Number(image.finalPngFileSize || 0),
 	    finalPngGeneratedAt: image.finalPngGeneratedAt || "",
     generationStatus: image.generationStatus,
@@ -2655,9 +2686,9 @@ function finalPngAbsolutePathForPost(post = {}, image = {}) {
   return "";
 }
 
-function storageObjectPathForFinalPng(localPath = "") {
+function storageObjectPathForFinalPng(localPath = "", postId = "post") {
   const safeName = safeDownloadFilename(path.basename(localPath || "final.png"));
-  return `final-pngs/${safeName}`;
+  return `social-posts/${safePackageSegment(postId || "post")}/${safeName}`;
 }
 
 async function uploadPostFinalPngToStorage(postId = "") {
@@ -2672,7 +2703,7 @@ async function uploadPostFinalPngToStorage(postId = "") {
     const storage = supabaseStorageStatus();
     if (!storage.configured) throw new Error(storage.message);
     const body = await readFile(localPath);
-    const objectPath = storageObjectPathForFinalPng(localPath);
+    const objectPath = storageObjectPathForFinalPng(localPath, postId);
     await supabaseStorageFetch(`object/${encodeURIComponent(storage.bucket)}/${objectPath}`, {
       method: "PUT",
       body,
@@ -2681,13 +2712,23 @@ async function uploadPostFinalPngToStorage(postId = "") {
     });
     const now = new Date().toISOString();
     const publicImageUrl = supabaseStorageObjectPublicUrl(objectPath);
+    if (!validatePublicSocialImageUrl(publicImageUrl)) {
+      throw new Error("Public image URL must be HTTPS and externally reachable before Meta publishing can use it.");
+    }
     const updatedImage = {
       ...image,
       localFinalPngPath: localPath,
       publicImageUrl,
+      public_image_url: publicImageUrl,
+      final_image_path: localPath,
+      public_image_status: "uploaded",
+      public_image_error: "",
       publicImageUploadedAt: now,
+      public_image_uploaded_at: now,
       supabaseStorageBucket: storage.bucket,
+      public_image_storage_bucket: storage.bucket,
       supabaseStorageObjectPath: objectPath,
+      public_image_storage_path: objectPath,
       assetBundleUsed: {
         ...(image.assetBundleUsed || {}),
         finalImage: {
@@ -2695,8 +2736,11 @@ async function uploadPostFinalPngToStorage(postId = "") {
           ready: true,
           localPath,
           publicImageUrl,
+          public_image_url: publicImageUrl,
           storageBucket: storage.bucket,
+          public_image_storage_bucket: storage.bucket,
           storageObjectPath: objectPath,
+          public_image_storage_path: objectPath,
           uploadedAt: now
         }
       },
@@ -2706,16 +2750,27 @@ async function uploadPostFinalPngToStorage(postId = "") {
       ...post,
       localFinalPngPath: localPath,
       publicImageUrl,
+      public_image_url: publicImageUrl,
+      final_image_path: localPath,
+      public_image_status: "uploaded",
+      public_image_error: "",
       publicImageUploadedAt: now,
+      public_image_uploaded_at: now,
       supabaseStorageBucket: storage.bucket,
+      public_image_storage_bucket: storage.bucket,
       supabaseStorageObjectPath: objectPath,
+      public_image_storage_path: objectPath,
       finalExportKit: {
         ...(post.finalExportKit || {}),
         localFinalPngPath: localPath,
         publicImageUrl,
+        public_image_url: publicImageUrl,
         publicImageUploadedAt: now,
+        public_image_uploaded_at: now,
         storageBucket: storage.bucket,
-        storageObjectPath: objectPath
+        public_image_storage_bucket: storage.bucket,
+        storageObjectPath: objectPath,
+        public_image_storage_path: objectPath
       },
       updatedAt: now
     };
@@ -4647,6 +4702,17 @@ async function publishFacebookPost({ state, post }) {
   const image = imageForPostFromState(state, post.id);
   const message = composePublishText(post, "facebook");
   if (!message) throw new Error("Facebook caption is missing.");
+  const publicImageUrl = hostedImagePublicUrl(post, image);
+  if (validatePublicSocialImageUrl(publicImageUrl)) {
+    const form = new URLSearchParams({ access_token: accessToken, message, published: "true", url: publicImageUrl });
+    const payload = await graphJson(graphUrl(`/${pageId}/photos`), { method: "POST", form });
+    const externalPostId = payload.post_id || payload.id || "";
+    return {
+      externalPostId,
+      externalPostUrl: externalPostId ? `https://www.facebook.com/${externalPostId}` : "",
+      message: "Published to Facebook Page with public image."
+    };
+  }
   if (image?.imageUrl) {
     const imageBuffer = await imageBufferFromUrl(image.imageUrl);
     const form = new FormData();
@@ -4677,7 +4743,7 @@ async function publishInstagramPost({ state, post }) {
   const igUserId = accountIdForPublishing(state, "instagram");
   const image = imageForPostFromState(state, post.id);
   const imageUrl = hostedImagePublicUrl(post, image);
-  if (!imageUrl) {
+  if (!validatePublicSocialImageUrl(imageUrl)) {
     throw new Error("Instagram requires a public HTTPS image URL. Upload the final PNG to Supabase Storage first.");
   }
   const caption = composePublishText(post, "instagram");
@@ -5109,6 +5175,7 @@ async function runLinkedInDryTest() {
 function oauthSigningSecret(platform) {
   if (platform === "linkedin") return process.env.LINKEDIN_CLIENT_SECRET || "";
   if (platform === "google_workspace") return process.env.GOOGLE_CLIENT_SECRET || "";
+  if (platform === "meta") return process.env.META_CLIENT_SECRET || process.env.META_APP_SECRET || "";
   if (platform === "facebook" || platform === "instagram" || platform === "threads") return process.env.META_CLIENT_SECRET || process.env.THREADS_CLIENT_SECRET || "";
   if (platform === "x") return process.env.X_CLIENT_SECRET || "";
   return "";
@@ -5377,6 +5444,14 @@ function safeXError(error) {
   return message.slice(0, 160);
 }
 
+function safeMetaError(error) {
+  const message = String(error?.message || error || "Meta connection failed.");
+  if (/token|secret|authorization|bearer|client|access_token|app secret|api key/i.test(message)) {
+    return "Meta connection failed during secure OAuth exchange.";
+  }
+  return message.slice(0, 180);
+}
+
 function linkedinSafeTokenStorageReady() {
   return Boolean(process.env.OAUTH_TOKEN_ENCRYPTION_KEY || process.env.LINKEDIN_TOKEN_ENCRYPTION_SECRET);
 }
@@ -5485,6 +5560,90 @@ function xStatusPayload(state = {}) {
   };
 }
 
+function metaSafeTokenStorageReady() {
+  return Boolean(process.env.OAUTH_TOKEN_ENCRYPTION_KEY);
+}
+
+function metaLivePostingEnabled() {
+  return livePostingEnabledForChannel("facebook") || livePostingEnabledForChannel("instagram");
+}
+
+function sanitizedMetaPages(account = {}) {
+  return (Array.isArray(account.pages) ? account.pages : []).map((page) => ({
+    id: String(page.id || ""),
+    name: String(page.name || "Facebook Page"),
+    instagramBusinessAccount: page.instagramBusinessAccount
+      ? {
+          id: String(page.instagramBusinessAccount.id || ""),
+          username: String(page.instagramBusinessAccount.username || "")
+        }
+      : null
+  })).filter((page) => page.id);
+}
+
+function metaSetupState(state = {}) {
+  const metaAccount = (state.socialAccounts || []).find((item) => item.platform === "meta") || { platform:"meta" };
+  const facebookAccount = (state.socialAccounts || []).find((item) => item.platform === "facebook") || { platform:"facebook" };
+  const instagramAccount = (state.socialAccounts || []).find((item) => item.platform === "instagram") || { platform:"instagram" };
+  const setup = channelSetup("meta");
+  const safeTokenStorage = metaSafeTokenStorageReady();
+  const configured = Boolean(setup.configured);
+  const pages = sanitizedMetaPages(metaAccount);
+  const facebookConnected = Boolean((facebookAccount.status === "connected" || facebookAccount.connectedAt) && facebookAccount.accessTokenEncrypted && (facebookAccount.externalAccountId || facebookAccount.accountId));
+  const instagramConnected = Boolean((instagramAccount.status === "connected" || instagramAccount.connectedAt) && instagramAccount.accessTokenEncrypted && (instagramAccount.externalAccountId || instagramAccount.accountId));
+  const connected = facebookConnected || instagramConnected || Boolean((metaAccount.status === "connected" || metaAccount.connectedAt) && metaAccount.accessTokenEncrypted);
+  let status = "Not connected";
+  if (!configured || !safeTokenStorage) status = "Needs setup";
+  else if ([metaAccount, facebookAccount, instagramAccount].some((account) => account.status === "error" || account.lastError)) status = "Error";
+  else if (connected) status = facebookConnected || instagramConnected ? "Connected" : "Account discovery ready";
+  else status = "Ready to connect";
+  return {
+    metaAccount,
+    facebookAccount,
+    instagramAccount,
+    setup,
+    configured,
+    safeTokenStorage,
+    connected,
+    facebookConnected,
+    instagramConnected,
+    selectedFacebookPageId: facebookAccount.externalAccountId || facebookAccount.accountId || metaAccount.selectedFacebookPageId || "",
+    selectedInstagramBusinessAccountId: instagramAccount.externalAccountId || instagramAccount.accountId || metaAccount.selectedInstagramBusinessAccountId || "",
+    pages,
+    status,
+    livePostingEnabled: metaLivePostingEnabled(),
+    approvalRequired: true,
+    lastChecked: new Date().toISOString()
+  };
+}
+
+function metaStatusPayload(state = {}) {
+  const status = metaSetupState(state);
+  return {
+    connected: status.connected,
+    status: status.status,
+    livePostingEnabled: status.livePostingEnabled,
+    approvalRequired: true,
+    facebookConnected: status.facebookConnected,
+    instagramConnected: status.instagramConnected,
+    selectedFacebookPageId: status.selectedFacebookPageId,
+    selectedInstagramBusinessAccountId: status.selectedInstagramBusinessAccountId,
+    pages: status.pages,
+    lastChecked: status.lastChecked,
+    safety: "Approval workflow only. Live Facebook and Instagram posting remain off until separate gates are enabled.",
+    message: status.status === "Needs setup"
+      ? "Meta connection needs setup."
+      : status.connected
+        ? "Meta connection is available. Live posting remains off."
+        : "Meta is ready to connect.",
+    setupRequired: !status.configured || !status.safeTokenStorage,
+    missing: [
+      ...(status.setup.missingEnv || []),
+      ...(status.safeTokenStorage ? [] : ["Safe token storage is required before Meta can be connected."])
+    ]
+  };
+}
+
 function safeUrlHostPath(value = "") {
   try {
     const parsed = new URL(value);
@@ -5534,6 +5693,46 @@ function xOAuthDiagnosticsPayload() {
       statePresent:Boolean(diagnosticAuthUrl.searchParams.get("state")),
       codeChallengePresent:Boolean(diagnosticAuthUrl.searchParams.get("code_challenge")),
       codeChallengeMethod:diagnosticAuthUrl.searchParams.get("code_challenge_method") || ""
+    }
+  };
+}
+
+function metaOAuthDiagnosticsPayload(state = {}) {
+  const setup = channelSetup("meta");
+  const config = channelConfig("meta") || {};
+  const diagnosticAuthUrl = new URL(metaAuthorizationUrl({ state:"diagnostic-state-present" }));
+  const redirectUri = process.env.META_REDIRECT_URI || "";
+  const clientId = String(process.env.META_CLIENT_ID || process.env.META_APP_ID || "");
+  const status = metaStatusPayload(state);
+  return {
+    authorizeHost:safeUrlHostPath(config.authorizationUrl || "").host,
+    authorizePath:safeUrlHostPath(config.authorizationUrl || "").path,
+    redirectUri,
+    scopes:setup.scopes,
+    statePresent:Boolean(diagnosticAuthUrl.searchParams.get("state")),
+    clientIdPrefixOnly:clientId ? clientId.slice(0, 6) : "",
+    clientIdLength:clientId.length,
+    usesOAuthClientIdEnvName:process.env.META_CLIENT_ID ? "META_CLIENT_ID" : "META_APP_ID",
+    callbackRouteExists:true,
+    publicPrivacyRouteExists:true,
+    publicTermsRouteExists:true,
+    metaClientIdConfigured:Boolean(clientId),
+    metaClientSecretConfigured:Boolean(process.env.META_CLIENT_SECRET || process.env.META_APP_SECRET),
+    metaRedirectUriConfigured:Boolean(redirectUri),
+    metaRedirectUri:safeUrlHostPath(redirectUri),
+    authEndpoint:safeUrlHostPath(config.authorizationUrl || ""),
+    tokenEndpoint:safeUrlHostPath(config.tokenUrl || ""),
+    setupReady:Boolean(setup.configured && metaSafeTokenStorageReady()),
+    safeTokenStorageConfigured:metaSafeTokenStorageReady(),
+    selectedFacebookPageIdPresent:Boolean(status.selectedFacebookPageId),
+    selectedInstagramBusinessAccountIdPresent:Boolean(status.selectedInstagramBusinessAccountId),
+    livePostingEnabled:status.livePostingEnabled,
+    authorizationUrlShape:{
+      responseType:diagnosticAuthUrl.searchParams.get("response_type") || "",
+      clientIdPresent:Boolean(diagnosticAuthUrl.searchParams.get("client_id")),
+      redirectUriMatchesConfigured:diagnosticAuthUrl.searchParams.get("redirect_uri") === redirectUri,
+      statePresent:Boolean(diagnosticAuthUrl.searchParams.get("state")),
+      scopesRequested:(diagnosticAuthUrl.searchParams.get("scope") || "").split(",").filter(Boolean)
     }
   };
 }
@@ -5600,6 +5799,190 @@ async function resolveXOAuthResult(code = "", codeVerifier = "") {
   const tokenPayload = await exchangeXCode(code, codeVerifier);
   const profile = await fetchXUserInfo(tokenPayload.access_token);
   return { tokenPayload, profile };
+}
+
+function sanitizeMetaPage(page = {}) {
+  return {
+    id:String(page.id || ""),
+    name:String(page.name || "Facebook Page"),
+    instagramBusinessAccount: page.instagram_business_account || page.instagramBusinessAccount
+      ? {
+          id:String((page.instagram_business_account || page.instagramBusinessAccount).id || ""),
+          username:String((page.instagram_business_account || page.instagramBusinessAccount).username || "")
+        }
+      : null
+  };
+}
+
+async function graphGet(pathname = "", accessToken = "") {
+  const response = await fetch(graphUrl(pathname), {
+    headers: accessToken ? { authorization:`Bearer ${accessToken}` } : {}
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = payload.error || {};
+    throw new Error(error.message || payload.error_description || payload.error || "Meta Graph request failed.");
+  }
+  return payload;
+}
+
+async function resolveMetaOAuthResult(code = "") {
+  if (process.env.NODE_ENV === "test" && code === "meta-oauth-test-success") {
+    const tokenPayload = {
+      access_token:"meta-oauth-test-user-token",
+      expires_in:3600
+    };
+    const pages = [
+      {
+        id:"meta-page-1",
+        name:"LegalEase",
+        access_token:"meta-oauth-test-page-token",
+        instagram_business_account:{ id:"meta-ig-1", username:"legalease" }
+      }
+    ];
+    return { tokenPayload, longLivedTokenPayload:{ access_token:"meta-oauth-test-long-token", expires_in:7200 }, pages };
+  }
+  const tokenPayload = await exchangeMetaCode(code);
+  const longLivedTokenPayload = tokenPayload.access_token
+    ? await exchangeMetaLongLivedToken(tokenPayload.access_token)
+    : tokenPayload;
+  const accessToken = longLivedTokenPayload.access_token || tokenPayload.access_token || "";
+  const pagesPayload = await graphGet("/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}", accessToken);
+  return { tokenPayload, longLivedTokenPayload, pages:Array.isArray(pagesPayload.data) ? pagesPayload.data : [] };
+}
+
+async function loadMetaPagesWithTokens(state = {}) {
+  const metaAccount = (state.socialAccounts || []).find((item) => item.platform === "meta") || {};
+  if (process.env.NODE_ENV === "test" && metaAccount.testMetaPagesWithTokens) return metaAccount.testMetaPagesWithTokens;
+  if (!metaAccount.accessTokenEncrypted) throw new Error("Meta account discovery token is missing.");
+  const accessToken = decryptToken(metaAccount.accessTokenEncrypted);
+  const pagesPayload = await graphGet("/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}", accessToken);
+  return Array.isArray(pagesPayload.data) ? pagesPayload.data : [];
+}
+
+async function persistMetaDiscovery({ tokenPayload = {}, longLivedTokenPayload = {}, pages = [] } = {}) {
+  const now = new Date().toISOString();
+  const accessToken = longLivedTokenPayload.access_token || tokenPayload.access_token || "";
+  const tokenExpiresIn = Number(longLivedTokenPayload.expires_in || tokenPayload.expires_in || 0);
+  const tokenExpiresAt = tokenExpiresIn ? new Date(Date.now() + tokenExpiresIn * 1000).toISOString() : "";
+  await store.updateSocialAccount("meta", {
+    status:"connected",
+    displayName:"Meta",
+    accountName:"Meta account",
+    accountId:"meta-parent",
+    externalAccountId:"meta-parent",
+    accessTokenEncrypted:encryptToken(accessToken),
+    tokenExpiresAt,
+    connectedAt:now,
+    lastTestStatus:"connected",
+    lastTestMessage:"Meta connected for account discovery. Select a Facebook Page and Instagram Business account before publishing.",
+    lastErrorSummary:"",
+    lastError:"",
+    lastTestedAt:now,
+    oauthConfigured:true,
+    scopes:metaOAuthScopes,
+    pages:pages.map(sanitizeMetaPage),
+    testMetaPagesWithTokens:process.env.NODE_ENV === "test" ? pages : undefined
+  });
+  const persisted = await store.readState();
+  if (!metaSetupState(persisted).metaAccount.accessTokenEncrypted) {
+    throw new Error("Meta connection could not be saved. Try again from Settings.");
+  }
+  return persisted;
+}
+
+async function selectMetaAccount({ facebookPageId = "" } = {}) {
+  const pageId = String(facebookPageId || "").trim();
+  if (!pageId) throw new Error("Choose a Facebook Page before saving Meta accounts.");
+  const currentState = await store.readState();
+  const pages = await loadMetaPagesWithTokens(currentState);
+  const page = pages.find((item) => String(item.id || "") === pageId);
+  if (!page) throw new Error("Selected Facebook Page was not found. Refresh Meta pages and try again.");
+  if (!page.access_token) throw new Error("Selected Facebook Page did not include a page token.");
+  const sanitizedPage = sanitizeMetaPage(page);
+  const ig = sanitizedPage.instagramBusinessAccount;
+  const now = new Date().toISOString();
+  let state = await store.updateSocialAccount("facebook", {
+    status:"connected",
+    displayName:"Facebook Page",
+    accountType:"page",
+    accountName:sanitizedPage.name,
+    accountId:sanitizedPage.id,
+    externalAccountId:sanitizedPage.id,
+    accessTokenEncrypted:encryptToken(page.access_token),
+    connectedAt:now,
+    lastTestStatus:"connected",
+    lastTestMessage:"Facebook Page selected through Meta. Live posting remains off.",
+    lastErrorSummary:"",
+    lastError:"",
+    lastTestedAt:now,
+    oauthConfigured:true,
+    scopes:metaOAuthScopes,
+    selectedViaMeta:true,
+    selectedFacebookPageId:sanitizedPage.id
+  });
+  if (ig?.id) {
+    state = await store.updateSocialAccount("instagram", {
+      status:"connected",
+      displayName:"Instagram",
+      accountType:"instagram_business",
+      accountName:ig.username ? `@${ig.username}` : "Instagram Business",
+      accountId:ig.id,
+      externalAccountId:ig.id,
+      accessTokenEncrypted:encryptToken(page.access_token),
+      connectedAt:now,
+      lastTestStatus:"connected",
+      lastTestMessage:"Instagram Business account selected through Meta. Live posting remains off.",
+      lastErrorSummary:"",
+      lastError:"",
+      lastTestedAt:now,
+      oauthConfigured:true,
+      scopes:metaOAuthScopes,
+      selectedViaMeta:true,
+      selectedFacebookPageId:sanitizedPage.id,
+      selectedInstagramBusinessAccountId:ig.id
+    });
+  } else {
+    state = await store.updateSocialAccount("instagram", {
+      status:"ready_to_connect",
+      displayName:"Instagram",
+      accountName:"",
+      accountId:"",
+      externalAccountId:"",
+      connectedAt:"",
+      lastTestStatus:"needs_instagram_business_account",
+      lastTestMessage:"Selected Facebook Page does not have a linked Instagram Business account.",
+      lastErrorSummary:"No linked Instagram Business account found for the selected Page.",
+      lastError:"",
+      lastTestedAt:now,
+      oauthConfigured:true,
+      scopes:metaOAuthScopes,
+      selectedViaMeta:true,
+      selectedFacebookPageId:sanitizedPage.id,
+      selectedInstagramBusinessAccountId:""
+    });
+  }
+  state = await store.updateSocialAccount("meta", {
+    status:"connected",
+    displayName:"Meta",
+    selectedFacebookPageId:sanitizedPage.id,
+    selectedInstagramBusinessAccountId:ig?.id || "",
+    lastTestStatus:ig?.id ? "accounts_selected" : "facebook_selected",
+    lastTestMessage:ig?.id
+      ? "Facebook Page and Instagram Business account selected. Live posting remains off."
+      : "Facebook Page selected. Instagram needs a linked Business account before publishing.",
+    lastErrorSummary:"",
+    lastError:"",
+    lastTestedAt:now,
+    oauthConfigured:true,
+    pages:pages.map(sanitizeMetaPage)
+  });
+  const persisted = await store.readState();
+  const status = metaSetupState(persisted);
+  if (!status.facebookConnected) {
+    throw new Error("Selected Meta account could not be saved. Try again from Settings.");
+  }
+  return { state:persisted, page:sanitizedPage, instagramBusinessAccount:ig || null };
 }
 
 function linkedinPostStatusIsApproved(post = {}) {
@@ -7118,6 +7501,22 @@ function sendXSettingsRedirect(response, message = "Twitter / X connection needs
 
 function isXOAuthCallbackRequest(request = {}, url = new URL("http://localhost/")) {
   return request.method === "GET" && url.pathname === "/api/x/callback";
+}
+
+function metaSettingsRedirectLocation(message = "Meta connection needs setup.") {
+  return `/?metaConnectionMessage=${encodeURIComponent(message)}#settings`;
+}
+
+function sendMetaSettingsRedirect(response, message = "Meta connection needs setup.") {
+  response.writeHead(302, {
+    location: metaSettingsRedirectLocation(message),
+    "cache-control": "no-store, max-age=0"
+  });
+  response.end();
+}
+
+function isMetaOAuthCallbackRequest(request = {}, url = new URL("http://localhost/")) {
+  return request.method === "GET" && url.pathname === "/api/meta/callback";
 }
 
 function authDiagnosticsForRequest(request = {}) {
@@ -14631,6 +15030,7 @@ function htmlShell() {
     let campaignImportPreview = null;
     let linkedinConnectionMessageShown = false;
     let linkedinConnectionReturnMessage = "";
+    let metaConnectionReturnMessage = "";
     const rcapReviewDefinitions = [
       { key:"rcap-proposal-task-v1", title:"Proposal Task", collection:"tasks", id:"task-rcap-proposal-draft-v1", priority:"high" },
       { key:"rcap-proposal-draft-v1", title:"Proposal Draft", collection:"partnerProgramArtifacts", artifactKey:"rcap-proposal-draft-v1", priority:"high" },
@@ -14985,6 +15385,10 @@ function htmlShell() {
       const params = new URLSearchParams(location.search || "");
       return params.get("linkedinConnectionMessage") || "";
     }
+    function metaConnectionMessageFromLocation() {
+      const params = new URLSearchParams(location.search || "");
+      return params.get("metaConnectionMessage") || "";
+    }
     function linkedinConnectionReturnState(message = linkedinConnectionReturnMessage) {
       const raw = String(message || "");
       if (/connected/i.test(raw) && /live posting remains off/i.test(raw)) {
@@ -15047,8 +15451,19 @@ function htmlShell() {
       toast(connectionState?.message || linkedinConnectionReturnMessage);
       if (history.replaceState) history.replaceState(null, "", location.pathname + location.hash);
     }
+    function metaConnectionReturnState(message = metaConnectionReturnMessage) {
+      const raw = String(message || "");
+      if (!raw) return null;
+      return {
+        raw,
+        title:/connected/i.test(raw) ? "Meta connected" : "Meta connection update",
+        message:raw,
+        tone:/connected|selected/i.test(raw) ? "good" : "warn"
+      };
+    }
     function dismissLinkedInConnectionMessage() {
       linkedinConnectionReturnMessage = "";
+      metaConnectionReturnMessage = "";
       linkedinConnectionMessageShown = true;
       render();
     }
@@ -15455,9 +15870,11 @@ function htmlShell() {
         bootStateDiagnostics = { status:"loaded", endpoint:"/api/boot-state", loadedAt:new Date().toISOString(), heavyCollectionsDeferred:Boolean(state.heavyCollectionsDeferred) };
         stateFetchDiagnostics = null;
         linkedinConnectionReturnMessage = linkedinConnectionReturnMessage || linkedinConnectionMessageFromLocation();
+        metaConnectionReturnMessage = metaConnectionReturnMessage || metaConnectionMessageFromLocation();
         window.__LE_BOOT.stage = "first-render";
         try { render(); } catch (renderError) { showRenderFailure(renderError.message || "Unknown render error", "first-render"); throw renderError; }
         showLinkedInConnectionReturnMessage();
+        if (metaConnectionReturnMessage) toast(metaConnectionReturnState()?.message || metaConnectionReturnMessage);
         window.__LE_BOOT.ready = true;
         if (window.__LE_BOOT.timeout) clearTimeout(window.__LE_BOOT.timeout);
       } catch (error) {
@@ -16240,7 +16657,7 @@ function htmlShell() {
     }
 
     function linkedinConnectorBannerHtml() {
-      const connectionState = linkedinConnectionReturnState();
+      const connectionState = linkedinConnectionReturnState() || metaConnectionReturnState();
       if (!connectionState) return "";
       return \`<div class="connector-message-banner \${esc(connectionState.tone)}" role="status" aria-live="polite">
         <div>
@@ -16253,10 +16670,25 @@ function htmlShell() {
 
 	    function channelCards() {
 	      const accountsByPlatform = new Map((state.socialAccounts || []).map(account => [account.platform, account]));
+      const metaAccount = accountsByPlatform.get("meta") || {};
+      const metaPages = Array.isArray(metaAccount.pages) ? metaAccount.pages : [];
+      const metaPickerHtml = platform => {
+        if (!["facebook", "instagram"].includes(platform) || !metaPages.length) return "";
+        return \`<div class="meta-account-picker">
+          <strong>Meta account selection</strong>
+          <label>Facebook Page<select id="meta-page-\${platform}">
+            \${metaPages.map(page => \`<option value="\${esc(page.id)}">\${esc(page.name || "Facebook Page")}\${page.instagramBusinessAccount?.username ? \` · Instagram @\${esc(page.instagramBusinessAccount.username)}\` : ""}</option>\`).join("")}
+          </select></label>
+          <button type="button" class="primary" onclick="saveMetaAccountSelection('\${platform}')">Save selected accounts</button>
+          <p class="muted">This stores the selected Facebook Page and linked Instagram Business account for approved internal workflows. Live posting remains off.</p>
+        </div>\`;
+      };
       const accounts = platforms.map(platform => accountsByPlatform.get(platform) || { platform, status:"not_connected", displayName:channelLabels[platform] });
       const channelAction = account => {
 	        if (account.platform === "linkedin") return '<button type="button" class="primary" onclick="connectLinkedIn()">Connect LinkedIn</button>';
 	        if (account.platform === "x" && account.status !== "connected" && (account.oauthConfigured || account.setup?.configured)) return '<button type="button" class="primary" onclick="connectX()">Connect X</button>';
+	        if (["facebook", "instagram"].includes(account.platform) && account.status !== "connected" && metaPages.length) return \`<button type="button" class="primary" onclick="openMetaAccountPicker('\${account.platform}')">Select account</button>\`;
+	        if (["facebook", "instagram"].includes(account.platform) && account.status !== "connected") return '<button type="button" class="primary" onclick="connectMeta()">Connect Meta</button>';
 	        if (account.status === "connected") return \`<button type="button" class="primary" onclick="testChannel('\${account.platform}')">Review</button>\`;
 	        return \`<button type="button" class="primary" onclick="connectChannel('\${account.platform}')">Setup details</button>\`;
       };
@@ -16269,7 +16701,7 @@ function htmlShell() {
         const connected = Boolean(account.connected || status === "connected");
         const linkedinReturn = account.platform === "linkedin" ? linkedinConnectionReturnState() : null;
         const detailNote = ["facebook", "instagram"].includes(account.platform)
-          ? "Connected through Meta when account setup is wired."
+          ? "Connect Meta once, then select the Facebook Page and linked Instagram Business account here."
           : account.platform === "linkedin"
             ? "Use this Settings row to review setup details, then connect after owner sign-in and setup review."
             : account.platform === "x"
@@ -16287,7 +16719,7 @@ function htmlShell() {
           </div>
           <div class="channel-row-status"><span class="badge \${channelTone(status)}">\${esc(statusLabel)}</span></div>
           <div class="channel-row-action">\${channelAction(account)}</div>
-          <details class="channel-row-details">
+          <details class="channel-row-details" id="channel-details-\${esc(account.platform)}">
             <summary>Setup details</summary>
             <div class="channel-row-detail-list">
               <div><strong>Account</strong>\${esc(account.accountName || "Not connected")}</div>
@@ -16299,6 +16731,7 @@ function htmlShell() {
               \${missingEnv.length ? \`<div><strong>Next setup step</strong>Review missing connection settings in the owner setup checklist.</div>\` : ""}
               \${account.lastErrorSummary ? \`<div><strong>Last note</strong>\${esc(account.lastErrorSummary)}</div>\` : ""}
             </div>
+            \${metaPickerHtml(account.platform)}
           </details>
         </article>\`;
       }).join("");
@@ -27427,6 +27860,58 @@ function htmlShell() {
       }
     }
 
+    async function connectMeta() {
+      try {
+        const status = await api("/api/meta/status");
+        if (status.setupRequired || status.status === "Needs setup") {
+          toast("Meta connection needs setup.");
+          return;
+        }
+        const result = await api("/api/meta/start?format=json");
+        if (result.authorizationUrl) {
+          window.location.href = result.authorizationUrl;
+          return;
+        }
+        toast(result.message || "Meta connection needs setup.");
+      } catch (error) {
+        const message = error?.status === 401
+          ? "Sign in as owner before connecting Meta."
+          : /setup|required|missing/i.test(error?.message || "")
+          ? "Meta connection needs setup."
+          : (error?.message || "Meta connection needs setup.");
+        toast(message);
+      }
+    }
+
+    function openMetaAccountPicker(platform) {
+      const details = document.getElementById("channel-details-" + platform);
+      if (details) {
+        details.open = true;
+        details.scrollIntoView({ behavior:"smooth", block:"center" });
+      }
+      toast("Choose the Meta account in setup details. Live posting remains off.");
+    }
+
+    async function saveMetaAccountSelection(platform) {
+      const select = document.getElementById("meta-page-" + platform);
+      const pageId = select?.value || "";
+      if (!pageId) {
+        toast("Choose a Facebook Page first.");
+        return;
+      }
+      try {
+        const result = await api("/api/meta/select-account", {
+          method:"POST",
+          body:JSON.stringify({ facebookPageId:pageId })
+        });
+        state = result.state || state;
+        render();
+        toast(result.message || "Meta accounts selected. Live posting remains off.");
+      } catch (error) {
+        toast(error?.message || "Meta account selection needs review.");
+      }
+    }
+
     async function prepareEmailDraft(title = "Email draft", target = "Manual follow-up") {
       const result = await api("/api/email/draft", {
         method:"POST",
@@ -27620,8 +28105,21 @@ async function handleRequest(request, response) {
       }
       if (!ownerStarted.ok || providerError || !verified.ok) return;
     }
+    else if (isMetaOAuthCallbackRequest(request, url)) {
+      const providerError = url.searchParams.get("error");
+      const verified = verifyOAuthState("meta", url.searchParams.get("state"));
+      const ownerStarted = verifyOwnerStartedOAuthState("meta", url.searchParams.get("state"));
+      if (providerError && ownerStarted.ok) sendMetaSettingsRedirect(response, "Meta connection was cancelled. Try again from Settings.");
+      else if (providerError) sendMetaSettingsRedirect(response, safeMetaError(url.searchParams.get("error_description") || providerError));
+      else if (!verified.ok) sendMetaSettingsRedirect(response, "Meta connection expired. Try again from Settings.");
+      else if (!ownerStarted.ok) sendMetaSettingsRedirect(response, "Sign in as owner, then reconnect Meta.");
+      else {
+        // Valid signed state proves an owner/admin started this OAuth flow from the protected Connect route.
+      }
+      if (!ownerStarted.ok || providerError || !verified.ok) return;
+    }
     else {
-      if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") sendAuthRequired(response, accessDecision, { status:200, headOnly:request.method === "HEAD", message:url.searchParams.get("linkedinConnectionMessage") || url.searchParams.get("xConnectionMessage") || "" });
+      if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") sendAuthRequired(response, accessDecision, { status:200, headOnly:request.method === "HEAD", message:url.searchParams.get("linkedinConnectionMessage") || url.searchParams.get("xConnectionMessage") || url.searchParams.get("metaConnectionMessage") || "" });
       else sendJson(response, { error: accessDecision.reason, requiredPermission: accessDecision.requiredPermission, actor: publicActor(accessDecision.actor) }, accessDecision.status || 403);
       return;
     }
@@ -27685,6 +28183,12 @@ async function handleRequest(request, response) {
     const supabaseDb = await getSupabaseHealth();
     const storageDiagnostics = await diagnoseSupabaseStorage({ testUpload: false });
     const hostingConfig = storageRuntimeConfig();
+    let metaStatus = {};
+    try {
+      metaStatus = metaStatusPayload(await store.readState());
+    } catch {
+      metaStatus = {};
+    }
     sendJson(response, {
       appRunning: true,
       timestamp: new Date().toISOString(),
@@ -27702,6 +28206,13 @@ async function handleRequest(request, response) {
       supabaseStorageBucket: storageDiagnostics.bucket,
       supabaseStoragePublic: storageDiagnostics.bucketPublic,
       supabaseStorageError: storageDiagnostics.bucketReachable ? "" : String(storageDiagnostics.error || "").slice(0, 300),
+      socialPublicAssetsBucket: storageDiagnostics.bucket,
+      publicImageHostingConfigured: Boolean(storageDiagnostics.configured),
+      metaOAuthConfigured: Boolean(channelSetup("meta").configured),
+      metaConnected: Boolean(metaStatus.connected),
+      facebookConnected: Boolean(metaStatus.facebookConnected),
+      instagramConnected: Boolean(metaStatus.instagramConnected),
+      metaLivePostingEnabled: metaLivePostingEnabled(),
       openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
       liveGatesCount: Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length
     });
@@ -29480,6 +29991,190 @@ async function handleRequest(request, response) {
         oauthConfigured:true
       });
       sendXSettingsRedirect(response, safeError);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/meta/status" && request.method === "GET") {
+    sendJson(response, metaStatusPayload(await store.readState()));
+    return;
+  }
+
+  if (url.pathname === "/api/meta/diagnostics" && request.method === "GET") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, {
+        error:"Owner or admin access required.",
+        requiredPermission:"owner/admin",
+        actor:publicActor(accessDecision.actor)
+      }, 403);
+      return;
+    }
+    sendJson(response, metaOAuthDiagnosticsPayload(await store.readState()));
+    return;
+  }
+
+  if (url.pathname === "/api/meta/start" && request.method === "GET") {
+    const currentState = await store.readState();
+    const status = metaSetupState(currentState);
+    const wantsJson = url.searchParams.get("format") === "json";
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, {
+        ...metaStatusPayload(currentState),
+        error:"Sign in as owner before connecting Meta."
+      }, 403);
+      return;
+    }
+    if (!status.configured) {
+      sendJson(response, {
+        ...metaStatusPayload(currentState),
+        error:"Meta connection needs setup."
+      }, 400);
+      return;
+    }
+    if (!status.safeTokenStorage) {
+      sendJson(response, {
+        ...metaStatusPayload(currentState),
+        error:"Safe token storage is required before Meta can be connected."
+      }, 400);
+      return;
+    }
+    const state = signOAuthState("meta", {
+      ownerStarted:true,
+      startedByRole:actorRole,
+      startedByActor:accessDecision.actor?.id || actorRole,
+      returnTarget:"settings"
+    });
+    const authorizationUrl = metaAuthorizationUrl({ state });
+    if (wantsJson) {
+      sendJson(response, {
+        status:"Ready",
+        message:"Meta connection is ready to start.",
+        authorizationUrl,
+        scopes:metaOAuthScopes,
+        livePostingEnabled:metaLivePostingEnabled(),
+        safety:"Approval workflow only. Live Facebook and Instagram posting remain off."
+      });
+      return;
+    }
+    response.writeHead(302, { location: authorizationUrl });
+    response.end();
+    return;
+  }
+
+  if (url.pathname === "/api/meta/callback" && request.method === "GET") {
+    const currentState = await store.readState();
+    if (url.searchParams.get("error")) {
+      const safeError = safeMetaError(url.searchParams.get("error_description") || url.searchParams.get("error"));
+      await store.updateSocialAccount("meta", {
+        status:"error",
+        displayName:"Meta",
+        lastErrorSummary:safeError,
+        lastError:safeError,
+        lastTestStatus:"error",
+        lastTestMessage:safeError,
+        lastTestedAt:new Date().toISOString(),
+        oauthConfigured:true
+      });
+      sendMetaSettingsRedirect(response, safeError);
+      return;
+    }
+    const verified = verifyOwnerStartedOAuthState("meta", url.searchParams.get("state"));
+    if (!verified.ok) {
+      await store.updateSocialAccount("meta", {
+        status:"error",
+        displayName:"Meta",
+        lastErrorSummary:verified.error,
+        lastError:verified.error,
+        lastTestStatus:"error",
+        lastTestMessage:verified.error,
+        lastTestedAt:new Date().toISOString(),
+        oauthConfigured:true
+      });
+      const genericValidState = verifyOAuthState("meta", url.searchParams.get("state"));
+      sendMetaSettingsRedirect(response, genericValidState.ok ? "Sign in as owner, then reconnect Meta." : "Meta connection expired. Try again from Settings.");
+      return;
+    }
+    const status = metaSetupState(currentState);
+    if (!status.configured || !status.safeTokenStorage) {
+      sendMetaSettingsRedirect(response, status.configured ? "Safe token storage is required before Meta can be connected." : "Meta connection needs setup.");
+      return;
+    }
+    if (!url.searchParams.get("code")) {
+      sendMetaSettingsRedirect(response, "Meta connection expired. Try again from Settings.");
+      return;
+    }
+    try {
+      const result = await resolveMetaOAuthResult(url.searchParams.get("code"));
+      const persisted = await persistMetaDiscovery(result);
+      const persistedStatus = metaSetupState(persisted);
+      if (!persistedStatus.metaAccount.accessTokenEncrypted) {
+        throw new Error("Meta connection could not be saved. Try again from Settings.");
+      }
+      response.writeHead(302, {
+        location:metaSettingsRedirectLocation("Meta connected. Select a Facebook Page and Instagram Business account in Settings. Live posting remains off."),
+        "cache-control":"no-store, max-age=0"
+      });
+      response.end();
+    } catch (error) {
+      const safeError = safeMetaError(error);
+      await store.updateSocialAccount("meta", {
+        status:"error",
+        displayName:"Meta",
+        lastErrorSummary:safeError,
+        lastError:safeError,
+        lastTestStatus:"error",
+        lastTestMessage:safeError,
+        lastTestedAt:new Date().toISOString(),
+        oauthConfigured:true
+      });
+      sendMetaSettingsRedirect(response, safeError);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/meta/pages" && request.method === "GET") {
+    try {
+      const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+      if (!["owner", "admin"].includes(actorRole)) {
+        sendJson(response, { error:"Owner or admin access required.", requiredPermission:"owner/admin", pages:[] }, 403);
+        return;
+      }
+      const state = await store.readState();
+      const pages = await loadMetaPagesWithTokens(state);
+      sendJson(response, {
+        pages:pages.map(sanitizeMetaPage),
+        safety:"Tokens are stored server-side only. Live posting remains off.",
+        livePostingEnabled:metaLivePostingEnabled()
+      });
+    } catch (error) {
+      sendJson(response, { error:safeMetaError(error), pages:[] }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/meta/select-account" && request.method === "POST") {
+    try {
+      const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+      if (!["owner", "admin"].includes(actorRole)) {
+        sendJson(response, { error:"Owner or admin access required.", requiredPermission:"owner/admin" }, 403);
+        return;
+      }
+      const payload = await readJson(request);
+      const result = await selectMetaAccount({ facebookPageId:payload.facebookPageId || payload.pageId || "" });
+      sendJson(response, {
+        state:withPublicChannelSetup(result.state),
+        page:result.page,
+        instagramBusinessAccount:result.instagramBusinessAccount,
+        message:result.instagramBusinessAccount
+          ? "Meta accounts selected. Live posting remains off."
+          : "Facebook Page selected. Instagram needs a linked Business account before publishing.",
+        livePostingEnabled:metaLivePostingEnabled(),
+        safety:"Approval workflow only. Nothing posts automatically."
+      });
+    } catch (error) {
+      sendJson(response, { error:safeMetaError(error) }, 400);
     }
     return;
   }

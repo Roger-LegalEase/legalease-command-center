@@ -1,6 +1,23 @@
 const X_BROWSER_AUTHORIZATION_URL = "https://x.com/i/oauth2/authorize";
+const META_BROWSER_AUTHORIZATION_URL = "https://www.facebook.com/v24.0/dialog/oauth";
+const META_TOKEN_URL = "https://graph.facebook.com/v24.0/oauth/access_token";
+export const metaOAuthScopes = [
+  "pages_show_list",
+  "pages_read_engagement",
+  "pages_manage_posts",
+  "instagram_business_basic",
+  "instagram_business_content_publish"
+];
 
 const connectorConfig = {
+  meta: {
+    label: "Meta",
+    requiredEnv: ["META_CLIENT_ID", "META_CLIENT_SECRET", "META_REDIRECT_URI"],
+    scopes: metaOAuthScopes,
+    authorizationUrl: META_BROWSER_AUTHORIZATION_URL,
+    tokenUrl: META_TOKEN_URL,
+    notes: "Connects Facebook Page and Instagram Business accounts through Meta OAuth."
+  },
   linkedin: {
     label: "LinkedIn",
     requiredEnv: ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET", "LINKEDIN_REDIRECT_URI"],
@@ -12,13 +29,13 @@ const connectorConfig = {
   facebook: {
     label: "Facebook Page",
     requiredEnv: ["META_CLIENT_ID", "META_CLIENT_SECRET", "META_REDIRECT_URI"],
-    scopes: ["pages_manage_posts", "pages_read_engagement", "pages_show_list"],
+    scopes: metaOAuthScopes,
     notes: "Requires a Meta app, a Page you manage, and approved Page permissions."
   },
   instagram: {
     label: "Instagram",
     requiredEnv: ["META_CLIENT_ID", "META_CLIENT_SECRET", "META_REDIRECT_URI"],
-    scopes: ["instagram_basic", "instagram_content_publish", "pages_show_list", "pages_read_engagement"],
+    scopes: metaOAuthScopes,
     notes: "Requires a Meta app, a Facebook Page, and a linked Instagram Business or Creator account."
   },
   threads: {
@@ -97,6 +114,60 @@ export function linkedinAuthorizationUrl({ state }) {
     scope: config.scopes.join(" ")
   });
   return `${config.authorizationUrl}?${params.toString()}`;
+}
+
+function metaClientId() {
+  return process.env.META_CLIENT_ID || process.env.META_APP_ID || "";
+}
+
+function metaClientSecret() {
+  return process.env.META_CLIENT_SECRET || process.env.META_APP_SECRET || "";
+}
+
+export function metaAuthorizationUrl({ state }) {
+  const config = connectorConfig.meta;
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: metaClientId(),
+    redirect_uri: process.env.META_REDIRECT_URI || "",
+    state,
+    scope: config.scopes.join(",")
+  });
+  return `${config.authorizationUrl}?${params.toString()}`;
+}
+
+export async function exchangeMetaCode(code) {
+  const config = connectorConfig.meta;
+  const params = new URLSearchParams({
+    client_id: metaClientId(),
+    client_secret: metaClientSecret(),
+    redirect_uri: process.env.META_REDIRECT_URI || "",
+    code
+  });
+  const response = await fetch(`${config.tokenUrl}?${params.toString()}`);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = payload.error || {};
+    throw new Error(error.message || payload.error_description || payload.error || "Meta token exchange failed.");
+  }
+  return payload;
+}
+
+export async function exchangeMetaLongLivedToken(accessToken = "") {
+  const config = connectorConfig.meta;
+  const params = new URLSearchParams({
+    grant_type: "fb_exchange_token",
+    client_id: metaClientId(),
+    client_secret: metaClientSecret(),
+    fb_exchange_token: accessToken
+  });
+  const response = await fetch(`${config.tokenUrl}?${params.toString()}`);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = payload.error || {};
+    throw new Error(error.message || payload.error_description || payload.error || "Meta long-lived token exchange failed.");
+  }
+  return payload;
 }
 
 export async function exchangeLinkedInCode(code) {
