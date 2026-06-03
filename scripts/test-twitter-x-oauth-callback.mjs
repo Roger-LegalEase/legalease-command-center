@@ -14,6 +14,7 @@ const accessControlSource = readFileSync(path.join(rootDir, "scripts", "access-c
 const port = Number(process.env.TEST_TWITTER_X_OAUTH_CALLBACK_PORT || 3478);
 const baseUrl = `http://127.0.0.1:${port}`;
 const ownerToken = "twitter-x-oauth-callback-owner-token-1234567890";
+const adminToken = "twitter-x-oauth-callback-admin-token-1234567890";
 const clientSecret = "twitter-x-oauth-callback-secret-1234567890";
 const baseHost = new URL(baseUrl).host;
 const dataDir = await mkdtemp(path.join(os.tmpdir(), "legalease-twitter-x-oauth-callback-"));
@@ -88,6 +89,7 @@ const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
     PORT:String(port),
     COMMAND_CENTER_REQUIRE_AUTH:"true",
     COMMAND_CENTER_OWNER_TOKEN:ownerToken,
+    COMMAND_CENTER_ADMIN_TOKEN:adminToken,
     LOCAL_DEMO_MODE:"true",
     STORAGE_BACKEND:"json",
     COMMAND_CENTER_DATA_PATH:dataPath,
@@ -118,7 +120,9 @@ try {
 
   const anonymousDiagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`);
   assert.equal(anonymousDiagnostics.status, 401, "anonymous Twitter / X OAuth diagnostics should remain protected");
-  assert.equal((await anonymousDiagnostics.json()).error, "Authentication required.", "anonymous diagnostics should return the protected API auth error");
+  const anonymousDiagnosticsJson = await anonymousDiagnostics.json();
+  assert.equal(anonymousDiagnosticsJson.error, "Authentication required.", "anonymous diagnostics should return the protected API auth error");
+  assert.equal(anonymousDiagnosticsJson.requiredPermission, "owner/admin", "Twitter / X diagnostics should advertise owner/admin access instead of admin-only access");
 
   const browserAuthDiagnostics = await fetch(`${baseUrl}/api/auth/diagnostics`, {
     headers:{ cookie:`leos_session=${encodeURIComponent(ownerToken)}` }
@@ -186,6 +190,14 @@ try {
   assert.ok(!diagnosticsText.includes("twitter-x-callback-client-id"), "diagnostics must not expose full client id");
   assert.ok(!diagnosticsText.includes(stateParam), "diagnostics must not expose signed state");
   assert.ok(!diagnosticsText.includes(statePayload.codeVerifierEncrypted), "diagnostics must not expose encrypted verifier material");
+
+  const adminDiagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`, {
+    headers:{ "x-command-center-token":adminToken }
+  });
+  assert.equal(adminDiagnostics.status, 200, "admin should be able to read redacted Twitter / X OAuth diagnostics");
+  const adminDiagnosticsText = JSON.stringify(await adminDiagnostics.json());
+  assert.ok(!adminDiagnosticsText.includes(clientSecret), "admin diagnostics must not expose client secret");
+  assert.ok(!adminDiagnosticsText.includes("twitter-x-callback-client-id"), "admin diagnostics must not expose full client id");
 
   const missingState = await fetch(`${baseUrl}/api/x/callback?code=fake-code`, { redirect:"manual" });
   assertSettingsRedirect(missingState, "Twitter / X connection expired. Try again from Settings.", "missing callback state");

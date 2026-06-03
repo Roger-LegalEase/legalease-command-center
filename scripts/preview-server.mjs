@@ -5526,18 +5526,26 @@ function xOAuthDiagnosticsPayload() {
 function xOAuthDiagnosticsAccessDecision(request = {}) {
   const diagnostics = authDiagnosticsForRequest(request);
   const actor = actorFromRequest(request, process.env);
-  const ownerOrAdmin = actor.authenticated && ["owner", "admin"].includes(String(actor.role || "").toLowerCase());
+  const ownerTokenMatched = Boolean(diagnostics.tokenMatch);
+  const ownerOrAdmin = ownerTokenMatched || (actor.authenticated && ["owner", "admin"].includes(String(actor.role || "").toLowerCase()));
   if (!ownerOrAdmin) {
     return {
       ok:false,
       status: actor.authenticated ? 403 : 401,
       actor,
-      requiredPermission:"admin",
+      requiredPermission:"owner/admin",
       reason: actor.authenticated ? "Owner or admin access required." : "Authentication required.",
       diagnostics
     };
   }
-  return { ok:true, actor, requiredPermission:"admin", diagnostics };
+  return {
+    ok:true,
+    actor: ownerTokenMatched && !actor.authenticated
+      ? { id:"owner", role:"owner", label:"Owner", authenticated:true, permissions:roleDefinitions.owner.can }
+      : actor,
+    requiredPermission:"owner/admin",
+    diagnostics
+  };
 }
 
 async function resolveLinkedInOAuthResult(code = "") {
