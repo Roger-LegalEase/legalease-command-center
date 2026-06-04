@@ -462,6 +462,7 @@ function logOpenAIImageConfigStatus() {
 }
 
 const platforms = ["linkedin", "x", "facebook", "instagram", "threads"];
+const scheduledPublishingChannels = ["linkedin", "x"];
 const platformLabels = {
   linkedin: "LinkedIn",
   x: "Twitter / X",
@@ -740,6 +741,7 @@ function appBaseUrl() {
 }
 
 function finalImagePublicUrl(image = {}) {
+  image = image || {};
   const value = String(
     image.publicImageUrl ||
     image.public_image_url ||
@@ -758,6 +760,8 @@ function finalImagePublicUrl(image = {}) {
 }
 
 function explicitPublicImageUrl(post = {}, image = {}) {
+  post = post || {};
+  image = image || {};
   return String(
     post.publicImageUrl ||
     post.public_image_url ||
@@ -1481,6 +1485,58 @@ function safeChannelsResponse(state) {
   );
 }
 
+function founderPostStatus(value = "") {
+  const status = String(value || "").toLowerCase();
+  if (status === "posted" || status === "published" || status === "manually_posted") return "Posted";
+  if (status === "scheduled") return "Scheduled";
+  if (status === "approved" || status === "retry_ready") return "Approved";
+  if (status === "failed" || status === "blocked_channel_not_connected") return "Failed";
+  return "Draft";
+}
+
+function publishStatusMap(post = {}) {
+  return { ...(post.per_channel_publish_status || post.perChannelPublishStatus || {}) };
+}
+
+function publishExternalIdMap(post = {}) {
+  return { ...(post.per_channel_external_post_id || post.perChannelExternalPostId || {}) };
+}
+
+function publishFailureMap(post = {}) {
+  return { ...(post.per_channel_failure_reason || post.perChannelFailureReason || {}) };
+}
+
+function publishAttemptsFor(post = {}) {
+  return Array.isArray(post.publish_attempts)
+    ? post.publish_attempts
+    : Array.isArray(post.publishAttempts)
+      ? post.publishAttempts
+      : [];
+}
+
+function channelAlreadyPublished(post = {}, channel = "") {
+  const statuses = publishStatusMap(post);
+  const externalIds = publishExternalIdMap(post);
+  return statuses[channel] === "posted" || Boolean(externalIds[channel]);
+}
+
+function appendPublishAttempt(post = {}, attempt = {}) {
+  return [...publishAttemptsFor(post), {
+    id: `publish-attempt-${crypto.randomUUID().slice(0, 8)}`,
+    postId: post.id || "",
+    createdAt: new Date().toISOString(),
+    ...attempt
+  }].slice(-80);
+}
+
+function overallStatusFromChannelStatuses(statuses = {}, targetChannels = []) {
+  const channels = targetChannels.filter(Boolean);
+  if (channels.length && channels.every((channel) => statuses[channel] === "posted")) return "posted";
+  if (channels.some((channel) => statuses[channel] === "failed")) return "failed";
+  if (channels.some((channel) => ["scheduled", "blocked"].includes(statuses[channel]))) return "scheduled";
+  return "scheduled";
+}
+
 function publishReadiness(state, post) {
   if (!post) {
     return { ok: false, status: "blocked", message: "Post not found." };
@@ -1491,17 +1547,18 @@ function publishReadiness(state, post) {
   if (post.complianceRisk === "high") {
     return { ok: false, status: "blocked", message: "High-risk posts require final human approval before publishing." };
   }
-  if (!post.imageFinalized) {
+  const targetChannels = Array.isArray(post.targetChannels) && post.targetChannels.length ? post.targetChannels : [post.platform];
+  const textOnlyEligible = targetChannels.every((channel) => scheduledPublishingChannels.includes(channel)) && Boolean(post.imageIntentionallyOmitted);
+  if (!post.imageFinalized && !textOnlyEligible) {
     return { ok: false, status: "blocked", message: "Finalize the image before publishing." };
   }
-  if (!post.finalPreviewConfirmed) {
+  if (!post.finalPreviewConfirmed && !textOnlyEligible) {
     return { ok: false, status: "blocked", message: "Confirm the final preview before publishing." };
   }
-  const targetChannels = Array.isArray(post.targetChannels) && post.targetChannels.length ? post.targetChannels : [post.platform];
   if (!targetChannels.length) {
     return { ok: false, status: "unscheduled", message: "Choose at least one target channel." };
   }
-  const channelDetails = channelReadinessDetails(state, post);
+  const channelDetails = channelReadinessDetails(state, post, { requireLiveGate:false });
   for (const channel of targetChannels) {
     const dryRun = channelDetails.dryRuns[channel];
     if (dryRun?.status === "blocked") {
@@ -4110,7 +4167,8 @@ function channelPublishText(post, channel = post.platform) {
   return composePublishText(post, channel);
 }
 
-function channelDryRun(post, image, channel, safeChannel = {}) {
+function channelDryRun(post, image, channel, safeChannel = {}, options = {}) {
+  const requireLiveGate = options.requireLiveGate !== false;
   const text = channelPublishText(post, channel);
   const charCount = text.length;
   const finalReady = finalImageIsReady(image);
@@ -4120,6 +4178,7 @@ function channelDryRun(post, image, channel, safeChannel = {}) {
   const squareImage =
     aspectRatio === "1:1" ||
     (image?.finalImageWidth && image.finalImageWidth === image.finalImageHeight);
+  const textOnlyEligible = scheduledPublishingChannels.includes(channel) && Boolean(post.imageIntentionallyOmitted);
   const result = {
     channel,
     displayName: channelLabels[channel] || channel,
@@ -4142,11 +4201,11 @@ function channelDryRun(post, image, channel, safeChannel = {}) {
   };
   const checks = [
     { key: "adapter", label: "Publisher adapter", ok: result.adapterImplemented, reason: `${result.displayName} publishing connector is not implemented yet.` },
-    { key: "live_gate", label: "Live gate", ok: result.livePostingEnabled, reason: `${result.displayName} live posting is disabled server-side.` },
+    { key: "live_gate", label: "Live gate", ok: !requireLiveGate || result.livePostingEnabled, reason: `${result.displayName} live posting is disabled server-side.` },
     { key: "oauth_setup", label: "OAuth setup", ok: Boolean(safeChannel.configured), reason: `${result.displayName} needs OAuth setup.` },
     { key: "connected_account", label: "Connected account", ok: Boolean(safeChannel.connected), reason: `${result.displayName} is not connected.` },
     { key: "caption", label: "Caption", ok: Boolean(text), reason: `${result.displayName} caption is missing.` },
-    { key: "final_png", label: "Final PNG", ok: finalReady, reason: `${result.displayName} needs a final PNG before posting.` },
+    { key: "final_png", label: "Final PNG", ok: finalReady || textOnlyEligible, reason: `${result.displayName} needs a final PNG before posting.` },
     { key: "public_https_image", label: "Public HTTPS image URL", ok: result.publicHttpsImageReady, reason: `${result.displayName} needs a public HTTPS image URL. Upload the final PNG to Supabase Storage first.` },
     { key: "copy_length", label: "Copy length", ok: channel !== "x" || charCount <= 280, reason: "Twitter / X post text is over 280 characters." },
     { key: "square_image", label: "Square image", ok: channel !== "instagram" || squareImage, reason: "Instagram requires a square final PNG for MVP." }
@@ -4163,7 +4222,7 @@ function channelDryRun(post, image, channel, safeChannel = {}) {
   if (!safeChannel.connected) {
     return { ...result, status: "blocked", message: `${result.displayName} is not connected.` };
   }
-  if (!finalReady) {
+  if (!finalReady && !textOnlyEligible) {
     return { ...result, status: "blocked", message: `${result.displayName} needs a final PNG before posting.` };
   }
   if (channel === "x" && charCount > 280) {
@@ -4178,14 +4237,14 @@ function channelDryRun(post, image, channel, safeChannel = {}) {
   return result;
 }
 
-function channelReadinessDetails(state, post) {
+function channelReadinessDetails(state, post, options = {}) {
   const image = imageForPostFromState(state, post?.id);
   const safeChannels = safeChannelsResponse(state);
   const targetChannels = Array.isArray(post?.targetChannels) && post.targetChannels.length ? post.targetChannels : [post?.platform].filter(Boolean);
   const dryRuns = Object.fromEntries(
     targetChannels.map((channel) => {
       const safeChannel = safeChannels.find((item) => item.channel === channel) || {};
-      const dryRun = channelDryRun(post, image, channel, safeChannel);
+      const dryRun = channelDryRun(post, image, channel, safeChannel, options);
       return [channel, dryRun];
     })
   );
@@ -4635,9 +4694,16 @@ async function uploadLinkedInImage({ accessToken, ownerUrn, image }) {
 async function publishLinkedInPost({ state, post }) {
   const account = (state.socialAccounts || []).find((item) => item.platform === "linkedin");
   if (!account?.accessTokenEncrypted) throw new Error("LinkedIn account token is missing.");
-  const accessToken = decryptToken(account.accessTokenEncrypted);
   const personId = account.accountId || account.externalAccountId;
   if (!personId) throw new Error("LinkedIn account id is missing.");
+  if (process.env.NODE_ENV === "test" && process.env.LINKEDIN_MOCK_POSTING_ENABLED === "true") {
+    return {
+      externalPostId: `mock-linkedin-${post.id}`,
+      externalPostUrl: `https://www.linkedin.com/feed/update/mock-linkedin-${post.id}/`,
+      message: "Published to LinkedIn as text-only post."
+    };
+  }
+  const accessToken = decryptToken(account.accessTokenEncrypted);
   const ownerUrn = `urn:li:person:${personId}`;
   const image = imageForPostFromState(state, post.id);
   const imageAsset = await uploadLinkedInImage({ accessToken, ownerUrn, image });
@@ -4819,11 +4885,20 @@ async function uploadXImage({ accessToken, image }) {
 }
 
 async function publishXPost({ state, post }) {
-  const accessToken = storedOrEnvAccessToken(state, "x");
-  const image = imageForPostFromState(state, post.id);
+  const account = (state.socialAccounts || []).find((item) => item.platform === "x");
+  if (!account?.accessTokenEncrypted && !process.env.X_ACCESS_TOKEN) throw new Error("Twitter / X account token is missing.");
   const text = channelPublishText(post, "x");
   if (!text) throw new Error("Twitter / X post text is missing.");
   if (text.length > 280) throw new Error("Twitter / X post text is over 280 characters.");
+  if (process.env.NODE_ENV === "test" && process.env.X_MOCK_POSTING_ENABLED === "true") {
+    return {
+      externalPostId: `mock-x-${post.id}`,
+      externalPostUrl: `https://x.com/i/web/status/mock-x-${post.id}`,
+      message: "Published to Twitter / X as text-only post."
+    };
+  }
+  const accessToken = storedOrEnvAccessToken(state, "x");
+  const image = imageForPostFromState(state, post.id);
   const mediaId = await uploadXImage({ accessToken, image });
   const body = {
     text,
@@ -4851,12 +4926,13 @@ async function schedulePostForPublishing(postId, { scheduledFor, targetChannels,
   const state = await store.readState();
   const post = state.posts.find((item) => item.id === postId);
   if (!post) throw new Error("Post not found.");
-  const channels = (Array.isArray(targetChannels) ? targetChannels : [targetChannels]).filter(Boolean);
+  const channels = [...new Set((Array.isArray(targetChannels) ? targetChannels : [targetChannels]).map(normalizePlatformName).filter(Boolean))];
   if (!scheduledFor) throw new Error("Choose a scheduled time.");
   if (!channels.length) throw new Error("Choose at least one target channel.");
+  const unsupported = channels.filter((channel) => !scheduledPublishingChannels.includes(channel));
+  if (unsupported.length) throw new Error("Scheduled publishing currently supports LinkedIn and Twitter / X only.");
   const candidate = {
     ...post,
-    status: "scheduled",
     scheduledFor,
     targetChannels: channels,
     timezone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York"
@@ -4866,14 +4942,31 @@ async function schedulePostForPublishing(postId, { scheduledFor, targetChannels,
     ? "scheduled"
     : readiness.status === "blocked_channel_not_connected"
       ? "blocked_channel_not_connected"
-      : "approved";
+      : post.status;
+  const existingStatuses = publishStatusMap(post);
+  const nextChannelStatuses = {
+    ...existingStatuses,
+    ...Object.fromEntries(channels.map((channel) => [channel, readiness.ok ? "scheduled" : "blocked"]))
+  };
+  const nextFailures = publishFailureMap(post);
+  for (const channel of channels) {
+    if (readiness.ok) delete nextFailures[channel];
+    else nextFailures[channel] = readiness.message;
+  }
   const patch = {
     status,
+    post_status: founderPostStatus(status),
+    approved_at: post.approved_at || post.approvedAt || (["approved", "scheduled", "retry_ready"].includes(post.status) ? new Date().toISOString() : ""),
     scheduledFor: readiness.ok ? scheduledFor : "",
+    scheduled_at: readiness.ok ? scheduledFor : "",
     targetChannels: channels,
     timezone: candidate.timezone,
 	    publishingStatus: readiness.status,
 	    publishErrorSummary: readiness.ok ? "" : readiness.message,
+      per_channel_publish_status: nextChannelStatuses,
+      perChannelPublishStatus: nextChannelStatuses,
+      per_channel_failure_reason: nextFailures,
+      perChannelFailureReason: nextFailures,
 	    lastPublishAttemptAt: "",
 	    channelReadiness: readiness.channelReadiness || {},
 	    channelDryRuns: readiness.channelReadiness || {}
@@ -4896,133 +4989,201 @@ async function runPublishingWorker() {
   const duePosts = state.posts.filter((post) => post.status === "scheduled" && scheduledDateIsDue(post.scheduledFor));
   const results = [];
   for (const post of duePosts) {
-    const readiness = publishReadiness(state, post);
-    const targetChannels = Array.isArray(post.targetChannels) && post.targetChannels.length ? post.targetChannels : [post.platform];
-    const attemptCount = Number(post.publishAttemptCount || 0) + 1;
-    if (!readiness.ok) {
-      const blockedStatus = readiness.status === "blocked_channel_not_connected" ? "blocked_channel_not_connected" : "failed";
-      state = await store.updatePost(post.id, {
-        status: blockedStatus,
-        publishingStatus: readiness.status,
-        publishAttemptCount: attemptCount,
-        lastPublishAttemptAt: new Date().toISOString(),
-        publishErrorSummary: readiness.message
-      });
-      state = await recordPublishEvent({
-        post,
-        channel: targetChannels.join(","),
-        eventType: "blocked",
-        statusBefore: post.status,
-        statusAfter: blockedStatus,
-        message: readiness.message,
-        errorCode: readiness.status
-      });
-      results.push({ postId: post.id, title: post.title, status: blockedStatus, message: readiness.message });
-      continue;
-    }
-    const liveBlockedChannel = targetChannels.find((channel) => !livePostingEnabledForChannel(channel));
-    if (liveBlockedChannel) {
-      const message = `${channelLabels[liveBlockedChannel] || liveBlockedChannel} live posting is disabled. Enable ${livePostingEnvKeys[liveBlockedChannel]?.join(" or ") || "the live posting flag"} only after dry runs pass.`;
-      state = await store.updatePost(post.id, {
-        status: "failed",
-        publishingStatus: "failed",
-        publishAttemptCount: attemptCount,
-        lastPublishAttemptAt: new Date().toISOString(),
-        publishErrorSummary: message
-      });
-      state = await recordPublishEvent({
-        post,
-        channel: targetChannels.join(","),
-        eventType: "blocked",
-        statusBefore: post.status,
-        statusAfter: "failed",
-        message,
-        errorCode: "live_gate_disabled"
-      });
-      results.push({ postId: post.id, title: post.title, status: "failed", message });
-      continue;
-    }
-    state = await store.updatePost(post.id, {
-      status: "publishing",
-      publishingStatus: "publishing",
-      publishAttemptCount: attemptCount,
-      lastPublishAttemptAt: new Date().toISOString(),
-      publishErrorSummary: ""
-    });
-    state = await recordPublishEvent({
-      post,
-      channel: targetChannels.join(","),
-      eventType: "publishing_started",
-      statusBefore: post.status,
-      statusAfter: "publishing",
-      message: "Publishing worker started. Live adapter check follows."
-    });
-	    const canLivePublish = targetChannels.length === 1 && livePostingEnabledForChannel(targetChannels[0]);
-    if (canLivePublish) {
-      const channel = targetChannels[0];
-      try {
-        const publishResult = await publishToChannel({ state, post, channel });
-        state = await store.updatePost(post.id, {
-          status: "posted",
-          publishingStatus: "ready",
-          publishErrorSummary: "",
-          publishedAt: new Date().toISOString(),
-          publishedUrl: publishResult.externalPostUrl,
-          externalPostUrl: publishResult.externalPostUrl,
-          externalPostId: publishResult.externalPostId,
-          lastPublishAttemptAt: new Date().toISOString()
+    const originalChannels = (Array.isArray(post.targetChannels) && post.targetChannels.length ? post.targetChannels : [post.platform])
+      .map(normalizePlatformName)
+      .filter((channel) => scheduledPublishingChannels.includes(channel));
+    const targetChannels = [...new Set(originalChannels)];
+    const latestBefore = state.posts.find((item) => item.id === post.id) || post;
+    const pendingChannels = targetChannels.filter((channel) => !channelAlreadyPublished(latestBefore, channel));
+    if (!pendingChannels.length) continue;
+    const channelResults = [];
+    for (const channel of pendingChannels) {
+      const latestPost = state.posts.find((item) => item.id === post.id) || post;
+      const readiness = publishReadiness(state, { ...latestPost, targetChannels: [channel] });
+      const now = new Date().toISOString();
+      const statuses = publishStatusMap(latestPost);
+      const externalIds = publishExternalIdMap(latestPost);
+      const failures = publishFailureMap(latestPost);
+      let attempts = publishAttemptsFor(latestPost);
+      if (!readiness.ok) {
+        const blocked = readiness.status === "blocked_channel_not_connected";
+        statuses[channel] = blocked ? "blocked" : "failed";
+        failures[channel] = readiness.message;
+        attempts = appendPublishAttempt(latestPost, {
+          channel,
+          status: statuses[channel],
+          message: readiness.message,
+          errorCode: readiness.status || "publish_preflight_blocked"
+        });
+        const nextStatus = overallStatusFromChannelStatuses(statuses, targetChannels);
+        state = await store.updatePost(latestPost.id, {
+          status: nextStatus,
+          post_status: founderPostStatus(nextStatus),
+          publishingStatus: readiness.status,
+          publishAttemptCount: Number(latestPost.publishAttemptCount || 0) + 1,
+          publish_attempts: attempts,
+          publishAttempts: attempts,
+          lastPublishAttemptAt: now,
+          publishErrorSummary: readiness.message,
+          per_channel_publish_status: statuses,
+          perChannelPublishStatus: statuses,
+          per_channel_failure_reason: failures,
+          perChannelFailureReason: failures,
+          channelReadiness: readiness.channelReadiness || {},
+          channelDryRuns: readiness.channelReadiness || {}
         });
         state = await recordPublishEvent({
-          post: { ...post, status: "publishing" },
+          post: latestPost,
+          channel,
+          eventType: "blocked",
+          statusBefore: latestPost.status,
+          statusAfter: nextStatus,
+          message: readiness.message,
+          errorCode: readiness.status || "publish_preflight_blocked"
+        });
+        channelResults.push({ channel, status: statuses[channel], message: readiness.message });
+        continue;
+      }
+      if (!livePostingEnabledForChannel(channel)) {
+        const message = `${channelLabels[channel] || channel} live posting is disabled. Enable ${livePostingEnvKeys[channel]?.join(" or ") || "the live posting flag"} only after dry runs pass.`;
+        statuses[channel] = "blocked";
+        failures[channel] = message;
+        attempts = appendPublishAttempt(latestPost, {
+          channel,
+          status: "blocked",
+          message,
+          errorCode: "live_gate_disabled"
+        });
+        state = await store.updatePost(latestPost.id, {
+          status: "scheduled",
+          post_status: "Scheduled",
+          publishingStatus: "blocked_live_gate",
+          publishAttemptCount: Number(latestPost.publishAttemptCount || 0) + 1,
+          publish_attempts: attempts,
+          publishAttempts: attempts,
+          lastPublishAttemptAt: now,
+          publishErrorSummary: message,
+          per_channel_publish_status: statuses,
+          perChannelPublishStatus: statuses,
+          per_channel_failure_reason: failures,
+          perChannelFailureReason: failures
+        });
+        state = await recordPublishEvent({
+          post: latestPost,
+          channel,
+          eventType: "blocked",
+          statusBefore: latestPost.status,
+          statusAfter: "scheduled",
+          message,
+          errorCode: "live_gate_disabled"
+        });
+        channelResults.push({ channel, status: "blocked", message });
+        continue;
+      }
+      try {
+        state = await recordPublishEvent({
+          post: latestPost,
+          channel,
+          eventType: "publishing_started",
+          statusBefore: latestPost.status,
+          statusAfter: "publishing",
+          message: `${channelLabels[channel] || channel} scheduled publishing worker started.`
+        });
+        const publishResult = await publishToChannel({ state, post: latestPost, channel });
+        statuses[channel] = "posted";
+        externalIds[channel] = publishResult.externalPostId;
+        delete failures[channel];
+        attempts = appendPublishAttempt(latestPost, {
+          channel,
+          status: "posted",
+          message: publishResult.message,
+          externalPostId: publishResult.externalPostId,
+          externalPostUrl: publishResult.externalPostUrl
+        });
+        const nextStatus = overallStatusFromChannelStatuses(statuses, targetChannels);
+        const postedAt = new Date().toISOString();
+        const patch = {
+          status: nextStatus,
+          post_status: founderPostStatus(nextStatus),
+          publishingStatus: nextStatus === "posted" ? "ready" : "scheduled",
+          publishErrorSummary: "",
+          publishAttemptCount: Number(latestPost.publishAttemptCount || 0) + 1,
+          publish_attempts: attempts,
+          publishAttempts: attempts,
+          lastPublishAttemptAt: postedAt,
+          per_channel_publish_status: statuses,
+          perChannelPublishStatus: statuses,
+          per_channel_external_post_id: externalIds,
+          perChannelExternalPostId: externalIds,
+          per_channel_failure_reason: failures,
+          perChannelFailureReason: failures
+        };
+        if (nextStatus === "posted") {
+          patch.posted_at = postedAt;
+          patch.postedAt = postedAt;
+          patch.publishedAt = postedAt;
+          patch.publishedUrl = publishResult.externalPostUrl;
+          patch.externalPostUrl = publishResult.externalPostUrl;
+          patch.externalPostId = publishResult.externalPostId;
+        }
+        state = await store.updatePost(latestPost.id, patch);
+        state = await recordPublishEvent({
+          post: { ...latestPost, status: "publishing" },
           channel,
           eventType: "published",
           statusBefore: "publishing",
-          statusAfter: "posted",
+          statusAfter: nextStatus,
           message: publishResult.message,
           errorCode: ""
         });
-        results.push({ postId: post.id, title: post.title, status: "posted", message: publishResult.message });
-        continue;
+        channelResults.push({ channel, status: "posted", message: publishResult.message, externalPostId: publishResult.externalPostId });
       } catch (error) {
         const message = safeSocialError(channel, error);
-        state = await store.updatePost(post.id, {
-          status: "failed",
-          publishingStatus: "failed",
-          publishErrorSummary: message,
-          lastPublishAttemptAt: new Date().toISOString()
-        });
-        state = await recordPublishEvent({
-          post: { ...post, status: "publishing" },
+        statuses[channel] = "failed";
+        failures[channel] = message;
+        attempts = appendPublishAttempt(latestPost, {
           channel,
-          eventType: "publish_failed",
-          statusBefore: "publishing",
-          statusAfter: "failed",
+          status: "failed",
           message,
           errorCode: `${channel}_publish_failed`
         });
-        results.push({ postId: post.id, title: post.title, status: "failed", message });
-        continue;
+        const nextStatus = overallStatusFromChannelStatuses(statuses, targetChannels);
+        state = await store.updatePost(latestPost.id, {
+          status: nextStatus,
+          post_status: founderPostStatus(nextStatus),
+          publishingStatus: "failed",
+          publishErrorSummary: message,
+          publishAttemptCount: Number(latestPost.publishAttemptCount || 0) + 1,
+          publish_attempts: attempts,
+          publishAttempts: attempts,
+          lastPublishAttemptAt: now,
+          per_channel_publish_status: statuses,
+          perChannelPublishStatus: statuses,
+          per_channel_failure_reason: failures,
+          perChannelFailureReason: failures
+        });
+        state = await recordPublishEvent({
+          post: { ...latestPost, status: "publishing" },
+          channel,
+          eventType: "publish_failed",
+          statusBefore: "publishing",
+          statusAfter: nextStatus,
+          message,
+          errorCode: `${channel}_publish_failed`
+        });
+        channelResults.push({ channel, status: "failed", message });
       }
     }
-	    const message = targetChannels.length === 1 && !livePostingEnabledForChannel(targetChannels[0])
-	      ? `${channelLabels[targetChannels[0]] || targetChannels[0]} live posting is disabled. Enable ${livePostingEnvKeys[targetChannels[0]]?.join(" or ") || "the live posting flag"} only after dry runs pass.`
-	      : `Publishing adapter not implemented for ${targetChannels.map((channel) => channelLabels[channel] || channel).join(", ")} yet.`;
-    state = await store.updatePost(post.id, {
-      status: "failed",
-      publishingStatus: "failed",
-      publishErrorSummary: message,
-      lastPublishAttemptAt: new Date().toISOString()
-    });
-    state = await recordPublishEvent({
-      post: { ...post, status: "publishing" },
-      channel: targetChannels.join(","),
-      eventType: "publish_failed",
-      statusBefore: "publishing",
-      statusAfter: "failed",
-      message,
-      errorCode: "publisher_not_enabled"
-    });
-    results.push({ postId: post.id, title: post.title, status: "failed", message });
+    if (channelResults.length) {
+      const updatedPost = state.posts.find((item) => item.id === post.id) || post;
+      results.push({
+        postId: post.id,
+        title: post.title,
+        status: updatedPost.status,
+        message: channelResults.map((item) => item.message).filter(Boolean).join(" "),
+        channels: channelResults
+      });
+    }
   }
   return { state, results, message: `${results.length} due post${results.length === 1 ? "" : "s"} processed.` };
 }
@@ -17131,7 +17292,7 @@ function htmlShell() {
               <button onclick="regenerateImage('\${post.id}')">\${image ? "Regenerate image" : "Generate image"}</button>
               <button onclick="confirmOverlay('\${post.id}')" \${post.overlayConfirmed ? "disabled" : ""}>Overlay Confirmed</button>
               \${image && !post.imageFinalized ? \`<button onclick="finalizeImage('\${post.id}')">Use image</button>\` : \`<button \${image ? "" : "disabled"} onclick="confirmPreview('\${post.id}')">Confirm preview</button>\`}
-              <button onclick="quickSchedule('\${post.id}')" \${post.imageFinalized && post.finalPreviewConfirmed ? "" : "disabled"}>Schedule</button>
+              <button onclick="quickSchedule('\${post.id}')" \${post.imageFinalized && post.finalPreviewConfirmed ? "" : "disabled"}>Schedule Post</button>
               <button class="danger-btn" onclick="setStatus('\${post.id}','rejected')">Reject</button>
             </div>
             <details class="operator-edit">
@@ -17902,8 +18063,8 @@ function htmlShell() {
               </form>\` : ""}
               <form onsubmit="schedulePost(event,'\${post.id}')" class="split" style="margin-top:10px">
                 <input type="datetime-local" name="scheduledFor" value="\${post.scheduledFor || ""}">
-                <select name="targetChannels" multiple size="4">\${platforms.map(platform => \`<option value="\${platform}" \${targetChannels.includes(platform) ? "selected" : ""}>\${platformLabels[platform]}</option>\`).join("")}</select>
-                <button \${canSchedule ? "" : "disabled"}>Schedule</button>
+                <select name="targetChannels" multiple size="2">\${scheduledPublishingChannels.map(platform => \`<option value="\${platform}" \${targetChannels.includes(platform) ? "selected" : ""}>Schedule for \${platformLabels[platform]}</option>\`).join("")}</select>
+                <button \${canSchedule ? "" : "disabled"}>Schedule Post</button>
               </form>
               <div class="card-actions quiet-actions" style="margin-top:10px">
                 \${post.status === "scheduled" ? \`<button onclick="unschedulePost('\${post.id}')">Unschedule</button>\` : ""}
@@ -17981,8 +18142,8 @@ function htmlShell() {
           </form>\` : ""}
 	          <form onsubmit="schedulePost(event,'\${post.id}')" class="split" style="margin-top:10px">
 	            <input type="datetime-local" name="scheduledFor" value="\${post.scheduledFor || ""}">
-	            <select name="targetChannels" multiple size="4">\${platforms.map(platform => \`<option value="\${platform}" \${targetChannels.includes(platform) ? "selected" : ""}>\${platformLabels[platform]}</option>\`).join("")}</select>
-	            <button \${canSchedule ? "" : "disabled"}>Schedule</button>
+	            <select name="targetChannels" multiple size="2">\${scheduledPublishingChannels.map(platform => \`<option value="\${platform}" \${targetChannels.includes(platform) ? "selected" : ""}>Schedule for \${platformLabels[platform]}</option>\`).join("")}</select>
+	            <button \${canSchedule ? "" : "disabled"}>Schedule Post</button>
 	          </form>
           <div class="row" style="margin-top:10px">
             \${post.status === "scheduled" ? \`<button onclick="unschedulePost('\${post.id}')">Unschedule</button>\` : ""}
@@ -28183,11 +28344,19 @@ async function handleRequest(request, response) {
     const supabaseDb = await getSupabaseHealth();
     const storageDiagnostics = await diagnoseSupabaseStorage({ testUpload: false });
     const hostingConfig = storageRuntimeConfig();
+    let currentState = {};
     let metaStatus = {};
+    let linkedInStatus = {};
+    let xStatus = {};
     try {
-      metaStatus = metaStatusPayload(await store.readState());
+      currentState = await store.readState();
+      metaStatus = metaStatusPayload(currentState);
+      linkedInStatus = linkedinStatusPayload(currentState);
+      xStatus = xStatusPayload(currentState);
     } catch {
       metaStatus = {};
+      linkedInStatus = {};
+      xStatus = {};
     }
     sendJson(response, {
       appRunning: true,
@@ -28213,6 +28382,11 @@ async function handleRequest(request, response) {
       facebookConnected: Boolean(metaStatus.facebookConnected),
       instagramConnected: Boolean(metaStatus.instagramConnected),
       metaLivePostingEnabled: metaLivePostingEnabled(),
+      linkedInConnected: Boolean(linkedInStatus.connected),
+      xConnected: Boolean(xStatus.connected),
+      linkedInLiveGateEnabled: livePostingEnabledForChannel("linkedin"),
+      xLiveGateEnabled: livePostingEnabledForChannel("x"),
+      scheduledPublishingReady: Boolean(linkedInStatus.connected || xStatus.connected),
       openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
       liveGatesCount: Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length
     });

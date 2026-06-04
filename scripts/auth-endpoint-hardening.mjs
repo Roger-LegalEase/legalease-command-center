@@ -37,7 +37,7 @@ const endpointPurpose = [
   [/^POST \/api\/production-activation\/rcap\/handoff-packet$/, "Generate internal RCAP handoff packet."],
   [/^POST \/api\/tasks\/rebuild$/, "Rebuild internal task recommendations."],
   [/^POST \/api\/posts\/:id\/publish-now$/, "Blocked live publish attempt."],
-  [/^POST \/api\/publishing\/run$/, "Blocked publishing worker run."],
+  [/^POST \/api\/publishing\/run$/, "Run the scheduled publishing worker; live gates still decide whether any channel can publish."],
   [/^POST \/api\/backups\/restore$/, "Blocked destructive restore endpoint."],
   [/^POST \/api\/channels\/connect$/, "Blocked channel/external connector action unless explicitly configured."]
 ];
@@ -52,7 +52,7 @@ const forbiddenEndpointRules = [
   {
     id: "publish-post",
     label: "publish post",
-    pattern: /\/api\/posts\/[^/]+\/publish-now|\/api\/publishing\/run|publish[-_]?post/i,
+    pattern: /\/api\/posts\/[^/]+\/publish-now|publish[-_]?post/i,
     reason: "Live publishing is blocked while live gates remain 0."
   },
   {
