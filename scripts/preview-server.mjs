@@ -23422,6 +23422,38 @@ function htmlShell() {
       ];
       const campaignErrors = campaignPreview?.errors || [];
       const campaignConfirmDisabled = !campaignPreviewRows.length || campaignErrors.length ? "disabled" : "";
+      const socialCalendarImportHtml = \`
+        <section id="import-social-calendar" class="growth-card">
+          <div class="growth-card-head"><h2>Import Social Calendar</h2><small>XLSX or CSV into Queue</small></div>
+          <p class="muted">Upload Roger's XLSX or CSV calendar, preview rows, then add safe internal Queue items.</p>
+          <div class="campaign-upload-actions">
+            <input id="sources-calendar-upload-input" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onchange="handleCampaignSpreadsheetUpload(this.files && this.files[0]); this.value='';">
+            <button class="primary" type="button" onclick="document.getElementById('sources-calendar-upload-input')?.click()">Import Social Calendar</button>
+            <button type="button" onclick="downloadCampaignTemplate()">Download Template</button>
+            <button type="button" onclick="document.getElementById('sources-campaign-import-preview')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Import Preview</button>
+          </div>
+          <div class="campaign-safety-lines">
+            <span>Nothing posts during import.</span>
+            <span>Facebook and Instagram stay draft/paused while Meta is paused.</span>
+            <span>LinkedIn and Twitter / X rows stay internal until review.</span>
+            <span>Duplicate rows are skipped before saving.</span>
+          </div>
+          <div id="sources-campaign-import-preview" class="campaign-import-status \${campaignErrors.length ? "warn" : ""}">
+            \${campaignErrors.length ? campaignErrors.map(error => \`<strong>\${esc(error)}</strong>\`).join("<br>") : campaignPreview?.confirmed ? "Internal Queue items were added. Nothing gets posted." : "Import Preview: choose a spreadsheet to preview rows before adding them to Queue."}
+          </div>
+          <div class="campaign-preview-metrics">
+            \${campaignPreviewMetrics.map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}
+          </div>
+          <div class="campaign-upload-table">
+            <div class="campaign-upload-row header"><span>Date</span><span>Platform</span><span>Caption Preview</span><span>Image Plan</span><span>Wilma</span><span>Approval</span></div>
+            \${campaignPreviewRows.map(record => \`<div class="campaign-upload-row"><span>\${esc(campaignRecordValue(record, "Date"))}</span><span>\${esc(campaignPlatformLabel(campaignRecordValue(record, "Platform")))}</span><span>\${esc(campaignRecordValue(record, "Caption")).slice(0, 120)}</span><span>\${esc(campaignImagePlan(record))}</span><span>\${esc(campaignWilmaLabel(record))}</span><span>\${esc(campaignRecordValue(record, "Status") || "Needs review")}</span></div>\`).join("") || '<div class="campaign-import-status">Upload a CSV or XLSX file to preview Date, Platform, Caption Preview, Image Plan, Wilma, and Approval before saving.</div>'}
+          </div>
+          <div class="production-card-actions">
+            <button type="button" \${campaignConfirmDisabled} onclick="confirmCampaignImport()" title="Confirm Import creates internal drafts only.">Confirm Import</button>
+            <button type="button" onclick="cancelCampaignImport()">Cancel</button>
+          </div>
+          <p class="muted">Confirm Import creates internal Queue items only. No provider APIs are called.</p>
+        </section>\`;
       return \`<section id="production" class="\${pageClass("production")} production-workspace">
         <section class="production-hero">
           <div>
@@ -25214,7 +25246,8 @@ function htmlShell() {
       const failedCount = c.failed || 0;
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
-      const requestedPage = String(location.hash || "#overview").replace("#", "");
+      const pathRoute = String(location.pathname || "/").replace(/^\\/+|\\/+$/g, "");
+      const requestedPage = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#overview")).replace("#", "");
       const routeAliases = { today:"overview", command:"growth", "le-e":"lee", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings" };
       const normalizedPage = routeAliases[requestedPage] || requestedPage;
       const knownPages = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
@@ -25293,6 +25326,7 @@ function htmlShell() {
                 <p>Review posts, follow-ups, reports, and partner work before anything moves forward.</p>
               </div>
               <span class="queue-safety-note">Safe mode: approvals prepare work only. Nothing sends or publishes automatically.</span>
+              <button type="button" onclick="location.href='/sources/import-social-calendar'">Import Calendar</button>
             </div>
             <div class="queue-summary-grid">\${queueReviewSummaryCards(reviewPosts).map(([label, value, detail]) => \`<article class="queue-summary-card"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
             \${queueReviewTabsHtml(reviewPosts)}
@@ -25359,6 +25393,7 @@ function htmlShell() {
           </div>
         </section>
         <section id="sources" class="section secondary \${pageClass("sources")}">
+          \${socialCalendarImportHtml}
           <details open>
             <summary>Source-to-Queue Intake</summary>
             <div style="margin-top:14px">\${sourceSummaryHtml()}</div>
