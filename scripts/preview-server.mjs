@@ -16107,10 +16107,10 @@ function htmlShell() {
         };
       }).filter(Boolean);
       state.posts = [...imported, ...(state.posts || [])];
-      campaignImportPreview = { ...campaignImportPreview, confirmed:true };
+      campaignImportPreview = { ...campaignImportPreview, confirmed:true, importedCount:imported.length };
       render();
       const skipped = campaignImportPreview.rows.length - imported.length;
-      toast("Internal queue items created. Nothing gets posted." + (skipped ? " " + skipped + " duplicate row(s) skipped." : ""));
+      toast("Imported " + imported.length + " draft posts into Queue." + (skipped ? " " + skipped + " duplicate row(s) skipped." : ""));
     }
     function cancelCampaignImport() {
       campaignImportPreview = null;
@@ -16509,7 +16509,7 @@ function htmlShell() {
     }
 
     function setQueueTypeFilter(value) {
-      queueOriginFilter = ["all", "posts", "followups", "reports", "proof", "partners"].includes(value) ? value : "all";
+      queueOriginFilter = ["all", "posts", "followups", "reports", "proof", "channels"].includes(value) ? value : "all";
       render();
     }
 
@@ -16598,14 +16598,38 @@ function htmlShell() {
       return post.scheduledFor || post.scheduled_at ? "Scheduled" : "Not Scheduled";
     }
 
+    function queuePreviewLabel(post = {}) {
+      return post.previewViewedAt ? "Preview: Viewed" : "Preview: Not Viewed";
+    }
+
     function queueWorkflowStatusHtml(post = {}, image = null) {
       const caption = post.copyReviewed || post.copyReviewedAt ? "Reviewed" : "Draft";
       return \`<div class="queue-production-status" aria-label="Queue production status">
         <span><strong>Caption:</strong> \${esc(caption)}</span>
         <span><strong>Image:</strong> \${esc(queueImageStatusLabel(post, image))}</span>
+        <span><strong>\${esc(queuePreviewLabel(post))}</strong></span>
         <span><strong>Approval:</strong> \${esc(queueApprovalLabel(post))}</span>
         <span><strong>Schedule:</strong> \${esc(queueScheduleLabel(post))}</span>
       </div>\`;
+    }
+
+    function queueReviewStatusForPost(post = {}, image = null) {
+      if (post.status === "deleted" || post.deletedAt) return "Status: Deleted";
+      if (post.scheduledFor || post.scheduled_at || post.status === "scheduled") return "Status: Scheduled";
+      if (post.status === "approved" || post.approved_at) return "Status: Approved";
+      if (post.copyReviewed || post.copyReviewedAt) return "Status: Reviewed";
+      if (["draft", "needs_review"].includes(post.status)) return "Status: Needs Review";
+      if (queueImageStatusKey(post, image) === "ready") return "Status: Image Ready";
+      if (queueImageStatusKey(post, image) === "needed") return "Status: Image Needed";
+      return "Status: Needs Review";
+    }
+
+    function queueItemMetaForPost(post = {}) {
+      const platform = platformLabels[post.platform] || post.platform || "Social";
+      const source = String(post.sourceType || "").toLowerCase() === "campaign_upload" || post.sourceReference === "Campaign Upload"
+        ? "Imported Calendar"
+        : "Manual Draft";
+      return \`\${platform} · \${source}\`;
     }
 
     function queueImageDraftPreviewHtml(post = {}) {
@@ -16730,13 +16754,14 @@ function htmlShell() {
         return {
           id: "post-" + slugify(post.id || post.title || "post"),
           type: "posts",
-          label: "Post",
+          label: "Social Post",
           title: post.title || post.hook || "Post draft",
           context: context.length > 150 ? context.slice(0, 147).trim() + "..." : context,
-          status: status.label,
-          meta: channels,
+          status: queueReviewStatusForPost(post, image),
+          meta: queueItemMetaForPost(post),
+          typeLine: "Social Post · " + queueItemMetaForPost(post),
           action: "Review",
-          actionJs: "document.getElementById('queue-row-" + slugify(post.id || post.title || "post") + "').open = true",
+          actionJs: "openQueuePreview('" + post.id + "')",
           queuePostId: post.id,
           deleteLabel: queueDeleteButtonLabel(post),
           statusHtml: queueWorkflowStatusHtml(post, image),
@@ -16746,10 +16771,10 @@ function htmlShell() {
       const followUps = (state.growthInbox || []).filter(item => /follow|pr|press|media|outreach/i.test([item.type, item.category, item.title, item.text, item.raw_input, item.status].join(" ")) && !/converted|ignored|archived|done/i.test(String(item.status || ""))).slice(0, 4).map((item, index) => ({
         id: "followup-" + index,
         type: "followups",
-        label: /pr|press|media/i.test([item.type, item.category, item.title, item.text, item.raw_input].join(" ")) ? "PR draft" : "Follow-up",
+        label: "Partner Follow-up",
         title: item.title || item.raw_input || item.text || "Follow-up",
         context: todayFounderCopy(item.summary || item.notes || "Review the next follow-up before anything is sent."),
-        status: queueReviewStatusLabel(item),
+        status: "Status: " + queueReviewStatusLabel(item),
         meta: item.owner || item.category || "Internal",
         action: "Review",
         actionJs: "location.hash='growth-inbox'",
@@ -16761,7 +16786,7 @@ function htmlShell() {
         label: "Report",
         title: item.reportTitle || item.title || "Report draft",
         context: item.summary || item.notes || "Review the report before it becomes an update or data room item.",
-        status: queueReviewStatusLabel(item),
+        status: "Status: " + queueReviewStatusLabel(item),
         meta: item.reportType || "Internal",
         action: "Review",
         actionJs: "location.hash='reports'",
@@ -16770,10 +16795,10 @@ function htmlShell() {
       const proof = [...(state.evidencePackNotes || []), ...(state.evidenceItems || [])].filter(Boolean).slice(0, 4).map((item, index) => ({
         id: "proof-" + index,
         type: "proof",
-        label: "Proof",
+        label: "Proof-to-Content",
         title: item.title || item.evidenceTitle || item.name || "Proof item",
         context: founderReadableText(item.summary || item.notes || item.body || "Evidence can become a post, pitch, report, or investor note."),
-        status: queueReviewStatusLabel(item),
+        status: "Status: " + queueReviewStatusLabel(item),
         meta: item.source || item.type || "Evidence",
         action: "Review",
         actionJs: "location.hash='proof'",
@@ -16781,28 +16806,43 @@ function htmlShell() {
       }));
       const partners = (state.partners || []).filter(item => item.nextAction || /follow|review|waiting|needs/i.test([item.status, item.stage, item.notes].join(" "))).slice(0, 4).map((item, index) => ({
         id: "partner-" + index,
-        type: "partners",
-        label: "Partner",
+        type: "followups",
+        label: "Partner Follow-up",
         title: item.organizationName || item.name || "Partner follow-up",
         context: item.nextAction || item.notes || "Review the partner movement and decide the next manual step.",
-        status: queueReviewStatusLabel(item),
+        status: "Status: " + queueReviewStatusLabel(item),
         meta: item.stage || item.status || "Partner work",
         action: "Review",
         actionJs: "location.hash='partners'",
         details: "<p class=\\"muted\\">Partner work remains internal unless Roger manually sends or shares it.</p>"
       }));
-      const all = [...postRows, ...followUps, ...reports, ...proof, ...partners];
+      const channelReviews = (state.socialAccounts || []).filter(account => !account.connected || /review|setup|not_connected|needs/i.test([account.status, account.connectionStatus, account.setupStatus].join(" "))).slice(0, 4).map((account, index) => ({
+        id: "channel-" + index,
+        type: "channels",
+        label: "Channel Review",
+        title: (platformLabels[account.platform] || account.platform || "Channel") + " setup",
+        context: "Review connection readiness before this channel is used.",
+        status: "Status: " + queueReviewStatusLabel(account),
+        meta: "Settings",
+        action: "Review",
+        actionJs: "location.hash='settings'",
+        details: "<p class=\\"muted\\">Channel setup stays protected in Settings. No live action runs from Queue.</p>"
+      }));
+      const all = [...postRows, ...followUps, ...reports, ...proof, ...partners, ...channelReviews];
       return queueOriginFilter === "all" ? all : all.filter(item => item.type === queueOriginFilter);
     }
 
     function queueReviewListHtml(reviewPosts) {
       const rows = queueReviewRows(reviewPosts);
       if (!rows.length) return \`<div class="panel muted"><h2>Your Queue is clear.</h2><p>Import a calendar or add a new draft to get started.</p></div>\`;
-      return \`<div class="queue-review-list">\${rows.map(item => \`<article class="queue-review-item">
+      const helper = queueOriginFilter === "posts"
+        ? '<p class="muted queue-social-helper">These are draft social posts imported from your calendar or created manually. Review copy, generate images, preview, then approve or schedule.</p>'
+        : "";
+      return \`\${helper}<div class="queue-review-list">\${rows.map(item => \`<article class="queue-review-item">
         <div class="queue-review-item-main">
           <div class="queue-review-kicker">
             \${item.queuePostId ? \`<label class="queue-select"><input type="checkbox" \${selectedPosts.has(item.queuePostId) ? "checked" : ""} onchange="toggleBulkPost('\${item.queuePostId}', this.checked)"> Select</label>\` : ""}
-            <span>\${esc(item.label)}</span><span>·</span><span>\${esc(item.meta || "Internal")}</span><span class="badge info">\${esc(item.status)}</span>
+            <span class="queue-type-line">\${esc(item.typeLine || (item.label + " · " + (item.meta || "Internal")))}</span><span class="badge info">\${esc(item.status)}</span>
           </div>
           <h3>\${esc(item.title)}</h3>
           <p>\${esc(item.context)}</p>
@@ -16810,7 +16850,7 @@ function htmlShell() {
         </div>
         <div class="queue-review-actions">
           <button class="primary" type="button" onclick="\${item.actionJs}">\${esc(item.action)}</button>
-          \${item.queuePostId ? \`<button type="button" onclick="generateQueueImageDraft('\${item.queuePostId}')">Generate Image</button><button type="button" onclick="\${item.actionJs}">Preview</button>\` : ""}
+          \${item.queuePostId ? \`<button type="button" onclick="generateQueueImageDraft('\${item.queuePostId}')">Generate Image</button><button type="button" onclick="\${item.actionJs}">Preview</button><button type="button" onclick="markCopyReviewed('\${item.queuePostId}')">Mark Reviewed</button>\` : ""}
           \${item.queuePostId ? \`<button type="button" onclick="openQueueDeleteDialog('\${item.queuePostId}')">\${esc(item.deleteLabel || "Delete")}</button>\` : ""}
         </div>
         <details id="queue-row-\${esc(item.id)}" class="queue-review-details">
@@ -16825,12 +16865,12 @@ function htmlShell() {
       const countFor = {
         all: cards.reduce((sum, item) => sum + Number(item[1] || 0), 0),
         posts: cards.find(item => item[0] === "Posts")?.[1] || 0,
-        followups: cards.find(item => item[0] === "Partner follow-ups")?.[1] || 0,
+        followups: (cards.find(item => item[0] === "Partner follow-ups")?.[1] || 0) + (state.partners || []).filter(item => item.nextAction || /follow|review|waiting|needs/i.test([item.status, item.stage, item.notes].join(" "))).length,
         reports: cards.find(item => item[0] === "Reports")?.[1] || 0,
         proof: cards.find(item => item[0] === "Proof-to-content")?.[1] || 0,
-        partners: (state.partners || []).filter(item => item.nextAction || /follow|review|waiting|needs/i.test([item.status, item.stage, item.notes].join(" "))).length
+        channels: (state.socialAccounts || []).filter(account => !account.connected || /review|setup|not_connected|needs/i.test([account.status, account.connectionStatus, account.setupStatus].join(" "))).length
       };
-      const tabs = [["all", "All"], ["posts", "Posts"], ["followups", "Follow-ups"], ["reports", "Reports"], ["proof", "Proof"], ["partners", "Partners"]];
+      const tabs = [["all", "All"], ["posts", "Social Posts"], ["followups", "Partner Follow-ups"], ["reports", "Reports"], ["proof", "Proof-to-Content"], ["channels", "Channel Reviews"]];
       return \`<div class="queue-review-tabs" aria-label="Queue review filters">\${tabs.map(([key, label]) => \`<button type="button" class="\${queueOriginFilter === key ? "active" : ""}" onclick="setQueueTypeFilter('\${key}')">\${label} \${Number(countFor[key] || 0)}</button>\`).join("")}</div>\`;
     }
 
@@ -23455,9 +23495,10 @@ function htmlShell() {
             <span>Facebook and Instagram stay draft/paused while Meta is paused.</span>
             <span>LinkedIn and Twitter / X rows stay internal until review.</span>
             <span>Duplicate rows are skipped before saving.</span>
+            <span>Some rows may be skipped if they already exist in Queue. To reload the calendar, delete existing imported drafts first.</span>
           </div>
           <div id="sources-campaign-import-preview" class="campaign-import-status \${campaignErrors.length ? "warn" : ""}">
-            \${campaignErrors.length ? campaignErrors.map(error => \`<strong>\${esc(error)}</strong>\`).join("<br>") : campaignPreview?.confirmed ? "Internal Queue items were added. Nothing gets posted." : "Import Preview: choose a spreadsheet to preview rows before adding them to Queue."}
+            \${campaignErrors.length ? campaignErrors.map(error => \`<strong>\${esc(error)}</strong>\`).join("<br>") : campaignPreview?.confirmed ? \`Imported \${Number(campaignPreview.importedCount || 0)} draft posts into Queue. <button type="button" onclick="location.hash='queue'">Open Queue</button>\` : "Import Preview: choose a spreadsheet to preview rows before adding them to Queue."}
           </div>
           <div class="campaign-preview-metrics">
             \${campaignPreviewMetrics.map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}
@@ -27985,11 +28026,27 @@ function htmlShell() {
       toast("Image marked ready");
     }
 
-    function refreshQueuePostPreview(id) {
+    async function openQueuePreview(id) {
       const row = document.getElementById("queue-row-" + slugify(id || "post"));
       if (row) row.open = true;
-      toast("Preview refreshed. Nothing was posted.");
+      const result = await api("/api/posts/update", {
+        method:"POST",
+        body:JSON.stringify({
+          id,
+          patch:{
+            previewViewedAt:new Date().toISOString()
+          }
+        })
+      });
+      state = result.state;
       render();
+      document.getElementById("queue-row-" + slugify(id || "post"))?.setAttribute("open", "");
+      toast("Preview opened. Nothing was posted.");
+    }
+
+    async function refreshQueuePostPreview(id) {
+      await openQueuePreview(id);
+      toast("Preview refreshed. Nothing was posted.");
     }
 
     async function confirmOverlay(id) {

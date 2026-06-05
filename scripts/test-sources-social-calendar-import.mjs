@@ -47,9 +47,12 @@ for (const required of [
   "Review Import Preview",
   "Confirm Import",
   "Duplicate rows are skipped before saving.",
+  "Some rows may be skipped if they already exist in Queue. To reload the calendar, delete existing imported drafts first.",
   "Facebook and Instagram stay draft/paused while Meta is paused.",
   "Nothing posts during import.",
-  "Import Preview"
+  "Import Preview",
+  "draft posts into Queue.",
+  "Open Queue"
 ]) {
   assert(importPanel.includes(required), `Sources importer should include ${required}`);
 }

@@ -57,10 +57,31 @@ for (const required of [
   "Proof-to-content",
   "Channel reviews",
   "All",
-  "Follow-ups",
-  "Partners"
+  "Social Posts",
+  "Partner Follow-ups",
+  "Reports",
+  "Proof-to-Content",
+  "Channel Reviews"
 ]) {
   assert(source.includes(required), `Queue helpers should include ${required}`);
+}
+
+for (const required of [
+  "Social Post",
+  "Imported Calendar",
+  "Social Post ·",
+  "Status: Needs Review",
+  "Status: Image Needed",
+  "Status: Image Ready",
+  "Status: Reviewed",
+  "Status: Approved",
+  "Status: Scheduled",
+  "Status: Deleted",
+  "These are draft social posts imported from your calendar or created manually. Review copy, generate images, preview, then approve or schedule.",
+  "Preview: Not Viewed",
+  "Preview: Viewed"
+]) {
+  assert(source.includes(required), `Queue should clarify social post type/status: ${required}`);
 }
 
 for (const required of [
@@ -110,11 +131,15 @@ assert(source.includes("imageStatus:\"draft_generated\""), "Generated image plac
 assert(source.includes("imageStatus:\"ready\""), "Mark Image Ready should set imageStatus to ready.");
 assert(source.includes('deletedSource:"queue"'), "Queue delete should record a plain internal delete source.");
 
-const markImageCardStart = source.lastIndexOf("queue-review-item", source.indexOf("Mark Image Ready"));
-const markImageCardEnd = source.indexOf("</article>", source.indexOf("Mark Image Ready"));
-const markImageCard = source.slice(markImageCardStart, markImageCardEnd);
-for (const required of ["Delete", "Generate Image", "Post Preview"]) {
+const queueReviewListStart = source.indexOf("function queueReviewRows");
+const queueReviewListEnd = source.indexOf("function queueReviewTabsHtml", queueReviewListStart);
+const markImageCard = source.slice(queueReviewListStart, queueReviewListEnd);
+for (const required of ["Delete", "Generate Image", "queuePostPreviewHtml(post)"]) {
   assert(markImageCard.includes(required), `The same Queue card containing Mark Image Ready should include ${required}.`);
+}
+
+for (const required of ["Generate Image", "Preview", "Mark Reviewed", "Delete"]) {
+  assert(markImageCard.includes(required), `Social post cards should include primary action ${required}.`);
 }
 
 const importedCalendarMapping = source.slice(source.indexOf("function confirmCampaignImport"), source.indexOf("function clearCampaignPreview"));
