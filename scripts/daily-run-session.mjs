@@ -199,6 +199,7 @@ function isRcapLike(item = {}) {
 function bucketItemIds(session = {}, bucketKey = "") {
   const ids = new Set();
   for (const item of list(session.parked_items)) if (!bucketKey || item.bucket_key === bucketKey) ids.add(item.item_id);
+  for (const item of list(session.completed_items)) if (!bucketKey || item.bucket_key === bucketKey) ids.add(item.item_id);
   for (const item of list(session.skipped_bucket_keys)) {
     if (typeof item === "string") continue;
     if (!bucketKey || item.bucket_key === bucketKey) ids.add(item.item_id || item.bucket_key);
@@ -439,6 +440,7 @@ export function createDailyRunSession(state = {}, options = {}) {
     bucket_snapshot: snapshot,
     current_bucket_key: snapshot.current_bucket_key,
     completed_bucket_keys: [],
+    completed_items: [],
     skipped_bucket_keys: [],
     parked_items: [],
     new_since_start: { items: [], count: 0 },
@@ -541,10 +543,121 @@ function upsertSession(state = {}, session = {}) {
   };
 }
 
-export function parkDailyRunItem(state = {}, sessionId = "", bucketKey = "", itemId = "", reason = "", options = {}) {
-  const now = isoNow(options);
+function activeSessionForUpdate(state = {}, sessionId = "") {
   const session = list(state.dailyRunSessions).find(item => item.session_id === sessionId && item.status === "active");
   if (!session) throw new Error("Daily Run session not found.");
+  return session;
+}
+
+function routeSessionAfterClear(session = {}) {
+  const nextBucket = firstUnclearedBucket(session.bucket_snapshot, session);
+  return { ...session, current_bucket_key: nextBucket?.key || "", tomorrow_first_move: dailyRunTomorrowFirstMove(session) };
+}
+
+function blockedRemainingForSession(session = {}) {
+  const blockedBucket = list(session.bucket_snapshot?.buckets).find(bucket => bucket.key === "blocked_live_systems");
+  return blockedBucket ? dailyRunBucketRemainingCount(blockedBucket, session) : 0;
+}
+
+export function skipDailyRunBucket(state = {}, sessionId = "", bucketKey = "", options = {}) {
+  const now = isoNow(options);
+  const session = activeSessionForUpdate(state, sessionId);
+  const nextSession = routeSessionAfterClear({
+    ...session,
+    last_active_at: now,
+    skipped_bucket_keys: [...new Set([...list(session.skipped_bucket_keys), bucketKey].filter(Boolean))]
+  });
+  nextSession.session_counts = {
+    ...(session.session_counts || {}),
+    blockers_remaining: blockedRemainingForSession(nextSession)
+  };
+  return { state: upsertSession(state, nextSession), session: nextSession };
+}
+
+export function jumpDailyRunBucket(state = {}, sessionId = "", bucketKey = "", options = {}) {
+  const now = isoNow(options);
+  const session = activeSessionForUpdate(state, sessionId);
+  const target = list(session.bucket_snapshot?.buckets).find(bucket => bucket.key === bucketKey);
+  if (!target) throw new Error("Daily Run bucket not found.");
+  const nextSession = {
+    ...session,
+    current_bucket_key: bucketKey,
+    last_active_at: now,
+    tomorrow_first_move: dailyRunTomorrowFirstMove(session)
+  };
+  return { state: upsertSession(state, nextSession), session: nextSession };
+}
+
+export function completeDailyRunBucket(state = {}, sessionId = "", bucketKey = "", options = {}) {
+  const now = isoNow(options);
+  const session = activeSessionForUpdate(state, sessionId);
+  const nextSession = routeSessionAfterClear({
+    ...session,
+    last_active_at: now,
+    completed_bucket_keys: [...new Set([...list(session.completed_bucket_keys), bucketKey].filter(Boolean))]
+  });
+  nextSession.session_counts = {
+    ...(session.session_counts || {}),
+    blockers_remaining: blockedRemainingForSession(nextSession)
+  };
+  return { state: upsertSession(state, nextSession), session: nextSession };
+}
+
+export function completeDailyRunItem(state = {}, sessionId = "", bucketKey = "", itemId = "", reason = "", options = {}) {
+  const now = isoNow(options);
+  const session = activeSessionForUpdate(state, sessionId);
+  const completed = {
+    bucket_key: bucketKey,
+    item_id: itemId,
+    reason: asText(reason) || "Moved forward in this Daily Run.",
+    completed_at: now
+  };
+  const nextSession = routeSessionAfterClear({
+    ...session,
+    last_active_at: now,
+    completed_items: [completed, ...list(session.completed_items).filter(item => !(item.bucket_key === bucketKey && item.item_id === itemId))]
+  });
+  nextSession.session_counts = {
+    ...(session.session_counts || {}),
+    items_reviewed: Number(session.session_counts?.items_reviewed || 0) + 1,
+    blockers_remaining: blockedRemainingForSession(nextSession)
+  };
+  return { state: upsertSession(state, nextSession), session: nextSession };
+}
+
+export function parkDailyRunBucket(state = {}, sessionId = "", bucketKey = "", reason = "", options = {}) {
+  const now = isoNow(options);
+  const session = activeSessionForUpdate(state, sessionId);
+  const bucket = list(session.bucket_snapshot?.buckets).find(item => item.key === bucketKey);
+  if (!bucket) throw new Error("Daily Run bucket not found.");
+  const cleared = bucketItemIds(session, bucketKey);
+  const parked = list(bucket.items)
+    .filter(item => !cleared.has(item.id))
+    .map(item => ({
+      bucket_key: bucketKey,
+      item_id: item.id,
+      reason: asText(reason) || "Parked for later review.",
+      parked_at: now
+    }));
+  const nextSession = routeSessionAfterClear({
+    ...session,
+    last_active_at: now,
+    parked_items: [
+      ...parked,
+      ...list(session.parked_items).filter(item => item.bucket_key !== bucketKey || !parked.some(next => next.item_id === item.item_id))
+    ]
+  });
+  nextSession.session_counts = {
+    ...(session.session_counts || {}),
+    blockers_parked: list(nextSession.parked_items).filter(item => item.bucket_key === "blocked_live_systems").length,
+    blockers_remaining: blockedRemainingForSession(nextSession)
+  };
+  return { state: upsertSession(state, nextSession), session: nextSession };
+}
+
+export function parkDailyRunItem(state = {}, sessionId = "", bucketKey = "", itemId = "", reason = "", options = {}) {
+  const now = isoNow(options);
+  const session = activeSessionForUpdate(state, sessionId);
   const parked = {
     bucket_key: bucketKey,
     item_id: itemId,
@@ -556,14 +669,12 @@ export function parkDailyRunItem(state = {}, sessionId = "", bucketKey = "", ite
     last_active_at: now,
     parked_items: [parked, ...list(session.parked_items).filter(item => !(item.bucket_key === bucketKey && item.item_id === itemId))]
   };
-  const nextBucket = firstUnclearedBucket(nextSession.bucket_snapshot, nextSession);
-  nextSession.current_bucket_key = nextBucket?.key || "";
+  Object.assign(nextSession, routeSessionAfterClear(nextSession));
   nextSession.session_counts = {
     ...(session.session_counts || {}),
     blockers_parked: list(nextSession.parked_items).filter(item => item.bucket_key === "blocked_live_systems").length,
-    blockers_remaining: list(nextSession.bucket_snapshot?.buckets?.find(bucket => bucket.key === "blocked_live_systems")?.items).filter(item => !bucketItemIds(nextSession, "blocked_live_systems").has(item.id)).length
+    blockers_remaining: blockedRemainingForSession(nextSession)
   };
-  nextSession.tomorrow_first_move = dailyRunTomorrowFirstMove(nextSession);
   return { state: upsertSession(state, nextSession), session: nextSession };
 }
 
@@ -640,6 +751,11 @@ export function dailyRunSessionView(state = {}, options = {}) {
   const bestBucket = firstUnclearedBucket(snapshot, active.session || {});
   const activeBuckets = active.session?.bucket_snapshot?.buckets || [];
   const activeBucket = activeBuckets.find(bucket => bucket.key === active.session?.current_bucket_key) || activeBuckets[0] || null;
+  const remainingItems = (bucket) => {
+    if (!bucket) return [];
+    const cleared = bucketItemIds(active.session || {}, bucket.key);
+    return list(bucket.items).filter(item => !cleared.has(item.id));
+  };
   return {
     activeSession: active.session,
     stale: active.stale,
@@ -652,6 +768,10 @@ export function dailyRunSessionView(state = {}, options = {}) {
     bestBucket: bestBucket || null,
     bestBucketRemainingCount: bestBucket ? dailyRunBucketRemainingCount(bestBucket, active.session || {}) : 0,
     bestBucketHeadline: bestBucket ? dailyRunBucketHeadline(bestBucket, active.session || {}) : "0 items",
+    bestBucketItems: remainingItems(bestBucket),
+    bucketItemsByKey: Object.fromEntries(activeBuckets.map(bucket => [bucket.key, remainingItems(bucket)])),
+    activeBucket: activeBucket || null,
+    activeBucketItems: remainingItems(activeBucket),
     activeBucketRemainingCount: activeBucket ? dailyRunBucketRemainingCount(activeBucket, active.session || {}) : 0,
     activeBucketHeadline: activeBucket ? dailyRunBucketHeadline(activeBucket, active.session || {}) : "",
     counts: snapshot.counts,

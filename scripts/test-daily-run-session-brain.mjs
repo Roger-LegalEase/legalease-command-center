@@ -7,12 +7,17 @@ import {
   completeDailyRunSession,
   dailyRunBucketHeadline,
   dailyRunBucketRemainingCount,
+  completeDailyRunBucket,
+  completeDailyRunItem,
   createDailyRunSession,
   dailyRunSessionIsStale,
   dailyRunSessionView,
   dailyRunTomorrowFirstMove,
   markDailyRunSessionAbandoned,
+  jumpDailyRunBucket,
+  parkDailyRunBucket,
   parkDailyRunItem,
+  skipDailyRunBucket,
   summarizeDailyRunSession
 } from "./daily-run-session.mjs";
 
@@ -150,6 +155,29 @@ assert(active.newSinceStart.items.some(item => item.id === "new-after-start"), "
 const parked = parkDailyRunItem(started.state, started.session.session_id, "blocked_live_systems", "x-live-disconnected", "Cannot resolve until X session is repaired.", { now });
 assert.equal(parked.session.current_bucket_key, "due_today", "Parked blocked-live items should stop gating the current session.");
 assert.equal(parked.session.parked_items.length, 1, "Parked items should remain recorded with a reason.");
+
+const jumped = jumpDailyRunBucket(started.state, started.session.session_id, "creative_prep", { now });
+assert.equal(jumped.session.current_bucket_key, "creative_prep", "Skip to Bucket should jump without clearing or skipping work.");
+assert.equal((jumped.session.skipped_bucket_keys || []).length, 0, "Skip to Bucket must not mark buckets skipped.");
+assert.deepEqual(jumped.session.bucket_snapshot, started.session.bucket_snapshot, "Skip to Bucket must preserve the frozen session snapshot.");
+
+const skipped = skipDailyRunBucket(started.state, started.session.session_id, "blocked_live_systems", { now });
+assert.equal(skipped.session.current_bucket_key, "due_today", "Skip This Bucket should route to the next uncleared bucket.");
+assert((skipped.session.skipped_bucket_keys || []).includes("blocked_live_systems"), "Skip This Bucket should mark the bucket skipped for this session.");
+assert.deepEqual(skipped.session.bucket_snapshot, started.session.bucket_snapshot, "Skipping a bucket must not re-run or replace the frozen snapshot.");
+
+const completedItem = completeDailyRunItem(started.state, started.session.session_id, "blocked_live_systems", "x-live-disconnected", "Reconnected or moved forward.", { now });
+assert.equal(completedItem.session.current_bucket_key, "due_today", "Completing the only active bucket item should route to the next uncleared bucket.");
+assert.equal(dailyRunBucketRemainingCount(started.session.bucket_snapshot.buckets.find(bucket => bucket.key === "blocked_live_systems"), completedItem.session), 0, "Completed items should not remain in the bucket count.");
+assert.deepEqual(completedItem.session.bucket_snapshot, started.session.bucket_snapshot, "Completing an item must preserve the frozen session snapshot.");
+
+const parkedBucket = parkDailyRunBucket(started.state, started.session.session_id, "blocked_live_systems", "Waiting on external account", { now });
+assert.equal(parkedBucket.session.current_bucket_key, "due_today", "Parking a bucket should route to the next uncleared bucket.");
+assert(parkedBucket.session.parked_items.some(item => item.bucket_key === "blocked_live_systems" && item.item_id === "x-live-disconnected"), "Parking a bucket should park its remaining items with the reason.");
+
+const completedBucket = completeDailyRunBucket(started.state, started.session.session_id, "blocked_live_systems", { now });
+assert.equal(completedBucket.session.current_bucket_key, "due_today", "Completing a bucket should route to the next uncleared bucket.");
+assert((completedBucket.session.completed_bucket_keys || []).includes("blocked_live_systems"), "Completed bucket should be tracked for the session.");
 
 assert.equal(dailyRunSessionIsStale(started.session, { now: tomorrow }), true, "Sessions older than the local day should be stale.");
 assert.equal(dailyRunSessionIsStale(started.session, { now: "2026-06-05T23:01:00.000Z" }), true, "Sessions idle for more than eight hours should be stale.");

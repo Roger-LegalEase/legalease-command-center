@@ -74,12 +74,17 @@ import { buildEveningReflectionRecord, saveEveningReflection } from "./evening-r
 import { buildDailyCloseoutRecord, saveDailyCloseout } from "./daily-closeout.mjs";
 import {
   activeDailyRunSession,
+  completeDailyRunBucket,
+  completeDailyRunItem,
   completeDailyRunSession,
   createDailyRunSession,
   dailyRunSessionView,
+  jumpDailyRunBucket,
   markDailyRunSessionAbandoned,
+  parkDailyRunBucket,
   parkDailyRunItem,
   resumeDailyRunSession as resumeDailyRunSessionRecord,
+  skipDailyRunBucket,
   startFreshDailyRunSession
 } from "./daily-run-session.mjs";
 import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
@@ -13936,6 +13941,22 @@ function htmlShell() {
     .hero-panel { padding:18px 20px; display:grid; gap:14px; }
     .queue-card { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; align-items:start; padding:18px; }
     .queue-content { min-width:0; display:grid; gap:12px; align-content:start; }
+    .guided-queue-panel { margin:0 0 16px; border:1px solid rgba(0,169,157,.22); border-radius:12px; background:#fff; box-shadow:0 10px 28px rgba(8,20,95,.07); overflow:hidden; }
+    .guided-queue-head { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:16px; align-items:start; padding:16px; background:rgba(0,169,157,.06); border-bottom:1px solid rgba(0,169,157,.16); }
+    .guided-queue-head h2 { margin:4px 0 4px; font-size:24px; letter-spacing:0; }
+    .guided-queue-head p { margin:0; color:var(--muted); }
+    .guided-queue-meta { display:flex; flex-wrap:wrap; gap:7px; align-items:center; margin-top:8px; }
+    .guided-queue-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
+    .guided-queue-body { padding:16px; display:grid; gap:12px; }
+    .guided-bucket-list { display:flex; flex-wrap:wrap; gap:8px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:rgba(229,235,235,.3); }
+    .guided-bucket-list button.active { background:var(--ink); color:#fff; border-color:var(--ink); }
+    .guided-queue-item { border:1px solid var(--line); border-radius:8px; background:#fff; padding:14px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:start; }
+    .guided-queue-item h3 { margin:5px 0 4px; }
+    .guided-queue-item p { margin:0; color:var(--muted); }
+    .guided-item-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; max-width:420px; }
+    .guided-bulk-bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 12px; border:1px solid rgba(8,20,95,.1); border-radius:8px; background:#F8FAFC; }
+    .guided-park-form { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .guided-park-form select { width:auto; min-width:220px; }
     .image-stage { display:grid; gap:10px; position:sticky; top:88px; }
     .image-stage-title { display:flex; justify-content:space-between; gap:10px; align-items:center; }
     .image-stage-title strong { font-size:14px; }
@@ -15307,6 +15328,8 @@ function htmlShell() {
     let queueSort = "priority";
     let bulkMode = false;
     let selectedPosts = new Set();
+    let guidedQueueMode = true;
+    let selectedGuidedPosts = new Set();
     let queueDeleteDialog = null;
     let pendingPublishId = "";
     let systemCheckRanAt = "";
@@ -16823,6 +16846,150 @@ function htmlShell() {
       if (item.approvalStatus) return growthLabel(item.approvalStatus);
       if (item.reviewStatus) return growthLabel(item.reviewStatus);
       return "Needs review";
+    }
+
+    const guidedBucketCopy = {
+      blocked_live_systems:["Blocked items", "Reconnect or park blockers before operating the rest of the day.", "Blocker fix"],
+      due_today:["Due today", "Posts and tasks scheduled to go out today.", "Time-sensitive ship"],
+      overdue_followups:["Overdue follow-ups", "Partner and revenue follow-ups past due.", "Judgment follow-up"],
+      ready_to_ship:["Ready to ship", "Approved content waiting to be scheduled.", "Time-sensitive ship"],
+      bulk_review:["Bulk review", "Imported posts waiting for batch approval.", "Bulk approval"],
+      creative_prep:["Creative prep", "Items needing an image or asset before they can ship.", "Creative prep"],
+      reports_proof:["Review work", "Reports and proof-to-content needing a closer read.", "Review work"],
+      rcap_watch:["RCAP watch", "Readiness and watch items.", "Review work"],
+      paused_future:["Paused and future", "Meta-paused rows and items not due yet.", "Paused/future"]
+    };
+    const guidedParkingReasons = ["Waiting on external account", "Need more information", "Not doing today", "Blocked by Meta/security", "Needs partner response", "Other"];
+
+    function guidedQueueBucketItems(bucket = {}) {
+      const dailyRun = state.dailyRun || {};
+      return dailyRun.bucketItemsByKey?.[bucket.key] || [];
+    }
+
+    function guidedQueueItemPost(item = {}) {
+      return item.type === "social_post" ? (state.posts || []).find(post => post.id === item.id) || null : null;
+    }
+
+    function guidedQueueItemActionText(item = {}) {
+      if (item.id === "x-live-disconnected") return ["X blocked: connection needs refresh", "Reconnect X"];
+      if (item.id === "linkedin-live-disconnected") return ["LinkedIn blocked: post not approved", "Approve Post"];
+      if (item.type === "partner_followup") return ["Partner follow-up blocked: missing contact", "Add Contact"];
+      if (item.type === "report" || item.type === "proof_to_content") return ["Report blocked: missing source data", "Open Source"];
+      if (item.type === "rcap_watch") return ["RCAP paused: connection not active", "Review RCAP Setup"];
+      const post = guidedQueueItemPost(item) || {};
+      const platform = String(post.platform || item.platform || "").toLowerCase();
+      if (platform === "instagram" || platform === "facebook") return ["Instagram paused: Meta not connected", "Keep Paused"];
+      if (post.imageStatus === "needed" || !post.imageReadyAt && /image|creative/.test(String(post.status || item.status || ""))) return ["Instagram blocked: image required", "Generate Image"];
+      if (/live_gate/.test(String(item.source || ""))) return ["Publishing blocked: live gate off", "Open Settings"];
+      return ["Review this item and move it forward.", "Open item"];
+    }
+
+    function guidedQueueControlsForMode(mode = "", item = {}) {
+      const post = guidedQueueItemPost(item);
+      const postId = post?.id || "";
+      if (mode === "Blocker fix") return [
+        ["Reconnect X", "connectX()"],
+        ["Open Settings", "location.hash='settings'"],
+        ["Prepare Public Image", postId ? "generateQueueImageDraft('" + postId + "')" : "location.hash='assets'"],
+        ["Approve Post", postId ? "guidedSetPostStatus('" + postId + "','approved')" : "toast('Open the item to approve it internally.')"],
+        ["Fix Schedule", postId ? "guidedSetPostStatus('" + postId + "','scheduled')" : "toast('Open the schedule from Queue.')"]
+      ];
+      if (mode === "Time-sensitive ship") return [
+        ["Review", postId ? "openQueuePreview('" + postId + "')" : "toast('Open this item for review.')"],
+        ["Approve", postId ? "guidedSetPostStatus('" + postId + "','approved')" : "toast('Open this item to approve it.')"],
+        ["Schedule", postId ? "guidedSetPostStatus('" + postId + "','scheduled')" : "toast('Open this item to schedule it.')"],
+        ["Run Publisher in Command", "location.hash='command'"]
+      ];
+      if (mode === "Creative prep") return [
+        ["Generate Image", postId ? "generateQueueImageDraft('" + postId + "')" : "toast('Open the item to prepare an image.')"],
+        ["Regenerate", postId ? "generateQueueImageDraft('" + postId + "')" : "toast('Open the item to regenerate.')"],
+        ["Mark Image Ready", postId ? "guidedMarkImageReady('" + postId + "')" : "toast('Open the item to mark image ready.')"],
+        ["Prepare Public Image", postId ? "generateQueueImageDraft('" + postId + "')" : "location.hash='assets'"]
+      ];
+      if (mode === "Judgment follow-up") return [
+        ["Open item", "location.hash='tasks'"],
+        ["Mark waiting", "toast('Marked waiting internally.')"],
+        ["Set next touch", "location.hash='tasks'"],
+        ["Mark done", "toast('Marked done internally.')"]
+      ];
+      if (mode === "Review work") return [
+        ["Preview", postId ? "openQueuePreview('" + postId + "')" : "location.hash='proof'"],
+        ["Mark Reviewed", postId ? "guidedMarkCopyReviewed('" + postId + "')" : "toast('Marked reviewed internally.')"],
+        ["Approve", postId ? "guidedSetPostStatus('" + postId + "','approved')" : "toast('Approved internally.')"],
+        ["Request changes / Park", "parkGuidedItem('" + item.id + "')"]
+      ];
+      if (mode === "Paused/future") return [
+        ["Keep Paused", "parkGuidedItem('" + item.id + "')"],
+        ["Open Settings", "location.hash='settings'"],
+        ["Hide for Session", "parkGuidedItem('" + item.id + "')"]
+      ];
+      return [
+        ["Preview", postId ? "openQueuePreview('" + postId + "')" : "toast('Open this item.')"],
+        ["Mark Reviewed", postId ? "guidedMarkCopyReviewed('" + postId + "')" : "toast('Marked reviewed internally.')"]
+      ];
+    }
+
+    function guidedQueueBucketHeader(bucket = {}) {
+      const dailyRun = state.dailyRun || {};
+      const active = dailyRun.activeSession || {};
+      const copy = guidedBucketCopy[bucket.key] || [bucket.label || "Current bucket", bucket.summary || "Review this work.", "Review work"];
+      const remaining = bucket.key === dailyRun.activeBucket?.key ? Number(dailyRun.activeBucketRemainingCount || 0) : guidedQueueBucketItems(bucket).length;
+      const headline = bucket.key === dailyRun.activeBucket?.key ? (dailyRun.activeBucketHeadline || "") : (remaining + " item" + (remaining === 1 ? "" : "s"));
+      return \`<div class="guided-queue-head" data-brain-fields="activeBucketRemainingCount activeBucketHeadline">
+        <div>
+          <div class="daily-run-kicker">Guided Queue · Stored session snapshot</div>
+          <h2>\${esc(copy[0])}</h2>
+          <p>\${esc(copy[1])}</p>
+          <div class="guided-queue-meta"><span class="badge info">remaining count: \${esc(headline || String(remaining) + " remaining")}</span><span class="badge warn">Decision mode: \${esc(copy[2])}</span><span class="badge good">Frozen snapshot</span></div>
+        </div>
+        <div class="guided-queue-actions">
+          <button class="primary" type="button" onclick="completeGuidedBucket()">Continue / Complete Bucket</button>
+          <button type="button" onclick="skipGuidedBucket()">Skip This Bucket</button>
+          <button type="button" onclick="exitGuidedQueueMode()">Normal Queue</button>
+        </div>
+      </div>\`;
+    }
+
+    function guidedQueueWorkbenchHtml() {
+      const dailyRun = state.dailyRun || {};
+      const active = dailyRun.activeSession || null;
+      if (!active || !guidedQueueMode) return active ? \`<div class="guided-bulk-bar"><strong>Guided Daily Run is active.</strong><button type="button" onclick="resumeGuidedQueueMode()">Resume guided path</button></div>\` : "";
+      const snapshot = active.bucket_snapshot || {};
+      const buckets = snapshot.buckets || [];
+      const bucket = buckets.find(item => item.key === active.current_bucket_key) || dailyRun.activeBucket || buckets[0] || {};
+      const items = guidedQueueBucketItems(bucket);
+      const copy = guidedBucketCopy[bucket.key] || [bucket.label || "Current bucket", bucket.summary || "", "Review work"];
+      const mode = copy[2];
+      const bulkEligible = mode === "Bulk approval";
+      const selectedVisible = Array.from(selectedGuidedPosts).filter(id => items.some(item => item.id === id));
+      if (selectedVisible.length !== selectedGuidedPosts.size) selectedGuidedPosts = new Set(selectedVisible);
+      return \`<section class="guided-queue-panel">
+        \${guidedQueueBucketHeader(bucket)}
+        <div class="guided-queue-body">
+          <div class="guided-bucket-list" aria-label="Skip to Bucket">\${buckets.map(next => \`<button type="button" class="\${next.key === bucket.key ? "active" : ""}" onclick="jumpGuidedBucket('\${esc(next.key)}')">\${esc((guidedBucketCopy[next.key] || [next.label])[0])} \${Number(next.count || (next.items || []).length || 0)}</button>\`).join("")}</div>
+          \${bulkEligible ? \`<div class="guided-bulk-bar"><strong>\${selectedGuidedPosts.size} selected</strong><button type="button" onclick="selectAllVisibleGuidedItems()">Select All Visible</button><button type="button" onclick="clearGuidedSelection()">Clear Selection</button><button type="button" onclick="markSelectedGuidedPostsReviewed()">Mark Reviewed</button><button type="button" onclick="approveSelectedGuidedPosts()">Approve Selected</button><button class="primary" type="button" onclick="approveBatchWithImportedSchedule()">Approve Batch with Imported Schedule</button><button type="button" onclick="openGuidedBulkDeleteDialog()">Soft Delete Selected</button></div>\` : ""}
+          \${!items.length ? \`<div class="panel muted"><h2>This bucket is clear.</h2><p>Continue to the next bucket or return to Today for the session summary.</p><button class="primary" type="button" onclick="completeGuidedBucket()">Continue</button></div>\` : items.map(item => {
+            const post = guidedQueueItemPost(item);
+            const actionText = guidedQueueItemActionText(item);
+            const controls = guidedQueueControlsForMode(mode, item);
+            return \`<article class="guided-queue-item" data-bucket="\${esc(bucket.key)}" data-item-id="\${esc(item.id)}">
+              <div>
+                <div class="queue-review-kicker">\${bulkEligible && post ? \`<label class="queue-select"><input type="checkbox" \${selectedGuidedPosts.has(item.id) ? "checked" : ""} onchange="toggleGuidedSelection('\${esc(item.id)}', this.checked)"> Select</label>\` : ""}<span class="queue-type-line">\${esc(item.type || "work item")}</span><span class="badge info">\${esc(item.status || post?.status || "Needs review")}</span></div>
+                <h3>\${esc(item.title || post?.title || "Queue item")}</h3>
+                <p>\${esc(item.detail || post?.caption || post?.body || "Review this item before it moves forward.")}</p>
+                <p class="why-line">\${esc(actionText[0])} → \${esc(actionText[1])}</p>
+                \${post ? queueWorkflowStatusHtml(post, imageForPost(post.id)) : ""}
+              </div>
+              <div class="guided-item-actions">
+                \${controls.map(([label, action]) => \`<button type="button" \${label === "Run Publisher in Command" ? "" : ""} onclick="\${action}">\${esc(label)}</button>\`).join("")}
+                <button type="button" onclick="completeGuidedItem('\${esc(bucket.key)}','\${esc(item.id)}')">Moved Forward</button>
+                <button type="button" onclick="parkGuidedItem('\${esc(item.id)}')">Park Item</button>
+              </div>
+            </article>\`;
+          }).join("")}
+          <div class="guided-park-form"><strong>Park Bucket</strong><select id="guided-park-bucket-reason">\${guidedParkingReasons.map(reason => \`<option>\${esc(reason)}</option>\`).join("")}</select><button type="button" onclick="parkGuidedBucket()">Park Bucket</button></div>
+        </div>
+      </section>\`;
     }
 
     function queueReviewRows(reviewPosts) {
@@ -25708,6 +25875,7 @@ function htmlShell() {
             <button type="button" onclick="location.href='/sources/import-social-calendar'">Import Calendar</button>
           </div>
           <div class="queue-summary-grid">\${queueReviewSummaryCards(reviewPosts).map(([label, value, detail]) => \`<article class="queue-summary-card"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
+            \${guidedQueueWorkbenchHtml()}
             \${queueReviewTabsHtml(reviewPosts)}
             \${selectedPosts.size ? \`<div class="bulk-bar queue-delete-bulk"><strong>\${selectedPosts.size} selected</strong><button type="button" onclick="openBulkQueueDeleteDialog()">Delete Selected</button></div>\` : ""}
           </div>
@@ -27510,6 +27678,220 @@ function htmlShell() {
       renderQueueDeleteDialog();
     }
 
+    function activeDailyRunClientSession() {
+      return state.dailyRun?.activeSession || null;
+    }
+
+    async function updateDailyRunFromResult(result = {}) {
+      if (result.state) state = result.state;
+      if (result.dailyRun) state.dailyRun = result.dailyRun;
+      selectedGuidedPosts = new Set();
+      if (!state.dailyRun?.activeSession?.current_bucket_key) {
+        location.hash = "today";
+      }
+      render();
+    }
+
+    async function completeGuidedBucket() {
+      const active = activeDailyRunClientSession();
+      if (!active?.session_id || !active.current_bucket_key) {
+        toast("Start a Daily Run first.");
+        return;
+      }
+      const result = await api("/api/daily-run/complete-bucket", {
+        method:"POST",
+        body:JSON.stringify({ session_id:active.session_id, bucket_key:active.current_bucket_key })
+      });
+      await updateDailyRunFromResult(result);
+      toast(result.message || "Bucket completed.");
+    }
+
+    async function skipGuidedBucket() {
+      const active = activeDailyRunClientSession();
+      if (!active?.session_id || !active.current_bucket_key) {
+        toast("Start a Daily Run first.");
+        return;
+      }
+      const result = await api("/api/daily-run/skip-bucket", {
+        method:"POST",
+        body:JSON.stringify({ session_id:active.session_id, bucket_key:active.current_bucket_key })
+      });
+      await updateDailyRunFromResult(result);
+      toast(result.message || "Bucket skipped for this session.");
+    }
+
+    async function jumpGuidedBucket(bucketKey) {
+      const active = activeDailyRunClientSession();
+      if (!active?.session_id) {
+        toast("Start a Daily Run first.");
+        return;
+      }
+      const result = await api("/api/daily-run/jump-bucket", {
+        method:"POST",
+        body:JSON.stringify({ session_id:active.session_id, bucket_key:bucketKey })
+      });
+      await updateDailyRunFromResult(result);
+      toast(result.message || "Bucket opened. Session state preserved.");
+    }
+
+    async function completeGuidedItem(bucketKey, itemId, reason = "Moved forward from Guided Queue.") {
+      const active = activeDailyRunClientSession();
+      if (!active?.session_id) {
+        toast("Start a Daily Run first.");
+        return;
+      }
+      const result = await api("/api/daily-run/complete-item", {
+        method:"POST",
+        body:JSON.stringify({ session_id:active.session_id, bucket_key:bucketKey || active.current_bucket_key, item_id:itemId, reason })
+      });
+      await updateDailyRunFromResult(result);
+      toast(result.message || "Item moved forward.");
+    }
+
+    async function parkGuidedItem(itemId) {
+      const active = activeDailyRunClientSession();
+      if (!active?.session_id || !active.current_bucket_key) {
+        toast("Start a Daily Run first.");
+        return;
+      }
+      const reason = window.prompt("Parking reason", "Not doing today");
+      if (!reason) {
+        toast("Parking requires a reason.");
+        return;
+      }
+      const result = await api("/api/daily-run/park", {
+        method:"POST",
+        body:JSON.stringify({ session_id:active.session_id, bucket_key:active.current_bucket_key, item_id:itemId, reason })
+      });
+      await updateDailyRunFromResult(result);
+      toast(result.message || "Item parked for this session.");
+    }
+
+    async function parkGuidedBucket() {
+      const active = activeDailyRunClientSession();
+      if (!active?.session_id || !active.current_bucket_key) {
+        toast("Start a Daily Run first.");
+        return;
+      }
+      const reason = document.getElementById("guided-park-bucket-reason")?.value || "Not doing today";
+      const result = await api("/api/daily-run/park-bucket", {
+        method:"POST",
+        body:JSON.stringify({ session_id:active.session_id, bucket_key:active.current_bucket_key, reason })
+      });
+      await updateDailyRunFromResult(result);
+      toast(result.message || "Bucket parked for this session.");
+    }
+
+    function exitGuidedQueueMode() {
+      guidedQueueMode = false;
+      selectedGuidedPosts = new Set();
+      render();
+    }
+
+    function resumeGuidedQueueMode() {
+      guidedQueueMode = true;
+      selectedPosts = new Set();
+      render();
+    }
+
+    function toggleGuidedSelection(id, checked) {
+      if (checked) selectedGuidedPosts.add(id);
+      else selectedGuidedPosts.delete(id);
+      render();
+    }
+
+    function selectAllVisibleGuidedItems() {
+      const items = state.dailyRun?.activeBucketItems || [];
+      selectedGuidedPosts = new Set(items.filter(item => item.type === "social_post").map(item => item.id));
+      render();
+    }
+
+    function clearGuidedSelection() {
+      selectedGuidedPosts = new Set();
+      render();
+    }
+
+    async function guidedPatchPost(id, patch = {}, reason = "Moved forward from Guided Queue.") {
+      const result = await api("/api/posts/update", { method:"POST", body:JSON.stringify({ id, patch }) });
+      state = result.state;
+      const active = activeDailyRunClientSession();
+      if (active?.session_id && active.current_bucket_key) {
+        const completed = await api("/api/daily-run/complete-item", {
+          method:"POST",
+          body:JSON.stringify({ session_id:active.session_id, bucket_key:active.current_bucket_key, item_id:id, reason })
+        });
+        await updateDailyRunFromResult(completed);
+      } else {
+        render();
+      }
+    }
+
+    async function guidedMarkCopyReviewed(id) {
+      await guidedPatchPost(id, { copyReviewed:true, copyReviewedAt:new Date().toISOString() }, "Marked reviewed in Guided Queue.");
+      toast("Marked reviewed.");
+    }
+
+    async function guidedMarkImageReady(id) {
+      await guidedPatchPost(id, { imageStatus:"ready", imageReadyAt:new Date().toISOString() }, "Image marked ready in Guided Queue.");
+      toast("Image marked ready.");
+    }
+
+    async function guidedSetPostStatus(id, status) {
+      const patch = { status };
+      if (status === "approved") patch.approved_at = new Date().toISOString();
+      if (status === "scheduled") {
+        const post = state.posts.find(item => item.id === id) || {};
+        patch.scheduledFor = post.scheduledFor || post.scheduled_at || new Date().toISOString();
+        patch.scheduled_at = patch.scheduledFor;
+      }
+      await guidedPatchPost(id, patch, "Status moved forward in Guided Queue.");
+      toast(statusLabels[status] || status);
+    }
+
+    async function markSelectedGuidedPostsReviewed() {
+      const ids = Array.from(selectedGuidedPosts);
+      for (const id of ids) await guidedMarkCopyReviewed(id);
+      selectedGuidedPosts = new Set();
+      render();
+    }
+
+    async function approveSelectedGuidedPosts() {
+      const ids = Array.from(selectedGuidedPosts);
+      for (const id of ids) await guidedSetPostStatus(id, "approved");
+      selectedGuidedPosts = new Set();
+      render();
+    }
+
+    async function approveBatchWithImportedSchedule() {
+      const ids = Array.from(selectedGuidedPosts).filter(id => {
+        const post = state.posts.find(item => item.id === id) || {};
+        return post.sourceType === "campaign_upload" || post.sourceReference === "Campaign Upload" || /import/i.test(String(post.sourceTitle || ""));
+      });
+      if (!ids.length) {
+        toast("Select imported calendar posts first.");
+        return;
+      }
+      for (const id of ids) {
+        const post = state.posts.find(item => item.id === id) || {};
+        const scheduledFor = post.scheduledFor || post.scheduled_at || post.scheduledAt || new Date().toISOString();
+        await guidedPatchPost(id, { status:"scheduled", copyReviewed:true, approved_at:new Date().toISOString(), scheduledFor, scheduled_at:scheduledFor }, "Approved batch with imported schedule.");
+      }
+      selectedGuidedPosts = new Set();
+      render();
+      toast("Selected imported posts approved with imported schedule. Nothing was published.");
+    }
+
+    function openGuidedBulkDeleteDialog() {
+      const ids = Array.from(selectedGuidedPosts).filter(id => state.posts.some(post => post.id === id && isQueueItemVisible(post)));
+      if (!ids.length) {
+        toast("Select at least one visible guided item.");
+        return;
+      }
+      if (!window.confirm("Remove selected queue items from this working set?")) return;
+      queueDeleteDialog = { mode:"bulk", ids };
+      confirmQueueDelete();
+    }
+
     async function confirmQueueDelete() {
       const ids = Array.isArray(queueDeleteDialog?.ids) ? queueDeleteDialog.ids : [];
       if (!ids.length) {
@@ -27533,6 +27915,7 @@ function htmlShell() {
         state = result.state;
       }
       ids.forEach(id => selectedPosts.delete(id));
+      ids.forEach(id => selectedGuidedPosts.delete(id));
       queueDeleteDialog = null;
       renderQueueDeleteDialog();
       render();
@@ -29405,6 +29788,106 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not park Daily Run item." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/daily-run/skip-bucket" && request.method === "POST") {
+    try {
+      const body = await readJson(request);
+      const currentState = await store.readState();
+      const active = activeDailyRunSession(currentState);
+      const sessionId = body.session_id || active.session?.session_id || "";
+      const result = skipDailyRunBucket(currentState, sessionId, body.bucket_key || body.bucketKey || active.session?.current_bucket_key || "");
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Bucket skipped for this Daily Run. Work items were not changed.",
+        session: result.session,
+        dailyRun: dailyRunSessionView(dailyRunEngineState(result.state)),
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not skip Daily Run bucket." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/daily-run/jump-bucket" && request.method === "POST") {
+    try {
+      const body = await readJson(request);
+      const currentState = await store.readState();
+      const active = activeDailyRunSession(currentState);
+      const sessionId = body.session_id || active.session?.session_id || "";
+      const result = jumpDailyRunBucket(currentState, sessionId, body.bucket_key || body.bucketKey || "");
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Bucket opened. Session snapshot preserved.",
+        session: result.session,
+        dailyRun: dailyRunSessionView(dailyRunEngineState(result.state)),
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not jump to Daily Run bucket." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/daily-run/complete-bucket" && request.method === "POST") {
+    try {
+      const body = await readJson(request);
+      const currentState = await store.readState();
+      const active = activeDailyRunSession(currentState);
+      const sessionId = body.session_id || active.session?.session_id || "";
+      const result = completeDailyRunBucket(currentState, sessionId, body.bucket_key || body.bucketKey || active.session?.current_bucket_key || "");
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: result.session.current_bucket_key ? "Bucket completed. Next bucket is ready." : "All Daily Run buckets are clear. Return to Today for summary.",
+        session: result.session,
+        dailyRun: dailyRunSessionView(dailyRunEngineState(result.state)),
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not complete Daily Run bucket." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/daily-run/complete-item" && request.method === "POST") {
+    try {
+      const body = await readJson(request);
+      const currentState = await store.readState();
+      const active = activeDailyRunSession(currentState);
+      const sessionId = body.session_id || active.session?.session_id || "";
+      const result = completeDailyRunItem(currentState, sessionId, body.bucket_key || body.bucketKey || active.session?.current_bucket_key || "", body.item_id || body.itemId || "", body.reason || "");
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: result.session.current_bucket_key ? "Item moved forward. Next item or bucket is ready." : "Daily Run bucket work is clear. Return to Today for summary.",
+        session: result.session,
+        dailyRun: dailyRunSessionView(dailyRunEngineState(result.state)),
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not complete Daily Run item." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/daily-run/park-bucket" && request.method === "POST") {
+    try {
+      const body = await readJson(request);
+      const currentState = await store.readState();
+      const active = activeDailyRunSession(currentState);
+      const sessionId = body.session_id || active.session?.session_id || "";
+      const result = parkDailyRunBucket(currentState, sessionId, body.bucket_key || body.bucketKey || active.session?.current_bucket_key || "", body.reason || "");
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Bucket parked for this Daily Run. Work items stay visible elsewhere.",
+        session: result.session,
+        dailyRun: dailyRunSessionView(dailyRunEngineState(result.state)),
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not park Daily Run bucket." }, 400);
     }
     return;
   }
