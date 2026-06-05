@@ -127,6 +127,10 @@ function isImportedCalendarPost(post = {}) {
   return /campaign_upload|social_calendar|import/i.test([post.sourceType, post.sourceReference, post.sourceTitle].join(" "));
 }
 
+function isQuickCapturedSocialPost(post = {}) {
+  return post.quickCaptureType === "social_post" || /quick_capture/i.test([post.sourceType, post.sourceReference].join(" "));
+}
+
 function postIsDeleted(post = {}) {
   return post.status === "deleted" || Boolean(post.deletedAt);
 }
@@ -145,7 +149,7 @@ function postNeedsImage(post = {}) {
 }
 
 function postNeedsBulkReview(post = {}) {
-  if (!isImportedCalendarPost(post) || postIsDeleted(post) || postIsPublished(post)) return false;
+  if (!(isImportedCalendarPost(post) || isQuickCapturedSocialPost(post)) || postIsDeleted(post) || postIsPublished(post)) return false;
   const platform = postPlatform(post);
   const status = asText(post.status).toLowerCase();
   if (isMetaPlatform(platform)) return false;
@@ -190,6 +194,10 @@ function isPartnerFollowup(task = {}) {
 
 function isReportLike(item = {}) {
   return /report|proof|evidence|investor|data room|data_room/i.test([item.type, item.reportType, item.reportTitle, item.title, item.status, item.nextAction].join(" "));
+}
+
+function isChannelReviewTask(item = {}) {
+  return /channel review|channel readiness|connector review/i.test([item.quickCaptureType, item.sourceType, item.category, item.title, item.description, item.notes, item.nextAction].join(" "));
 }
 
 function isRcapLike(item = {}) {
@@ -339,6 +347,18 @@ export function buildDailyRunSnapshot(state = {}, options = {}) {
 
   for (const task of list(state.tasks)) {
     const due = taskDueDate(task);
+    if (taskOpen(task) && isChannelReviewTask(task)) {
+      buckets.reports_proof.items.push(itemRecord({
+        id: task.id,
+        title: task.title || "Channel review",
+        detail: task.nextAction || task.description || "Review channel readiness.",
+        type: "channel_review",
+        route: "settings",
+        source: task.sourceType || "task",
+        createdAt: task.createdAt || task.created_at || ""
+      }));
+      continue;
+    }
     if (!taskOpen(task) || !due || due > today || !isPartnerFollowup(task)) continue;
     buckets.overdue_followups.items.push(itemRecord({
       id: task.id,
@@ -690,9 +710,11 @@ export function completeDailyRunSession(state = {}, sessionId = "", options = {}
   };
   nextSession.session_counts = {
     ...(session.session_counts || {}),
+    posts_published: Number(options.publisherSummary?.published ?? session.session_counts?.posts_published ?? 0),
     blockers_parked: list(session.parked_items).filter(item => item.bucket_key === "blocked_live_systems").length,
     blockers_remaining: list(session.bucket_snapshot?.buckets?.find(bucket => bucket.key === "blocked_live_systems")?.items).filter(item => !bucketItemIds(session, "blocked_live_systems").has(item.id)).length
   };
+  if (options.publisherSummary) nextSession.publisher_summary = options.publisherSummary;
   nextSession.tomorrow_first_move = dailyRunTomorrowFirstMove(nextSession);
   return { state: upsertSession(state, nextSession), session: nextSession };
 }
@@ -740,6 +762,7 @@ export function summarizeDailyRunSession(session = {}) {
     followups_prepared: Number(counts.followups_prepared || 0),
     blockers_parked: Number(counts.blockers_parked || 0),
     blockers_remaining: Number(counts.blockers_remaining || 0),
+    skipped_buckets: list(session.skipped_bucket_keys).length,
     tomorrow_first_move: session.tomorrow_first_move || dailyRunTomorrowFirstMove(session)
   };
 }

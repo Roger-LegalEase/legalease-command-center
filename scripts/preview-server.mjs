@@ -72,6 +72,7 @@ import { createCaptureInboxItem, routeCaptureInboxItem } from "./lee-quick-captu
 import { buildMorningBriefRecord, saveMorningBrief } from "./morning-brief.mjs";
 import { buildEveningReflectionRecord, saveEveningReflection } from "./evening-reflection.mjs";
 import { buildDailyCloseoutRecord, saveDailyCloseout } from "./daily-closeout.mjs";
+import { createDailyRunQuickCapture, dailyRunQuickCaptureTypes } from "./daily-run-quick-capture.mjs";
 import {
   activeDailyRunSession,
   completeDailyRunBucket,
@@ -5219,6 +5220,24 @@ async function runPublishingWorker() {
     }
   }
   return { state, results, message: `${results.length} due post${results.length === 1 ? "" : "s"} processed.` };
+}
+
+function serverList(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function publishingRunSummaryFromResults(results = [], options = {}) {
+  const channels = serverList(results).flatMap(result => serverList(result.channels));
+  return {
+    id: options.id || `publisher-run-${Date.now()}`,
+    dueChecked: Number(options.dueChecked ?? serverList(results).length),
+    published: channels.filter(item => item.status === "posted").length,
+    blocked: channels.filter(item => /blocked/.test(String(item.status || ""))).length,
+    failed: channels.filter(item => /failed/.test(String(item.status || ""))).length,
+    skipped: Number(options.skipped || 0),
+    lastRunTime: options.lastRunTime || new Date().toISOString(),
+    source: "api/publishing/run"
+  };
 }
 
 async function publishPostNow(postId) {
@@ -15330,6 +15349,8 @@ function htmlShell() {
     let selectedPosts = new Set();
     let guidedQueueMode = true;
     let selectedGuidedPosts = new Set();
+    let dailyRunQuickCaptureResult = null;
+    let publisherLastRunSummary = null;
     let queueDeleteDialog = null;
     let pendingPublishId = "";
     let systemCheckRanAt = "";
@@ -16234,6 +16255,96 @@ function htmlShell() {
         const result = await api("/api/daily-run/abandon", { method:"POST", body:JSON.stringify({}) });
         applyDailyRunResult(result, "Daily Run abandoned.");
       }, "Could not abandon Daily Run.");
+    }
+
+    function dailyRunQuickCaptureHtml(context = "today") {
+      const typeOptions = [
+        ["partner_followup", "Partner Follow-up"],
+        ["social_post", "Social Post"],
+        ["report_task", "Report Task"],
+        ["proof_to_content_task", "Proof-to-Content Task"],
+        ["channel_review", "Channel Review"],
+        ["rcap_task", "RCAP Task / Placeholder"]
+      ];
+      const result = dailyRunQuickCaptureResult;
+      const optionsHtml = typeOptions.map(([value, label]) => '<option value="' + esc(value) + '">' + esc(label) + '</option>').join("");
+      const resultHtml = result ? '<div class="guided-bulk-bar"><strong>' + esc(result.message || "Captured.") + '</strong><button type="button" onclick="location.hash=\\'queue\\'">Open in Queue</button><button type="button" onclick="dailyRunQuickCaptureResult=null; render()">Capture another</button><button type="button" onclick="dailyRunQuickCaptureResult=null; render()">Done</button></div>' : "";
+      return '<section class="daily-run-capture-panel" data-context="' + esc(context) + '">' +
+        '<div class="daily-run-kicker">Quick Capture · does not start a session</div>' +
+        '<h3>Quick Capture one thing</h3>' +
+        '<p class="muted">Add one task, post, report, proof item, channel review, or RCAP placeholder. The Daily Run brain decides where it surfaces later.</p>' +
+        '<form class="rail-form today-capture-form" onsubmit="quickCaptureOperator(event)">' +
+          '<div class="two">' +
+            '<label>Type<select name="type">' + optionsHtml + '</select></label>' +
+            '<label>Priority<select name="priority"><option>medium</option><option>high</option><option>low</option></select></label>' +
+          '</div>' +
+          '<label>Title or short description<input name="title" required placeholder="What needs to be captured?"></label>' +
+          '<div class="two">' +
+            '<label>Due date<input name="dueDate" type="date"></label>' +
+            '<label>Related partner / campaign / source<input name="related" placeholder="Optional"></label>' +
+          '</div>' +
+          '<label>Notes<textarea name="notes" rows="2" placeholder="Optional context"></textarea></label>' +
+          '<div class="capture-button-row"><button class="primary" type="submit">Capture</button><button type="button" onclick="this.closest(\\'form\\')?.reset()">Capture another</button><button type="button" onclick="dailyRunQuickCaptureResult=null; render()">Done</button></div>' +
+        '</form>' +
+        resultHtml +
+      '</section>';
+    }
+
+    async function quickCaptureOperator(event) {
+      event.preventDefault();
+      const payload = formObject(event.target);
+      await safeAction(async () => {
+        const result = await api("/api/daily-run/quick-capture", {
+          method:"POST",
+          body:JSON.stringify(payload)
+        });
+        state = hydrateStatePayload(result.state, "daily-run-quick-capture");
+        if (result.dailyRun) state.dailyRun = result.dailyRun;
+        dailyRunQuickCaptureResult = { message:result.message, item:result.item };
+        event.target.reset();
+        render();
+        return result.message || "Captured. It will surface in your next session.";
+      }, "Could not capture Daily Run item.");
+    }
+
+    function publisherSummaryFromResults(results = [], options = {}) {
+      const channels = (results || []).flatMap(result => result.channels || []);
+      return {
+        dueChecked: Number(options.dueChecked ?? results.length ?? 0),
+        published: channels.filter(item => item.status === "posted").length,
+        blocked: channels.filter(item => /blocked/.test(String(item.status || ""))).length,
+        failed: channels.filter(item => /failed/.test(String(item.status || ""))).length,
+        skipped: Number(options.skipped || 0),
+        lastRunTime: options.lastRunTime || new Date().toISOString()
+      };
+    }
+
+    function commandPublisherSummaryHtml() {
+      const summary = publisherLastRunSummary || state.dailyRunPublisherRuns?.[0] || { dueChecked:0, published:0, blocked:0, failed:0, skipped:0, lastRunTime:"Not run yet" };
+      const rows = [
+        ["due checked", summary.dueChecked || 0],
+        ["published", summary.published || 0],
+        ["blocked", summary.blocked || 0],
+        ["failed", summary.failed || 0],
+        ["skipped", summary.skipped || 0],
+        ["last run time", summary.lastRunTime || "Not run yet"]
+      ].map(([label, value]) => '<div class="command-snapshot-row"><strong>' + esc(label) + '</strong><span>' + esc(String(value)) + '</span></div>').join("");
+      return '<section class="command-next-card command-publisher-panel">' +
+        '<div class="growth-card-head"><h2>Run Scheduled Publisher</h2><small>Uses existing scheduled worker</small></div>' +
+        '<p>Runs the safe scheduled publisher. It still checks approvals, scheduled time, account connection, live gates, and duplicate prevention before anything moves.</p>' +
+        '<div class="command-snapshot-list">' + rows + '</div>' +
+        '<div class="growth-card-actions"><button class="primary" type="button" onclick="runScheduledPublisherFromCommand()">Run Scheduled Publisher</button><button type="button" onclick="location.hash=\\'queue\\'">Review blocked work</button></div>' +
+      '</section>';
+    }
+
+    async function runScheduledPublisherFromCommand() {
+      await safeAction(async () => {
+        const result = await api("/api/publishing/run", { method:"POST" });
+        state = hydrateStatePayload(result.state, "scheduled-publisher-run");
+        publisherLastRunSummary = publisherSummaryFromResults(result.results || [], result.summary || {});
+        render();
+        return result.message || "Scheduled publisher checked due work.";
+      }, "Could not run scheduled publisher.");
     }
 
     async function startFreshDailyRunSession() {
@@ -23042,6 +23153,7 @@ function htmlShell() {
             <button type="button" onclick="startFreshDailyRunSession()">Start Fresh</button>
             <button type="button" onclick="abandonDailyRunSession()">Mark Abandoned</button>
           </div>
+          \${dailyRunQuickCaptureHtml("today-stale")}
         </section>\`;
       }
       if (active) {
@@ -23068,12 +23180,14 @@ function htmlShell() {
             <button type="button" onclick="location.hash='queue'">Open Current Work</button>
             <button type="button" onclick="endDailyRunSession()">End Session</button>
           </div>
+          \${dailyRunQuickCaptureHtml("today-active")}
         </section>\`;
       }
       if (completed) {
         return \`<section class="daily-run-panel completed">
           <div class="daily-run-kicker">Guided Daily Run · Surface → Move → Confirm</div>
-          <h2>Session summary</h2>
+          <h2>Session summary: Today’s LegalEase OS run is complete.</h2>
+          <p class="muted"><strong>What moved:</strong> review, approvals, schedules, follow-ups, and parked blockers recorded during this run.</p>
           <div class="daily-run-counts">
             <span><strong>\${esc(String(summary.items_reviewed || 0))}</strong> items reviewed</span>
             <span><strong>\${esc(String(summary.items_approved || 0))}</strong> items approved</span>
@@ -23082,9 +23196,13 @@ function htmlShell() {
             <span><strong>\${esc(String(summary.followups_prepared || 0))}</strong> follow-ups prepared</span>
             <span><strong>\${esc(String(summary.blockers_parked || 0))}</strong> blockers parked</span>
             <span><strong>\${esc(String(summary.blockers_remaining || 0))}</strong> blockers remaining</span>
+            <span><strong>\${esc(String(summary.skipped_buckets || 0))}</strong> skipped buckets</span>
           </div>
+          <p><strong>What remains:</strong> \${esc(String(summary.blockers_remaining || 0))} blockers and \${esc(String(summary.skipped_buckets || 0))} skipped bucket(s) remain for later review.</p>
+          <p><strong>What to do first next time:</strong> \${esc(summary.tomorrow_first_move || completed.tomorrow_first_move || "Start with a fresh Daily Run.")}</p>
           <p><strong>tomorrow’s first move:</strong> \${esc(summary.tomorrow_first_move || completed.tomorrow_first_move || "Start with a fresh Daily Run.")}</p>
           <div class="daily-run-actions"><button class="primary" type="button" onclick="startDailyRunSession()">Start Session</button></div>
+          \${dailyRunQuickCaptureHtml("today-completed")}
         </section>\`;
       }
       return \`<section class="daily-run-panel">
@@ -23093,6 +23211,7 @@ function htmlShell() {
         <p>\${esc(bucketSummary(bestBucket))}</p>
         \${countsHtml}
         <div class="daily-run-actions"><button class="primary" type="button" onclick="startDailyRunSession()">Start Session</button></div>
+        \${dailyRunQuickCaptureHtml("today-start")}
       </section>\`;
     }
 
@@ -23649,6 +23768,8 @@ function htmlShell() {
             <button type="button" onclick="location.hash='sources'">Open Sources</button>
           </div>
         </section>
+        \${commandPublisherSummaryHtml()}
+        <section class="growth-card">\${dailyRunQuickCaptureHtml("command")}</section>
         <section class="growth-card">
           <div class="growth-card-head"><h2>Command Summary</h2><small>What needs attention</small></div>
           <div class="growth-summary-grid">\${summaryCards.map(([label, value, detail, urgent]) => \`<article class="growth-summary-card \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
@@ -29693,6 +29814,26 @@ async function handleRequest(request, response) {
     return;
   }
 
+  if (url.pathname === "/api/daily-run/quick-capture" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const currentState = await store.readState();
+      const result = createDailyRunQuickCapture(currentState, input, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: result.message,
+        item: result.item,
+        collection: result.collection,
+        surfacingBucket: result.surfacingBucket ? { key:result.surfacingBucket.key, label:result.surfacingBucket.label } : null,
+        dailyRun: dailyRunSessionView(dailyRunEngineState(result.state)),
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not save Daily Run Quick Capture item." }, 400);
+    }
+    return;
+  }
+
   if (url.pathname === "/api/daily-run/start" && request.method === "POST") {
     try {
       const body = await readJson(request);
@@ -29738,7 +29879,7 @@ async function handleRequest(request, response) {
       const currentState = await store.readState();
       const active = activeDailyRunSession(currentState);
       const sessionId = body.session_id || active.session?.session_id || "";
-      const result = completeDailyRunSession(currentState, sessionId);
+      const result = completeDailyRunSession(currentState, sessionId, { publisherSummary: serverList(currentState.dailyRunPublisherRuns)[0] || null });
       await store.writeState(result.state);
       sendJson(response, {
         message: "Daily Run completed. Tomorrow's first move is saved.",
@@ -32056,9 +32197,16 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/publishing/run" && request.method === "POST") {
     const result = await runPublishingWorker();
+    const summary = publishingRunSummaryFromResults(result.results);
+    const stateWithSummary = {
+      ...result.state,
+      dailyRunPublisherRuns: [summary, ...serverList(result.state.dailyRunPublisherRuns)].slice(0, 20)
+    };
+    await store.writeState(stateWithSummary);
     sendJson(response, {
-      state: withPublicChannelSetup(result.state),
+      state: withPublicChannelSetup(stateWithSummary),
       results: result.results,
+      summary,
       message: result.message
     });
     return;
