@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import {
+  completeDailyRunItem,
+  createDailyRunSession,
+  dailyRunBucketRemainingCount,
+  dailyRunSessionView
+} from "./daily-run-session.mjs";
+
 const source = readFileSync(join(process.cwd(), "scripts", "preview-server.mjs"), "utf8");
 const brain = readFileSync(join(process.cwd(), "scripts", "daily-run-session.mjs"), "utf8");
 
@@ -18,6 +25,9 @@ function functionBlock(name) {
 const guidedQueue = functionBlock("guidedQueueWorkbenchHtml");
 const guidedRows = functionBlock("guidedQueueBucketItems");
 const guidedHeader = functionBlock("guidedQueueBucketHeader");
+const guidedPatch = functionBlock("guidedPatchPost");
+const guidedMarkImageReady = functionBlock("guidedMarkImageReady");
+const guidedSetStatus = functionBlock("guidedSetPostStatus");
 const queueSectionStart = source.indexOf('<section id="queue"');
 const queueSectionEnd = source.indexOf('<section id="sources"', queueSectionStart);
 const queueSection = source.slice(queueSectionStart, queueSectionEnd);
@@ -132,6 +142,77 @@ assert(source.includes("approveBatchWithImportedSchedule"), "Guided Queue should
 assert(source.includes("status:\"scheduled\"") && source.includes("scheduledFor"), "Approve Batch with Imported Schedule should use imported schedule fields.");
 assert(source.includes("openGuidedBulkDeleteDialog") && source.includes("Remove selected queue items from this working set?"), "Guided bulk delete should be confirmed and soft.");
 assert(source.includes("status:\"deleted\"") && source.includes('deletedSource:"queue"'), "Guided bulk delete should reuse soft-delete behavior.");
+
+assert(guidedMarkImageReady.includes("guidedPatchPost") && guidedMarkImageReady.includes('imageStatus:"ready"'), "Mark Image Ready should route through guidedPatchPost before clearing the Daily Run item.");
+assert(guidedSetStatus.includes("guidedPatchPost") && guidedSetStatus.includes("status"), "Guided Approve should route through guidedPatchPost before clearing the Daily Run item.");
+assert(guidedPatch.includes('"/api/daily-run/complete-item"'), "Guided post actions should call the Daily Run complete-item route.");
+assert(guidedPatch.includes("bucket_key:active.current_bucket_key") && guidedPatch.includes("item_id:id"), "Guided post actions should clear the item from the current session bucket.");
+
+function socialState(post) {
+  return {
+    runtime: { livePostingGates: { linkedin: { enabled: false }, x: { enabled: false }, facebook: { enabled: false }, instagram: { enabled: false } } },
+    socialAccounts: [
+      { platform: "linkedin", status: "connected", connected: true },
+      { platform: "x", status: "connected", connected: true }
+    ],
+    posts: [post],
+    tasks: [],
+    reports: [],
+    reviewStates: [],
+    dailyRunSessions: []
+  };
+}
+
+function assertGuidedActionClearsThroughBrain({ post, bucketKey, actionLabel, reason }) {
+  const now = "2026-06-05T14:00:00.000Z";
+  const started = createDailyRunSession(socialState(post), { now });
+  const originalSnapshot = structuredClone(started.session.bucket_snapshot);
+  const bucket = started.session.bucket_snapshot.buckets.find(item => item.key === bucketKey);
+  assert(bucket, `${actionLabel} fixture should create a ${bucketKey} bucket.`);
+  assert(bucket.items.some(item => item.id === post.id), `${actionLabel} fixture item should start in ${bucketKey}.`);
+
+  const completed = completeDailyRunItem(started.state, started.session.session_id, bucketKey, post.id, reason, { now });
+  const completedBucket = completed.session.bucket_snapshot.buckets.find(item => item.key === bucketKey);
+  const view = dailyRunSessionView(completed.state, { now });
+  const remainingIds = Object.values(view.bucketItemsByKey || {}).flat().map(item => item.id);
+
+  assert(completed.session.completed_items.some(item => item.bucket_key === bucketKey && item.item_id === post.id), `${actionLabel} should mark the item completed/moved-forward for the session.`);
+  assert.equal(dailyRunBucketRemainingCount(completedBucket, completed.session), 0, `${actionLabel} should remove the item from the active bucket count.`);
+  assert.deepEqual(completed.session.bucket_snapshot, originalSnapshot, `${actionLabel} should preserve the frozen session snapshot.`);
+  assert(!remainingIds.includes(post.id), `${actionLabel} should not let the item hop into another bucket mid-session.`);
+}
+
+assertGuidedActionClearsThroughBrain({
+  actionLabel: "Mark Image Ready",
+  bucketKey: "creative_prep",
+  reason: "Image marked ready in Guided Queue.",
+  post: {
+    id: "guided-image-ready-clears",
+    sourceType: "campaign_upload",
+    sourceReference: "Campaign Upload",
+    title: "Imported post needing image",
+    platform: "linkedin",
+    status: "draft",
+    imageBrief: "",
+    createdAt: "2026-06-05T10:00:00.000Z"
+  }
+});
+
+assertGuidedActionClearsThroughBrain({
+  actionLabel: "Approve",
+  bucketKey: "bulk_review",
+  reason: "Status moved forward in Guided Queue.",
+  post: {
+    id: "guided-approve-clears",
+    sourceType: "campaign_upload",
+    sourceReference: "Campaign Upload",
+    title: "Imported post ready for review",
+    platform: "linkedin",
+    status: "draft",
+    imageBrief: "Use existing approved visual.",
+    createdAt: "2026-06-05T10:00:00.000Z"
+  }
+});
 
 for (const forbidden of [
   "Publish Selected",
