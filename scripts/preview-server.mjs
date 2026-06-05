@@ -14331,6 +14331,25 @@ function htmlShell() {
     .queue-review-details { grid-column:1 / -1; border-top:1px solid rgba(8,20,95,.08); padding-top:10px; }
     .queue-review-details summary { cursor:pointer; color:#475467; font-weight:850; }
     .queue-review-details-body { margin-top:10px; display:grid; gap:10px; }
+    .queue-production-status { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:4px; color:#475467; font-size:12px; }
+    .queue-production-status span { border:1px solid rgba(8,20,95,.08); border-radius:999px; background:#F7FAF9; padding:5px 9px; }
+    .queue-production-section { display:grid; gap:10px; border:1px solid rgba(8,20,95,.08); border-radius:16px; background:#fff; padding:14px; }
+    .queue-section-head { display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between; align-items:center; }
+    .queue-section-head h4 { margin:0; color:var(--ink); font-size:16px; }
+    .queue-field-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; }
+    .queue-field-grid > div { border:1px solid rgba(8,20,95,.07); border-radius:14px; background:#F7FAF9; padding:10px; min-width:0; }
+    .queue-field-grid strong { display:block; color:var(--ink); font-size:12px; margin-bottom:4px; }
+    .queue-field-grid p { margin:0; max-width:none; }
+    .queue-image-draft-preview { display:grid; gap:6px; border:1px dashed rgba(8,20,95,.14); border-radius:14px; padding:12px; background:#FBFEFD; }
+    .queue-image-draft-preview strong { color:var(--ink); }
+    .queue-image-prompt-form { display:grid; gap:10px; }
+    .queue-image-prompt-form textarea { min-height:96px; }
+    .queue-platform-preview { display:grid; grid-template-columns:minmax(160px,.75fr) minmax(0,1.25fr); gap:12px; border:1px solid rgba(8,20,95,.08); border-radius:16px; padding:12px; background:#F7FAF9; }
+    .queue-preview-image { aspect-ratio:1.2; border-radius:14px; background:linear-gradient(135deg,#020D66,#047A72); color:white; display:grid; align-content:center; gap:8px; padding:14px; min-width:0; }
+    .queue-preview-image span { color:rgba(255,255,255,.8); overflow-wrap:break-word; }
+    .queue-preview-copy { display:grid; gap:7px; align-content:start; min-width:0; }
+    .queue-preview-copy h5 { margin:0; color:var(--ink); font-size:17px; }
+    .queue-preview-copy p { max-width:none; }
     .queue-detail-workflow { border:1px solid rgba(8,20,95,.09); border-radius:18px; background:#fbfefd; padding:14px; }
     .queue-detail-workflow summary { cursor:pointer; color:var(--accent-hover,#047A72); font-weight:900; }
     .queue-card { padding:22px; gap:14px; border-radius:18px; }
@@ -14433,7 +14452,7 @@ function htmlShell() {
     .funnel-stage { display:grid; gap:6px; padding:12px; border-radius:14px; background:#F4F7F6; border:1px solid rgba(8,20,95,.08); }
     .funnel-stage strong { color:var(--ink); font-size:20px; }
     @media (max-width:1100px) { .layout,.command,.post-grid,.three,.two,.calendar,.queue-card,.operator-review,.wilma-grid,.export-grid,.archive-grid,.executive-grid,.ops-row,.operator-legacy-grid,.landing-grid { grid-template-columns:1fr; } .app-topbar { min-height:auto; align-items:flex-start; flex-direction:column; padding:14px 18px; } .top-nav { width:100%; overflow:visible; align-items:flex-start; flex-wrap:wrap; justify-content:flex-start; } .nav-menu,.nav-top-link { flex:0 0 auto; } header,main { padding-left:18px; padding-right:18px; } .image-stage { position:static; order:-1; } .operator-preview .image-preview { min-height:300px; } .operator-command-strip { grid-template-columns:1fr; } .operator-strip-status { justify-content:flex-start; } }
-    @media (max-width:760px) { .queue-review-hero-head,.queue-review-item { grid-template-columns:1fr; display:grid; } .queue-review-actions { justify-content:flex-start; } .queue-safety-note { border-radius:14px; } }
+    @media (max-width:760px) { .queue-review-hero-head,.queue-review-item,.queue-platform-preview { grid-template-columns:1fr; display:grid; } .queue-review-actions { justify-content:flex-start; } .queue-safety-note { border-radius:14px; } }
     @media (max-width:1100px) { .mission-grid,.readiness-strip,.pipeline-board,.health-grid,.metric-table,.asset-library-grid,.modal-grid,.lee-shell { grid-template-columns:1fr; } .readiness-strip,.pipeline-board { overflow:visible; } .lee-message { max-width:100%; } }
 
     ${designSystem.interfaceCss}
@@ -16536,6 +16555,115 @@ function htmlShell() {
       return isPublishedQueueItem(post) ? "Remove from Queue" : "Delete";
     }
 
+    function queueImageDirection(post = {}) {
+      return String(post.imageDirection || post.image_direction || post.imageBrief || post.image_brief || post.visualDirection || "").trim();
+    }
+
+    function queueOverlayText(post = {}) {
+      const explicit = String(post.overlayText || post.overlay_text || "").trim();
+      if (explicit) return explicit;
+      const fallback = String(post.headline || post.hook || post.caption || post.body || post.title || "").replace(/\s+/g, " ").trim();
+      return fallback.length > 86 ? fallback.slice(0, 83).trim() + "..." : fallback;
+    }
+
+    function queueImagePromptForPost(post = {}) {
+      const saved = String(post.imagePrompt || post.image_prompt || "").trim();
+      if (saved) return saved;
+      return [
+        queueImageDirection(post) || "No image direction yet.",
+        queueOverlayText(post) ? "Overlay text: " + queueOverlayText(post) : "",
+        "Platform: " + (platformLabels[post.platform] || post.platform || "social")
+      ].filter(Boolean).join("\\n");
+    }
+
+    function queueImageStatusKey(post = {}, image = null) {
+      if (post.imageStatus === "ready" || post.queueImageDraft?.imageStatus === "ready" || post.imageReadyAt) return "ready";
+      if (post.imageStatus === "draft_generated" || post.queueImageDraft || image?.generationStatus === "generated") return "draft_generated";
+      if (post.imageStatus === "prompt_ready" || post.imagePrompt || post.image_prompt) return "prompt_ready";
+      return "needed";
+    }
+
+    function queueImageStatusLabel(post = {}, image = null) {
+      const labels = { needed:"Needed", prompt_ready:"Prompt Ready", draft_generated:"Draft Generated", ready:"Ready" };
+      return labels[queueImageStatusKey(post, image)] || "Needed";
+    }
+
+    function queueApprovalLabel(post = {}) {
+      if (post.status === "approved" || post.approved_at) return "Approved";
+      if (post.copyReviewed || post.copyReviewedAt) return "Reviewed";
+      return "Needs Review";
+    }
+
+    function queueScheduleLabel(post = {}) {
+      return post.scheduledFor || post.scheduled_at ? "Scheduled" : "Not Scheduled";
+    }
+
+    function queueWorkflowStatusHtml(post = {}, image = null) {
+      const caption = post.copyReviewed || post.copyReviewedAt ? "Reviewed" : "Draft";
+      return \`<div class="queue-production-status" aria-label="Queue production status">
+        <span><strong>Caption:</strong> \${esc(caption)}</span>
+        <span><strong>Image:</strong> \${esc(queueImageStatusLabel(post, image))}</span>
+        <span><strong>Approval:</strong> \${esc(queueApprovalLabel(post))}</span>
+        <span><strong>Schedule:</strong> \${esc(queueScheduleLabel(post))}</span>
+      </div>\`;
+    }
+
+    function queueImageDraftPreviewHtml(post = {}) {
+      const draft = post.queueImageDraft || {};
+      const status = draft.status || "Image draft needed";
+      return \`<div class="queue-image-draft-preview">
+        <span class="badge warn">\${esc(status)}</span>
+        <strong>\${esc(post.headline || post.title || "Draft creative")}</strong>
+        <p>\${esc(queueOverlayText(post) || "Add overlay text before final creative.")}</p>
+        <small>\${esc(platformLabels[post.platform] || post.platform || "Social")} · \${esc(queueImageDirection(post) || "No image direction yet.")}</small>
+      </div>\`;
+    }
+
+    function queueImageWorkspaceHtml(post = {}) {
+      const direction = queueImageDirection(post);
+      const overlay = queueOverlayText(post);
+      const prompt = queueImagePromptForPost(post);
+      return \`<section class="queue-production-section queue-image-workspace">
+        <div class="queue-section-head"><h4>Image</h4><span class="badge info">\${esc(queueImageStatusLabel(post, imageForPost(post.id)))}</span></div>
+        <p class="muted">Image generation prepares a draft creative only. Nothing is posted automatically.</p>
+        <div class="queue-field-grid">
+          <div><strong>Image Direction</strong><p>\${esc(direction || "No image direction yet.")}</p></div>
+          <div><strong>Overlay Text</strong><p>\${esc(overlay || "Use the headline or first strong phrase from the caption.")}</p></div>
+          <div><strong>Wilma</strong><p>\${esc(post.wilmaPreference || post.wilma_preference || "Wilma optional")}</p></div>
+        </div>
+        \${queueImageDraftPreviewHtml(post)}
+        <form class="queue-image-prompt-form" onsubmit="saveQueueImagePrompt(event,'\${post.id}')">
+          <label>Edit Image Prompt<textarea name="imagePrompt" rows="4">\${esc(prompt)}</textarea></label>
+          <div class="card-actions quiet-actions">
+            <button type="submit">Save Image Prompt</button>
+            <button type="button" onclick="generateQueueImageDraft('\${post.id}')">Generate Image</button>
+            <button type="button" onclick="markQueueImageReady('\${post.id}')">Mark Image Ready</button>
+          </div>
+        </form>
+      </section>\`;
+    }
+
+    function queuePostPreviewHtml(post = {}) {
+      const platform = platformLabels[post.platform] || post.platform || "Social";
+      const styleKey = String(post.platform || "generic").toLowerCase().replace(/[^a-z0-9]+/g, "-") || "generic";
+      const caption = post.caption || post.body || "";
+      const imageLabel = post.queueImageDraft?.status || (queueImageStatusKey(post, imageForPost(post.id)) === "ready" ? "Image ready" : "Image draft needed");
+      return \`<section class="queue-production-section queue-post-preview">
+        <div class="queue-section-head"><h4>Post Preview</h4><button type="button" onclick="refreshQueuePostPreview('\${post.id}')">Refresh Preview</button></div>
+        <article class="queue-platform-preview \${esc(styleKey)}">
+          <div class="queue-preview-image"><strong>\${esc(imageLabel)}</strong><span>\${esc(queueOverlayText(post) || post.headline || "Draft creative")}</span></div>
+          <div class="queue-preview-copy">
+            <span class="badge info">\${esc(platform)}</span>
+            \${post.headline ? \`<h5>\${esc(post.headline)}</h5>\` : ""}
+            \${post.subhead ? \`<p class="muted">\${esc(post.subhead)}</p>\` : ""}
+            <p>\${esc(caption || "Caption draft will appear here.")}</p>
+            \${post.cta ? \`<strong>\${esc(post.cta)}</strong>\` : ""}
+            \${post.link ? \`<small>\${esc(post.link)}</small>\` : ""}
+          </div>
+        </article>
+      </section>\`;
+    }
+
     function postedNeedsMetrics(post) {
       return (post.status === "manually_posted" || post.status === "posted" || post.manuallyPostedAt || post.postedAt) && performanceLabelFor(post.performance) === "Needs Data";
     }
@@ -16611,7 +16739,8 @@ function htmlShell() {
           actionJs: "document.getElementById('queue-row-" + slugify(post.id || post.title || "post") + "').open = true",
           queuePostId: post.id,
           deleteLabel: queueDeleteButtonLabel(post),
-          details: \`<p class="muted"><strong>Next internal step:</strong> \${esc(workflowStageForPost(post, image).actionLabel)}<br><strong>Safety:</strong> approvals prepare work only.</p><div class="card-actions quiet-actions"><button type="button" onclick="\${workflowStageForPost(post, image).action}">\${esc(workflowStageForPost(post, image).actionLabel)}</button><button type="button" onclick="markCopyReviewed('\${post.id}')">Mark Reviewed</button></div>\`
+          statusHtml: queueWorkflowStatusHtml(post, image),
+          details: \`\${queueImageWorkspaceHtml(post)}\${queuePostPreviewHtml(post)}<p class="muted"><strong>Next internal step:</strong> \${esc(workflowStageForPost(post, image).actionLabel)}<br><strong>Safety:</strong> approvals prepare work only.</p><div class="card-actions quiet-actions"><button type="button" onclick="\${workflowStageForPost(post, image).action}">\${esc(workflowStageForPost(post, image).actionLabel)}</button><button type="button" onclick="markQueueImageReady('\${post.id}')">Mark Image Ready</button><button type="button" onclick="markCopyReviewed('\${post.id}')">Mark Reviewed</button><button type="button" onclick="openQueueDeleteDialog('\${post.id}')">\${esc(queueDeleteButtonLabel(post))}</button></div>\`
         };
       });
       const followUps = (state.growthInbox || []).filter(item => /follow|pr|press|media|outreach/i.test([item.type, item.category, item.title, item.text, item.raw_input, item.status].join(" ")) && !/converted|ignored|archived|done/i.test(String(item.status || ""))).slice(0, 4).map((item, index) => ({
@@ -16677,9 +16806,11 @@ function htmlShell() {
           </div>
           <h3>\${esc(item.title)}</h3>
           <p>\${esc(item.context)}</p>
+          \${item.statusHtml || ""}
         </div>
         <div class="queue-review-actions">
           <button class="primary" type="button" onclick="\${item.actionJs}">\${esc(item.action)}</button>
+          \${item.queuePostId ? \`<button type="button" onclick="generateQueueImageDraft('\${item.queuePostId}')">Generate Image</button><button type="button" onclick="\${item.actionJs}">Preview</button>\` : ""}
           \${item.queuePostId ? \`<button type="button" onclick="openQueueDeleteDialog('\${item.queuePostId}')">\${esc(item.deleteLabel || "Delete")}</button>\` : ""}
         </div>
         <details id="queue-row-\${esc(item.id)}" class="queue-review-details">
@@ -27134,7 +27265,7 @@ function htmlShell() {
         ? "This removes the selected drafts from your Queue. Published posts are not affected."
         : includesPublished
           ? "This item may already be published. Deleting it only removes it from Command Center history and does not remove it from the social platform."
-          : "This removes the draft from your Queue. This will not delete any published posts.";
+          : "This removes the draft from your Queue. This will not delete anything from Facebook, Instagram, LinkedIn, or X.";
       const confirmLabel = includesPublished ? "Remove from Queue" : "Delete";
       root.innerHTML = \`<div class="modal-backdrop" role="presentation">
         <div class="modal-panel" role="dialog" aria-modal="true" aria-label="\${esc(title)}">
@@ -27189,7 +27320,7 @@ function htmlShell() {
             patch:{
               status:"deleted",
               deletedAt,
-              deletedSource:"queue_delete",
+              deletedSource:"queue",
               deletedBy:"owner"
             }
           })
@@ -27785,6 +27916,80 @@ function htmlShell() {
       state = result.state;
       render();
       toast("Copy reviewed");
+    }
+
+    async function saveQueueImagePrompt(event, id) {
+      event.preventDefault();
+      const imagePrompt = String(new FormData(event.target).get("imagePrompt") || "").trim();
+      const result = await api("/api/posts/update", {
+        method:"POST",
+        body:JSON.stringify({
+          id,
+          patch:{
+            imagePrompt,
+            imageStatus:imagePrompt ? "prompt_ready" : "needed",
+            imagePromptUpdatedAt:new Date().toISOString()
+          }
+        })
+      });
+      state = result.state;
+      render();
+      toast("Image prompt saved");
+    }
+
+    async function generateQueueImageDraft(id) {
+      const post = state.posts.find(item => item.id === id);
+      if (!post) {
+        toast("Queue item not found.");
+        return;
+      }
+      const prompt = queueImagePromptForPost(post);
+      const draft = {
+        status:"Image draft needed",
+        headline:post.headline || post.title || "",
+        overlayText:queueOverlayText(post),
+        platform:post.platform || "",
+        imageDirection:queueImageDirection(post),
+        prompt,
+        createdAt:new Date().toISOString()
+      };
+      const result = await api("/api/posts/update", {
+        method:"POST",
+        body:JSON.stringify({
+          id,
+          patch:{
+            imagePrompt:prompt,
+            imageStatus:"draft_generated",
+            queueImageDraft:draft
+          }
+        })
+      });
+      state = result.state;
+      render();
+      toast("Image draft prepared. Nothing was posted.");
+    }
+
+    async function markQueueImageReady(id) {
+      const result = await api("/api/posts/update", {
+        method:"POST",
+        body:JSON.stringify({
+          id,
+          patch:{
+            imageStatus:"ready",
+            imageReadyAt:new Date().toISOString()
+          }
+        })
+      });
+      state = result.state;
+      render();
+      toast("Image marked ready");
+    }
+
+    function refreshQueuePostPreview(id) {
+      const row = document.getElementById("queue-row-" + slugify(id || "post"));
+      if (row) row.open = true;
+      toast("Preview refreshed. Nothing was posted.");
+      render();
     }
 
     async function confirmOverlay(id) {
