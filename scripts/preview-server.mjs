@@ -22583,7 +22583,7 @@ function htmlShell() {
           </header>
           <section class="app-intention" aria-label="Daily intention">
             <h1>\${esc(intention.prefix)}<span class="intention-accent">\${esc(intention.accent)}</span>\${esc(intention.suffix)}</h1>
-            <div class="intention-meta"><span>\${esc(intention.source)}</span><button type="button" onclick="askLeePrompt('Rewrite today\\'s intention from current open work.')">Rewrite with Le-E</button></div>
+            <div class="intention-meta"><span>\${esc(intention.source)}</span><button type="button" data-lee-prompt="Rewrite today's intention from current open work.">Rewrite with Le-E</button></div>
           </section>
           <section class="cockpit-layout">
             <main class="cockpit-main">
@@ -23268,6 +23268,55 @@ function htmlShell() {
       </section>\`;
     }
 
+    function socialCalendarImportHtml() {
+      const campaignPreview = campaignImportPreview;
+      const campaignPreviewRows = campaignPreview?.rows?.length ? campaignPreview.rows.slice(0, 5) : [];
+      const campaignSummary = campaignPreview?.summary || { found:0, dateRange:"No file selected", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0, duplicateRows:0 };
+      const campaignPreviewMetrics = [
+        [campaignSummary.found || 0, "posts found"],
+        [campaignSummary.dateRange || "No file selected", "date range"],
+        [campaignSummary.platforms || "None", "platforms included"],
+        [campaignSummary.needsImages || 0, "posts needing images"],
+        [campaignSummary.wilmaRecommended || 0, "Wilma recommended"],
+        [campaignSummary.overlaySuggestions || 0, "overlay text suggestions"],
+        [campaignSummary.duplicateRows || 0, "duplicate rows"]
+      ];
+      const campaignErrors = campaignPreview?.errors || [];
+      const campaignConfirmDisabled = !campaignPreviewRows.length || campaignErrors.length ? "disabled" : "";
+      return \`
+        <section id="import-social-calendar" class="growth-card">
+          <div class="growth-card-head"><h2>Import Social Calendar</h2><small>XLSX or CSV into Queue</small></div>
+          <p class="muted">Upload Roger's XLSX or CSV calendar, preview rows, then add safe internal Queue items.</p>
+          <div class="campaign-upload-actions">
+            <input id="sources-calendar-upload-input" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onchange="handleCampaignSpreadsheetUpload(this.files && this.files[0]); this.value='';">
+            <button class="primary" type="button" onclick="document.getElementById('sources-calendar-upload-input')?.click()">Import Social Calendar</button>
+            <button type="button" onclick="downloadCampaignTemplate()">Download Template</button>
+            <button type="button" onclick="document.getElementById('sources-campaign-import-preview')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Import Preview</button>
+          </div>
+          <div class="campaign-safety-lines">
+            <span>Nothing posts during import.</span>
+            <span>Facebook and Instagram stay draft/paused while Meta is paused.</span>
+            <span>LinkedIn and Twitter / X rows stay internal until review.</span>
+            <span>Duplicate rows are skipped before saving.</span>
+          </div>
+          <div id="sources-campaign-import-preview" class="campaign-import-status \${campaignErrors.length ? "warn" : ""}">
+            \${campaignErrors.length ? campaignErrors.map(error => \`<strong>\${esc(error)}</strong>\`).join("<br>") : campaignPreview?.confirmed ? "Internal Queue items were added. Nothing gets posted." : "Import Preview: choose a spreadsheet to preview rows before adding them to Queue."}
+          </div>
+          <div class="campaign-preview-metrics">
+            \${campaignPreviewMetrics.map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}
+          </div>
+          <div class="campaign-upload-table">
+            <div class="campaign-upload-row header"><span>Date</span><span>Platform</span><span>Caption Preview</span><span>Image Plan</span><span>Wilma</span><span>Approval</span></div>
+            \${campaignPreviewRows.map(record => \`<div class="campaign-upload-row"><span>\${esc(campaignRecordValue(record, "Date"))}</span><span>\${esc(campaignPlatformLabel(campaignRecordValue(record, "Platform")))}</span><span>\${esc(campaignRecordValue(record, "Caption")).slice(0, 120)}</span><span>\${esc(campaignImagePlan(record))}</span><span>\${esc(campaignWilmaLabel(record))}</span><span>\${esc(campaignRecordValue(record, "Status") || "Needs review")}</span></div>\`).join("") || '<div class="campaign-import-status">Upload a CSV or XLSX file to preview Date, Platform, Caption Preview, Image Plan, Wilma, and Approval before saving.</div>'}
+          </div>
+          <div class="production-card-actions">
+            <button type="button" \${campaignConfirmDisabled} onclick="confirmCampaignImport()" title="Confirm Import creates internal drafts only.">Confirm Import</button>
+            <button type="button" onclick="cancelCampaignImport()">Cancel</button>
+          </div>
+          <p class="muted">Confirm Import creates internal Queue items only. No provider APIs are called.</p>
+        </section>\`;
+    }
+
     function productionWorkspaceHtml(pageClass) {
       const posts = state.posts || [];
       const images = state.postImages || [];
@@ -23422,38 +23471,6 @@ function htmlShell() {
       ];
       const campaignErrors = campaignPreview?.errors || [];
       const campaignConfirmDisabled = !campaignPreviewRows.length || campaignErrors.length ? "disabled" : "";
-      const socialCalendarImportHtml = \`
-        <section id="import-social-calendar" class="growth-card">
-          <div class="growth-card-head"><h2>Import Social Calendar</h2><small>XLSX or CSV into Queue</small></div>
-          <p class="muted">Upload Roger's XLSX or CSV calendar, preview rows, then add safe internal Queue items.</p>
-          <div class="campaign-upload-actions">
-            <input id="sources-calendar-upload-input" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onchange="handleCampaignSpreadsheetUpload(this.files && this.files[0]); this.value='';">
-            <button class="primary" type="button" onclick="document.getElementById('sources-calendar-upload-input')?.click()">Import Social Calendar</button>
-            <button type="button" onclick="downloadCampaignTemplate()">Download Template</button>
-            <button type="button" onclick="document.getElementById('sources-campaign-import-preview')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Import Preview</button>
-          </div>
-          <div class="campaign-safety-lines">
-            <span>Nothing posts during import.</span>
-            <span>Facebook and Instagram stay draft/paused while Meta is paused.</span>
-            <span>LinkedIn and Twitter / X rows stay internal until review.</span>
-            <span>Duplicate rows are skipped before saving.</span>
-          </div>
-          <div id="sources-campaign-import-preview" class="campaign-import-status \${campaignErrors.length ? "warn" : ""}">
-            \${campaignErrors.length ? campaignErrors.map(error => \`<strong>\${esc(error)}</strong>\`).join("<br>") : campaignPreview?.confirmed ? "Internal Queue items were added. Nothing gets posted." : "Import Preview: choose a spreadsheet to preview rows before adding them to Queue."}
-          </div>
-          <div class="campaign-preview-metrics">
-            \${campaignPreviewMetrics.map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}
-          </div>
-          <div class="campaign-upload-table">
-            <div class="campaign-upload-row header"><span>Date</span><span>Platform</span><span>Caption Preview</span><span>Image Plan</span><span>Wilma</span><span>Approval</span></div>
-            \${campaignPreviewRows.map(record => \`<div class="campaign-upload-row"><span>\${esc(campaignRecordValue(record, "Date"))}</span><span>\${esc(campaignPlatformLabel(campaignRecordValue(record, "Platform")))}</span><span>\${esc(campaignRecordValue(record, "Caption")).slice(0, 120)}</span><span>\${esc(campaignImagePlan(record))}</span><span>\${esc(campaignWilmaLabel(record))}</span><span>\${esc(campaignRecordValue(record, "Status") || "Needs review")}</span></div>\`).join("") || '<div class="campaign-import-status">Upload a CSV or XLSX file to preview Date, Platform, Caption Preview, Image Plan, Wilma, and Approval before saving.</div>'}
-          </div>
-          <div class="production-card-actions">
-            <button type="button" \${campaignConfirmDisabled} onclick="confirmCampaignImport()" title="Confirm Import creates internal drafts only.">Confirm Import</button>
-            <button type="button" onclick="cancelCampaignImport()">Cancel</button>
-          </div>
-          <p class="muted">Confirm Import creates internal Queue items only. No provider APIs are called.</p>
-        </section>\`;
       return \`<section id="production" class="\${pageClass("production")} production-workspace">
         <section class="production-hero">
           <div>
@@ -25393,7 +25410,7 @@ function htmlShell() {
           </div>
         </section>
         <section id="sources" class="section secondary \${pageClass("sources")}">
-          \${socialCalendarImportHtml}
+          \${socialCalendarImportHtml()}
           <details open>
             <summary>Source-to-Queue Intake</summary>
             <div style="margin-top:14px">\${sourceSummaryHtml()}</div>
@@ -26355,6 +26372,12 @@ function htmlShell() {
       leeBusy = false;
       leeDraft = "";
       render();
+    }
+
+    function askLeePromptFromButton(button) {
+      const prompt = button?.dataset?.leePrompt || "";
+      if (!prompt) return;
+      askLeePrompt(prompt);
     }
 
     function openLeeBubble() {
@@ -28525,6 +28548,12 @@ function htmlShell() {
       }
     });
     document.addEventListener("click", (event) => {
+      const leePromptButton = event.target.closest("[data-lee-prompt]");
+      if (leePromptButton) {
+        event.preventDefault();
+        askLeePromptFromButton(leePromptButton);
+        return;
+      }
       if (!event.target.closest(".nav-menu")) {
         document.querySelectorAll(".nav-menu[open]").forEach((menu) => menu.removeAttribute("open"));
       }

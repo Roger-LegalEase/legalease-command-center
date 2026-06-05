@@ -31,8 +31,8 @@ assert(assetsStart > sourcesStart, "Sources block should end before assets");
 
 const queue = source.slice(queueStart, sourcesStart);
 const sources = source.slice(sourcesStart, assetsStart);
-const panelStart = source.indexOf("const socialCalendarImportHtml =");
-const panelEnd = source.indexOf('return \\`<section id="production"', panelStart);
+const panelStart = source.indexOf("function socialCalendarImportHtml()");
+const panelEnd = source.indexOf("function productionWorkspaceHtml", panelStart);
 assert(panelStart >= 0 && panelEnd > panelStart, "Social calendar import panel should be defined");
 const importPanel = source.slice(panelStart, panelEnd);
 
@@ -54,7 +54,8 @@ for (const required of [
   assert(importPanel.includes(required), `Sources importer should include ${required}`);
 }
 
-assert(sources.includes("${socialCalendarImportHtml}"), "Sources should render the Import Social Calendar panel");
+assert(sources.includes("${socialCalendarImportHtml()}"), "Sources should render the Import Social Calendar panel with a shared helper call");
+assert(!sources.includes("${socialCalendarImportHtml}"), "Sources should not interpolate an out-of-scope import variable or function object");
 
 for (const required of [
   "async function parseCampaignXlsxFile",
