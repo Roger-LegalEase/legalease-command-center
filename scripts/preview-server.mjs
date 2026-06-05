@@ -15709,9 +15709,23 @@ function htmlShell() {
     }
     const sectionClass = id => \`page-section \${id === currentPageId ? "active" : ""}\`;
 
-    const campaignUploadColumns = ["Date", "Time", "Platform", "Campaign", "Post Type", "Topic", "Caption", "Headline", "Subhead", "CTA", "Link", "Audience", "Goal", "Tone", "Image Direction", "Overlay Text", "Wilma Preference", "Approval Owner", "Status", "Notes"];
+    const campaignUploadColumns = ["Date", "Time", "Platform", "Campaign", "Post Type", "Topic", "Caption", "Headline", "Subhead", "CTA", "Link", "Audience", "Goal", "Tone", "Image Direction", "Overlay Text", "Wilma Preference", "Approval Owner", "Status", "Notes", "Hashtags"];
     const campaignRequiredColumns = ["Date", "Platform", "Caption"];
+    const campaignColumnAliases = {
+      date:"Date", time:"Time", platform:"Platform", channel:"Platform", campaign:"Campaign", posttype:"Post Type", contenttype:"Post Type",
+      topic:"Topic", caption:"Caption", copy:"Caption", headline:"Headline", title:"Headline", subhead:"Subhead", subheadline:"Subhead",
+      cta:"CTA", link:"Link", url:"Link", audience:"Audience", goal:"Goal", tone:"Tone", imagedirection:"Image Direction",
+      imagebrief:"Image Direction", visualdirection:"Image Direction", overlaytext:"Overlay Text", wilmapreference:"Wilma Preference",
+      wilma:"Wilma Preference", approvalowner:"Approval Owner", owner:"Approval Owner", status:"Status", notes:"Notes", hashtags:"Hashtags", tags:"Hashtags"
+    };
     const campaignColumnKey = value => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+    function campaignColumnLabel(value) {
+      const compact = campaignColumnKey(value);
+      return campaignColumnAliases[compact] || campaignUploadColumns.find(column => campaignColumnKey(column) === compact) || String(value || "").trim();
+    }
+    function campaignEmptySummary() {
+      return { found:0, dateRange:"Not imported", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0, duplicateRows:0 };
+    }
     function parseCampaignCsvText(text = "") {
       const rows = [];
       let row = [];
@@ -15743,10 +15757,156 @@ function htmlShell() {
       return rows;
     }
     function campaignRecordValue(record, label) {
-      return record[campaignColumnKey(label)] || "";
+      const canonical = campaignColumnLabel(label);
+      return record?.[canonical] || record?.[campaignColumnKey(canonical)] || record?.[campaignColumnKey(label)] || "";
+    }
+    function campaignXmlText(node) {
+      return Array.from(node?.getElementsByTagName?.("t") || []).map(item => item.textContent || "").join("");
+    }
+    function campaignXlsxColumnIndex(ref = "") {
+      const letters = String(ref || "").replace(/[^A-Z]/gi, "").toUpperCase();
+      let total = 0;
+      for (const letter of letters) total = total * 26 + letter.charCodeAt(0) - 64;
+      return Math.max(0, total - 1);
+    }
+    function campaignDecodeXml(value = "") {
+      return String(value || "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+    }
+    function campaignExcelDate(value) {
+      const serial = Number(value);
+      if (!Number.isFinite(serial)) return String(value || "");
+      return new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000).toISOString().slice(0, 10);
+    }
+    function campaignExcelTime(value) {
+      const serial = Number(value);
+      if (!Number.isFinite(serial)) return String(value || "");
+      const fraction = ((serial % 1) + 1) % 1;
+      const minutes = Math.round(fraction * 24 * 60);
+      const hours = Math.floor(minutes / 60) % 24;
+      return String(hours).padStart(2, "0") + ":" + String(minutes % 60).padStart(2, "0");
+    }
+    function campaignCellForLabel(label, value) {
+      const text = String(value || "").trim();
+      if (campaignColumnLabel(label) === "Date" && /^\\d+(\\.\\d+)?$/.test(text)) return campaignExcelDate(text);
+      if (campaignColumnLabel(label) === "Time" && /^\\d+(\\.\\d+)?$/.test(text)) return campaignExcelTime(text);
+      return text;
+    }
+    function campaignRowsToRecords(rows = []) {
+      const headers = rows[0] || [];
+      const headerMap = new Map(headers.map((header, index) => [campaignColumnLabel(header), index]).filter(([label]) => label));
+      const missing = campaignRequiredColumns.filter(column => !headerMap.has(campaignColumnLabel(column)));
+      if (missing.length) return { records:[], errors:["This file needs Date, Platform, and Caption columns before it can be imported."] };
+      const records = rows.slice(1).map(sourceRow => {
+        const record = {};
+        for (const [label, index] of headerMap.entries()) record[label] = campaignCellForLabel(label, sourceRow[index]);
+        return record;
+      }).filter(record => campaignRecordValue(record, "Date") || campaignRecordValue(record, "Platform") || campaignRecordValue(record, "Caption"));
+      return { records, errors:[] };
+    }
+    async function campaignInflateRawXlsx(bytes) {
+      if (typeof DecompressionStream !== "function") throw new Error("XLSX support needs a modern browser. Export CSV if this browser cannot unzip spreadsheets.");
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+    async function campaignXlsxEntries(buffer) {
+      const bytes = new Uint8Array(buffer);
+      const view = new DataView(buffer);
+      let eocd = -1;
+      for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 66000); offset -= 1) {
+        if (view.getUint32(offset, true) === 0x06054b50) { eocd = offset; break; }
+      }
+      if (eocd < 0) throw new Error("This XLSX file could not be opened.");
+      const totalEntries = view.getUint16(eocd + 10, true);
+      let centralOffset = view.getUint32(eocd + 16, true);
+      const entries = new Map();
+      const decoder = new TextDecoder();
+      for (let index = 0; index < totalEntries; index += 1) {
+        if (view.getUint32(centralOffset, true) !== 0x02014b50) break;
+        const method = view.getUint16(centralOffset + 10, true);
+        const compressedSize = view.getUint32(centralOffset + 20, true);
+        const nameLength = view.getUint16(centralOffset + 28, true);
+        const extraLength = view.getUint16(centralOffset + 30, true);
+        const commentLength = view.getUint16(centralOffset + 32, true);
+        const localOffset = view.getUint32(centralOffset + 42, true);
+        const name = decoder.decode(bytes.slice(centralOffset + 46, centralOffset + 46 + nameLength)).replace(/^\\//, "");
+        const localNameLength = view.getUint16(localOffset + 26, true);
+        const localExtraLength = view.getUint16(localOffset + 28, true);
+        const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+        const compressed = bytes.slice(dataStart, dataStart + compressedSize);
+        let payload = compressed;
+        if (method === 8) payload = await campaignInflateRawXlsx(compressed);
+        if (method !== 0 && method !== 8) throw new Error("This XLSX compression format is not supported.");
+        entries.set(name, decoder.decode(payload));
+        centralOffset += 46 + nameLength + extraLength + commentLength;
+      }
+      return entries;
+    }
+    function campaignXlsxSharedStrings(entries) {
+      const xml = entries.get("xl/sharedStrings.xml") || "";
+      if (!xml) return [];
+      const doc = new DOMParser().parseFromString(xml, "application/xml");
+      return Array.from(doc.getElementsByTagName("si")).map(campaignXmlText);
+    }
+    function campaignXlsxSheetPath(entries) {
+      const workbook = entries.get("xl/workbook.xml") || "";
+      const rels = entries.get("xl/_rels/workbook.xml.rels") || "";
+      if (!workbook || !rels) return "xl/worksheets/sheet1.xml";
+      const sheetMatches = Array.from(workbook.matchAll(/<sheet\\b[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"/g));
+      const preferred = sheetMatches.find(match => /Content Calendar/i.test(campaignDecodeXml(match[1]))) || sheetMatches[0];
+      if (!preferred) return "xl/worksheets/sheet1.xml";
+      const relTag = Array.from(rels.matchAll(/<Relationship\\b[^>]*>/g)).find(match => match[0].includes('Id="' + preferred[2] + '"'))?.[0] || "";
+      const target = /Target="([^"]+)"/.exec(relTag)?.[1] || "worksheets/sheet1.xml";
+      return target.startsWith("xl/") ? target : "xl/" + target.replace(/^\\//, "");
+    }
+    function campaignXlsxCellValue(cell, sharedStrings) {
+      const type = cell.getAttribute("t") || "";
+      const valueNode = cell.getElementsByTagName("v")[0];
+      let value = type === "inlineStr" ? campaignXmlText(cell) : valueNode?.textContent || "";
+      if (type === "s") value = sharedStrings[Number(value)] || "";
+      return String(value || "").trim();
+    }
+    async function parseCampaignXlsxFile(file) {
+      const entries = await campaignXlsxEntries(await file.arrayBuffer());
+      const sheetXml = entries.get(campaignXlsxSheetPath(entries)) || entries.get("xl/worksheets/sheet1.xml");
+      if (!sheetXml) throw new Error("This XLSX file does not include a readable Content Calendar sheet.");
+      const sharedStrings = campaignXlsxSharedStrings(entries);
+      const doc = new DOMParser().parseFromString(sheetXml, "application/xml");
+      return Array.from(doc.getElementsByTagName("row")).map(rowNode => {
+        const row = [];
+        for (const cell of Array.from(rowNode.getElementsByTagName("c"))) row[campaignXlsxColumnIndex(cell.getAttribute("r"))] = campaignXlsxCellValue(cell, sharedStrings);
+        return row.map(value => value || "");
+      }).filter(row => row.some(Boolean));
+    }
+    function campaignDateIso(value = "") {
+      const text = String(value || "").trim();
+      if (!text) return "";
+      if (/^\\d{4}-\\d{2}-\\d{2}/.test(text)) return text.slice(0, 10);
+      if (/^\\d+(\\.\\d+)?$/.test(text)) return campaignExcelDate(text);
+      const slash = /^(\\d{1,2})[/-](\\d{1,2})[/-](\\d{2,4})$/.exec(text);
+      if (!slash) return text;
+      const year = slash[3].length === 2 ? "20" + slash[3] : slash[3];
+      return year + "-" + slash[1].padStart(2, "0") + "-" + slash[2].padStart(2, "0");
+    }
+    function campaignTimeClock(value = "") {
+      const text = String(value || "").trim();
+      if (!text) return "";
+      if (/^\\d+(\\.\\d+)?$/.test(text)) return campaignExcelTime(text);
+      const match = /^(\\d{1,2})(?::(\\d{2}))?\\s*(AM|PM)?$/i.exec(text);
+      if (!match) return text;
+      let hours = Number(match[1]);
+      const minutes = match[2] || "00";
+      const meridian = (match[3] || "").toUpperCase();
+      if (meridian === "PM" && hours < 12) hours += 12;
+      if (meridian === "AM" && hours === 12) hours = 0;
+      return String(hours).padStart(2, "0") + ":" + minutes;
+    }
+    function campaignScheduledAt(record) {
+      const date = campaignDateIso(campaignRecordValue(record, "Date"));
+      const time = campaignTimeClock(campaignRecordValue(record, "Time"));
+      return date && time ? date + "T" + time : date;
     }
     function campaignDateRange(records) {
-      const dates = records.map(record => campaignRecordValue(record, "Date")).filter(Boolean);
+      const dates = records.map(record => campaignDateIso(campaignRecordValue(record, "Date"))).filter(Boolean);
       if (!dates.length) return "No dates";
       const sorted = [...dates].sort();
       return sorted[0] === sorted[sorted.length - 1] ? sorted[0] : sorted[0] + " to " + sorted[sorted.length - 1];
@@ -15772,6 +15932,29 @@ function htmlShell() {
       if (text.includes("instagram")) return "Instagram";
       return String(value || "").trim();
     }
+    function campaignPlatformKey(value = "") {
+      const label = campaignPlatformLabel(value).toLowerCase();
+      if (label === "twitter / x") return "x";
+      if (label.includes("linkedin")) return "linkedin";
+      if (label.includes("facebook")) return "facebook";
+      if (label.includes("instagram")) return "instagram";
+      return normalizePlatformName(value) || label.replace(/[^a-z0-9]+/g, "_");
+    }
+    function campaignQueueStatus(record, platform, scheduledAt) {
+      const raw = String(campaignRecordValue(record, "Status") || "").trim().toLowerCase();
+      if (["facebook", "instagram"].includes(platform)) return "draft";
+      if (/scheduled/.test(raw) && scheduledAt) return "scheduled";
+      if (/approved/.test(raw) && scheduledAt) return "scheduled";
+      if (/approved/.test(raw)) return "approved";
+      return "draft";
+    }
+    function campaignImportKey(record) {
+      return [campaignDateIso(campaignRecordValue(record, "Date")), campaignTimeClock(campaignRecordValue(record, "Time")), campaignPlatformKey(campaignRecordValue(record, "Platform")), campaignRecordValue(record, "Campaign"), campaignRecordValue(record, "Caption")]
+        .map(value => String(value || "").trim().toLowerCase().replace(/\\s+/g, " ")).join("|");
+    }
+    function campaignHashtags(record) {
+      return String(campaignRecordValue(record, "Hashtags") || "").split(/[\\s,]+/).map(tag => tag.trim()).filter(Boolean).map(tag => tag.startsWith("#") ? tag : "#" + tag);
+    }
     function campaignPlatformErrors(records = []) {
       const values = records.map(record => campaignRecordValue(record, "Platform")).filter(Boolean);
       if (values.some(value => String(value).toLowerCase().includes("tiktok"))) {
@@ -15781,102 +15964,130 @@ function htmlShell() {
       const unsupported = values.filter(value => !allowed.has(String(value).trim().toLowerCase()));
       return unsupported.length ? ["Use LinkedIn, Facebook, Instagram, or Twitter / X for Platform."] : [];
     }
-    async function handleCampaignSpreadsheetUpload(file) {
-      if (!file) return;
-      const name = String(file.name || "campaign upload");
-      if (/\\.xlsx$/i.test(name)) {
-        campaignImportPreview = {
-          fileName:name,
-          rows:[],
-          errors:["CSV upload is ready. XLSX support can be added next."],
-          summary:{ found:0, dateRange:"Not imported", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0 },
-          confirmed:false
-        };
-        render();
-        toast("CSV upload is ready. XLSX support can be added next.");
-        return;
-      }
-      if (!/\\.csv$/i.test(name) && !/text\\/csv/i.test(String(file.type || ""))) {
-        campaignImportPreview = {
-          fileName:name,
-          rows:[],
-          errors:["Use a CSV file for this import. XLSX support can be added next."],
-          summary:{ found:0, dateRange:"Not imported", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0 },
-          confirmed:false
-        };
-        render();
-        toast("Use a CSV file for this import.");
-        return;
-      }
-      const rows = parseCampaignCsvText(await file.text());
-      const headers = rows[0] || [];
-      const headerMap = new Map(headers.map((header, index) => [campaignColumnKey(header), index]));
-      const missing = campaignRequiredColumns.filter(column => !headerMap.has(campaignColumnKey(column)));
-      if (missing.length) {
-        campaignImportPreview = {
-          fileName:name,
-          rows:[],
-          errors:["This file needs Date, Platform, and Caption columns before it can be imported."],
-          summary:{ found:0, dateRange:"Not imported", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0 },
-          confirmed:false
-        };
-        render();
-        toast("This file needs Date, Platform, and Caption columns before it can be imported.");
-        return;
-      }
-      const records = rows.slice(1).map(sourceRow => {
-        const record = {};
-        for (const [key, index] of headerMap.entries()) record[key] = String(sourceRow[index] || "").trim();
-        return record;
-      }).filter(record => campaignRecordValue(record, "Date") || campaignRecordValue(record, "Platform") || campaignRecordValue(record, "Caption"));
+    function campaignPreviewFromRecords(name, records, errors = []) {
       const platforms = [...new Set(records.map(record => campaignPlatformLabel(campaignRecordValue(record, "Platform"))).filter(Boolean))];
-      const platformErrors = campaignPlatformErrors(records);
-      campaignImportPreview = {
+      const keys = new Set();
+      let duplicateRows = 0;
+      for (const record of records) {
+        const key = campaignImportKey(record);
+        if (keys.has(key)) duplicateRows += 1;
+        keys.add(key);
+      }
+      return {
         fileName:name,
-        rows:records.slice(0, 30),
-        errors:platformErrors,
+        rows:records.slice(0, 200),
+        errors,
         summary:{
           found:records.length,
           dateRange:campaignDateRange(records),
           platforms:platforms.join(", ") || "None",
           needsImages:records.filter(record => !campaignRecordValue(record, "Image Direction")).length,
           wilmaRecommended:records.filter(record => /Use Wilma/.test(campaignWilmaLabel(record))).length,
-          overlaySuggestions:records.filter(record => campaignRecordValue(record, "Overlay Text") || campaignRecordValue(record, "Headline") || campaignRecordValue(record, "CTA")).length
+          overlaySuggestions:records.filter(record => campaignRecordValue(record, "Overlay Text") || campaignRecordValue(record, "Headline") || campaignRecordValue(record, "CTA")).length,
+          duplicateRows
         },
         confirmed:false
       };
+    }
+    async function handleCampaignSpreadsheetUpload(file) {
+      if (!file) return;
+      const name = String(file.name || "campaign upload");
+      const isXlsx = /\\.xlsx$/i.test(name) || /spreadsheetml/i.test(String(file.type || ""));
+      const isCsv = /\\.csv$/i.test(name) || /text\\/csv/i.test(String(file.type || ""));
+      if (!isXlsx && !isCsv) {
+        campaignImportPreview = { fileName:name, rows:[], errors:["Use a CSV or XLSX file for this import."], summary:campaignEmptySummary(), confirmed:false };
+        render();
+        toast("Use a CSV or XLSX file for this import.");
+        return;
+      }
+      let rows = [];
+      try {
+        rows = isXlsx ? await parseCampaignXlsxFile(file) : parseCampaignCsvText(await file.text());
+      } catch (error) {
+        campaignImportPreview = { fileName:name, rows:[], errors:[error.message || "This spreadsheet could not be previewed."], summary:campaignEmptySummary(), confirmed:false };
+        render();
+        toast("This spreadsheet could not be previewed.");
+        return;
+      }
+      const parsed = campaignRowsToRecords(rows);
+      if (parsed.errors.length) {
+        campaignImportPreview = { fileName:name, rows:[], errors:parsed.errors, summary:campaignEmptySummary(), confirmed:false };
+        render();
+        toast(parsed.errors[0]);
+        return;
+      }
+      campaignImportPreview = campaignPreviewFromRecords(name, parsed.records, campaignPlatformErrors(parsed.records));
       render();
       toast("Import preview ready. Nothing has been posted.");
     }
     function confirmCampaignImport() {
       if (!campaignImportPreview?.rows?.length || campaignImportPreview.errors?.length) {
-        toast("Review a valid CSV preview before confirming import.");
+        toast("Review a valid import preview before confirming import.");
         return;
       }
       const now = Date.now();
+      const stamp = new Date(now).toISOString();
+      const existingKeys = new Set((state.posts || []).map(post => post.importKey || [post.scheduled_at || post.scheduledFor || "", post.platform || "", post.caption || post.body || ""].map(value => String(value || "").trim().toLowerCase().replace(/\\s+/g, " ")).join("|")));
+      const previewKeys = new Set();
       const imported = campaignImportPreview.rows.map((record, index) => {
+        const importKey = campaignImportKey(record);
+        if (previewKeys.has(importKey) || existingKeys.has(importKey)) return null;
+        previewKeys.add(importKey);
         const caption = campaignRecordValue(record, "Caption");
         const headline = campaignRecordValue(record, "Headline");
         const topic = campaignRecordValue(record, "Topic");
+        const platform = campaignPlatformKey(campaignRecordValue(record, "Platform")) || "linkedin";
+        const scheduledAt = campaignScheduledAt(record);
+        const queueStatus = campaignQueueStatus(record, platform, scheduledAt);
+        const metaPaused = ["facebook", "instagram"].includes(platform);
+        const approved = ["approved", "scheduled"].includes(queueStatus);
         const title = headline || topic || caption.slice(0, 72) || "Imported campaign post";
         return {
           id:"campaign-import-" + now + "-" + index,
           title,
           caption,
-          platform:normalizePlatformName(campaignRecordValue(record, "Platform")) || "linkedin",
-          status:"draft",
+          body:caption,
+          hook:headline || topic,
+          platform,
+          targetChannels:[platform],
+          status:queueStatus,
           campaign:campaignRecordValue(record, "Campaign"),
-          scheduledFor:[campaignRecordValue(record, "Date"), campaignRecordValue(record, "Time")].filter(Boolean).join(" "),
+          postType:campaignRecordValue(record, "Post Type"),
+          topic,
+          headline,
+          subhead:campaignRecordValue(record, "Subhead"),
+          cta:campaignRecordValue(record, "CTA"),
+          link:campaignRecordValue(record, "Link"),
+          audience:campaignRecordValue(record, "Audience"),
+          goal:campaignRecordValue(record, "Goal"),
+          tone:campaignRecordValue(record, "Tone"),
+          scheduledFor:scheduledAt,
+          scheduled_at:scheduledAt,
           imageBrief:campaignRecordValue(record, "Image Direction"),
           overlayText:campaignRecordValue(record, "Overlay Text"),
+          wilmaPreference:campaignRecordValue(record, "Wilma Preference"),
+          approvalOwner:campaignRecordValue(record, "Approval Owner"),
+          notes:campaignRecordValue(record, "Notes"),
+          hashtags:campaignHashtags(record),
+          copyReviewed:approved,
+          copyReviewedAt:approved ? stamp : "",
+          approved_at:approved ? stamp : "",
+          publishingStatus:metaPaused ? "meta_paused" : queueStatus === "scheduled" ? "scheduled" : "",
+          publishErrorSummary:metaPaused ? "Meta is paused. Imported as draft for review only." : "",
+          per_channel_publish_status:queueStatus === "scheduled" ? { [platform]:"scheduled" } : {},
           sourceType:"campaign_upload",
-          createdAt:new Date().toISOString()
+          sourceReference:"Campaign Upload",
+          sourceTitle:campaignRecordValue(record, "Campaign") || "Social calendar import",
+          sourceItemId:importKey,
+          importKey,
+          createdAt:stamp
         };
-      });
+      }).filter(Boolean);
       state.posts = [...imported, ...(state.posts || [])];
       campaignImportPreview = { ...campaignImportPreview, confirmed:true };
       render();
-      toast("Internal drafts created. Nothing gets posted.");
+      const skipped = campaignImportPreview.rows.length - imported.length;
+      toast("Internal queue items created. Nothing gets posted." + (skipped ? " " + skipped + " duplicate row(s) skipped." : ""));
     }
     function cancelCampaignImport() {
       campaignImportPreview = null;
@@ -15887,7 +16098,7 @@ function htmlShell() {
       toast("Fix Issues checks the preview before anything is saved.");
     }
     function downloadCampaignTemplate() {
-      const sample = ["2026-06-01", "9:00 AM", "LinkedIn", "RecordShield", "Explainer", "Clean record basics", "A clean record should not require a maze.", "Clean records, clear next steps", "", "Start with a free eligibility check", "", "Job seekers", "Education", "Plainspoken", "Warm LegalEase illustration", "Clean records, clear next steps", "auto", "Roger", "Draft", "Imported safely as an internal draft"];
+      const sample = ["2026-06-01", "9:00 AM", "LinkedIn", "RecordShield", "Explainer", "Clean record basics", "A clean record should not require a maze.", "Clean records, clear next steps", "", "Start with a free eligibility check", "", "Job seekers", "Education", "Plainspoken", "Warm LegalEase illustration", "Clean records, clear next steps", "auto", "Roger", "Draft", "Imported safely as an internal draft", "#RecordShield #LegalEase"];
       const csv = [campaignUploadColumns, sample].map(row => row.map(value => '"' + String(value).replace(/"/g, '""') + '"').join(",")).join("\\n");
       const blob = new Blob([csv], { type:"text/csv" });
       const url = URL.createObjectURL(blob);
@@ -23188,7 +23399,7 @@ function htmlShell() {
       const twitterXFutureCapabilities = ["Preview Twitter / X post", "Review image", "Approve post", "Prepare scheduling", "Post only after future live connector is approved"];
       const twitterXDisabledCapabilities = ["Live posting", "Account connection", "Auto-posting", "Analytics sync", "Credential storage", "External scheduling"];
       const campaignTemplateColumns = [
-        "Date", "Time", "Platform", "Campaign", "Post Type", "Topic", "Caption", "Headline", "Subhead", "CTA", "Link", "Audience", "Goal", "Tone", "Image Direction", "Overlay Text", "Wilma Preference", "Approval Owner", "Status", "Notes"
+        "Date", "Time", "Platform", "Campaign", "Post Type", "Topic", "Caption", "Headline", "Subhead", "CTA", "Link", "Audience", "Goal", "Tone", "Image Direction", "Overlay Text", "Wilma Preference", "Approval Owner", "Status", "Notes", "Hashtags"
       ];
       const priorityTemplateColumns = ["Date", "Platform", "Caption", "Campaign", "Image Direction", "Overlay Text", "Wilma Preference", "Status"];
       const campaignSteps = [
@@ -23199,14 +23410,15 @@ function htmlShell() {
       ];
       const campaignPreview = campaignImportPreview;
       const campaignPreviewRows = campaignPreview?.rows?.length ? campaignPreview.rows.slice(0, 5) : [];
-      const campaignSummary = campaignPreview?.summary || { found:0, dateRange:"No file selected", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0 };
+      const campaignSummary = campaignPreview?.summary || { found:0, dateRange:"No file selected", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0, duplicateRows:0 };
       const campaignPreviewMetrics = [
         [campaignSummary.found || 0, "posts found"],
         [campaignSummary.dateRange || "No file selected", "date range"],
         [campaignSummary.platforms || "None", "platforms included"],
         [campaignSummary.needsImages || 0, "posts needing images"],
         [campaignSummary.wilmaRecommended || 0, "Wilma recommended"],
-        [campaignSummary.overlaySuggestions || 0, "overlay text suggestions"]
+        [campaignSummary.overlaySuggestions || 0, "overlay text suggestions"],
+        [campaignSummary.duplicateRows || 0, "duplicate rows"]
       ];
       const campaignErrors = campaignPreview?.errors || [];
       const campaignConfirmDisabled = !campaignPreviewRows.length || campaignErrors.length ? "disabled" : "";
@@ -23284,15 +23496,16 @@ function htmlShell() {
                 <button type="button" onclick="openLeeBubble()">Generate Image Plan</button>
                 <button type="button" \${campaignConfirmDisabled} title="\${campaignConfirmDisabled ? "Review a valid import preview first." : "Send imported drafts into the internal approval queue."}">Send to Approval Queue</button>
               </div>
-              <p class="muted">CSV upload is ready. XLSX support can be added next.</p>
+              <p class="muted">CSV and XLSX uploads are ready. Imports create internal queue items only.</p>
               <div class="campaign-safety-lines">
                 <span>Uploads create internal drafts only. Nothing gets posted.</span>
                 <span>Nothing gets scheduled on social platforms.</span>
                 <span>You approve before anything moves forward.</span>
                 <span>Nothing has been published by the OS.</span>
+                <span>Duplicate rows are skipped before saving.</span>
               </div>
               <div class="campaign-import-status \${campaignErrors.length ? "warn" : ""}">
-                \${campaignErrors.length ? campaignErrors.map(error => \`<strong>\${esc(error)}</strong>\`).join("<br>") : campaignPreview?.confirmed ? "Internal drafts were added to the queue. Nothing gets posted." : "Choose a CSV to preview posts before saving internal drafts."}
+                \${campaignErrors.length ? campaignErrors.map(error => \`<strong>\${esc(error)}</strong>\`).join("<br>") : campaignPreview?.confirmed ? "Internal queue items were added. Nothing gets posted." : "Choose a CSV or XLSX file to preview posts before saving internal queue items."}
               </div>
               <div>
                 <strong>Creative Recommendations</strong>
@@ -23311,7 +23524,7 @@ function htmlShell() {
               </div>
               <div class="campaign-upload-table">
                 <div class="campaign-upload-row header"><span>Date</span><span>Platform</span><span>Caption Preview</span><span>Image Plan</span><span>Wilma</span><span>Approval</span></div>
-                \${campaignPreviewRows.map(record => \`<div class="campaign-upload-row"><span>\${esc(campaignRecordValue(record, "Date"))}</span><span>\${esc(campaignPlatformLabel(campaignRecordValue(record, "Platform")))}</span><span>\${esc(campaignRecordValue(record, "Caption")).slice(0, 120)}</span><span>\${esc(campaignImagePlan(record))}</span><span>\${esc(campaignWilmaLabel(record))}</span><span>Needs review</span></div>\`).join("") || '<div class="campaign-import-status">Upload a CSV to preview Date, Platform, Caption Preview, Image Plan, Wilma, and Approval before saving.</div>'}
+                \${campaignPreviewRows.map(record => \`<div class="campaign-upload-row"><span>\${esc(campaignRecordValue(record, "Date"))}</span><span>\${esc(campaignPlatformLabel(campaignRecordValue(record, "Platform")))}</span><span>\${esc(campaignRecordValue(record, "Caption")).slice(0, 120)}</span><span>\${esc(campaignImagePlan(record))}</span><span>\${esc(campaignWilmaLabel(record))}</span><span>\${esc(campaignRecordValue(record, "Status") || "Needs review")}</span></div>\`).join("") || '<div class="campaign-import-status">Upload a CSV or XLSX file to preview Date, Platform, Caption Preview, Image Plan, Wilma, and Approval before saving.</div>'}
               </div>
               <div class="production-card-actions">
                 <button type="button" \${campaignConfirmDisabled} onclick="confirmCampaignImport()" title="Confirm Import creates internal drafts only.">Confirm Import</button>
