@@ -72,6 +72,16 @@ import { createCaptureInboxItem, routeCaptureInboxItem } from "./lee-quick-captu
 import { buildMorningBriefRecord, saveMorningBrief } from "./morning-brief.mjs";
 import { buildEveningReflectionRecord, saveEveningReflection } from "./evening-reflection.mjs";
 import { buildDailyCloseoutRecord, saveDailyCloseout } from "./daily-closeout.mjs";
+import {
+  activeDailyRunSession,
+  completeDailyRunSession,
+  createDailyRunSession,
+  dailyRunSessionView,
+  markDailyRunSessionAbandoned,
+  parkDailyRunItem,
+  resumeDailyRunSession as resumeDailyRunSessionRecord,
+  startFreshDailyRunSession
+} from "./daily-run-session.mjs";
 import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
 import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex } from "./operator-search.mjs";
 import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegritySnapshot } from "./state-integrity.mjs";
@@ -545,6 +555,7 @@ const clientStateArrayCollections = [
   "eveningReflections",
   "operatingMemory",
   "dailyCloseouts",
+  "dailyRunSessions",
   "reviewStates",
   "osHealthSnapshots",
   "smokeTestRuns",
@@ -582,6 +593,7 @@ const clientStateObjectCollections = [
   "metrics",
   "systemHealth",
   "schemaStatus",
+  "dailyRun",
   "leeMemory"
 ];
 
@@ -1342,8 +1354,11 @@ function withPublicChannelSetup(state) {
   const hostingConfig = storageRuntimeConfig();
   const autonomy = buildAutonomyReport(state);
   const autonomyGovernance = buildAutonomyGovernance(state);
+  const livePostingGates = Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]));
+  const stateWithRuntimeGates = dailyRunEngineState(state, livePostingGates);
   return normalizeStateForClient({
     ...state,
+    dailyRun: dailyRunSessionView(stateWithRuntimeGates),
     autonomyActions: autonomy.actions,
     autonomySummary: autonomy.summary,
     autonomyPolicy: autonomy.policy,
@@ -1363,7 +1378,7 @@ function withPublicChannelSetup(state) {
     runtime: {
       ...(state.runtime || {}),
 	      liveLinkedInPostingEnabled: linkedinLivePostingSwitchEnabled(),
-	      livePostingGates: Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)])),
+	      livePostingGates,
 	      openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
       oauthTokenEncryptionConfigured: Boolean(process.env.OAUTH_TOKEN_ENCRYPTION_KEY),
       accessControl: {
@@ -1420,6 +1435,16 @@ function withPublicChannelSetup(state) {
 	      };
     })
   }, { source: "server-public-setup-output" });
+}
+
+function dailyRunEngineState(state = {}, livePostingGates = Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))) {
+  return {
+    ...state,
+    runtime: {
+      ...(state.runtime || {}),
+      livePostingGates
+    }
+  };
 }
 
 function productionReadinessCheck(id, label, ok, detail = "", owner = "Operations") {
@@ -14138,6 +14163,19 @@ function htmlShell() {
     .today-summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
     .today-summary-card { border:1px solid rgba(8,20,95,.08); border-radius:14px; background:white; padding:11px; display:grid; gap:5px; }
     .today-summary-card strong { color:var(--ink); font-size:23px; line-height:1; }
+    .daily-run-panel { margin:0 0 18px; border:1px solid rgba(8,20,95,.1); border-radius:16px; background:#fff; padding:16px; display:grid; gap:10px; box-shadow:0 12px 28px rgba(8,20,95,.08); }
+    .daily-run-panel h2 { margin:0; font-size:22px; line-height:1.2; color:var(--ink); letter-spacing:0; }
+    .daily-run-panel p { margin:0; color:var(--muted); line-height:1.45; }
+    .daily-run-panel.active { border-color:rgba(0,169,157,.24); }
+    .daily-run-panel.completed { border-color:rgba(47,107,79,.22); }
+    .daily-run-kicker { color:var(--le-teal); font-size:12px; font-weight:900; text-transform:uppercase; letter-spacing:.08em; }
+    .daily-run-head { display:flex; gap:14px; justify-content:space-between; align-items:flex-start; }
+    .daily-run-counts { display:flex; flex-wrap:wrap; gap:8px; }
+    .daily-run-counts span { display:inline-flex; align-items:center; min-height:30px; gap:5px; border:1px solid rgba(8,20,95,.08); border-radius:999px; background:#F8FAFC; padding:5px 10px; color:#596172; font-size:12px; font-weight:800; }
+    .daily-run-counts strong { color:var(--ink); }
+    .daily-run-actions { display:flex; flex-wrap:wrap; gap:9px; align-items:center; }
+    .daily-run-banner { border:1px solid rgba(240,72,0,.18); border-radius:12px; background:rgba(240,72,0,.07); padding:10px 12px; display:grid; gap:3px; color:var(--ink); }
+    .daily-run-banner span { color:var(--muted); font-size:13px; }
     .quick-capture { display:grid; gap:12px; }
     .quick-capture textarea { min-height:118px; resize:vertical; font-size:15px; line-height:1.45; }
     .focus-launcher { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
@@ -16139,6 +16177,48 @@ function htmlShell() {
     window.cancelCampaignImport = cancelCampaignImport;
     window.fixCampaignImportIssues = fixCampaignImportIssues;
     window.downloadCampaignTemplate = downloadCampaignTemplate;
+
+    function applyDailyRunResult(result, fallbackMessage = "Daily Run updated.") {
+      if (result?.state) state = hydrateStatePayload(result.state, "daily-run-update");
+      else if (result?.dailyRun) state.dailyRun = result.dailyRun;
+      render();
+      toast(result?.message || fallbackMessage);
+    }
+
+    async function startDailyRunSession() {
+      await safeAction(async () => {
+        const result = await api("/api/daily-run/start", { method:"POST", body:JSON.stringify({ fresh:false }) });
+        applyDailyRunResult(result, "Daily Run started.");
+      }, "Could not start Daily Run.");
+    }
+
+    async function resumeDailyRunSession() {
+      await safeAction(async () => {
+        const result = await api("/api/daily-run/resume", { method:"POST", body:JSON.stringify({}) });
+        applyDailyRunResult(result, "Daily Run resumed.");
+      }, "Could not resume Daily Run.");
+    }
+
+    async function endDailyRunSession() {
+      await safeAction(async () => {
+        const result = await api("/api/daily-run/end", { method:"POST", body:JSON.stringify({}) });
+        applyDailyRunResult(result, "Daily Run completed.");
+      }, "Could not end Daily Run.");
+    }
+
+    async function abandonDailyRunSession() {
+      await safeAction(async () => {
+        const result = await api("/api/daily-run/abandon", { method:"POST", body:JSON.stringify({}) });
+        applyDailyRunResult(result, "Daily Run abandoned.");
+      }, "Could not abandon Daily Run.");
+    }
+
+    async function startFreshDailyRunSession() {
+      await safeAction(async () => {
+        const result = await api("/api/daily-run/start", { method:"POST", body:JSON.stringify({ fresh:true }) });
+        applyDailyRunResult(result, "Fresh Daily Run started.");
+      }, "Could not start a fresh Daily Run.");
+    }
 
     async function api(path, options = {}) {
       const timeoutMs = Number(options.timeoutMs || 8000);
@@ -22766,6 +22846,88 @@ function htmlShell() {
       </section>\`;
     }
 
+    function dailyRunTodayPanelHtml() {
+      const view = state.dailyRun || {};
+      const active = view.activeSession || null;
+      const completed = view.latestCompletedSession || null;
+      const summary = view.latestCompletedSummary || {};
+      const bestBucket = view.bestBucket || {};
+      const counts = view.counts || {};
+      const bucketLabel = bucket => bucket?.label || "Today review";
+      const bucketSummary = bucket => bucket?.summary || "Review Today and move the highest-consequence work first.";
+      const countRows = [
+        ["blocked", counts.blocked || 0],
+        ["due today", counts.due_today || 0],
+        ["overdue follow-ups", counts.overdue_followups || 0],
+        ["ready to approve", counts.ready_to_approve || 0],
+        ["scheduled today", counts.scheduled_today || 0]
+      ];
+      const countsHtml = \`<div class="daily-run-counts">\${countRows.map(([label, value]) => \`<span><strong>\${esc(String(value))}</strong> \${esc(label)}</span>\`).join("")}</div>\`;
+      const banner = view.criticalBanner ? \`<div class="daily-run-banner"><strong>\${esc(view.criticalBanner.title)}</strong><span>\${esc(view.criticalBanner.message)}</span></div>\` : "";
+      if (active && view.stale) {
+        return \`<section class="daily-run-panel">
+          <div class="daily-run-kicker">Guided Daily Run · Surface → Move → Confirm</div>
+          <h2>You have an unfinished session from earlier.</h2>
+          <p class="muted">Resume keeps the stored snapshot. Start Fresh abandons the old session and creates a new snapshot. Mark Abandoned closes the session only; work items stay intact.</p>
+          <div class="daily-run-actions">
+            <button class="primary" type="button" onclick="resumeDailyRunSession()">Resume Session</button>
+            <button type="button" onclick="startFreshDailyRunSession()">Start Fresh</button>
+            <button type="button" onclick="abandonDailyRunSession()">Mark Abandoned</button>
+          </div>
+        </section>\`;
+      }
+      if (active) {
+        const buckets = active.bucket_snapshot?.buckets || [];
+        const current = buckets.find(bucket => bucket.key === active.current_bucket_key) || buckets[0] || {};
+        const completedCount = (active.completed_bucket_keys || []).length;
+        const progress = \`\${completedCount} of \${buckets.length || 0}\`;
+        return \`<section class="daily-run-panel active">
+          <div class="daily-run-kicker">Guided Daily Run · Surface → Move → Confirm</div>
+          \${banner}
+          <div class="daily-run-head">
+            <div>
+              <h2>Resume Session</h2>
+              <p><strong>Current bucket:</strong> \${esc(bucketLabel(current))}. \${esc(bucketSummary(current))}</p>
+            </div>
+            <button class="primary" type="button" onclick="resumeDailyRunSession()">Resume Session</button>
+          </div>
+          <div class="daily-run-counts">
+            <span><strong>\${esc(progress)}</strong> Progress</span>
+            <span><strong>\${esc(String((active.parked_items || []).length))}</strong> Parked</span>
+            <span><strong>\${esc(String(view.newSinceStart?.count || active.new_since_start?.count || 0))}</strong> New since start</span>
+          </div>
+          <div class="daily-run-actions">
+            <button type="button" onclick="location.hash='queue'">Open Current Work</button>
+            <button type="button" onclick="endDailyRunSession()">End Session</button>
+          </div>
+        </section>\`;
+      }
+      if (completed) {
+        return \`<section class="daily-run-panel completed">
+          <div class="daily-run-kicker">Guided Daily Run · Surface → Move → Confirm</div>
+          <h2>Session summary</h2>
+          <div class="daily-run-counts">
+            <span><strong>\${esc(String(summary.items_reviewed || 0))}</strong> items reviewed</span>
+            <span><strong>\${esc(String(summary.items_approved || 0))}</strong> items approved</span>
+            <span><strong>\${esc(String(summary.posts_scheduled || 0))}</strong> posts scheduled</span>
+            <span><strong>\${esc(String(summary.posts_published || 0))}</strong> posts published</span>
+            <span><strong>\${esc(String(summary.followups_prepared || 0))}</strong> follow-ups prepared</span>
+            <span><strong>\${esc(String(summary.blockers_parked || 0))}</strong> blockers parked</span>
+            <span><strong>\${esc(String(summary.blockers_remaining || 0))}</strong> blockers remaining</span>
+          </div>
+          <p><strong>tomorrow’s first move:</strong> \${esc(summary.tomorrow_first_move || completed.tomorrow_first_move || "Start with a fresh Daily Run.")}</p>
+          <div class="daily-run-actions"><button class="primary" type="button" onclick="startDailyRunSession()">Start Session</button></div>
+        </section>\`;
+      }
+      return \`<section class="daily-run-panel">
+        <div class="daily-run-kicker">Guided Daily Run · Surface → Move → Confirm</div>
+        <h2>Start here: \${esc(bucketLabel(bestBucket))}</h2>
+        <p>\${esc(bucketSummary(bestBucket))}</p>
+        \${countsHtml}
+        <div class="daily-run-actions"><button class="primary" type="button" onclick="startDailyRunSession()">Start Session</button></div>
+      </section>\`;
+    }
+
     function commandCenterOverviewHtml(posts) {
       const nowItem = cockpitNowItem(posts);
       const intention = cockpitDailyIntention(nowItem);
@@ -22782,6 +22944,7 @@ function htmlShell() {
             <h1>\${esc(intention.prefix)}<span class="intention-accent">\${esc(intention.accent)}</span>\${esc(intention.suffix)}</h1>
             <div class="intention-meta"><span>\${esc(intention.source)}</span><button type="button" data-lee-prompt="Rewrite today's intention from current open work.">Rewrite with Le-E</button></div>
           </section>
+          \${dailyRunTodayPanelHtml()}
           <section class="cockpit-layout">
             <main class="cockpit-main">
             <section class="now-block" aria-label="Now">
@@ -29137,6 +29300,111 @@ async function handleRequest(request, response) {
 
 	  if (url.pathname === "/api/state" && request.method === "GET") {
     sendJson(response, withPublicChannelSetup(await store.readState()));
+    return;
+  }
+
+  if (url.pathname === "/api/daily-run" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, { dailyRun: dailyRunSessionView(dailyRunEngineState(currentState)), state: withPublicChannelSetup(currentState) });
+    return;
+  }
+
+  if (url.pathname === "/api/daily-run/start" && request.method === "POST") {
+    try {
+      const body = await readJson(request);
+      const currentState = await store.readState();
+      const result = body.fresh ? startFreshDailyRunSession(dailyRunEngineState(currentState)) : createDailyRunSession(dailyRunEngineState(currentState));
+      const persistedState = { ...currentState, dailyRunSessions: result.state.dailyRunSessions };
+      await store.writeState(persistedState);
+      sendJson(response, {
+        message: body.fresh ? "Fresh Daily Run started. The previous session was abandoned." : "Daily Run started. Snapshot saved.",
+        session: result.session,
+        dailyRun: dailyRunSessionView(dailyRunEngineState(persistedState)),
+        state: withPublicChannelSetup(persistedState)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not start Daily Run." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/daily-run/resume" && request.method === "POST") {
+    try {
+      const body = await readJson(request);
+      const currentState = await store.readState();
+      const active = activeDailyRunSession(currentState);
+      const sessionId = body.session_id || active.session?.session_id || "";
+      const result = resumeDailyRunSessionRecord(currentState, sessionId);
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Daily Run resumed. Snapshot preserved.",
+        session: result.session,
+        dailyRun: dailyRunSessionView(dailyRunEngineState(result.state)),
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not resume Daily Run." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/daily-run/end" && request.method === "POST") {
+    try {
+      const body = await readJson(request);
+      const currentState = await store.readState();
+      const active = activeDailyRunSession(currentState);
+      const sessionId = body.session_id || active.session?.session_id || "";
+      const result = completeDailyRunSession(currentState, sessionId);
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Daily Run completed. Tomorrow's first move is saved.",
+        session: result.session,
+        dailyRun: dailyRunSessionView(dailyRunEngineState(result.state)),
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not end Daily Run." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/daily-run/abandon" && request.method === "POST") {
+    try {
+      const body = await readJson(request);
+      const currentState = await store.readState();
+      const active = activeDailyRunSession(currentState);
+      const sessionId = body.session_id || active.session?.session_id || "";
+      const result = markDailyRunSessionAbandoned(currentState, sessionId);
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Daily Run marked abandoned. Work items were not changed.",
+        session: result.session,
+        dailyRun: dailyRunSessionView(dailyRunEngineState(result.state)),
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not abandon Daily Run." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/daily-run/park" && request.method === "POST") {
+    try {
+      const body = await readJson(request);
+      const currentState = await store.readState();
+      const active = activeDailyRunSession(currentState);
+      const sessionId = body.session_id || active.session?.session_id || "";
+      const result = parkDailyRunItem(currentState, sessionId, body.bucket_key || body.bucketKey, body.item_id || body.itemId, body.reason || "");
+      await store.writeState(result.state);
+      sendJson(response, {
+        message: "Item parked for this Daily Run. It remains visible for later review.",
+        session: result.session,
+        dailyRun: dailyRunSessionView(dailyRunEngineState(result.state)),
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not park Daily Run item." }, 400);
+    }
     return;
   }
 

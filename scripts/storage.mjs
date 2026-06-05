@@ -43,6 +43,7 @@ const coreStateCollections = [
   "eveningReflections",
   "operatingMemory",
   "dailyCloseouts",
+  "dailyRunSessions",
   "reviewStates",
   "osHealthSnapshots",
   "smokeTestRuns",
