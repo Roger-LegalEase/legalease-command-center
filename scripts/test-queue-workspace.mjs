@@ -18,9 +18,24 @@ for (const required of [
   "Safe mode: approvals prepare work only. Nothing sends or publishes automatically.",
   "Needs review",
   "One clear action per item",
-  "Detailed production workflow"
+  "Detailed production workflow",
+  "Delete",
+  "Delete Selected"
 ]) {
   assert(queue.includes(required), `Queue should include ${required}`);
+}
+
+for (const required of [
+  "Delete this queue item?",
+  "This removes the draft from your Queue. This will not delete any published posts.",
+  "Delete selected queue items?",
+  "This removes the selected drafts from your Queue. Published posts are not affected.",
+  "Your Queue is clear.",
+  "Import a calendar or add a new draft to get started.",
+  "Remove from Queue",
+  "This item may already be published. Deleting it only removes it from Command Center history and does not remove it from the social platform."
+]) {
+  assert(source.includes(required), `Queue delete flow should include ${required}`);
 }
 
 for (const required of [
@@ -63,6 +78,19 @@ assert(queue.indexOf("Detailed production workflow") < queue.indexOf("post-grid"
 assert(source.includes("setQueueTypeFilter"), "Queue category filters should be wired.");
 assert(source.includes('Review Publish Setup'), "Ready posts should use safe setup-review language.");
 assert(source.includes("@media (max-width:760px) { .queue-review-hero-head,.queue-review-item { grid-template-columns:1fr; display:grid; }"), "Queue review rows should stack before becoming cramped.");
+assert(source.includes("let queueDeleteDialog = null"), "Queue delete confirmation state should be tracked.");
+assert(source.includes("function openQueueDeleteDialog"), "Single item delete should open a confirmation dialog.");
+assert(source.includes("function openBulkQueueDeleteDialog"), "Bulk delete should open a confirmation dialog.");
+assert(source.includes("function cancelQueueDelete"), "Cancel should close the delete dialog without deleting.");
+assert(source.includes("async function confirmQueueDelete"), "Confirmed delete should persist the removal.");
+assert(source.includes('status:"deleted"'), "Queue delete should soft-delete items.");
+assert(source.includes("const deletedAt = new Date().toISOString()") && source.includes("deletedAt,"), "Queue delete should record when an item was removed.");
+assert(source.includes('deletedSource:"queue_delete"'), "Queue delete should record a plain internal delete source.");
+assert(source.includes("/api/posts/update"), "Queue delete should reuse the existing post update persistence path.");
+assert(source.includes("isQueueItemVisible"), "Queue should filter deleted items out of the default view.");
+assert(source.includes('post.status !== "deleted"'), "Deleted queue items should stay hidden after refresh or rerender.");
+assert(source.includes("!post.deletedAt"), "Soft-deleted queue items should stay hidden after refresh or rerender.");
+assert(source.includes("selectedPosts.size") && source.includes("Delete Selected"), "Bulk delete should only appear when items are selected.");
 
 for (const forbidden of [
   "Post Now",

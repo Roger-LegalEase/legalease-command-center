@@ -14326,6 +14326,8 @@ function htmlShell() {
     .queue-review-item p { margin:0; color:var(--muted); font-size:14px; line-height:1.42; max-width:78ch; overflow-wrap:break-word; }
     .queue-review-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
     .queue-review-actions button { min-height:38px; white-space:nowrap; }
+    .queue-select { display:inline-flex; align-items:center; gap:6px; min-height:28px; padding:3px 8px; border:1px solid rgba(8,20,95,.1); border-radius:999px; background:#F7FAF9; color:#475467; font-size:12px; font-weight:850; }
+    .queue-select input { width:16px; height:16px; margin:0; }
     .queue-review-details { grid-column:1 / -1; border-top:1px solid rgba(8,20,95,.08); padding-top:10px; }
     .queue-review-details summary { cursor:pointer; color:#475467; font-weight:850; }
     .queue-review-details-body { margin-top:10px; display:grid; gap:10px; }
@@ -14418,6 +14420,7 @@ function htmlShell() {
     .sort-control { display:inline-flex; align-items:center; gap:8px; margin-left:auto; color:var(--muted); font-size:13px; font-weight:850; }
     .sort-control select { min-height:38px; min-width:132px; }
     .bulk-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 12px; border:1px solid rgba(8,20,95,.1); border-radius:14px; background:#fff; }
+    .queue-delete-bulk { justify-content:space-between; border-color:rgba(217,119,6,.18); background:rgba(217,119,6,.06); }
     .board-columns { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; align-items:start; }
     .board-column { display:grid; gap:10px; min-height:120px; border:1px solid rgba(8,20,95,.08); border-radius:18px; padding:12px; background:rgba(255,255,255,.58); }
     .board-column h3 { margin:0; display:flex; justify-content:space-between; gap:10px; align-items:center; color:var(--ink); }
@@ -15247,6 +15250,7 @@ function htmlShell() {
     let queueSort = "priority";
     let bulkMode = false;
     let selectedPosts = new Set();
+    let queueDeleteDialog = null;
     let pendingPublishId = "";
     let systemCheckRanAt = "";
     let currentPageId = "overview";
@@ -16520,6 +16524,18 @@ function htmlShell() {
       render();
     }
 
+    function isQueueItemVisible(post) {
+      return Boolean(post) && post.status !== "deleted" && !post.deletedAt;
+    }
+
+    function isPublishedQueueItem(post) {
+      return Boolean(post) && (post.status === "posted" || post.status === "manually_posted" || post.manuallyPostedAt || post.postedAt);
+    }
+
+    function queueDeleteButtonLabel(post) {
+      return isPublishedQueueItem(post) ? "Remove from Queue" : "Delete";
+    }
+
     function postedNeedsMetrics(post) {
       return (post.status === "manually_posted" || post.status === "posted" || post.manuallyPostedAt || post.postedAt) && performanceLabelFor(post.performance) === "Needs Data";
     }
@@ -16548,7 +16564,7 @@ function htmlShell() {
         final_png: ["No posts need final PNGs.", "Posts appear here after image and overlay are ready."],
         manual_kit: ["No manual kits are waiting.", "Ready posts can be exported or published from Queue."],
         posted: ["No posted items in Queue.", "Posted items also live on the Posted page for metrics."],
-        all: ["No queue items yet.", "Create tomorrow's queue or make a draft from Sources."]
+        all: ["Your Queue is clear.", "Import a calendar or add a new draft to get started."]
       };
       const [title, body] = messages[queueReadinessFilter] || messages.all;
       return \`<div class="panel muted"><h2>\${title}</h2><p>\${body}</p></div>\`;
@@ -16593,6 +16609,8 @@ function htmlShell() {
           meta: channels,
           action: "Review",
           actionJs: "document.getElementById('queue-row-" + slugify(post.id || post.title || "post") + "').open = true",
+          queuePostId: post.id,
+          deleteLabel: queueDeleteButtonLabel(post),
           details: \`<p class="muted"><strong>Next internal step:</strong> \${esc(workflowStageForPost(post, image).actionLabel)}<br><strong>Safety:</strong> approvals prepare work only.</p><div class="card-actions quiet-actions"><button type="button" onclick="\${workflowStageForPost(post, image).action}">\${esc(workflowStageForPost(post, image).actionLabel)}</button><button type="button" onclick="markCopyReviewed('\${post.id}')">Mark Reviewed</button></div>\`
         };
       });
@@ -16650,14 +16668,20 @@ function htmlShell() {
 
     function queueReviewListHtml(reviewPosts) {
       const rows = queueReviewRows(reviewPosts);
-      if (!rows.length) return \`<div class="panel muted"><h2>Nothing needs review here right now.</h2><p>When posts, follow-ups, reports, proof, or partner work need Roger's attention, they will appear here.</p></div>\`;
+      if (!rows.length) return \`<div class="panel muted"><h2>Your Queue is clear.</h2><p>Import a calendar or add a new draft to get started.</p></div>\`;
       return \`<div class="queue-review-list">\${rows.map(item => \`<article class="queue-review-item">
         <div class="queue-review-item-main">
-          <div class="queue-review-kicker"><span>\${esc(item.label)}</span><span>·</span><span>\${esc(item.meta || "Internal")}</span><span class="badge info">\${esc(item.status)}</span></div>
+          <div class="queue-review-kicker">
+            \${item.queuePostId ? \`<label class="queue-select"><input type="checkbox" \${selectedPosts.has(item.queuePostId) ? "checked" : ""} onchange="toggleBulkPost('\${item.queuePostId}', this.checked)"> Select</label>\` : ""}
+            <span>\${esc(item.label)}</span><span>·</span><span>\${esc(item.meta || "Internal")}</span><span class="badge info">\${esc(item.status)}</span>
+          </div>
           <h3>\${esc(item.title)}</h3>
           <p>\${esc(item.context)}</p>
         </div>
-        <div class="queue-review-actions"><button class="primary" type="button" onclick="\${item.actionJs}">\${esc(item.action)}</button></div>
+        <div class="queue-review-actions">
+          <button class="primary" type="button" onclick="\${item.actionJs}">\${esc(item.action)}</button>
+          \${item.queuePostId ? \`<button type="button" onclick="openQueueDeleteDialog('\${item.queuePostId}')">\${esc(item.deleteLabel || "Delete")}</button>\` : ""}
+        </div>
         <details id="queue-row-\${esc(item.id)}" class="queue-review-details">
           <summary>Open details</summary>
           <div class="queue-review-details-body">\${item.details}</div>
@@ -18125,6 +18149,7 @@ function htmlShell() {
       const packageRecord = post.postingPackage || post.finalExportKit?.postingPackage || {};
       const postingZipUrl = packageRecord.zipDownloadUrl || post.postingPackageZipDownloadUrl || (post.postingPackageGenerated ? "/api/posts/" + post.id + "/posting-package-zip" : "");
       const postingZipFilename = (String(post.id || "post").toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "post") + "-posting-kit.zip";
+      const deleteLabel = queueDeleteButtonLabel(post);
       const liveChannel = targetChannels[0] || post.platform || "linkedin";
       const liveGate = state.runtime?.livePostingGates?.[liveChannel] || {};
       const liveAccount = channelFor(liveChannel);
@@ -18194,6 +18219,7 @@ function htmlShell() {
             \${publicImageReady ? \`<a class="button-link" href="\${esc(publicImageUrl)}" target="_blank" rel="noreferrer">Public URL</a>\` : ""}
             \${finalDownloadUrl ? \`<a class="button-link" href="\${esc(finalDownloadUrl)}" download="\${esc(finalDownloadFilename)}">PNG</a>\` : ""}
             \${postingZipUrl ? \`<a class="button-link" href="\${esc(postingZipUrl)}" download="\${esc(postingZipFilename)}">Posting Kit</a>\` : ""}
+            <button type="button" onclick="openQueueDeleteDialog('\${post.id}')">\${esc(deleteLabel)}</button>
             <details class="queue-details">
               <summary>Details</summary>
               <div class="queue-details-body">
@@ -25236,7 +25262,7 @@ function htmlShell() {
     function render() {
       const c = counts();
       const queueStatuses = ["draft", "needs_review", "approved", "scheduled", "failed", "blocked_channel_not_connected", "retry_ready", "posted", "manually_posted"];
-      const reviewPosts = state.posts.filter(post => queueStatuses.includes(post.status) || post.manuallyPostedAt || post.postedAt).slice().reverse();
+      const reviewPosts = state.posts.filter(post => isQueueItemVisible(post) && (queueStatuses.includes(post.status) || post.manuallyPostedAt || post.postedAt)).slice().reverse();
       const visibleReviewPosts = sortQueuePosts(reviewPosts.filter(queueReadinessMatches));
       const operatorPosts = todayReviewPosts();
       const newestPosts = state.posts.slice().reverse().slice(0, 6);
@@ -25343,10 +25369,11 @@ function htmlShell() {
                 <p>Review posts, follow-ups, reports, and partner work before anything moves forward.</p>
               </div>
               <span class="queue-safety-note">Safe mode: approvals prepare work only. Nothing sends or publishes automatically.</span>
-              <button type="button" onclick="location.href='/sources/import-social-calendar'">Import Calendar</button>
-            </div>
-            <div class="queue-summary-grid">\${queueReviewSummaryCards(reviewPosts).map(([label, value, detail]) => \`<article class="queue-summary-card"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
+            <button type="button" onclick="location.href='/sources/import-social-calendar'">Import Calendar</button>
+          </div>
+          <div class="queue-summary-grid">\${queueReviewSummaryCards(reviewPosts).map(([label, value, detail]) => \`<article class="queue-summary-card"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
             \${queueReviewTabsHtml(reviewPosts)}
+            \${selectedPosts.size ? \`<div class="bulk-bar queue-delete-bulk"><strong>\${selectedPosts.size} selected</strong><button type="button" onclick="openBulkQueueDeleteDialog()">Delete Selected</button></div>\` : ""}
           </div>
           <section class="growth-card">
             <div class="growth-card-head"><h2>Needs review</h2><small>One clear action per item</small></div>
@@ -27085,6 +27112,95 @@ function htmlShell() {
     function closePublishDialog() {
       pendingPublishId = "";
       document.querySelector("#modalRoot").innerHTML = "";
+    }
+
+    function renderQueueDeleteDialog() {
+      const root = document.querySelector("#modalRoot");
+      if (!root) return;
+      if (!queueDeleteDialog) {
+        root.innerHTML = "";
+        return;
+      }
+      const ids = Array.isArray(queueDeleteDialog.ids) ? queueDeleteDialog.ids : [];
+      const posts = ids.map(id => state.posts.find(post => post.id === id)).filter(Boolean);
+      const includesPublished = posts.some(isPublishedQueueItem);
+      const isBulk = queueDeleteDialog.mode === "bulk";
+      const title = isBulk
+        ? "Delete selected queue items?"
+        : includesPublished
+          ? "Remove this queue item?"
+          : "Delete this queue item?";
+      const body = isBulk
+        ? "This removes the selected drafts from your Queue. Published posts are not affected."
+        : includesPublished
+          ? "This item may already be published. Deleting it only removes it from Command Center history and does not remove it from the social platform."
+          : "This removes the draft from your Queue. This will not delete any published posts.";
+      const confirmLabel = includesPublished ? "Remove from Queue" : "Delete";
+      root.innerHTML = \`<div class="modal-backdrop" role="presentation">
+        <div class="modal-panel" role="dialog" aria-modal="true" aria-label="\${esc(title)}">
+          <div class="toprow"><div><div class="eyebrow">Queue</div><h2>\${esc(title)}</h2></div></div>
+          <p class="muted">\${esc(body)}</p>
+          \${isBulk ? \`<p class="muted"><strong>\${posts.length}</strong> selected item\${posts.length === 1 ? "" : "s"} will be removed from the Queue view.</p>\` : ""}
+          <div class="dialog-actions">
+            <button type="button" onclick="cancelQueueDelete()">Cancel</button>
+            <button class="primary" type="button" onclick="confirmQueueDelete()">\${esc(confirmLabel)}</button>
+          </div>
+        </div>
+      </div>\`;
+    }
+
+    function openQueueDeleteDialog(id) {
+      const post = state.posts.find(item => item.id === id);
+      if (!post) {
+        toast("Queue item not found.");
+        return;
+      }
+      queueDeleteDialog = { mode:"single", ids:[id] };
+      renderQueueDeleteDialog();
+    }
+
+    function openBulkQueueDeleteDialog() {
+      const ids = Array.from(selectedPosts).filter(id => state.posts.some(post => post.id === id && isQueueItemVisible(post)));
+      if (!ids.length) {
+        toast("Select at least one queue item.");
+        return;
+      }
+      queueDeleteDialog = { mode:"bulk", ids };
+      renderQueueDeleteDialog();
+    }
+
+    function cancelQueueDelete() {
+      queueDeleteDialog = null;
+      renderQueueDeleteDialog();
+    }
+
+    async function confirmQueueDelete() {
+      const ids = Array.isArray(queueDeleteDialog?.ids) ? queueDeleteDialog.ids : [];
+      if (!ids.length) {
+        cancelQueueDelete();
+        return;
+      }
+      const deletedAt = new Date().toISOString();
+      for (const id of ids) {
+        const result = await api("/api/posts/update", {
+          method:"POST",
+          body:JSON.stringify({
+            id,
+            patch:{
+              status:"deleted",
+              deletedAt,
+              deletedSource:"queue_delete",
+              deletedBy:"owner"
+            }
+          })
+        });
+        state = result.state;
+      }
+      ids.forEach(id => selectedPosts.delete(id));
+      queueDeleteDialog = null;
+      renderQueueDeleteDialog();
+      render();
+      toast(ids.length === 1 ? "Queue item deleted" : \`\${ids.length} queue items deleted\`);
     }
 
     async function bulkMarkReviewed() {
