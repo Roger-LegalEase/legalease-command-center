@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { coreRecordsFromState } from "./storage.mjs";
@@ -111,6 +111,7 @@ const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
   },
   stdio: ["ignore", "pipe", "pipe"]
 });
+let reloadChild = null;
 
 try {
   await waitForServer(child);
@@ -216,6 +217,13 @@ try {
   assert.equal(diagnosticsJson.authorizationUrlShape.statePresent, true, "diagnostics should verify state is present without exposing a real signed state");
   assert.equal(diagnosticsJson.authorizationUrlShape.codeChallengePresent, true, "diagnostics should verify PKCE challenge is present");
   assert.equal(diagnosticsJson.authorizationUrlShape.codeChallengeMethod, "S256", "diagnostics should verify PKCE challenge method");
+  assert.equal(diagnosticsJson.xProviderKey, "x", "diagnostics should expose the durable provider key used for storage");
+  assert.equal(diagnosticsJson.xStorageBackend, "json", "diagnostics should expose the active storage backend without secrets");
+  assert.equal(diagnosticsJson.xTokenRecordPresent, false, "diagnostics should report no X token record before connection");
+  assert.equal(diagnosticsJson.xAccessTokenPresent, false, "diagnostics should not report an access token before connection");
+  assert.equal(diagnosticsJson.xRefreshTokenPresent, false, "diagnostics should not report a refresh token before connection");
+  assert.equal(diagnosticsJson.xConnectionLoadedFromSupabase, false, "local JSON diagnostics should not claim Supabase load");
+  assert.equal(diagnosticsJson.xConnectionLoadedFromSession, false, "Twitter / X connection should not be session-backed");
   const diagnosticsText = JSON.stringify(diagnosticsJson);
   assert.ok(!diagnosticsText.includes(clientSecret), "diagnostics must not expose client secret");
   assert.ok(!diagnosticsText.includes("twitter-x-callback-client-id"), "diagnostics must not expose full client id");
@@ -267,6 +275,9 @@ try {
   const connectedJson = await connectedStatus.json();
   assert.equal(connectedJson.connected, true, "valid owner-started callback should store the Twitter / X connection");
   assert.equal(connectedJson.livePostingEnabled, false, "successful Twitter / X connection should not enable live posting");
+  assert.equal(connectedJson.providerKey, "x", "Twitter / X status should use the same durable provider key as callback and health");
+  assert.equal(connectedJson.storageBackend, "json", "Twitter / X status should expose storage backend without secrets");
+  assert.equal(connectedJson.connectionLoadedFromSession, false, "Twitter / X status should not depend on browser session storage");
   assert.ok(!JSON.stringify(connectedJson).includes("twitter-x-oauth-test-access-token"), "status output must not expose stored access tokens");
 
   const refreshedRoot = await fetch(`${baseUrl}/`, { headers:{ "x-command-center-token":ownerToken } });
@@ -278,9 +289,84 @@ try {
   const health = await fetch(`${baseUrl}/api/health`);
   assert.equal(health.status, 200, "health endpoint should remain public");
   const healthJson = await health.json();
+  assert.equal(healthJson.xConnected, true, "health should read persisted Twitter / X connection state");
   assert.equal(healthJson.liveGatesCount, 0, "liveGatesCount should remain 0");
+  assert.ok(!JSON.stringify(healthJson).includes("twitter-x-oauth-test-access-token"), "health must not expose stored Twitter / X access tokens");
+
+  const persisted = JSON.parse(await readFile(dataPath, "utf8"));
+  persisted.socialAccounts = (persisted.socialAccounts || []).map((account) =>
+    account.platform === "x"
+      ? {
+          ...account,
+          status:"connected",
+          tokenExpiresAt:"2026-01-01T00:00:00.000Z",
+          lastTestMessage:"Twitter / X connected with expired access token test fixture."
+        }
+      : account
+  );
+  await writeFile(dataPath, JSON.stringify(persisted, null, 2));
+
+  const expiredStatus = await fetch(`${baseUrl}/api/x/status`, {
+    headers:{ "x-command-center-token":ownerToken }
+  });
+  const expiredStatusJson = await expiredStatus.json();
+  assert.equal(expiredStatusJson.connected, true, "expired X access token with refresh token should still be treated as a durable connection");
+  assert.equal(expiredStatusJson.status, "Needs refresh", "expired X access token with refresh token should show a refresh state instead of disconnecting");
+  assert.equal(expiredStatusJson.needsReconnectReason, "", "refreshable X token should not ask Roger to reconnect");
+  assert.match(expiredStatusJson.connectedComputedReason, /refresh token/i, "status should explain that refresh token preserves the connection");
+
+  const expiredDiagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`, {
+    headers:{ "x-command-center-token":ownerToken }
+  });
+  const expiredDiagnosticsJson = await expiredDiagnostics.json();
+  assert.equal(expiredDiagnosticsJson.xTokenRecordPresent, true, "diagnostics should report persisted X token record");
+  assert.equal(expiredDiagnosticsJson.xAccessTokenPresent, true, "diagnostics should report access token presence without exposing it");
+  assert.equal(expiredDiagnosticsJson.xRefreshTokenPresent, true, "diagnostics should report refresh token presence without exposing it");
+  assert.equal(expiredDiagnosticsJson.xTokenExpiresAtPresent, true, "diagnostics should report token expiry metadata");
+  assert.equal(expiredDiagnosticsJson.xAccountIdPresent, true, "diagnostics should report account id presence without the value");
+  assert.equal(expiredDiagnosticsJson.xUsernamePresent, true, "diagnostics should report username/account label presence without the value");
+  assert.equal(expiredDiagnosticsJson.xNeedsReconnectReason, "", "diagnostics should not request reconnect when refresh token exists");
+  assert.match(expiredDiagnosticsJson.xConnectedComputedReason, /refresh token/i, "diagnostics should explain durable refresh-token read-back");
+  const expiredDiagnosticsText = JSON.stringify(expiredDiagnosticsJson);
+  assert.ok(!expiredDiagnosticsText.includes("twitter-x-oauth-test-refresh-token"), "diagnostics must not expose stored refresh tokens");
+  assert.ok(!expiredDiagnosticsText.includes("twitter-x-oauth-test-access-token"), "diagnostics must not expose stored access tokens");
+
+  child.kill("SIGTERM");
+  reloadChild = spawn(process.execPath, ["scripts/preview-server.mjs"], {
+    cwd: rootDir,
+    env: {
+      ...process.env,
+      PORT:String(port + 1),
+      COMMAND_CENTER_REQUIRE_AUTH:"true",
+      COMMAND_CENTER_OWNER_TOKEN:ownerToken,
+      COMMAND_CENTER_ADMIN_TOKEN:adminToken,
+      LOCAL_DEMO_MODE:"true",
+      STORAGE_BACKEND:"json",
+      COMMAND_CENTER_DATA_PATH:dataPath,
+      COMMAND_CENTER_SEED_PATH:seedPath,
+      X_CLIENT_ID:"twitter-x-callback-client-id",
+      X_CLIENT_SECRET:clientSecret,
+      X_REDIRECT_URI:`http://127.0.0.1:${port + 1}/api/x/callback`,
+      OAUTH_TOKEN_ENCRYPTION_KEY:"twitter-x-oauth-callback-encryption-key-1234567890",
+      ENABLE_LIVE_X_POSTING:"false",
+      ENABLE_LIVE_TWITTER_POSTING:"false",
+      LINKEDIN_LIVE_POSTING_ENABLED:"false",
+      NODE_ENV:"test",
+      NODE_DISABLE_COMPILE_CACHE:"1"
+    },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  await waitForServer(reloadChild);
+  const reloadBaseUrl = `http://127.0.0.1:${port + 1}`;
+  const reloadedStatus = await fetch(`${reloadBaseUrl}/api/x/status`, {
+    headers:{ "x-command-center-token":ownerToken }
+  });
+  const reloadedStatusJson = await reloadedStatus.json();
+  assert.equal(reloadedStatusJson.connected, true, "Twitter / X connection should survive server restart/reload");
+  assert.equal(reloadedStatusJson.status, "Needs refresh", "reloaded expired X token with refresh token should still show needs refresh");
 } finally {
   child.kill("SIGTERM");
+  if (reloadChild) reloadChild.kill("SIGTERM");
 }
 
 console.log("twitter x oauth callback tests passed.");

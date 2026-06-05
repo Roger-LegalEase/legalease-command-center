@@ -1203,9 +1203,12 @@ function safeChannelStatus(account = {}) {
   const connected = Boolean(account.externalAccountId || account.accountId || account.accountName || account.connectedAt || envConnected);
   const tokenExpiresAt = account.tokenExpiresAt ? new Date(account.tokenExpiresAt) : null;
   const expired = connected && tokenExpiresAt && tokenExpiresAt.getTime() <= Date.now();
+  const hasStoredToken = Boolean(account.accessTokenEncrypted || account.refreshTokenEncrypted || accountEnvAccessToken(account.platform));
+  const canRefresh = Boolean(account.refreshTokenEncrypted);
   let status = account.status || "not_configured";
   if (!setup.configured && !envConnected) status = "setup_required";
   else if (account.lastError || status === "error") status = "error";
+  else if (expired && canRefresh) status = "needs_refresh";
   else if (expired || status === "expired") status = "expired";
   else if (connected || status === "connected") status = "connected";
   else status = "ready_to_connect";
@@ -1213,7 +1216,7 @@ function safeChannelStatus(account = {}) {
     channel: account.platform,
 	    displayName: channelLabels[account.platform] || account.displayName || account.platform,
 	    status,
-	    connected: status === "connected",
+	    connected: status === "connected" || status === "needs_refresh",
 	    configured: Boolean(setup.configured || envConnected),
 	    missingEnvVars: setup.missingEnv,
 	    livePostingEnabled: livePostingEnabledForChannel(account.platform),
@@ -1223,7 +1226,7 @@ function safeChannelStatus(account = {}) {
     tokenExpiresAt: account.tokenExpiresAt || "",
     lastTestedAt: account.lastTestedAt || "",
     lastErrorSummary: account.lastErrorSummary || account.lastError || "",
-    hasStoredToken: Boolean(account.accessTokenEncrypted || accountEnvAccessToken(account.platform)),
+    hasStoredToken,
     scopes: setup.scopes,
     notes: setup.notes
   };
@@ -5629,6 +5632,47 @@ function xLivePostingSwitchEnabled() {
   return livePostingEnabledForChannel("x");
 }
 
+function xDurableConnectionMetadata(state = {}) {
+  const account = (state.socialAccounts || []).find((item) => item.platform === "x") || null;
+  const hosting = storageRuntimeConfig();
+  const tokenExpiresAt = account?.tokenExpiresAt ? new Date(account.tokenExpiresAt) : null;
+  const tokenExpired = Boolean(tokenExpiresAt && Number.isFinite(tokenExpiresAt.getTime()) && tokenExpiresAt.getTime() <= Date.now());
+  const accessTokenPresent = Boolean(account?.accessTokenEncrypted || accountEnvAccessToken("x"));
+  const refreshTokenPresent = Boolean(account?.refreshTokenEncrypted);
+  const accountIdPresent = Boolean(account?.externalAccountId || account?.accountId);
+  const usernamePresent = Boolean(account?.accountName || account?.username || account?.screenName);
+  const identityPresent = Boolean(accountIdPresent || usernamePresent || account?.connectedAt);
+  const tokenRecordPresent = Boolean(account && (accessTokenPresent || refreshTokenPresent || identityPresent));
+  let needsReconnectReason = "";
+  if (!tokenRecordPresent) needsReconnectReason = "X reconnect required: no stored connection.";
+  else if (!accessTokenPresent && !refreshTokenPresent) needsReconnectReason = "X reconnect required: token missing or expired.";
+  else if (tokenExpired && !refreshTokenPresent) needsReconnectReason = "X reconnect required: token missing or expired.";
+  else if (!identityPresent) needsReconnectReason = "X reconnect required: account identity missing.";
+  const needsRefresh = Boolean(tokenExpired && refreshTokenPresent);
+  const connected = tokenRecordPresent && !needsReconnectReason;
+  const connectedComputedReason = needsReconnectReason
+    || (needsRefresh
+      ? "Stored X refresh token can renew the expired access token."
+      : "Stored X account and token are present in durable server state.");
+  return {
+    account,
+    providerKey:"x",
+    storageBackend:hosting.activeStorageBackend,
+    tokenRecordPresent,
+    accessTokenPresent,
+    refreshTokenPresent,
+    tokenExpiresAtPresent:Boolean(account?.tokenExpiresAt),
+    accountIdPresent,
+    usernamePresent,
+    connectionLoadedFromSupabase:hosting.activeStorageBackend === "supabase" && tokenRecordPresent,
+    connectionLoadedFromSession:false,
+    needsReconnectReason,
+    connectedComputedReason,
+    needsRefresh,
+    connected
+  };
+}
+
 function linkedinSetupState(state = {}) {
   const account = (state.socialAccounts || []).find((item) => item.platform === "linkedin") || { platform:"linkedin" };
   const setup = channelSetup("linkedin");
@@ -5679,17 +5723,20 @@ function xSetupState(state = {}) {
   const account = (state.socialAccounts || []).find((item) => item.platform === "x") || { platform:"x" };
   const setup = channelSetup("x");
   const safe = safeChannelStatus(account);
+  const durable = xDurableConnectionMetadata(state);
   const configured = Boolean(setup.configured);
-  const connected = Boolean(safe.connected && safe.hasStoredToken);
+  const connected = Boolean(safe.connected && (safe.hasStoredToken || durable.refreshTokenPresent) && !durable.needsReconnectReason);
   const safeTokenStorage = xSafeTokenStorageReady();
   let status = "Not connected";
   if (!configured || !safeTokenStorage) status = "Needs setup";
   else if (safe.status === "error") status = "Error";
+  else if (durable.needsRefresh) status = "Needs refresh";
   else if (connected) status = "Connected";
   return {
     account,
     setup,
     safe,
+    durable,
     configured,
     connected,
     safeTokenStorage,
@@ -5711,8 +5758,23 @@ function xStatusPayload(state = {}) {
     accountLabel: status.accountLabel,
     lastChecked: status.lastChecked,
     safety: "Approved posts only. No automatic posting.",
-    message: status.status === "Needs setup" ? "Twitter / X connection needs setup." : status.connected ? "Twitter / X connected. Posting still requires approval." : "Twitter / X is not connected.",
+    message: status.status === "Needs setup"
+      ? "Twitter / X connection needs setup."
+      : status.durable.needsReconnectReason
+        ? status.durable.needsReconnectReason
+        : status.status === "Needs refresh"
+          ? "Twitter / X connected. Access token needs refresh before the next live action."
+          : status.connected
+            ? "Twitter / X connected. Posting still requires approval."
+            : "Twitter / X is not connected.",
     postingState: status.livePostingEnabled ? "Ready behind approval" : "Off",
+    providerKey: status.durable.providerKey,
+    storageBackend: status.durable.storageBackend,
+    connectionLoadedFromSupabase: status.durable.connectionLoadedFromSupabase,
+    connectionLoadedFromSession: status.durable.connectionLoadedFromSession,
+    needsReconnectReason: status.durable.needsReconnectReason,
+    connectedComputedReason: status.durable.connectedComputedReason,
+    needsRefresh: status.durable.needsRefresh,
     setupRequired: !status.configured || !status.safeTokenStorage,
     missing: [
       ...(status.setup.missingEnv || []),
@@ -5814,9 +5876,10 @@ function safeUrlHostPath(value = "") {
   }
 }
 
-function xOAuthDiagnosticsPayload() {
+function xOAuthDiagnosticsPayload(state = {}) {
   const setup = channelSetup("x");
   const config = channelConfig("x") || {};
+  const durable = xDurableConnectionMetadata(state);
   const diagnosticAuthUrl = new URL(xAuthorizationUrl({
     state:"diagnostic-state-present",
     codeChallenge:"diagnostic-code-challenge-present"
@@ -5838,6 +5901,18 @@ function xOAuthDiagnosticsPayload() {
     callbackRouteExists:true,
     publicPrivacyRouteExists:true,
     publicTermsRouteExists:true,
+    xTokenRecordPresent:durable.tokenRecordPresent,
+    xAccessTokenPresent:durable.accessTokenPresent,
+    xRefreshTokenPresent:durable.refreshTokenPresent,
+    xTokenExpiresAtPresent:durable.tokenExpiresAtPresent,
+    xProviderKey:durable.providerKey,
+    xStorageBackend:durable.storageBackend,
+    xAccountIdPresent:durable.accountIdPresent,
+    xUsernamePresent:durable.usernamePresent,
+    xConnectionLoadedFromSupabase:durable.connectionLoadedFromSupabase,
+    xConnectionLoadedFromSession:durable.connectionLoadedFromSession,
+    xNeedsReconnectReason:durable.needsReconnectReason,
+    xConnectedComputedReason:durable.connectedComputedReason,
     xClientIdConfigured:Boolean(process.env.X_CLIENT_ID),
     xClientIdPrefix:clientId ? clientId.slice(0, 4) : "",
     xClientSecretConfigured:Boolean(process.env.X_CLIENT_SECRET),
@@ -15482,7 +15557,7 @@ function htmlShell() {
     const toneForRisk = risk => risk === "high" ? "danger" : risk === "medium" ? "warn" : "good";
     const riskLabel = risk => risk === "medium" ? "Review needed" : risk === "high" ? "Legal review" : "Low review";
     const qualityTone = label => label === "rejected" ? "danger" : label === "needs_rewrite" ? "warn" : "good";
-    const channelTone = status => status === "connected" ? "good" : status === "ready_to_connect" ? "info" : status === "setup_required" || status === "expired" ? "warn" : "danger";
+    const channelTone = status => status === "connected" ? "good" : status === "ready_to_connect" ? "info" : status === "setup_required" || status === "expired" || status === "needs_refresh" ? "warn" : "danger";
     const publishTone = status => status === "ready" ? "good" : status === "blocked" || status === "failed" || status === "not_connected" || status === "setup_required" ? "danger" : status ? "warn" : "info";
     const publishLabel = status => ({
       ready: "Ready to publish",
@@ -15501,6 +15576,7 @@ function htmlShell() {
       setup_required: "Setup Required",
       not_configured: "Not Configured",
       expired: "Connection expired",
+      needs_refresh: "Needs refresh",
       error: "Error"
     }[status] || "Not Configured");
     const tomorrowMorning = (offset = 1) => {
@@ -30022,7 +30098,7 @@ async function handleRequest(request, response) {
       }, diagnosticsAccess.status || 403);
       return;
     }
-    sendJson(response, xOAuthDiagnosticsPayload());
+    sendJson(response, xOAuthDiagnosticsPayload(await store.readState()));
     return;
   }
 
