@@ -77,6 +77,7 @@ for (const action of [
 }
 
 assert(today.includes("${dailyRunTodayPanelHtml()}"), "Today should render the Daily Run bookend panel.");
+assert(dailyRunPanel.includes("bestBucketHeadline"), "Today Start Here headline should use the brain-provided bucket count headline.");
 assert(renderBlock.includes('today:"overview"'), "#today should still route to the approved Today page.");
 assert(!topNav.includes("#production"), "Daily Run work should not re-add Production top nav.");
 

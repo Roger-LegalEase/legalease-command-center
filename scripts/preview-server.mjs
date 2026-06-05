@@ -22855,6 +22855,7 @@ function htmlShell() {
       const counts = view.counts || {};
       const bucketLabel = bucket => bucket?.label || "Today review";
       const bucketSummary = bucket => bucket?.summary || "Review Today and move the highest-consequence work first.";
+      const startHeadline = view.bestBucketHeadline || bucketLabel(bestBucket);
       const countRows = [
         ["blocked", counts.blocked || 0],
         ["due today", counts.due_today || 0],
@@ -22921,7 +22922,7 @@ function htmlShell() {
       }
       return \`<section class="daily-run-panel">
         <div class="daily-run-kicker">Guided Daily Run · Surface → Move → Confirm</div>
-        <h2>Start here: \${esc(bucketLabel(bestBucket))}</h2>
+        <h2>Start here: \${esc(startHeadline)}</h2>
         <p>\${esc(bucketSummary(bestBucket))}</p>
         \${countsHtml}
         <div class="daily-run-actions"><button class="primary" type="button" onclick="startDailyRunSession()">Start Session</button></div>

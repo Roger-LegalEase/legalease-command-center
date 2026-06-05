@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 
+export const APP_TIMEZONE = "America/New_York";
+
 const bucketDefinitions = [
   {
     key: "blocked_live_systems",
@@ -66,6 +68,16 @@ function isoDay(value = "") {
   const date = value ? new Date(value) : new Date();
   if (!Number.isFinite(date.getTime())) return asText(value).slice(0, 10);
   return date.toISOString().slice(0, 10);
+}
+
+function appLocalDay(value = "") {
+  const date = value instanceof Date ? value : value ? new Date(value) : new Date();
+  if (!Number.isFinite(date.getTime())) return asText(value).slice(0, 10);
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(date);
+  } catch {
+    return isoDay(date);
+  }
 }
 
 function timestampMs(value = "") {
@@ -187,18 +199,63 @@ function isRcapLike(item = {}) {
 function bucketItemIds(session = {}, bucketKey = "") {
   const ids = new Set();
   for (const item of list(session.parked_items)) if (!bucketKey || item.bucket_key === bucketKey) ids.add(item.item_id);
-  for (const item of list(session.skipped_bucket_keys)) if (!bucketKey || item.bucket_key === bucketKey) ids.add(item.item_id || item.bucket_key);
+  for (const item of list(session.skipped_bucket_keys)) {
+    if (typeof item === "string") continue;
+    if (!bucketKey || item.bucket_key === bucketKey) ids.add(item.item_id || item.bucket_key);
+  }
   return ids;
 }
 
+function bucketFullySkipped(session = {}, bucketKey = "") {
+  return list(session.skipped_bucket_keys).some(item =>
+    item === bucketKey || (item?.bucket_key === bucketKey && !item.item_id)
+  );
+}
+
 function bucketCleared(bucket = {}, session = {}) {
-  if (list(session.completed_bucket_keys).includes(bucket.key) || list(session.skipped_bucket_keys).includes(bucket.key)) return true;
+  if (list(session.completed_bucket_keys).includes(bucket.key) || bucketFullySkipped(session, bucket.key)) return true;
   const parked = bucketItemIds(session, bucket.key);
   return list(bucket.items).every(item => parked.has(item.id));
 }
 
+export function dailyRunBucketRemainingCount(bucket = {}, session = {}) {
+  if (!bucket?.key || bucketCleared(bucket, session)) return 0;
+  const cleared = bucketItemIds(session, bucket.key);
+  return list(bucket.items).filter(item => !cleared.has(item.id)).length;
+}
+
+function plural(count, singular, pluralText = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : pluralText}`;
+}
+
+export function dailyRunBucketHeadline(bucket = {}, session = {}) {
+  const count = dailyRunBucketRemainingCount(bucket, session);
+  switch (bucket?.key) {
+    case "blocked_live_systems":
+      return plural(count, "blocked item");
+    case "bulk_review":
+      return `${count} ${count === 1 ? "post needs" : "posts need"} review`;
+    case "overdue_followups":
+      return `${count} partner ${count === 1 ? "follow-up is" : "follow-ups are"} overdue`;
+    case "due_today":
+      return `${count} ${count === 1 ? "item is" : "items are"} scheduled or due today`;
+    case "ready_to_ship":
+      return `${count} ${count === 1 ? "item is" : "items are"} ready to ship`;
+    case "creative_prep":
+      return `${count} ${count === 1 ? "item needs" : "items need"} image prep`;
+    case "reports_proof":
+      return `${count} ${count === 1 ? "proof item needs" : "proof items need"} review`;
+    case "rcap_watch":
+      return `${count} RCAP/watch ${count === 1 ? "item" : "items"}`;
+    case "paused_future":
+      return `${count} paused/future ${count === 1 ? "item" : "items"}`;
+    default:
+      return plural(count, "item");
+  }
+}
+
 function firstUnclearedBucket(snapshot = {}, session = {}) {
-  return list(snapshot.buckets).find(bucket => bucket.items?.length && !bucketCleared(bucket, session)) || null;
+  return list(snapshot.buckets).find(bucket => dailyRunBucketRemainingCount(bucket, session) > 0) || null;
 }
 
 function sortBuckets(buckets = []) {
@@ -406,7 +463,7 @@ export function dailyRunSessionIsStale(session = {}, options = {}) {
   const started = new Date(session.started_at || 0);
   const lastActive = new Date(session.last_active_at || session.started_at || 0);
   if (!Number.isFinite(now.getTime()) || !Number.isFinite(started.getTime())) return false;
-  if (isoDay(now.toISOString()) !== isoDay(started.toISOString())) return true;
+  if (appLocalDay(started) < appLocalDay(now)) return true;
   return Number.isFinite(lastActive.getTime()) && now.getTime() - lastActive.getTime() > 8 * 60 * 60 * 1000;
 }
 
@@ -580,6 +637,9 @@ export function dailyRunSessionView(state = {}, options = {}) {
   const active = activeDailyRunSession(state, options);
   const completed = list(state.dailyRunSessions).find(item => item.status === "completed") || null;
   const snapshot = buildDailyRunSnapshot(state, options);
+  const bestBucket = firstUnclearedBucket(snapshot, active.session || {});
+  const activeBuckets = active.session?.bucket_snapshot?.buckets || [];
+  const activeBucket = activeBuckets.find(bucket => bucket.key === active.session?.current_bucket_key) || activeBuckets[0] || null;
   return {
     activeSession: active.session,
     stale: active.stale,
@@ -588,8 +648,12 @@ export function dailyRunSessionView(state = {}, options = {}) {
     latestCompletedSession: completed,
     latestCompletedSummary: completed ? summarizeDailyRunSession(completed) : null,
     startSnapshot: snapshot,
-    startInstruction: snapshot.buckets[0]?.summary || "Start by reviewing Today.",
-    bestBucket: snapshot.buckets[0] || null,
+    startInstruction: bestBucket?.summary || "Start by reviewing Today.",
+    bestBucket: bestBucket || null,
+    bestBucketRemainingCount: bestBucket ? dailyRunBucketRemainingCount(bestBucket, active.session || {}) : 0,
+    bestBucketHeadline: bestBucket ? dailyRunBucketHeadline(bestBucket, active.session || {}) : "0 items",
+    activeBucketRemainingCount: activeBucket ? dailyRunBucketRemainingCount(activeBucket, active.session || {}) : 0,
+    activeBucketHeadline: activeBucket ? dailyRunBucketHeadline(activeBucket, active.session || {}) : "",
     counts: snapshot.counts,
     doctrine: "Surface → Move → Confirm",
     importPreservation: "Bulk upload loads the machine. Guided Daily Run tells Roger what to operate. Scheduled publisher ships the work over time."

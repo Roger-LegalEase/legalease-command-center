@@ -5,8 +5,11 @@ import {
   activeDailyRunSession,
   buildDailyRunSnapshot,
   completeDailyRunSession,
+  dailyRunBucketHeadline,
+  dailyRunBucketRemainingCount,
   createDailyRunSession,
   dailyRunSessionIsStale,
+  dailyRunSessionView,
   dailyRunTomorrowFirstMove,
   markDailyRunSessionAbandoned,
   parkDailyRunItem,
@@ -150,6 +153,81 @@ assert.equal(parked.session.parked_items.length, 1, "Parked items should remain 
 
 assert.equal(dailyRunSessionIsStale(started.session, { now: tomorrow }), true, "Sessions older than the local day should be stale.");
 assert.equal(dailyRunSessionIsStale(started.session, { now: "2026-06-05T23:01:00.000Z" }), true, "Sessions idle for more than eight hours should be stale.");
+
+const easternEveningSession = {
+  status: "active",
+  started_at: "2026-06-05T23:30:00.000Z",
+  last_active_at: "2026-06-05T23:30:00.000Z"
+};
+assert.equal(
+  dailyRunSessionIsStale(easternEveningSession, { now: "2026-06-06T00:30:00.000Z" }),
+  false,
+  "A 7:30pm ET session checked at 8:30pm ET the same June evening must not stale at UTC midnight."
+);
+assert.equal(
+  dailyRunSessionIsStale({
+    status: "active",
+    started_at: "2026-06-05T18:00:00.000Z",
+    last_active_at: "2026-06-05T18:00:00.000Z"
+  }, { now: "2026-06-06T03:00:01.000Z" }),
+  true,
+  "A 2pm ET session checked after 11pm ET should stale because the eight-hour rule still fires."
+);
+assert.equal(
+  dailyRunSessionIsStale({
+    status: "active",
+    started_at: "2026-06-05T14:00:00.000Z",
+    last_active_at: "2026-06-05T14:00:00.000Z"
+  }, { now: "2026-06-06T13:00:00.000Z" }),
+  true,
+  "A session from the previous Eastern local day should be stale."
+);
+assert.equal(
+  dailyRunSessionIsStale({
+    status: "active",
+    started_at: "2026-06-05T13:00:00.000Z",
+    last_active_at: "2026-06-05T13:00:00.000Z"
+  }, { now: "2026-06-05T16:00:00.000Z" }),
+  false,
+  "A same-day Eastern session under eight hours should not be stale."
+);
+
+const threeBlockedBucket = {
+  key: "blocked_live_systems",
+  label: "Blocked live systems",
+  items: [
+    { id: "blocked-1" },
+    { id: "blocked-2" },
+    { id: "blocked-3" }
+  ]
+};
+assert.equal(dailyRunBucketRemainingCount(threeBlockedBucket), 3, "Start Here count should match the active bucket item count.");
+assert.equal(dailyRunBucketHeadline(threeBlockedBucket), "3 blocked items", "Start Here headline should include active bucket count.");
+assert.equal(
+  dailyRunBucketRemainingCount(threeBlockedBucket, { parked_items: [{ bucket_key: "blocked_live_systems", item_id: "blocked-1" }] }),
+  2,
+  "Parked items should be excluded from the active bucket headline count."
+);
+assert.equal(
+  dailyRunBucketRemainingCount(threeBlockedBucket, { skipped_bucket_keys: [{ bucket_key: "blocked_live_systems", item_id: "blocked-2" }] }),
+  2,
+  "Skipped items should be excluded from the active bucket headline count."
+);
+assert.equal(
+  dailyRunBucketRemainingCount(threeBlockedBucket, { completed_bucket_keys: ["blocked_live_systems"] }),
+  0,
+  "Completed buckets should report zero remaining items."
+);
+assert.equal(
+  dailyRunSessionView({ ...baseState, runtime: { livePostingGates: { linkedin: { enabled: false }, x: { enabled: false } } } }, { now }).bestBucket.key,
+  "due_today",
+  "Zero-count higher-ranked buckets should not be selected as Start Here."
+);
+assert.equal(
+  dailyRunSessionView(baseState, { now }).bestBucketHeadline,
+  "1 blocked item",
+  "Daily Run view should expose a Start Here headline with the active bucket count."
+);
 
 const abandoned = markDailyRunSessionAbandoned(started.state, started.session.session_id, { now });
 assert.equal(abandoned.session.status, "abandoned", "Mark Abandoned should only close the session.");
