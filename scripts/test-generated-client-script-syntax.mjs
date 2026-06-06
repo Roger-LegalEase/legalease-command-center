@@ -90,6 +90,102 @@ function parseInlineScripts(html, label) {
   return scripts.length;
 }
 
+function assertClientHelpersDefined(html, label) {
+  const scriptBody = [...html.matchAll(/<script(?:\s[^>]*)?>(?<body>[\s\S]*?)<\/script>/gi)]
+    .map(match => match.groups.body)
+    .join("\n");
+  if (/\bsafeAction\s*\(/.test(scriptBody)) {
+    assert(
+      /\b(?:async\s+function|function|const|let|var)\s+safeAction\b/.test(scriptBody),
+      `${label} generated client script references safeAction but does not define it in shared client scope.`
+    );
+  }
+}
+
+function assertClientHelpersResolveAtRuntime(html, label) {
+  const scriptBody = [...html.matchAll(/<script(?:\s[^>]*)?>(?<body>[\s\S]*?)<\/script>/gi)]
+    .map(match => match.groups.body)
+    .join("\n")
+    .replace(/\n\s*load\(\);\s*(?=\n|$)/, "\nvoid 0;\n");
+  const listeners = {};
+  const element = {
+    textContent:"",
+    innerHTML:"",
+    classList:{ add() {}, remove() {} },
+    addEventListener() {},
+    removeAttribute() {},
+    closest() { return null; },
+    querySelectorAll() { return []; },
+    querySelector() { return null; },
+    style:{}
+  };
+  const documentStub = {
+    cookie:"",
+    addEventListener() {},
+    createElement() { return { ...element, click() {}, remove() {} }; },
+    querySelector() { return element; },
+    querySelectorAll() { return []; },
+    body:{ appendChild() {} }
+  };
+  const storageStub = {
+    getItem() { return ""; },
+    setItem() {},
+    removeItem() {}
+  };
+  const windowStub = {
+    __LE_BOOT:{ ready:false, stage:"test", startedAt:new Date().toISOString() },
+    addEventListener(type, handler) { listeners[type] = handler; },
+    removeEventListener() {},
+    location:{ pathname:"/", hash:"#today", search:"" },
+    history:{ replaceState() {} },
+    localStorage:storageStub,
+    sessionStorage:storageStub
+  };
+  windowStub.window = windowStub;
+  const context = {
+    window:windowStub,
+    document:documentStub,
+    location:windowStub.location,
+    history:windowStub.history,
+    localStorage:storageStub,
+    sessionStorage:storageStub,
+    console:{ log() {}, warn() {}, error() {} },
+    setTimeout() { return 0; },
+    clearTimeout() {},
+    setInterval() { return 0; },
+    clearInterval() {},
+    URLSearchParams,
+    Date,
+    Math,
+    JSON,
+    String,
+    Number,
+    Boolean,
+    Array,
+    Object,
+    RegExp,
+    Map,
+    Set,
+    Promise,
+    Error,
+    TypeError,
+    ReferenceError,
+    encodeURIComponent,
+    decodeURIComponent,
+    fetch:async () => ({ ok:true, status:200, headers:{ get:() => "application/json" }, text:async () => "{}" }),
+    AbortController:class { constructor() { this.signal = {}; } abort() {} },
+    XMLHttpRequest:function XMLHttpRequest() {}
+  };
+  context.globalThis = context;
+  assert.doesNotThrow(() => {
+    new vm.Script(`${scriptBody}
+      if (typeof safeAction !== "function") throw new ReferenceError("safeAction is not defined");
+      if (typeof quickCaptureOperator !== "function") throw new ReferenceError("quickCaptureOperator is not defined");
+      if (typeof runScheduledPublisherFromCommand !== "function") throw new ReferenceError("runScheduledPublisherFromCommand is not defined");
+    `, { filename:`${label}:client-runtime-helper-check.js` }).runInNewContext(context);
+  }, `${label} generated client helpers should resolve at runtime.`);
+}
+
 function parseInlineHandlers(html, label) {
   const handlerNames = ["onclick", "onchange", "onsubmit", "oninput", "onkeydown", "onkeyup"];
   const htmlWithoutScripts = html.replace(/<script(?:\s[^>]*)?>[\s\S]*?<\/script>/gi, "");
@@ -192,6 +288,8 @@ try {
     assert.equal(response.status, 200, `${route} should return generated HTML.`);
     assert.match(response.headers.get("content-type") || "", /text\/html/i, `${route} should return HTML.`);
     totalScripts += parseInlineScripts(html, route);
+    assertClientHelpersDefined(html, route);
+    assertClientHelpersResolveAtRuntime(html, route);
     totalHandlers += parseInlineHandlers(html, route);
     assert.doesNotMatch(html, /SyntaxError:\s*Unexpected identifier 's'|Failed module:\s*client-error/i, `${route} should not ship a client syntax error fallback.`);
     assert(/liveGatesCount[^,\n]*0|Live Gates: 0|Live gates[^<]*0|Publishing is off/i.test(html), `${route} should preserve the publishing-off/live-gates-0 signal.`);

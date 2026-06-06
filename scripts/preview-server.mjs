@@ -16229,6 +16229,18 @@ function htmlShell() {
       toast(result?.message || fallbackMessage);
     }
 
+    async function safeAction(action, fallbackMessage = "Action could not be completed.") {
+      try {
+        const result = await action();
+        if (typeof result === "string" && result.trim()) toast(result);
+        return result;
+      } catch (error) {
+        console.error(error);
+        toast(fallbackMessage);
+        return null;
+      }
+    }
+
     async function startDailyRunSession() {
       await safeAction(async () => {
         const result = await api("/api/daily-run/start", { method:"POST", body:JSON.stringify({ fresh:false }) });
