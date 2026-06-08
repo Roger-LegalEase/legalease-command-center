@@ -207,6 +207,7 @@ function isRcapLike(item = {}) {
 function googleInsightActive(insight = {}) {
   if (["dismissed", "deleted", "completed"].includes(asText(insight.status).toLowerCase())) return false;
   if (insight.status === "queued") return true;
+  if (insight.insightType === "Blind Spot") return true;
   return Number(insight.confidence || 0) >= 0.85;
 }
 

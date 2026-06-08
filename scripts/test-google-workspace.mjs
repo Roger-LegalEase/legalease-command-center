@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   classifyGoogleWorkspaceSignal,
+  googleConnectionStatusFromDiagnostics,
   googleWorkspaceDraftOutputs,
   googleWorkspaceDiagnostics
 } from "./google-workspace.mjs";
@@ -57,10 +58,29 @@ const outputs = googleWorkspaceDraftOutputs([gmailEvent, calendarEvent, complain
   now: "2026-05-26T14:00:00.000Z"
 });
 assert.equal(outputs.growthInbox.length, 3);
-assert.ok(outputs.tasks.find((task) => task.escalationKey === "google-workspace:proposal-follow-up:gmail:m1"));
-assert.ok(outputs.tasks.find((task) => task.escalationKey === "google-workspace:meeting-prep:calendar:c1"));
-assert.ok(outputs.evidencePackNotes.find((note) => /Investor meeting/i.test(note.title)));
+assert.ok(outputs.tasks.find((task) => task.escalationKey.startsWith("google-workspace:proposal-follow-up:")));
+assert.ok(outputs.tasks.find((task) => task.escalationKey.startsWith("google-workspace:meeting-prep:")));
+assert.ok(outputs.evidencePackNotes.find((note) => /Google Calendar signal/i.test(note.title)));
 assert.ok(outputs.events.every((event) => event.source === "google_workspace"));
+const outputsJson = JSON.stringify(outputs);
+for (const forbidden of [
+  "gmail:m1",
+  "gmail:m2",
+  "calendar:c1",
+  "thread-1",
+  "Proposal request from Goodwill",
+  "Customer complaint about legal advice",
+  "Investor meeting with Acquirer Fund",
+  "Can you send the pilot proposal",
+  "Discuss LegalEase traction",
+  "Customer says the product promised",
+  "person@goodwill.org"
+]) {
+  assert.equal(outputsJson.includes(forbidden), false, `Google workspace draft outputs should not persist ${forbidden}`);
+}
+assert.ok(outputs.tasks.every((task) => task.sourceId && !/gmail:|calendar:/.test(task.sourceId)));
+assert.ok(outputs.growthInbox.every((item) => item.sourceEventId && !/gmail:|calendar:/.test(item.sourceEventId)));
+assert.ok(outputs.events.every((event) => event.objectId && !/gmail:|calendar:/.test(event.objectId)));
 
 const diagnostics = googleWorkspaceDiagnostics({
   env: {
@@ -77,5 +97,18 @@ assert.equal(diagnostics.redirectUri, "https://example.com/api/google/callback")
 assert.equal(diagnostics.connected, true);
 assert.equal(diagnostics.hasStoredToken, true);
 assert.equal(Object.values(diagnostics).some((value) => String(value).includes("secret")), false);
+
+assert.deepEqual(
+  googleConnectionStatusFromDiagnostics({ connected: true, hasAccessToken: true, hasRefreshToken: true }),
+  { connected: true, status: "connected", needsRefresh: false, needsReconnectReason: "" }
+);
+assert.deepEqual(
+  googleConnectionStatusFromDiagnostics({ connected: true, hasAccessToken: false, hasRefreshToken: true }),
+  { connected: false, status: "needs_refresh", needsRefresh: true, needsReconnectReason: "Google reconnect required: token missing or expired." }
+);
+assert.deepEqual(
+  googleConnectionStatusFromDiagnostics({ connected: true, hasAccessToken: false, hasRefreshToken: false }),
+  { connected: false, status: "disconnected", needsRefresh: false, needsReconnectReason: "Google reconnect required: token missing or expired." }
+);
 
 console.log("google workspace tests passed");

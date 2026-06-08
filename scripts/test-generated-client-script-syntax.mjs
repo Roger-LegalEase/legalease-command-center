@@ -182,8 +182,26 @@ function assertClientHelpersResolveAtRuntime(html, label) {
       if (typeof safeAction !== "function") throw new ReferenceError("safeAction is not defined");
       if (typeof quickCaptureOperator !== "function") throw new ReferenceError("quickCaptureOperator is not defined");
       if (typeof runScheduledPublisherFromCommand !== "function") throw new ReferenceError("runScheduledPublisherFromCommand is not defined");
+      for (const helper of ["connectGoogle", "refreshGoogleStatus", "runGoogleScan", "googleInsightAction", "disconnectGoogleWorkspace"]) {
+        if (typeof globalThis[helper] !== "function") throw new ReferenceError(helper + " is not defined");
+      }
     `, { filename:`${label}:client-runtime-helper-check.js` }).runInNewContext(context);
   }, `${label} generated client helpers should resolve at runtime.`);
+}
+
+function assertGoogleInlineHandlersHaveRuntimeHelpers(html, label) {
+  const htmlWithoutScripts = html.replace(/<script(?:\s[^>]*)?>[\s\S]*?<\/script>/gi, "");
+  const googleHelpers = ["connectGoogle", "refreshGoogleStatus", "runGoogleScan", "googleInsightAction", "disconnectGoogleWorkspace"];
+  for (const helper of googleHelpers) {
+    if (!htmlWithoutScripts.includes(`${helper}(`)) continue;
+    const scriptBody = [...html.matchAll(/<script(?:\s[^>]*)?>(?<body>[\s\S]*?)<\/script>/gi)]
+      .map(match => match.groups.body)
+      .join("\n");
+    assert(
+      new RegExp(`\\b(?:async\\s+function|function|const|let|var)\\s+${helper}\\b`).test(scriptBody),
+      `${label} inline Google handler references ${helper} but it is not defined in shared client scope.`
+    );
+  }
 }
 
 function parseInlineHandlers(html, label) {
@@ -290,6 +308,7 @@ try {
     totalScripts += parseInlineScripts(html, route);
     assertClientHelpersDefined(html, route);
     assertClientHelpersResolveAtRuntime(html, route);
+    assertGoogleInlineHandlersHaveRuntimeHelpers(html, route);
     totalHandlers += parseInlineHandlers(html, route);
     assert.doesNotMatch(html, /SyntaxError:\s*Unexpected identifier 's'|Failed module:\s*client-error/i, `${route} should not ship a client syntax error fallback.`);
     assert(/liveGatesCount[^,\n]*0|Live Gates: 0|Live gates[^<]*0|Publishing is off/i.test(html), `${route} should preserve the publishing-off/live-gates-0 signal.`);

@@ -58,8 +58,20 @@ assert.equal(diagnostics.connectRouteExists, true);
 assert.equal(diagnostics.callbackRouteExists, true);
 assert.equal(diagnostics.statusRouteExists, true);
 assert.equal(diagnostics.scanRouteExists, true);
-assert.equal(JSON.stringify(diagnostics).includes("google-client-secret-full-value"), false);
-assert.equal(JSON.stringify(diagnostics).includes("encrypted-refresh-token"), false);
+const diagnosticsJson = JSON.stringify(diagnostics);
+for (const forbidden of [
+  "google-client-secret-full-value",
+  "encrypted-refresh-token",
+  "encrypted-access-token",
+  "access_token",
+  "refresh_token",
+  "id_token",
+  "auth code",
+  "state=",
+  "google-client-id-full-value"
+]) {
+  assert.equal(diagnosticsJson.includes(forbidden), false, `Google diagnostics must not expose ${forbidden}`);
+}
 
 const gmailEvent = {
   id: "gmail-event-1",
@@ -88,7 +100,23 @@ assert.equal(insights.length, 2);
 assert.ok(insights.find((item) => item.source === "gmail" && ["Needs Reply", "Partner Opportunity", "Follow-up Overdue"].includes(item.insightType)));
 assert.ok(insights.find((item) => item.source === "calendar" && ["Meeting Prep", "Post-Meeting Follow-up"].includes(item.insightType)));
 assert.equal(insights.every((item) => item.status === "suggested" && item.noOutboundAction === true), true);
-assert.equal(insights.some((item) => String(item.sourceEventId || "").includes("thread-1")), false);
+const persistedInsightsJson = JSON.stringify(insights);
+for (const forbidden of [
+  "Can you send the pilot proposal",
+  "Proposal follow up from Goodwill",
+  "Partner meeting with Goodwill",
+  "Partner <partner@example.org>",
+  "thread-1",
+  "gmail:thread-1",
+  "calendar:meeting-1",
+  "Discuss launch checklist",
+  "https://calendar.google.com/event"
+]) {
+  assert.equal(persistedInsightsJson.includes(forbidden), false, `Persisted Google insight should not include ${forbidden}`);
+}
+assert.equal(insights.every((item) => item.sourceRefHash && item.sourceEventIdHash === item.sourceRefHash), true);
+assert.equal(insights.every((item) => item.sourceKind && item.title && item.inferredReason && item.suggestedQueueItemType), true);
+assert.equal(insights.some((item) => item.senderDomain === "example.org"), true);
 
 let state = mergeGoogleInsights({ googleInsights: [] }, insights, { now: "2026-06-08T14:01:00.000Z" });
 assert.equal(state.googleInsights.length, 2);
@@ -99,6 +127,10 @@ const task = googleInsightToQueueTask(insights[0], { now: "2026-06-08T14:05:00.0
 assert.equal(task.sourceType, "gmail");
 assert.equal(task.googleInsightId, insights[0].id);
 assert.match(task.history[0].note, /No email or calendar changes/);
+const taskJson = JSON.stringify(task);
+for (const forbidden of ["Can you send the pilot proposal", "Proposal follow up from Goodwill", "thread-1", "snippet"]) {
+  assert.equal(taskJson.includes(forbidden), false, `Google Queue task should not copy ${forbidden}`);
+}
 
 const rankedSnapshot = buildDailyRunSnapshot({
   posts: [{ id: "post-1", status: "draft", sourceType: "campaign_upload", caption: "Review imported social post", createdAt: "2026-06-08T13:30:00.000Z" }],
@@ -106,6 +138,23 @@ const rankedSnapshot = buildDailyRunSnapshot({
 }, { now: "2026-06-08T14:10:00.000Z" });
 assert.equal(rankedSnapshot.buckets[0].key, "overdue_followups");
 assert.ok(rankedSnapshot.buckets[0].items.find((item) => item.source === "gmail"));
+
+const lowConfidenceBlindSpot = googleInsightsFromEvents([{
+  id: "gmail-event-low-noise",
+  source: "gmail",
+  sourceEventId: "gmail:low-noise",
+  eventType: "email_received",
+  title: "FYI",
+  summary: "Low confidence generic note",
+  rawPayload: { threadId: "thread-low", snippet: "Low confidence generic note" },
+  confidence: "low",
+  receivedAt: "2026-06-08T13:30:00.000Z"
+}], { now: "2026-06-08T14:00:00.000Z" })[0];
+assert.equal(lowConfidenceBlindSpot.insightType, "Blind Spot");
+assert.ok(Number(lowConfidenceBlindSpot.confidence) < 0.85);
+const lowConfidenceSnapshot = buildDailyRunSnapshot({ googleInsights: [lowConfidenceBlindSpot] }, { now: "2026-06-08T14:10:00.000Z" });
+assert.equal(lowConfidenceSnapshot.buckets.some((bucket) => bucket.key === "overdue_followups" && bucket.items.some((item) => item.id === lowConfidenceBlindSpot.id)), false);
+assert.ok(lowConfidenceSnapshot.buckets.find((bucket) => bucket.key === "reports_proof")?.items.some((item) => item.id === lowConfidenceBlindSpot.id));
 
 const sessionSeed = createDailyRunSession({ posts: [], googleInsights: [] }, {
   now: "2026-06-08T14:00:00.000Z",

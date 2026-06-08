@@ -29,12 +29,14 @@ import {
   partnerProgramTask
 } from "./partner-program-engine.mjs";
 import {
+  googleConnectionStatusFromDiagnostics,
   googleWorkspaceDiagnostics,
   googleWorkspaceDraftOutputs,
   googleInsightSummary,
   googleInsightsFromEvents,
   googleInsightToQueueTask,
   googleReadOnlyScopes,
+  googleSourceRefHash,
   googleWorkspaceMissingEnv,
   googleWorkspaceOAuthConfigured,
   googleWorkspaceRedirectUri,
@@ -11552,6 +11554,21 @@ function gmailHeader(message = {}, name = "") {
   return (message.payload?.headers || []).find((header) => String(header.name || "").toLowerCase() === name.toLowerCase())?.value || "";
 }
 
+function googleSenderDomain(value = "") {
+  const raw = String(value || "");
+  const match = raw.match(/[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})/i);
+  return match ? match[1].toLowerCase().slice(0, 80) : "";
+}
+
+function googleSignalTag(text = "") {
+  const source = String(text || "").toLowerCase();
+  if (/proposal|pilot|partnership|partner|sponsor|revenue|investor|fund|acquirer/.test(source)) return "partner proposal follow up";
+  if (/document|data room|diligence|request/.test(source)) return "document request";
+  if (/complaint|refund|legal advice|guarantee|eligib|court|attorney|privacy|sensitive/.test(source)) return "compliance review";
+  if (/follow up|next step|checking in|circling back|reply|question|\?/.test(source)) return "follow up";
+  return "blind spot";
+}
+
 async function googleJson(url, token = "") {
   const result = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
   const text = await result.text();
@@ -11584,14 +11601,16 @@ async function fetchGmailReadOnlyEvents(token = "") {
     const date = gmailHeader(message, "Date");
     const dateTime = date ? new Date(date).getTime() : NaN;
     const snippet = String(message.snippet || "").slice(0, 500);
+    const signalTag = googleSignalTag([subject, snippet].join(" "));
+    const sourceRefHash = googleSourceRefHash(`gmail:${message.id || message.threadId || subject}:${date || ""}`);
     return {
       source:"gmail",
-      sourceEventId:`gmail:${message.id}`,
+      sourceEventId:`gmail:${sourceRefHash}`,
       receivedAt: Number.isFinite(dateTime) ? new Date(dateTime).toISOString() : new Date().toISOString(),
-      eventType:"email_received",
-      title:subject,
-      summary:snippet,
-      rawPayload:{ messageId:message.id, threadId:message.threadId, subject, from, date, snippet },
+      eventType:`email_received_${signalTag.replace(/[^a-z0-9]+/g, "_")}`,
+      title: signalTag === "blind spot" ? "Gmail blind spot" : "Gmail follow-up opportunity",
+      summary:`Read-only Gmail signal: ${signalTag}. Open Gmail directly for source context.`,
+      rawPayload:{ sourceRefHash, sourceKind: message.threadId ? "thread" : "message", senderDomain: googleSenderDomain(from), date, signalTag },
       confidence:"medium"
     };
   });
@@ -11618,14 +11637,16 @@ async function fetchCalendarReadOnlyEvents(token = "") {
   }).map((item) => {
     const startTime = item.start?.dateTime || item.start?.date || "";
     const endTime = item.end?.dateTime || item.end?.date || "";
+    const signalTag = googleSignalTag([item.summary, item.description, item.location].join(" ")) || "meeting";
+    const sourceRefHash = googleSourceRefHash(`calendar:${item.id || item.iCalUID || item.htmlLink || item.summary}:${startTime}`);
     return {
       source:"calendar",
-      sourceEventId:`calendar:${item.id}`,
+      sourceEventId:`calendar:${sourceRefHash}`,
       receivedAt:item.updated || new Date().toISOString(),
-      eventType:"calendar_event",
-      title:item.summary || "Calendar meeting",
-      summary:String(item.description || item.location || "Google Calendar meeting matched LegalEase terms.").slice(0, 500),
-      rawPayload:{ eventId:item.id, htmlLink:item.htmlLink || "", startTime, endTime, status:item.status || "", attendeeCount:(item.attendees || []).length },
+      eventType:`calendar_event_${signalTag.replace(/[^a-z0-9]+/g, "_")}`,
+      title:"Google Calendar meeting",
+      summary:`Read-only Google Calendar signal: ${signalTag}. Open Calendar directly for source context.`,
+      rawPayload:{ sourceRefHash, sourceKind:"event", startTime, endTime, status:item.status || "", attendeeCount:(item.attendees || []).length, signalTag },
       confidence:"medium"
     };
   });
@@ -11971,18 +11992,21 @@ function googleAccountFromState(currentState = {}) {
 function googleStatusPayload(currentState = {}) {
   const account = googleAccountFromState(currentState);
   const diagnostics = googleWorkspaceDiagnostics({ env: process.env, account, connectorStatus: defaultConnectorStatus(currentState) });
-  const connected = Boolean(diagnostics.connected && (diagnostics.googleAccessTokenPresent || diagnostics.googleRefreshTokenPresent));
-  const needsRefresh = Boolean(diagnostics.connected && !diagnostics.googleAccessTokenPresent && diagnostics.googleRefreshTokenPresent);
+  const statusInfo = googleConnectionStatusFromDiagnostics({
+    connected: diagnostics.connected,
+    hasAccessToken: diagnostics.googleAccessTokenPresent,
+    hasRefreshToken: diagnostics.googleRefreshTokenPresent
+  });
   const summary = googleInsightSummary(currentState.googleInsights || []);
   return {
-    connected,
-    status: connected ? "connected" : needsRefresh ? "needs_refresh" : "not_connected",
-    googleEmail: connected ? "connected" : needsRefresh ? "needs refresh" : "not connected",
-    googleCalendar: connected ? "connected" : needsRefresh ? "needs refresh" : "not connected",
+    connected: statusInfo.connected,
+    status: statusInfo.status === "disconnected" ? "not_connected" : statusInfo.status,
+    googleEmail: statusInfo.connected ? "connected" : statusInfo.needsRefresh ? "needs refresh" : "not connected",
+    googleCalendar: statusInfo.connected ? "connected" : statusInfo.needsRefresh ? "needs refresh" : "not connected",
     readOnly: true,
     emailSendingEnabled: false,
     calendarWritesEnabled: false,
-    needsReconnectReason: diagnostics.googleNeedsReconnectReason || "",
+    needsReconnectReason: statusInfo.needsReconnectReason || diagnostics.googleNeedsReconnectReason || "",
     lastScanAt: summary.lastScanAt,
     insightsFound: summary.total,
     queuedCount: summary.queued,

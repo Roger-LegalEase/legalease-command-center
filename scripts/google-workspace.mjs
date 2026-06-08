@@ -66,6 +66,28 @@ function hashRef(value = "") {
   return crypto.createHash("sha256").update(String(value || crypto.randomUUID())).digest("hex").slice(0, 16);
 }
 
+export function googleSourceRefHash(value = "") {
+  return hashRef(value);
+}
+
+function safeSourceHash(event = {}) {
+  return googleSourceRefHash(event.sourceEventId || event.id || [event.source, eventDate(event), event.eventType].join(":"));
+}
+
+function sourceKindForEvent(event = {}) {
+  if (event.source === "calendar") return "event";
+  if (event.rawPayload?.threadId) return "thread";
+  return "message";
+}
+
+function senderDomainFromEvent(event = {}) {
+  const raw = clean(event.rawPayload?.from || event.sender || "");
+  const emailMatch = raw.match(/[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})/i);
+  if (emailMatch) return lower(emailMatch[1]).slice(0, 80);
+  const domainMatch = raw.match(/\b([a-z0-9-]+\.)+[a-z]{2,}\b/i);
+  return domainMatch ? lower(domainMatch[0]).slice(0, 80) : "";
+}
+
 function eventDate(event = {}) {
   return clean(event.receivedAt || event.sentAt || event.date || event.rawPayload?.date || event.rawPayload?.startTime || event.rawPayload?.startsAt || event.createdAt);
 }
@@ -113,6 +135,17 @@ function nextActionForInsight(type = "", event = {}) {
   return "Review this blind spot and decide whether it belongs in Queue.";
 }
 
+function labelForInsight(type = "", source = "") {
+  if (type === "Meeting Prep") return "Calendar meeting prep";
+  if (type === "Post-Meeting Follow-up") return "Post-meeting follow-up";
+  if (type === "Decision Needed") return "Google decision needed";
+  if (type === "Waiting on Someone") return "Google waiting item";
+  if (type === "Partner Opportunity") return "Gmail follow-up opportunity";
+  if (type === "Needs Reply") return "Gmail reply review";
+  if (type === "Follow-up Overdue") return "Gmail follow-up opportunity";
+  return source === "calendar" ? "Calendar review signal" : "Gmail blind spot";
+}
+
 export function googleInsightsFromEvents(events = [], options = {}) {
   const now = options.now || nowIso();
   return list(events)
@@ -120,25 +153,29 @@ export function googleInsightsFromEvents(events = [], options = {}) {
     .map((event) => {
       const classification = classifyGoogleWorkspaceSignal(event);
       const type = inferInsightType(event, classification);
-      const safeRef = hashRef(event.sourceEventId || event.id || [event.title, eventDate(event)].join(":"));
+      const safeRef = safeSourceHash(event);
+      const label = labelForInsight(type, event.source);
+      const occurredAt = eventDate(event);
       return {
         id: `google-insight-${event.source}-${safeRef}`,
         source: event.source,
+        sourceKind: sourceKindForEvent(event),
+        sourceRefHash: safeRef,
         sourceRef: safeRef,
         sourceEventIdHash: safeRef,
-        sourceTitle: event.title || (event.source === "calendar" ? "Google Calendar event" : "Gmail thread"),
-        subject: event.source === "gmail" ? event.title || "Gmail thread" : "",
-        title: event.title || (event.source === "calendar" ? "Google Calendar event" : "Gmail thread"),
-        snippet: String(event.summary || event.rawPayload?.snippet || "").slice(0, 320),
-        sender: event.rawPayload?.from || event.sender || "",
-        date: eventDate(event),
+        sourceLabel: event.source === "calendar" ? "Google Calendar" : "Gmail",
+        title: label,
+        date: occurredAt,
+        occurredAt,
+        receivedAt: event.source === "gmail" ? occurredAt : "",
+        eventStart: event.source === "calendar" ? occurredAt : "",
+        senderDomain: event.source === "gmail" ? senderDomainFromEvent(event) : "",
         insightType: type,
         inferredReason: classification.suggestedAction,
         suggestedQueueItemType: queueTypeForInsight(type, event),
         suggestedNextAction: nextActionForInsight(type, event),
         confidence: confidenceScore(event, classification, type),
-        relatedPersonOrOrg: event.relatedEntityId || event.rawPayload?.organizationName || "",
-        link: event.rawPayload?.htmlLink || "",
+        relatedPersonOrOrg: event.relatedEntityId || "",
         status: "suggested",
         created_at: now,
         createdAt: now,
@@ -175,11 +212,12 @@ export function mergeGoogleInsights(state = {}, insights = [], options = {}) {
 
 export function googleInsightToQueueTask(insight = {}, options = {}) {
   const now = options.now || nowIso();
-  const dueDate = insight.date ? String(insight.date).slice(0, 10) : todayIso(now);
+  const dueDate = (insight.eventStart || insight.receivedAt || insight.occurredAt || insight.date) ? String(insight.eventStart || insight.receivedAt || insight.occurredAt || insight.date).slice(0, 10) : todayIso(now);
+  const title = `${insight.suggestedQueueItemType || "Google follow-up"}: ${insight.title || "Google read-only insight"}`;
   return {
     id: options.id || `task-google-insight-${hashRef(insight.id)}-${crypto.randomUUID().slice(0, 6)}`,
-    title: `${insight.suggestedQueueItemType || "Google follow-up"}: ${insight.title || insight.subject || "Google insight"}`,
-    description: insight.snippet || insight.inferredReason || "Google read-only insight needs review.",
+    title,
+    description: insight.inferredReason || "Google read-only insight needs review.",
     owner: "Roger",
     status: "open",
     priority: Number(insight.confidence || 0) >= 0.85 ? "high" : "medium",
@@ -188,7 +226,7 @@ export function googleInsightToQueueTask(insight = {}, options = {}) {
     sourceId: insight.id || "",
     category: insight.suggestedQueueItemType || "Google Insight",
     nextAction: insight.suggestedNextAction || "Review and decide the next step.",
-    notes: insight.snippet || "",
+    notes: "Created from minimized Google read-only metadata. Open Google directly for message or calendar context.",
     escalationReason: insight.inferredReason || "Google read-only insight.",
     escalationKey: `google-insight:${insight.id}`,
     googleInsightId: insight.id || "",
@@ -261,9 +299,10 @@ export function classifyGoogleWorkspaceSignal(event = {}) {
 }
 
 function inboxItemForEvent(event = {}, classification = {}, now = nowIso()) {
+  const safeRef = safeSourceHash(event);
   return {
-    id: `growth-inbox-google-${slug(event.sourceEventId || event.id)}-${crypto.randomUUID().slice(0, 6)}`,
-    rawText: [event.title, event.summary].filter(Boolean).join("\n\n"),
+    id: `growth-inbox-google-${safeRef}-${crypto.randomUUID().slice(0, 6)}`,
+    rawText: "Google Workspace read-only signal. Open Google directly for source context.",
     sourceType: classification.sourceType,
     priority: classification.priority,
     relatedPartner: event.relatedEntityType === "partner" ? event.relatedEntityId : "",
@@ -272,9 +311,10 @@ function inboxItemForEvent(event = {}, classification = {}, now = nowIso()) {
     riskLevel: classification.riskLevel,
     suggestedAction: classification.suggestedAction,
     suggestedDestination: classification.suggestedDestination,
-    summary: event.summary || event.title || "Google Workspace signal",
+    summary: event.source === "calendar" ? "Calendar signal captured for internal review." : "Gmail signal captured for internal review.",
     status: "new",
-    sourceEventId: event.sourceEventId || event.id || "",
+    sourceEventId: safeRef,
+    sourceEventIdHash: safeRef,
     sourceConnector: event.source === "calendar" ? "google_calendar" : "gmail",
     createdAt: now,
     updatedAt: now,
@@ -283,28 +323,30 @@ function inboxItemForEvent(event = {}, classification = {}, now = nowIso()) {
 }
 
 function taskForEvent(event = {}, classification = {}, now = nowIso()) {
+  const safeRef = safeSourceHash(event);
   const title = event.source === "calendar"
-    ? `${event.rawPayload?.startTime && new Date(event.rawPayload.startTime).getTime() > Date.now() ? "Prepare for" : "Follow up from"} meeting: ${event.title || "Google Calendar event"}`
+    ? `${event.rawPayload?.startTime && new Date(event.rawPayload.startTime).getTime() > Date.now() ? "Prepare for" : "Follow up from"} Google Calendar meeting`
     : /proposal/i.test([event.title, event.summary].join(" "))
-      ? `Follow up on proposal: ${event.title || "Gmail signal"}`
+      ? "Follow up on Google proposal signal"
       : /document|data room/i.test([event.title, event.summary].join(" "))
-        ? `Handle document request: ${event.title || "Gmail signal"}`
-        : `Review Google Workspace signal: ${event.title || "signal"}`;
+        ? "Handle Google document request signal"
+        : "Review Google Workspace signal";
   const dueDate = event.source === "calendar" && event.rawPayload?.startTime
     ? String(event.rawPayload.startTime).slice(0, 10)
     : classification.riskLevel === "high"
       ? todayIso(now)
       : addDaysIso(now, 1);
   return {
-    id: `task-google-workspace-${slug(event.sourceEventId || event.id)}-${crypto.randomUUID().slice(0, 6)}`,
+    id: `task-google-workspace-${safeRef}-${crypto.randomUUID().slice(0, 6)}`,
     title,
-    description: event.summary || "Read-only Google Workspace signal needs review.",
+    description: "Read-only Google Workspace signal needs review. Open Google directly for source context.",
     owner: "Roger",
     status: "open",
     priority: classification.priority === "high" ? "high" : "medium",
     dueDate,
     sourceType: event.source === "calendar" ? "google_calendar" : "gmail",
-    sourceId: event.sourceEventId || event.id || "",
+    sourceId: safeRef,
+    sourceIdHash: safeRef,
     partnerId: event.relatedEntityType === "partner" ? event.relatedEntityId : "",
     campaignId: event.relatedEntityType === "campaign" ? event.relatedEntityId : "",
     pilotId: event.relatedEntityType === "pilot" ? event.relatedEntityId : "",
@@ -312,10 +354,10 @@ function taskForEvent(event = {}, classification = {}, now = nowIso()) {
     nextAction: classification.suggestedAction,
     escalationReason: event.source === "calendar" ? "Read-only Calendar signal needs prep or follow-up." : "Read-only Gmail signal needs follow-up.",
     escalationKey: event.source === "calendar"
-      ? `google-workspace:meeting-prep:${event.sourceEventId || event.id}`
+      ? `google-workspace:meeting-prep:${safeRef}`
       : /proposal/i.test([event.title, event.summary].join(" "))
-        ? `google-workspace:proposal-follow-up:${event.sourceEventId || event.id}`
-        : `google-workspace:signal-review:${event.sourceEventId || event.id}`,
+        ? `google-workspace:proposal-follow-up:${safeRef}`
+        : `google-workspace:signal-review:${safeRef}`,
     history: [{ action: "created", at: now, note: "Created from read-only Google Workspace sync. No email or calendar changes were made." }],
     createdAt: now,
     updatedAt: now
@@ -325,12 +367,14 @@ function taskForEvent(event = {}, classification = {}, now = nowIso()) {
 function evidenceNoteForEvent(event = {}, classification = {}, now = nowIso()) {
   const text = [event.title, event.summary].join(" ");
   if (!/investor|data room|diligence|proof|case study|partner|pilot|proposal|acquirer/i.test(text)) return null;
+  const safeRef = safeSourceHash(event);
   return {
-    id: `evidence-note-google-${slug(event.sourceEventId || event.id)}-${crypto.randomUUID().slice(0, 6)}`,
-    title: event.source === "calendar" ? `Google Calendar signal: ${event.title || "meeting"}` : `Gmail signal: ${event.title || "email"}`,
-    summary: event.summary || "",
+    id: `evidence-note-google-${safeRef}-${crypto.randomUUID().slice(0, 6)}`,
+    title: event.source === "calendar" ? "Google Calendar signal" : "Gmail signal",
+    summary: "Read-only Google Workspace signal may support evidence or proof work. Open Google directly for source context.",
     sourceType: event.source === "calendar" ? "google_calendar" : "gmail",
-    sourceId: event.sourceEventId || event.id || "",
+    sourceId: safeRef,
+    sourceIdHash: safeRef,
     status: "draft",
     priority: classification.priority,
     riskLevel: classification.riskLevel,
@@ -351,6 +395,7 @@ export function googleWorkspaceDraftOutputs(events = [], options = {}) {
   const activityEvents = [];
   for (const event of list(events).filter((item) => ["gmail", "calendar"].includes(item.source))) {
     const classification = classifyGoogleWorkspaceSignal(event);
+    const safeRef = safeSourceHash(event);
     growthInbox.push(inboxItemForEvent(event, classification, now));
     if (classification.suggestedDestination === "task" || classification.priority === "high") {
       tasks.push(taskForEvent(event, classification, now));
@@ -358,13 +403,13 @@ export function googleWorkspaceDraftOutputs(events = [], options = {}) {
     const note = evidenceNoteForEvent(event, classification, now);
     if (note) evidencePackNotes.push(note);
     accessEvents.push({
-      id: `event-google-workspace-${slug(event.sourceEventId || event.id)}-${crypto.randomUUID().slice(0, 6)}`,
+      id: `event-google-workspace-${safeRef}-${crypto.randomUUID().slice(0, 6)}`,
       eventType: "google_workspace_signal_captured",
       timestamp: now,
       actor: "google_workspace_readonly_sync",
       source: "google_workspace",
       objectType: event.source === "calendar" ? "calendar_event" : "gmail_message",
-      objectId: event.sourceEventId || event.id || "",
+      objectId: safeRef,
       riskLevel: classification.riskLevel,
       proofValue: note ? "medium" : "low",
       revenueImpact: "",
@@ -378,11 +423,11 @@ export function googleWorkspaceDraftOutputs(events = [], options = {}) {
       createdAt: now
     });
     activityEvents.push({
-      id: `activity-google-workspace-${slug(event.sourceEventId || event.id)}-${crypto.randomUUID().slice(0, 6)}`,
+      id: `activity-google-workspace-${safeRef}-${crypto.randomUUID().slice(0, 6)}`,
       eventType: "Google Workspace signal captured",
-      title: event.title || "Google Workspace signal",
+      title: event.source === "calendar" ? "Google Calendar signal captured" : "Gmail signal captured",
       relatedObjectType: event.source,
-      relatedObjectId: event.sourceEventId || event.id || "",
+      relatedObjectId: safeRef,
       createdAt: now
     });
   }
@@ -416,6 +461,29 @@ export function mergeGoogleWorkspaceOutputs(state = {}, outputs = {}) {
       ...list(outputs.activityEvents),
       ...list(state.activityEvents)
     ].slice(0, 500)
+  };
+}
+
+export function googleConnectionStatusFromDiagnostics(diagnostics = {}) {
+  const hasAccess = Boolean(diagnostics.hasAccessToken);
+  const hasRefresh = Boolean(diagnostics.hasRefreshToken);
+  const accountMarkedConnected = Boolean(diagnostics.connected);
+  if (accountMarkedConnected && hasAccess) {
+    return { connected: true, status: "connected", needsRefresh: false, needsReconnectReason: "" };
+  }
+  if (accountMarkedConnected && !hasAccess && hasRefresh) {
+    return {
+      connected: false,
+      status: "needs_refresh",
+      needsRefresh: true,
+      needsReconnectReason: "Google reconnect required: token missing or expired."
+    };
+  }
+  return {
+    connected: false,
+    status: "disconnected",
+    needsRefresh: false,
+    needsReconnectReason: accountMarkedConnected ? "Google reconnect required: token missing or expired." : "Google is not connected."
   };
 }
 
