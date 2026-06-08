@@ -204,6 +204,20 @@ function isRcapLike(item = {}) {
   return /rcap|wilma|briefcase|partner journey|partner page|document generation/i.test([item.id, item.artifact, item.title, item.name, item.status, item.review_state].join(" "));
 }
 
+function googleInsightActive(insight = {}) {
+  if (["dismissed", "deleted", "completed"].includes(asText(insight.status).toLowerCase())) return false;
+  if (insight.status === "queued") return true;
+  return Number(insight.confidence || 0) >= 0.85;
+}
+
+function googleInsightDueDate(insight = {}) {
+  return asText(insight.dueDate || insight.date || insight.receivedAt || insight.createdAt).slice(0, 10);
+}
+
+function googleInsightRoute(insight = {}) {
+  return insight.status === "queued" ? "queue" : "settings";
+}
+
 function bucketItemIds(session = {}, bucketKey = "") {
   const ids = new Set();
   for (const item of list(session.parked_items)) if (!bucketKey || item.bucket_key === bucketKey) ids.add(item.item_id);
@@ -371,6 +385,28 @@ export function buildDailyRunSnapshot(state = {}, options = {}) {
     }));
   }
 
+  for (const insight of list(state.googleInsights)) {
+    if (!googleInsightActive(insight)) continue;
+    const due = googleInsightDueDate(insight);
+    const record = itemRecord({
+      id: insight.queueItemId || insight.id,
+      title: insight.title || insight.subject || insight.insightType || "Google insight",
+      detail: insight.suggestedNextAction || insight.inferredReason || insight.snippet || "Review Google read-only insight.",
+      type: /meeting prep/i.test(insight.insightType || insight.suggestedQueueItemType || "") ? "meeting_prep" : "partner_followup",
+      route: googleInsightRoute(insight),
+      source: insight.source === "calendar" ? "google_calendar" : "gmail",
+      createdAt: insight.createdAt || insight.created_at || "",
+      extra: {
+        insightType: insight.insightType || "",
+        confidence: insight.confidence || 0,
+        status: insight.status || "suggested"
+      }
+    });
+    if (/Meeting Prep/i.test(insight.insightType || "") && (!due || due <= today)) buckets.due_today.items.push(record);
+    else if (/Follow-up|Partner Opportunity|Decision Needed|Waiting on Someone|Needs Reply|Post-Meeting/i.test(insight.insightType || "")) buckets.overdue_followups.items.push(record);
+    else buckets.reports_proof.items.push(record);
+  }
+
   for (const partner of list(state.partners)) {
     const due = asText(partner.nextFollowUpDate || partner.next_follow_up_date || partner.dueDate);
     if (!due || due > today) continue;
@@ -524,6 +560,19 @@ export function computeNewSinceStart(state = {}, session = {}, options = {}) {
       type: "task",
       route: "tasks",
       source: task.sourceType || "task",
+      createdAt
+    }));
+  }
+  for (const insight of list(state.googleInsights)) {
+    const createdAt = insight.createdAt || insight.created_at || insight.updatedAt || "";
+    if (!insight.id || snapshotIds.has(insight.id) || snapshotIds.has(insight.queueItemId) || timestampMs(createdAt) <= startedAt || !googleInsightActive(insight)) continue;
+    candidates.push(itemRecord({
+      id: insight.queueItemId || insight.id,
+      title: insight.title || insight.subject || insight.insightType || "New Google insight",
+      detail: insight.suggestedNextAction || insight.snippet || "",
+      type: "google_insight",
+      route: googleInsightRoute(insight),
+      source: insight.source === "calendar" ? "google_calendar" : "gmail",
       createdAt
     }));
   }

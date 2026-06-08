@@ -100,6 +100,7 @@ export function actorFromRequest(request = {}, env = process.env) {
 export function permissionForRequest(method = "GET", pathname = "/") {
   if (publicPaths.includes(pathname)) return "public";
   if (pathname.startsWith("/api/oauth/google/callback")) return "public";
+  if (pathname.startsWith("/api/google/callback")) return "public";
   if (pathname.startsWith("/data/exports/final-pngs/")) return "public";
   if (pathname.startsWith("/data/exports/openai-images/")) return "public";
   if (pathname.startsWith("/assets/")) return "public";

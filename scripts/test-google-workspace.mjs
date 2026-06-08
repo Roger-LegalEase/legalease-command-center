@@ -73,7 +73,7 @@ const diagnostics = googleWorkspaceDiagnostics({
   connectorStatus: [{ connector: "gmail", configured: true }, { connector: "calendar", configured: true }]
 });
 assert.equal(diagnostics.oauthConfigured, true);
-assert.equal(diagnostics.redirectUri, "https://example.com/api/oauth/google_workspace/callback");
+assert.equal(diagnostics.redirectUri, "https://example.com/api/google/callback");
 assert.equal(diagnostics.connected, true);
 assert.equal(diagnostics.hasStoredToken, true);
 assert.equal(Object.values(diagnostics).some((value) => String(value).includes("secret")), false);

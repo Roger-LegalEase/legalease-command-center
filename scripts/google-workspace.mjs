@@ -30,11 +30,24 @@ function slug(value = "") {
   return lower(value).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "item";
 }
 
+export const googleReadOnlyScopes = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/calendar.readonly"
+];
+
+export const googleRequiredReadOnlyScopes = [
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/calendar.readonly"
+];
+
 export function googleWorkspaceRedirectUri(env = process.env) {
   const explicit = env.GOOGLE_REDIRECT_URI || env.GOOGLE_OAUTH_REDIRECT_URI || "";
   if (explicit) return explicit;
   const base = String(env.APP_BASE_URL || env.PUBLIC_APP_BASE_URL || "").replace(/\/+$/, "");
-  return base ? `${base}/api/oauth/google_workspace/callback` : "";
+  return base ? `${base}/api/google/callback` : "";
 }
 
 export function googleWorkspaceOAuthConfigured(env = process.env) {
@@ -47,6 +60,157 @@ export function googleWorkspaceMissingEnv(env = process.env) {
     ["GOOGLE_CLIENT_SECRET", env.GOOGLE_CLIENT_SECRET],
     ["GOOGLE_REDIRECT_URI or APP_BASE_URL", googleWorkspaceRedirectUri(env)]
   ].filter(([, value]) => !value).map(([key]) => key);
+}
+
+function hashRef(value = "") {
+  return crypto.createHash("sha256").update(String(value || crypto.randomUUID())).digest("hex").slice(0, 16);
+}
+
+function eventDate(event = {}) {
+  return clean(event.receivedAt || event.sentAt || event.date || event.rawPayload?.date || event.rawPayload?.startTime || event.rawPayload?.startsAt || event.createdAt);
+}
+
+function inferInsightType(event = {}, classification = {}) {
+  const text = lower([event.title, event.summary, event.eventType, JSON.stringify(event.rawPayload || {})].join(" "));
+  if (event.source === "calendar") {
+    const start = event.rawPayload?.startTime || event.rawPayload?.startsAt || event.date || "";
+    const startMs = start ? new Date(start).getTime() : 0;
+    if (startMs && startMs > Date.now()) return "Meeting Prep";
+    return "Post-Meeting Follow-up";
+  }
+  if (/decision|approve|approval|decide|green light|sign off/.test(text)) return "Decision Needed";
+  if (/waiting on|pending|following up|checking in|circling back/.test(text)) return "Waiting on Someone";
+  if (/reply|question|\?|can you|could you|please send|need from you/.test(text)) return "Needs Reply";
+  if (/partner|partnership|pilot|proposal|intro|investor|sponsor|revenue/.test(text)) return "Partner Opportunity";
+  if (/follow up|next step|next steps|overdue/.test(text)) return "Follow-up Overdue";
+  if (classification.priority === "high") return "Follow-up Overdue";
+  return "Blind Spot";
+}
+
+function confidenceScore(event = {}, classification = {}, insightType = "") {
+  if (classification.priority === "high" || /Partner|Follow-up|Meeting|Decision/.test(insightType)) return 0.86;
+  if (event.confidence === "high") return 0.9;
+  if (event.confidence === "low") return 0.55;
+  return 0.72;
+}
+
+function queueTypeForInsight(type = "", event = {}) {
+  if (type === "Meeting Prep") return "Meeting Prep";
+  if (type === "Post-Meeting Follow-up") return "Post-Meeting Follow-up";
+  if (type === "Decision Needed") return "Decision Needed";
+  if (type === "Waiting on Someone") return "Waiting on Someone";
+  if (event.source === "calendar") return "Partner Follow-up";
+  return /partner|proposal|pilot|investor|revenue/i.test([event.title, event.summary].join(" ")) ? "Partner Follow-up" : "Channel Review";
+}
+
+function nextActionForInsight(type = "", event = {}) {
+  if (type === "Meeting Prep") return "Prepare agenda, desired decision, and follow-up owner before the meeting.";
+  if (type === "Post-Meeting Follow-up") return "Capture the decision and send the internal follow-up plan.";
+  if (type === "Decision Needed") return "Decide the next step or park the thread with a clear owner.";
+  if (type === "Waiting on Someone") return "Check whether LegalEase is waiting on someone or owes the next move.";
+  if (type === "Partner Opportunity") return "Review the partner angle and add a follow-up if it is real.";
+  if (type === "Needs Reply") return "Review the thread and decide whether Roger owes a response.";
+  return "Review this blind spot and decide whether it belongs in Queue.";
+}
+
+export function googleInsightsFromEvents(events = [], options = {}) {
+  const now = options.now || nowIso();
+  return list(events)
+    .filter((event) => ["gmail", "calendar"].includes(event.source))
+    .map((event) => {
+      const classification = classifyGoogleWorkspaceSignal(event);
+      const type = inferInsightType(event, classification);
+      const safeRef = hashRef(event.sourceEventId || event.id || [event.title, eventDate(event)].join(":"));
+      return {
+        id: `google-insight-${event.source}-${safeRef}`,
+        source: event.source,
+        sourceRef: safeRef,
+        sourceEventIdHash: safeRef,
+        sourceTitle: event.title || (event.source === "calendar" ? "Google Calendar event" : "Gmail thread"),
+        subject: event.source === "gmail" ? event.title || "Gmail thread" : "",
+        title: event.title || (event.source === "calendar" ? "Google Calendar event" : "Gmail thread"),
+        snippet: String(event.summary || event.rawPayload?.snippet || "").slice(0, 320),
+        sender: event.rawPayload?.from || event.sender || "",
+        date: eventDate(event),
+        insightType: type,
+        inferredReason: classification.suggestedAction,
+        suggestedQueueItemType: queueTypeForInsight(type, event),
+        suggestedNextAction: nextActionForInsight(type, event),
+        confidence: confidenceScore(event, classification, type),
+        relatedPersonOrOrg: event.relatedEntityId || event.rawPayload?.organizationName || "",
+        link: event.rawPayload?.htmlLink || "",
+        status: "suggested",
+        created_at: now,
+        createdAt: now,
+        updatedAt: now,
+        internalOnly: true,
+        noOutboundAction: true
+      };
+    });
+}
+
+export function mergeGoogleInsights(state = {}, insights = [], options = {}) {
+  const existing = new Map(list(state.googleInsights).map((item) => [item.id, item]));
+  const now = options.now || nowIso();
+  const incoming = [];
+  for (const insight of list(insights)) {
+    if (!insight?.id) continue;
+    const current = existing.get(insight.id);
+    if (current && !["suggested", "snoozed"].includes(current.status)) continue;
+    incoming.push({
+      ...current,
+      ...insight,
+      status: current?.status || insight.status || "suggested",
+      created_at: current?.created_at || current?.createdAt || insight.created_at || now,
+      createdAt: current?.createdAt || current?.created_at || insight.createdAt || now,
+      updatedAt: now
+    });
+    existing.delete(insight.id);
+  }
+  return {
+    ...state,
+    googleInsights: [...incoming, ...existing.values()].slice(0, 500)
+  };
+}
+
+export function googleInsightToQueueTask(insight = {}, options = {}) {
+  const now = options.now || nowIso();
+  const dueDate = insight.date ? String(insight.date).slice(0, 10) : todayIso(now);
+  return {
+    id: options.id || `task-google-insight-${hashRef(insight.id)}-${crypto.randomUUID().slice(0, 6)}`,
+    title: `${insight.suggestedQueueItemType || "Google follow-up"}: ${insight.title || insight.subject || "Google insight"}`,
+    description: insight.snippet || insight.inferredReason || "Google read-only insight needs review.",
+    owner: "Roger",
+    status: "open",
+    priority: Number(insight.confidence || 0) >= 0.85 ? "high" : "medium",
+    dueDate,
+    sourceType: insight.source === "calendar" ? "google_calendar" : "gmail",
+    sourceId: insight.id || "",
+    category: insight.suggestedQueueItemType || "Google Insight",
+    nextAction: insight.suggestedNextAction || "Review and decide the next step.",
+    notes: insight.snippet || "",
+    escalationReason: insight.inferredReason || "Google read-only insight.",
+    escalationKey: `google-insight:${insight.id}`,
+    googleInsightId: insight.id || "",
+    history: [{ action: "created", at: now, note: "Added from Google read-only insight. No email or calendar changes were made." }],
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+export function googleInsightSummary(insights = []) {
+  const active = list(insights).filter((item) => !["dismissed", "queued", "deleted"].includes(item.status));
+  const byType = (type) => active.filter((item) => item.insightType === type).length;
+  return {
+    total: active.length,
+    needsReply: byType("Needs Reply"),
+    followUpsFound: active.filter((item) => /Follow-up|Partner Opportunity|Waiting on Someone|Decision Needed/.test(item.insightType || "")).length,
+    meetingPrep: byType("Meeting Prep"),
+    blindSpots: byType("Blind Spot"),
+    queued: list(insights).filter((item) => item.status === "queued").length,
+    dismissed: list(insights).filter((item) => item.status === "dismissed").length,
+    lastScanAt: list(insights).map((item) => item.scannedAt || item.updatedAt || item.createdAt || "").filter(Boolean).sort().at(-1) || ""
+  };
 }
 
 export function classifyGoogleWorkspaceSignal(event = {}) {
@@ -258,23 +422,56 @@ export function mergeGoogleWorkspaceOutputs(state = {}, outputs = {}) {
 export function googleWorkspaceDiagnostics({ env = process.env, account = {}, connectorStatus = [] } = {}) {
   const gmail = list(connectorStatus).find((item) => item.connector === "gmail") || {};
   const calendar = list(connectorStatus).find((item) => item.connector === "calendar") || {};
+  const redirectUri = googleWorkspaceRedirectUri(env);
+  let parsedRedirect = null;
+  try { parsedRedirect = redirectUri ? new URL(redirectUri) : null; } catch { parsedRedirect = null; }
+  const scopes = list(account.scopes);
+  const hasAccess = Boolean(account.accessTokenEncrypted || account.accessTokenPresent);
+  const hasRefresh = Boolean(account.refreshTokenEncrypted || account.refreshTokenPresent);
+  const expiresAtPresent = Boolean(account.tokenExpiresAt);
+  const connected = account.status === "connected" || Boolean(account.connectedAt || account.accountName);
+  const needsReconnect = !connected
+    ? "Google is not connected."
+    : !hasAccess && !hasRefresh
+      ? "Google reconnect required: token missing or expired."
+      : "";
   return {
     oauthConfigured: googleWorkspaceOAuthConfigured(env),
     missingEnvVars: googleWorkspaceMissingEnv(env),
     clientIdPresent: Boolean(env.GOOGLE_CLIENT_ID),
     clientSecretPresent: Boolean(env.GOOGLE_CLIENT_SECRET),
-    redirectUri: googleWorkspaceRedirectUri(env),
+    redirectUri,
     tokenEncryptionConfigured: Boolean(env.OAUTH_TOKEN_ENCRYPTION_KEY),
-    connected: account.status === "connected" || Boolean(account.connectedAt || account.accountName),
+    connected,
     accountName: account.accountName || "",
-    hasStoredToken: Boolean(account.accessTokenEncrypted || account.refreshTokenEncrypted),
-    scopes: list(account.scopes).filter((scope) => /readonly|openid|email|profile/i.test(scope)),
+    hasStoredToken: Boolean(hasAccess || hasRefresh),
+    scopes: scopes.filter((scope) => /readonly|openid|email|profile/i.test(scope)),
     gmailConfigured: Boolean(gmail.configured),
     calendarConfigured: Boolean(calendar.configured),
     gmailLastSyncAt: gmail.lastSyncAt || "",
     calendarLastSyncAt: calendar.lastSyncAt || "",
     lastError: account.lastErrorSummary || account.lastError || gmail.lastError || calendar.lastError || "",
     noOutboundScopes: true,
-    readOnlyOnly: true
+    readOnlyOnly: true,
+    googleClientIdConfigured: Boolean(env.GOOGLE_CLIENT_ID),
+    googleClientSecretConfigured: Boolean(env.GOOGLE_CLIENT_SECRET),
+    googleRedirectUriConfigured: Boolean(redirectUri),
+    googleRedirectUriHost: parsedRedirect?.host || "",
+    googleRedirectUriPath: parsedRedirect?.pathname || "",
+    requestedScopes: googleRequiredReadOnlyScopes,
+    gmailReadonlyGranted: scopes.includes("https://www.googleapis.com/auth/gmail.readonly") || Boolean(gmail.configured),
+    calendarReadonlyGranted: scopes.includes("https://www.googleapis.com/auth/calendar.readonly") || Boolean(calendar.configured),
+    googleTokenRecordPresent: Boolean(account.platform || account.connectedAt || account.status),
+    googleAccessTokenPresent: hasAccess,
+    googleRefreshTokenPresent: hasRefresh,
+    googleTokenExpiresAtPresent: expiresAtPresent,
+    googleNeedsReconnectReason: needsReconnect,
+    googleConnectedComputedReason: connected ? (hasAccess || hasRefresh ? "Stored encrypted Google token record is connected." : "Google account is marked connected but token read-back needs review.") : "No connected Google account.",
+    emailSendingEnabled: false,
+    calendarWritesEnabled: false,
+    connectRouteExists: true,
+    callbackRouteExists: true,
+    statusRouteExists: true,
+    scanRouteExists: true
   };
 }
