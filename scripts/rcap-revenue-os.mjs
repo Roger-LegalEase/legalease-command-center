@@ -72,6 +72,10 @@ function isSuppressedContact(contact = {}) {
   return Boolean(contact.unsubscribed || contact.bounced || isSuppressionStatus(contact.suppression_status));
 }
 
+export function isRcapContactSuppressed(contact = {}) {
+  return isSuppressedContact(contact);
+}
+
 function safeEmailStatus(contact = {}, fallback = "Not Verified") {
   if (isSuppressedContact(contact)) return "Not Verified";
   const value = clean(contact.email_status);
@@ -432,14 +436,367 @@ export function importRcapRevenueWorkbook(state = {}, workbook = {}, options = {
   };
 }
 
+const allowedRcapTaskStatuses = new Set(["New", "Ready", "Parked", "Completed", "Skipped", "Blocked"]);
+const suppressedOutreachTaskTypes = new Set(["RCAP Outreach Approval", "RCAP Follow-Up", "RCAP Proposal Task"]);
+
+function accountKey(account = {}) {
+  return account.account_id || account.source_prospect_id || "";
+}
+
+function findAccount(accounts = [], id = "") {
+  return list(accounts).find(account => account.account_id === id || account.source_prospect_id === id) || {};
+}
+
+function findContact(contacts = [], id = "") {
+  return list(contacts).find(contact => contact.contact_id === id || contact.source_contact_id === id) || {};
+}
+
+function rcapTaskSlug(value = "") {
+  return slug(value).slice(0, 60);
+}
+
+function rcapTaskId(type = "", parts = []) {
+  return `rcap-task-${rcapTaskSlug(type)}-${rcapTaskSlug(parts.filter(Boolean).join("-"))}`;
+}
+
+function isHighPriorityAccount(account = {}) {
+  return /tier\s*1/i.test(clean(account.priority_tier)) || Number(account.priority_score || 0) >= 90;
+}
+
+function accountIsNew(account = {}) {
+  return !clean(account.account_status) || /new|imported/i.test(clean(account.account_status));
+}
+
+function confidenceIsSafe(value = "") {
+  return /^(high|medium)$/i.test(clean(value));
+}
+
+function confidenceNeedsResearch(value = "") {
+  return !clean(value) || /low|unknown|missing|verify/i.test(clean(value));
+}
+
+function contactHasFallbackIdentity(contact = {}) {
+  return !clean(contact.source_contact_id) || /^rcap-contact-/i.test(clean(contact.contact_id));
+}
+
+function contactNeedsResearch(contact = {}) {
+  const note = lower(contact.verification_note);
+  const route = lower(contact.contact_route);
+  return !clean(contact.public_email)
+    || contactHasFallbackIdentity(contact)
+    || confidenceNeedsResearch(contact.source_confidence)
+    || /caution|verify|unverified|needs|unknown|missing|route/.test(note)
+    || /verify|fallback|unknown|missing/.test(route)
+    || Boolean(contact.bounced);
+}
+
+function contactIsDecisionRelevant(contact = {}, account = {}) {
+  const text = lower([
+    contact.title,
+    contact.decision_role,
+    contact.outreach_priority,
+    account.rcap_cobranded_page_status,
+    account.paid_offer_fit
+  ].join(" "));
+  return isHighPriorityAccount(account)
+    || /executive|ceo|chief|director|board chair|chair|funder|decision|champion|co-?branded|priority|high/.test(text);
+}
+
+export function canCreateRcapOutreachTask(contact = {}, account = {}) {
+  if (!contact || isRcapContactSuppressed(contact)) return false;
+  if (!/active/i.test(clean(contact.suppression_status || "Active"))) return false;
+  if (!clean(contact.public_email)) return false;
+  if (!confidenceIsSafe(contact.source_confidence)) return false;
+  if (!/^not enrolled$/i.test(clean(contact.sequence_status || "Not Enrolled"))) return false;
+  if (!/^(not verified|verified)$/i.test(clean(contact.email_status || "Not Verified"))) return false;
+  return contactIsDecisionRelevant(contact, account);
+}
+
+export function assertNoSuppressedOutreachTask(task = {}, contact = {}) {
+  if (isRcapContactSuppressed(contact) && suppressedOutreachTaskTypes.has(task.task_type)) {
+    throw new Error("Suppressed RCAP contacts cannot receive outreach, follow-up, or proposal tasks.");
+  }
+  return true;
+}
+
+function normalizeTaskStatus(value = "New") {
+  const status = clean(value) || "New";
+  return allowedRcapTaskStatuses.has(status) ? status : "New";
+}
+
+function buildRcapTask(fields = {}, options = {}) {
+  const now = options.now || nowIso();
+  const task = {
+    task_id: fields.task_id,
+    task_type: fields.task_type,
+    title: fields.title,
+    linked_account_id: fields.linked_account_id || "",
+    linked_contact_id: fields.linked_contact_id || "",
+    linked_deal_seed_id: fields.linked_deal_seed_id || "",
+    segment: fields.segment || "",
+    priority_tier: fields.priority_tier || "",
+    source_import_id: fields.source_import_id || "",
+    due_date: fields.due_date || "",
+    owner: fields.owner || options.owner || "owner",
+    status: normalizeTaskStatus(fields.status || "New"),
+    reason: fields.reason || "",
+    safe_action_type: fields.safe_action_type || "internal_review",
+    created_at: fields.created_at || now,
+    updated_at: fields.updated_at || now
+  };
+  if (/send|sent|enroll|gmail|calendar|sms|call|publish|post now/i.test([task.status, task.safe_action_type, task.title, task.reason].join(" "))) {
+    task.status = "New";
+    task.safe_action_type = "internal_review";
+    task.reason = "Internal review task only. No outreach action is enabled.";
+  }
+  return task;
+}
+
+function addUniqueTask(tasks = [], existingIds = new Set(), task = {}) {
+  if (!task.task_id || existingIds.has(task.task_id)) return false;
+  existingIds.add(task.task_id);
+  tasks.push(task);
+  return true;
+}
+
+function taskOpen(task = {}) {
+  return !/completed|skipped|parked/i.test(clean(task.status));
+}
+
+function taskDueOrPast(task = {}, now = nowIso()) {
+  const due = clean(task.due_date);
+  if (!due) return false;
+  return due.slice(0, 10) <= now.slice(0, 10);
+}
+
+export function rcapRevenueTaskBucketKey(task = {}, options = {}) {
+  const now = options.now || nowIso();
+  if (!taskOpen(task)) return "";
+  switch (task.task_type) {
+    case "RCAP Data Cleanup":
+      return "reports_proof";
+    case "RCAP Contact Research":
+      return "rcap_watch";
+    case "RCAP Account Review":
+    case "RCAP Outreach Approval":
+      return "bulk_review";
+    case "RCAP Follow-Up":
+      return taskDueOrPast(task, now) ? "overdue_followups" : "bulk_review";
+    case "RCAP Proposal Task":
+    case "RCAP Deal Task":
+    case "RCAP Onboarding Task":
+      return "ready_to_ship";
+    default:
+      return "rcap_watch";
+  }
+}
+
+export function rcapRevenueTaskSummary(state = {}) {
+  const tasks = list(state.rcapRevenueQueueTasks);
+  return {
+    total: tasks.length,
+    open: tasks.filter(taskOpen).length,
+    accountReview: tasks.filter(task => task.task_type === "RCAP Account Review").length,
+    contactResearch: tasks.filter(task => task.task_type === "RCAP Contact Research").length,
+    outreachApproval: tasks.filter(task => task.task_type === "RCAP Outreach Approval").length,
+    followUp: tasks.filter(task => task.task_type === "RCAP Follow-Up").length,
+    dataCleanup: tasks.filter(task => task.task_type === "RCAP Data Cleanup").length
+  };
+}
+
+export function generateRcapRevenueQueueTasks(state = {}, options = {}) {
+  const now = options.now || nowIso();
+  const accounts = list(state.rcapRevenueAccounts);
+  const contacts = list(state.rcapRevenueContacts);
+  const dealSeeds = list(state.rcapRevenueDealSeeds);
+  const batches = list(state.rcapRevenueImportBatches);
+  const nextTasks = list(state.rcapRevenueQueueTasks).slice();
+  const existingIds = new Set(nextTasks.map(task => task.task_id).filter(Boolean));
+  const created = [];
+  const add = (task, contact = {}) => {
+    assertNoSuppressedOutreachTask(task, contact);
+    if (addUniqueTask(nextTasks, existingIds, task)) created.push(task);
+  };
+
+  for (const account of accounts) {
+    const key = accountKey(account);
+    if (isHighPriorityAccount(account) && accountIsNew(account) && clean(account.organization_name)) {
+      add(buildRcapTask({
+        task_id: rcapTaskId("account-review", [key]),
+        task_type: "RCAP Account Review",
+        title: `Review RCAP account: ${clean(account.organization_name)}`,
+        linked_account_id: key,
+        segment: account.segment || account.rcap_campaign_segment,
+        priority_tier: account.priority_tier,
+        source_import_id: account.source_import_id,
+        due_date: account.next_action_date,
+        owner: account.owner,
+        status: "Ready",
+        reason: "Tier 1 or high-priority imported account needs internal review.",
+        safe_action_type: "internal_account_review"
+      }, { now, owner: options.owner }));
+    }
+    if (/closed won/i.test(clean(account.account_status))) {
+      add(buildRcapTask({
+        task_id: rcapTaskId("onboarding", [key]),
+        task_type: "RCAP Onboarding Task",
+        title: `Prepare RCAP onboarding review: ${clean(account.organization_name)}`,
+        linked_account_id: key,
+        segment: account.segment || account.rcap_campaign_segment,
+        priority_tier: account.priority_tier,
+        source_import_id: account.source_import_id,
+        status: "New",
+        reason: "Imported account is explicitly Closed Won.",
+        safe_action_type: "internal_onboarding_review"
+      }, { now, owner: options.owner }));
+    }
+  }
+
+  for (const contact of contacts) {
+    const account = findAccount(accounts, contact.linked_account_id || contact.linked_prospect_id);
+    if (contactNeedsResearch(contact)) {
+      add(buildRcapTask({
+        task_id: rcapTaskId("contact-research", [contact.contact_id]),
+        task_type: "RCAP Contact Research",
+        title: `Research RCAP contact: ${clean(contact.contact_name) || "Contact"}`,
+        linked_account_id: accountKey(account) || contact.linked_account_id,
+        linked_contact_id: contact.contact_id,
+        segment: contact.segment || account.segment,
+        priority_tier: account.priority_tier,
+        source_import_id: contact.source_import_id,
+        status: "New",
+        reason: "Contact route, identity, confidence, or email needs manual verification.",
+        safe_action_type: "internal_contact_research"
+      }, { now, owner: options.owner }));
+    }
+    if (canCreateRcapOutreachTask(contact, account)) {
+      add(buildRcapTask({
+        task_id: rcapTaskId("outreach-approval", [contact.contact_id]),
+        task_type: "RCAP Outreach Approval",
+        title: `Approve RCAP first touch: ${clean(contact.contact_name)}`,
+        linked_account_id: accountKey(account) || contact.linked_account_id,
+        linked_contact_id: contact.contact_id,
+        segment: contact.segment || account.segment,
+        priority_tier: account.priority_tier,
+        source_import_id: contact.source_import_id,
+        status: "Ready",
+        reason: "Safe, non-suppressed decision-relevant contact needs internal approval before any future outreach.",
+        safe_action_type: "internal_outreach_approval_review"
+      }, { now, owner: options.owner }), contact);
+    }
+    if (isRcapContactSuppressed(contact)) {
+      add(buildRcapTask({
+        task_id: rcapTaskId("data-cleanup-suppression", [contact.contact_id]),
+        task_type: "RCAP Data Cleanup",
+        title: `RCAP Data Cleanup: verify suppression for ${clean(contact.contact_name) || "contact"}`,
+        linked_account_id: contact.linked_account_id,
+        linked_contact_id: contact.contact_id,
+        segment: contact.segment,
+        source_import_id: contact.source_import_id,
+        status: "New",
+        reason: "Suppressed contact — data cleanup only.",
+        safe_action_type: "internal_data_cleanup"
+      }, { now, owner: options.owner }));
+    }
+  }
+
+  for (const deal of dealSeeds) {
+    const account = findAccount(accounts, deal.linked_account_id);
+    const contact = findContact(contacts, deal.linked_contact_id);
+    const contactBlocked = deal.linked_contact_id && isRcapContactSuppressed(contact);
+    if ((clean(deal.likely_decision_maker) || clean(account.next_action_date) || /engaged/i.test(clean(account.account_status))) && !contactBlocked) {
+      add(buildRcapTask({
+        task_id: rcapTaskId("follow-up", [deal.deal_seed_id || accountKey(account)]),
+        task_type: "RCAP Follow-Up",
+        title: `Review RCAP Follow-Up: ${clean(account.organization_name) || clean(deal.likely_decision_maker) || "deal seed"}`,
+        linked_account_id: accountKey(account) || deal.linked_account_id,
+        linked_contact_id: deal.linked_contact_id,
+        linked_deal_seed_id: deal.deal_seed_id,
+        segment: account.segment,
+        priority_tier: account.priority_tier,
+        source_import_id: deal.source_import_id,
+        due_date: account.next_action_date,
+        status: "New",
+        reason: "Deal seed or account movement needs an internal follow-up decision.",
+        safe_action_type: "internal_follow_up_review"
+      }, { now, owner: options.owner }), contact);
+    }
+    if (clean(deal.proposed_offer) && clean(deal.funding_source) && !contactBlocked) {
+      add(buildRcapTask({
+        task_id: rcapTaskId("proposal", [deal.deal_seed_id]),
+        task_type: "RCAP Proposal Task",
+        title: `Review RCAP proposal seed: ${clean(deal.proposed_offer)}`,
+        linked_account_id: accountKey(account) || deal.linked_account_id,
+        linked_contact_id: deal.linked_contact_id,
+        linked_deal_seed_id: deal.deal_seed_id,
+        segment: account.segment,
+        priority_tier: account.priority_tier,
+        source_import_id: deal.source_import_id,
+        due_date: deal.target_close_date,
+        status: "New",
+        reason: "Proposed offer and funding source are present. Review only; no document creation or sending.",
+        safe_action_type: "internal_proposal_review"
+      }, { now, owner: options.owner }), contact);
+    }
+    if (contactBlocked) {
+      add(buildRcapTask({
+        task_id: rcapTaskId("data-cleanup-suppressed-deal", [deal.deal_seed_id, deal.linked_contact_id]),
+        task_type: "RCAP Data Cleanup",
+        title: "RCAP Data Cleanup: suppressed contact on deal seed",
+        linked_account_id: deal.linked_account_id,
+        linked_contact_id: deal.linked_contact_id,
+        linked_deal_seed_id: deal.deal_seed_id,
+        source_import_id: deal.source_import_id,
+        status: "New",
+        reason: "Suppressed contact appears on a deal seed. Keep this as cleanup only.",
+        safe_action_type: "internal_data_cleanup"
+      }, { now, owner: options.owner }));
+    }
+  }
+
+  for (const batch of batches) {
+    for (const warning of list(batch.warnings)) {
+      if (!/lacked|fallback|duplicate|suppression|bounced|unsubscribed/i.test(warning)) continue;
+      add(buildRcapTask({
+        task_id: rcapTaskId("data-cleanup-warning", [batch.import_id, warning]),
+        task_type: "RCAP Data Cleanup",
+        title: "RCAP Data Cleanup: review import warning",
+        source_import_id: batch.import_id,
+        status: "New",
+        reason: warning,
+        safe_action_type: "internal_data_cleanup"
+      }, { now, owner: options.owner }));
+    }
+  }
+
+  const nextBatches = created.length && batches.length
+    ? [{ ...batches[0], tasks_created: Number(batches[0].tasks_created || 0) + created.length }, ...batches.slice(1)]
+    : batches;
+  return {
+    state: {
+      ...state,
+      rcapRevenueQueueTasks: nextTasks,
+      rcapRevenueImportBatches: nextBatches
+    },
+    created,
+    summary: rcapRevenueTaskSummary({ ...state, rcapRevenueQueueTasks: nextTasks })
+  };
+}
+
 export function rcapRevenueFoundationSummary(state = {}) {
   const latest = list(state.rcapRevenueImportBatches)[0] || {};
+  const taskSummary = rcapRevenueTaskSummary(state);
   return {
     accounts: list(state.rcapRevenueAccounts).length,
     contacts: list(state.rcapRevenueContacts).length,
     dealSeeds: list(state.rcapRevenueDealSeeds).length,
+    queueTasks: taskSummary.total,
+    openQueueTasks: taskSummary.open,
+    queueTaskGenerationActive: true,
+    suppressionLatchActive: true,
     importBatches: list(state.rcapRevenueImportBatches).length,
     latestStatus: latest.status || "not imported",
+    tasksCreated: latest.tasks_created || 0,
     emailSendingEnabled: false,
     calendarWritesEnabled: false,
     externalActionsEnabled: false

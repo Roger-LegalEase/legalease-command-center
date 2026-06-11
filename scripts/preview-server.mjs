@@ -44,8 +44,10 @@ import {
   mergeGoogleWorkspaceOutputs
 } from "./google-workspace.mjs";
 import {
+  generateRcapRevenueQueueTasks,
   importRcapRevenueWorkbook,
-  rcapRevenueFoundationSummary
+  rcapRevenueFoundationSummary,
+  rcapRevenueTaskSummary
 } from "./rcap-revenue-os.mjs";
 import {
   channelConfig,
@@ -17133,7 +17135,8 @@ function htmlShell() {
         ["PR drafts", followUps.filter(item => /pr|press|media/i.test([item.type, item.category, item.title, item.text, item.raw_input].join(" "))).length, "outreach before anything is sent"],
         ["Reports", reports.length, "internal drafts and updates"],
         ["Proof-to-content", proof.length, "evidence that can move forward"],
-        ["Channel reviews", channelReviews.length, "setup and approval checks"]
+        ["Channel reviews", channelReviews.length, "setup and approval checks"],
+        ["RCAP tasks", (state.rcapRevenueQueueTasks || []).filter(task => !/completed|skipped|parked/i.test(String(task.status || ""))).length, "internal RCAP revenue work"]
       ];
     }
 
@@ -17142,6 +17145,44 @@ function htmlShell() {
       if (item.approvalStatus) return growthLabel(item.approvalStatus);
       if (item.reviewStatus) return growthLabel(item.reviewStatus);
       return "Needs review";
+    }
+
+    function rcapClientContactById(id) {
+      return (state.rcapRevenueContacts || []).find(contact => contact.contact_id === id || contact.source_contact_id === id) || {};
+    }
+
+    function rcapClientAccountById(id) {
+      return (state.rcapRevenueAccounts || []).find(account => account.account_id === id || account.source_prospect_id === id) || {};
+    }
+
+    function rcapClientContactSuppressed(contact = {}) {
+      return Boolean(contact.unsubscribed || contact.bounced || /unsubscribe|bounc|suppress|do not contact|do-not-contact/i.test(String(contact.suppression_status || "")));
+    }
+
+    function rcapRevenueQueueRows() {
+      return (state.rcapRevenueQueueTasks || [])
+        .filter(task => !/completed|skipped|parked/i.test(String(task.status || "")))
+        .slice(0, 8)
+        .map(task => {
+          const account = rcapClientAccountById(task.linked_account_id);
+          const contact = rcapClientContactById(task.linked_contact_id);
+          const suppressed = rcapClientContactSuppressed(contact);
+          const org = account.organization_name || task.linked_account_id || "RCAP account";
+          const contactName = contact.contact_name || task.linked_contact_id || "";
+          const meta = [task.segment, task.priority_tier, task.due_date ? "Due " + task.due_date : ""].filter(Boolean).join(" · ") || "Internal";
+          return {
+            id: "rcap-task-" + slugify(task.task_id || task.title || "task"),
+            type: "rcap",
+            label: "RCAP Task",
+            title: task.title || task.task_type || "RCAP revenue task",
+            context: [org, contactName, task.reason || "Review this RCAP task internally."].filter(Boolean).join(" — "),
+            status: "Status: " + queueReviewStatusLabel(task),
+            meta,
+            action: "Review",
+            actionJs: "toast('RCAP task reviewed internally.')",
+            details: \`<p class="muted"><strong>Task type:</strong> \${esc(task.task_type || "RCAP task")}<br><strong>Organization:</strong> \${esc(org)}\${contactName ? "<br><strong>Contact:</strong> " + esc(contactName) : ""}<br><strong>Reason:</strong> \${esc(task.reason || "Internal review work.")}</p>\${suppressed ? '<p class="muted"><strong>Suppressed contact — data cleanup only</strong></p>' : ""}<div class="card-actions quiet-actions"><button type="button" onclick="toast('Marked reviewed internally.')">Mark reviewed</button><button type="button" onclick="toast('Research need noted internally.')">Mark research needed</button><button type="button" onclick="toast('RCAP task completed internally.')">Complete</button><button type="button" onclick="toast('RCAP task parked internally.')">Park</button><button type="button" onclick="toast('RCAP task skipped internally.')">Skip</button></div>\`
+          };
+        });
     }
 
     const guidedBucketCopy = {
@@ -17371,7 +17412,8 @@ function htmlShell() {
         actionJs: "location.hash='settings'",
         details: "<p class=\\"muted\\">Channel setup stays protected in Settings. No live action runs from Queue.</p>"
       }));
-      const all = [...postRows, ...followUps, ...reports, ...proof, ...partners, ...channelReviews];
+      const rcapRows = rcapRevenueQueueRows();
+      const all = [...postRows, ...followUps, ...reports, ...proof, ...partners, ...channelReviews, ...rcapRows];
       return queueOriginFilter === "all" ? all : all.filter(item => item.type === queueOriginFilter);
     }
 
@@ -17411,9 +17453,10 @@ function htmlShell() {
         followups: (cards.find(item => item[0] === "Partner follow-ups")?.[1] || 0) + (state.partners || []).filter(item => item.nextAction || /follow|review|waiting|needs/i.test([item.status, item.stage, item.notes].join(" "))).length,
         reports: cards.find(item => item[0] === "Reports")?.[1] || 0,
         proof: cards.find(item => item[0] === "Proof-to-content")?.[1] || 0,
-        channels: (state.socialAccounts || []).filter(account => !account.connected || /review|setup|not_connected|needs/i.test([account.status, account.connectionStatus, account.setupStatus].join(" "))).length
+        channels: (state.socialAccounts || []).filter(account => !account.connected || /review|setup|not_connected|needs/i.test([account.status, account.connectionStatus, account.setupStatus].join(" "))).length,
+        rcap: cards.find(item => item[0] === "RCAP tasks")?.[1] || 0
       };
-      const tabs = [["all", "All"], ["posts", "Social Posts"], ["followups", "Partner Follow-ups"], ["reports", "Reports"], ["proof", "Proof-to-Content"], ["channels", "Channel Reviews"]];
+      const tabs = [["all", "All"], ["posts", "Social Posts"], ["followups", "Partner Follow-ups"], ["reports", "Reports"], ["proof", "Proof-to-Content"], ["channels", "Channel Reviews"], ["rcap", "RCAP Tasks"]];
       return \`<div class="queue-review-tabs" aria-label="Queue review filters">\${tabs.map(([key, label]) => \`<button type="button" class="\${queueOriginFilter === key ? "active" : ""}" onclick="setQueueTypeFilter('\${key}')">\${label} \${Number(countFor[key] || 0)}</button>\`).join("")}</div>\`;
     }
 
@@ -24202,28 +24245,35 @@ function htmlShell() {
       const accounts = Array.isArray(state.rcapRevenueAccounts) ? state.rcapRevenueAccounts : [];
       const contacts = Array.isArray(state.rcapRevenueContacts) ? state.rcapRevenueContacts : [];
       const dealSeeds = Array.isArray(state.rcapRevenueDealSeeds) ? state.rcapRevenueDealSeeds : [];
+      const tasks = Array.isArray(state.rcapRevenueQueueTasks) ? state.rcapRevenueQueueTasks : [];
       const batches = Array.isArray(state.rcapRevenueImportBatches) ? state.rcapRevenueImportBatches : [];
       const latest = batches[0] || {};
+      const taskSummary = {
+        total: tasks.length,
+        open: tasks.filter(task => !/completed|skipped|parked/i.test(String(task.status || ""))).length
+      };
       const metrics = [
         [accounts.length, "accounts"],
         [contacts.length, "contacts"],
         [dealSeeds.length, "deal seeds"],
+        [taskSummary.open, "open Queue tasks"],
         [batches.length, "import batches"]
       ];
       return \`<section id="rcap-revenue-import" class="growth-card">
         <div class="growth-card-head"><h2>RCAP Revenue OS</h2><small>Workbook import foundation</small></div>
-        <p class="muted">Import parsed RCAP workbook sheets into durable internal records. This commit stores accounts, contacts, deal seeds, provenance, and import batches only.</p>
+        <p class="muted">Import parsed RCAP workbook sheets into durable internal records and create suppression-gated internal Queue tasks.</p>
         <div class="campaign-preview-metrics">\${metrics.map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
         <div class="campaign-safety-lines">
           <span>Email sending: Off</span>
           <span>Calendar writes: Off</span>
           <span>External outreach actions: Off</span>
-          <span>No Queue tasks are created in RCAP-1.</span>
+          <span>Queue task generation: Active</span>
+          <span>Suppression latch: Active</span>
         </div>
         <details>
           <summary>Import pipeline</summary>
           <p class="muted">POST parsed workbook JSON to <code>/api/rcap-revenue/import</code> with sheets named Prospects, Contacts_Master, First_Wave_Contacts, Contact_Routes_To_Verify, Contact_Playbook, Top_25, Funding_Triggers, Sales_Actions, and optional Deals or Opportunities.</p>
-          <p class="muted">Latest import: \${esc(latest.status || "not imported")} · duplicates skipped: \${esc(String(latest.duplicates_skipped || 0))}</p>
+          <p class="muted">Latest import: \${esc(latest.status || "not imported")} · duplicates skipped: \${esc(String(latest.duplicates_skipped || 0))} · tasks created: \${esc(String(latest.tasks_created || 0))}</p>
         </details>
       </section>\`;
     }
@@ -24231,17 +24281,18 @@ function htmlShell() {
     function rcapRevenueSettingsStatusHtml() {
       const accounts = Array.isArray(state.rcapRevenueAccounts) ? state.rcapRevenueAccounts : [];
       const contacts = Array.isArray(state.rcapRevenueContacts) ? state.rcapRevenueContacts : [];
+      const tasks = Array.isArray(state.rcapRevenueQueueTasks) ? state.rcapRevenueQueueTasks : [];
       const configured = accounts.length || contacts.length;
       return \`<div class="channel-readiness-row">
         <div>
           <strong>RCAP Revenue OS</strong>
-          <span>Workbook data foundation for paid RCAP outreach.</span>
+          <span>Workbook data foundation and internal Queue tasks for paid RCAP work.</span>
         </div>
         <span class="badge \${configured ? "good" : "warn"}">\${configured ? "Configured" : "Not configured"}</span>
         <button type="button" onclick="location.hash='sources'">Open Sources</button>
         <details>
           <summary>Status</summary>
-          <p class="muted">Email sending: Off · Calendar writes: Off · Automation mode: Draft/Internal only · External outreach actions: Off</p>
+          <p class="muted">RCAP foundation: Active · Queue task generation: Active · Suppression latch: Active · Open RCAP tasks: \${esc(String(tasks.filter(task => !/completed|skipped|parked/i.test(String(task.status || ""))).length))} · Email sending: Off · Calendar writes: Off · Outreach automation: Off · External actions: Off</p>
         </details>
       </div>\`;
     }
@@ -31788,14 +31839,25 @@ async function handleRequest(request, response) {
     try {
       const payload = await readJson(request);
       const currentState = await store.readState();
+      const now = new Date().toISOString();
       // RCAP-1 uses skip-on-duplicate as the foundation behavior. Suppression still stays sticky.
       const result = importRcapRevenueWorkbook(currentState, payload?.workbook || payload || {}, {
         workbookName: payload?.workbookName || payload?.workbook_name || "RCAP workbook",
         importedBy: accessDecision.actor?.label || accessDecision.actor?.role || "owner",
-        now: new Date().toISOString()
+        now
       });
-      await store.writeState(result.state);
-      sendJson(response, { batch: result.batch, imported: result.imported, summary: rcapRevenueFoundationSummary(result.state), state: withPublicChannelSetup(result.state) }, result.batch.status === "failed" ? 400 : 200);
+      const taskResult = result.batch.status === "failed"
+        ? { state: result.state, created: [], summary: rcapRevenueTaskSummary(result.state) }
+        : generateRcapRevenueQueueTasks(result.state, { now, owner: accessDecision.actor?.label || accessDecision.actor?.role || "owner" });
+      await store.writeState(taskResult.state);
+      sendJson(response, {
+        batch: result.batch,
+        imported: result.imported,
+        tasksCreated: taskResult.created.length,
+        taskSummary: taskResult.summary,
+        summary: rcapRevenueFoundationSummary(taskResult.state),
+        state: withPublicChannelSetup(taskResult.state)
+      }, result.batch.status === "failed" ? 400 : 200);
     } catch (error) {
       sendJson(response, { error: error.message || "Could not import RCAP Revenue workbook." }, 400);
     }

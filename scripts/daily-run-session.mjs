@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { rcapRevenueTaskBucketKey } from "./rcap-revenue-os.mjs";
 
 export const APP_TIMEZONE = "America/New_York";
 
@@ -461,6 +462,29 @@ export function buildDailyRunSnapshot(state = {}, options = {}) {
     }));
   }
 
+  for (const task of list(state.rcapRevenueQueueTasks)) {
+    const bucketKey = rcapRevenueTaskBucketKey(task, { now });
+    if (!bucketKey || !buckets[bucketKey]) continue;
+    buckets[bucketKey].items.push(itemRecord({
+      id: task.task_id,
+      title: task.title || task.task_type || "RCAP revenue task",
+      detail: task.reason || task.safe_action_type || "Review the RCAP revenue task internally.",
+      type: "rcap_task",
+      route: "queue",
+      source: "rcap_revenue_task",
+      createdAt: task.created_at || task.updated_at || "",
+      extra: {
+        task_type: task.task_type || "",
+        linked_account_id: task.linked_account_id || "",
+        linked_contact_id: task.linked_contact_id || "",
+        status: task.status || "New",
+        due_date: task.due_date || "",
+        segment: task.segment || "",
+        priority_tier: task.priority_tier || ""
+      }
+    }));
+  }
+
   const ordered = sortBuckets(Object.values(buckets));
   return {
     snapshot_at: now,
@@ -574,6 +598,19 @@ export function computeNewSinceStart(state = {}, session = {}, options = {}) {
       type: "google_insight",
       route: googleInsightRoute(insight),
       source: insight.source === "calendar" ? "google_calendar" : "gmail",
+      createdAt
+    }));
+  }
+  for (const task of list(state.rcapRevenueQueueTasks)) {
+    const createdAt = task.created_at || task.updated_at || "";
+    if (!task.task_id || snapshotIds.has(task.task_id) || timestampMs(createdAt) <= startedAt || !rcapRevenueTaskBucketKey(task, options)) continue;
+    candidates.push(itemRecord({
+      id: task.task_id,
+      title: task.title || task.task_type || "New RCAP revenue task",
+      detail: task.reason || "Review the RCAP revenue task internally.",
+      type: "rcap_task",
+      route: "queue",
+      source: "rcap_revenue_task",
       createdAt
     }));
   }
