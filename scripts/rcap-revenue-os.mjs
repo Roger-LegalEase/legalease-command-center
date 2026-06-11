@@ -502,6 +502,174 @@ function contactIsDecisionRelevant(contact = {}, account = {}) {
     || /executive|ceo|chief|director|board chair|chair|funder|decision|champion|co-?branded|priority|high/.test(text);
 }
 
+function combinedApprovalText(account = {}, contact = {}, action = {}) {
+  return lower([
+    account.organization_name,
+    account.priority_tier,
+    account.rcap_cobranded_page_status,
+    contact.title,
+    contact.decision_role,
+    contact.source_confidence,
+    action.title,
+    action.body,
+    action.summary,
+    action.notes,
+    action.page_type,
+    action.page_label,
+    action.pricing,
+    action.clinic_date
+  ].join(" "));
+}
+
+function tierIsOne(account = {}) {
+  return /^tier\s*1$/i.test(clean(account.priority_tier));
+}
+
+function tierIsTwoOrThree(account = {}) {
+  return /^tier\s*[23]$/i.test(clean(account.priority_tier));
+}
+
+function confidenceLevel(value = "") {
+  const text = lower(value);
+  if (/^medium$/.test(text)) return "medium";
+  if (/^low$/.test(text)) return "low";
+  if (/^high$/.test(text)) return "high";
+  return text || "missing";
+}
+
+function publicEmailVerified(contact = {}) {
+  return Boolean(clean(contact.public_email) && /^verified$/i.test(clean(contact.email_status)));
+}
+
+function hasClearSegment(account = {}, contact = {}) {
+  const segment = clean(contact.segment || account.segment || account.rcap_campaign_segment);
+  return Boolean(segment && !/unsegmented|unknown|missing|none/i.test(segment));
+}
+
+function actionIsCoBranded(account = {}, action = {}) {
+  return /co-?branded/.test(combinedApprovalText(account, {}, action));
+}
+
+function actionIsGenericPage(account = {}, action = {}) {
+  const text = lower([
+    account.rcap_cobranded_page_status,
+    action.page_type,
+    action.page_label,
+    action.page_status
+  ].join(" "));
+  return /generic|master rcap page|segment page|standard|default/.test(text) && !/co-?branded/.test(text);
+}
+
+function actionReferencesClinicDate(action = {}) {
+  const text = lower([action.clinic_date, action.body, action.summary, action.notes].join(" "));
+  return Boolean(clean(action.clinic_date)) || /clinic\s*(date|on|at|event)|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|202\d/.test(text) && /clinic/.test(text);
+}
+
+function actionIncludesPricing(action = {}) {
+  const text = lower([action.pricing, action.body, action.summary, action.notes].join(" "));
+  return Boolean(clean(action.pricing)) || /\$\s*\d|pricing|price|cost|fee|paid pilot|per month|per seat/.test(text);
+}
+
+function actionHasSensitiveClaim(action = {}) {
+  const value = action.sensitive_claim;
+  if (value === true) return true;
+  const text = lower([value, action.body, action.summary, action.notes].join(" "));
+  return /guarantee|guaranteed|legal advice|eligibility promise|court will approve|record will be cleared|outcome/.test(text);
+}
+
+function suppressionReasonsFor(contact = {}) {
+  const reasons = [];
+  if (contact.unsubscribed) reasons.push("unsubscribed");
+  if (contact.bounced) reasons.push("bounced");
+  if (isSuppressionStatus(contact.suppression_status)) reasons.push("suppression_status");
+  return [...new Set(reasons)];
+}
+
+export function evaluateRcapApproval(account = {}, contact = {}, action = {}) {
+  const suppressionReasons = suppressionReasonsFor(contact);
+  if (suppressionReasons.length) {
+    return {
+      status: "blocked_suppressed",
+      reasons: suppressionReasons,
+      mustApproveReasons: [],
+      missingAllowlistReasons: [],
+      suppressionReasons
+    };
+  }
+
+  const mustApproveReasons = [];
+  const titleRole = lower([contact.title, contact.decision_role].join(" "));
+  const confidence = confidenceLevel(contact.source_confidence);
+  if (tierIsOne(account)) mustApproveReasons.push("tier_1_account");
+  if (/executive director/.test(titleRole)) mustApproveReasons.push("executive_director_contact");
+  if (/\bceo\b|chief executive/.test(titleRole)) mustApproveReasons.push("ceo_contact");
+  if (/board chair|chair of the board|board.*chair/.test(titleRole)) mustApproveReasons.push("board_chair_contact");
+  if (/\bfunder\b|grantmaker|foundation officer|philanthropy/.test(titleRole)) mustApproveReasons.push("funder_contact");
+  if (confidence === "medium") mustApproveReasons.push("medium_source_confidence");
+  if (confidence === "low") mustApproveReasons.push("low_source_confidence");
+  if (!clean(contact.public_email)) mustApproveReasons.push("missing_public_email");
+  if (actionIsCoBranded(account, action)) mustApproveReasons.push("co_branded_page");
+  if (actionReferencesClinicDate(action)) mustApproveReasons.push("clinic_date_reference");
+  if (actionIncludesPricing(action)) mustApproveReasons.push("pricing_reference");
+
+  const missingAllowlistReasons = [];
+  if (!tierIsTwoOrThree(account)) missingAllowlistReasons.push("tier_2_or_3_required");
+  if (!publicEmailVerified(contact)) missingAllowlistReasons.push("email_not_verified");
+  if (!hasClearSegment(account, contact)) missingAllowlistReasons.push("missing_clear_segment");
+  if (actionHasSensitiveClaim(action)) missingAllowlistReasons.push("sensitive_claim_present");
+  if (!actionIsGenericPage(account, action)) missingAllowlistReasons.push("generic_page_required");
+  if (actionReferencesClinicDate(action)) missingAllowlistReasons.push("no_clinic_date_required");
+  if (actionIncludesPricing(action)) missingAllowlistReasons.push("no_pricing_required");
+
+  const reasons = [...new Set([...mustApproveReasons, ...missingAllowlistReasons])];
+  return {
+    status: reasons.length ? "needs_human_approval" : "auto_ready",
+    reasons,
+    mustApproveReasons,
+    missingAllowlistReasons,
+    suppressionReasons: []
+  };
+}
+
+export function applyRcapApprovalDecision(account = {}, contact = {}, action = {}, options = {}) {
+  const evaluation = evaluateRcapApproval(account, contact, action);
+  if (evaluation.status === "blocked_suppressed") {
+    return {
+      ok: false,
+      status: "blocked_suppressed",
+      readyState: "Blocked - Suppressed",
+      readyToEnroll: false,
+      internalOnly: true,
+      externalActionsTriggered: [],
+      evaluation
+    };
+  }
+  const decision = lower(options.decision || (evaluation.status === "auto_ready" ? "auto_ready" : ""));
+  const approved = evaluation.status === "auto_ready" || ["approve", "approved", "reapprove", "human_approved"].includes(decision);
+  if (!approved) {
+    return {
+      ok: false,
+      status: "needs_human_approval",
+      readyState: "Needs Human Approval",
+      readyToEnroll: false,
+      internalOnly: true,
+      externalActionsTriggered: [],
+      evaluation
+    };
+  }
+  return {
+    ok: true,
+    status: "ready_to_enroll",
+    readyState: "Ready to Enroll",
+    readyToEnroll: true,
+    approvalSource: evaluation.status === "auto_ready" ? "auto_ready" : "human_approved",
+    approvedBy: options.approvedBy || "owner",
+    internalOnly: true,
+    externalActionsTriggered: [],
+    evaluation
+  };
+}
+
 export function canCreateRcapOutreachTask(contact = {}, account = {}) {
   if (!contact || isRcapContactSuppressed(contact)) return false;
   if (!/active/i.test(clean(contact.suppression_status || "Active"))) return false;
