@@ -31780,9 +31780,15 @@ async function handleRequest(request, response) {
   }
 
   if (url.pathname === "/api/rcap-revenue/import" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error:"Owner or admin access required.", requiredPermission:"owner/admin", actor:publicActor(accessDecision.actor) }, 403);
+      return;
+    }
     try {
       const payload = await readJson(request);
       const currentState = await store.readState();
+      // RCAP-1 uses skip-on-duplicate as the foundation behavior. Suppression still stays sticky.
       const result = importRcapRevenueWorkbook(currentState, payload?.workbook || payload || {}, {
         workbookName: payload?.workbookName || payload?.workbook_name || "RCAP workbook",
         importedBy: accessDecision.actor?.label || accessDecision.actor?.role || "owner",

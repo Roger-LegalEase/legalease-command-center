@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { authorizeRequest } from "./access-control.mjs";
 import {
   importRcapRevenueWorkbook,
   normalizeRcapAccount,
@@ -206,9 +207,131 @@ assert.equal(result.batch.duplicates_skipped >= 6, true);
 assert.equal(result.state.rcapRevenueAccounts.length, 2);
 assert.equal(result.state.rcapRevenueContacts.length, 4);
 
+const activeOverwriteWorkbook = {
+  ...workbook,
+  Contacts_Master: [
+    {
+      Contact_ID: "C-002",
+      linked_account_id: "P-002",
+      contact_name: "Jordan Program",
+      public_email: "jordan@example.org",
+      email_status: "Verified",
+      sequence_status: "Ready to Enroll",
+      suppression_status: "Active",
+      unsubscribed: "false",
+      bounced: "false"
+    },
+    {
+      Contact_ID: "C-005",
+      linked_account_id: "P-001",
+      contact_name: "Bounced Contact",
+      public_email: "bounced@example.org",
+      suppression_status: "Bounced",
+      bounced: "true"
+    }
+  ],
+  First_Wave_Contacts: [],
+  Contact_Routes_To_Verify: []
+};
+
+result = importRcapRevenueWorkbook(result.state, activeOverwriteWorkbook, {
+  now: "2026-06-10T12:10:00.000Z",
+  workbookName: "rcap-paid-outreach.xlsx",
+  importedBy: "owner"
+});
+let stickyUnsubscribed = result.state.rcapRevenueContacts.find(item => item.contact_id === "C-002");
+assert.equal(stickyUnsubscribed.suppression_status, "Unsubscribed");
+assert.equal(stickyUnsubscribed.unsubscribed, true);
+assert.equal(stickyUnsubscribed.bounced, false);
+assert.equal(stickyUnsubscribed.email_status, "Not Verified");
+assert.equal(stickyUnsubscribed.sequence_status, "Not Enrolled");
+
+const incomingSuppressionWorkbook = {
+  ...workbook,
+  Contacts_Master: [
+    {
+      Contact_ID: "C-001",
+      linked_account_id: "P-001",
+      contact_name: "Avery Director",
+      public_email: "avery@example.org",
+      suppression_status: "Do Not Contact",
+      unsubscribed: "true"
+    }
+  ],
+  First_Wave_Contacts: [],
+  Contact_Routes_To_Verify: []
+};
+result = importRcapRevenueWorkbook(result.state, incomingSuppressionWorkbook, {
+  now: "2026-06-10T12:12:00.000Z",
+  workbookName: "rcap-paid-outreach.xlsx",
+  importedBy: "owner"
+});
+const newlySuppressed = result.state.rcapRevenueContacts.find(item => item.contact_id === "C-001");
+assert.equal(newlySuppressed.suppression_status, "Unsubscribed");
+assert.equal(newlySuppressed.unsubscribed, true);
+assert.equal(newlySuppressed.email_status, "Not Verified");
+assert.equal(newlySuppressed.sequence_status, "Not Enrolled");
+
+const bouncedOverwriteWorkbook = {
+  ...workbook,
+  Contacts_Master: [
+    {
+      Contact_ID: "C-005",
+      linked_account_id: "P-001",
+      contact_name: "Bounced Contact",
+      public_email: "bounced@example.org",
+      email_status: "Verified",
+      sequence_status: "Ready to Enroll",
+      suppression_status: "Active",
+      bounced: "false",
+      unsubscribed: "false"
+    }
+  ],
+  First_Wave_Contacts: [],
+  Contact_Routes_To_Verify: []
+};
+result = importRcapRevenueWorkbook(result.state, bouncedOverwriteWorkbook, {
+  now: "2026-06-10T12:15:00.000Z",
+  workbookName: "rcap-paid-outreach.xlsx",
+  importedBy: "owner"
+});
+const stickyBounced = result.state.rcapRevenueContacts.find(item => item.contact_id === "C-005");
+assert.equal(stickyBounced.suppression_status, "Bounced");
+assert.equal(stickyBounced.bounced, true);
+assert.equal(stickyBounced.unsubscribed, false);
+assert.equal(stickyBounced.email_status, "Not Verified");
+assert.equal(stickyBounced.sequence_status, "Not Enrolled");
+assert.equal(result.state.rcapRevenueContacts.length, 5);
+
+const malformedWorkbook = {
+  workbook_name: "rcap-malformed.xlsx",
+  Prospects: [
+    { organization_name: "No Prospect ID Org", source_confidence: "Low" },
+    { Prospect_ID: "P-010", organization_name: "Valid Org", source_confidence: "High" }
+  ],
+  Contacts_Master: [
+    { contact_name: "No Safe Contact", linked_account_id: "P-010" },
+    { contact_name: "Safe Fallback Contact", linked_account_id: "P-010", public_email: "safe@example.org", email_status: "Verified", sequence_status: "Ready to Enroll" }
+  ]
+};
+const malformedResult = importRcapRevenueWorkbook({}, malformedWorkbook, {
+  now: "2026-06-10T12:20:00.000Z",
+  workbookName: "rcap-malformed.xlsx",
+  importedBy: "owner"
+});
+assert.equal(malformedResult.state.rcapRevenueAccounts.length, 1);
+assert.equal(malformedResult.state.rcapRevenueAccounts[0].account_id, "P-010");
+assert.equal(malformedResult.state.rcapRevenueContacts.length, 1);
+assert.equal(malformedResult.state.rcapRevenueContacts[0].public_email, "safe@example.org");
+assert.equal(malformedResult.state.rcapRevenueContacts[0].email_status, "Not Verified");
+assert.equal(malformedResult.state.rcapRevenueContacts[0].sequence_status, "Not Enrolled");
+assert.ok(malformedResult.batch.warnings.some(warning => warning.includes("lacked a stable Prospect_ID")));
+assert.ok(malformedResult.batch.warnings.some(warning => warning.includes("lacked Contact_ID and safe fallback identity")));
+assert.ok(malformedResult.batch.warnings.some(warning => warning.includes("used public_email + linked_account_id fallback identity")));
+
 const summary = rcapRevenueFoundationSummary(result.state);
 assert.equal(summary.accounts, 2);
-assert.equal(summary.contacts, 4);
+assert.equal(summary.contacts, 5);
 assert.equal(summary.dealSeeds, 1);
 assert.equal(summary.emailSendingEnabled, false);
 assert.equal(summary.calendarWritesEnabled, false);
@@ -216,11 +339,35 @@ assert.equal(summary.externalActionsEnabled, false);
 
 const server = readFileSync(join(process.cwd(), "scripts", "preview-server.mjs"), "utf8");
 assert(server.includes('"/api/rcap-revenue/import"'), "RCAP Revenue import API route should exist.");
+assert(server.includes('["owner", "admin"].includes(actorRole)'), "RCAP Revenue import route should be owner/admin-only.");
+assert(server.includes('requiredPermission:"owner/admin"'), "RCAP Revenue import route should report owner/admin access.");
 assert(server.includes("rcapRevenueFoundationSummary"), "Preview server should render RCAP Revenue foundation status.");
 assert(server.includes("RCAP Revenue OS"), "UI should expose RCAP Revenue OS foundation copy.");
+assert(server.includes("RCAP-1 uses skip-on-duplicate"), "RCAP-1 skip-on-duplicate decision should be recorded.");
 assert(!server.includes("sendRcapEmail"), "RCAP-1 must not add email sending.");
 assert(!server.includes("createGmailDraft"), "RCAP-1 must not add Gmail drafts.");
 assert(!server.includes("calendar.events.insert"), "RCAP-1 must not add calendar writes.");
 assert(!server.includes("rcapLeadStatus("), "RCAP-1 must not add lead scoring UI/server logic.");
+
+const authEnv = {
+  STORAGE_BACKEND:"supabase",
+  LOCAL_DEMO_MODE:"false",
+  COMMAND_CENTER_OWNER_TOKEN:"owner-token-rcap-revenue-1234567890",
+  COMMAND_CENTER_ADMIN_TOKEN:"admin-token-rcap-revenue-1234567890",
+  COMMAND_CENTER_OPERATOR_TOKEN:"operator-token-rcap-revenue-1234567890",
+  COMMAND_CENTER_VIEWER_TOKEN:"viewer-token-rcap-revenue-1234567890"
+};
+const routeUrl = new URL("http://local/api/rcap-revenue/import");
+const authDecision = token => authorizeRequest(
+  { method:"POST", url:"/api/rcap-revenue/import", headers: token ? { authorization:`Bearer ${token}` } : {} },
+  routeUrl,
+  authEnv
+);
+assert.equal(authDecision("").ok, false, "Unauthenticated RCAP Revenue import should fail the protected API gate.");
+assert.equal(authDecision("").status, 401, "Unauthenticated RCAP Revenue import should return 401.");
+assert.equal(authDecision(authEnv.COMMAND_CENTER_VIEWER_TOKEN).ok, false, "Viewer RCAP Revenue import should fail the generic mutation gate.");
+assert.equal(authDecision(authEnv.COMMAND_CENTER_OPERATOR_TOKEN).ok, true, "Operator passes generic mutation gate, so the route-specific owner/admin guard is required.");
+assert.equal(authDecision(authEnv.COMMAND_CENTER_ADMIN_TOKEN).ok, true, "Admin should pass the generic gate before the route-specific guard allows import.");
+assert.equal(authDecision(authEnv.COMMAND_CENTER_OWNER_TOKEN).ok, true, "Owner should pass the generic gate before the route-specific guard allows import.");
 
 console.log("RCAP Revenue OS foundation tests passed.");

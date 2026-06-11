@@ -56,6 +56,58 @@ function sourceConfidence(row = {}) {
   return rowValue(row, ["source_confidence", "confidence", "public_private_confidence"]) || "";
 }
 
+function prospectStableKey(row = {}) {
+  return rowValue(row, ["source_prospect_id", "prospect_id", "Prospect_ID", "account_id"]);
+}
+
+function contactStableKey(row = {}) {
+  return rowValue(row, ["source_contact_id", "contact_id", "Contact_ID"]);
+}
+
+function isSuppressionStatus(value = "") {
+  return /unsubscribe|bounc|suppress|do not contact|do-not-contact/i.test(clean(value));
+}
+
+function isSuppressedContact(contact = {}) {
+  return Boolean(contact.unsubscribed || contact.bounced || isSuppressionStatus(contact.suppression_status));
+}
+
+function safeEmailStatus(contact = {}, fallback = "Not Verified") {
+  if (isSuppressedContact(contact)) return "Not Verified";
+  const value = clean(contact.email_status);
+  return /ready|enrollable/i.test(value) ? fallback : value || fallback;
+}
+
+function safeSequenceStatus(contact = {}, fallback = "Not Enrolled") {
+  if (isSuppressedContact(contact)) return "Not Enrolled";
+  const value = clean(contact.sequence_status);
+  return /ready|enroll/i.test(value) ? fallback : value || fallback;
+}
+
+function stickySuppressionPatch(existing = {}, incoming = {}) {
+  const existingSuppressed = isSuppressedContact(existing);
+  const incomingSuppressed = isSuppressedContact(incoming);
+  if (!existingSuppressed && !incomingSuppressed) return null;
+  const bounced = Boolean(existing.bounced || incoming.bounced);
+  const unsubscribed = Boolean(existing.unsubscribed || incoming.unsubscribed);
+  const status = bounced
+    ? "Bounced"
+    : unsubscribed
+      ? "Unsubscribed"
+      : existingSuppressed
+        ? clean(existing.suppression_status) || "Suppressed"
+        : clean(incoming.suppression_status) || "Suppressed";
+  return {
+    ...existing,
+    suppression_status: isSuppressionStatus(status) ? status : "Suppressed",
+    bounced,
+    unsubscribed,
+    email_status: "Not Verified",
+    sequence_status: "Not Enrolled",
+    updated_at: incoming.updated_at || existing.updated_at
+  };
+}
+
 export function normalizeRcapSegment(value = "", row = {}) {
   const text = lower([value, rowValue(row, ["segment", "rcap_campaign_segment", "org_type", "service_area", "organization_name"])].join(" "));
   if (/a1|anchor|legal aid anchor/.test(text)) return "A1";
@@ -143,13 +195,14 @@ export function normalizeRcapAccount(row = {}, context = {}) {
 export function normalizeRcapContact(row = {}, context = {}) {
   const importedAt = context.importedAt || nowIso();
   const sourceContactId = rowValue(row, ["source_contact_id", "contact_id", "Contact_ID"]);
+  const fallbackIdentity = !sourceContactId;
   const publicEmail = rowValue(row, ["public_email", "email"]);
   const suppressionText = lower(rowValue(row, ["suppression_status", "status", "email_status"]));
   const bounced = boolFromWorkbook(rowValue(row, ["bounced"])) || /bounce/.test(suppressionText);
   const unsubscribed = boolFromWorkbook(rowValue(row, ["unsubscribed"])) || /unsubscribe/.test(suppressionText);
   const suppressed = /suppress|do not contact|unsubscribe|bounce/.test(suppressionText);
   const provenanceValue = provenance(row);
-  return {
+  const contact = {
     contact_id: rowValue(row, ["contact_id"]) || sourceContactId || `rcap-contact-${slug([rowValue(row, ["linked_account_id", "account_id", "prospect_id"]), publicEmail, rowValue(row, ["contact_name", "name"])].filter(Boolean).join("-"))}`,
     source_contact_id: sourceContactId,
     linked_account_id: rowValue(row, ["linked_account_id", "account_id", "prospect_id"]),
@@ -182,6 +235,11 @@ export function normalizeRcapContact(row = {}, context = {}) {
     next_touch: rowValue(row, ["next_touch", "next_action_date"]),
     imported_at: importedAt,
     updated_at: importedAt
+  };
+  return {
+    ...contact,
+    email_status: fallbackIdentity ? "Not Verified" : safeEmailStatus(contact),
+    sequence_status: fallbackIdentity ? "Not Enrolled" : safeSequenceStatus(contact)
   };
 }
 
@@ -223,6 +281,29 @@ function appendUnique(existing = [], incoming = [], keyFn = item => item.id) {
   return { list: [...list(existing), ...added], added, duplicates };
 }
 
+function mergeContactsWithStickySuppression(existing = [], incoming = []) {
+  const current = list(existing).map(contact => isSuppressedContact(contact) ? stickySuppressionPatch(contact, {}) : contact);
+  const indexByKey = new Map(current.map((item, index) => [contactKey(item), index]).filter(([key]) => Boolean(key)));
+  const added = [];
+  const duplicates = [];
+  for (const contact of list(incoming)) {
+    const key = contactKey(contact);
+    if (!key || indexByKey.has(key)) {
+      duplicates.push(contact);
+      const index = indexByKey.get(key);
+      if (index !== undefined) {
+        const patched = stickySuppressionPatch(current[index], contact);
+        if (patched) current[index] = patched;
+      }
+      continue;
+    }
+    indexByKey.set(key, current.length);
+    current.push(contact);
+    added.push(contact);
+  }
+  return { list: current, added, duplicates };
+}
+
 function contactKey(contact = {}) {
   const emailKey = lower(contact.public_email);
   return contact.source_contact_id || contact.contact_id || (emailKey && contact.linked_account_id ? `${emailKey}:${contact.linked_account_id}` : "");
@@ -246,6 +327,9 @@ export function previewRcapRevenueWorkbook(workbook = {}, options = {}) {
   if (contactsToCheck.some(row => !sourceConfidence(row) || provenance(row) === "workbook_import_unspecified")) {
     warnings.push("Contact provenance not explicit in workbook.");
   }
+  sheetRows(workbook, "Prospects").forEach((row, index) => {
+    if (!prospectStableKey(row)) warnings.push(`Prospects row ${index + 2} lacked a stable Prospect_ID and will be skipped.`);
+  });
   return {
     import_id: id,
     workbook_name: workbookName,
@@ -281,21 +365,49 @@ export function importRcapRevenueWorkbook(state = {}, workbook = {}, options = {
     workbookName: preview.workbook_name,
     importId: preview.import_id
   };
-  const accounts = sheetRows(workbook, "Prospects").map((row, index) => normalizeRcapAccount(row, { ...baseContext, sourceSheet: "Prospects", sourceRowNumber: index + 2 }));
-  const contacts = [
-    ...sheetRows(workbook, "Contacts_Master").map((row, index) => normalizeRcapContact(row, { ...baseContext, sourceSheet: "Contacts_Master", sourceRowNumber: index + 2 })),
-    ...sheetRows(workbook, "First_Wave_Contacts").map((row, index) => normalizeRcapContact(row, { ...baseContext, sourceSheet: "First_Wave_Contacts", sourceRowNumber: index + 2 })),
-    ...sheetRows(workbook, "Contact_Routes_To_Verify").map((row, index) => normalizeRcapContact(row, { ...baseContext, sourceSheet: "Contact_Routes_To_Verify", sourceRowNumber: index + 2 }))
+  const rowWarnings = [];
+  const accounts = sheetRows(workbook, "Prospects")
+    .map((row, index) => ({ row, sourceRowNumber: index + 2 }))
+    .filter(({ row, sourceRowNumber }) => {
+      if (prospectStableKey(row)) return true;
+      rowWarnings.push(`Prospects row ${sourceRowNumber} lacked a stable Prospect_ID and was skipped.`);
+      return false;
+    })
+    .map(({ row, sourceRowNumber }) => normalizeRcapAccount(row, { ...baseContext, sourceSheet: "Prospects", sourceRowNumber }));
+  const accountKeys = new Set([
+    ...list(state.rcapRevenueAccounts).flatMap(account => [account.account_id, account.source_prospect_id].filter(Boolean)),
+    ...accounts.flatMap(account => [account.account_id, account.source_prospect_id].filter(Boolean))
+  ]);
+  const contactRows = [
+    ...sheetRows(workbook, "Contacts_Master").map((row, index) => ({ row, sourceSheet: "Contacts_Master", sourceRowNumber: index + 2 })),
+    ...sheetRows(workbook, "First_Wave_Contacts").map((row, index) => ({ row, sourceSheet: "First_Wave_Contacts", sourceRowNumber: index + 2 })),
+    ...sheetRows(workbook, "Contact_Routes_To_Verify").map((row, index) => ({ row, sourceSheet: "Contact_Routes_To_Verify", sourceRowNumber: index + 2 }))
   ];
+  const contacts = contactRows
+    .filter(({ row, sourceSheet, sourceRowNumber }) => {
+      if (contactStableKey(row)) return true;
+      const publicEmail = rowValue(row, ["public_email", "email"]);
+      const linkedAccountId = rowValue(row, ["linked_account_id", "account_id", "prospect_id"]);
+      if (publicEmail && linkedAccountId && accountKeys.has(linkedAccountId)) {
+        rowWarnings.push(`${sourceSheet} row ${sourceRowNumber} lacked Contact_ID and used public_email + linked_account_id fallback identity.`);
+        return true;
+      }
+      rowWarnings.push(`${sourceSheet} row ${sourceRowNumber} lacked Contact_ID and safe fallback identity and was skipped.`);
+      return false;
+    })
+    .map(({ row, sourceSheet, sourceRowNumber }) => normalizeRcapContact(row, { ...baseContext, sourceSheet, sourceRowNumber }));
   const dealSeeds = [...sheetRows(workbook, "Deals"), ...sheetRows(workbook, "Opportunities")]
     .filter(row => rowValue(row, ["deal_stage", "stage", "proposed_offer", "estimated_deal_size", "pilot_volume", "funding_source"]))
     .map((row, index) => normalizeRcapDealSeed(row, { ...baseContext, sourceRowNumber: index + 2 }));
 
+  // RCAP-1 uses skip-on-duplicate as the foundation behavior. A future update-existing
+  // importer must preserve sticky suppression before changing any duplicate merge rules.
   const accountMerge = appendUnique(state.rcapRevenueAccounts, accounts, item => item.source_prospect_id || item.account_id);
-  const contactMerge = appendUnique(state.rcapRevenueContacts, contacts, contactKey);
+  const contactMerge = mergeContactsWithStickySuppression(state.rcapRevenueContacts, contacts);
   const dealMerge = appendUnique(state.rcapRevenueDealSeeds, dealSeeds, item => item.deal_seed_id);
   const batch = {
     ...preview,
+    warnings: [...preview.warnings, ...rowWarnings],
     accounts_imported: accountMerge.added.length,
     contacts_imported: contactMerge.added.length,
     duplicates_skipped: accountMerge.duplicates.length + contactMerge.duplicates.length + dealMerge.duplicates.length,
