@@ -124,7 +124,11 @@ const missingAllowlistCases = [
   ["email not verified", baseAccount(), baseContact({ email_status: "Not Verified" }), baseAction(), "email_not_verified"],
   ["missing clear segment", baseAccount({ segment: "", rcap_campaign_segment: "" }), baseContact({ segment: "" }), baseAction(), "missing_clear_segment"],
   ["generic page missing", baseAccount({ rcap_cobranded_page_status: "" }), baseContact(), baseAction({ page_type: "", page_label: "" }), "generic_page_required"],
-  ["sensitive claim present", baseAccount(), baseContact(), baseAction({ sensitive_claim: true }), "sensitive_claim_present"]
+  ["sensitive claim present", baseAccount(), baseContact(), baseAction({ sensitive_claim: true }), "sensitive_claim_present"],
+  ["missing confidence", baseAccount(), baseContact({ source_confidence: "" }), baseAction(), "missing_source_confidence"],
+  ["null confidence", baseAccount(), baseContact({ source_confidence: null }), baseAction(), "missing_source_confidence"],
+  ["unknown confidence", baseAccount(), baseContact({ source_confidence: "Unknown" }), baseAction(), "unknown_source_confidence"],
+  ["malformed confidence", baseAccount(), baseContact({ source_confidence: "Maybe" }), baseAction(), "unknown_source_confidence"]
 ];
 
 for (const [label, account, contact, action, expectedReason] of missingAllowlistCases) {
@@ -139,6 +143,53 @@ assert.equal(autoReady.status, "auto_ready", "Only the exhaustive allowlist fixt
 assert.deepEqual(autoReady.mustApproveReasons, [], "Auto-ready must have no must-approve reasons.");
 assert.deepEqual(autoReady.missingAllowlistReasons, [], "Auto-ready must have no missing allowlist reasons.");
 assert.deepEqual(autoReady.suppressionReasons, [], "Auto-ready must have no suppression reasons.");
+
+const hardenedTitleCases = [
+  ["ED", baseContact({ title: "ED" }), "executive_director_contact"],
+  ["E.D.", baseContact({ title: "E.D." }), "executive_director_contact"],
+  ["Chief Executive Officer", baseContact({ title: "Chief Executive Officer" }), "ceo_contact"],
+  ["Founder / CEO", baseContact({ title: "Founder / CEO" }), "ceo_contact"],
+  ["Board President", baseContact({ title: "Board President" }), "board_chair_contact"],
+  ["Program Officer at foundation", baseContact({ title: "Program Officer", decision_role: "Foundation funder" }), "funder_contact"],
+  ["Senior Partnerships Lead", baseContact({ title: "Senior Partnerships Lead" }), "senior_ambiguous_contact"]
+];
+for (const [label, contact, expectedReason] of hardenedTitleCases) {
+  const result = evaluateRcapApproval(baseAccount(), contact, baseAction());
+  assert.equal(result.status, "needs_human_approval", `${label}: hardened senior/funder title must not auto-ready.`);
+  assert(result.mustApproveReasons.includes(expectedReason), `${label}: must include ${expectedReason}.`);
+}
+const edFalsePositive = evaluateRcapApproval(baseAccount(), baseContact({ title: "Education Coordinator", decision_role: "Program Manager" }), baseAction());
+assert.equal(edFalsePositive.status, "auto_ready", "Words containing ed must not trigger executive-director detection by substring.");
+
+const hardenedPricingCases = [
+  ["$500", baseAction({ body: "Pilot is $500." })],
+  ["pricing", baseAction({ body: "Pricing can be discussed." })],
+  ["fee", baseAction({ body: "There is a setup fee." })],
+  ["paid pilot", baseAction({ body: "This is a paid pilot." })],
+  ["pilot investment of five hundred dollars", baseAction({ body: "Pilot investment of five hundred dollars." })],
+  ["program budget", baseAction({ body: "Program budget should be reviewed." })],
+  ["per participant", baseAction({ body: "Cost is calculated per participant." })],
+  ["ambiguous pricing phrase", baseAction({ body: "We can talk about investment and payment options later." })]
+];
+for (const [label, action] of hardenedPricingCases) {
+  const result = evaluateRcapApproval(baseAccount(), baseContact(), action);
+  assert.equal(result.status, "needs_human_approval", `${label}: pricing language must not auto-ready.`);
+  assert(result.mustApproveReasons.includes("pricing_reference"), `${label}: must include pricing_reference.`);
+}
+
+const hardenedClinicCases = [
+  ["explicit clinic_date", baseAction({ clinic_date: "2026-06-20" })],
+  ["clinic next Friday", baseAction({ body: "Invite them before the clinic next Friday." })],
+  ["upcoming clinic on June 20", baseAction({ body: "Upcoming clinic on June 20 needs a partner." })],
+  ["expungement clinic 6/20", baseAction({ body: "Expungement clinic 6/20 has open slots." })],
+  ["record relief clinic next month", baseAction({ body: "Record relief clinic next month needs support." })],
+  ["ambiguous clinic-date phrase", baseAction({ body: "Mention the workshop date once confirmed." })]
+];
+for (const [label, action] of hardenedClinicCases) {
+  const result = evaluateRcapApproval(baseAccount(), baseContact(), action);
+  assert.equal(result.status, "needs_human_approval", `${label}: clinic/date language must not auto-ready.`);
+  assert(result.mustApproveReasons.includes("clinic_date_reference"), `${label}: must include clinic_date_reference.`);
+}
 
 const approvedNeedsHuman = applyRcapApprovalDecision(
   baseAccount({ priority_tier: "Tier 1", priority_score: 97 }),
@@ -193,6 +244,13 @@ for (const forbiddenCall of [
   assert(!rcapSource.includes(forbiddenCall), `RCAP approval engine module must not call external provider path: ${forbiddenCall}`);
 }
 assert(!previewServer.includes("/api/rcap-revenue/approve"), "RCAP-3.1 should not add a live approval API route.");
+
+const evaluateBody = rcapSource.slice(
+  rcapSource.indexOf("export function evaluateRcapApproval"),
+  rcapSource.indexOf("\n\nexport function applyRcapApprovalDecision")
+);
+assert(evaluateBody.includes("isRcapContactSuppressed(contact)"), "evaluateRcapApproval must route suppression through isRcapContactSuppressed.");
+assert(!evaluateBody.includes("const suppressionReasons = suppressionReasonsFor(contact);\n  if (suppressionReasons.length)"), "evaluateRcapApproval must not use suppressionReasonsFor as the suppression predicate.");
 
 console.log(JSON.stringify({
   suppressionVariantsCovered: suppressionVariants.length,

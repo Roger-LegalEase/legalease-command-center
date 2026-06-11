@@ -530,6 +530,7 @@ function tierIsTwoOrThree(account = {}) {
 }
 
 function confidenceLevel(value = "") {
+  if (value === null || value === undefined) return "missing";
   const text = lower(value);
   if (/^medium$/.test(text)) return "medium";
   if (/^low$/.test(text)) return "low";
@@ -562,12 +563,19 @@ function actionIsGenericPage(account = {}, action = {}) {
 
 function actionReferencesClinicDate(action = {}) {
   const text = lower([action.clinic_date, action.body, action.summary, action.notes].join(" "));
-  return Boolean(clean(action.clinic_date)) || /clinic\s*(date|on|at|event)|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|202\d/.test(text) && /clinic/.test(text);
+  return Boolean(clean(action.clinic_date))
+    || /clinic\s*(date|on|at|event|next|this|upcoming)|upcoming clinic|expungement clinic|record relief clinic/.test(text)
+    || /\bnext\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month)\b/.test(text)
+    || /\b(event|workshop)\s+date\b/.test(text)
+    || /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}\b/.test(text)
+    || (/\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b|202\d/.test(text) && /clinic|event|workshop/.test(text));
 }
 
 function actionIncludesPricing(action = {}) {
   const text = lower([action.pricing, action.body, action.summary, action.notes].join(" "));
-  return Boolean(clean(action.pricing)) || /\$\s*\d|pricing|price|cost|fee|paid pilot|per month|per seat/.test(text);
+  return Boolean(clean(action.pricing))
+    || /\$\s*\d|dollars?|pricing|price|cost|fee|paid|budget|investment|invoice|payment|rate|retainer|per month|per seat|per participant|pilot investment/.test(text)
+    || /(one|two|three|four|five|six|seven|eight|nine|ten|hundred|thousand)\s+(dollars?|payment|budget|investment|fee|cost)/.test(text);
 }
 
 function actionHasSensitiveClaim(action = {}) {
@@ -582,12 +590,13 @@ function suppressionReasonsFor(contact = {}) {
   if (contact.unsubscribed) reasons.push("unsubscribed");
   if (contact.bounced) reasons.push("bounced");
   if (isSuppressionStatus(contact.suppression_status)) reasons.push("suppression_status");
+  if (!reasons.length && isRcapContactSuppressed(contact)) reasons.push("suppressed");
   return [...new Set(reasons)];
 }
 
 export function evaluateRcapApproval(account = {}, contact = {}, action = {}) {
-  const suppressionReasons = suppressionReasonsFor(contact);
-  if (suppressionReasons.length) {
+  if (isRcapContactSuppressed(contact)) {
+    const suppressionReasons = suppressionReasonsFor(contact);
     return {
       status: "blocked_suppressed",
       reasons: suppressionReasons,
@@ -601,10 +610,11 @@ export function evaluateRcapApproval(account = {}, contact = {}, action = {}) {
   const titleRole = lower([contact.title, contact.decision_role].join(" "));
   const confidence = confidenceLevel(contact.source_confidence);
   if (tierIsOne(account)) mustApproveReasons.push("tier_1_account");
-  if (/executive director/.test(titleRole)) mustApproveReasons.push("executive_director_contact");
-  if (/\bceo\b|chief executive/.test(titleRole)) mustApproveReasons.push("ceo_contact");
-  if (/board chair|chair of the board|board.*chair/.test(titleRole)) mustApproveReasons.push("board_chair_contact");
-  if (/\bfunder\b|grantmaker|foundation officer|philanthropy/.test(titleRole)) mustApproveReasons.push("funder_contact");
+  if (/executive director|\be\.?d\.?\b/.test(titleRole)) mustApproveReasons.push("executive_director_contact");
+  if (/\bceo\b|chief executive|chief exec/.test(titleRole)) mustApproveReasons.push("ceo_contact");
+  if (/board chair|chair of the board|board.*chair|board president/.test(titleRole)) mustApproveReasons.push("board_chair_contact");
+  if (/\bfunder\b|grantmaker|foundation officer|philanthropy|foundation.*program officer|program officer.*foundation/.test(titleRole)) mustApproveReasons.push("funder_contact");
+  if (/\bsenior\b|chief|president|founder|principal|partner|director/.test(titleRole) && !mustApproveReasons.length) mustApproveReasons.push("senior_ambiguous_contact");
   if (confidence === "medium") mustApproveReasons.push("medium_source_confidence");
   if (confidence === "low") mustApproveReasons.push("low_source_confidence");
   if (!clean(contact.public_email)) mustApproveReasons.push("missing_public_email");
@@ -614,6 +624,8 @@ export function evaluateRcapApproval(account = {}, contact = {}, action = {}) {
 
   const missingAllowlistReasons = [];
   if (!tierIsTwoOrThree(account)) missingAllowlistReasons.push("tier_2_or_3_required");
+  if (confidence === "missing") missingAllowlistReasons.push("missing_source_confidence");
+  if (!["high", "medium", "low", "missing"].includes(confidence)) missingAllowlistReasons.push("unknown_source_confidence");
   if (!publicEmailVerified(contact)) missingAllowlistReasons.push("email_not_verified");
   if (!hasClearSegment(account, contact)) missingAllowlistReasons.push("missing_clear_segment");
   if (actionHasSensitiveClaim(action)) missingAllowlistReasons.push("sensitive_claim_present");
