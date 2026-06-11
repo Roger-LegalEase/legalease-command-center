@@ -692,6 +692,434 @@ export function canCreateRcapOutreachTask(contact = {}, account = {}) {
   return contactIsDecisionRelevant(contact, account);
 }
 
+// These behavioral signals are intentionally deferred until LegalEase has real,
+// consented tracking sensors. They are listed for auditability and score 0.
+export const RCAP_DEFERRED_BEHAVIORAL_SIGNALS = [
+  "email opens",
+  "email clicks",
+  "page views",
+  "pricing clicks",
+  "pilot-scope clicks",
+  "funding-language downloads",
+  "co-branded page views"
+];
+
+const rcapInternalScoreWeights = new Map([
+  ["manual_positive_reply", 75],
+  ["manual_meeting_booked", 75],
+  ["manual_form_submitted", 50],
+  ["manual_proposal_requested", 50],
+  ["manual_budget_path_identified", 40],
+  ["manual_discovery_completed", 35],
+  ["manual_referred_to_another_person", 20],
+  ["manual_proposal_sent", 20],
+  ["closed_won", 100]
+]);
+
+const rcapDeferredSignalLabels = new Map([
+  ["email_open", "email opens"],
+  ["email_opens", "email opens"],
+  ["email_click", "email clicks"],
+  ["email_clicks", "email clicks"],
+  ["click", "email clicks"],
+  ["page_view", "page views"],
+  ["page_views", "page views"],
+  ["pricing_click", "pricing clicks"],
+  ["pricing_clicks", "pricing clicks"],
+  ["pilot_scope_click", "pilot-scope clicks"],
+  ["pilot_scope_clicks", "pilot-scope clicks"],
+  ["pilot-scope_click", "pilot-scope clicks"],
+  ["funding_language_download", "funding-language downloads"],
+  ["funding_language_downloads", "funding-language downloads"],
+  ["co_branded_page_view", "co-branded page views"],
+  ["co_branded_page_views", "co-branded page views"],
+  ["cobranded_page_view", "co-branded page views"],
+  ["cobranded_page_views", "co-branded page views"]
+]);
+
+function rcapScoreSignal(event = {}) {
+  return normalizedKey(event.event_type || event.type || event.signal || event.action || event.name || "");
+}
+
+function rcapScoreRecordIds(account = {}, contact = {}, dealSeed = {}) {
+  return new Set([
+    account.account_id,
+    account.source_prospect_id,
+    contact.contact_id,
+    contact.source_contact_id,
+    contact.linked_account_id,
+    contact.linked_prospect_id,
+    dealSeed.deal_seed_id,
+    dealSeed.linked_account_id,
+    dealSeed.linked_contact_id
+  ].map(clean).filter(Boolean));
+}
+
+function rcapScoreEventIds(event = {}) {
+  return [
+    event.account_id,
+    event.linked_account_id,
+    event.source_prospect_id,
+    event.contact_id,
+    event.linked_contact_id,
+    event.source_contact_id,
+    event.deal_seed_id,
+    event.linked_deal_seed_id
+  ].map(clean).filter(Boolean);
+}
+
+function rcapEventMatchesRecord(event = {}, account = {}, contact = {}, dealSeed = {}) {
+  const eventIds = rcapScoreEventIds(event);
+  if (!eventIds.length) return true;
+  const recordIds = rcapScoreRecordIds(account, contact, dealSeed);
+  return eventIds.some(id => recordIds.has(id));
+}
+
+function rcapStatusForScore(score = 0) {
+  if (score >= 75) return "Immediate Follow-Up";
+  if (score >= 50) return "Sales Qualified";
+  if (score >= 25) return "Warm";
+  if (score >= 10) return "Light Engagement";
+  return "Cold";
+}
+
+function rcapEventReason(signal = "", points = 0) {
+  return `${signal.replace(/_/g, " ")}${points ? ` +${points}` : ""}`;
+}
+
+export function calculateRcapInternalScore(account = {}, contact = {}, dealSeed = {}, tasks = [], events = []) {
+  const matchedEvents = list(events).filter(event => rcapEventMatchesRecord(event, account, contact, dealSeed));
+  const reasons = [];
+  const deferredSignals = [];
+  let score = 0;
+  let closedLost = false;
+  let suppressed = isRcapContactSuppressed(contact);
+
+  for (const event of matchedEvents) {
+    const signal = rcapScoreSignal(event);
+    if (!signal) continue;
+    if (["suppressed", "bounced", "unsubscribed", "do_not_contact", "do-not-contact"].includes(signal)) {
+      suppressed = true;
+      reasons.push(rcapEventReason(signal));
+      continue;
+    }
+    if (signal === "closed_lost") {
+      closedLost = true;
+      reasons.push("closed lost history");
+      continue;
+    }
+    if (rcapDeferredSignalLabels.has(signal)) {
+      deferredSignals.push(rcapDeferredSignalLabels.get(signal));
+      continue;
+    }
+    if (!rcapInternalScoreWeights.has(signal)) continue;
+    const points = rcapInternalScoreWeights.get(signal);
+    score += points;
+    reasons.push(rcapEventReason(signal, points));
+  }
+
+  for (const task of list(tasks)) {
+    const taskText = lower([task.task_type, task.safe_action_type, task.status, task.reason].join(" "));
+    if (/suppression|data cleanup/.test(taskText)) reasons.push("cleanup/review task present");
+    if (/needs human approval/.test(taskText)) reasons.push("needs human approval");
+  }
+
+  if (closedLost && score === 0) {
+    return {
+      score: 0,
+      status: suppressed ? "Suppressed" : "Cold",
+      reasons: [...new Set(reasons)],
+      suppressed,
+      source: "internal_only",
+      deferredSignals: [...new Set(deferredSignals)]
+    };
+  }
+
+  return {
+    score,
+    status: suppressed ? "Suppressed" : rcapStatusForScore(score),
+    reasons: [...new Set(reasons)],
+    suppressed,
+    source: "internal_only",
+    deferredSignals: [...new Set(deferredSignals)]
+  };
+}
+
+const rcapSavedViewDefinitions = [
+  {
+    key: "first_wave_ready",
+    label: "First Wave Ready",
+    description: "Clean, non-suppressed contacts that can enter the first internal review wave.",
+    filterOnly: true,
+    actions: []
+  },
+  {
+    key: "needs_human_approval",
+    label: "Needs Human Approval",
+    description: "Decision-relevant records requiring Roger before any future outreach step.",
+    filterOnly: true,
+    actions: []
+  },
+  {
+    key: "suppression_data_cleanup",
+    label: "Suppression / Data Cleanup",
+    description: "Suppressed, bounced, unsubscribed, missing-provenance, or cleanup-only records.",
+    filterOnly: true,
+    actions: []
+  },
+  {
+    key: "hot_accounts",
+    label: "Hot Accounts",
+    description: "Non-suppressed accounts with strong manual/internal buying signals.",
+    filterOnly: true,
+    actions: []
+  },
+  {
+    key: "proposal_follow_up",
+    label: "Proposal Follow-Up",
+    description: "Proposal or deal-seed records that need internal follow-up review.",
+    filterOnly: true,
+    actions: []
+  },
+  {
+    key: "funding_nurture",
+    label: "Funding Nurture",
+    description: "Accounts with known funding paths or budget angles to watch internally.",
+    filterOnly: true,
+    actions: []
+  },
+  {
+    key: "reply_queue",
+    label: "Reply Queue",
+    description: "Manual positive replies and referral signals from non-suppressed contacts.",
+    filterOnly: true,
+    actions: []
+  },
+  {
+    key: "closed_won_onboarding",
+    label: "Closed Won / Onboarding",
+    description: "Closed-won records that need internal onboarding review only.",
+    filterOnly: true,
+    actions: []
+  }
+];
+
+export function rcapRevenueSavedViewDefinitions() {
+  return rcapSavedViewDefinitions.map(view => ({
+    ...view,
+    actions: [...view.actions]
+  }));
+}
+
+function rcapSavedViewItem(fields = {}) {
+  return {
+    ...fields,
+    filterOnly: true,
+    actions: []
+  };
+}
+
+function dedupeSavedViewItems(items = []) {
+  const seen = new Set();
+  return list(items).filter(item => {
+    const key = [
+      item.kind,
+      item.account_id,
+      item.contact_id,
+      item.deal_seed_id,
+      item.task_id,
+      item.import_id,
+      item.title
+    ].map(clean).filter(Boolean).join("|");
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function rcapGenericApprovalAction() {
+  return {
+    page_type: "generic",
+    page_label: "Generic RCAP page",
+    body: "Internal RCAP saved-view review. No sending, enrollment, calendar write, or external action.",
+    sensitive_claim: false,
+    clinic_date: "",
+    pricing: ""
+  };
+}
+
+function rcapContactMatchesAccount(contact = {}, account = {}) {
+  const ids = new Set([account.account_id, account.source_prospect_id].map(clean).filter(Boolean));
+  return ids.has(clean(contact.linked_account_id)) || ids.has(clean(contact.linked_prospect_id));
+}
+
+function rcapEventsForRecord(events = [], account = {}, contact = {}, dealSeed = {}) {
+  return list(events).filter(event => rcapEventMatchesRecord(event, account, contact, dealSeed));
+}
+
+function rcapTasksForRecord(tasks = [], account = {}, contact = {}, dealSeed = {}) {
+  return list(tasks).filter(task => rcapEventMatchesRecord({
+    linked_account_id: task.linked_account_id,
+    linked_contact_id: task.linked_contact_id,
+    linked_deal_seed_id: task.linked_deal_seed_id
+  }, account, contact, dealSeed));
+}
+
+function rcapContactDisplay(contact = {}) {
+  return clean(contact.contact_name) || clean(contact.public_email) || clean(contact.contact_id) || "RCAP contact";
+}
+
+function rcapAccountDisplay(account = {}) {
+  return clean(account.organization_name) || clean(account.account_id) || "RCAP account";
+}
+
+export function rcapRevenueSavedViews(state = {}, options = {}) {
+  const accounts = list(state.rcapRevenueAccounts);
+  const contacts = list(state.rcapRevenueContacts);
+  const dealSeeds = list(state.rcapRevenueDealSeeds);
+  const tasks = list(state.rcapRevenueQueueTasks);
+  const batches = list(state.rcapRevenueImportBatches);
+  const events = [
+    ...list(state.rcapRevenueEvents),
+    ...list(state.rcapRevenueSignals),
+    ...list(options.events)
+  ];
+  const views = Object.fromEntries(rcapSavedViewDefinitions.map(definition => [definition.key, []]));
+  const approvalAction = rcapGenericApprovalAction();
+
+  for (const contact of contacts) {
+    const account = findAccount(accounts, contact.linked_account_id || contact.linked_prospect_id);
+    const deal = dealSeeds.find(seed => seed.linked_contact_id === contact.contact_id || seed.linked_account_id === accountKey(account)) || {};
+    const recordEvents = rcapEventsForRecord(events, account, contact, deal);
+    const recordTasks = rcapTasksForRecord(tasks, account, contact, deal);
+    const score = calculateRcapInternalScore(account, contact, deal, recordTasks, recordEvents);
+    const approval = evaluateRcapApproval(account, contact, approvalAction);
+    const suppressed = score.suppressed || isRcapContactSuppressed(contact);
+    const safeItem = extra => rcapSavedViewItem({
+      kind: "contact",
+      account_id: accountKey(account),
+      contact_id: contact.contact_id,
+      title: `${rcapContactDisplay(contact)} · ${rcapAccountDisplay(account)}`,
+      score: score.score,
+      scoringStatus: score.status,
+      suppressed,
+      ...extra
+    });
+
+    if (!suppressed && approval.status === "auto_ready" && publicEmailVerified(contact) && /^not enrolled$/i.test(clean(contact.sequence_status || "Not Enrolled"))) {
+      views.first_wave_ready.push(safeItem({ reason: "Clean verified contact; first-wave internal review candidate." }));
+    }
+    if (!suppressed && approval.status === "needs_human_approval") {
+      views.needs_human_approval.push(safeItem({ reason: approval.reasons.join(", ") || "Human approval required." }));
+    }
+    if (suppressed || contactNeedsResearch(contact) || /cleanup|data/i.test(recordTasks.map(task => [task.task_type, task.reason].join(" ")).join(" "))) {
+      views.suppression_data_cleanup.push(safeItem({ reason: suppressed ? "Suppressed contact — cleanup only." : "Contact data needs cleanup before any future outreach." }));
+    }
+    if (!suppressed && ["Sales Qualified", "Immediate Follow-Up"].includes(score.status)) {
+      views.hot_accounts.push(rcapSavedViewItem({
+        kind: "account",
+        account_id: accountKey(account),
+        contact_id: contact.contact_id,
+        title: rcapAccountDisplay(account),
+        score: score.score,
+        scoringStatus: score.status,
+        reason: score.reasons.join(", ") || "Internal signal score."
+      }));
+    }
+    if (!suppressed && recordEvents.some(event => ["manual_positive_reply", "manual_referred_to_another_person"].includes(rcapScoreSignal(event)))) {
+      views.reply_queue.push(safeItem({ reason: "Manual reply/referral signal." }));
+    }
+  }
+
+  for (const account of accounts) {
+    const accountContacts = contacts.filter(contact => rcapContactMatchesAccount(contact, account));
+    const anyUnsuppressedContact = !accountContacts.length || accountContacts.some(contact => !isRcapContactSuppressed(contact));
+    if (anyUnsuppressedContact && /fund|grant|budget|foundation|state|city|county|workforce/i.test([account.likely_funding_path, account.paid_offer_fit, account.opening_angle, account.notes].join(" "))) {
+      views.funding_nurture.push(rcapSavedViewItem({
+        kind: "account",
+        account_id: accountKey(account),
+        title: rcapAccountDisplay(account),
+        reason: clean(account.likely_funding_path || account.paid_offer_fit || "Known funding/budget angle."),
+        score: Math.max(0, Number(account.priority_score || 0))
+      }));
+    }
+    if (/closed won/i.test(clean(account.account_status))) {
+      views.closed_won_onboarding.push(rcapSavedViewItem({
+        kind: "account",
+        account_id: accountKey(account),
+        title: rcapAccountDisplay(account),
+        reason: "Closed Won account — internal onboarding review only."
+      }));
+    }
+  }
+
+  for (const deal of dealSeeds) {
+    const account = findAccount(accounts, deal.linked_account_id);
+    const contact = findContact(contacts, deal.linked_contact_id);
+    const suppressed = deal.linked_contact_id && isRcapContactSuppressed(contact);
+    const dealEvents = rcapEventsForRecord(events, account, contact, deal);
+    if (!suppressed && (clean(deal.proposed_offer) || clean(deal.funding_source) || dealEvents.some(event => ["manual_proposal_requested", "manual_proposal_sent"].includes(rcapScoreSignal(event))))) {
+      views.proposal_follow_up.push(rcapSavedViewItem({
+        kind: "deal_seed",
+        account_id: accountKey(account) || deal.linked_account_id,
+        contact_id: deal.linked_contact_id,
+        deal_seed_id: deal.deal_seed_id,
+        title: clean(deal.proposed_offer) || `Proposal review for ${rcapAccountDisplay(account)}`,
+        reason: "Proposal/deal seed needs internal follow-up review."
+      }));
+    }
+    if (/closed won/i.test([deal.stage, deal.status, deal.notes].join(" "))) {
+      views.closed_won_onboarding.push(rcapSavedViewItem({
+        kind: "deal_seed",
+        account_id: accountKey(account) || deal.linked_account_id,
+        contact_id: deal.linked_contact_id,
+        deal_seed_id: deal.deal_seed_id,
+        title: clean(deal.proposed_offer) || `Closed Won follow-through for ${rcapAccountDisplay(account)}`,
+        reason: "Closed Won deal seed — internal onboarding review only."
+      }));
+    }
+  }
+
+  for (const task of tasks) {
+    if (/completed|skipped|parked/i.test(clean(task.status))) continue;
+    const item = rcapSavedViewItem({
+      kind: "task",
+      task_id: task.task_id,
+      account_id: task.linked_account_id,
+      contact_id: task.linked_contact_id,
+      deal_seed_id: task.linked_deal_seed_id,
+      title: clean(task.title) || clean(task.task_type) || "RCAP task",
+      reason: clean(task.reason) || "Internal RCAP task."
+    });
+    if (/Data Cleanup/i.test(clean(task.task_type))) views.suppression_data_cleanup.push(item);
+    if (/Outreach Approval|Account Review/i.test(clean(task.task_type))) views.needs_human_approval.push(item);
+    if (/Proposal|Follow-Up/i.test(clean(task.task_type))) views.proposal_follow_up.push(item);
+    if (/Onboarding/i.test(clean(task.task_type))) views.closed_won_onboarding.push(item);
+  }
+
+  for (const batch of batches) {
+    for (const warning of list(batch.warnings)) {
+      if (!/lacked|fallback|duplicate|suppression|bounced|unsubscribed|provenance/i.test(warning)) continue;
+      views.suppression_data_cleanup.push(rcapSavedViewItem({
+        kind: "import_warning",
+        import_id: batch.import_id,
+        title: "Import cleanup warning",
+        reason: warning
+      }));
+    }
+  }
+
+  return rcapSavedViewDefinitions.map(definition => {
+    const items = dedupeSavedViewItems(views[definition.key]);
+    return {
+      ...definition,
+      count: items.length,
+      items,
+      actions: []
+    };
+  });
+}
+
 export function assertNoSuppressedOutreachTask(task = {}, contact = {}) {
   if (isRcapContactSuppressed(contact) && suppressedOutreachTaskTypes.has(task.task_type)) {
     throw new Error("Suppressed RCAP contacts cannot receive outreach, follow-up, or proposal tasks.");
@@ -966,6 +1394,12 @@ export function generateRcapRevenueQueueTasks(state = {}, options = {}) {
 export function rcapRevenueFoundationSummary(state = {}) {
   const latest = list(state.rcapRevenueImportBatches)[0] || {};
   const taskSummary = rcapRevenueTaskSummary(state);
+  const savedViews = rcapRevenueSavedViews(state).map(view => ({
+    key: view.key,
+    label: view.label,
+    count: view.count,
+    filterOnly: true
+  }));
   return {
     accounts: list(state.rcapRevenueAccounts).length,
     contacts: list(state.rcapRevenueContacts).length,
@@ -977,6 +1411,10 @@ export function rcapRevenueFoundationSummary(state = {}) {
     importBatches: list(state.rcapRevenueImportBatches).length,
     latestStatus: latest.status || "not imported",
     tasksCreated: latest.tasks_created || 0,
+    internalScoringActive: true,
+    scoringSource: "internal_only",
+    behavioralScoringDeferred: true,
+    savedViews,
     emailSendingEnabled: false,
     calendarWritesEnabled: false,
     externalActionsEnabled: false

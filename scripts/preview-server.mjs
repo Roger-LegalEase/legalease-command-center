@@ -17159,6 +17159,121 @@ function htmlShell() {
       return Boolean(contact.unsubscribed || contact.bounced || /unsubscribe|bounc|suppress|do not contact|do-not-contact/i.test(String(contact.suppression_status || "")));
     }
 
+    const RCAP_DEFERRED_BEHAVIORAL_SIGNALS = ["email opens", "email clicks", "page views", "pricing clicks", "pilot-scope clicks", "funding-language downloads", "co-branded page views"];
+
+    function rcapClientContactVerified(contact = {}) {
+      return Boolean(String(contact.public_email || "").trim() && /^verified$/i.test(String(contact.email_status || "")));
+    }
+
+    function rcapClientAccountNeedsHumanApproval(account = {}, contact = {}) {
+      const text = [account.priority_tier, contact.title, contact.decision_role, contact.source_confidence].join(" ");
+      return /tier\s*1|executive director|\be\.?d\.?\b|\bceo\b|chief executive|board chair|board president|funder|foundation officer|senior|chief|president|founder|principal|partner|low|medium/i.test(text)
+        || !rcapClientContactVerified(contact);
+    }
+
+    function rcapClientEventSignal(event = {}) {
+      return String(event.event_type || event.type || event.signal || event.action || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    }
+
+    function rcapClientEventMatches(event = {}, account = {}, contact = {}, deal = {}) {
+      const ids = [
+        account.account_id,
+        account.source_prospect_id,
+        contact.contact_id,
+        contact.source_contact_id,
+        contact.linked_account_id,
+        contact.linked_prospect_id,
+        deal.deal_seed_id,
+        deal.linked_account_id,
+        deal.linked_contact_id
+      ].map(value => String(value || "").trim()).filter(Boolean);
+      const eventIds = [
+        event.account_id,
+        event.linked_account_id,
+        event.source_prospect_id,
+        event.contact_id,
+        event.linked_contact_id,
+        event.source_contact_id,
+        event.deal_seed_id,
+        event.linked_deal_seed_id
+      ].map(value => String(value || "").trim()).filter(Boolean);
+      if (!eventIds.length) return true;
+      return eventIds.some(id => ids.includes(id));
+    }
+
+    function rcapClientScore(account = {}, contact = {}, deal = {}, events = []) {
+      if (rcapClientContactSuppressed(contact)) return { score:0, status:"Suppressed", suppressed:true };
+      let score = 0;
+      let closedLost = false;
+      for (const event of (events || []).filter(item => rcapClientEventMatches(item, account, contact, deal))) {
+        const signal = rcapClientEventSignal(event);
+        if (signal === "manual_positive_reply" || signal === "manual_meeting_booked") score += 75;
+        if (signal === "manual_form_submitted" || signal === "manual_proposal_requested") score += 50;
+        if (signal === "manual_budget_path_identified") score += 40;
+        if (signal === "manual_discovery_completed") score += 35;
+        if (signal === "manual_referred_to_another_person" || signal === "manual_proposal_sent") score += 20;
+        if (signal === "closed_won") score += 100;
+        if (signal === "closed_lost") closedLost = true;
+      }
+      if (closedLost && score === 0) return { score:0, status:"Cold", suppressed:false };
+      const status = score >= 75 ? "Immediate Follow-Up" : score >= 50 ? "Sales Qualified" : score >= 25 ? "Warm" : score >= 10 ? "Light Engagement" : "Cold";
+      return { score, status, suppressed:false };
+    }
+
+    function rcapRevenueSavedViews(inputState = state) {
+      const accounts = Array.isArray(inputState.rcapRevenueAccounts) ? inputState.rcapRevenueAccounts : [];
+      const contacts = Array.isArray(inputState.rcapRevenueContacts) ? inputState.rcapRevenueContacts : [];
+      const deals = Array.isArray(inputState.rcapRevenueDealSeeds) ? inputState.rcapRevenueDealSeeds : [];
+      const tasks = Array.isArray(inputState.rcapRevenueQueueTasks) ? inputState.rcapRevenueQueueTasks : [];
+      const events = [...(inputState.rcapRevenueEvents || []), ...(inputState.rcapRevenueSignals || [])];
+      const views = [
+        ["first_wave_ready", "First Wave Ready"],
+        ["needs_human_approval", "Needs Human Approval"],
+        ["suppression_data_cleanup", "Suppression / Data Cleanup"],
+        ["hot_accounts", "Hot Accounts"],
+        ["proposal_follow_up", "Proposal Follow-Up"],
+        ["funding_nurture", "Funding Nurture"],
+        ["reply_queue", "Reply Queue"],
+        ["closed_won_onboarding", "Closed Won / Onboarding"]
+      ].map(([key, label]) => ({ key, label, count:0, items:[], filterOnly:true, actions:[] }));
+      const byKey = Object.fromEntries(views.map(view => [view.key, view]));
+      const push = (key, item = {}) => {
+        const view = byKey[key];
+        const id = [item.account_id, item.contact_id, item.deal_seed_id, item.task_id, item.title].filter(Boolean).join("|");
+        if (!view || view.items.some(existing => existing.id === id)) return;
+        view.items.push({ ...item, id });
+        view.count = view.items.length;
+      };
+      for (const contact of contacts) {
+        const account = rcapClientAccountById(contact.linked_account_id || contact.linked_prospect_id);
+        const deal = deals.find(item => item.linked_contact_id === contact.contact_id || item.linked_account_id === account.account_id) || {};
+        const suppressed = rcapClientContactSuppressed(contact);
+        const score = rcapClientScore(account, contact, deal, events);
+        const common = { account_id:account.account_id, contact_id:contact.contact_id, title:[contact.contact_name, account.organization_name].filter(Boolean).join(" · ") || "RCAP contact" };
+        if (!suppressed && rcapClientContactVerified(contact) && !rcapClientAccountNeedsHumanApproval(account, contact) && /^not enrolled$/i.test(String(contact.sequence_status || "Not Enrolled"))) push("first_wave_ready", common);
+        if (!suppressed && rcapClientAccountNeedsHumanApproval(account, contact)) push("needs_human_approval", common);
+        if (suppressed || !String(contact.public_email || "").trim() || /low|unknown|missing|verify/i.test(String(contact.source_confidence || contact.verification_note || contact.contact_route || ""))) push("suppression_data_cleanup", common);
+        if (!suppressed && ["Sales Qualified", "Immediate Follow-Up"].includes(score.status)) push("hot_accounts", { account_id:account.account_id, contact_id:contact.contact_id, title:account.organization_name || common.title });
+        if (!suppressed && events.some(event => rcapClientEventMatches(event, account, contact, deal) && /manual_positive_reply|manual_referred_to_another_person/.test(rcapClientEventSignal(event)))) push("reply_queue", common);
+      }
+      for (const account of accounts) {
+        if (/fund|grant|budget|foundation|state|city|county|workforce/i.test([account.likely_funding_path, account.paid_offer_fit, account.opening_angle, account.notes].join(" "))) push("funding_nurture", { account_id:account.account_id, title:account.organization_name || "RCAP account" });
+        if (/closed won/i.test(String(account.account_status || ""))) push("closed_won_onboarding", { account_id:account.account_id, title:account.organization_name || "Closed Won account" });
+      }
+      for (const deal of deals) {
+        const contact = rcapClientContactById(deal.linked_contact_id);
+        if (!rcapClientContactSuppressed(contact) && (deal.proposed_offer || deal.funding_source)) push("proposal_follow_up", { account_id:deal.linked_account_id, contact_id:deal.linked_contact_id, deal_seed_id:deal.deal_seed_id, title:deal.proposed_offer || "RCAP proposal review" });
+      }
+      for (const task of tasks.filter(task => !/completed|skipped|parked/i.test(String(task.status || "")))) {
+        const item = { task_id:task.task_id, account_id:task.linked_account_id, contact_id:task.linked_contact_id, deal_seed_id:task.linked_deal_seed_id, title:task.title || task.task_type || "RCAP task" };
+        if (/Data Cleanup/i.test(String(task.task_type || ""))) push("suppression_data_cleanup", item);
+        if (/Outreach Approval|Account Review/i.test(String(task.task_type || ""))) push("needs_human_approval", item);
+        if (/Proposal|Follow-Up/i.test(String(task.task_type || ""))) push("proposal_follow_up", item);
+        if (/Onboarding/i.test(String(task.task_type || ""))) push("closed_won_onboarding", item);
+      }
+      return views;
+    }
+
     function rcapRevenueQueueRows() {
       return (state.rcapRevenueQueueTasks || [])
         .filter(task => !/completed|skipped|parked/i.test(String(task.status || "")))
@@ -23477,6 +23592,7 @@ function htmlShell() {
             <div class="intention-meta"><span>\${esc(intention.source)}</span><button type="button" data-lee-prompt="Rewrite today's intention from current open work.">Rewrite with Le-E</button></div>
           </section>
           \${dailyRunTodayPanelHtml()}
+          \${rcapRevenueSavedViewsPanelHtml("command")}
           <section class="cockpit-layout">
             <main class="cockpit-main">
             <section class="now-block" aria-label="Now">
@@ -24241,6 +24357,29 @@ function htmlShell() {
 	        </section>\`;
     }
 
+    function rcapRevenueSavedViewsPanelHtml(context = "command") {
+      const views = rcapRevenueSavedViews(state);
+      const compact = context === "settings";
+      const topViews = views.slice(0, compact ? 4 : 8);
+      const total = views.reduce((sum, view) => sum + Number(view.count || 0), 0);
+      const helper = context === "command"
+        ? "Internal-only RCAP revenue views. Counts help Roger choose what to review; they do not send, enroll, approve, or mutate records."
+        : "Saved views are filters, not actions.";
+      return \`<section class="growth-card rcap-revenue-views">
+        <div class="growth-card-head"><h2>RCAP Revenue Views</h2><small>\${esc(String(total))} internal items</small></div>
+        <p class="muted">\${esc(helper)}</p>
+        <div class="campaign-preview-metrics">\${topViews.map(view => \`<article class="campaign-preview-metric"><strong>\${esc(String(view.count || 0))}</strong><span>\${esc(view.label)}</span></article>\`).join("")}</div>
+        <div class="campaign-safety-lines">
+          <span>Internal-only scoring</span>
+          <span>Behavioral scoring deferred</span>
+          <span>Saved views are filters, not actions</span>
+          <span>Email sending: Off</span>
+          <span>Calendar writes: Off</span>
+          <span>External actions: Off</span>
+        </div>
+      </section>\`;
+    }
+
     function rcapRevenueFoundationHtml() {
       const accounts = Array.isArray(state.rcapRevenueAccounts) ? state.rcapRevenueAccounts : [];
       const contacts = Array.isArray(state.rcapRevenueContacts) ? state.rcapRevenueContacts : [];
@@ -24259,16 +24398,19 @@ function htmlShell() {
         [taskSummary.open, "open Queue tasks"],
         [batches.length, "import batches"]
       ];
+      const savedViews = rcapRevenueSavedViews(state);
       return \`<section id="rcap-revenue-import" class="growth-card">
         <div class="growth-card-head"><h2>RCAP Revenue OS</h2><small>Workbook import foundation</small></div>
         <p class="muted">Import parsed RCAP workbook sheets into durable internal records and create suppression-gated internal Queue tasks.</p>
         <div class="campaign-preview-metrics">\${metrics.map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
+        <div class="campaign-preview-metrics">\${savedViews.slice(0, 4).map(view => \`<article class="campaign-preview-metric"><strong>\${esc(String(view.count || 0))}</strong><span>\${esc(view.label)}</span></article>\`).join("")}</div>
         <div class="campaign-safety-lines">
           <span>Email sending: Off</span>
           <span>Calendar writes: Off</span>
           <span>External outreach actions: Off</span>
           <span>Queue task generation: Active</span>
           <span>Suppression latch: Active</span>
+          <span>Internal-only scoring: Active</span>
         </div>
         <details>
           <summary>Import pipeline</summary>
@@ -24283,6 +24425,8 @@ function htmlShell() {
       const contacts = Array.isArray(state.rcapRevenueContacts) ? state.rcapRevenueContacts : [];
       const tasks = Array.isArray(state.rcapRevenueQueueTasks) ? state.rcapRevenueQueueTasks : [];
       const configured = accounts.length || contacts.length;
+      const savedViews = rcapRevenueSavedViews(state);
+      const deferred = RCAP_DEFERRED_BEHAVIORAL_SIGNALS.join(", ");
       return \`<div class="channel-readiness-row">
         <div>
           <strong>RCAP Revenue OS</strong>
@@ -24292,7 +24436,8 @@ function htmlShell() {
         <button type="button" onclick="location.hash='sources'">Open Sources</button>
         <details>
           <summary>Status</summary>
-          <p class="muted">RCAP foundation: Active · Queue task generation: Active · Suppression latch: Active · Open RCAP tasks: \${esc(String(tasks.filter(task => !/completed|skipped|parked/i.test(String(task.status || ""))).length))} · Email sending: Off · Calendar writes: Off · Outreach automation: Off · External actions: Off</p>
+          <p class="muted">RCAP foundation: Active · Queue task generation: Active · Suppression latch: Active · Approval engine: Active · Internal-only scoring: Active · Behavioral scoring deferred · Email open/click tracking: Off · Page tracking: Off · Saved views are filters, not actions · Open RCAP tasks: \${esc(String(tasks.filter(task => !/completed|skipped|parked/i.test(String(task.status || ""))).length))} · Saved views: \${esc(String(savedViews.length))} · Email sending: Off · Calendar writes: Off · Outreach automation: Off · External actions: Off</p>
+          <p class="muted">Deferred behavioral signals: \${esc(deferred)}.</p>
         </details>
       </div>\`;
     }
@@ -26326,6 +26471,7 @@ function htmlShell() {
             <button type="button" onclick="location.href='/sources/import-social-calendar'">Import Calendar</button>
           </div>
           <div class="queue-summary-grid">\${queueReviewSummaryCards(reviewPosts).map(([label, value, detail]) => \`<article class="queue-summary-card"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
+            \${rcapRevenueSavedViewsPanelHtml("queue")}
             \${guidedQueueWorkbenchHtml()}
             \${queueReviewTabsHtml(reviewPosts)}
             \${selectedPosts.size ? \`<div class="bulk-bar queue-delete-bulk"><strong>\${selectedPosts.size} selected</strong><button type="button" onclick="openBulkQueueDeleteDialog()">Delete Selected</button></div>\` : ""}
