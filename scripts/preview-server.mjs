@@ -44,6 +44,10 @@ import {
   mergeGoogleWorkspaceOutputs
 } from "./google-workspace.mjs";
 import {
+  importRcapRevenueWorkbook,
+  rcapRevenueFoundationSummary
+} from "./rcap-revenue-os.mjs";
+import {
   channelConfig,
   channelSetup,
   channelSetupMessage,
@@ -24191,7 +24195,55 @@ function htmlShell() {
             <button type="button" onclick="cancelCampaignImport()">Cancel</button>
           </div>
           <p class="muted">Confirm Import creates internal Queue items only. No provider APIs are called.</p>
-        </section>\`;
+	        </section>\`;
+    }
+
+    function rcapRevenueFoundationHtml() {
+      const accounts = Array.isArray(state.rcapRevenueAccounts) ? state.rcapRevenueAccounts : [];
+      const contacts = Array.isArray(state.rcapRevenueContacts) ? state.rcapRevenueContacts : [];
+      const dealSeeds = Array.isArray(state.rcapRevenueDealSeeds) ? state.rcapRevenueDealSeeds : [];
+      const batches = Array.isArray(state.rcapRevenueImportBatches) ? state.rcapRevenueImportBatches : [];
+      const latest = batches[0] || {};
+      const metrics = [
+        [accounts.length, "accounts"],
+        [contacts.length, "contacts"],
+        [dealSeeds.length, "deal seeds"],
+        [batches.length, "import batches"]
+      ];
+      return \`<section id="rcap-revenue-import" class="growth-card">
+        <div class="growth-card-head"><h2>RCAP Revenue OS</h2><small>Workbook import foundation</small></div>
+        <p class="muted">Import parsed RCAP workbook sheets into durable internal records. This commit stores accounts, contacts, deal seeds, provenance, and import batches only.</p>
+        <div class="campaign-preview-metrics">\${metrics.map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
+        <div class="campaign-safety-lines">
+          <span>Email sending: Off</span>
+          <span>Calendar writes: Off</span>
+          <span>External outreach actions: Off</span>
+          <span>No Queue tasks are created in RCAP-1.</span>
+        </div>
+        <details>
+          <summary>Import pipeline</summary>
+          <p class="muted">POST parsed workbook JSON to <code>/api/rcap-revenue/import</code> with sheets named Prospects, Contacts_Master, First_Wave_Contacts, Contact_Routes_To_Verify, Contact_Playbook, Top_25, Funding_Triggers, Sales_Actions, and optional Deals or Opportunities.</p>
+          <p class="muted">Latest import: \${esc(latest.status || "not imported")} · duplicates skipped: \${esc(String(latest.duplicates_skipped || 0))}</p>
+        </details>
+      </section>\`;
+    }
+
+    function rcapRevenueSettingsStatusHtml() {
+      const accounts = Array.isArray(state.rcapRevenueAccounts) ? state.rcapRevenueAccounts : [];
+      const contacts = Array.isArray(state.rcapRevenueContacts) ? state.rcapRevenueContacts : [];
+      const configured = accounts.length || contacts.length;
+      return \`<div class="channel-readiness-row">
+        <div>
+          <strong>RCAP Revenue OS</strong>
+          <span>Workbook data foundation for paid RCAP outreach.</span>
+        </div>
+        <span class="badge \${configured ? "good" : "warn"}">\${configured ? "Configured" : "Not configured"}</span>
+        <button type="button" onclick="location.hash='sources'">Open Sources</button>
+        <details>
+          <summary>Status</summary>
+          <p class="muted">Email sending: Off · Calendar writes: Off · Automation mode: Draft/Internal only · External outreach actions: Off</p>
+        </details>
+      </div>\`;
     }
 
     function productionWorkspaceHtml(pageClass) {
@@ -26290,6 +26342,7 @@ function htmlShell() {
         </section>
         <section id="sources" class="section secondary \${pageClass("sources")}">
           \${socialCalendarImportHtml()}
+          \${rcapRevenueFoundationHtml()}
           <details open>
             <summary>Source-to-Queue Intake</summary>
             <div style="margin-top:14px">\${sourceSummaryHtml()}</div>
@@ -26377,10 +26430,10 @@ function htmlShell() {
           </details>\`}
           <details open>
             <summary>Channels / Integrations</summary>
-            <div class="channel-readiness-strip" style="margin-top:12px"><strong>Safe mode:</strong> nothing posts, sends, files, or publishes automatically.</div>
-            \${linkedinConnectorBannerHtml()}
-            <div class="channel-readiness-list">\${channelCards()}\${rcapConnectionCardHtml()}</div>
-          </details>
+	            <div class="channel-readiness-strip" style="margin-top:12px"><strong>Safe mode:</strong> nothing posts, sends, files, or publishes automatically.</div>
+	            \${linkedinConnectorBannerHtml()}
+	            <div class="channel-readiness-list">\${channelCards()}\${rcapConnectionCardHtml()}\${rcapRevenueSettingsStatusHtml()}</div>
+	          </details>
           <details>
             <summary>System status</summary>
             <div class="settings-card-grid" style="margin-top:14px">
@@ -31722,6 +31775,23 @@ async function handleRequest(request, response) {
       sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not import automation events." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/rcap-revenue/import" && request.method === "POST") {
+    try {
+      const payload = await readJson(request);
+      const currentState = await store.readState();
+      const result = importRcapRevenueWorkbook(currentState, payload?.workbook || payload || {}, {
+        workbookName: payload?.workbookName || payload?.workbook_name || "RCAP workbook",
+        importedBy: accessDecision.actor?.label || accessDecision.actor?.role || "owner",
+        now: new Date().toISOString()
+      });
+      await store.writeState(result.state);
+      sendJson(response, { batch: result.batch, imported: result.imported, summary: rcapRevenueFoundationSummary(result.state), state: withPublicChannelSetup(result.state) }, result.batch.status === "failed" ? 400 : 200);
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not import RCAP Revenue workbook." }, 400);
     }
     return;
   }
