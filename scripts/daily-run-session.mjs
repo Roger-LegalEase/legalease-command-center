@@ -99,6 +99,48 @@ function itemRecord({ id, title, detail = "", type = "work_item", route = "queue
   };
 }
 
+export function collectGlobalAgingItems(state = {}, options = {}) {
+  const nowMs = timestampMs(options.now || Date.now());
+  const warnDays = Number(options.warnDays || 14);
+  const stopDays = Number(options.stopDays || 30);
+  const closed = /complete|completed|done|closed|archived|ignored|converted|skipped|parked|approved/i;
+  const ageDays = value => {
+    const stamp = timestampMs(value);
+    if (!stamp || !nowMs) return 0;
+    return Math.floor((nowMs - stamp) / 86400000);
+  };
+  const record = (item = {}, config = {}) => {
+    const status = asText(item.status || item.review_state || item.approvalStatus || item.overall_status);
+    if (closed.test(status)) return null;
+    const touchedAt = item.updatedAt || item.updated_at || item.review_updated_at || item.lastTouchDate || item.createdAt || item.created_at || item.dueDate || item.due_date || "";
+    const days = ageDays(touchedAt);
+    if (days < warnDays) return null;
+    const title = item.title || item.reportTitle || item.artifact || item.name || item.organizationName || item.task_type || config.title || "Aging item";
+    return {
+      id: item.id || item.key || item.task_id || `${config.type || "aging"}-${crypto.randomUUID().slice(0, 8)}`,
+      title,
+      detail: item.nextAction || item.nextBestAction || item.reason || item.summary || item.notes || item.description || `Untouched for ${days} day(s). Decide, defer, or close it.`,
+      type: config.type || "global_aging",
+      route: config.route || "queue",
+      source: config.source || "aging",
+      createdAt: touchedAt,
+      age_days: days,
+      aging_severity: days >= stopDays ? "stop" : "warn"
+    };
+  };
+  const candidates = [
+    ...list(state.tasks).map(item => record(item, { type:"task", route:"tasks", source:"tasks" })),
+    ...list(state.growthInbox).map(item => record(item, { type:item.sourceType || "growth_inbox", route:"growth-inbox", source:"growth_inbox" })),
+    ...list(state.reports).map(item => record(item, { type:"report", route:"reports", source:"reports" })),
+    ...list(state.evidencePackNotes).map(item => record(item, { type:"proof_to_content", route:"proof", source:"proof" })),
+    ...list(state.reviewStates).map(item => record(item, { type:"rcap_watch", route:"production-activation-rcap", source:"rcap" })),
+    ...list(state.rcapRevenueQueueTasks).map(item => record(item, { type:"rcap_task", route:"queue", source:"rcap_revenue_task" }))
+  ].filter(Boolean);
+  const byId = new Map();
+  for (const item of candidates) if (!byId.has(item.id) || item.age_days > byId.get(item.id).age_days) byId.set(item.id, item);
+  return Array.from(byId.values()).sort((a, b) => b.age_days - a.age_days);
+}
+
 function socialAccount(state = {}, platform = "") {
   return list(state.socialAccounts).find(account => account.platform === platform) || {};
 }
@@ -426,6 +468,26 @@ export function buildDailyRunSnapshot(state = {}, options = {}) {
         pii_redacted: Boolean(support.pii_redacted)
       }
     }));
+  }
+
+  const surfacedIds = new Set(Object.values(buckets).flatMap(bucket => list(bucket.items).map(item => item.id)));
+  for (const aging of collectGlobalAgingItems(state, { now })) {
+    if (surfacedIds.has(aging.id)) continue;
+    buckets.overdue_followups.items.push(itemRecord({
+      id: aging.id,
+      title: aging.title,
+      detail: aging.detail,
+      type: "global_aging",
+      route: aging.route,
+      source: aging.source,
+      createdAt: aging.createdAt,
+      extra: {
+        age_days: aging.age_days,
+        aging_severity: aging.aging_severity,
+        external_action: false
+      }
+    }));
+    surfacedIds.add(aging.id);
   }
 
   for (const partner of list(state.partners)) {

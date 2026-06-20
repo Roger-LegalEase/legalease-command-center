@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   activeDailyRunSession,
   buildDailyRunSnapshot,
+  collectGlobalAgingItems,
   completeDailyRunSession,
   dailyRunBucketHeadline,
   dailyRunBucketRemainingCount,
@@ -20,6 +21,10 @@ import {
   skipDailyRunBucket,
   summarizeDailyRunSession
 } from "./daily-run-session.mjs";
+import {
+  buildCashRunwayPulse,
+  buildFounderCapacityPulse
+} from "./operator-pulse-feeders.mjs";
 
 const now = "2026-06-05T14:00:00.000Z";
 const tomorrow = "2026-06-06T14:00:00.000Z";
@@ -158,6 +163,39 @@ assert.equal(supportItem.source, "support");
 assert.equal(supportItem.route, "growth-inbox");
 assert.equal(supportItem.external_action, false);
 assert.equal(supportItem.pii_redacted, true);
+
+const pulseState = {
+  ...baseState,
+  runtime: { livePostingGates: { linkedin:{ enabled:false }, x:{ enabled:false } } },
+  funnelSnapshots: [{ id:"funnel-revenue", revenue: 1200, dateRange:"2026-06" }],
+  campaigns: [{ id:"campaign-paid", paidConversionsRevenue: 800, updatedAt:"2026-06-04T10:00:00.000Z" }],
+  partnerPrograms: [{ id:"program-paid", metrics:{ revenueBooked: 500 }, updatedAt:"2026-06-03T10:00:00.000Z" }],
+  partners: [{ id:"partner-pipeline", expectedValue: 10000, probability: 25, updatedAt:"2026-06-01T10:00:00.000Z" }],
+  pilots: [{ id:"pilot-pipeline", price: 3000, updatedAt:"2026-06-01T10:00:00.000Z" }],
+  metrics: { monthlyBurn: 1000, cashOnHand: 5500 },
+  activityEvents: [{ id:"completed-today", eventType:"task_completed", createdAt:"2026-06-05T11:00:00.000Z" }]
+};
+const cashPulse = buildCashRunwayPulse(pulseState, { now });
+assert.equal(cashPulse.booked_30d, 2500, "Cash/Runway pulse should headline booked actuals only.");
+assert.equal(cashPulse.pipeline_weighted, 5500, "Pipeline should stay separately labeled and may be weighted.");
+assert.equal(cashPulse.runway_months, 5.5, "Runway months should use read-only cash and burn signals.");
+assert.equal(cashPulse.external_action, false);
+
+const capacityPulse = buildFounderCapacityPulse(pulseState, { now, warningThreshold: 1 });
+assert(capacityPulse.items_needing_operator > 0, "Founder Capacity should count items needing the operator.");
+assert.equal(capacityPulse.read_only, true);
+assert.equal(capacityPulse.external_action, false);
+
+const agingItems = collectGlobalAgingItems({
+  tasks: [{ id:"aging-task", title:"Old untouched task", status:"open", updatedAt:"2026-05-01T10:00:00.000Z" }],
+  reports: [{ id:"fresh-report", title:"Fresh report", status:"draft", updatedAt:"2026-06-04T10:00:00.000Z" }]
+}, { now, warnDays:14, stopDays:30 });
+assert(agingItems.some(item => item.id === "aging-task" && item.aging_severity === "stop"), "Global Aging should flag very old untouched items.");
+const agingSnapshot = buildDailyRunSnapshot({
+  runtime: { livePostingGates: {} },
+  tasks: [{ id:"aging-task", title:"Old untouched task", status:"open", updatedAt:"2026-05-01T10:00:00.000Z" }]
+}, { now });
+assert(agingSnapshot.buckets.find(bucket => bucket.key === "overdue_followups").items.some(item => item.id === "aging-task" && item.type === "global_aging"), "Global Aging should surface on Today through the overdue bucket.");
 
 const started = createDailyRunSession(baseState, { now });
 assert.equal(started.session.status, "active", "Starting a Daily Run should create an active session.");

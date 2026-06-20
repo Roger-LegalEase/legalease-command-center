@@ -23720,6 +23720,22 @@ function htmlShell() {
       };
     }
 
+    function todayRunwaySummary() {
+      const burn = Number(state.metrics?.monthlyBurn || state.metrics?.burnMonthly || state.runway?.monthlyBurn || state.settings?.monthlyBurn || 0);
+      const cash = Number(state.metrics?.cashOnHand || state.runway?.cashOnHand || state.settings?.cashOnHand || 0);
+      return {
+        burn,
+        cash,
+        months: burn > 0 && cash > 0 ? Math.floor((cash / burn) * 10) / 10 : null
+      };
+    }
+
+    function todayCapacitySummary(needCount = 0) {
+      const completedToday = (state.activityEvents || []).filter(item => /complete|completed|reviewed|approved|resolved/i.test([item.eventType, item.action, item.title].join(" ")) && todayWithinThirtyDays(item)).length;
+      const trend = needCount > completedToday ? "growing" : needCount < completedToday ? "clearing" : "steady";
+      return { completedToday, trend, overload:needCount >= 12 || trend === "growing" };
+    }
+
     function todayDailyRunBuckets() {
       const view = state.dailyRun || {};
       const active = view.activeSession || null;
@@ -23790,7 +23806,8 @@ function htmlShell() {
       return buckets.map((bucket, index) => {
         const item = (bucket.items || [])[0];
         if (!item) return null;
-        return { item, bucket, tone:todayBucketTone(bucket.key), rank:todayBucketRank(bucket.key), index };
+        const tone = item.aging_severity === "stop" ? "stop" : todayBucketTone(bucket.key);
+        return { item, bucket, tone, rank:tone === "stop" ? 0 : todayBucketRank(bucket.key), index };
       }).filter(Boolean).sort((a, b) => a.rank - b.rank || a.index - b.index);
     }
 
@@ -23820,6 +23837,8 @@ function htmlShell() {
       const liveGates = liveGatesCountFromState(state);
       const needCount = todayRankedWorkItems().length;
       const canWait = Math.max(0, buckets.reduce((sum, bucket) => sum + (bucket.items || []).length, 0) - needCount);
+      const runway = todayRunwaySummary();
+      const capacity = todayCapacitySummary(needCount);
       return \`<div class="pulse-strip">
         <div class="pulse-card">
           <div class="pulse-label"><span class="status-dot"></span>Revenue · 30d</div>
@@ -23827,14 +23846,14 @@ function htmlShell() {
           <div class="pulse-sub">\${esc(todayMoney(revenue.pipeline))} pipeline, labeled separately</div>
         </div>
         <div class="pulse-card">
-          <div class="pulse-label"><span class="status-dot warn"></span>Runway</div>
-          <div class="pulse-value">TODO <small>read-only</small></div>
-          <div class="pulse-sub">Burn source not present yet</div>
+          <div class="pulse-label"><span class="status-dot \${runway.months === null ? "warn" : ""}"></span>Runway</div>
+          <div class="pulse-value">\${runway.months === null ? "Unknown" : esc(String(runway.months))} <small>\${runway.months === null ? "read-only" : "mo"}</small></div>
+          <div class="pulse-sub">\${runway.months === null ? "Add cash and burn signals" : "Burn " + todayMoney(runway.burn) + "/mo"}</div>
         </div>
         <div class="pulse-card">
-          <div class="pulse-label"><span class="status-dot warn"></span>Your load</div>
+          <div class="pulse-label"><span class="status-dot \${capacity.overload ? "warn" : ""}"></span>Your load</div>
           <div class="pulse-value">\${esc(String(needCount))} <small>need you</small></div>
-          <div class="pulse-sub \${canWait ? "dn" : "up"}">\${esc(String(canWait))} can wait · backlog trend TODO</div>
+          <div class="pulse-sub \${capacity.overload ? "dn" : "up"}">\${esc(String(canWait))} can wait · backlog \${esc(capacity.trend)}</div>
         </div>
         <div class="pulse-card">
           <div class="pulse-label"><span class="status-dot \${liveGates ? "stop" : ""}"></span>Systems</div>
