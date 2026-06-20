@@ -37,6 +37,16 @@ function compact(value = "", max = 180) {
   return text.length > max ? text.slice(0, max - 1).trimEnd() + "…" : text;
 }
 
+function redactSupportText(value = "") {
+  return clean(value)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .replace(/\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/g, "[redacted-phone]")
+    .replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[redacted-ssn]")
+    .replace(/\b(?:dob|date of birth)\s*[:#-]?\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/gi, "[redacted-dob]")
+    .replace(/\b(?:my name is|name is|i am|i'm)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}\b/g, "[redacted-name]")
+    .replace(/\b(?:case|docket|packet)\s*(?:number|no\.?|#)?\s*[:#-]?\s*[A-Z0-9-]{5,}\b/gi, "[redacted-case-reference]");
+}
+
 export function growthInboxFingerprint(rawText = "") {
   const normalized = clean(rawText).toLowerCase().replace(/\s+/g, " ").slice(0, 500);
   return crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 20);
@@ -168,6 +178,51 @@ export function triageGrowthInboxItem(item = {}, patch = {}, options = {}) {
       { action: "triaged", at: now, note: "Draft triage updated." },
       ...(item.history || [])
     ].slice(0, 30)
+  };
+}
+
+export function createWilmaCannotCloseSupportEscalation(state = {}, input = {}, options = {}) {
+  const now = options.now || nowIso();
+  const rawQuestion = clean(input.question || input.rawText || input.text || input.summary || "");
+  if (!rawQuestion) throw new Error("Wilma support escalation needs a question.");
+  const redactedQuestion = redactSupportText(rawQuestion);
+  const reason = compact(input.reason || input.escalationReason || "Wilma could not safely close this consumer question inside UPL.", 180);
+  const item = normalizeGrowthInboxItem({
+    id: input.id || `wilma-support-${crypto.randomUUID().slice(0, 8)}`,
+    rawText: `Wilma support escalation: ${redactedQuestion}`,
+    sourceType: "customer_support_issue",
+    riskLevel: clean(input.riskLevel) || "medium",
+    priority: clean(input.priority) || "high",
+    owner: clean(input.owner) || "Roger",
+    summary: compact(`Wilma could not close this consumer question: ${redactedQuestion}`, 220),
+    suggestedAction: "Human review required. Operator acts manually outside the OS; no auto-reply.",
+    suggestedDestination: "support_issue",
+    decisionNeeded: "human_review_required",
+    status: "new",
+    createdAt: now,
+    updatedAt: now
+  }, { now });
+  const escalation = {
+    ...item,
+    supportCategory: "support",
+    escalationSource: "wilma_cannot_close",
+    escalationReason: reason,
+    external_action: false,
+    auto_reply: false,
+    pii_redacted: true,
+    raw_provider_payload_stored: false,
+    history: [
+      { action: "wilma_support_escalation_created", at: now, note: "Created for human review. No auto-reply or external action." },
+      ...(item.history || [])
+    ].slice(0, 30)
+  };
+  return {
+    state: {
+      ...state,
+      growthInbox: [escalation, ...(Array.isArray(state.growthInbox) ? state.growthInbox : [])]
+    },
+    item: escalation,
+    event: growthInboxEvent("wilma_support_escalation_created", escalation, { external_action:false, auto_reply:false, pii_redacted:true }, now)
   };
 }
 

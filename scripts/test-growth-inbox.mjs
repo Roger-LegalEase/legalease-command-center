@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   classifyGrowthInboxText,
   convertGrowthInboxItem,
+  createWilmaCannotCloseSupportEscalation,
   growthInboxFingerprint,
   normalizeGrowthInboxItem
 } from "./growth-inbox.mjs";
@@ -42,5 +43,19 @@ assert.match(task.convertedRecord.record.nextAction, /follow/i);
 const ignored = convertGrowthInboxItem(partnerItem, "ignore", { reason: "Already handled on partner call." });
 assert.equal(ignored.item.status, "ignored");
 assert.equal(ignored.item.ignoreReason, "Already handled on partner call.");
+
+const supportEscalation = createWilmaCannotCloseSupportEscalation({ growthInbox: [] }, {
+  question: "My name is Jane Example, email jane@example.com, phone 312-555-0199, packet number ABC12345. Did the court reject my filing?",
+  reason: "Wilma could not close this without leaving the UPL-safe lane."
+}, { now:"2026-06-20T12:00:00.000Z" });
+assert.equal(supportEscalation.item.sourceType, "customer_support_issue");
+assert.equal(supportEscalation.item.suggestedDestination, "support_issue");
+assert.equal(supportEscalation.item.supportCategory, "support");
+assert.equal(supportEscalation.item.external_action, false);
+assert.equal(supportEscalation.item.auto_reply, false);
+assert.equal(supportEscalation.item.pii_redacted, true);
+assert.equal(supportEscalation.state.growthInbox[0].id, supportEscalation.item.id);
+assert.doesNotMatch(JSON.stringify(supportEscalation.item), /Jane Example|jane@example\.com|312-555-0199|ABC12345/i);
+assert.match(JSON.stringify(supportEscalation.item), /\[redacted-name\]|\[redacted-email\]|\[redacted-phone\]|\[redacted-case-reference\]/);
 
 console.log("growth inbox tests passed");

@@ -409,6 +409,25 @@ export function buildDailyRunSnapshot(state = {}, options = {}) {
     else buckets.reports_proof.items.push(record);
   }
 
+  for (const support of list(state.growthInbox)) {
+    if (!/customer_support_issue|support_issue/i.test([support.sourceType, support.suggestedDestination, support.destination, support.supportCategory].join(" "))) continue;
+    if (/converted|ignored|archived|done|closed/i.test(asText(support.status))) continue;
+    buckets.due_today.items.push(itemRecord({
+      id: support.id,
+      title: support.title || "Support review needed",
+      detail: support.escalationReason || support.suggestedAction || support.summary || "Review support item manually. No auto-reply.",
+      type: "customer_support_issue",
+      route: "growth-inbox",
+      source: "support",
+      createdAt: support.createdAt || support.created_at || "",
+      extra: {
+        suggestedDestination: support.suggestedDestination || "support_issue",
+        external_action: false,
+        pii_redacted: Boolean(support.pii_redacted)
+      }
+    }));
+  }
+
   for (const partner of list(state.partners)) {
     const due = asText(partner.nextFollowUpDate || partner.next_follow_up_date || partner.dueDate);
     if (!due || due > today) continue;

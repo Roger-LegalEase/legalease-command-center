@@ -136,6 +136,29 @@ assert(snapshot.buckets.find(bucket => bucket.key === "paused_future").items.som
 assert(snapshot.buckets.find(bucket => bucket.key === "paused_future").items.some(item => item.id === "import-scheduled-future"), "Approved imported posts with future imported times should leave daily attention.");
 assert(!snapshot.buckets.find(bucket => bucket.key === "bulk_review").items.some(item => item.id === "import-scheduled-future"), "Future scheduled imported posts must not become daily manual review tasks.");
 
+const supportSnapshot = buildDailyRunSnapshot({
+  ...baseState,
+  growthInbox: [{
+    id: "wilma-support-escalation",
+    sourceType: "customer_support_issue",
+    suggestedDestination: "support_issue",
+    supportCategory: "support",
+    summary: "Wilma could not close this redacted packet-status question.",
+    escalationReason: "Human review required. No auto-reply.",
+    status: "new",
+    external_action: false,
+    pii_redacted: true,
+    createdAt: "2026-06-05T12:00:00.000Z"
+  }]
+}, { now });
+const supportItem = supportSnapshot.buckets.find(bucket => bucket.key === "due_today").items.find(item => item.id === "wilma-support-escalation");
+assert(supportItem, "Support-category Growth Inbox items should surface through Today/Daily Run.");
+assert.equal(supportItem.type, "customer_support_issue");
+assert.equal(supportItem.source, "support");
+assert.equal(supportItem.route, "growth-inbox");
+assert.equal(supportItem.external_action, false);
+assert.equal(supportItem.pii_redacted, true);
+
 const started = createDailyRunSession(baseState, { now });
 assert.equal(started.session.status, "active", "Starting a Daily Run should create an active session.");
 assert.equal(started.session.bucket_snapshot.current_bucket_key, "blocked_live_systems", "Session should store the initial current bucket.");
