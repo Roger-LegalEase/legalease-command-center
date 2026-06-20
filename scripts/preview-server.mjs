@@ -22891,6 +22891,65 @@ function htmlShell() {
       return \`<div class="operating-memory-grid">\${Object.entries(records).map(([key, item]) => \`<section class="operating-memory-tile"><h3>\${esc(item.name || plainOperatorState(key))}</h3><ul><li><strong>\${esc(plainOperatorState(item.status || "unknown"))}</strong><br><span>\${esc(item.detail || "No detail recorded.")}</span></li></ul></section>\`).join("")}</div>\`;
     }
 
+    function settingsHealthReadoutHtml() {
+      const health = cockpitOsHealthRecord();
+      const integrity = cockpitDataIntegrityRecord();
+      const smoke = buildSmokeTestStatus(state, { commit_hash: state.runtime?.commitHash || "" });
+      const connectors = connectorItems();
+      const liveGates = clientLiveGatesCount(state);
+      const integrityWarnings = (integrity.errors || []).length + (integrity.warnings || []).length + (integrity.duplicate_warnings || []).length + (integrity.missing_field_warnings || []).length;
+      const connectorProblems = connectors.filter(item => !item.configured || item.lastError).length;
+      const rows = [
+        {
+          label:"OS Health",
+          status:health.overall_health || "needs_attention",
+          detail:health.summary?.next_operator_action || "Refresh App Status when something feels off.",
+          tone:/healthy|protected|ready|ok/i.test(String(health.overall_health || "")) ? "good" : "warn"
+        },
+        {
+          label:"State Integrity",
+          status:integrity.integrity_status || (integrityWarnings ? "needs_attention" : "healthy"),
+          detail:integrityWarnings ? integrityWarnings + " warning(s) across duplicate, missing-field, and structural checks." : "Saved records are structurally healthy.",
+          tone:integrityWarnings ? "warn" : "good"
+        },
+        {
+          label:"Integration Health",
+          status:connectorProblems ? "needs_attention" : "green",
+          detail:connectorProblems ? connectorProblems + " connector(s) need setup or review." : "Available connectors are quiet. Read-only sources stay manual or approval-gated.",
+          tone:connectorProblems ? "warn" : "good"
+        },
+        {
+          label:"Smoke Test",
+          status:smoke.last_status || "not_started",
+          detail:smoke.warning || (smoke.last_run_timestamp ? "Last run " + formatDateTime(smoke.last_run_timestamp) : "No self-check run recorded yet."),
+          tone:Number(smoke.failed_count || 0) ? "danger" : smoke.last_status === "passed" ? "good" : "warn"
+        },
+        {
+          label:"Live Gates",
+          status:String(liveGates),
+          detail:"Live gates must remain 0. This readout is visible here, outside the daily flow.",
+          tone:liveGates ? "danger" : "good"
+        }
+      ];
+      return \`<section class="panel operating-memory-card settings-health-readout">
+        <div class="simple-panel-head">
+          <div><h2>Settings &amp; Health Readout</h2><p class="muted">One machine-room panel for OS Health, State Integrity, Integration Health, Smoke Test, and live-gate status.</p></div>
+          <span class="badge \${liveGates ? "danger" : "good"}">Live gates: \${esc(String(liveGates))}</span>
+        </div>
+        <div class="operating-memory-grid">\${rows.map(row => \`<section class="operating-memory-tile">
+          <h3>\${esc(row.label)}</h3>
+          <ul><li><strong><span class="badge \${esc(row.tone)}">\${esc(plainOperatorState(row.status))}</span></strong><br><span>\${esc(row.detail)}</span></li></ul>
+        </section>\`).join("")}</div>
+        <div class="card-actions" style="margin-top:12px">
+          <button class="primary" type="button" onclick="refreshOsHealth()">Refresh OS Health</button>
+          <button type="button" onclick="refreshDataIntegrity()">Refresh State Integrity</button>
+          <button type="button" onclick="startSmokeTestRun()">Start Smoke Test</button>
+          <button type="button" onclick="location.hash='automation'">Open Connector Inbox</button>
+        </div>
+        <p class="muted">Systems surface as decisions on Today or as this green/amber/red readout. No emails, posts, files, calendar writes, payment actions, or external changes happen from this panel.</p>
+      </section>\`;
+    }
+
     function osHealthPageHtml(pageClass) {
       const health = cockpitOsHealthRecord();
       const hardening = health.auth_hardening || {};
@@ -26978,6 +27037,7 @@ function htmlShell() {
         \${dataRoomPageHtml(pageClass)}
         \${safeRenderModule("metrics", () => ["metrics", "kpis"].includes(pageId) ? metricsDashboardHtml(pageClass) : "")}
         <section id="settings" class="section secondary section-page lee-bubble-safe-space \${pageClass("settings")}">
+          \${settingsHealthReadoutHtml()}
           <details>
             <summary>Launch setup</summary>
             <div style="margin-top:14px">\${productionReadinessSettingsHtml()}</div>
