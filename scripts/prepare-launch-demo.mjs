@@ -91,7 +91,7 @@ const demoPosts = [
     overlay: "No tracking. No launch.",
     visual: "A launch gate holding back untracked campaign motion",
     treatment: "Neo-Brutalist Legal Tech",
-    palette: ["#111827", "#F4F2EC", "#B42318", "#F04800"],
+    palette: ["#111827", "#F4F2EC", "#E5502B", "#F04800"],
     shape: "gate",
     publishErrorSummary: "LinkedIn account is not connected.",
     publishingStatus: "blocked"

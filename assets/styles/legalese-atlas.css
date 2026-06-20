@@ -1,18 +1,30 @@
 /* LegalEase clean operator interface.
    Keep this boring on purpose: fast, readable, calm, and hard to misuse. */
 :root {
-  --paper:#F7F8FA;
+  --paper:#EEF2F1;
+  --card:#ffffff;
   --surface:#FFFFFF;
   --surface-soft:#F1F4F7;
-  --line:#E2E7EE;
-  --ink:#111827;
+  --line:#e2e8e6;
+  --ink:#0A1A5C;
+  --ink-2:#16245f;
+  --teal:#00A99D;
+  --teal-deep:#0c7d75;
   --text:#1F2937;
-  --muted:#667085;
+  --muted:#5f6b78;
   --accent:#0B3B8C;
   --accent-strong:#071F4D;
-  --success:#16704E;
-  --warning:#9A6700;
-  --danger:#B42318;
+  --success:#1d7f48;
+  --warning:#9a6700;
+  --go:#1d7f48;
+  --go-bg:#e7f4ec;
+  --warn:#9a6700;
+  --warn-bg:#fdf3da;
+  --hold:#5b6475;
+  --hold-bg:#eef0f2;
+  --stop:#E5502B;
+  --stop-bg:#fdeae4;
+  --danger:var(--stop);
   --shadow:0 8px 24px rgba(17,24,39,.06);
 }
 
@@ -552,9 +564,9 @@ h3 {
 }
 
 .danger {
-  background:#FEF3F2;
-  color:var(--danger);
-  border-color:#FECDCA;
+  background:var(--stop-bg);
+  color:var(--stop);
+  border-color:color-mix(in srgb, var(--stop) 32%, white);
 }
 
 button,
