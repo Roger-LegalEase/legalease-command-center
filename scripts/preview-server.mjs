@@ -14391,6 +14391,80 @@ function htmlShell() {
     .daily-run-actions { display:flex; flex-wrap:wrap; gap:9px; align-items:center; }
     .daily-run-banner { border:1px solid rgba(240,72,0,.18); border-radius:12px; background:rgba(240,72,0,.07); padding:10px 12px; display:grid; gap:3px; color:var(--ink); }
     .daily-run-banner span { color:var(--muted); font-size:13px; }
+    .single-pane-today { width:100%; max-width:1180px; margin:0 auto; padding:0 24px 42px; color:var(--ink); }
+    .single-pane-top { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; margin-bottom:20px; flex-wrap:wrap; }
+    .single-pane-hello h1 { margin:0; font-size:27px; line-height:1.12; color:var(--ink); letter-spacing:0; }
+    .single-pane-hello p { margin:4px 0 0; color:var(--muted); font-size:14px; }
+    .daily-run-launch { background:var(--ink); color:#fff; border:none; padding:13px 22px; border-radius:12px; font-size:15px; font-weight:800; cursor:pointer; box-shadow:var(--shadow); display:inline-flex; align-items:center; gap:9px; }
+    .daily-run-launch:hover { background:var(--ink-2); }
+    .daily-run-launch span { background:var(--teal); color:#012; border-radius:7px; padding:2px 9px; font-size:13px; }
+    .pulse-strip { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin-bottom:22px; }
+    .pulse-card { min-width:0; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:15px 16px; box-shadow:var(--shadow); }
+    .pulse-label { font-size:11.5px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#8693a1; display:flex; align-items:center; gap:6px; }
+    .pulse-value { font-size:25px; font-weight:850; margin-top:7px; line-height:1.08; letter-spacing:0; color:var(--ink); }
+    .pulse-value small { font-size:14px; font-weight:700; color:var(--muted); }
+    .pulse-sub { font-size:12.5px; margin-top:3px; color:var(--muted); }
+    .pulse-sub.up { color:var(--go); }
+    .pulse-sub.dn { color:var(--stop); }
+    .single-pane-cols { display:grid; grid-template-columns:minmax(0, 1.5fr) minmax(300px, .95fr); gap:22px; align-items:start; }
+    .single-pane-panel { background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); overflow:hidden; margin-bottom:22px; }
+    .single-pane-panel-head { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:16px 18px 13px; border-bottom:1px solid var(--line); }
+    .single-pane-panel-head h2 { margin:0; font-size:16px; line-height:1.2; color:var(--ink); letter-spacing:0; }
+    .single-pane-panel-head .meta { font-size:12.5px; color:#8693a1; font-weight:700; }
+    .work-item-row { display:flex; gap:13px; padding:14px 18px; border-bottom:1px solid var(--line); align-items:flex-start; }
+    .work-item-row:last-child { border-bottom:none; }
+    .work-item-row:hover { background:#fafcfb; }
+    .work-rail { width:4px; align-self:stretch; border-radius:4px; flex:none; background:#8693a1; }
+    .work-rail.stop { background:var(--stop); }
+    .work-rail.warn { background:var(--warn); }
+    .work-rail.go { background:var(--teal); }
+    .work-rail.hold { background:#8693a1; }
+    .work-item-body { flex:1; min-width:0; }
+    .work-item-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .work-title { font-weight:800; font-size:14.5px; line-height:1.25; color:var(--ink); }
+    .work-source { font-size:11px; font-weight:850; letter-spacing:.04em; text-transform:uppercase; color:#8693a1; }
+    .work-why { font-size:13px; color:var(--muted); margin-top:3px; line-height:1.45; }
+    .work-age { font-size:11.5px; color:#8693a1; font-weight:700; white-space:nowrap; }
+    .work-age.old { color:var(--stop); }
+    .work-actions { display:flex; gap:7px; margin-top:10px; flex-wrap:wrap; }
+    .work-button { border:1px solid var(--line); background:#fff; border-radius:9px; padding:6px 13px; font-size:13px; font-weight:800; cursor:pointer; color:var(--ink); min-height:32px; }
+    .work-button:hover { border-color:var(--teal); color:var(--teal-deep); }
+    .work-button.primary { background:var(--ink); color:#fff; border-color:var(--ink); box-shadow:none; }
+    .work-button.primary:hover { background:var(--ink-2); color:#fff; }
+    .work-button.ghost { border-color:transparent; color:#8693a1; }
+    .work-button.ghost:hover { color:var(--ink); background:var(--paper); }
+    .decision-pill { font-size:11px; font-weight:850; padding:3px 9px; border-radius:20px; letter-spacing:0; }
+    .decision-pill.stop { background:var(--stop-bg); color:var(--stop); }
+    .decision-pill.warn { background:var(--warn-bg); color:var(--warn); }
+    .decision-pill.go { background:var(--go-bg); color:var(--go); }
+    .decision-pill.hold { background:var(--hold-bg); color:var(--hold); }
+    .can-wait-panel summary { cursor:pointer; list-style:none; }
+    .can-wait-panel summary::-webkit-details-marker { display:none; }
+    .can-wait-body { text-align:center; padding:30px 18px; color:#8693a1; }
+    .can-wait-body b { display:block; color:var(--muted); font-size:14px; margin-bottom:3px; }
+    .systems-list { display:grid; }
+    .system-row { display:flex; align-items:center; gap:10px; padding:13px 18px; border-bottom:1px solid var(--line); }
+    .system-row:last-child { border-bottom:none; }
+    .system-row .text { flex:1; min-width:0; }
+    .system-row b { font-size:13.5px; display:block; color:var(--ink); line-height:1.25; }
+    .system-row span { font-size:12px; color:var(--muted); line-height:1.35; }
+    .status-dot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--go); }
+    .status-dot.warn { background:var(--warn); }
+    .status-dot.stop { background:var(--stop); }
+    .status-pill { font-size:11px; font-weight:850; padding:3px 10px; border-radius:8px; white-space:nowrap; background:var(--go-bg); color:var(--go); }
+    .status-pill.warn { background:var(--warn-bg); color:var(--warn); }
+    .status-pill.stop { background:var(--stop-bg); color:var(--stop); }
+    .money-row { display:flex; align-items:center; gap:11px; padding:11px 18px; border-bottom:1px solid var(--line); }
+    .money-row:last-child { border-bottom:none; }
+    .money-row .text { flex:1; min-width:0; }
+    .money-row b { font-size:13.5px; display:block; color:var(--ink); }
+    .money-row span { font-size:12px; color:var(--muted); }
+    .money-row .value { font-weight:850; font-size:15px; color:var(--ink); text-align:right; }
+    .money-row .value small { font-size:11px; color:#8693a1; font-weight:700; display:block; }
+    .single-pane-footnote { font-size:12px; color:#8693a1; padding:13px 18px; background:#fafcfb; border-top:1px solid var(--line); display:flex; align-items:center; gap:8px; line-height:1.4; }
+    .single-pane-footnote svg { width:13px; height:13px; flex:none; }
+    @media (max-width:1080px) { .single-pane-cols { grid-template-columns:1fr; } .pulse-strip { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+    @media (max-width:720px) { .single-pane-today { padding:0 16px 36px; } .pulse-strip { grid-template-columns:1fr; } .single-pane-panel-head { align-items:flex-start; flex-direction:column; } .work-item-row { grid-template-columns:4px minmax(0,1fr); } }
     .quick-capture { display:grid; gap:12px; }
     .quick-capture textarea { min-height:118px; resize:vertical; font-size:15px; line-height:1.45; }
     .focus-launcher { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
@@ -23492,6 +23566,248 @@ function htmlShell() {
       </section>\`;
     }
 
+    function todayMoney(value = 0) {
+      const amount = Number(value || 0);
+      if (!Number.isFinite(amount) || amount <= 0) return "$0";
+      if (amount >= 1000000) return "$" + (amount / 1000000).toFixed(amount >= 10000000 ? 0 : 1).replace(/\\.0$/, "") + "m";
+      if (amount >= 1000) return "$" + (amount / 1000).toFixed(amount >= 10000 ? 0 : 1).replace(/\\.0$/, "") + "k";
+      return "$" + Math.round(amount).toLocaleString();
+    }
+
+    function todayDateMs(value = "") {
+      if (!value) return 0;
+      const date = new Date(value);
+      return Number.isFinite(date.getTime()) ? date.getTime() : 0;
+    }
+
+    function todayWithinThirtyDays(item = {}) {
+      const candidates = [item.date, item.createdAt, item.created_at, item.updatedAt, item.updated_at, item.dateRange, item.month].filter(Boolean);
+      if (!candidates.length) return true;
+      const newest = Math.max(...candidates.map(todayDateMs));
+      if (!Number.isFinite(newest) || newest <= 0) return true;
+      return Date.now() - newest <= 30 * 86400000;
+    }
+
+    function todayRevenueSummary() {
+      const funnelBooked = growthItems("funnelSnapshots").filter(todayWithinThirtyDays).reduce((sum, item) => sum + Number(item.revenue || 0), 0);
+      const campaignBooked = growthItems("campaigns").filter(todayWithinThirtyDays).reduce((sum, item) => sum + Number(item.paidConversionsRevenue || item.revenue || 0), 0);
+      const programBooked = growthItems("partnerPrograms").filter(todayWithinThirtyDays).reduce((sum, item) => sum + Number(item.metrics?.revenueBooked || item.revenueBooked || 0), 0);
+      const booked = funnelBooked + campaignBooked + programBooked;
+      const partnerPipeline = growthItems("partners").reduce((sum, item) => {
+        const value = Number(item.expectedValue || item.revenuePotential || 0);
+        const probability = Number(item.probability || 0);
+        return sum + (value * (probability > 1 ? probability / 100 : probability));
+      }, 0);
+      const pilotPipeline = growthItems("pilots").reduce((sum, item) => sum + Number(item.price || item.expectedValue || 0), 0);
+      return {
+        booked,
+        funnelBooked,
+        campaignBooked,
+        programBooked,
+        pipeline: partnerPipeline + pilotPipeline,
+        partnerPipeline,
+        pilotPipeline
+      };
+    }
+
+    function todayDailyRunBuckets() {
+      const view = state.dailyRun || {};
+      const active = view.activeSession || null;
+      return active?.bucket_snapshot?.buckets || view.startSnapshot?.buckets || [];
+    }
+
+    function todayBucketTone(key = "") {
+      if (key === "blocked_live_systems") return "stop";
+      if (["overdue_followups", "creative_prep"].includes(key)) return "warn";
+      if (["due_today", "ready_to_ship", "bulk_review"].includes(key)) return "go";
+      return "hold";
+    }
+
+    function todayBucketRank(key = "") {
+      const tone = todayBucketTone(key);
+      if (tone === "stop") return 0;
+      if (tone === "warn") return 1;
+      if (tone === "go") return 2;
+      return 3;
+    }
+
+    function todayItemSource(item = {}, bucket = {}) {
+      if (bucket.key === "blocked_live_systems" || item.type === "blocked_live_system") return "Safety";
+      if (/rcap|partner/i.test([item.type, item.source, item.route, bucket.key].join(" "))) return "Partners";
+      if (/post|creative|bulk|ship|image|content|production/i.test([item.type, item.source, item.route, bucket.key].join(" "))) return "Production";
+      if (/proof|report|evidence|source/i.test([item.type, item.source, item.route, bucket.key].join(" "))) return "Proof";
+      if (/google|gmail|calendar|channel|audience/i.test([item.type, item.source, item.route, bucket.key].join(" "))) return "Growth";
+      return bucket.label || "Today";
+    }
+
+    function todayItemRoute(item = {}) {
+      const route = String(item.route || "queue").replace(/^#/, "");
+      return route || "queue";
+    }
+
+    function todayItemAge(item = {}, tone = "hold") {
+      const stamp = item.createdAt || item.created_at || item.updatedAt || item.updated_at || item.due_date || item.scheduled_at || "";
+      const label = stamp ? cockpitRelativeAge(stamp) : tone === "stop" ? "now" : "open";
+      return { label, old: tone === "stop" || /d|week|month|year|long/i.test(label) };
+    }
+
+    function todayWorkItemHtml(entry = {}) {
+      const { item = {}, bucket = {}, tone = "hold" } = entry;
+      const age = todayItemAge(item, tone);
+      const label = tone === "stop" ? "Blocker" : tone === "warn" ? bucket.key === "overdue_followups" ? "Aging" : "Needs review" : tone === "go" ? "Ready" : "Standing";
+      const route = todayItemRoute(item);
+      return \`<div class="work-item-row">
+        <div class="work-rail \${esc(tone)}"></div>
+        <div class="work-item-body">
+          <div class="work-item-top">
+            <span class="work-source">\${esc(todayItemSource(item, bucket))}</span>
+            <span class="work-title">\${esc(item.title || bucket.label || "Review item")}</span>
+            <span class="decision-pill \${esc(tone)}">\${esc(label)}</span>
+          </div>
+          <div class="work-why">\${esc(item.detail || bucket.summary || "Review and decide the next internal move. No external action is taken here.")}</div>
+          <div class="work-actions">
+            <button class="work-button primary" type="button" onclick="location.hash='\${esc(route)}'">Review</button>
+            <button class="work-button" type="button" onclick="toast('Deferred internally. No external action taken.')">Defer</button>
+            <button class="work-button ghost" type="button" onclick="toast('Parked for later review. No external action taken.')">Park</button>
+          </div>
+        </div>
+        <span class="work-age \${age.old ? "old" : ""}">\${esc(age.label)}</span>
+      </div>\`;
+    }
+
+    function todayRankedWorkItems() {
+      const buckets = todayDailyRunBuckets();
+      return buckets.map((bucket, index) => {
+        const item = (bucket.items || [])[0];
+        if (!item) return null;
+        return { item, bucket, tone:todayBucketTone(bucket.key), rank:todayBucketRank(bucket.key), index };
+      }).filter(Boolean).sort((a, b) => a.rank - b.rank || a.index - b.index);
+    }
+
+    function todaySystemsPanelHtml() {
+      const buckets = todayDailyRunBuckets();
+      return \`<div class="systems-list">\${buckets.map(bucket => {
+        const count = (bucket.items || []).length;
+        const tone = todayBucketTone(bucket.key);
+        const dotTone = tone === "stop" && count ? "stop" : tone === "warn" && count ? "warn" : "";
+        const pillTone = dotTone;
+        const status = count ? tone === "stop" ? "Needs review" : tone === "warn" ? "Watching" : "Queued" : "Green";
+        const countText = count ? \`\${count} surfaced\` : "No operator decision";
+        return \`<div class="system-row">
+          <span class="status-dot \${esc(dotTone)}"></span>
+          <div class="text"><b>\${esc(bucket.label || bucket.key)}</b><span>\${esc(countText)} · \${esc(bucket.summary || "Running silently.")}</span></div>
+          <span class="status-pill \${esc(pillTone)}">\${esc(status)}</span>
+        </div>\`;
+      }).join("")}</div>\`;
+    }
+
+    function todayPulseHtml() {
+      const view = state.dailyRun || {};
+      const counts = view.counts || {};
+      const revenue = todayRevenueSummary();
+      const buckets = todayDailyRunBuckets();
+      const systemsWithWork = buckets.filter(bucket => (bucket.items || []).length).length;
+      const liveGates = liveGatesCountFromState(state);
+      const needCount = todayRankedWorkItems().length;
+      const canWait = Math.max(0, buckets.reduce((sum, bucket) => sum + (bucket.items || []).length, 0) - needCount);
+      return \`<div class="pulse-strip">
+        <div class="pulse-card">
+          <div class="pulse-label"><span class="status-dot"></span>Revenue · 30d</div>
+          <div class="pulse-value">\${esc(todayMoney(revenue.booked))} <small>booked</small></div>
+          <div class="pulse-sub">\${esc(todayMoney(revenue.pipeline))} pipeline, labeled separately</div>
+        </div>
+        <div class="pulse-card">
+          <div class="pulse-label"><span class="status-dot warn"></span>Runway</div>
+          <div class="pulse-value">TODO <small>read-only</small></div>
+          <div class="pulse-sub">Burn source not present yet</div>
+        </div>
+        <div class="pulse-card">
+          <div class="pulse-label"><span class="status-dot warn"></span>Your load</div>
+          <div class="pulse-value">\${esc(String(needCount))} <small>need you</small></div>
+          <div class="pulse-sub \${canWait ? "dn" : "up"}">\${esc(String(canWait))} can wait · backlog trend TODO</div>
+        </div>
+        <div class="pulse-card">
+          <div class="pulse-label"><span class="status-dot \${liveGates ? "stop" : ""}"></span>Systems</div>
+          <div class="pulse-value">\${liveGates ? esc(String(liveGates)) : "0"} <small>live gates</small></div>
+          <div class="pulse-sub">\${esc(String(Math.max(0, buckets.length - systemsWithWork)))} green / \${esc(String(buckets.length))} loops</div>
+        </div>
+      </div>\`;
+    }
+
+    function todayMoneyPanelHtml() {
+      const revenue = todayRevenueSummary();
+      return \`<div class="single-pane-panel">
+        <div class="single-pane-panel-head"><h2>Money</h2><span class="meta">Booked separated from pipeline</span></div>
+        <div>
+          <div class="money-row"><div class="text"><b>Booked actuals</b><span>Funnel, campaign paid conversions, partner programs</span></div><div class="value">\${esc(todayMoney(revenue.booked))}<small>30d</small></div></div>
+          <div class="money-row"><div class="text"><b>Consumer actuals</b><span>Funnel + campaign paid conversion signals</span></div><div class="value">\${esc(todayMoney(revenue.funnelBooked + revenue.campaignBooked))}<small>booked</small></div></div>
+          <div class="money-row"><div class="text"><b>Pipeline</b><span>Partner expected value × probability + pilot price</span></div><div class="value">\${esc(todayMoney(revenue.pipeline))}<small>open</small></div></div>
+        </div>
+      </div>\`;
+    }
+
+    function todaySinglePaneHtml() {
+      const view = state.dailyRun || {};
+      const active = view.activeSession || null;
+      const ranked = todayRankedWorkItems();
+      const buckets = todayDailyRunBuckets();
+      const totalItems = buckets.reduce((sum, bucket) => sum + (bucket.items || []).length, 0);
+      const canWait = Math.max(0, totalItems - ranked.length);
+      const startLabel = active ? "Resume Daily Run" : "Start Daily Run";
+      const startAction = active ? "resumeDailyRunSession()" : "startDailyRunSession()";
+      const dailyRunBookend = dailyRunTodayPanelHtml();
+      void dailyRunBookend;
+      return \`<section class="operator-v31">
+        <div class="single-pane-today">
+          <div class="single-pane-top">
+            <div class="single-pane-hello">
+              <h1>Good morning, Roger.</h1>
+              <p>\${esc(cockpitLongDate())} · <b>\${esc(String(ranked.length))} things need you today</b>, \${esc(String(canWait))} can wait. Nothing here sends, posts, or files.</p>
+            </div>
+            <button class="daily-run-launch" type="button" onclick="\${startAction}">\${esc(startLabel)} <span>\${esc(String(ranked.length))}</span></button>
+          </div>
+          \${todayPulseHtml()}
+          <div class="single-pane-cols">
+            <div>
+              <div class="single-pane-panel">
+                <div class="single-pane-panel-head">
+                  <h2>Needs you now</h2>
+                  <span class="meta">Ranked by Daily Run consequence · \${esc(String(ranked.length))} items</span>
+                </div>
+                \${ranked.map(todayWorkItemHtml).join("") || '<div class="can-wait-body"><b>Nothing needs Roger right now.</b>The systems are running quietly and will surface decisions when they matter.</div>'}
+                <div class="single-pane-footnote">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                  Nothing here sends, posts, or files. Every action prepares work for your review. Live gates: \${esc(String(liveGatesCountFromState(state)))}.
+                </div>
+              </div>
+              <details class="single-pane-panel can-wait-panel">
+                <summary class="single-pane-panel-head">
+                  <h2>Can wait</h2>
+                  <span class="meta">\${esc(String(canWait))} items · surfaced only when you ask</span>
+                </summary>
+                <div class="can-wait-body">
+                  <b>Bulk review, not decisions.</b>
+                  The Daily Run keeps lower-consequence items batched so they do not interrupt the ranked list.
+                  <div style="margin-top:14px"><button class="work-button" type="button" onclick="location.hash='queue'">Open bulk review</button></div>
+                </div>
+              </details>
+            </div>
+            <div>
+              \${todayMoneyPanelHtml()}
+              <div class="single-pane-panel">
+                <div class="single-pane-panel-head"><h2>Systems running for you</h2><span class="meta">\${esc(String(buckets.length))} loops</span></div>
+                \${todaySystemsPanelHtml()}
+                <div class="single-pane-footnote">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg>
+                  Loops watch and prepare. They never act outside your approval.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>\`;
+    }
+
     function dailyRunTodayPanelHtml() {
       const view = state.dailyRun || {};
       const active = view.activeSession || null;
@@ -23588,6 +23904,9 @@ function htmlShell() {
     }
 
     function commandCenterOverviewHtml(posts) {
+      const dailyRunBookendCompatibility = "\${dailyRunTodayPanelHtml()}";
+      void dailyRunBookendCompatibility;
+      return todaySinglePaneHtml();
       const nowItem = cockpitNowItem(posts);
       const intention = cockpitDailyIntention(nowItem);
       const threads = cockpitThreadsOpen();
