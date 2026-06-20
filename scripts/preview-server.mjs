@@ -16996,7 +16996,7 @@ function htmlShell() {
     }
 
     function setQueueTypeFilter(value) {
-      queueOriginFilter = ["all", "posts", "followups", "reports", "proof", "channels"].includes(value) ? value : "all";
+      queueOriginFilter = ["all", "content", "audience", "partner", "support", "safety", "source", "product-signal", "system"].includes(value) ? value : "all";
       render();
     }
 
@@ -17386,6 +17386,33 @@ function htmlShell() {
         });
     }
 
+    const queueCategoryDefinitions = [
+      ["content", "Content"],
+      ["audience", "Audience"],
+      ["partner", "Partner"],
+      ["support", "Support"],
+      ["safety", "Safety"],
+      ["source", "Source"],
+      ["product-signal", "Product Signal"],
+      ["system", "System"]
+    ];
+
+    function queueDerivedCategory(item = {}) {
+      const text = [item.type, item.label, item.meta, item.title, item.context, item.sourceType, item.destination].join(" ").toLowerCase();
+      if (/customer_support_issue|support_issue|support/.test(text)) return "support";
+      if (/compliance_concern|suppression|do not contact|do-not-contact|blocked live|live gate|safety/.test(text)) return "safety";
+      if (/rcap|partner|pilot|revenue_pipeline|proposal|funding|closed won|follow-up|followup/.test(text)) return "partner";
+      if (/funnel|expungement_ai|recordshield|conversion|payment|completion|product signal|pilot_update/.test(text)) return "product-signal";
+      if (/gmail|calendar|stripe|supabase|drive|social connector|manual_import|channel review|channel setup|integration|connector|health|smoke|data integrity|google_insight/.test(text)) return "system";
+      if (/report|proof|evidence|source|meeting_notes|data room/.test(text)) return "source";
+      if (/audience|campaign|outreach|warm|follower|import|reconciliation/.test(text)) return "audience";
+      return "content";
+    }
+
+    function queueCategoryLabel(category = "") {
+      return queueCategoryDefinitions.find(([key]) => key === category)?.[1] || "Content";
+    }
+
     const guidedBucketCopy = {
       blocked_live_systems:["Blocked items", "Reconnect or park blockers before operating the rest of the day.", "Blocker fix"],
       due_today:["Due today", "Posts and tasks scheduled to go out today.", "Time-sensitive ship"],
@@ -17530,7 +17557,7 @@ function htmlShell() {
       </section>\`;
     }
 
-    function queueReviewRows(reviewPosts) {
+    function queueReviewRows(reviewPosts, options = {}) {
       const postRows = sortQueuePosts(reviewPosts).slice(0, 8).map(post => {
         const image = imageForPost(post.id);
         const status = simpleQueueStatus(post, image);
@@ -17613,22 +17640,50 @@ function htmlShell() {
         actionJs: "location.hash='settings'",
         details: "<p class=\\"muted\\">Channel setup stays protected in Settings. No live action runs from Queue.</p>"
       }));
+      const supportRows = (state.growthInbox || []).filter(item => /customer_support_issue|support_issue/i.test([item.sourceType, item.destination, item.type, item.category].join(" ")) && !/converted|ignored|archived|done/i.test(String(item.status || ""))).slice(0, 4).map((item, index) => ({
+        id: "support-" + index,
+        type: item.sourceType || item.destination || "support_issue",
+        label: "Support",
+        title: item.title || item.raw_input || item.text || "Support review",
+        context: todayFounderCopy(item.summary || item.notes || "Review the support item manually outside the OS."),
+        status: "Status: " + queueReviewStatusLabel(item),
+        meta: item.owner || "Manual review",
+        action: "Review",
+        actionJs: "location.hash='growth-inbox'",
+        details: "<p class=\\"muted\\">Support records are routed for human review only. No reply is sent from Queue.</p>"
+      }));
+      const productSignalRows = [
+        ...(state.growthInbox || []).filter(item => /pilot_update/i.test(String(item.sourceType || ""))),
+        ...(state.funnelSnapshots || []).slice(0, 4)
+      ].filter(Boolean).slice(0, 4).map((item, index) => ({
+        id: "product-signal-" + index,
+        type: item.sourceType || "funnel_snapshot",
+        label: "Product Signal",
+        title: item.title || item.dateRange || item.month || "Product signal",
+        context: item.summary || item.notes || "Conversion, payment, completion, pilot, RecordShield, or Expungement.ai signal for review.",
+        status: "Status: " + queueReviewStatusLabel(item),
+        meta: item.source || item.campaignId || "Read-only signal",
+        action: "Review",
+        actionJs: "location.hash='growth'",
+        details: "<p class=\\"muted\\">Product signals are read-only inputs. Queue does not change eligibility, payments, packets, or provider state.</p>"
+      }));
       const rcapRows = rcapRevenueQueueRows();
-      const all = [...postRows, ...followUps, ...reports, ...proof, ...partners, ...channelReviews, ...rcapRows];
-      return queueOriginFilter === "all" ? all : all.filter(item => item.type === queueOriginFilter);
+      const all = [...postRows, ...followUps, ...reports, ...proof, ...partners, ...channelReviews, ...supportRows, ...productSignalRows, ...rcapRows]
+        .map(item => ({ ...item, category:item.category || queueDerivedCategory(item) }));
+      return options.allCategories || queueOriginFilter === "all" ? all : all.filter(item => item.category === queueOriginFilter);
     }
 
     function queueReviewListHtml(reviewPosts) {
-      const rows = queueReviewRows(reviewPosts);
+      const rows = queueReviewRows(reviewPosts, { allCategories:true });
       if (!rows.length) return \`<div class="panel muted"><h2>Your Queue is clear.</h2><p>Import a calendar or add a new draft to get started.</p></div>\`;
-      const helper = queueOriginFilter === "posts"
+      const helper = queueOriginFilter === "content"
         ? '<p class="muted queue-social-helper">These are draft social posts imported from your calendar or created manually. Review copy, generate images, preview, then approve or schedule.</p>'
         : "";
       return \`\${helper}<div class="queue-review-list">\${rows.map(item => \`<article class="queue-review-item">
         <div class="queue-review-item-main">
           <div class="queue-review-kicker">
             \${item.queuePostId ? \`<label class="queue-select"><input type="checkbox" \${selectedPosts.has(item.queuePostId) ? "checked" : ""} onchange="toggleBulkPost('\${item.queuePostId}', this.checked)"> Select</label>\` : ""}
-            <span class="queue-type-line">\${esc(item.typeLine || (item.label + " · " + (item.meta || "Internal")))}</span><span class="badge info">\${esc(item.status)}</span>
+            <span class="queue-type-line">\${esc(queueCategoryLabel(item.category))} · \${esc(item.typeLine || (item.label + " · " + (item.meta || "Internal")))}</span><span class="badge info">\${esc(item.status)}</span>
           </div>
           <h3>\${esc(item.title)}</h3>
           <p>\${esc(item.context)}</p>
@@ -17647,17 +17702,13 @@ function htmlShell() {
     }
 
     function queueReviewTabsHtml(reviewPosts) {
-      const cards = queueReviewSummaryCards(reviewPosts);
-      const countFor = {
-        all: cards.reduce((sum, item) => sum + Number(item[1] || 0), 0),
-        posts: cards.find(item => item[0] === "Posts")?.[1] || 0,
-        followups: (cards.find(item => item[0] === "Partner follow-ups")?.[1] || 0) + (state.partners || []).filter(item => item.nextAction || /follow|review|waiting|needs/i.test([item.status, item.stage, item.notes].join(" "))).length,
-        reports: cards.find(item => item[0] === "Reports")?.[1] || 0,
-        proof: cards.find(item => item[0] === "Proof-to-content")?.[1] || 0,
-        channels: (state.socialAccounts || []).filter(account => !account.connected || /review|setup|not_connected|needs/i.test([account.status, account.connectionStatus, account.setupStatus].join(" "))).length,
-        rcap: cards.find(item => item[0] === "RCAP tasks")?.[1] || 0
-      };
-      const tabs = [["all", "All"], ["posts", "Social Posts"], ["followups", "Partner Follow-ups"], ["reports", "Reports"], ["proof", "Proof-to-Content"], ["channels", "Channel Reviews"], ["rcap", "RCAP Tasks"]];
+      const rows = queueReviewRows(reviewPosts);
+      const countFor = rows.reduce((memo, item) => {
+        memo.all = (memo.all || 0) + 1;
+        memo[item.category] = (memo[item.category] || 0) + 1;
+        return memo;
+      }, { all:0 });
+      const tabs = [["all", "All"], ...queueCategoryDefinitions];
       return \`<div class="queue-review-tabs" aria-label="Queue review filters">\${tabs.map(([key, label]) => \`<button type="button" class="\${queueOriginFilter === key ? "active" : ""}" onclick="setQueueTypeFilter('\${key}')">\${label} \${Number(countFor[key] || 0)}</button>\`).join("")}</div>\`;
     }
 
