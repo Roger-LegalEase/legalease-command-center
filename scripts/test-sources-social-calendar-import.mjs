@@ -12,15 +12,17 @@ const topNav = source.slice(navStart, navEnd);
 
 for (const [label, href] of [
   ["Today", "#today"],
-  ["Command", "#command"],
-  ["Queue", "#queue"],
-  ["Sources", "#sources"],
-  ["Settings", "#settings"]
+  ["Growth", "#growth"],
+  ["Partners", "#partner-hub"],
+  ["Production", "#production"],
+  ["Proof", "#proof"],
+  ["Settings &amp; Health", "#settings"],
+  ["Le-E", "#le-e"]
 ]) {
   assert(topNav.includes(`href="${href}"`) && topNav.includes(`>${label}</a>`), `Top nav should keep ${label}`);
 }
-assert.equal((topNav.match(/class="nav-top-link"/g) || []).length, 5, "Top nav should keep exactly five primary links");
-assert(!topNav.includes("#production"), "Top nav should not re-add Production");
+assert.equal((topNav.match(/class="nav-top-link"/g) || []).length, 7, "Top nav should keep six surfaces plus Le-E");
+assert(!topNav.includes("#sources"), "Sources should live under Growth tabs instead of primary nav");
 
 const queueStart = source.indexOf('<section id="queue"');
 const sourcesStart = source.indexOf('<section id="sources"', queueStart);
@@ -58,6 +60,7 @@ for (const required of [
 }
 
 assert(sources.includes("${socialCalendarImportHtml()}"), "Sources should render the Import Social Calendar panel with a shared helper call");
+assert(sources.includes('\\${surfaceTabsHtml("growth", currentPageId)}'), "Sources should render under the Growth surface tabs");
 assert(!sources.includes("${socialCalendarImportHtml}"), "Sources should not interpolate an out-of-scope import variable or function object");
 
 for (const required of [

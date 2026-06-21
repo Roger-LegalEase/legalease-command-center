@@ -9,6 +9,18 @@ function number(value = 0) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function manualRunwayInputs(state = {}) {
+  const inputs = state.runwayInputs || {};
+  const cashRaw = inputs.currentCashBalance ?? inputs.cashBalance ?? "";
+  const burnRaw = inputs.monthlyBurn ?? "";
+  const cashEntered = cashRaw !== "" && cashRaw !== null && cashRaw !== undefined;
+  const burnEntered = burnRaw !== "" && burnRaw !== null && burnRaw !== undefined;
+  const cashOnHand = cashEntered ? number(cashRaw) : 0;
+  const burnMonthly = burnEntered ? number(burnRaw) : 0;
+  const complete = cashEntered && burnEntered && cashOnHand > 0 && burnMonthly > 0;
+  return { cashOnHand, burnMonthly, complete };
+}
+
 function dateMs(value = "") {
   const date = new Date(value || 0);
   return Number.isFinite(date.getTime()) ? date.getTime() : 0;
@@ -33,19 +45,18 @@ export function buildCashRunwayPulse(state = {}, options = {}) {
     return sum + number(item.expectedValue || item.revenuePotential) * (probability > 1 ? probability / 100 : probability);
   }, 0);
   const pilotPipeline = list(state.pilots).reduce((sum, item) => sum + number(item.price || item.expectedValue), 0);
-  const burnMonthly = number(state.metrics?.monthlyBurn || state.metrics?.burnMonthly || state.runway?.monthlyBurn || state.settings?.monthlyBurn);
-  const cashOnHand = number(state.metrics?.cashOnHand || state.runway?.cashOnHand || state.settings?.cashOnHand);
+  const runway = manualRunwayInputs(state);
   return {
     booked_30d,
     booked_sources: { funnel: funnelBooked, campaigns: campaignBooked, partner_programs: partnerProgramBooked },
     pipeline_weighted: partnerPipelineWeighted + pilotPipeline,
     pipeline_sources: { partners_weighted: partnerPipelineWeighted, pilots: pilotPipeline },
-    burn_monthly: burnMonthly,
-    cash_on_hand: cashOnHand,
-    runway_months: burnMonthly > 0 && cashOnHand > 0 ? Math.floor((cashOnHand / burnMonthly) * 10) / 10 : null,
+    burn_monthly: runway.burnMonthly,
+    cash_on_hand: runway.cashOnHand,
+    runway_months: runway.complete ? Math.floor((runway.cashOnHand / runway.burnMonthly) * 10) / 10 : null,
     read_only: true,
     external_action: false,
-    todo: burnMonthly > 0 && cashOnHand > 0 ? "" : "Add read-only burn and cash-on-hand signals to compute runway months."
+    todo: runway.complete ? "" : "Add cash + burn to compute."
   };
 }
 

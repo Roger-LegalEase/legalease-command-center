@@ -172,14 +172,19 @@ const pulseState = {
   partnerPrograms: [{ id:"program-paid", metrics:{ revenueBooked: 500 }, updatedAt:"2026-06-03T10:00:00.000Z" }],
   partners: [{ id:"partner-pipeline", expectedValue: 10000, probability: 25, updatedAt:"2026-06-01T10:00:00.000Z" }],
   pilots: [{ id:"pilot-pipeline", price: 3000, updatedAt:"2026-06-01T10:00:00.000Z" }],
-  metrics: { monthlyBurn: 1000, cashOnHand: 5500 },
+  metrics: { monthlyBurn: 1, cashOnHand: 1 },
+  runwayInputs: { monthlyBurn: 1000, currentCashBalance: 5500 },
   activityEvents: [{ id:"completed-today", eventType:"task_completed", createdAt:"2026-06-05T11:00:00.000Z" }]
 };
 const cashPulse = buildCashRunwayPulse(pulseState, { now });
 assert.equal(cashPulse.booked_30d, 2500, "Cash/Runway pulse should headline booked actuals only.");
 assert.equal(cashPulse.pipeline_weighted, 5500, "Pipeline should stay separately labeled and may be weighted.");
-assert.equal(cashPulse.runway_months, 5.5, "Runway months should use read-only cash and burn signals.");
+assert.equal(cashPulse.runway_months, 5.5, "Runway months should use manual operator cash and burn inputs.");
 assert.equal(cashPulse.external_action, false);
+
+const incompleteCashPulse = buildCashRunwayPulse({ ...pulseState, runwayInputs: { monthlyBurn: "", currentCashBalance: 5500 } }, { now });
+assert.equal(incompleteCashPulse.runway_months, null, "Runway should not guess when either manual input is empty.");
+assert.equal(incompleteCashPulse.todo, "Add cash + burn to compute.");
 
 const capacityPulse = buildFounderCapacityPulse(pulseState, { now, warningThreshold: 1 });
 assert(capacityPulse.items_needing_operator > 0, "Founder Capacity should count items needing the operator.");

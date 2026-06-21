@@ -6744,6 +6744,11 @@ const qualityLabels = {
 };
 
 const initialState = {
+  runwayInputs: {
+    currentCashBalance: "",
+    monthlyBurn: "",
+    updatedAt: ""
+  },
   posts: [
     {
       id: "post-001",
@@ -14461,10 +14466,14 @@ function htmlShell() {
     .money-row span { font-size:12px; color:var(--muted); }
     .money-row .value { font-weight:850; font-size:15px; color:var(--ink); text-align:right; }
     .money-row .value small { font-size:11px; color:#8693a1; font-weight:700; display:block; }
+    .runway-input-form { display:grid; grid-template-columns:1fr 1fr auto; gap:10px; padding:14px 18px; border-top:1px solid var(--line); align-items:end; }
+    .runway-input-form label { display:grid; gap:6px; margin:0; font-size:11.5px; font-weight:850; color:#8693a1; text-transform:uppercase; letter-spacing:.04em; }
+    .runway-input-form input { width:100%; min-height:38px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--ink); padding:8px 10px; font:inherit; font-size:13px; font-weight:750; }
+    .runway-input-form button { min-height:38px; border-radius:10px; padding:8px 13px; font-size:13px; }
     .single-pane-footnote { font-size:12px; color:#8693a1; padding:13px 18px; background:#fafcfb; border-top:1px solid var(--line); display:flex; align-items:center; gap:8px; line-height:1.4; }
     .single-pane-footnote svg { width:13px; height:13px; flex:none; }
     @media (max-width:1080px) { .single-pane-cols { grid-template-columns:1fr; } .pulse-strip { grid-template-columns:repeat(2, minmax(0,1fr)); } }
-    @media (max-width:720px) { .single-pane-today { padding:0 16px 36px; } .pulse-strip { grid-template-columns:1fr; } .single-pane-panel-head { align-items:flex-start; flex-direction:column; } .work-item-row { grid-template-columns:4px minmax(0,1fr); } }
+    @media (max-width:720px) { .single-pane-today { padding:0 16px 36px; } .pulse-strip { grid-template-columns:1fr; } .single-pane-panel-head { align-items:flex-start; flex-direction:column; } .work-item-row { grid-template-columns:4px minmax(0,1fr); } .runway-input-form { grid-template-columns:1fr; } }
     .quick-capture { display:grid; gap:12px; }
     .quick-capture textarea { min-height:118px; resize:vertical; font-size:15px; line-height:1.45; }
     .focus-launcher { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
@@ -14624,6 +14633,10 @@ function htmlShell() {
     .nav-menu-summary:focus-visible { background:rgba(0,169,157,.1); color:#0f172a; }
     .nav-top-link.active,
     .nav-menu-summary.active { background:#020D66; color:#fff; }
+    .surface-tabs { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:12px 0 14px; padding:8px; border:1px solid var(--line); border-radius:18px; background:rgba(255,255,255,.72); box-shadow:0 10px 24px rgba(15,31,92,.05); }
+    .surface-tabs a { display:inline-flex; align-items:center; justify-content:center; min-height:34px; padding:0 12px; border-radius:999px; text-decoration:none; color:var(--ink-2); font-size:12px; font-weight:850; background:#fff; border:1px solid rgba(15,31,92,.08); }
+    .surface-tabs a:hover { border-color:rgba(0,169,157,.35); color:var(--teal-deep); }
+    .surface-tabs a.active { background:var(--ink); color:#fff; border-color:var(--ink); }
     .nav-menu { position:relative; display:inline-flex; overflow:visible; }
     .nav-menu-summary { list-style:none; }
     .nav-menu-summary::-webkit-details-marker { display:none; }
@@ -15554,10 +15567,12 @@ function htmlShell() {
       <a class="brand-lockup" href="#overview"><span>LegalEase</span><strong>Command Center</strong></a>
       <nav class="top-nav" aria-label="Primary">
         <a class="nav-top-link" href="#today" data-nav-section="today">Today</a>
-        <a class="nav-top-link" href="#command" data-nav-section="command">Command</a>
-        <a class="nav-top-link" href="#queue" data-nav-section="queue">Queue</a>
-        <a class="nav-top-link" href="#sources" data-nav-section="sources">Sources</a>
-        <a class="nav-top-link" href="#settings" data-nav-section="settings">Settings</a>
+        <a class="nav-top-link" href="#growth" data-nav-section="growth">Growth</a>
+        <a class="nav-top-link" href="#partner-hub" data-nav-section="partners">Partners</a>
+        <a class="nav-top-link" href="#production" data-nav-section="production">Production</a>
+        <a class="nav-top-link" href="#proof" data-nav-section="proof">Proof</a>
+        <a class="nav-top-link" href="#settings" data-nav-section="settings">Settings &amp; Health</a>
+        <a class="nav-top-link" href="#le-e" data-nav-section="lee">Le-E</a>
       </nav>
     </header>
     <div>
@@ -23721,12 +23736,20 @@ function htmlShell() {
     }
 
     function todayRunwaySummary() {
-      const burn = Number(state.metrics?.monthlyBurn || state.metrics?.burnMonthly || state.runway?.monthlyBurn || state.settings?.monthlyBurn || 0);
-      const cash = Number(state.metrics?.cashOnHand || state.runway?.cashOnHand || state.settings?.cashOnHand || 0);
+      const inputs = state.runwayInputs || {};
+      const cashRaw = inputs.currentCashBalance ?? inputs.cashBalance ?? "";
+      const burnRaw = inputs.monthlyBurn ?? "";
+      const cashEntered = cashRaw !== "" && cashRaw !== null && cashRaw !== undefined;
+      const burnEntered = burnRaw !== "" && burnRaw !== null && burnRaw !== undefined;
+      const cash = cashEntered ? Number(cashRaw) : 0;
+      const burn = burnEntered ? Number(burnRaw) : 0;
+      const complete = cashEntered && burnEntered && Number.isFinite(cash) && Number.isFinite(burn) && cash > 0 && burn > 0;
       return {
         burn,
         cash,
-        months: burn > 0 && cash > 0 ? Math.floor((cash / burn) * 10) / 10 : null
+        cashValue: cashEntered && Number.isFinite(cash) ? String(cash) : "",
+        burnValue: burnEntered && Number.isFinite(burn) ? String(burn) : "",
+        months: complete ? Math.floor((cash / burn) * 10) / 10 : null
       };
     }
 
@@ -23847,8 +23870,8 @@ function htmlShell() {
         </div>
         <div class="pulse-card">
           <div class="pulse-label"><span class="status-dot \${runway.months === null ? "warn" : ""}"></span>Runway</div>
-          <div class="pulse-value">\${runway.months === null ? "Unknown" : esc(String(runway.months))} <small>\${runway.months === null ? "read-only" : "mo"}</small></div>
-          <div class="pulse-sub">\${runway.months === null ? "Add cash and burn signals" : "Burn " + todayMoney(runway.burn) + "/mo"}</div>
+          <div class="pulse-value">\${runway.months === null ? "add cash + burn to compute" : esc(String(runway.months))} <small>\${runway.months === null ? "" : "mo"}</small></div>
+          <div class="pulse-sub">\${runway.months === null ? "Manual operator inputs only" : "Cash " + todayMoney(runway.cash) + " · burn " + todayMoney(runway.burn) + "/mo"}</div>
         </div>
         <div class="pulse-card">
           <div class="pulse-label"><span class="status-dot \${capacity.overload ? "warn" : ""}"></span>Your load</div>
@@ -23865,13 +23888,20 @@ function htmlShell() {
 
     function todayMoneyPanelHtml() {
       const revenue = todayRevenueSummary();
+      const runway = todayRunwaySummary();
       return \`<div class="single-pane-panel">
         <div class="single-pane-panel-head"><h2>Money</h2><span class="meta">Booked separated from pipeline</span></div>
         <div>
           <div class="money-row"><div class="text"><b>Booked actuals</b><span>Funnel, campaign paid conversions, partner programs</span></div><div class="value">\${esc(todayMoney(revenue.booked))}<small>30d</small></div></div>
           <div class="money-row"><div class="text"><b>Consumer actuals</b><span>Funnel + campaign paid conversion signals</span></div><div class="value">\${esc(todayMoney(revenue.funnelBooked + revenue.campaignBooked))}<small>booked</small></div></div>
           <div class="money-row"><div class="text"><b>Pipeline</b><span>Partner expected value × probability + pilot price</span></div><div class="value">\${esc(todayMoney(revenue.pipeline))}<small>open</small></div></div>
+          <div class="money-row"><div class="text"><b>Runway</b><span>Current cash balance ÷ monthly burn</span></div><div class="value">\${runway.months === null ? "add cash + burn to compute" : esc(String(runway.months))}<small>\${runway.months === null ? "manual inputs" : "months"}</small></div></div>
         </div>
+        <form class="runway-input-form" onsubmit="saveRunwayInputs(event)">
+          <label>Current cash balance<input name="currentCashBalance" type="number" min="0" step="0.01" inputmode="decimal" value="\${esc(runway.cashValue)}" placeholder="Add cash"></label>
+          <label>Monthly burn<input name="monthlyBurn" type="number" min="0" step="0.01" inputmode="decimal" value="\${esc(runway.burnValue)}" placeholder="Add burn"></label>
+          <button type="submit">Save</button>
+        </form>
       </div>\`;
     }
 
@@ -24460,13 +24490,30 @@ function htmlShell() {
 
     function sectionLandingConfig(section) {
       const configs = [
-        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Manage content, campaigns, outreach, and manual social publishing.", links:[["Growth Inbox","growth-inbox"],["Capture Ideas","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Metrics","metrics"],["Social Posts","queue"],["Content Calendar","content-bank"]] },
+        { id:"growth", eyebrow:"Growth", title:"Growth", copy:"Manage audience, campaigns, inbox, and manual outreach tracking.", links:[["Growth Inbox","growth-inbox"],["Capture Ideas","capture-inbox"],["Campaigns","campaigns"],["RecordShield Funnel","funnel"],["Content Bank","content-bank"],["Audience Sources","sources"]] },
         { id:"partner-hub", eyebrow:"Partners", title:"Partners", copy:"Track partner conversations, follow-ups, and active programs.", links:[["Partners","partners","Open Partners"],["Partner Programs","partner-programs","Open Partner Programs"],["Follow-ups","partners","Review Follow-ups"],["Partner Proof","partner-reports","Review Partner Proof"],["Partner Pages","partner-pages","Open Partner Pages"],["Partner Dashboards","partner-dashboards","Open Partner Dashboards"],["Partner Proposals","partner-proposals","Open Partner Proposals"],["Partner Reports","partner-reports","Open Partner Reports"],["RCAP Program","rcap","Open RCAP Program"]] },
-        { id:"production", eyebrow:"Production", title:"Production", copy:"Review content and assets before anything is posted, published, or shared.", links:[["Content Bank","content-bank"],["Queue","queue"],["Assets","assets"],["Posted","posted"]] },
-        { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Capture wins, customer notes, evidence, and investor-ready proof.", links:[["Proof","evidence-room"],["Weekly Evidence Pack","reports"],["Reports","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Final Impact Reports","partner-reports"]] },
+        { id:"production", eyebrow:"Production", title:"Production", copy:"Review content and assets before anything is posted, published, or shared.", links:[["Pipeline","production"],["Queue","queue"],["Posts","posted"],["Assets","assets"],["Autonomy","autonomy"]] },
+        { id:"proof", eyebrow:"Proof", title:"Proof", copy:"Capture wins, customer notes, evidence, and investor-ready proof.", links:[["Proof","proof"],["Evidence Room","evidence-room"],["Weekly Evidence Pack","reports"],["Data Room","dataroom"],["SOC 2 Readiness","soc2"],["Metrics","metrics"]] },
         { id:"more", eyebrow:"More", title:"More", copy:"Settings, recovery, support tools, and focused work views.", links:[["Tasks","tasks","Open Tasks"],["Today Tools","overview","Open Today Tools"],["Blocked Tasks","tasks-blocked","Review Blocked Tasks"],["Waiting Tasks","tasks-waiting","Review Waiting Tasks"],["This Week Tasks","tasks-this-week","Review This Week"],["Roundtable Notes","conversation-notes","Open Roundtable Notes"],["RCAP Program","rcap","Open RCAP Program","Record Clearing Access Program review workspace"],["Guide","operator-manual","Open Guide"],["Team Roles","roles","Open Team Roles"],["App Status","os-health","Open App Status"],["Recovery Mode","safe-mode","Open Recovery Mode"]] }
       ];
       return configs.find(item => item.id === section) || configs[0];
+    }
+
+    function surfaceTabsHtml(surface, activePage = "overview") {
+      const groups = {
+        today:[["Today","today"],["Focus","focus"],["Morning Brief","morning-brief"],["Daily Closeout","daily-closeout"]],
+        growth:[["Growth","growth"],["Inbox","growth-inbox"],["Campaigns","campaigns"],["Content Bank","content-bank"],["Audience Sources","sources"]],
+        partners:[["Partners","partner-hub"],["Revenue","partners"],["Distribution","partner-programs"],["RCAP","rcap"],["Pilots","pilots"]],
+        production:[["Pipeline","production"],["Queue","queue"],["Posts","posted"],["Assets","assets"],["Autonomy","autonomy"]],
+        proof:[["Proof","proof"],["Evidence","evidence-room"],["Data Room","dataroom"],["SOC 2","soc2"],["Metrics","metrics"]],
+        settings:[["Settings","settings"],["OS Health","os-health"],["Data Integrity","data-integrity"],["Connectors","automation"],["Safe Mode","safe-mode"]]
+      };
+      const items = groups[surface] || [];
+      return \`<nav class="surface-tabs" aria-label="\${esc(surface)} surface">\${items.map(([label, href]) => {
+        const target = href === "today" ? "overview" : href === "rcap" ? "production-activation-rcap" : href;
+        const active = target === activePage || (href === "rcap" && activePage === "production-activation-rcap");
+        return \`<a class="\${active ? "active" : ""}" href="#\${esc(href)}">\${esc(label)}</a>\`;
+      }).join("")}</nav>\`;
     }
 
     function growthPostTitle(post = {}) {
@@ -24608,8 +24655,8 @@ function htmlShell() {
         <section class="growth-hero">
           <div>
             <div class="eyebrow">Command</div>
-            <h1>Command</h1>
-            <p>Move campaigns, partners, channels, and launch work from one place.</p>
+            <h1>Growth</h1>
+            <p>Move audience, inbox, campaign, and manual outreach work from one place.</p>
             <div class="growth-safety-pills"><span class="growth-pill">Safe mode: nothing sends or publishes automatically.</span></div>
           </div>
           <div class="growth-hero-actions">
@@ -24617,6 +24664,7 @@ function htmlShell() {
             <button type="button" onclick="location.hash='sources'">Open Sources</button>
           </div>
         </section>
+        \${surfaceTabsHtml("growth", currentPageId)}
         \${commandPublisherSummaryHtml()}
         <section class="growth-card">\${dailyRunQuickCaptureHtml("command")}</section>
         \${googleIntelligencePanelHtml("command")}
@@ -25072,6 +25120,7 @@ function htmlShell() {
             <button type="button" onclick="document.getElementById('production-results')?.scrollIntoView({ behavior:'smooth', block:'start' })">Add Result</button>
           </div>
         </section>
+        \${surfaceTabsHtml("production", currentPageId)}
 
         <section class="production-card">
           <div class="production-card-head"><div><h2>Production Summary</h2><small>Content that needs creation, review, or manual tracking.</small></div></div>
@@ -25301,6 +25350,7 @@ function htmlShell() {
           </div>
           <div class="operator-strip-status"><span class="operator-status-label warn">Next action</span><button class="primary" onclick="location.hash='\${esc(config.links[0]?.[1] || "overview")}'">Start here</button></div>
         </section>
+        \${surfaceTabsHtml(config.id === "partner-hub" ? "partners" : config.id, currentPageId)}
         <div class="landing-grid section">
           <section class="section-band">
             <div class="simple-panel-head"><h2>Current work</h2><button onclick="location.hash='overview'">Today</button></div>
@@ -26565,6 +26615,7 @@ function htmlShell() {
             <button type="button" onclick="toast('Data Room item queued internally for review.')">Add to Data Room</button>
           </div>
         </section>
+        \${surfaceTabsHtml("proof", currentPageId)}
 
         <section class="proof-card">
           <div class="proof-card-head"><div><h2>Proof Summary</h2><small>What can support the next update</small></div></div>
@@ -26850,10 +26901,11 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const pathRoute = String(location.pathname || "/").replace(/^\\/+|\\/+$/g, "");
       const requestedPage = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#overview")).replace("#", "");
-      const routeAliases = { today:"overview", command:"growth", "le-e":"lee", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings" };
+      const routeAliases = { today:"overview", command:"growth", "le-e":"lee", partner:"partner-hub", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings" };
       const normalizedPage = routeAliases[requestedPage] || requestedPage;
       const knownPages = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "overview";
+      currentPageId = pageId;
       if (pageId === "safe-mode") {
         renderSafeBootShell({
           ...(stateFetchDiagnostics || {}),
@@ -26920,6 +26972,7 @@ function htmlShell() {
         \${safeRenderModule("soc2-evidence", () => soc2EvidencePageHtml(pageClass))}
         \${safeRenderModule("soc2-policies", () => soc2PoliciesPageHtml(pageClass))}
         <section id="queue" class="queue-review-shell \${pageClass("queue")}">
+          \${surfaceTabsHtml("production", currentPageId)}
           <div class="queue-review-hero">
             <div class="queue-review-hero-head">
               <div>
@@ -26998,6 +27051,7 @@ function htmlShell() {
           </div>
         </section>
         <section id="sources" class="section secondary \${pageClass("sources")}">
+          \${surfaceTabsHtml("growth", currentPageId)}
           \${socialCalendarImportHtml()}
           \${rcapRevenueFoundationHtml()}
           <details open>
@@ -27056,6 +27110,7 @@ function htmlShell() {
         \${dataRoomPageHtml(pageClass)}
         \${safeRenderModule("metrics", () => ["metrics", "kpis"].includes(pageId) ? metricsDashboardHtml(pageClass) : "")}
         <section id="settings" class="section secondary section-page lee-bubble-safe-space \${pageClass("settings")}">
+          \${surfaceTabsHtml("settings", currentPageId)}
           \${settingsHealthReadoutHtml()}
           <details>
             <summary>Launch setup</summary>
@@ -27150,10 +27205,12 @@ function htmlShell() {
 
     function navSectionForPage(pageId = "overview") {
       if (["overview", "focus", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout"].includes(pageId)) return "today";
-      if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports", "production", "production-activation-rcap"].includes(pageId)) return "command";
-      if (["queue", "posted", "reports"].includes(pageId)) return "queue";
-      if (["sources", "content-bank", "assets", "proof", "metrics", "kpis", "evidence-room", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "sources";
-      if (["settings", "more", "data-integrity", "operator-manual", "handoff-contract", "roles", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "autonomy", "automation", "os-health", "smoke-test", "operator-search", "conversation-notes"].includes(pageId)) return "settings";
+      if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "content-bank", "sources"].includes(pageId)) return "growth";
+      if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports", "production-activation-rcap", "pilots"].includes(pageId)) return "partners";
+      if (["production", "queue", "posted", "assets", "autonomy"].includes(pageId)) return "production";
+      if (["proof", "metrics", "kpis", "evidence-room", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
+      if (["lee"].includes(pageId)) return "lee";
+      if (["settings", "more", "data-integrity", "operator-manual", "handoff-contract", "roles", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "automation", "os-health", "smoke-test", "operator-search", "conversation-notes", "safe-mode"].includes(pageId)) return "settings";
       return "settings";
     }
 
@@ -27296,6 +27353,17 @@ function htmlShell() {
       const result = await api("/api/growth/upsert", { method:"POST", body:JSON.stringify({ collection, item }) });
       state = result.state;
       toast(result.message || "Saved.");
+      render();
+      return result;
+    }
+
+    async function saveRunwayInputs(event) {
+      event.preventDefault();
+      const form = event.target;
+      const data = Object.fromEntries(new FormData(form).entries());
+      const result = await api("/api/runway-inputs", { method:"POST", body:JSON.stringify(data) });
+      state = result.state;
+      toast(result.message || "Runway inputs saved.");
       render();
       return result;
     }
@@ -30780,6 +30848,31 @@ async function handleRequest(request, response) {
 
 	  if (url.pathname === "/api/state" && request.method === "GET") {
     sendJson(response, withPublicChannelSetup(await store.readState()));
+    return;
+  }
+
+  if (url.pathname === "/api/runway-inputs" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const normalizeMoneyInput = value => {
+        if (value === "" || value === null || value === undefined) return "";
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed) || parsed < 0) throw new Error("Runway inputs must be empty or non-negative numbers.");
+        return Math.round(parsed * 100) / 100;
+      };
+      const currentState = await store.readState();
+      const runwayInputs = {
+        currentCashBalance: normalizeMoneyInput(input.currentCashBalance),
+        monthlyBurn: normalizeMoneyInput(input.monthlyBurn),
+        updatedAt: new Date().toISOString(),
+        updatedBy: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
+      };
+      const nextState = { ...currentState, runwayInputs };
+      await store.writeState(nextState);
+      sendJson(response, { message:"Runway inputs saved.", runwayInputs, state:withPublicChannelSetup(nextState) });
+    } catch (error) {
+      sendJson(response, { error:error.message || "Could not save runway inputs." }, 400);
+    }
     return;
   }
 

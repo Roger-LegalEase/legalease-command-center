@@ -23,6 +23,7 @@ const coreStateCollections = [
   "dataRoomItems",
   "dataRoom",
   "metrics",
+  "runwayInputs",
   "systemHealth",
   "socialAccounts",
   "soc2AuditLogs",
@@ -62,7 +63,7 @@ const coreStateCollections = [
   "leeRuns",
   "leeMemory"
 ];
-const singletonCollections = new Set(["metrics", "systemHealth", "leeMemory"]);
+const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory"]);
 
 function parseBoolean(value = "") {
   return ["true", "1", "yes", "on"].includes(String(value || "").toLowerCase());

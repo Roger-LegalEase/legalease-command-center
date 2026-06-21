@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const server = readFileSync(join(here, "preview-server.mjs"), "utf8");
+const topNav = server.match(/<nav class="top-nav"[\s\S]*?<\/nav>/)?.[0] || "";
 
 function cssRule(selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -17,8 +18,8 @@ function assertContains(source, pattern, message) {
 }
 
 assertContains(server, /<header class="app-topbar">/, "Global shell topbar should render in hosted mode.");
-assertContains(server, /class="top-nav"[\s\S]*Today[\s\S]*Command[\s\S]*Queue[\s\S]*Sources[\s\S]*Settings/, "Founder-facing top navigation should remain stable.");
-assertContains(server, /href="#settings"/, "Settings should remain available in the primary utility nav.");
+assertContains(topNav, /Today[\s\S]*Growth[\s\S]*Partners[\s\S]*Production[\s\S]*Proof[\s\S]*Settings &amp; Health[\s\S]*Le-E/, "Founder-facing top navigation should expose the six surfaces plus Le-E.");
+assertContains(server, /href="#settings"/, "Settings & Health should remain available in the primary utility nav.");
 assertContains(server, /id="app"/, "Route host should remain available for client rendering.");
 assert.doesNotMatch(server, /shell:\s*app-layout-stable-v1|controls:\s*button-audit-v1|nav:\s*topnav-fixed-v1/, "Normal shell should not expose old debug markers.");
 assertContains(server, /\.app-section,\s*\.page-section,\s*\.command-page,\s*\.section-page/, "Stable page container CSS should exist.");

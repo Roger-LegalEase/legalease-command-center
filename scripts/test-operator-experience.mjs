@@ -53,11 +53,13 @@ assert.match(server, /Capture with Le-E/, "Quick Capture should use the unified 
 assert.match(server, /function focusPageHtml\(pageClass\)/, "Focus Mode page should render through the app shell.");
 assert.match(server, /--le-shell-bg:\s*#EEF2F6/, "Operator shell should use a cooler high-contrast page background token.");
 assert.match(server, /class="nav-top-link" href="#today" data-nav-section="today"/, "Today top nav item should be a real link to #today.");
-assert.match(server, /class="nav-top-link" href="#command" data-nav-section="command"/, "Simplified nav should expose Command as a direct route.");
-assert.match(server, /class="nav-top-link" href="#queue" data-nav-section="queue"/, "Simplified nav should expose Queue as a direct route.");
-assert.match(server, /class="nav-top-link" href="#sources" data-nav-section="sources"/, "Simplified nav should expose Sources as a direct route.");
-assert.match(server, /class="nav-top-link" href="#settings" data-nav-section="settings"/, "Simplified nav should expose Settings as a direct route.");
-assert.equal((server.match(/data-nav-section="/g) || []).length, 5, "Top navigation should have exactly five visible sections.");
+assert.match(server, /class="nav-top-link" href="#growth" data-nav-section="growth"/, "Simplified nav should expose Growth as a direct route.");
+assert.match(server, /class="nav-top-link" href="#partner-hub" data-nav-section="partners"/, "Simplified nav should expose Partners as a direct route.");
+assert.match(server, /class="nav-top-link" href="#production" data-nav-section="production"/, "Simplified nav should expose Production as a direct route.");
+assert.match(server, /class="nav-top-link" href="#proof" data-nav-section="proof"/, "Simplified nav should expose Proof as a direct route.");
+assert.match(server, /class="nav-top-link" href="#settings" data-nav-section="settings"/, "Simplified nav should expose Settings & Health as a direct route.");
+assert.match(server, /class="nav-top-link" href="#le-e" data-nav-section="lee"/, "Simplified nav should expose Le-E as the assistant route.");
+assert.equal((server.match(/data-nav-section="/g) || []).length, 7, "Top navigation should have six surfaces plus Le-E.");
 const topNav = server.match(/<nav class="top-nav" aria-label="Primary">([\s\S]*?)<\/nav>/)?.[1] || "";
 assert.doesNotMatch(topNav, /<details class="nav-menu">/, "Navigation should not use hover preview menus.");
 assert.doesNotMatch(topNav, /(?:Growth|Partners|Production|Proof|More) Home/, "Navigation should not expose floating Home preview labels.");

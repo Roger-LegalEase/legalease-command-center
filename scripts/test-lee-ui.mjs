@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const server = readFileSync(join(here, "preview-server.mjs"), "utf8");
 
-assert.doesNotMatch(server, /href="#lee">Ask Le-E/, "Le-E should not be exposed as a top nav item.");
+assert.match(server, /href="#le-e" data-nav-section="lee">Le-E<\/a>/, "Le-E assistant should be exposed as a top nav item.");
 assert.match(server, /function leePageHtml\(pageClass\)/, "Le-E route should render a chat page.");
 assert.match(server, /function leeBubbleHtml\(\)/, "Le-E should render a persistent chat bubble.");
 assert.match(server, /class="lee-bubble-wrap"/, "Le-E v3.1 pill wrapper should be present.");

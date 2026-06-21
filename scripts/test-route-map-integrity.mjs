@@ -11,17 +11,19 @@ const navSectionBlock = source.match(/function navSectionForPage\(pageId = "over
 assert(navBlock, "Top nav should render.");
 for (const [label, href, section] of [
   ["Today", "#today", "today"],
-  ["Command", "#command", "command"],
-  ["Queue", "#queue", "queue"],
-  ["Sources", "#sources", "sources"],
-  ["Settings", "#settings", "settings"]
+  ["Growth", "#growth", "growth"],
+  ["Partners", "#partner-hub", "partners"],
+  ["Production", "#production", "production"],
+  ["Proof", "#proof", "proof"],
+  ["Settings &amp; Health", "#settings", "settings"],
+  ["Le-E", "#le-e", "lee"]
 ]) {
   assert(navBlock.includes(`href="${href}"`), `${label} should be a primary nav link.`);
   assert(navBlock.includes(`data-nav-section="${section}"`), `${label} should have a stable nav section.`);
 }
 
-assert.equal((navBlock.match(/class="nav-top-link"/g) || []).length, 5, "Primary nav should expose five founder-facing sections.");
-for (const retiredLabel of [">Growth<", ">Partners<", ">Production<", ">Proof<", ">More<"]) {
+assert.equal((navBlock.match(/class="nav-top-link"/g) || []).length, 7, "Primary nav should expose six founder-facing surfaces plus Le-E.");
+for (const retiredLabel of [">Command<", ">Queue<", ">Sources<", ">More<"]) {
   assert(!navBlock.includes(retiredLabel), `Primary nav should not expose retired label ${retiredLabel}.`);
 }
 
@@ -75,11 +77,15 @@ for (const render of [
 }
 
 for (const section of ["command", "queue", "sources", "settings"]) {
+  assert(navSectionBlock.includes(`"${section}"`) || routeAliases.includes(`${section}:`), `${section} compatibility route should remain visible to the route map.`);
+}
+
+for (const section of ["today", "growth", "partners", "production", "proof", "settings", "lee"]) {
   assert(navSectionBlock.includes(`return "${section}"`), `${section} active nav mapping should exist.`);
 }
 
-assert(navSectionBlock.includes('"production"') && navSectionBlock.includes('return "command"'), "#production should remain available but map to Command.");
-assert(navSectionBlock.includes('"proof"') && navSectionBlock.includes('return "sources"'), "#proof should remain available but map to Sources.");
+assert(navSectionBlock.includes('"production"') && navSectionBlock.includes('return "production"'), "#production should remain available and map to Production.");
+assert(navSectionBlock.includes('"proof"') && navSectionBlock.includes('return "proof"'), "#proof should remain available and map to Proof.");
 assert(navSectionBlock.includes('"more"') && navSectionBlock.includes('return "settings"'), "#more should remain available but map to Settings.");
 
 assert.match(source, /normalizedPage = routeAliases\[requestedPage\] \|\| requestedPage/, "Aliases should normalize before route validation.");
