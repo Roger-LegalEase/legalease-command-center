@@ -11149,6 +11149,8 @@ const supportedProductEventTypes = new Set([
   "payment_completed",
   "packet_generated",
   "packet_completed",
+  "screening_nudge_window",
+  "partner_usage_window",
   "petition_filed",
   "outcome_known"
 ]);
@@ -11166,6 +11168,8 @@ const productEventMetricMap = {
   payment_completed: "paymentCompleted",
   packet_generated: "packetGenerated",
   packet_completed: "packetCompleted",
+  screening_nudge_window: "screeningNudgeWindow",
+  partner_usage_window: "partnerUsageWindow",
   petition_filed: "petitionFiled",
   outcome_known: "outcomeKnown"
 };
@@ -12431,6 +12435,8 @@ async function receiveProductEvent(payload = {}, request) {
     const result = upsertAutomationRecords(state, [event]);
     const metricKey = productEventMetricMap[payload.eventType] || "";
     const amount = Number(payload.metadata?.amount || payload.metadata?.amount_total || payload.metadata?.revenue || 0);
+    const screeningNudgeWindowCount = Number(payload.metadata?.screeningNudgeWindow || payload.metadata?.screening_nudge_window || payload.metadata?.nudgeWindowCount || payload.metadata?.nudge_window_count || payload.metadata?.count || 1);
+    const partnerUsageWindowCount = Number(payload.metadata?.partnerUsageWindow || payload.metadata?.partner_usage_window || payload.metadata?.used || payload.metadata?.usedCount || payload.metadata?.used_count || payload.metadata?.count || 1);
     const funnelPatch = metricKey ? {
       id: `funnel-product-${crypto.randomUUID().slice(0, 8)}`,
       campaignId: campaign?.id || "",
@@ -12439,7 +12445,7 @@ async function receiveProductEvent(payload = {}, request) {
       source: payload.source || source,
       product: payload.product || "",
       state: payload.state || "",
-      [metricKey]: metricKey === "paymentCompleted" ? 1 : 1,
+      [metricKey]: payload.eventType === "screening_nudge_window" && Number.isFinite(screeningNudgeWindowCount) ? Math.max(0, screeningNudgeWindowCount) : payload.eventType === "partner_usage_window" && Number.isFinite(partnerUsageWindowCount) ? Math.max(0, partnerUsageWindowCount) : 1,
       revenue: payload.eventType === "payment_completed" ? amount / (amount > 1000 ? 100 : 1) : 0,
       notes: `Captured from product event ${payload.eventType}.`
     } : null;
