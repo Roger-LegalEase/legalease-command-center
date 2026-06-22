@@ -7645,6 +7645,13 @@ async function readJson(request) {
   return raw ? JSON.parse(raw) : {};
 }
 
+async function readJsonWithRawBody(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  const rawBody = Buffer.concat(chunks).toString("utf8");
+  return { payload: rawBody ? JSON.parse(rawBody) : {}, rawBody };
+}
+
 async function readBuffer(request) {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
@@ -12348,7 +12355,7 @@ async function disconnectGoogleWorkspace() {
 }
 
 function productWebhookConfigured() {
-  return Boolean(process.env.PRODUCT_EVENT_WEBHOOK_SECRET);
+  return Boolean(process.env.PRODUCT_EVENT_WEBHOOK_SECRET || process.env.LEGALEASE_OS_EVENTS_SECRET);
 }
 
 function productWebhookSecretFromRequest(request) {
@@ -12359,15 +12366,34 @@ function productWebhookSecretFromRequest(request) {
   return bearer ? bearer[1] : "";
 }
 
-function assertProductEventSignature(request) {
+function timingSafeStringEqual(expected = "", provided = "") {
+  const expectedBuffer = Buffer.from(String(expected || ""));
+  const providedBuffer = Buffer.from(String(provided || ""));
+  return expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+}
+
+function productSharedSecretValid(request) {
   const expected = process.env.PRODUCT_EVENT_WEBHOOK_SECRET || "";
-  if (!expected) throw new Error("PRODUCT_EVENT_WEBHOOK_SECRET is not configured. Product events are failing closed.");
+  if (!expected) return false;
   const provided = productWebhookSecretFromRequest(request);
-  const expectedBuffer = Buffer.from(expected);
-  const providedBuffer = Buffer.from(provided || "");
-  if (expectedBuffer.length !== providedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, providedBuffer)) {
-    throw new Error("Invalid product event signature.");
-  }
+  return timingSafeStringEqual(expected, provided);
+}
+
+function productHmacSignatureValid(request, rawBody = "") {
+  const secret = process.env.LEGALEASE_OS_EVENTS_SECRET || "";
+  if (!secret) return false;
+  const timestamp = String(request.headers["x-legalease-os-timestamp"] || "");
+  const provided = String(request.headers["x-legalease-os-signature"] || "");
+  const match = provided.match(/^sha256=([a-f0-9]{64})$/i);
+  if (!timestamp || !match) return false;
+  const expected = crypto.createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
+  return timingSafeStringEqual(`sha256=${expected}`, provided.toLowerCase());
+}
+
+function assertProductEventSignature(request, rawBody = "") {
+  if (!productWebhookConfigured()) throw new Error("Product event secret is not configured. Product events are failing closed.");
+  if (productSharedSecretValid(request) || productHmacSignatureValid(request, rawBody)) return;
+  throw new Error("Invalid product event signature.");
 }
 
 function redactProductPayload(input = {}) {
@@ -12399,8 +12425,8 @@ function productEventTitle(payload = {}) {
   return `${payload.eventType || "product_event"} from ${product}`;
 }
 
-async function receiveProductEvent(payload = {}, request) {
-  assertProductEventSignature(request);
+async function receiveProductEvent(payload = {}, request, rawBody = "") {
+  assertProductEventSignature(request, rawBody);
   if (!supportedProductEventTypes.has(payload.eventType)) throw new Error("Unsupported product event type.");
   return serializeStateMutation(async () => {
     const state = await store.readState();
@@ -32572,8 +32598,8 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/events/product" && request.method === "POST") {
     try {
-      const payload = await readJson(request);
-      const result = await receiveProductEvent(payload || {}, request);
+      const { payload, rawBody } = await readJsonWithRawBody(request);
+      const result = await receiveProductEvent(payload || {}, request, rawBody);
       sendJson(response, { ...result, state: withPublicChannelSetup(result.state) }, result.importedCount ? 202 : 200);
     } catch (error) {
       const message = error.message || "Product event rejected.";
