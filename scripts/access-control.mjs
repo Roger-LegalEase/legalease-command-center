@@ -20,7 +20,8 @@ const publicPaths = [
   "/api/x/oauth-diagnostics",
   "/api/debug/env",
   "/api/storage/debug",
-  "/api/storage/diagnostics"
+  "/api/storage/diagnostics",
+  "/api/events/product"
 ];
 
 function parseBoolean(value = "") {
