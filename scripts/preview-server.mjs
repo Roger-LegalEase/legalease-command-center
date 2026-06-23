@@ -88,6 +88,7 @@ import { buildDailyCloseoutRecord, saveDailyCloseout } from "./daily-closeout.mj
 import { createDailyRunQuickCapture, dailyRunQuickCaptureTypes } from "./daily-run-quick-capture.mjs";
 import {
   activeDailyRunSession,
+  buildDailyRunSnapshot,
   completeDailyRunBucket,
   completeDailyRunItem,
   completeDailyRunSession,
@@ -101,6 +102,7 @@ import {
   skipDailyRunBucket,
   startFreshDailyRunSession
 } from "./daily-run-session.mjs";
+import { buildFounderCapacityPulse } from "./operator-pulse-feeders.mjs";
 import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
 import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex } from "./operator-search.mjs";
 import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegritySnapshot } from "./state-integrity.mjs";
@@ -14659,6 +14661,7 @@ function htmlShell() {
     .command-list-row b { color:var(--ink); display:block; font-size:13.5px; line-height:1.25; }
     .command-list-row span { color:var(--muted); font-size:12px; line-height:1.35; }
     .command-list-row .value { color:var(--ink); font-size:15px; font-weight:850; text-align:right; }
+    .command-list-row .value small { color:#8693a1; display:block; font-size:11px; font-weight:700; }
     .command-dot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--go); }
     .command-dot.warn { background:var(--warn); }
     .command-dot.stop { background:var(--stop); }
@@ -23806,16 +23809,28 @@ function htmlShell() {
     }
 
     function todayRevenueSummary() {
-      const funnelBooked = growthItems("funnelSnapshots").filter(todayWithinThirtyDays).reduce((sum, item) => sum + Number(item.revenue || 0), 0);
-      const campaignBooked = growthItems("campaigns").filter(todayWithinThirtyDays).reduce((sum, item) => sum + Number(item.paidConversionsRevenue || item.revenue || 0), 0);
-      const programBooked = growthItems("partnerPrograms").filter(todayWithinThirtyDays).reduce((sum, item) => sum + Number(item.metrics?.revenueBooked || item.revenueBooked || 0), 0);
+      const funnelRows = growthItems("funnelSnapshots").filter(todayWithinThirtyDays);
+      const campaignRows = growthItems("campaigns").filter(todayWithinThirtyDays);
+      const programRows = growthItems("partnerPrograms").filter(todayWithinThirtyDays);
+      const hasValue = (item = {}, keys = []) => keys.some(key => {
+        const value = key.split(".").reduce((cursor, part) => cursor?.[part], item);
+        return value !== "" && value !== null && value !== undefined && Number.isFinite(Number(value));
+      });
+      const funnelValueRows = funnelRows.filter(item => hasValue(item, ["revenue"]));
+      const campaignValueRows = campaignRows.filter(item => hasValue(item, ["paidConversionsRevenue", "revenue"]));
+      const programValueRows = programRows.filter(item => hasValue(item, ["metrics.revenueBooked", "revenueBooked"]));
+      const funnelBooked = funnelValueRows.reduce((sum, item) => sum + Number(item.revenue || 0), 0);
+      const campaignBooked = campaignValueRows.reduce((sum, item) => sum + Number(item.paidConversionsRevenue || item.revenue || 0), 0);
+      const programBooked = programValueRows.reduce((sum, item) => sum + Number(item.metrics?.revenueBooked || item.revenueBooked || 0), 0);
       const booked = funnelBooked + campaignBooked + programBooked;
-      const partnerPipeline = growthItems("partners").reduce((sum, item) => {
+      const partnerPipelineRows = growthItems("partners").filter(item => hasValue(item, ["expectedValue", "revenuePotential"]));
+      const pilotPipelineRows = growthItems("pilots").filter(item => hasValue(item, ["price", "expectedValue"]));
+      const partnerPipeline = partnerPipelineRows.reduce((sum, item) => {
         const value = Number(item.expectedValue || item.revenuePotential || 0);
         const probability = Number(item.probability || 0);
         return sum + (value * (probability > 1 ? probability / 100 : probability));
       }, 0);
-      const pilotPipeline = growthItems("pilots").reduce((sum, item) => sum + Number(item.price || item.expectedValue || 0), 0);
+      const pilotPipeline = pilotPipelineRows.reduce((sum, item) => sum + Number(item.price || item.expectedValue || 0), 0);
       return {
         booked,
         funnelBooked,
@@ -23823,7 +23838,16 @@ function htmlShell() {
         programBooked,
         pipeline: partnerPipeline + pilotPipeline,
         partnerPipeline,
-        pilotPipeline
+        pilotPipeline,
+        bookedWired: Boolean(funnelValueRows.length || campaignValueRows.length || programValueRows.length),
+        pipelineWired: Boolean(partnerPipelineRows.length || pilotPipelineRows.length),
+        sources: {
+          funnelRows:funnelValueRows.length,
+          campaignRows:campaignValueRows.length,
+          partnerProgramRows:programValueRows.length,
+          partnerPipelineRows:partnerPipelineRows.length,
+          pilotPipelineRows:pilotPipelineRows.length
+        }
       };
     }
 
@@ -23841,20 +23865,33 @@ function htmlShell() {
         cash,
         cashValue: cashEntered && Number.isFinite(cash) ? String(cash) : "",
         burnValue: burnEntered && Number.isFinite(burn) ? String(burn) : "",
-        months: complete ? Math.floor((cash / burn) * 10) / 10 : null
+        months: complete ? Math.floor((cash / burn) * 10) / 10 : null,
+        wired:complete,
+        notWiredReason:"not yet wired: add cash + burn to compute"
       };
     }
 
     function todayCapacitySummary(needCount = 0) {
-      const completedToday = (state.activityEvents || []).filter(item => /complete|completed|reviewed|approved|resolved/i.test([item.eventType, item.action, item.title].join(" ")) && todayWithinThirtyDays(item)).length;
-      const trend = needCount > completedToday ? "growing" : needCount < completedToday ? "clearing" : "steady";
-      return { completedToday, trend, overload:needCount >= 12 || trend === "growing" };
+      const pulse = buildFounderCapacityPulse(state, { warningThreshold:12 });
+      const itemsNeedingOperator = Number.isFinite(Number(pulse.items_needing_operator)) ? Number(pulse.items_needing_operator) : needCount;
+      const completedToday = Number.isFinite(Number(pulse.completed_today)) ? Number(pulse.completed_today) : 0;
+      const trend = pulse.backlog_trend || (itemsNeedingOperator > completedToday ? "growing" : itemsNeedingOperator < completedToday ? "clearing" : "steady");
+      return {
+        completedToday,
+        trend,
+        overload:Boolean(pulse.overload_warning),
+        itemsNeedingOperator,
+        wired:Boolean(pulse.read_only && pulse.external_action === false),
+        source:"buildFounderCapacityPulse(state)"
+      };
     }
 
     function todayDailyRunBuckets() {
       const view = state.dailyRun || {};
       const active = view.activeSession || null;
-      return active?.bucket_snapshot?.buckets || view.startSnapshot?.buckets || [];
+      const savedBuckets = active?.bucket_snapshot?.buckets || view.startSnapshot?.buckets || [];
+      if (savedBuckets.length) return savedBuckets;
+      return buildDailyRunSnapshot(state).buckets || [];
     }
 
     function todayBucketTone(key = "") {
@@ -23897,22 +23934,22 @@ function htmlShell() {
       const age = todayItemAge(item, tone);
       const label = tone === "stop" ? "Blocker" : tone === "warn" ? bucket.key === "overdue_followups" ? "Aging" : "Needs review" : tone === "go" ? "Ready" : "Standing";
       const route = todayItemRoute(item);
-      return \`<div class="work-item-row">
-        <div class="work-rail \${esc(tone)}"></div>
-        <div class="work-item-body">
-          <div class="work-item-top">
-            <span class="work-source">\${esc(todayItemSource(item, bucket))}</span>
-            <span class="work-title">\${esc(item.title || bucket.label || "Review item")}</span>
-            <span class="decision-pill \${esc(tone)}">\${esc(label)}</span>
+      return \`<div class="command-item">
+        <div class="command-rail \${esc(tone)}"></div>
+        <div class="command-item-body">
+          <div class="command-item-top">
+            <span class="command-source">\${esc(todayItemSource(item, bucket))}</span>
+            <span class="command-title">\${esc(item.title || bucket.label || "Review item")}</span>
+            <span class="command-pill \${esc(tone)}">\${esc(label)}</span>
           </div>
-          <div class="work-why">\${esc(item.detail || bucket.summary || "Review and decide the next internal move. No external action is taken here.")}</div>
-          <div class="work-actions">
+          <div class="command-why">\${esc(item.detail || bucket.summary || "Review and decide the next internal move. No external action is taken here.")}</div>
+          <div class="command-actions">
             <button class="work-button primary" type="button" onclick="location.hash='\${esc(route)}'">Review</button>
             <button class="work-button" type="button" onclick="toast('Deferred internally. No external action taken.')">Defer</button>
             <button class="work-button ghost" type="button" onclick="toast('Parked for later review. No external action taken.')">Park</button>
           </div>
         </div>
-        <span class="work-age \${age.old ? "old" : ""}">\${esc(age.label)}</span>
+        <span class="command-age \${age.old ? "old" : ""}">\${esc(age.label)}</span>
       </div>\`;
     }
 
@@ -23928,52 +23965,52 @@ function htmlShell() {
 
     function todaySystemsPanelHtml() {
       const buckets = todayDailyRunBuckets();
-      return \`<div class="systems-list">\${buckets.map(bucket => {
+      if (!buckets.length) return \`<div class="command-empty"><b>Daily Run snapshot not yet wired.</b>Start or refresh the Daily Run to surface real system status.</div>\`;
+      return \`<div>\${buckets.map(bucket => {
         const count = (bucket.items || []).length;
         const tone = todayBucketTone(bucket.key);
         const dotTone = tone === "stop" && count ? "stop" : tone === "warn" && count ? "warn" : "";
         const pillTone = dotTone;
         const status = count ? tone === "stop" ? "Needs review" : tone === "warn" ? "Watching" : "Queued" : "Green";
         const countText = count ? \`\${count} surfaced\` : "No operator decision";
-        return \`<div class="system-row">
-          <span class="status-dot \${esc(dotTone)}"></span>
+        return \`<div class="command-list-row">
+          <span class="command-dot \${esc(dotTone)}"></span>
           <div class="text"><b>\${esc(bucket.label || bucket.key)}</b><span>\${esc(countText)} · \${esc(bucket.summary || "Running silently.")}</span></div>
-          <span class="status-pill \${esc(pillTone)}">\${esc(status)}</span>
+          <span class="command-pill \${esc(pillTone || "go")}">\${esc(status)}</span>
         </div>\`;
       }).join("")}</div>\`;
     }
 
     function todayPulseHtml() {
-      const view = state.dailyRun || {};
-      const counts = view.counts || {};
       const revenue = todayRevenueSummary();
       const buckets = todayDailyRunBuckets();
       const systemsWithWork = buckets.filter(bucket => (bucket.items || []).length).length;
       const liveGates = liveGatesCountFromState(state);
-      const needCount = todayRankedWorkItems().length;
-      const canWait = Math.max(0, buckets.reduce((sum, bucket) => sum + (bucket.items || []).length, 0) - needCount);
+      const rankedCount = todayRankedWorkItems().length;
       const runway = todayRunwaySummary();
-      const capacity = todayCapacitySummary(needCount);
-      return \`<div class="pulse-strip">
-        <div class="pulse-card">
-          <div class="pulse-label"><span class="status-dot"></span>Revenue · 30d</div>
-          <div class="pulse-value">\${esc(todayMoney(revenue.booked))} <small>booked</small></div>
-          <div class="pulse-sub">\${esc(todayMoney(revenue.pipeline))} pipeline, labeled separately</div>
+      const capacity = todayCapacitySummary(rankedCount);
+      const needCount = capacity.wired ? capacity.itemsNeedingOperator : rankedCount;
+      const waitCount = Math.max(0, buckets.reduce((sum, bucket) => sum + (bucket.items || []).length, 0) - rankedCount);
+      return \`<div class="command-pulse">
+        <div class="command-stat">
+          <div class="label"><span class="command-dot \${revenue.bookedWired ? "go" : "warn"}"></span>Revenue · 30d</div>
+          <div class="value">\${revenue.bookedWired ? esc(todayMoney(revenue.booked)) + " <small>booked</small>" : '<span class="command-not-wired">not yet wired</span>'}</div>
+          <div class="detail">\${revenue.bookedWired ? esc((revenue.pipelineWired ? todayMoney(revenue.pipeline) : "Pipeline not yet wired") + " pipeline, labeled separately") : "No confirmed funnel, campaign, or partner-program revenue rows."}</div>
         </div>
-        <div class="pulse-card">
-          <div class="pulse-label"><span class="status-dot \${runway.months === null ? "warn" : ""}"></span>Runway</div>
-          <div class="pulse-value">\${runway.months === null ? "add cash + burn to compute" : esc(String(runway.months))} <small>\${runway.months === null ? "" : "mo"}</small></div>
-          <div class="pulse-sub">\${runway.months === null ? "Manual operator inputs only" : "Cash " + todayMoney(runway.cash) + " · burn " + todayMoney(runway.burn) + "/mo"}</div>
+        <div class="command-stat">
+          <div class="label"><span class="command-dot \${runway.wired ? "go" : "warn"}"></span>Runway</div>
+          <div class="value">\${runway.wired ? esc(String(runway.months)) + " <small>mo</small>" : '<span class="command-not-wired">not yet wired</span>'}</div>
+          <div class="detail">\${runway.wired ? esc("Cash " + todayMoney(runway.cash) + " · burn " + todayMoney(runway.burn) + "/mo") : esc(runway.notWiredReason)}</div>
         </div>
-        <div class="pulse-card">
-          <div class="pulse-label"><span class="status-dot \${capacity.overload ? "warn" : ""}"></span>Your load</div>
-          <div class="pulse-value">\${esc(String(needCount))} <small>need you</small></div>
-          <div class="pulse-sub \${capacity.overload ? "dn" : "up"}">\${esc(String(canWait))} can wait · backlog \${esc(capacity.trend)}</div>
+        <div class="command-stat">
+          <div class="label"><span class="command-dot \${capacity.overload ? "warn" : "go"}"></span>Your load</div>
+          <div class="value">\${capacity.wired ? esc(String(needCount)) + " <small>need you</small>" : '<span class="command-not-wired">not yet wired</span>'}</div>
+          <div class="detail \${capacity.overload ? "stop" : "good"}">\${capacity.wired ? esc(String(waitCount) + " can wait · backlog " + capacity.trend) : "Daily Run capacity pulse unavailable."}</div>
         </div>
-        <div class="pulse-card">
-          <div class="pulse-label"><span class="status-dot \${liveGates ? "stop" : ""}"></span>Systems</div>
-          <div class="pulse-value">\${liveGates ? esc(String(liveGates)) : "0"} <small>live gates</small></div>
-          <div class="pulse-sub">\${esc(String(Math.max(0, buckets.length - systemsWithWork)))} green / \${esc(String(buckets.length))} loops</div>
+        <div class="command-stat">
+          <div class="label"><span class="command-dot \${liveGates ? "stop" : buckets.length ? "go" : "warn"}"></span>Systems</div>
+          <div class="value">\${buckets.length ? (liveGates ? esc(String(liveGates)) + " <small>live gates</small>" : "All clear") : '<span class="command-not-wired">not yet wired</span>'}</div>
+          <div class="detail">\${buckets.length ? esc(String(Math.max(0, buckets.length - systemsWithWork)) + " green / " + String(buckets.length) + " loops") : "Daily Run systems snapshot unavailable."}</div>
         </div>
       </div>\`;
     }
@@ -23981,13 +24018,17 @@ function htmlShell() {
     function todayMoneyPanelHtml() {
       const revenue = todayRevenueSummary();
       const runway = todayRunwaySummary();
-      return \`<div class="single-pane-panel">
-        <div class="single-pane-panel-head"><h2>Money</h2><span class="meta">Booked separated from pipeline</span></div>
+      const bookedValue = revenue.bookedWired ? esc(todayMoney(revenue.booked)) + "<small>30d</small>" : '<span class="command-not-wired">not yet wired</span>';
+      const consumerValue = revenue.sources.funnelRows || revenue.sources.campaignRows ? esc(todayMoney(revenue.funnelBooked + revenue.campaignBooked)) + "<small>booked</small>" : '<span class="command-not-wired">not yet wired</span>';
+      const pipelineValue = revenue.pipelineWired ? esc(todayMoney(revenue.pipeline)) + "<small>open</small>" : '<span class="command-not-wired">not yet wired</span>';
+      const runwayValue = runway.wired ? esc(String(runway.months)) + "<small>months</small>" : '<span class="command-not-wired">not yet wired</span>';
+      return \`<div class="command-panel">
+        <div class="command-panel-head"><h2>Money</h2><span class="meta">Booked separated from pipeline</span></div>
         <div>
-          <div class="money-row"><div class="text"><b>Booked actuals</b><span>Funnel, campaign paid conversions, partner programs</span></div><div class="value">\${esc(todayMoney(revenue.booked))}<small>30d</small></div></div>
-          <div class="money-row"><div class="text"><b>Consumer actuals</b><span>Funnel + campaign paid conversion signals</span></div><div class="value">\${esc(todayMoney(revenue.funnelBooked + revenue.campaignBooked))}<small>booked</small></div></div>
-          <div class="money-row"><div class="text"><b>Pipeline</b><span>Partner expected value × probability + pilot price</span></div><div class="value">\${esc(todayMoney(revenue.pipeline))}<small>open</small></div></div>
-          <div class="money-row"><div class="text"><b>Runway</b><span>Current cash balance ÷ monthly burn</span></div><div class="value">\${runway.months === null ? "add cash + burn to compute" : esc(String(runway.months))}<small>\${runway.months === null ? "manual inputs" : "months"}</small></div></div>
+          <div class="command-list-row"><div class="text"><b>Booked actuals</b><span>Funnel, campaign paid conversions, partner programs</span></div><div class="value">\${bookedValue}</div></div>
+          <div class="command-list-row"><div class="text"><b>Consumer actuals</b><span>Funnel + campaign paid conversion signals</span></div><div class="value">\${consumerValue}</div></div>
+          <div class="command-list-row"><div class="text"><b>Pipeline</b><span>Partner expected value × probability + pilot price</span></div><div class="value">\${pipelineValue}</div></div>
+          <div class="command-list-row"><div class="text"><b>Runway</b><span>Current cash balance ÷ monthly burn</span></div><div class="value">\${runwayValue}</div></div>
         </div>
         <form class="runway-input-form" onsubmit="saveRunwayInputs(event)">
           <label>Current cash balance<input name="currentCashBalance" type="number" min="0" step="0.01" inputmode="decimal" value="\${esc(runway.cashValue)}" placeholder="Add cash"></label>
@@ -24009,34 +24050,34 @@ function htmlShell() {
       const dailyRunBookend = dailyRunTodayPanelHtml();
       void dailyRunBookend;
       return \`<section class="operator-v31">
-        <div class="single-pane-today">
-          <div class="single-pane-top">
-            <div class="single-pane-hello">
+        <div class="command-surface">
+          <div class="command-top">
+            <div class="command-heading">
               <h1>Good morning, Roger.</h1>
               <p>\${esc(cockpitLongDate())} · <b>\${esc(String(ranked.length))} things need you today</b>, \${esc(String(canWait))} can wait. Nothing here sends, posts, or files.</p>
             </div>
-            <button class="daily-run-launch" type="button" onclick="\${startAction}">\${esc(startLabel)} <span>\${esc(String(ranked.length))}</span></button>
+            <button class="command-run-button" type="button" onclick="\${startAction}">\${esc(startLabel)} <span class="count">\${esc(String(ranked.length))}</span></button>
           </div>
           \${todayPulseHtml()}
-          <div class="single-pane-cols">
+          <div class="command-cols">
             <div>
-              <div class="single-pane-panel">
-                <div class="single-pane-panel-head">
+              <div class="command-panel">
+                <div class="command-panel-head">
                   <h2>Needs you now</h2>
                   <span class="meta">Ranked by Daily Run consequence · \${esc(String(ranked.length))} items</span>
                 </div>
-                \${ranked.map(todayWorkItemHtml).join("") || '<div class="can-wait-body"><b>Nothing needs Roger right now.</b>The systems are running quietly and will surface decisions when they matter.</div>'}
-                <div class="single-pane-footnote">
+                \${ranked.map(todayWorkItemHtml).join("") || '<div class="command-empty"><b>Nothing needs Roger right now.</b>The systems are running quietly and will surface decisions when they matter.</div>'}
+                <div class="command-footer">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
                   Nothing here sends, posts, or files. Every action prepares work for your review. Live gates: \${esc(String(liveGatesCountFromState(state)))}.
                 </div>
               </div>
-              <details class="single-pane-panel can-wait-panel">
-                <summary class="single-pane-panel-head">
+              <details class="command-panel can-wait-panel">
+                <summary class="command-panel-head">
                   <h2>Can wait</h2>
                   <span class="meta">\${esc(String(canWait))} items · surfaced only when you ask</span>
                 </summary>
-                <div class="can-wait-body">
+                <div class="command-empty">
                   <b>Bulk review, not decisions.</b>
                   The Daily Run keeps lower-consequence items batched so they do not interrupt the ranked list.
                   <div style="margin-top:14px"><button class="work-button" type="button" onclick="location.hash='queue'">Open bulk review</button></div>
@@ -24045,10 +24086,10 @@ function htmlShell() {
             </div>
             <div>
               \${todayMoneyPanelHtml()}
-              <div class="single-pane-panel">
-                <div class="single-pane-panel-head"><h2>Systems running for you</h2><span class="meta">\${esc(String(buckets.length))} loops</span></div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Systems running for you</h2><span class="meta">\${esc(String(buckets.length))} loops</span></div>
                 \${todaySystemsPanelHtml()}
-                <div class="single-pane-footnote">
+                <div class="command-footer">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg>
                   Loops watch and prepare. They never act outside your approval.
                 </div>

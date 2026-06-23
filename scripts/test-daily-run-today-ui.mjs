@@ -85,6 +85,12 @@ assert(topNav.includes("Settings &amp; Health"), "Settings & Health should be vi
 assert(source.includes('state.runwayInputs || {}'), "Today runway should read the dedicated manual operator-input state.");
 assert(!source.includes('state.metrics?.monthlyBurn || state.metrics?.burnMonthly || state.runway?.monthlyBurn'), "Today runway should not infer monthly burn from legacy metrics.");
 assert(source.includes('add cash + burn to compute'), "Runway should show the required no-guess placeholder.");
+assert(source.includes('bookedWired'), "Revenue should distinguish confirmed rows from missing sources.");
+assert(source.includes('No confirmed funnel, campaign, or partner-program revenue rows.'), "Revenue should render a not-wired state when no confirmed rows exist.");
+assert(source.includes('buildFounderCapacityPulse(state'), "Your load should use the shared Founder Capacity pulse source.");
+assert(source.includes('todayDailyRunBuckets()'), "Needs you now and systems should read Daily Run buckets.");
+assert(source.includes('buildDailyRunSnapshot(state).buckets'), "Today should fall back to the real Daily Run snapshot brain when no session snapshot is active.");
+assert(source.includes('command-not-wired'), "Today should have an obvious not-wired state for missing business metrics.");
 assert(source.includes('async function saveRunwayInputs(event)'), "Runway manual inputs should have a client save handler.");
 assert(source.includes('url.pathname === "/api/runway-inputs"'), "Runway manual inputs should persist through a dedicated API route.");
 assert(source.includes('name="currentCashBalance"'), "Runway form should include current cash balance.");
