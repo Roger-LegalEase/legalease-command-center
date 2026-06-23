@@ -24744,91 +24744,146 @@ function htmlShell() {
       </section>\`;
     }
 
-    function growthWorkspaceHtml(pageClass) {
+    function growthOpenInboxItems() {
+      return (state.growthInbox || []).filter(item => !["converted", "ignored", "archived", "done"].includes(String(item.status || "").toLowerCase()));
+    }
+
+    function growthActiveGoogleInsights() {
+      return (Array.isArray(state.googleInsights) ? state.googleInsights : []).filter(item => !["dismissed", "queued", "deleted"].includes(String(item.status || "").toLowerCase()));
+    }
+
+    function growthOpenTasks() {
+      return (state.tasks || []).filter(taskStatusOpen);
+    }
+
+    function growthWarmAudienceItems() {
+      const sourceText = item => [item.sourceType, item.type, item.category, item.title, item.summary, item.rawText, item.raw_input, item.text, item.suggestedAction, item.suggestedNextAction, item.description].join(" ");
+      const audienceRe = /audience|warm|follow|follower|mutual|dm|reply|outreach|linkedin|twitter|x|profile|contact|partner opportunity|needs reply|waiting on someone/i;
+      const inbox = growthOpenInboxItems().filter(item => audienceRe.test(sourceText(item))).map(item => ({
+        id:item.id,
+        source:"Growth Inbox",
+        title:item.title || item.summary || item.rawText || "Review growth signal",
+        why:item.suggestedAction || item.summary || item.rawText || "Review this growth signal and decide whether it belongs in outreach, content, or partners.",
+        route:"growth-inbox",
+        status:item.priority === "high" || item.riskLevel === "high" ? "High" : growthLabel(item.status || item.sourceType || "review"),
+        tone:item.priority === "high" || item.riskLevel === "high" ? "warn" : "go",
+        age:cockpitRelativeAge(item.createdAt || item.updatedAt || item.scannedAt || "")
+      }));
+      const insights = growthActiveGoogleInsights().filter(item => audienceRe.test(sourceText(item)) || /Needs Reply|Follow-up|Partner Opportunity|Waiting on Someone|Decision Needed/.test(item.insightType || "")).map(item => ({
+        id:item.id,
+        source:"Google read-only",
+        title:item.title || item.subject || item.insightType || "Review Google signal",
+        why:item.suggestedNextAction || item.snippet || "Read-only Google signal. Add to Queue if it needs a task.",
+        route:"growth-inbox",
+        status:item.insightType || "Insight",
+        tone:/Decision|Needs Reply|Follow-up|Waiting/i.test(item.insightType || "") ? "warn" : "go",
+        age:cockpitRelativeAge(item.scannedAt || item.updatedAt || item.createdAt || "")
+      }));
+      const tasks = growthOpenTasks().filter(task => audienceRe.test(sourceText(task))).map(task => ({
+        id:task.id,
+        source:"Tasks",
+        title:task.title || "Review growth task",
+        why:task.description || task.suggestedAction || "Open task connected to growth, audience, outreach, or follow-up work.",
+        route:"tasks",
+        status:task.priority || task.status || "Open",
+        tone:taskIsOverdue(task) || /high|critical/i.test(String(task.priority || "")) ? "warn" : "hold",
+        age:task.due_date || task.dueDate ? "due " + (task.due_date || task.dueDate) : cockpitRelativeAge(task.updatedAt || task.createdAt || "")
+      }));
+      return [...inbox, ...insights, ...tasks].sort((a, b) => ({ warn:0, go:1, hold:2 }[a.tone] || 3) - ({ warn:0, go:1, hold:2 }[b.tone] || 3)).slice(0, 8);
+    }
+
+    function growthWarmAudiencePanelHtml(items = []) {
+      if (!items.length) return \`<div class="command-not-wired">not yet wired: no open growthInbox, tasks, or read-only Google audience signals matched the warm-audience filter.</div>\`;
+      return items.map(item => \`<div class="command-item">
+        <div class="command-rail \${esc(item.tone)}"></div>
+        <div class="command-item-body">
+          <div class="command-item-top"><span class="command-source">\${esc(item.source)}</span><span class="command-title">\${esc(item.title)}</span><span class="command-pill \${esc(item.tone)}">\${esc(item.status)}</span></div>
+          <div class="command-why">\${esc(item.why)}</div>
+          <div class="command-actions"><button class="work-button primary" type="button" onclick="location.hash='\${esc(item.route)}'">Review</button><button class="work-button ghost" type="button" onclick="toast('Skipped internally. Nothing was sent.')">Skip</button></div>
+        </div>
+        <span class="command-age \${item.tone === "warn" ? "old" : ""}">\${esc(item.age || "open")}</span>
+      </div>\`).join("");
+    }
+
+    function growthAudiencePipelineRows(warmItems = []) {
+      const openInbox = growthOpenInboxItems();
+      const insights = growthActiveGoogleInsights();
+      const outreachTasks = growthOpenTasks().filter(task => /audience|outreach|follow|reply|dm|linkedin|twitter|x/i.test([task.sourceType, task.source, task.title, task.description].join(" ")));
+      const rows = [];
+      if (openInbox.length) rows.push(["Growth Inbox", \`\${openInbox.length} open signal\${openInbox.length === 1 ? "" : "s"}\`, openInbox.filter(item => /high|urgent/i.test([item.priority, item.riskLevel].join(" "))).length ? "warn" : "go", String(openInbox.length)]);
+      if (insights.length) rows.push(["Google read-only insights", \`\${insights.length} active suggestion\${insights.length === 1 ? "" : "s"}; email sending stays off\`, "go", String(insights.length)]);
+      if (warmItems.length) rows.push(["Warm audience review", \`\${warmItems.length} surfaced from inbox, tasks, and Google signals\`, warmItems.some(item => item.tone === "warn") ? "warn" : "go", String(warmItems.length)]);
+      if (outreachTasks.length) rows.push(["Manual outreach tasks", \`\${outreachTasks.length} open task\${outreachTasks.length === 1 ? "" : "s"}; approval does not send\`, outreachTasks.some(taskIsOverdue) ? "warn" : "hold", String(outreachTasks.length)]);
+      return rows;
+    }
+
+    function growthContentRows() {
       const posts = state.posts || [];
-      const ideas = [
-        ...(state.contentBank || []).filter(item => !/converted|ignored/i.test(String(item.status || ""))),
-        ...(state.growthInbox || []).filter(item => /idea|post|content|proof/i.test([item.type, item.category, item.raw_input, item.text, item.title].join(" ")) && !/converted|ignored/i.test(String(item.status || "")))
-      ];
-      const drafts = posts.filter(post => /draft|needs_review/i.test(String(post.status || "")));
-      const ready = posts.filter(post => /approved|ready|scheduled/i.test(String(post.status || "")) && !post.manuallyPostedAt && post.status !== "manually_posted");
-      const manual = posts.filter(post => post.manuallyPostedAt || /manually_posted|posted/i.test(String(post.status || "")));
+      const contentBank = state.contentBank || [];
       const campaigns = state.campaigns || [];
-      const prFollowUps = (state.growthInbox || []).filter(item => /pr|press|media|coverage|follow/i.test([item.type, item.category, item.raw_input, item.text, item.title].join(" ")) && !/converted|ignored/i.test(String(item.status || "")));
-      const statsNeeded = manual.filter(post => !post.performanceUpdatedAt && !post.performance).length;
-      const summaryCards = [
-        ["Drafts", drafts.length, "posts being written", false],
-        ["Queue", drafts.length + ready.length, "items waiting for review", drafts.length + ready.length > 0],
-        ["Proof", (state.evidencePackNotes || []).length + (state.reports || []).length, "usable evidence", false],
-        ["PR Follow-ups", prFollowUps.length, "outreach waiting", prFollowUps.length > 0],
-        ["Channels", platforms.length, "safe setup lanes", false],
-        ["Stats Needed", statsNeeded, "manual updates", statsNeeded > 0]
+      const rows = [];
+      const ideas = contentBank.filter(item => !/converted|ignored|archived/i.test(String(item.status || "")));
+      const drafts = posts.filter(post => /draft|needs_review/i.test(String(post.status || "")));
+      const ready = posts.filter(post => /approved|ready|scheduled/i.test(String(post.status || "")) && !post.manuallyPostedAt && !/manually_posted|posted/i.test(String(post.status || "")));
+      const activeCampaigns = campaigns.filter(campaign => ["live", "ready", "scheduled", "assets_needed", "draft"].includes(String(campaign.status || "").toLowerCase()));
+      if (ideas.length) rows.push(["Content ideas", \`\${ideas.length} item\${ideas.length === 1 ? "" : "s"} in contentBank\`, "content-bank", String(ideas.length), "hold"]);
+      if (drafts.length) rows.push(["Drafts", \`\${drafts.length} post\${drafts.length === 1 ? "" : "s"} need review\`, "queue", String(drafts.length), "warn"]);
+      if (ready.length) rows.push(["Ready for approval", \`\${ready.length} post\${ready.length === 1 ? "" : "s"} passed internal gates; approval is not publishing\`, "queue", String(ready.length), "go"]);
+      if (activeCampaigns.length) rows.push(["Campaign content", \`\${activeCampaigns.length} campaign\${activeCampaigns.length === 1 ? "" : "s"} with recorded status\`, "campaigns", String(activeCampaigns.length), "go"]);
+      return rows;
+    }
+
+    function growthWorkspaceHtml(pageClass) {
+      const warmItems = growthWarmAudienceItems();
+      const audienceRows = growthAudiencePipelineRows(warmItems);
+      const contentRows = growthContentRows();
+      const openInbox = growthOpenInboxItems();
+      const activeInsights = growthActiveGoogleInsights();
+      const campaigns = state.campaigns || [];
+      const contentBank = state.contentBank || [];
+      const posts = state.posts || [];
+      const pulse = [
+        ["Warm to review", warmItems.length, warmItems.length ? "growthInbox / tasks / Google signals" : "not yet wired", warmItems.length ? (warmItems.some(item => item.tone === "warn") ? "warn" : "go") : "warn"],
+        ["Inbox", openInbox.length, openInbox.length ? "open growthInbox items" : "not yet wired", openInbox.length ? "go" : "warn"],
+        ["Content source", contentBank.length + posts.length, contentBank.length || posts.length ? "contentBank + posts" : "not yet wired", contentBank.length || posts.length ? "go" : "warn"],
+        ["Campaigns", campaigns.length, campaigns.length ? "campaign records" : "not yet wired", campaigns.length ? "go" : "warn"]
       ];
-      const snapshotRows = [
-        drafts.length ? \`\${drafts.length} drafts need review\` : "Draft queue is calm",
-        ready.length ? \`\${ready.length} posts are ready for manual review\` : "No posts are waiting to publish",
-        prFollowUps.length ? \`\${prFollowUps.length} outreach follow-ups need attention\` : "No PR follow-ups due right now",
-        statsNeeded ? \`\${statsNeeded} manual results need stats\` : "Manual stats are up to date",
-        "Live posting remains off"
-      ];
-      const nextCopy = ready.length
-        ? "Open Queue and review the posts that are ready for internal approval."
-        : prFollowUps.length
-          ? "Review the next outreach follow-up, then turn any movement into proof."
-          : "Open Queue, clear the next internal review item, then log what moved.";
-      const workstreams = [
-        ["Campaigns", "Drafts and launch ideas waiting for review.", "Open Queue", "queue"],
-        ["Partners", "Partner pushes, onboarding, and follow-ups.", "Open Partners", "partners"],
-        ["Channels", "LinkedIn, X, Meta, Threads, and RCAP connection status.", "Open Settings", "settings"],
-        ["RCAP Connection", "Connection point is ready for when RCAP is complete.", "Open connection", "settings"],
-        ["Outreach", "PR targets and follow-ups before anything is sent.", "Review outreach", "growth-inbox"],
-        ["Proof", "Evidence, reports, and wins that can become content or investor updates.", "Open Sources", "sources"]
-      ];
-      return \`<section id="growth" class="\${pageClass("growth")} growth-workspace">
-        <section class="growth-hero">
-          <div>
-            <div class="eyebrow">Command</div>
-            <h1>Growth</h1>
-            <p>Move audience, inbox, campaign, and manual outreach work from one place.</p>
-            <div class="growth-safety-pills"><span class="growth-pill">Safe mode: nothing sends or publishes automatically.</span></div>
+      return \`<section id="growth" class="\${pageClass("growth")}">
+        <div class="command-surface">
+          <div class="command-top">
+            <div class="command-heading">
+              <h1>Growth</h1>
+              <p>Everything you make and everyone you reach. Warm audience, outreach signals, campaigns, and content are reviewed here. Nothing sends or posts itself.</p>
+            </div>
+            <button class="command-run-button" type="button" onclick="location.hash='growth-inbox'">Review warm audience <span class="count">\${esc(String(warmItems.length))}</span></button>
           </div>
-          <div class="growth-hero-actions">
-            <button class="primary" type="button" onclick="location.hash='queue'">Open Queue</button>
-            <button type="button" onclick="location.hash='sources'">Open Sources</button>
-          </div>
-        </section>
+          <div class="command-pulse">\${pulse.map(([label, value, detail, tone]) => \`<div class="command-stat">
+            <div class="label"><span class="command-dot \${esc(tone)}"></span>\${esc(label)}</div>
+            <div class="value">\${Number(value) > 0 ? esc(String(value)) : '<span class="command-not-wired">not yet wired</span>'}</div>
+            <div class="detail">\${esc(detail)}</div>
+          </div>\`).join("")}</div>
         \${surfaceTabsHtml("growth", currentPageId)}
-        \${commandPublisherSummaryHtml()}
-        <section class="growth-card">\${dailyRunQuickCaptureHtml("command")}</section>
-        \${googleIntelligencePanelHtml("command")}
-        <section class="growth-card">
-          <div class="growth-card-head"><h2>Command Summary</h2><small>What needs attention</small></div>
-          <div class="growth-summary-grid">\${summaryCards.map(([label, value, detail, urgent]) => \`<article class="growth-summary-card \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
-        </section>
-        <section class="command-next-card">
-          <div class="growth-card-head"><h2>Next move</h2><small>Do this first</small></div>
-          <p>\${esc(nextCopy)}</p>
-          <div class="growth-card-actions"><button class="primary" type="button" onclick="location.hash='queue'">Open Queue</button><button type="button" onclick="location.hash='proof'">Review proof</button></div>
-        </section>
-        <section class="growth-card">
-          <div class="growth-card-head"><h2>Workstreams</h2><small>Summary only</small></div>
-          <div class="command-workstream-grid">\${workstreams.map(([label, copy, action, href]) => \`<article class="command-workstream"><div><strong>\${esc(label)}</strong><span>\${esc(copy)}</span></div><button type="button" onclick="location.hash='\${esc(href)}'">\${esc(action)}</button></article>\`).join("")}</div>
-        </section>
-        <section class="growth-card">
-          <div class="growth-card-head"><h2>Review snapshot</h2><small>Plain status, not a dashboard</small></div>
-          <div class="command-snapshot-list">\${snapshotRows.map(row => \`<div class="command-snapshot-row"><strong>\${esc(row)}</strong><span>Internal only</span></div>\`).join("")}</div>
-        </section>
-        <details class="command-detail-workflow">
-          <summary>Detailed social workflow</summary>
-          <p class="muted">Queue-level visibility stays here for internal review. Nothing has been published by the OS.</p>
-          <div class="growth-workflow">Idea → Draft → Preview → Ready → Publish manually → Track</div>
-          <div class="growth-board" style="margin-top:12px">
-            <section class="growth-lane"><h3>Post Ideas</h3>\${growthIdeaRows(ideas)}<button type="button" onclick="location.hash='content-bank'">Add Idea</button></section>
-            <section class="growth-lane"><h3>Drafts</h3>\${growthPostRows(drafts, "No drafts yet.")}<button type="button" onclick="location.hash='queue'">Create Post</button></section>
-            <section class="growth-lane"><h3>Ready to Publish</h3>\${growthPostRows(ready, "No ready posts yet.")}<button type="button" onclick="location.hash='queue'">Review in Queue</button></section>
-            <section class="growth-lane"><h3>Published Manually</h3>\${growthPostRows(manual, "No manually published posts yet.")}<button type="button" onclick="location.hash='posted'">Mark Published Manually</button></section>
+          <div class="command-cols">
+            <div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Warm audience — review & reach out</h2><span class="meta">one filtered list · inbox, tasks, Google read-only</span></div>
+                \${growthWarmAudiencePanelHtml(warmItems)}
+                <div class="command-footer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Approval only prepares outreach for review. Email sending, social posting, and external actions remain off.</div>
+              </div>
+            </div>
+            <div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Audience pipeline</h2><span class="meta">real intake signals</span></div>
+                \${audienceRows.length ? audienceRows.map(([label, detail, tone, value]) => \`<div class="command-list-row"><span class="command-dot \${esc(tone)}"></span><div class="text"><b>\${esc(label)}</b><span>\${esc(detail)}</span></div><div class="value">\${esc(value)}</div></div>\`).join("") : '<div class="command-not-wired">not yet wired: no open growthInbox, active googleInsights, or outreach tasks are available.</div>'}
+              </div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Make content</h2><span class="meta">contentBank, posts, campaigns</span></div>
+                \${contentRows.length ? contentRows.map(([label, detail, route, value, tone]) => \`<div class="command-list-row"><span class="command-dot \${esc(tone)}"></span><div class="text"><b>\${esc(label)}</b><span>\${esc(detail)}</span></div><div class="value">\${esc(value)}</div></div>\`).join("") : '<div class="command-not-wired">not yet wired: no contentBank, posts, or campaigns are available.</div>'}
+                <div class="command-footer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Nothing posts itself. Outreach and content are prepared for your approval only.</div>
+              </div>
+            </div>
           </div>
-        </details>
+        </div>
       </section>\`;
     }
 
