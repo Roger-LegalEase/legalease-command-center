@@ -15,71 +15,41 @@ function functionBlock(name) {
   return next > 0 ? rest.slice(0, next + 1) : rest;
 }
 
-const production = functionBlock("productionWorkspaceHtml");
+const production = functionBlock("productionCommandSurfaceHtml");
+const importSurface = functionBlock("socialCalendarImportHtml");
+
+assert(!production.includes("Campaign Upload"), "Production command surface should not expose the old Campaign Upload panel");
+assert(importSurface.includes("Import Social Calendar"), "Campaign import should remain available as an internal import surface");
 
 for (const required of [
-  "Campaign Upload",
-  "Upload a spreadsheet and turn it into a 30-day production queue.",
-  "campaign-upload-input",
+  "XLSX or CSV into Queue",
+  "sources-calendar-upload-input",
   "accept=\".csv,.xlsx",
-  "Upload Spreadsheet",
+  "Import Social Calendar",
   "Download Template",
-  "Upload plan",
-  "Review posts",
-  "Generate images",
-  "Approve schedule",
-  "Uploads create internal drafts only.",
-  "Nothing gets posted.",
-  "Nothing gets scheduled on social platforms.",
-  "You approve before anything moves forward.",
-  "CSV and XLSX uploads are ready. Imports create internal queue items only.",
-  "View template details",
-  "View Wilma rules",
-  "View overlay text options",
-  "Import Preview",
+  "Review Import Preview",
+  "Nothing posts during import.",
+  "Facebook and Instagram stay draft/paused while Meta is paused.",
+  "LinkedIn and Twitter / X rows stay internal until review.",
+  "Duplicate rows are skipped before saving.",
+  "Date",
   "Platform",
   "Caption Preview",
   "Image Plan",
   "Wilma",
   "Approval",
-  "This file needs Date, Platform, and Caption columns before it can be imported.",
   "Confirm Import",
-  "Fix Issues",
   "Cancel",
-  "Confirm Import creates internal drafts only.",
-  "Creative Recommendations",
-  "The Command Center recommends image direction, Wilma usage, and overlay text after import.",
-  "Nothing has been published by the OS",
-  "Duplicate rows are skipped before saving."
+  "Confirm Import creates internal Queue items only. No provider APIs are called."
 ]) {
-  assert(production.includes(required), `Production Campaign Upload should include ${required}`);
+  assert(importSurface.includes(required), `Campaign import surface should include ${required}`);
 }
 
-assert(production.includes("Platform values: LinkedIn, Facebook, Instagram, Twitter / X."), "Campaign Upload platform guidance should include Twitter / X");
-assert(!production.includes("Platform values: LinkedIn, Facebook, Instagram, TikTok."), "Campaign Upload platform guidance should not include TikTok");
 assert(course.includes("Twitter / X"), "Course platform references should include Twitter / X");
 assert(!course.includes("TikTok"), "Course platform references should not include TikTok");
 assert(!course.includes("tiktok"), "Course platform references should not include lowercase tiktok");
 
 for (const forbidden of [
-  "Time, Platform, Campaign, Post Type, Topic, Caption, Headline",
-  "Creative Recommendation Engine",
-  "post_type",
-  "image_direction",
-  "overlay_text",
-  "wilma_preference",
-  "approval_owner",
-  "use_wilma",
-  "wilma_optional",
-  "wilma_helper",
-  "do_not_use_wilma",
-  "never_use_wilma",
-  "overlayHeadline",
-  "overlaySubhead",
-  "overlayCTA",
-  "overlayPlacement",
-  "overlayAlignment",
-  "overlayStyle",
   "Post Now",
   "Publish Now",
   "TikTok",
@@ -91,10 +61,9 @@ for (const forbidden of [
   "external action dispatcher",
   "live gates"
 ]) {
-  assert(!production.includes(forbidden), `Production Campaign Upload should not include ${forbidden}`);
+  assert(!importSurface.includes(forbidden), `Campaign import surface should not include ${forbidden}`);
 }
 
-assert(!production.includes("disabled title=\"Spreadsheet upload"), "Upload Spreadsheet should not be disabled");
 assert(source.includes("function parseCampaignCsvText"), "CSV parsing should be implemented for Campaign Upload");
 assert(source.includes("async function parseCampaignXlsxFile"), "XLSX parsing should be implemented for Campaign Upload");
 assert(source.includes("Content Calendar"), "XLSX parser should look for the Content Calendar sheet");
@@ -110,9 +79,6 @@ assert(source.includes("function handleCampaignSpreadsheetUpload"), "Campaign Up
 assert(source.includes("window.handleCampaignSpreadsheetUpload = handleCampaignSpreadsheetUpload"), "Upload handler should be callable from the file input");
 assert(source.includes("state.posts = [...imported"), "Confirm Import should create internal draft records only");
 assert(!source.includes("CSV upload is ready. XLSX support can be added next."), "Campaign Upload should not reject XLSX as future work");
-assert(source.includes(".production-workspace { display:grid; gap:18px; width:100%; max-width:min(1180px, calc(100vw - 32px));"), "Production workspace should be contained within the viewport");
-assert(source.includes(".campaign-upload-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,.8fr);"), "Campaign Upload grid should use safe responsive columns");
-assert(source.includes(".campaign-upload-row { display:grid; grid-template-columns:minmax(60px,.72fr)"), "Campaign Upload preview rows should fit inside the card");
 assert(source.includes("liveGatesCount:0"), "Safe fallback state should keep liveGatesCount at 0");
 
 console.log("production campaign upload tests passed.");

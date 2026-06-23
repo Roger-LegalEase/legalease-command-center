@@ -25138,354 +25138,138 @@ function htmlShell() {
       </div>\`;
     }
 
-    function productionWorkspaceHtml(pageClass) {
-      const posts = state.posts || [];
-      const images = state.postImages || [];
+    function productionCommandSurfaceHtml(pageClass) {
+      const posts = Array.isArray(state.posts) ? state.posts : [];
+      const images = Array.isArray(state.postImages) ? state.postImages : [];
+      const rogerVideoTasks = Array.isArray(state.rogerVideoTasks) ? state.rogerVideoTasks : null;
       const titleFor = post => growthPostTitle(post);
-      const imageFor = post => imageForPost(post.id);
-      const hasImage = post => Boolean(imageFor(post)?.generationStatus === "generated" || imageFor(post)?.imageUrl || imageFor(post)?.finalPngPath || post.imageFinalized);
+      const imageFor = post => images.find(image => image.postId === post.id || image.post_id === post.id) || null;
+      const imageStatusFor = (post, image = imageFor(post)) => {
+        if (post.imageFinalized || image?.attachedToPost || post.imageAttachedAt) return "Attached";
+        if (image?.finalPngPath || image?.finalImageReady || image?.approvedAt) return "Approved";
+        if (image?.generationStatus === "generated" || image?.imageUrl || image?.dataUrl || image?.generatedAt) return "Generated";
+        if (image) return "Requested";
+        return "Needed";
+      };
+      const hasImage = post => imageStatusFor(post) !== "Needed";
       const manuallyPublished = postedPosts();
-      const drafts = posts.filter(post => /draft|ready_to_generate|needs_review/i.test(String(post.status || "")) && !post.manuallyPostedAt && !/posted|manually/i.test(String(post.status || ""))).slice(0, 4);
-      const needsImage = posts.filter(post => !hasImage(post) && !/posted|manually/i.test(String(post.status || ""))).slice(0, 4);
-      const readyReview = posts.filter(post => /approved|ready|needs_review/i.test(String(post.status || "")) && !post.manuallyPostedAt).slice(0, 4);
-      const scheduled = posts.filter(post => post.scheduledFor || /scheduled/i.test(String(post.status || ""))).slice(0, 4);
-      const statsNeeded = manuallyPublished.filter(postedNeedsMetrics);
-      const imageGenerationReady = Boolean(state.runtime?.openAIConfigured);
-      const imageReadinessLabel = imageGenerationReady ? "Ready" : "Not connected";
-      const imageReadinessCopy = imageGenerationReady
-        ? "Image generation is ready. Images still require review before use."
-        : "Image generation is not connected yet. You can save image requests now.";
-      const summaryCards = [
-        ["Drafts", drafts.length, "Posts being shaped", false],
-        ["Needs Image", needsImage.length, "Visuals to prepare", needsImage.length > 0],
-        ["Ready for Review", readyReview.length, "Needs Roger approval", readyReview.length > 0],
-        ["Scheduled Internally", scheduled.length, "Tracked inside the OS", false],
-        ["Published Manually", manuallyPublished.length, "Roger posted outside the OS", false],
-        ["Stats Needed", statsNeeded.length, "Manual results waiting", statsNeeded.length > 0]
+      const stageGroups = [
+        {
+          label:"Drafts",
+          detail:"posts with draft, ready_to_generate, or needs_review status",
+          tone:"hold",
+          items:posts.filter(post => /draft|ready_to_generate|needs_review/i.test(String(post.status || "")) && !post.manuallyPostedAt && !/posted|manually/i.test(String(post.status || "")))
+        },
+        {
+          label:"Needs visual",
+          detail:"posts without a matching postImages record",
+          tone:"warn",
+          items:posts.filter(post => !hasImage(post) && !/posted|manually/i.test(String(post.status || "")))
+        },
+        {
+          label:"Ready for review",
+          detail:"posts in approved, ready, or needs_review status",
+          tone:"go",
+          items:posts.filter(post => /approved|ready|needs_review/i.test(String(post.status || "")) && !post.manuallyPostedAt)
+        },
+        {
+          label:"Scheduled internally",
+          detail:"internal schedule only; no platform scheduling",
+          tone:"hold",
+          items:posts.filter(post => post.scheduledFor || /scheduled/i.test(String(post.status || "")))
+        },
+        {
+          label:"Published manually",
+          detail:"manual posting records from postedPosts()",
+          tone:"go",
+          items:manuallyPublished
+        }
       ];
-      const fallbackPost = posts[0] || { id:"production-sample", title:"RecordShield before the job interview", platform:"linkedin", status:"draft", imageBrief:"Create a clean visual before review." };
-      const productionImageStatus = (post, img) => {
-        if (post.imageFinalized) return "Image: Attached";
-        if (img?.finalPngPath || img?.finalImageReady) return "Image: Approved";
-        if (img?.generationStatus === "generated" || img?.imageUrl) return "Image: Generated";
-        if (img) return "Image: Requested";
-        return "Image: Needed";
-      };
-      const productionImagePreview = (post, img) => {
-        const status = productionImageStatus(post, img);
-        const generated = Boolean(img?.imageUrl && /Generated|Approved|Attached/.test(status));
-        const label = status === "Image: Needed"
-          ? "Image needed"
-          : status === "Image: Requested"
-            ? "Image request saved"
-            : status === "Image: Generated"
-              ? "Generated image"
-              : status === "Image: Approved"
-                ? "Approved image"
-                : "Image attached";
-        const action = status === "Image: Needed"
-          ? ["Generate Image", \`generateProductionImage('\${esc(post.id)}')\`]
-          : status === "Image: Requested"
-            ? ["Check Image", "location.hash='queue'"]
-            : status === "Image: Generated"
-              ? ["Review Image", "location.hash='assets'"]
-              : status === "Image: Approved"
-                ? ["Attach to Post", "location.hash='queue'"]
-                : ["Preview", "location.hash='queue'"];
-        return \`<div class="production-thumbnail">\${generated ? \`<img src="\${esc(img.imageUrl)}" alt="\${esc(label)}">\` : \`<strong>\${esc(label)}</strong><small>\${status === "Image: Needed" ? "Generate a visual before review." : "Saved for review before use."}</small>\`}<button type="button" onclick="\${action[1]}">\${esc(action[0])}</button></div>\`;
-      };
-      const productionLaneButtons = {
-        "Drafts": post => [
-          ["Preview", "location.hash='queue'"],
-          ["Edit", "location.hash='queue'"]
-        ],
-        "Needs Image": post => [
-          ["Preview", "location.hash='queue'"],
-          ["Move to Review", \`setStatus('\${esc(post.id)}','needs_review')\`]
-        ],
-        "Ready for Review": post => [
-          ["Schedule Internally", "location.hash='queue'"],
-          ["Edit", "location.hash='queue'"]
-        ],
-        "Scheduled Internally": post => [
-          ["Move Date", "location.hash='queue'"],
-          ["Mark Published Manually", "location.hash='posted'"]
-        ],
-        "Published Manually": post => [
-          ["Add Result", "location.hash='posted'"],
-          ["Turn Result into Proof", "location.hash='proof'"]
-        ]
-      };
-      const queueLane = (label, items, emptyText, actionLabel) => \`<section class="production-lane"><h3>\${esc(label)}<span class="badge info">\${items.length}</span></h3>\${items.slice(0, 3).map(post => {
-        const img = imageFor(post);
-        const imageStatus = productionImageStatus(post, img);
-        const laneButtons = (productionLaneButtons[label]?.(post) || []).slice(0, 3);
-        return \`<article class="production-item">
-          <strong>\${esc(titleFor(post))}</strong>
-          \${productionImagePreview(post, img)}
-          <div class="production-meta">
-            <span>\${esc(platformLabels[post.platform] || post.platform || "LinkedIn / Instagram")} · \${esc(growthPostStatusLabel(post.status || "draft"))}</span>
-            <span>\${esc(imageStatus)}</span>
-            <span>Next action: \${esc(actionLabel)}</span>
+      const stagedPostIds = new Set();
+      const stagedPosts = stageGroups.flatMap(group => group.items.map(post => {
+        if (stagedPostIds.has(post.id)) return null;
+        stagedPostIds.add(post.id);
+        return { ...post, stageLabel:group.label, stageTone:group.tone };
+      })).filter(Boolean).slice(0, 8);
+      const stageRows = stageGroups.map(group => \`<div class="command-list-row">
+        <span class="command-dot \${esc(group.tone)}"></span>
+        <div class="text"><b>\${esc(group.label)}</b><span>\${esc(group.detail)}</span></div>
+        <div class="value">\${posts.length ? esc(String(group.items.length)) : '<span class="command-not-wired">not yet wired</span>'}</div>
+      </div>\`).join("");
+      const contentRows = stagedPosts.map(post => {
+        const image = imageFor(post);
+        const imageStatus = imageStatusFor(post, image);
+        const status = growthPostStatusLabel(post.status || post.stageLabel || "draft");
+        return \`<div class="command-item">
+          <div class="command-rail \${esc(post.stageTone)}"></div>
+          <div class="command-item-body">
+            <div class="command-item-top"><span class="command-source">\${esc(post.stageLabel)}</span><span class="command-title">\${esc(titleFor(post))}</span><span class="command-pill \${esc(post.stageTone)}">\${esc(status)}</span></div>
+            <div class="command-why">\${esc(platformLabels[post.platform] || post.platform || "platform not set")} · image \${esc(imageStatus.toLowerCase())} · approval stays internal</div>
+            <div class="command-actions"><button class="work-button primary" type="button" onclick="location.hash='queue'">Review</button><button class="work-button ghost" type="button" onclick="location.hash='assets'">Assets</button></div>
           </div>
-          <div class="production-card-actions">\${laneButtons.map(([buttonLabel, action]) => \`<button type="button" onclick="\${action}">\${esc(buttonLabel)}</button>\`).join("")}</div>
-        </article>\`;
-      }).join("") || \`<div class="empty-calm">\${esc(emptyText)}</div>\`}</section>\`;
-      const imageRows = images.slice(0, 3).map(image => {
-        const post = posts.find(item => item.id === image.postId) || fallbackPost;
-        return \`<article class="production-row">
-          <div><strong>\${esc(titleFor(post))}</strong><span>\${esc(image.imageBrief || image.creativeDirection?.directionLabel || "Visual ready for review.")}</span><span>\${esc(productionImageStatus(post, image))}</span></div>
-          <div class="production-card-actions"><button type="button" onclick="generateProductionImage('\${esc(post.id)}')">Regenerate</button><button type="button" onclick="location.hash='assets'">Approve Image</button><button type="button" onclick="location.hash='queue'">Attach to Post</button></div>
-        </article>\`;
-      }).join("") || '<div class="empty-calm">No generated images yet. Generate Image to save a request, then review visuals before attaching them.</div>';
-      const previewText = composePreviewText(fallbackPost);
-      const previewImage = imageFor(fallbackPost);
-      const previewMediaHtml = (platform) => previewImage?.imageUrl
-        ? \`<div class="platform-preview-media"><img src="\${esc(previewImage.imageUrl)}" alt="\${esc(platform)} image preview"></div>\`
-        : \`<div class="platform-preview-media">Image placeholder</div>\`;
-      const platformPreviews = [
-        ["LinkedIn", "Professional feed preview", "copy caption, download image, post manually", "Preview LinkedIn"],
-        ["Facebook", "Community post preview", "copy caption, download image, post manually", "Preview Facebook"],
-        ["Instagram", "Square visual and caption", "image required, download image, post manually", "Preview Instagram"],
-        ["Twitter / X", "Short post preview", "copy caption, download image, post manually", "Preview Twitter / X"]
+          <span class="command-age">\${esc(post.scheduledFor || post.updatedAt || post.createdAt || "open")}</span>
+        </div>\`;
+      }).join("") || '<div class="command-not-wired">not yet wired: no posts are available for the stage-filtered content list.</div>';
+      const imageReviewCount = images.filter(image => image && !image.finalPngPath && !image.finalImageReady && !image.approvedAt).length;
+      const rogerOpenTasks = rogerVideoTasks ? rogerVideoTasks.filter(task => !/done|complete|approved|archived/i.test(String(task.status || ""))) : [];
+      const rogerRows = rogerVideoTasks ? rogerVideoTasks.slice(0, 4).map(task => \`<div class="command-list-row">
+        <span class="command-dot \${/blocked|hold|needs/i.test(String(task.status || "")) ? "warn" : "hold"}"></span>
+        <div class="text"><b>\${esc(task.title || task.name || task.id || "Roger video task")}</b><span>\${esc(task.status || "open")} · \${esc(task.nextAction || task.notes || "review internally")}</span></div>
+        <div class="value">\${esc(task.platform || task.stage || "video")}</div>
+      </div>\`).join("") : '<div class="command-not-wired">not yet wired: rogerVideoTasks is not present in state.</div>';
+      const pulse = [
+        ["Posts", posts.length ? String(posts.length) : "not yet wired", posts.length ? "state.posts" : "state.posts has no records", posts.length ? "go" : "warn"],
+        ["Needs visual", posts.length ? String(stageGroups[1].items.length) : "not yet wired", posts.length ? "derived from posts + postImages" : "state.posts has no records", stageGroups[1].items.length ? "warn" : "go"],
+        ["Assets", images.length ? String(images.length) : "not yet wired", images.length ? "state.postImages" : "postImages has no generated/final image records", images.length ? (imageReviewCount ? "warn" : "go") : "warn"],
+        ["Roger video", rogerVideoTasks ? String(rogerOpenTasks.length) : "not yet wired", rogerVideoTasks ? "state.rogerVideoTasks" : "source not present", rogerVideoTasks ? (rogerOpenTasks.length ? "hold" : "go") : "warn"]
       ];
-      const resultRows = statsNeeded.slice(0, 3).map(post => \`<article class="production-row">
-        <div><strong>\${esc(titleFor(post))}</strong><span>\${esc(platformLabels[post.platform] || post.platform || "platform")} · impressions · clicks · likes/comments/shares · notes</span></div>
-        <div class="production-card-actions"><button type="button" onclick="location.hash='posted'">Update Result</button><button type="button" onclick="location.hash='proof'">Turn Result into Proof</button></div>
-      </article>\`).join("") || '<div class="empty-calm">No results logged yet. Add the first result after posting manually.</div>';
-      const accountRows = [
-        ["LinkedIn", "Prepare LinkedIn", "Approval workflow ready"],
-        ["Facebook", "Prepare Facebook"],
-        ["Instagram", "Prepare Instagram"],
-        ["Twitter / X", "Prepare Twitter / X", "Approval workflow ready"]
-      ];
-      const productionLinkedInAccount = (state.socialAccounts || []).find(account => account.platform === "linkedin") || {};
-      const productionLinkedInConnected = Boolean(productionLinkedInAccount.connected || productionLinkedInAccount.status === "connected");
-      const productionLinkedInPosting = state.runtime?.liveLinkedInPostingEnabled ? "Ready behind approval" : "Off";
-      const linkedInReadinessStatuses = ["Not connected", "Ready to configure", "Approval workflow ready", "Needs setup", "Error"];
-      const linkedInFutureCapabilities = ["Preview LinkedIn post", "Review image", "Approve post", "Prepare scheduling", "Post only after final approval and safety switch"];
-      const linkedInDisabledCapabilities = ["Bulk publishing", "Auto-posting", "Analytics sync", "External scheduling", "Unapproved posting"];
-      const twitterXReadinessStatuses = ["Not connected", "Ready to configure", "Approval workflow ready", "Needs setup", "Error"];
-      const twitterXFutureCapabilities = ["Preview Twitter / X post", "Review image", "Approve post", "Prepare scheduling", "Post only after future live connector is approved"];
-      const twitterXDisabledCapabilities = ["Live posting", "Account connection", "Auto-posting", "Analytics sync", "Credential storage", "External scheduling"];
-      const campaignTemplateColumns = [
-        "Date", "Time", "Platform", "Campaign", "Post Type", "Topic", "Caption", "Headline", "Subhead", "CTA", "Link", "Audience", "Goal", "Tone", "Image Direction", "Overlay Text", "Wilma Preference", "Approval Owner", "Status", "Notes", "Hashtags"
-      ];
-      const priorityTemplateColumns = ["Date", "Platform", "Caption", "Campaign", "Image Direction", "Overlay Text", "Wilma Preference", "Status"];
-      const campaignSteps = [
-        ["1", "Upload plan"],
-        ["2", "Review posts"],
-        ["3", "Generate images"],
-        ["4", "Approve schedule"]
-      ];
-      const campaignPreview = campaignImportPreview;
-      const campaignPreviewRows = campaignPreview?.rows?.length ? campaignPreview.rows.slice(0, 5) : [];
-      const campaignSummary = campaignPreview?.summary || { found:0, dateRange:"No file selected", platforms:"None", needsImages:0, wilmaRecommended:0, overlaySuggestions:0, duplicateRows:0 };
-      const campaignPreviewMetrics = [
-        [campaignSummary.found || 0, "posts found"],
-        [campaignSummary.dateRange || "No file selected", "date range"],
-        [campaignSummary.platforms || "None", "platforms included"],
-        [campaignSummary.needsImages || 0, "posts needing images"],
-        [campaignSummary.wilmaRecommended || 0, "Wilma recommended"],
-        [campaignSummary.overlaySuggestions || 0, "overlay text suggestions"],
-        [campaignSummary.duplicateRows || 0, "duplicate rows"]
-      ];
-      const campaignErrors = campaignPreview?.errors || [];
-      const campaignConfirmDisabled = !campaignPreviewRows.length || campaignErrors.length ? "disabled" : "";
-      return \`<section id="production" class="\${pageClass("production")} production-workspace">
-        <section class="production-hero">
-          <div>
-            <div class="eyebrow">Production</div>
-            <h1>Production</h1>
-            <p>Create, preview, schedule, and track content before anything goes live.</p>
-            <div class="production-pills"><span class="production-pill">Posting is off</span><span class="production-pill">Manual only</span></div>
-            <p class="muted">Live posting is not connected yet. Nothing will be published by the OS.</p>
-          </div>
-          <div class="production-actions">
-            <button class="primary" type="button" onclick="location.hash='queue'">Create Post</button>
-            <button type="button" onclick="\${posts[0]?.id ? \`generateProductionImage('\${esc(posts[0].id)}')\` : "toast('Create a post before generating an image.')"}">Generate Image</button>
-            <button type="button" onclick="document.getElementById('internal-schedule')?.scrollIntoView({ behavior:'smooth', block:'start' })">Open Calendar</button>
-            <button type="button" onclick="document.getElementById('production-results')?.scrollIntoView({ behavior:'smooth', block:'start' })">Add Result</button>
-          </div>
-        </section>
-        \${surfaceTabsHtml("production", currentPageId)}
-
-        <section class="production-card">
-          <div class="production-card-head"><div><h2>Production Summary</h2><small>Content that needs creation, review, or manual tracking.</small></div></div>
-          <div class="production-summary-grid">\${summaryCards.map(([label, value, sublabel, urgent]) => \`<article class="production-summary-card \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(sublabel)}</small></article>\`).join("")}</div>
-        </section>
-
-        <section class="production-card">
-          <div class="production-card-head"><div><h2>LinkedIn readiness</h2><small>Approval workflow ready</small></div><span class="badge warn">Live posting: \${esc(productionLinkedInPosting)}</span></div>
-          <p class="muted">LinkedIn posting is installed but disabled unless LinkedIn is connected, the post is approved internally, and Roger gives final confirmation.</p>
-          <div class="more-safety-list">
-            <div class="more-safety-row"><strong>Account</strong><span>\${productionLinkedInConnected ? "Connected" : "Not connected"}</span></div>
-            <div class="more-safety-row"><strong>Status: Approval workflow ready</strong><span>Internal review</span></div>
-            <div class="more-safety-row"><strong>Safety: Approved posts only</strong><span>No live posting</span></div>
-          </div>
-          <details>
-            <summary>Show setup details</summary>
-            <div class="readiness-detail-grid">
-              <article class="readiness-detail-card"><strong>Status values</strong><small>\${linkedInReadinessStatuses.map(esc).join(" · ")}</small></article>
-              <article class="readiness-detail-card"><strong>Future capabilities</strong><small>\${linkedInFutureCapabilities.map(esc).join(" · ")}</small></article>
-              <article class="readiness-detail-card"><strong>Explicitly disabled</strong><small>\${linkedInDisabledCapabilities.map(esc).join(" · ")}</small></article>
+      return \`<section id="production" class="\${pageClass("production")}">
+        <div class="command-surface">
+          <div class="command-top">
+            <div class="command-heading">
+              <h1>Production</h1>
+              <p>Content moves from draft to visual, internal review, internal schedule, and manual proof. Nothing posts itself, and Wilma asset protection stays behind the scenes.</p>
             </div>
-          </details>
-          <div class="production-card-actions"><button type="button" onclick="document.getElementById('production-linkedin-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View LinkedIn Approval Queue</button><button type="button" onclick="location.hash='queue'">Preview LinkedIn Post</button><button type="button" onclick="connectLinkedIn()">Connect LinkedIn</button><button type="button" onclick="checkLinkedInStatus()">Check Status</button></div>
-        </section>
-
-        <section class="production-card">
-          <div class="production-card-head"><div><h2>Twitter / X readiness</h2><small>Approval workflow ready</small></div><span class="badge warn">No live posting</span></div>
-          <p class="muted">Twitter / X posting is not connected yet. Posts can be prepared and approved internally.</p>
-          <div class="more-safety-list">
-            <div class="more-safety-row"><strong>Account</strong><span>Not connected</span></div>
-            <div class="more-safety-row"><strong>Status: Approval workflow ready</strong><span>Internal review</span></div>
-            <div class="more-safety-row"><strong>Safety</strong><span>No live posting</span></div>
+            <button class="command-run-button" type="button" onclick="location.hash='queue'">Review content <span class="count">\${esc(String(stagedPosts.length))}</span></button>
           </div>
-          <details>
-            <summary>Show setup details</summary>
-            <div class="readiness-detail-grid">
-              <article class="readiness-detail-card"><strong>Status values</strong><small>\${twitterXReadinessStatuses.map(esc).join(" · ")}</small></article>
-              <article class="readiness-detail-card"><strong>Future capabilities</strong><small>\${twitterXFutureCapabilities.map(esc).join(" · ")}</small></article>
-              <article class="readiness-detail-card"><strong>Explicitly disabled</strong><small>\${twitterXDisabledCapabilities.map(esc).join(" · ")}</small></article>
-            </div>
-          </details>
-          <div class="production-card-actions"><button type="button" onclick="document.getElementById('production-twitter-x-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View Twitter / X Approval Queue</button><button type="button" onclick="location.hash='queue'">Preview Twitter / X Post</button><button type="button" onclick="toast('Twitter / X checklist opened internally. No connection starts here.')">Prepare Twitter / X</button></div>
-        </section>
-
-        <section class="production-card">
-          <div class="production-card-head"><div><h2>Campaign Upload</h2><small>Upload a spreadsheet and turn it into a 30-day production queue.</small></div><span class="badge warn">Manual only</span></div>
-          <div class="campaign-upload-grid">
-            <div class="campaign-upload-intro">
-              <div class="campaign-step-row">\${campaignSteps.map(([number, label]) => \`<article class="campaign-step"><span>\${esc(number)}</span><strong>\${esc(label)}</strong></article>\`).join("")}</div>
-              <p class="muted">Upload a 30-day content plan and review the posts before anything moves forward.</p>
-              <div class="campaign-upload-actions">
-                <input id="campaign-upload-input" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onchange="handleCampaignSpreadsheetUpload(this.files && this.files[0]); this.value='';">
-                <button class="primary" type="button" onclick="document.getElementById('campaign-upload-input')?.click()">Upload Spreadsheet</button>
-                <button type="button" onclick="downloadCampaignTemplate()">Download Template</button>
-                <button type="button" onclick="document.getElementById('campaign-import-preview')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Imported Posts</button>
-                <button type="button" onclick="openLeeBubble()">Generate Image Plan</button>
-                <button type="button" \${campaignConfirmDisabled} title="\${campaignConfirmDisabled ? "Review a valid import preview first." : "Send imported drafts into the internal approval queue."}">Send to Approval Queue</button>
+          <div class="command-pulse">\${pulse.map(([label, value, detail, tone]) => \`<div class="command-stat">
+            <div class="label"><span class="command-dot \${esc(tone)}"></span>\${esc(label)}</div>
+            <div class="value">\${value === "not yet wired" ? '<span class="command-not-wired">not yet wired</span>' : esc(value)}</div>
+            <div class="detail">\${esc(detail)}</div>
+          </div>\`).join("")}</div>
+          \${surfaceTabsHtml("production", currentPageId)}
+          <div class="command-cols">
+            <div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Production pipeline</h2><span class="meta">posts + postImages</span></div>
+                \${stageRows}
               </div>
-              <p class="muted">CSV and XLSX uploads are ready. Imports create internal queue items only.</p>
-              <div class="campaign-safety-lines">
-                <span>Uploads create internal drafts only. Nothing gets posted.</span>
-                <span>Nothing gets scheduled on social platforms.</span>
-                <span>You approve before anything moves forward.</span>
-                <span>Nothing has been published by the OS.</span>
-                <span>Duplicate rows are skipped before saving.</span>
-              </div>
-              <div class="campaign-import-status \${campaignErrors.length ? "warn" : ""}">
-                \${campaignErrors.length ? campaignErrors.map(error => \`<strong>\${esc(error)}</strong>\`).join("<br>") : campaignPreview?.confirmed ? "Internal queue items were added. Nothing gets posted." : "Choose a CSV or XLSX file to preview posts before saving internal queue items."}
-              </div>
-              <div>
-                <strong>Creative Recommendations</strong>
-                <p class="muted">The Command Center recommends image direction, Wilma usage, and overlay text after import.</p>
-              </div>
-              <div class="campaign-detail-grid">
-                <details class="campaign-details"><summary>View template details</summary><p class="muted">Required columns: Date, Platform, Caption. This file needs Date, Platform, and Caption columns before it can be imported.</p><div class="campaign-template-chips" aria-label="Accepted spreadsheet columns">\${campaignTemplateColumns.map(column => \`<span>\${esc(column)}</span>\`).join("")}</div><p class="muted">Platform values: LinkedIn, Facebook, Instagram, Twitter / X. Wilma Preference values: Auto, Yes, No, Helper.</p></details>
-                <details class="campaign-details"><summary>View Wilma rules</summary><div class="campaign-template-chips" aria-label="Wilma recommendation labels">\${["Use Wilma", "Wilma optional", "Use Wilma as helper", "Do not use Wilma", "Never use Wilma"].map(value => \`<span>\${esc(value)}</span>\`).join("")}</div></details>
-                <details class="campaign-details"><summary>View overlay text options</summary><p class="muted">Overlay Text can include Headline, Subhead, CTA, Placement, Alignment, and Style.</p><div class="campaign-template-chips" aria-label="Overlay text options">\${["Headline", "Subhead", "CTA", "Placement", "Alignment", "Style"].map(value => \`<span>\${esc(value)}</span>\`).join("")}</div></details>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Stage-filtered content</h2><span class="meta">one list, filtered by stage</span></div>
+                \${contentRows}
+                <div class="command-footer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Approval prepares content for review only. The OS does not publish, schedule to platforms, or perform external actions.</div>
               </div>
             </div>
-            <aside id="campaign-import-preview" class="production-stack">
-              <div class="production-card-head"><div><h2>Import Preview</h2><small>\${campaignPreview?.fileName ? esc(campaignPreview.fileName) : "No spreadsheet selected yet."}</small></div></div>
-              <div class="campaign-preview-metrics">
-                \${campaignPreviewMetrics.map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}
+            <div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Roger video</h2><span class="meta">rogerVideoTasks</span></div>
+                \${rogerRows}
               </div>
-              <div class="campaign-upload-table">
-                <div class="campaign-upload-row header"><span>Date</span><span>Platform</span><span>Caption Preview</span><span>Image Plan</span><span>Wilma</span><span>Approval</span></div>
-                \${campaignPreviewRows.map(record => \`<div class="campaign-upload-row"><span>\${esc(campaignRecordValue(record, "Date"))}</span><span>\${esc(campaignPlatformLabel(campaignRecordValue(record, "Platform")))}</span><span>\${esc(campaignRecordValue(record, "Caption")).slice(0, 120)}</span><span>\${esc(campaignImagePlan(record))}</span><span>\${esc(campaignWilmaLabel(record))}</span><span>\${esc(campaignRecordValue(record, "Status") || "Needs review")}</span></div>\`).join("") || '<div class="campaign-import-status">Upload a CSV or XLSX file to preview Date, Platform, Caption Preview, Image Plan, Wilma, and Approval before saving.</div>'}
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Wilma & asset guardian</h2><span class="meta">display-only status</span></div>
+                <div class="command-list-row"><span class="command-dot go"></span><div class="text"><b>Wilma protection</b><span>Status only here. Canonical pose and overlay protection logic remains unchanged.</span></div><div class="value">locked</div></div>
+                <div class="command-list-row"><span class="command-dot \${images.length ? (imageReviewCount ? "warn" : "go") : "warn"}"></span><div class="text"><b>Asset guardian</b><span>\${images.length ? "postImages records are visible for review before attach." : "not yet wired: postImages has no generated/final image records."}</span></div><div class="value">\${images.length ? esc(String(images.length)) : '<span class="command-not-wired">not yet wired</span>'}</div></div>
+                <div class="command-list-row"><span class="command-dot go"></span><div class="text"><b>Live gates</b><span>Status only. Live posting remains off unless server-side safety gates allow it.</span></div><div class="value">off</div></div>
+                <div class="command-footer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Wilma protection and asset-guardian behavior are not changed by this surface. Nothing posts itself.</div>
               </div>
-              <div class="production-card-actions">
-                <button type="button" \${campaignConfirmDisabled} onclick="confirmCampaignImport()" title="Confirm Import creates internal drafts only.">Confirm Import</button>
-                <button type="button" onclick="fixCampaignImportIssues()">Fix Issues</button>
-                <button type="button" onclick="cancelCampaignImport()">Cancel</button>
-              </div>
-              <p class="muted">Confirm Import creates internal drafts only.</p>
-            </aside>
+            </div>
           </div>
-        </section>
-
-        <div class="production-main-grid">
-          <main class="production-stack">
-            <section class="production-card">
-              <div class="production-card-head"><div><h2>Content Queue</h2><small>Nothing has been published by the OS.</small></div></div>
-              <div class="production-workflow">Draft → Image → Preview → Review → Scheduled → Published manually</div>
-              <div class="production-board">
-                \${queueLane("Drafts", drafts, "No drafts waiting right now.", "Edit Post")}
-                \${queueLane("Needs Image", needsImage, "No posts need images right now.", "Generate Image")}
-                \${queueLane("Ready for Review", readyReview, "No ready posts waiting for review.", "Preview")}
-                \${queueLane("Scheduled Internally", scheduled, "No internally scheduled posts yet.", "Mark Published Manually")}
-                \${queueLane("Published Manually", manuallyPublished, "No manually published posts yet.", "Update Result")}
-              </div>
-            </section>
-
-            <section class="production-card">
-              <div class="production-card-head"><div><h2>Image Studio</h2><small>Generate, review, and attach visuals before posts move into review.</small></div><span class="badge \${imageGenerationReady ? "good" : "warn"}">Image generation: \${esc(imageReadinessLabel)}</span></div>
-              <p class="muted">\${esc(imageReadinessCopy)}</p>
-              <div class="production-summary-grid">
-                <article class="production-summary-card"><span>Image Requests</span><strong>\${needsImage.length}</strong><small>Saved requests</small></article>
-                <article class="production-summary-card"><span>Generated Images</span><strong>\${images.length}</strong><small>Saved visuals</small></article>
-                <article class="production-summary-card urgent"><span>Needs Review</span><strong>\${images.filter(image => !image.finalPngPath && !image.finalImageReady).length}</strong><small>Review before attaching</small></article>
-                <article class="production-summary-card"><span>Approved Images</span><strong>\${images.filter(image => image.finalPngPath || image.finalImageReady).length}</strong><small>Ready to attach</small></article>
-              </div>
-              <div class="production-list">\${imageRows}</div>
-              <div class="production-card-actions">
-                <button type="button" onclick="\${posts[0]?.id ? \`generateProductionImage('\${esc(posts[0].id)}')\` : "toast('Create a post before generating an image.')"}">Generate Image</button>
-                <button type="button" onclick="\${images[0]?.postId ? \`generateProductionImage('\${esc(images[0].postId)}')\` : "toast('Choose a saved image request first.')"}">Regenerate</button>
-                <button type="button" onclick="location.hash='assets'">Approve Image</button>
-                <button type="button" onclick="location.hash='queue'">Attach to Post</button>
-              </div>
-            </section>
-
-            <section id="connected-accounts" class="production-card">
-              <div class="production-card-head"><div><h2>Connected Accounts</h2><small>Prepare future posting and analytics connections.</small></div></div>
-              <p class="muted">Live posting will require connected accounts, permissions, and manual approval.</p>
-              <div class="production-list">\${accountRows.map(([platform, action, status]) => platform === "LinkedIn"
-                ? \`<article class="account-row"><div><strong>LinkedIn — \${productionLinkedInConnected ? "Connected" : "Not connected"}</strong><span>Status: Approval workflow ready</span><span>Live posting: \${esc(productionLinkedInPosting)}</span><span>Safety: Approved posts only</span></div><div class="production-card-actions"><button type="button" onclick="showLinkedInSetupChecklist()">Prepare LinkedIn</button><button type="button" onclick="connectLinkedIn()">Connect LinkedIn</button><button type="button" onclick="checkLinkedInStatus()">Check Status</button><button type="button" onclick="document.getElementById('production-linkedin-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View LinkedIn Approval Queue</button></div></article>\`
-                : platform === "Twitter / X"
-                ? \`<article class="account-row"><div><strong>Twitter / X — Not connected</strong><span>Status: Approval workflow ready</span><span>Next step: Prepare Twitter / X connection</span><span>Safety: No live posting</span></div><div class="production-card-actions"><button type="button" onclick="toast('Twitter / X checklist opened internally. No connection starts here.')">Prepare Twitter / X</button><button type="button" onclick="document.getElementById('production-twitter-x-queue')?.scrollIntoView({ behavior:'smooth', block:'start' })">View Twitter / X Approval Queue</button><button type="button" onclick="location.hash='queue'">Preview Twitter / X Post</button></div></article>\`
-                : \`<article class="account-row"><div><strong>\${esc(platform)} — Not connected</strong><span>Future capability: posting · scheduling · analytics</span><span>Setup state: Coming later</span></div><button type="button" disabled title="Coming later">\${esc(action)}</button></article>\`).join("")}</div>
-            </section>
-
-            \${linkedinApprovalQueueHtml(posts, images)}
-            \${twitterXApprovalQueueHtml(posts, images)}
-          </main>
-
-          <aside class="production-stack">
-            <section class="production-card">
-              <div class="production-card-head"><div><h2>Next Production Move</h2><small>Do this first</small></div></div>
-              <p><strong>Generate a visual for the highest-priority post, then review it before anything goes live.</strong></p>
-              <p class="muted">Strong visuals make review faster and keep manual posting tied to approved content.</p>
-              <div class="production-card-actions"><button class="primary" type="button" onclick="\${posts[0]?.id ? \`generateProductionImage('\${esc(posts[0].id)}')\` : "toast('Create a post before generating an image.')"}">Generate Image</button><button type="button" onclick="location.hash='queue'">Review Ready Posts</button></div>
-            </section>
-
-            <section class="production-card">
-              <div class="production-card-head"><div><h2>Platform Preview</h2><small>Preview only. Nothing has been published.</small></div></div>
-              <div class="platform-preview-grid">\${platformPreviews.map(([platform, note, checklist, action]) => \`<article class="platform-preview-card"><strong>\${esc(platform)}</strong>\${previewMediaHtml(platform)}<div class="platform-preview-note"><span><strong>Caption preview:</strong> \${esc(previewText).slice(0, 120)}</span><span><strong>Platform note:</strong> \${esc(note)}</span><span><strong>Checklist:</strong> \${esc(checklist)}</span></div><div class="production-card-actions"><button type="button" onclick="location.hash='queue'">\${esc(action)}</button><button type="button" onclick="location.hash='queue'">Copy Caption</button><button type="button" onclick="location.hash='assets'">Download Image</button></div></article>\`).join("")}</div>
-            </section>
-
-            <section id="internal-schedule" class="production-card">
-              <div class="production-card-head"><div><h2>Internal Schedule</h2><small>Internal schedule only.</small></div></div>
-              <p class="muted">This is an internal schedule only. No external calendar writes. No platform scheduling.</p>
-              <div class="production-summary-grid">
-                <article class="production-summary-card"><span>Today</span><strong>\${scheduled.filter(post => String(post.scheduledFor || "").slice(0, 10) === new Date().toISOString().slice(0, 10)).length}</strong><small>Planned internally</small></article>
-                <article class="production-summary-card"><span>This Week</span><strong>\${scheduled.length}</strong><small>Ready to watch</small></article>
-                <article class="production-summary-card"><span>Upcoming</span><strong>\${Math.max(0, scheduled.length - 1)}</strong><small>Future manual posts</small></article>
-              </div>
-              <div class="production-list">\${scheduled.slice(0, 3).map(post => \`<article class="production-row"><div><strong>\${esc(titleFor(post))}</strong><span>\${esc(platformLabels[post.platform] || post.platform || "platform")} · \${esc(post.scheduledFor || "date not set")} · \${esc(growthPostStatusLabel(post.status || "scheduled"))}</span></div><div class="production-card-actions"><button type="button" onclick="location.hash='queue'">Move Date</button><button type="button" onclick="location.hash='posted'">Mark Published Manually</button></div></article>\`).join("") || '<div class="empty-calm">No internally scheduled posts yet.</div>'}</div>
-              <div class="production-card-actions"><button type="button" onclick="location.hash='queue'">Add to Internal Schedule</button></div>
-            </section>
-
-            <section id="production-results" class="production-card">
-              <div class="production-card-head"><div><h2>Results</h2><small>Manual stats until accounts are connected.</small></div></div>
-              <div class="production-list">\${resultRows}</div>
-              <div class="production-card-actions"><button type="button" onclick="location.hash='posted'">Add Result</button><button type="button" onclick="location.hash='posted'">Update Result</button></div>
-            </section>
-          </aside>
         </div>
       </section>\`;
+    }
+
+    function productionWorkspaceHtml(pageClass) {
+      return productionCommandSurfaceHtml(pageClass);
     }
 
     function sectionLandingPageHtml(pageClass, section) {

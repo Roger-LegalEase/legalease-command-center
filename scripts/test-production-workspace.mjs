@@ -16,105 +16,43 @@ function functionBlock(name) {
 
 const renderBlock = functionBlock("render()");
 const production = functionBlock("productionWorkspaceHtml");
+const productionCommand = functionBlock("productionCommandSurfaceHtml");
 
 assert(renderBlock.includes('safeRenderModule("production", () => productionWorkspaceHtml(pageClass))'), "#production should render the Production workspace");
+assert(production.includes("return productionCommandSurfaceHtml(pageClass);"), "Production should delegate to the command surface renderer");
 
 for (const required of [
   "Production",
-  "Create, preview, schedule, and track content before anything goes live.",
-  "Production Summary",
+  "Content moves from draft to visual, internal review, internal schedule, and manual proof.",
+  "Production pipeline",
+  "Stage-filtered content",
+  "posts + postImages",
+  "state.posts",
+  "state.postImages",
   "Drafts",
-  "Needs Image",
-  "Ready for Review",
-  "Scheduled Internally",
-  "Published Manually",
-  "Stats Needed",
-  "Next Production Move",
-  "Content Queue",
-  "Draft → Image → Preview → Review → Scheduled → Published manually",
-  "Image Studio",
-  "Platform Preview",
-  "Internal Schedule",
-  "Results",
-  "Connected Accounts",
-  "LinkedIn",
-  "Facebook",
-  "Instagram",
-  "Twitter / X",
-  "Posting is off",
-  "Manual only",
-  "Nothing has been published by the OS",
-  "Internal schedule only",
-  "Generate Image",
-  "Image generation is not connected yet. You can save image requests now.",
-  "Preview only. Nothing has been published.",
-  "This is an internal schedule only.",
-  "Manual stats until accounts are connected.",
-  "Not connected",
-  "Image Requests",
-  "Generated Images",
-  "Needs Review",
-  "Approved Images",
-  "Image: Needed",
-  "production-thumbnail",
-  "Image needed",
-  "Platform note",
-  "Caption preview",
-  "Checklist",
-  "Prepare future posting and analytics connections.",
-  "posting · scheduling · analytics",
-  "Coming later",
-  "Prepare LinkedIn",
-  "Prepare Facebook",
-  "Prepare Instagram",
-  "Prepare Twitter / X",
-  "Live posting will require connected accounts, permissions, and manual approval."
+  "Needs visual",
+  "Ready for review",
+  "Scheduled internally",
+  "Published manually",
+  "Roger video",
+  "rogerVideoTasks",
+  "not yet wired: rogerVideoTasks is not present in state.",
+  "Wilma & asset guardian",
+  "Wilma protection",
+  "Asset guardian",
+  "display-only status",
+  "Canonical pose and overlay protection logic remains unchanged.",
+  "Wilma protection and asset-guardian behavior are not changed by this surface.",
+  "Nothing posts itself.",
+  "The OS does not publish, schedule to platforms, or perform external actions."
 ]) {
-  assert(production.includes(required), `Production workspace should include ${required}`);
+  assert(productionCommand.includes(required), `Production command surface should include ${required}`);
 }
-
-assert(
-  production.includes("Image: Requested") || production.includes("Image: Generated") || production.includes("Image: Approved"),
-  "Production workspace should show requested, generated, or approved image status labels"
-);
-
-for (const action of [
-  "Create Post",
-  "Open Calendar",
-  "Add Result",
-  "Review Ready Posts",
-  "Edit Post",
-  "Preview",
-  "Move to Review",
-  "Schedule Internally",
-  "Mark Published Manually",
-  "Regenerate",
-  "Approve Image",
-  "Attach to Post",
-  "Preview LinkedIn",
-  "Preview Facebook",
-  "Preview Instagram",
-  "Preview Twitter / X",
-  "Copy Caption",
-  "Download Image",
-  "Add to Internal Schedule",
-  "Move Date",
-  "Update Result",
-  "Turn Result into Proof",
-  "Review Image",
-  "Check Image"
-]) {
-  assert(production.includes(action), `Production workspace should include action ${action}`);
-}
-
-assert(!production.includes("Prepare Image Prompt"), "Production should not use prompt-prep language for image generation");
-assert(production.includes("Today") && production.includes("This Week") && production.includes("Upcoming"), "Internal Schedule should show planning groups");
-assert.match(source, /\.production-board\s*\{[^}]*overflow-x:\s*auto/s, "Content Queue lanes should scroll inside the board instead of squeezing the page");
-assert.match(source, /\.production-lane\s*\{[^}]*min-width:\s*(?:220|240|260)px/s, "Content Queue lanes should have comfortable minimum width");
-assert.match(source, /\.production-board\s*\{[^}]*scroll-snap-type:\s*x proximity/s, "Content Queue should support clean horizontal scrolling");
-assert.match(source, /\.production-thumbnail\s*\{[^}]*min-height:/s, "Content cards should include thumbnail or image placeholder UI");
 
 for (const forbidden of [
+  "generateProductionImage(",
+  "buildWilmaImageWorkflow(",
+  "wilmaWorkflowBlockers(",
   "Post Now",
   "Publish Now",
   "Schedule to LinkedIn",
@@ -129,16 +67,13 @@ for (const forbidden of [
   "webhook",
   "boost",
   "ads manager",
-  "live gates",
   "external action dispatcher",
-  "RCAP Program Review",
   "Recovery Mode",
   "audit event",
-  "internal state",
   "generated client",
   "route map"
 ]) {
-  assert(!production.includes(forbidden), `Production normal UI should not include ${forbidden}`);
+  assert(!productionCommand.includes(forbidden), `Production command surface should not include ${forbidden}`);
 }
 
 assert(source.includes("leeBubbleHtml"), "Le-E bubble should remain part of the app shell");
