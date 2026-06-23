@@ -20,7 +20,7 @@ assert.equal((server.match(/data-nav-section="/g) || []).length, 7, "Top navigat
 
 assert.match(server, /\.app-topbar\s*\{[^}]*overflow:\s*visible/s, "Topbar should not clip dropdowns.");
 assert.match(server, /\.top-nav\s*\{[^}]*display:\s*flex[^}]*overflow:\s*visible/s, "Top nav should be a horizontal visible flex row.");
-assert.match(server, /\.nav-menu-summary\.active\s*\{[^}]*background:\s*#020D66[^}]*color:\s*#fff/s, "Active nav styling should apply only to the current route.");
+assert.match(server, /\.nav-menu-summary\.active\s*\{[^}]*background:\s*var\(--ink\)[^}]*color:\s*#fff/s, "Active nav styling should apply only to the current route.");
 
 const topNav = server.match(/<nav class="top-nav" aria-label="Primary">([\s\S]*?)<\/nav>/)?.[1] || "";
 assert.doesNotMatch(topNav, /<details class="nav-menu">/, "Primary nav should not use hover/dropdown previews.");

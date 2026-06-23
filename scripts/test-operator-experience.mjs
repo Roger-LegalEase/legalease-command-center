@@ -51,7 +51,7 @@ assert.match(server, /function quickCapture\(event\)/, "Quick Capture should hav
 assert.match(server, /api\("\/api\/capture-inbox"/, "Quick Capture should create Capture Inbox items.");
 assert.match(server, /Capture with Le-E/, "Quick Capture should use the unified Le-E capture action.");
 assert.match(server, /function focusPageHtml\(pageClass\)/, "Focus Mode page should render through the app shell.");
-assert.match(server, /--le-shell-bg:\s*#EEF2F6/, "Operator shell should use a cooler high-contrast page background token.");
+assert.match(server, /--le-shell-bg:\s*#EEF2F1/, "Operator shell should use the redesigned calm LegalEase page background token.");
 assert.match(server, /class="nav-top-link" href="#today" data-nav-section="today"/, "Today top nav item should be a real link to #today.");
 assert.match(server, /class="nav-top-link" href="#growth" data-nav-section="growth"/, "Simplified nav should expose Growth as a direct route.");
 assert.match(server, /class="nav-top-link" href="#partners" data-nav-section="partners"/, "Simplified nav should expose Partners as a direct route.");

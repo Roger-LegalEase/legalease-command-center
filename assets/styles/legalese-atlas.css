@@ -22,8 +22,8 @@
   --warn-bg:#fdf3da;
   --hold:#5b6475;
   --hold-bg:#eef0f2;
-  --stop:#E5502B;
-  --stop-bg:#fdeae4;
+  --stop:#E4541B;
+  --stop-bg:#fcebe3;
   --danger:var(--stop);
   --shadow:0 8px 24px rgba(17,24,39,.06);
 }

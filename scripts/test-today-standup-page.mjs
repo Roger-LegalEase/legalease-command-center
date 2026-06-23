@@ -79,7 +79,7 @@ assert(!quickCapture.includes('<label class="sr-only" for="cockpit-capture">Quic
 assert(quickCapture.includes("Save a thought before it becomes a loose end."), "Quick Capture should include concise helper text");
 assert.equal((todayVisibleSource.match(/<h2>What Moved<\/h2>/g) || []).length, 1, "Today should render one visible What Moved section");
 assert(!today.includes('<div class="cockpit-card-head"><h2>What Moved</h2>'), "Today right rail should not duplicate What Moved");
-assert(source.includes("--urgent: #F04800") || source.includes("--urgent:#F04800") || source.includes("--rust:#F04800"), "Today should have LegalEase orange available for urgent states");
+assert(source.includes("--urgent: #E4541B") || source.includes("--urgent:#E4541B") || source.includes("--rust:#E4541B") || source.includes("--stop:#E4541B"), "Today should have Expungement.ai orange available for urgent states");
 for (const urgencyClass of [".urgent", ".critical", ".pressing", ".status-urgent", ".pill-urgent"]) {
   assert(source.includes(urgencyClass), `Today should define urgency class ${urgencyClass}`);
 }
