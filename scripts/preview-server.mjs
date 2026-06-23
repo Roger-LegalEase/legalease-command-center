@@ -26432,28 +26432,35 @@ function htmlShell() {
 
     function proofWorkspaceHtml(pageClass) {
       const posts = postedPosts();
-      const partners = state.partnerPrograms || [];
-      const evidenceNotes = [
-        ...(state.evidencePackNotes || []),
-        ...(state.reports || []),
-        ...(state.dataRoomItems || []),
-        ...(state.soc2Evidence || [])
-      ];
-      const proofWins = [
-        ["RCAP review packet approved", "Partner program", "Manual review", "Add to Investor Update"],
-        ["First campaign upload created", "Content planning", "Shows repeatable growth planning", "Turn into Post"],
-        ["Partner follow-up completed", "Partner work", "Keeps relationship movement visible", "Turn into Proof"],
-        ["Image generation workflow ready", "Content creation", "Makes visual review faster", "Turn into Post"],
-        ["Content queue organized", "Manual publishing", "Shows operating rhythm", "Add to Investor Update"]
-      ];
-      const evidenceRows = [
-        ["Customer note", "Customer note", "Partner conversation", "Needs link", "RCAP review packet approved", "Note", "No attachment yet", "Today"],
-        ["Partner follow-up email note", "Email note", "Partner conversation", "Needs review", "Partner follow-up completed", "Email note", "No attachment yet", "Today"],
-        ["Clean Slate partner note", "Partner note", "Partner workspace", "Ready for review", "Partner follow-up completed", "Partner note", "No attachment yet", "This week"],
-        ["Campaign upload screenshot", "Screenshot", "Content workflow", "Ready for review", "First campaign upload created", "Screenshot", "No attachment yet", "This week"],
-        ["Manual posting result", "Metric", "Growth workspace", "Needs update", "Content queue organized", "Metric", "No attachment yet", "Needs update"],
-        ["Weekly report draft", "Report", "Proof workspace", "Ready for review", "Image generation workflow ready", "Report", "No attachment yet", "Saved"]
-      ];
+      const partners = list(state.partnerPrograms);
+      const overview = buildEvidenceOverview(state);
+      const evidenceIndex = buildEvidenceIndex(state);
+      const evidenceItems = list(evidenceIndex.items);
+      const recentEvidence = evidenceItems.slice(0, 6);
+      const openReviewEvidence = evidenceItems.filter(item => ["review_required", "needs_revision", "blocked", "in_review"].includes(item.review_state) || ["draft", "ready_for_review"].includes(item.status));
+      const reportEvidence = evidenceItems.filter(item => item.source === "Reports" || /report/i.test(item.type || item.source || "")).slice(0, 4);
+      const dataRoomGroups = list(evidenceIndex.data_room_index);
+      const dataRoomEvidence = evidenceItems.filter(item => item.source === "Data Room");
+      const partnerEvidence = evidenceItems.filter(item => item.proof_category === "partner").slice(0, 4);
+      const investorEvidence = evidenceItems.filter(item => item.proof_category === "investor" || item.source === "Data Room").slice(0, 4);
+      const soc2Evidence = evidenceItems.filter(item => item.source === "SOC 2 Readiness" || /soc ?2/i.test([item.title, item.source].join(" "))).slice(0, 4);
+      const latestSummary = latestEvidenceSummary(state);
+      const notWiredBadge = '<span class="command-not-wired">not yet wired</span>';
+      const proofMetricValue = value => value || value === 0 ? esc(String(value)) : notWiredBadge;
+      const proofStatusTone = value => /blocked|needs|draft|review|required|stale/i.test(String(value || "")) ? "warn" : "info";
+      const proofDateLabel = item => formatDate(item.date || item.updated_at || item.updatedAt || item.created_at || item.createdAt) || "date not recorded";
+      const evidenceRouteButton = item => \`<button type="button" onclick="location.hash='\${esc(item.route || "evidence-room")}'">Open Source</button>\`;
+      const evidenceRowHtml = item => \`<article class="proof-row">
+        <div class="proof-preview"><strong>\${esc(growthLabel(item.type || "evidence"))}</strong><small>\${esc(item.source || "Evidence")}</small></div>
+        <strong>\${esc(item.title || "Evidence item")}</strong>
+        <span>\${esc(item.source || "Evidence")} · \${esc(proofDateLabel(item))}</span>
+        <span class="badge \${proofStatusTone(item.review_state || item.status)}">\${esc(growthLabel(item.review_state || item.status || "recorded"))}</span>
+        <span>\${esc(item.summary || item.next_manual_action || "Review internally before external use.")}</span>
+        <div class="proof-card-actions">\${evidenceRouteButton(item)}<button type="button" onclick="toast('Evidence linked internally for review.')">Link to Win</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button><button type="button" onclick="toast('Evidence moved into an internal report draft.')">Turn into Report</button></div>
+      </article>\`;
+      const emptyEvidenceHtml = (message = "No confirmed evidence records are available yet.") => \`<div class="command-not-wired">not yet wired: \${esc(message)}</div>\`;
+      const peopleHelped = { value:"not yet wired", detail:"No dedicated people-helped source collection is present in state." };
+      const packetsCreated = { value:"not yet wired", detail:"No dedicated packets-created source collection is present in state." };
       const metrics = [
         ["Revenue", state.metrics?.revenue || state.revenue || "Needs update", state.metrics?.revenue || state.revenue ? "Current value added" : "No value added yet.", true],
         ["Leads", state.metrics?.leads || "Needs update", state.metrics?.leads ? "Current value added" : "No value added yet.", true],
@@ -26465,42 +26472,21 @@ function htmlShell() {
         ["Runway", state.metrics?.runway || "Needs update", state.metrics?.runway ? "Current value added" : "No value added yet.", true]
       ];
       const summaryCards = [
-        ["Wins Captured", proofWins.length, "movement to reuse", false],
-        ["Evidence Items", evidenceNotes.length || evidenceRows.length, "supporting proof", false],
-        ["Metrics Updated", metrics.filter(item => !String(item[1]).includes("Not added")).length, "numbers with values", true],
-        ["Reports Ready", (state.reports || []).length || 2, "updates to review", false],
-        ["Investor Proof", 5, "deck and data room", false],
-        ["Partner Proof", partners.length || 1, "relationship movement", false]
+        ["Recent Proof", overview.recent_evidence_items || 0, "updated in the last 7 days", !(overview.recent_evidence_items || 0)],
+        ["Evidence Items", overview.total_evidence_items || 0, "indexed supporting proof", !(overview.total_evidence_items || 0)],
+        ["Metrics Updated", metrics.filter(item => !String(item[1]).includes("Needs update")).length, "numbers with values", true],
+        ["Reports Ready", overview.report_count || 0, "reports in state.reports", !(overview.report_count || 0)],
+        ["People Helped", peopleHelped.value, peopleHelped.detail, true],
+        ["Packets Created", packetsCreated.value, packetsCreated.detail, true],
+        ["Data Room", dataRoomEvidence.length, "evidence-room data room records", !dataRoomEvidence.length]
       ];
-      const reportRows = [
-        ["Weekly Evidence Pack", "Proof for weekly review", "Review Report"],
-        ["Investor Update", "Traction, GTM, product, and impact proof", "Add to Investor Update"],
-        ["Partner Report", "Partner-facing movement summary", "Review Report"],
-        ["Impact Report", "Outcomes and proof moments", "Turn into Post"],
-        ["Campaign Report", "Manual campaign results", "Review Report"],
-        ["Data Room Export", "Investor-ready folder package", "Add to Data Room"]
-      ];
-      const investorRows = [
-        ["traction proof", "Numbers and movement that show demand", "Add to Investor Update"],
-        ["GTM proof", "Content, PR, and partner signals", "Add to Pitch Deck Notes"],
-        ["partner proof", "Program and follow-up movement", "Add to Data Room"],
-        ["product proof", "Workflows that are ready for review", "Add to Pitch Deck Notes"],
-        ["impact proof", "Outcomes that show LegalEase matters", "Add to Investor Update"]
-      ];
-      const partnerProofRows = partners.slice(0, 4).map(partner => [
-        partner.partnerName || partner.organization || partner.name || "Partner",
-        partner.nextAction || partner.notes || "Partner movement needs a short proof note.",
-        "Partner report or content proof",
-        partner.status || "Ready for review"
-      ]);
-      const dataRoomRows = ["Pitch Decks", "Formation Docs", "Cap Table", "Monthly Updates", "Reports", "Evidence Packs"];
-      const gapRows = [
-        ["Revenue metric needs update", "Blocks investor readiness", "Update Metric"],
-        ["Petition metric needs update", "Needs a current number", "Update Metric"],
-        ["Partner outcome needs evidence", "Needs a proof note", "Add Evidence"],
-        ["Campaign result not logged", "Manual stats need a number", "Add Note"],
-        ["Investor update needs founder note", "Could strengthen the next update", "Add Founder Note"],
-        ["Metric stale", "Needs Roger review", "Update Metric"]
+      const gapRows = list(overview.missing_proof_warnings).length ? list(overview.missing_proof_warnings).map(item => [item, "Evidence Room warning", "Open Evidence Room"]) : [["No current proof warnings", "Evidence overview has no warnings.", "Open Evidence Room"]];
+      const acquisitionReadiness = [
+        ["Evidence index", overview.total_evidence_items || 0, "buildEvidenceIndex() records"],
+        ["Reports", overview.report_count || 0, "state.reports"],
+        ["Data room", dataRoomEvidence.length, "dataRoomItems + dataRoom"],
+        ["SOC 2 evidence", overview.soc2_readiness_evidence_count || 0, "soc2Evidence"],
+        ["Open review", overview.open_review_items || 0, "items requiring review"]
       ];
       return \`<section id="proof" class="\${pageClass("proof")} proof-workspace">
         <section class="proof-hero">
@@ -26528,19 +26514,19 @@ function htmlShell() {
           <main class="proof-stack">
             <section class="proof-card proof-next-card">
               <div class="proof-card-head"><div><h2>Next Proof Move</h2><small>Do this first</small></div></div>
-              <p><strong>Turn the strongest partner movement into investor-ready proof, then generate a draft investor update.</strong></p>
-              <p class="muted">This keeps the story backed by evidence, numbers, and a next use.</p>
+              <p><strong>\${esc(openReviewEvidence[0]?.title || recentEvidence[0]?.title || "Review the Evidence Room before sharing proof externally.")}</strong></p>
+              <p class="muted">\${esc(openReviewEvidence[0]?.next_manual_action || recentEvidence[0]?.next_manual_action || "Proof is internal until Roger reviews source records, gaps, and report drafts.")}</p>
               <div class="proof-card-actions"><button class="primary" type="button" onclick="toast('Proof item queued internally for Roger review.')">Create Proof Item</button><button type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Metric update stays internal until reviewed.')">Update Metrics</button></div>
             </section>
 
             <section class="proof-card">
-              <div class="proof-card-head"><div><h2>Wins</h2><small>Capture meaningful movement</small></div><button type="button" onclick="toast('Win saved internally for review.')">Add Win</button></div>
-              <div class="proof-list">\${proofWins.slice(0, 1).map(([title, source, reason, action]) => \`<article class="proof-row"><strong>\${esc(title)}</strong><span>\${esc(source)} · \${esc(reason)}</span><div class="proof-card-actions"><button type="button" onclick="toast('Win converted into an internal proof draft.')">Turn into Proof</button><button type="button" onclick="location.hash='growth'">Turn into Post</button><button type="button" onclick="toast('Investor update note queued internally.')">\${esc(action)}</button></div></article>\`).join("")}</div>
+              <div class="proof-card-head"><div><h2>Recent Proof</h2><small>Latest evidence-room records</small></div><button type="button" onclick="toast('Win saved internally for review.')">Add Win</button></div>
+              <div class="proof-list">\${recentEvidence.length ? recentEvidence.slice(0, 3).map(evidenceRowHtml).join("") : emptyEvidenceHtml("no evidence-room records are available for recent proof.")}</div>
             </section>
 
             <section class="proof-card">
-              <div class="proof-card-head"><div><h2>Evidence</h2><small>Store supporting proof</small></div><div class="proof-card-actions"><button type="button" onclick="toast('Evidence note saved internally.')">Add Evidence</button><button type="button" disabled title="File attachments can be added next.">Attach File</button><button type="button" onclick="toast('Metric linked internally for review.')">Link Metric</button><button type="button" onclick="toast('Evidence note saved internally.')">Add Note</button></div></div>
-              <div class="proof-list">\${evidenceRows.map(([title, type, source, status, linked, previewType, attachment, age]) => \`<article class="proof-row"><div class="proof-preview"><strong>\${esc(previewType)}</strong><small>\${esc(attachment)}</small></div><strong>\${esc(title)}</strong><span>\${esc(type)} · \${esc(source)} · \${esc(age)}</span><span>\${esc(status)} · linked to \${esc(linked)}</span><div class="proof-card-actions"><button type="button" onclick="toast('Evidence preview opened for internal review.')">View Evidence</button><button type="button" onclick="toast('Evidence linked internally.')">Link to Win</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button><button type="button" onclick="toast('Evidence moved into an internal report draft.')">Turn into Report</button></div></article>\`).join("")}</div>
+              <div class="proof-card-head"><div><h2>Evidence / Data Room</h2><small>Evidence index, reports, data room, and SOC 2 records</small></div><div class="proof-card-actions"><button type="button" onclick="toast('Evidence note saved internally.')">Add Evidence</button><button type="button" disabled title="File attachments can be added next.">Attach File</button><button type="button" onclick="toast('Metric linked internally for review.')">Link Metric</button><button type="button" onclick="toast('Evidence note saved internally.')">Add Note</button></div></div>
+              <div class="proof-list">\${evidenceItems.length ? evidenceItems.slice(0, 6).map(evidenceRowHtml).join("") : emptyEvidenceHtml("buildEvidenceIndex() returned no evidence records.")}</div>
             </section>
           </main>
 
@@ -26553,6 +26539,11 @@ function htmlShell() {
             <section class="proof-card">
               <div class="proof-card-head"><div><h2>Proof Gaps</h2><small>Evidence that needs filling</small></div></div>
               <div class="proof-list">\${gapRows.map(([title, reason, action]) => \`<article class="proof-row"><span class="badge warn">Needs update</span><strong>\${esc(title)}</strong><span>\${esc(reason)}</span><div class="proof-card-actions"><button type="button" onclick="toast('Gap moved into the next proof review.')">\${esc(action)}</button></div></article>\`).join("")}</div>
+            </section>
+
+            <section class="proof-card">
+              <div class="proof-card-head"><div><h2>Acquisition Readiness</h2><small>Evidence-room source coverage</small></div><span class="badge info">\${esc(formatDate(overview.last_evidence_update) || "no dated evidence")}</span></div>
+              <div class="proof-list">\${acquisitionReadiness.map(([label, value, source]) => \`<article class="proof-row"><strong>\${esc(label)}</strong><span>\${esc(source)}</span><span class="badge \${Number(value) ? "info" : "warn"}">\${proofMetricValue(value)}</span></article>\`).join("")}</div>
             </section>
           </aside>
         </div>
@@ -26574,29 +26565,44 @@ function htmlShell() {
           <div class="proof-card-head"><div><h2>Proof Outputs</h2><small>Turn evidence into reports, investor updates, partner materials, and data room assets.</small></div></div>
           <div class="proof-two-grid">
             <article class="proof-card proof-output-card">
-              <div class="proof-card-head"><div><h2>Reports</h2><small>Turn proof into usable updates.</small></div><span class="badge info">\${esc(String(reportRows.length))} ready</span></div>
-              <div class="proof-list">\${reportRows.slice(0, 2).map(([title, purpose]) => \`<article class="proof-row"><strong>\${esc(title)}</strong><span>\${esc(purpose)}</span></article>\`).join("")}</div>
+              <div class="proof-card-head"><div><h2>Reports</h2><small>Turn proof into usable updates.</small></div><span class="badge info">\${esc(String(overview.report_count || 0))} records</span></div>
+              <div class="proof-list">\${reportEvidence.length ? reportEvidence.map(item => \`<article class="proof-row"><strong>\${esc(item.title)}</strong><span>\${esc(item.source)} · \${esc(item.summary || item.next_manual_action || "Review before use.")}</span></article>\`).join("") : emptyEvidenceHtml("state.reports has no report records.")}</div>
               <div class="proof-card-actions"><button type="button" onclick="toast('Report draft created for internal review only.')">Generate Report</button><button type="button" onclick="toast('Report opened for internal review.')">Review Report</button><button type="button" onclick="location.hash='growth'">Turn into Post</button></div>
             </article>
 
             <article class="proof-card proof-output-card">
-              <div class="proof-card-head"><div><h2>Investor Proof</h2><small>Updates, decks, and data room materials.</small></div><span class="badge info">\${esc(String(investorRows.length))} proof areas</span></div>
-              <div class="proof-list">\${investorRows.slice(0, 2).map(([title, purpose]) => \`<article class="proof-row"><strong>\${esc(title)}</strong><span>\${esc(purpose)}</span></article>\`).join("")}</div>
+              <div class="proof-card-head"><div><h2>Investor Proof</h2><small>Updates, decks, and data room materials.</small></div><span class="badge info">\${esc(String(investorEvidence.length))} records</span></div>
+              <div class="proof-list">\${investorEvidence.length ? investorEvidence.slice(0, 3).map(item => \`<article class="proof-row"><strong>\${esc(item.title)}</strong><span>\${esc(item.source)} · \${esc(item.summary || item.next_manual_action || "Review before investor use.")}</span></article>\`).join("") : emptyEvidenceHtml("no investor/data-room proof records are indexed.")}</div>
               <div class="proof-card-actions"><button type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button><button type="button" onclick="toast('Pitch deck note queued internally.')">Add to Pitch Deck Notes</button></div>
             </article>
 
             <article class="proof-card proof-output-card">
-              <div class="proof-card-head"><div><h2>Partner Proof</h2><small>Movement from partners and programs.</small></div><span class="badge info">\${esc(String(partnerProofRows.length || 1))} items</span></div>
-              <div class="proof-list">\${(partnerProofRows.length ? partnerProofRows : [["RCAP partner", "Partner materials are ready for review.", "Partner report or content proof", "Ready for review"]]).slice(0, 2).map(([partner, moment, use, status]) => \`<article class="proof-row"><strong>\${esc(partner)}</strong><span>\${esc(moment)} · \${esc(use)}</span><span class="badge info">\${esc(status)}</span></article>\`).join("")}</div>
+              <div class="proof-card-head"><div><h2>Partner Proof</h2><small>Movement from partners and programs.</small></div><span class="badge info">\${esc(String(partnerEvidence.length))} records</span></div>
+              <div class="proof-list">\${partnerEvidence.length ? partnerEvidence.slice(0, 3).map(item => \`<article class="proof-row"><strong>\${esc(item.title)}</strong><span>\${esc(item.source)} · \${esc(item.summary || item.next_manual_action || "Review partner proof before use.")}</span><span class="badge info">\${esc(growthLabel(item.status || "recorded"))}</span></article>\`).join("") : emptyEvidenceHtml("no partner proof records are indexed.")}</div>
               <div class="proof-card-actions"><button type="button" onclick="toast('Partner proof note saved internally.')">Add Partner Proof</button><button type="button" onclick="toast('Partner report draft created internally.')">Turn into Partner Report</button><button type="button" onclick="location.hash='partners'">Link to Partner</button></div>
             </article>
 
             <article class="proof-card proof-output-card">
-              <div class="proof-card-head"><div><h2>Data Room</h2><small>Keep investor-ready documents organized.</small></div><span class="badge info">\${esc(String(dataRoomRows.length))} sections</span></div>
-              <div class="proof-list">\${dataRoomRows.slice(0, 3).map(label => \`<article class="proof-row"><strong>\${esc(label)}</strong><span>Review before sharing</span></article>\`).join("")}</div>
+              <div class="proof-card-head"><div><h2>Data Room</h2><small>Keep investor-ready documents organized.</small></div><span class="badge info">\${esc(String(dataRoomEvidence.length))} records</span></div>
+              <div class="proof-list">\${dataRoomGroups.map(group => \`<article class="proof-row"><strong>\${esc(growthLabel(group.category))}</strong><span>Data Room category from evidence index</span><span class="badge \${group.count ? "info" : "warn"}">\${esc(String(group.count))}</span></article>\`).join("") || emptyEvidenceHtml("no data room categories are indexed.")}</div>
               <div class="proof-card-actions"><button type="button" onclick="toast('Document queued internally for Data Room review.')">Add Document</button><button type="button" onclick="toast('Report added internally for review.')">Add Report</button><button type="button" onclick="toast('Export prepared for Roger review only.')">Prepare Export</button></div>
             </article>
           </div>
+        </section>
+
+        <section class="proof-card">
+          <div class="proof-card-head"><div><h2>SOC 2 Evidence</h2><small>Readiness evidence from the evidence room</small></div><span class="badge info">\${esc(String(soc2Evidence.length))} records</span></div>
+          <div class="proof-list">\${soc2Evidence.length ? soc2Evidence.map(item => \`<article class="proof-row"><strong>\${esc(item.title)}</strong><span>\${esc(item.summary || item.next_manual_action || "Review internally before auditor use.")}</span><span class="badge info">\${esc(growthLabel(item.status || "recorded"))}</span></article>\`).join("") : emptyEvidenceHtml("state.soc2Evidence has no readiness records.")}</div>
+        </section>
+
+        <section class="proof-card">
+          <div class="proof-card-head"><div><h2>Source Integrity</h2><small>High-risk metrics stay unfabricated</small></div><span class="badge warn">not wired where unconfirmed</span></div>
+          <div class="proof-list">
+            <article class="proof-row"><strong>People helped</strong><span>\${esc(peopleHelped.detail)}</span><span class="badge warn">\${notWiredBadge}</span></article>
+            <article class="proof-row"><strong>Packets created</strong><span>\${esc(packetsCreated.detail)}</span><span class="badge warn">\${notWiredBadge}</span></article>
+            <article class="proof-row"><strong>Latest evidence summary</strong><span>\${esc(latestSummary ? latestSummary.title || latestSummary.key || "Summary recorded" : "No evidence summary record yet.")}</span><span class="badge info">\${esc(latestSummary ? growthLabel(latestSummary.status || "recorded") : "not wired")}</span></article>
+          </div>
+          <div class="command-footer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Proof stays internal until Roger reviews it. No emails, posts, partner pages, dashboards, or external systems are triggered from this surface.</div>
         </section>
       </section>\`;
     }

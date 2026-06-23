@@ -28,15 +28,17 @@ for (const required of [
   "Internal only",
   "Ready for review",
   "Proof Summary",
-  "Wins Captured",
+  "Recent Proof",
   "Evidence Items",
   "Metrics Updated",
   "Reports Ready",
+  "People Helped",
+  "Packets Created",
+  "Source Integrity",
   "Investor Proof",
   "Partner Proof",
   "Next Proof Move",
-  "Wins",
-  "Evidence",
+  "Evidence / Data Room",
   "Metrics / KPIs",
   "Track the numbers that prove LegalEase is moving.",
   "Revenue",
@@ -58,13 +60,18 @@ for (const required of [
   "Add to Data Room",
   "Needs update",
   "No value added yet.",
-  "No attachment yet",
+  "not yet wired",
   "Proof Outputs",
   "Turn evidence into reports, investor updates, partner materials, and data room assets.",
+  "Acquisition Readiness",
+  "SOC 2 Evidence",
   "Investor Update Builder",
   "Turn proof, metrics, and wins into a review-ready investor update.",
   "Review-ready draft",
-  "Investor updates are internal drafts until Roger shares them."
+  "Investor updates are internal drafts until Roger shares them.",
+  "No dedicated people-helped source collection is present in state.",
+  "No dedicated packets-created source collection is present in state.",
+  "Proof stays internal until Roger reviews it."
 ]) {
   assert(proof.includes(required), `Proof workspace should include ${required}`);
 }
@@ -73,13 +80,11 @@ for (const action of [
   "Create Proof Item",
   "Update Metrics",
   "Add Win",
-  "Turn into Proof",
   "Turn into Post",
-  "Add to Investor Update",
   "Add Evidence",
   "Link to Win",
   "Turn into Report",
-  "View Evidence",
+  "Open Source",
   "Attach File",
   "Link Metric",
   "Update Metric",
@@ -102,8 +107,8 @@ for (const action of [
 assert.match(source, /\.proof-preview\s*\{[^}]*min-height:/s, "Evidence cards should include preview / attachment UI");
 assert(proof.includes("File attachments can be added next."), "Attach File should be disabled with a clear reason when not wired");
 assert.equal((proof.match(/Not added yet\./g) || []).length, 0, "Proof metrics should use compact Needs update copy instead of repeated Not added yet.");
-assert(proof.indexOf("<h2>Wins") < proof.indexOf("<h2>Evidence"), "Evidence should appear close to Wins in the main proof column");
-assert(proof.indexOf("<h2>Evidence") < proof.indexOf("<h2>Reports"), "Evidence should be visible before lower report sections");
+assert(proof.indexOf("<h2>Recent Proof") < proof.indexOf("<h2>Evidence / Data Room"), "Evidence should appear close to Recent Proof in the main proof column");
+assert(proof.indexOf("<h2>Evidence / Data Room") < proof.indexOf("<h2>Reports"), "Evidence should be visible before lower report sections");
 assert(proof.indexOf("<h2>Proof Outputs") < proof.indexOf("<h2>Data Room"), "Reports, investor proof, partner proof, and data room should be grouped under Proof Outputs");
 
 for (const forbidden of [
@@ -122,10 +127,36 @@ for (const forbidden of [
   "diagnostics",
   "RCAP Program Review",
   "Recovery Mode",
-  "Production"
+  "Production",
+  "RCAP review packet approved",
+  "First campaign upload created",
+  "Partner follow-up completed",
+  "Image generation workflow ready",
+  "Content queue organized",
+  "Customer note",
+  "Partner follow-up email note",
+  "Clean Slate partner note",
+  "Campaign upload screenshot",
+  "Manual posting result",
+  "Weekly Evidence Pack",
+  "Impact Report",
+  "Data Room Export",
+  "Pitch Decks",
+  "Formation Docs",
+  "Cap Table",
+  "Monthly Updates",
+  "RCAP partner"
 ]) {
   assert(!proof.includes(forbidden), `Proof normal UI should not include ${forbidden}`);
 }
+
+assert(proof.includes("buildEvidenceOverview(state)"), "Proof should read the evidence overview helper.");
+assert(proof.includes("buildEvidenceIndex(state)"), "Proof should read the evidence index helper.");
+assert(proof.includes("state.soc2Evidence"), "Proof should keep SOC 2 evidence sourced from state.soc2Evidence.");
+assert(proof.includes("overview.report_count"), "Proof report counts should come from the evidence overview.");
+assert(proof.includes("dataRoomEvidence.length"), "Data Room counts should come from indexed data room evidence.");
+assert(!/People Helped[\\s\\S]{0,500}\\b\\d+\\b/.test(proof), "People helped must not render a hard-coded number in the Proof template.");
+assert(!/Packets Created[\\s\\S]{0,500}\\b\\d+\\b/.test(proof), "Packets created must not render a hard-coded number in the Proof template.");
 
 assert(source.includes("leeBubbleHtml"), "Le-E bubble should remain part of the app shell");
 assert(source.includes("liveGatesCount:0"), "Safe fallback state should keep liveGatesCount at 0");
