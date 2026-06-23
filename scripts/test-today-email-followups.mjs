@@ -52,14 +52,9 @@ for (const requiredClass of [
   assert(todayEmail.includes(requiredClass), `Today email follow-ups should use structured class ${requiredClass}`);
 }
 
-for (const required of [
-  "Partner Email Follow-Ups",
-  "Email is not connected yet. Partner follow-ups remain internal.",
-  "Prepare Draft",
-  "Review Follow-Ups"
-]) {
-  assert(partners.includes(required), `Partners should include email follow-up readiness copy: ${required}`);
-}
+assert(partners.includes("Approval still prepares drafts; it does not execute sends or handoffs."), "Partners should show approval as status-only display.");
+assert(partners.includes("Approval does not send."), "Partners should preserve draft-only partner follow-up discipline.");
+assert(!partners.includes("Partner Email Follow-Ups"), "Top-level Partners should not render the old email follow-up panel.");
 
 assert(proof.includes("Email note"), "Proof should support Email note as an evidence type");
 

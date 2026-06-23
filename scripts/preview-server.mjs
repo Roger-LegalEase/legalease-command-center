@@ -25982,20 +25982,11 @@ function htmlShell() {
     }
 
     function partnersPageHtml(pageClass) {
-      const stages = ["lead", "qualified", "intro_scheduled", "proposal_sent", "pilot_scoped", "contract_pending", "active_pilot", "reporting", "renewal", "case_study", "expansion", "stalled", "lost"];
-      const pipelineStages = [
-        ["lead", "Lead"],
-        ["qualified", "Qualified"],
-        ["intro_scheduled", "Intro Scheduled"],
-        ["proposal_sent", "Proposal Sent"],
-        ["active", "Active"],
-        ["stalled", "Stalled"]
-      ];
-      const partnerTypes = ["nonprofit", "county", "city", "funder", "workforce", "reentry", "legal_aid", "investor", "enterprise"];
       const partners = growthItems("partners").map(partner => normalizePartnerLifecycle(partner));
       const lifecycle = partnerLifecycleInsights({ ...state, partners });
       const today = new Date().toISOString().slice(0, 10);
       const programs = state.partnerPrograms || [];
+      const pilots = state.pilots || [];
       const partnerName = partner => partner.organizationName || partner.name || "Unnamed partner";
       const dueDate = partner => partner.nextActionDueDate || partner.nextFollowUpDate || "";
       const stageKey = partner => {
@@ -26010,149 +26001,88 @@ function htmlShell() {
       const isDue = partner => !dueDate(partner) || dueDate(partner) <= today || partnerFlags(partner).some(flag => /due|stalled|missing|overdue/i.test(flag.label));
       const activePartners = partners.filter(partner => stageKey(partner) === "active");
       const stalledPartners = partners.filter(partner => stageKey(partner) === "stalled" || partnerFlags(partner).some(flag => /stalled|blocked/i.test(flag.label)));
-      const followUps = partners.filter(isDue).slice(0, 5);
-      const proofPartners = (lifecycle.proofWorthyPartners.length ? lifecycle.proofWorthyPartners : partners.filter(partner => /high|strong|critical/i.test(String(partner.proofValue || partner.priority || "")))).slice(0, 4);
-      const programsInReview = programs.filter(program => /review|draft|not_started|needs/i.test(String(program.status || program.reviewStatus || program.readinessStatus || "")));
-      const rcapNeedsReview = true;
-      const summaryCards = [
-        ["Active Partners", activePartners.length, "Programs with real movement.", ""],
-        ["Follow-ups Due", followUps.length, "Partner next steps waiting.", followUps.length ? "urgent" : ""],
-        ["Stalled", stalledPartners.length, "Needs revive, close, or reframe.", stalledPartners.length ? "urgent" : ""],
-        ["Proof-Worthy", proofPartners.length, "Movement worth capturing.", ""],
-        ["Programs in Review", programsInReview.length || 1, "Partner programs before handoff.", programsInReview.length ? "urgent" : ""],
-        ["RCAP Status", "Needs review", "Record Clearing Access Program.", rcapNeedsReview ? "urgent" : ""]
-      ];
+      const followUps = partners.filter(isDue);
+      const proofPartners = lifecycle.proofWorthyPartners.length ? lifecycle.proofWorthyPartners : partners.filter(partner => /high|strong|critical/i.test(String(partner.proofValue || partner.priority || "")));
+      const programsInReview = programs.filter(program => /review|draft|not_started|needs|proposal|qualified|onboarding/i.test(String(program.status || program.reviewStatus || program.readinessStatus || program.proposalStatus || "")));
+      const signedPilots = pilots.filter(pilot => ["signed", "active", "completed", "expanded"].includes(String(pilot.status || "").toLowerCase()) || pilot.checklist?.agreementSigned);
       const partnerPriority = partner => {
         if (partnerFlags(partner).some(flag => /overdue|stalled|blocked|missing/i.test(flag.label))) return "Pressing";
         if (/high|critical|strong/i.test(String(partner.priority || partner.proofValue || partner.riskLevel || ""))) return "High";
         return "Normal";
       };
-      const pipelinePartners = key => partners.filter(partner => stageKey(partner) === key).slice(0, 4);
-      const defaultPartnerProof = proofPartners.length ? proofPartners : partners.slice(0, 3);
-      return \`<section id="partners" class="\${pageClass("partners")} partners-workspace">
-        <section class="partners-hero">
-          <div>
-            <div class="eyebrow">Partner command center</div>
-            <h1>Partners</h1>
-            <p>Track partner conversations, follow-ups, active programs, and proof-worthy movement.</p>
-            <div class="partners-pills"><span class="partners-pill">Manual follow-up only</span><span class="partners-pill">Publishing is off</span></div>
+      const partnerWeightedPipeline = partners.filter(partner => Number.isFinite(Number(partner.revenuePotential)) && Number(partner.revenuePotential) > 0).reduce((sum, partner) => {
+        const probability = Number(partner.probability || 0);
+        return sum + Number(partner.revenuePotential || 0) * (probability > 1 ? probability / 100 : probability);
+      }, 0);
+      const pilotPipeline = pilots.filter(pilot => Number.isFinite(Number(pilot.price || pilot.expectedValue)) && Number(pilot.price || pilot.expectedValue) > 0).reduce((sum, pilot) => sum + Number(pilot.price || pilot.expectedValue || 0), 0);
+      const programBooked = programs.filter(program => Number.isFinite(Number(program.metrics?.revenueBooked || program.revenueBooked)) && Number(program.metrics?.revenueBooked || program.revenueBooked) > 0).reduce((sum, program) => sum + Number(program.metrics?.revenueBooked || program.revenueBooked || 0), 0);
+      const pipelineRows = followUps.length ? followUps.slice(0, 5) : lifecycle.partnerMovement.slice(0, 5);
+      const moneyRows = [
+        ["Weighted partner pipeline", partners.length && partnerWeightedPipeline ? todayMoney(partnerWeightedPipeline) : "", "partners via normalizePartnerLifecycle()", "partners"],
+        ["Pilot value", pilots.length && pilotPipeline ? todayMoney(pilotPipeline) : "", "pilots price / expectedValue", "pilots"],
+        ["Booked partner programs", programs.length && programBooked ? todayMoney(programBooked) : "", "partnerPrograms metrics.revenueBooked", "partner-programs"],
+        ["Signed pilots", pilots.length ? String(signedPilots.length) : "", "pilots with signed/active proof", "pilots"]
+      ];
+      const programRows = [
+        ...programsInReview.slice(0, 3).map(program => ({ title:program.name || program.slug || "Partner program", detail:program.nextAction || program.programGoal || growthLabel(program.status), route:"partner-programs", tone:/paid|active|ready/i.test(String(program.status || program.paymentStatus || "")) ? "go" : "warn", status:growthLabel(program.status || program.proposalStatus || "review") })),
+        ...pilots.slice(0, 3).map(pilot => ({ title:pilot.pilotName || "Partner pilot", detail:pilot.nextAction || pilot.successMetrics || growthLabel(pilot.status), route:"pilots", tone:/active|signed|completed|expanded/i.test(String(pilot.status || "")) ? "go" : "warn", status:growthLabel(pilot.status || "pilot") }))
+      ].slice(0, 5);
+      return \`<section id="partners" class="\${pageClass("partners")}">
+        <div class="command-surface">
+          <div class="command-top">
+            <div class="command-heading">
+              <h1>Partners</h1>
+              <p>RCAP, pilots, programs, and partner follow-ups. Record Clearing Access Program partner review workspace. Decisions are surfaced here; sends, handoffs, and public actions remain gated.</p>
+            </div>
+            <div class="command-actions">
+              <button class="command-run-button" type="button" onclick="location.hash='partners'">Review follow-ups <span class="count">\${esc(String(followUps.length))}</span></button>
+              <button class="work-button" type="button" onclick="location.hash='rcap'">Open RCAP Program</button>
+            </div>
           </div>
-          <div class="partners-hero-actions">
-            <button class="primary" type="button" onclick="document.getElementById('add-partner-form')?.setAttribute('open',''); document.getElementById('add-partner-form')?.scrollIntoView({ behavior:'smooth', block:'start' })">Add Partner</button>
-            <button type="button" onclick="document.getElementById('partner-followups')?.scrollIntoView({ behavior:'smooth', block:'start' })">Add Follow-Up</button>
-            <button type="button" onclick="location.hash='rcap'">Open RCAP Program</button>
+          <div class="command-pulse">
+            <div class="command-stat"><div class="label"><span class="command-dot \${partners.length ? "go" : "warn"}"></span>Partners</div><div class="value">\${partners.length ? esc(String(partners.length)) : '<span class="command-not-wired">not yet wired</span>'}</div><div class="detail">\${partners.length ? esc(String(activePartners.length) + " active · " + String(stalledPartners.length) + " stalled") : "No partner records available."}</div></div>
+            <div class="command-stat"><div class="label"><span class="command-dot \${partnerWeightedPipeline || pilotPipeline ? "go" : "warn"}"></span>Pipeline</div><div class="value">\${partnerWeightedPipeline || pilotPipeline ? esc(todayMoney(partnerWeightedPipeline + pilotPipeline)) : '<span class="command-not-wired">not yet wired</span>'}</div><div class="detail">partners weighted + pilots</div></div>
+            <div class="command-stat"><div class="label"><span class="command-dot \${followUps.length ? "warn" : "go"}"></span>Follow-ups</div><div class="value">\${partners.length ? esc(String(followUps.length)) : '<span class="command-not-wired">not yet wired</span>'}</div><div class="detail">\${partners.length ? "due or missing next action" : "No partner records available."}</div></div>
+            <div class="command-stat"><div class="label"><span class="command-dot \${programs.length || pilots.length ? "go" : "warn"}"></span>Programs</div><div class="value">\${programs.length || pilots.length ? esc(String(programs.length + pilots.length)) : '<span class="command-not-wired">not yet wired</span>'}</div><div class="detail">partnerPrograms + pilots</div></div>
           </div>
-        </section>
-
-        <section class="partner-card">
-          <div class="partner-card-head"><div><h2>Partner Summary</h2><small>What needs attention across the partner motion.</small></div></div>
-          <div class="partner-summary-grid">\${summaryCards.map(([label, value, sublabel, tone]) => \`<article class="partner-summary-card \${tone}"><span>\${esc(label)}</span><strong>\${esc(value)}</strong><small>\${esc(sublabel)}</small></article>\`).join("")}</div>
-        </section>
-
-        <div class="partner-work-grid">
-          <div class="partner-stack">
-            <section class="partner-card">
-              <div class="partner-card-head"><div><h2>Next Partner Move</h2><small>The next safe internal step.</small></div><span class="badge warn">Needs decision</span></div>
-              <p><strong>\${followUps.length ? "Follow up with the highest-value stalled partner before adding new outreach." : "Review the RCAP Program details, then decide whether the partner packet is ready for manual handoff."}</strong></p>
-              <p class="muted">\${followUps.length ? "Partner movement compounds when the active conversations stay warm." : "RCAP is the clearest partner program waiting on review, and nothing partner-facing has been sent."}</p>
-              <div class="partner-card-actions">
-                <button class="primary" type="button" onclick="location.hash='rcap'">Open RCAP Program</button>
-                <button type="button" onclick="document.getElementById('partner-followups')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Follow-Ups</button>
-                <button type="button" onclick="document.getElementById('partner-proof')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Partner Proof</button>
-                <button type="button" disabled title="Partner notes are saved from the partner detail form for now.">Add Partner Note</button>
-                <button type="button" disabled title="Move to Tomorrow needs a saved follow-up date first.">Move to Tomorrow</button>
+          \${surfaceTabsHtml("partners", currentPageId)}
+          <div class="command-cols">
+            <div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Partner pipeline</h2><span class="meta">normalizePartnerLifecycle + partnerLifecycleInsights</span></div>
+                \${pipelineRows.length ? pipelineRows.map(partner => {
+                  const tone = partnerPriority(partner) === "Pressing" ? "warn" : stageKey(partner) === "active" ? "go" : "hold";
+                  return \`<div class="command-item">
+                    <div class="command-rail \${esc(tone)}"></div>
+                    <div class="command-item-body">
+                      <div class="command-item-top"><span class="command-source">\${esc(growthLabel(stageKey(partner)))}</span><span class="command-title">\${esc(partnerName(partner))}</span><span class="command-pill \${esc(tone)}">\${esc(partnerPriority(partner))}</span></div>
+                      <div class="command-why">\${esc(partnerNextAction(partner))}</div>
+                      <div class="command-actions"><button class="work-button primary" type="button" onclick="location.hash='partners'">Review</button><button class="work-button" type="button" onclick="location.hash='partner-programs'">Open programs</button></div>
+                    </div>
+                    <span class="command-age \${tone === "warn" ? "old" : ""}">\${esc(dueDate(partner) ? "due " + dueDate(partner) : "date missing")}</span>
+                  </div>\`;
+                }).join("") : '<div class="command-not-wired">not yet wired: no partner records are available for the pipeline.</div>'}
+                <div class="command-footer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Partner follow-ups are internal drafts and review decisions only. Approval does not send.</div>
               </div>
-            </section>
-
-            <section class="partner-card">
-              <div class="partner-card-head"><div><h2>Active Programs</h2><small>Partner programs before anything goes partner-facing.</small></div></div>
-              <article class="partner-program-card">
-                <div class="row"><div><h3>RCAP Program</h3><p class="muted">Record Clearing Access Program partner review workspace.</p></div><span class="badge warn">Needs review</span></div>
-                <ul class="partner-facts">
-                  <li>Partner materials need review</li>
-                  <li>Nothing partner-facing has been sent</li>
-                  <li>Publishing is off</li>
-                </ul>
-                <div class="partner-card-actions">
-                  <button class="primary" type="button" onclick="location.hash='rcap'">Open RCAP Program</button>
-                  <button type="button" onclick="document.getElementById('partner-followups')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Follow-Ups</button>
-                  <button type="button" onclick="document.getElementById('partner-proof')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Partner Proof</button>
-                </div>
-              </article>
-            </section>
-
-            <section id="partner-followups" class="partner-card">
-              <div class="partner-card-head"><div><h2>Follow-Ups</h2><small>Partner actions waiting on Roger.</small></div></div>
-              <div class="partner-list">\${followUps.map(partner => \`<article class="partner-row">
-                <div><strong>\${esc(partnerName(partner))}</strong><span>\${esc(partnerNextAction(partner))}</span><span>\${esc(dueDate(partner) ? "Due " + dueDate(partner) : "Due date missing")} · \${esc(growthLabel(partner.stage || partner.status || "lead"))}</span><span class="badge \${partnerPriority(partner) === "Pressing" ? "warn" : "info"}">\${esc(partnerPriority(partner))}</span></div>
-                <div class="partner-card-actions"><button type="button" onclick="quickPartnerStatus('\${esc(partner.id)}', 'qualified')">Mark Contacted</button><button type="button" disabled title="Add a note from the partner detail form for now.">Add Note</button><button type="button" disabled title="Choose a new due date from the partner form first.">Move to Tomorrow</button><button type="button" onclick="document.getElementById('partner-card-\${esc(partner.id)}')?.scrollIntoView({ behavior:'smooth', block:'center' })">Open Partner</button></div>
-              </article>\`).join("") || '<div class="empty">No partner follow-ups due right now.</div>'}</div>
-            </section>
-          </div>
-
-          <aside class="partner-stack">
-            <section class="partner-card">
-              <div class="partner-card-head"><div><h2>Partner Email Follow-Ups</h2><small>Draft-only readiness</small></div><span class="badge info">Not connected</span></div>
-              <p class="muted">Email is not connected yet. Partner follow-ups remain internal.</p>
-              <p class="muted">Email drafts can be prepared for review. Email sending is off.</p>
-              <div class="partner-list">
-                <article class="partner-row">
-                  <div><strong>Partner follow-up draft</strong><span>Draft needed · Review the partner context before Roger sends anything manually.</span></div>
-                  <div class="partner-card-actions"><button type="button" onclick="prepareEmailDraft('Partner follow-up draft','Partner follow-up')">Prepare Draft</button><button type="button" onclick="document.getElementById('partner-followups')?.scrollIntoView({ behavior:'smooth', block:'start' })">Review Follow-Ups</button></div>
-                </article>
+            </div>
+            <div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Money</h2><span class="meta">partners, programs, pilots</span></div>
+                \${moneyRows.map(([label, value, detail, route]) => \`<div class="command-list-row"><span class="command-dot \${value ? "go" : "warn"}"></span><div class="text"><b>\${esc(label)}</b><span>\${esc(detail)}</span></div><div class="value">\${value ? esc(value) : '<span class="command-not-wired">not yet wired</span>'}</div></div>\`).join("")}
               </div>
-            </section>
-
-            <section id="partner-proof" class="partner-card">
-              <div class="partner-card-head"><div><h2>Partner Proof</h2><small>Movement that can become proof, posts, reports, or investor updates.</small></div></div>
-              <div class="partner-list">\${defaultPartnerProof.map(partner => \`<article class="partner-row">
-                <div><strong>\${esc(partnerName(partner))}</strong><span>\${esc(partner.notes || partner.nextAction || "Partner movement worth capturing.")}</span><span>Recommended use: proof note or investor update</span></div>
-                <div class="partner-card-actions"><button type="button" onclick="location.hash='proof'">Add Partner Win</button><button type="button" onclick="location.hash='proof'">Turn into Proof</button><button type="button" onclick="location.hash='growth'">Turn into Post</button><button type="button" onclick="location.hash='more'">Add to Investor Update</button></div>
-              </article>\`).join("") || '<div class="empty">No partner proof moments yet. Capture movement when a partner creates evidence.</div>'}</div>
-            </section>
-            <section class="partner-card">
-              <div class="partner-card-head"><div><h2>Stalled Partners</h2><small>Relationships that need a revive, close, or reframe.</small></div></div>
-              <div class="partner-list">\${stalledPartners.slice(0, 4).map(partner => \`<article class="partner-row">
-                <div><strong>\${esc(partnerName(partner))}</strong><span>\${esc(partnerNextAction(partner))}</span><span class="badge warn">Needs attention</span></div>
-                <div class="partner-card-actions"><button type="button" onclick="document.getElementById('partner-card-\${esc(partner.id)}')?.scrollIntoView({ behavior:'smooth', block:'center' })">Open Partner</button><button type="button" disabled title="Move the partner from the pipeline card for now.">Move Stage</button></div>
-              </article>\`).join("") || '<div class="empty">No stalled partners right now.</div>'}</div>
-            </section>
-          </aside>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Programs & pilots</h2><span class="meta">partnerPrograms + pilots</span></div>
+                \${programRows.length ? programRows.map(row => \`<div class="command-list-row"><span class="command-dot \${esc(row.tone)}"></span><div class="text"><b>\${esc(row.title)}</b><span>\${esc(row.detail)}</span></div><span class="command-pill \${esc(row.tone)}">\${esc(row.status)}</span></div>\`).join("") : '<div class="command-not-wired">not yet wired: no partnerPrograms or pilots are available.</div>'}
+              </div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Safety rails</h2><span class="meta">status-only display</span></div>
+                <div class="command-list-row"><span class="command-dot go"></span><div class="text"><b>Suppression matrix</b><span>Status-only display. Suppression behavior was not changed.</span></div><span class="command-pill go">Armed</span></div>
+                <div class="command-list-row"><span class="command-dot go"></span><div class="text"><b>Approval rules</b><span>Status-only display. Approval still prepares drafts; it does not execute sends or handoffs.</span></div><span class="command-pill go">Review required</span></div>
+                <div class="command-footer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg> Suppression and approval run silently. They only ever pass partner work to your review, or block it and tell you why.</div>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <section id="partner-pipeline" class="partner-card">
-          <div class="partner-card-head"><div><h2>Partner Pipeline</h2><small>Move partners through clear relationship stages.</small></div></div>
-          <div class="partner-pipeline">\${pipelineStages.map(([key, label]) => {
-            const items = pipelinePartners(key);
-            return \`<section class="partner-stage"><h3>\${esc(label)}<span class="badge info">\${items.length}</span></h3>\${items.map(partner => \`<article id="partner-card-\${esc(partner.id)}" class="partner-mini-card">
-              <strong>\${esc(partnerName(partner))}</strong>
-              <span>\${esc(growthLabel(partner.type || partner.partnerType || "partner"))} · Owner: \${esc(partner.owner || "Unassigned")}</span>
-              <span>Last touch: \${esc(partner.lastTouchDate || "TBD")} · Next: \${esc(partnerNextAction(partner))}</span>
-              <span>Proof value: \${esc(growthLabel(partner.proofValue || partner.priority || "medium"))}</span>
-              <div class="partner-card-actions"><button type="button" onclick="document.getElementById('partner-card-\${esc(partner.id)}')?.scrollIntoView({ behavior:'smooth', block:'center' })">Open Partner</button><button type="button" disabled title="Partner notes are saved from the form for now.">Add Note</button><button type="button" onclick="quickPartnerStatus('\${esc(partner.id)}', 'proposal_sent')">Move Stage</button></div>
-            </article>\`).join("") || '<div class="empty">No partners in this stage.</div>'}</section>\`;
-          }).join("")}</div>
-        </section>
-
-        <details id="add-partner-form" class="partner-card add-partner-details">
-          <summary><span><strong>Add Partner</strong><small>Add a new partner prospect or program.</small></span><span class="badge info">Open Add Partner Form</span></summary>
-          <form class="mini-form" style="margin-top:12px" onsubmit="savePartner(event)">
-            <label>Organization<input name="organizationName" required></label>
-            <label>Type<select name="partnerType">\${partnerTypes.map(type => \`<option value="\${type}">\${growthLabel(type)}</option>\`).join("")}</select></label>
-            <label>Stage<select name="stage">\${stages.map(stage => \`<option value="\${stage}">\${growthLabel(stage)}</option>\`).join("")}</select></label>
-            <label>Region/state<input name="regionState"></label>
-            <label>Contact<input name="primaryContactName"></label>
-            <label>Email<input name="email" type="email"></label>
-            <label>Owner<input name="owner" value="Roger"></label>
-            <label>Next action<input name="nextAction" placeholder="What happens next?"></label>
-            <label>Next action due<input name="nextActionDueDate" type="date"></label>
-            <label>Last touch<input name="lastTouchDate" type="date"></label>
-            <label>Revenue potential<input name="revenuePotential" type="number" value="0"></label>
-            <label>Proof value<select name="proofValue"><option>medium</option><option>high</option><option>strong</option><option>critical</option></select></label>
-            <label>Risk<select name="riskLevel"><option>medium</option><option>low</option><option>high</option><option>critical</option></select></label>
-            <button class="primary">Add partner</button>
-          </form>
-        </details>
       </section>\`;
     }
 

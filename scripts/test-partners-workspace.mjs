@@ -21,59 +21,41 @@ assert(renderBlock.includes('safeRenderModule("partners", () => partnersPageHtml
 
 for (const required of [
   "Partners",
-  "Track partner conversations, follow-ups, active programs, and proof-worthy movement.",
-  "Manual follow-up only",
-  "Partner Summary",
-  "Active Partners",
-  "Follow-ups Due",
-  "Stalled",
-  "Proof-Worthy",
-  "Programs in Review",
-  "RCAP Status",
-  "Next Partner Move",
-  "Active Programs",
-  "RCAP Program",
-  "Record Clearing Access Program partner review workspace.",
-  "Open RCAP Program",
-  "Follow-Ups",
-  "Partner Pipeline",
-  "Lead",
-  "Qualified",
-  "Intro Scheduled",
-  "Proposal Sent",
-  "Active",
-  "Stalled",
-  "Partner Proof",
-  "Add Partner",
-  "Open Add Partner Form"
+  "RCAP, pilots, programs, and partner follow-ups.",
+  "command-surface",
+  "Review follow-ups",
+  "Partner pipeline",
+  "normalizePartnerLifecycle + partnerLifecycleInsights",
+  "Money",
+  "partners, programs, pilots",
+  "Programs & pilots",
+  "partnerPrograms + pilots",
+  "Safety rails",
+  "status-only display",
+  "Suppression matrix",
+  "Suppression behavior was not changed.",
+  "Approval rules",
+  "Approval still prepares drafts; it does not execute sends or handoffs.",
+  "command-not-wired",
+  "Suppression and approval run silently."
 ]) {
   assert(partners.includes(required), `Partners workspace should include ${required}`);
 }
 
 for (const action of [
-  "Add Partner",
-  "Add Follow-Up",
-  "Open RCAP Program",
-  "Review Follow-Ups",
-  "Review Partner Proof",
-  "Add Partner Note",
-  "Move to Tomorrow",
-  "Mark Contacted",
-  "Add Note",
-  "Open Partner",
-  "Move Stage",
-  "Add Partner Win",
-  "Turn into Proof",
-  "Turn into Post",
-  "Add to Investor Update"
+  "Review",
+  "Open programs",
+  "partner-programs",
+  "pilots"
 ]) {
   assert(partners.includes(action), `Partners workspace should include action ${action}`);
 }
 
-assert(partners.includes("Add a new partner prospect or program."), "Add Partner should be collapsed/lower-context copy, not the only dominant above-fold content");
-assert(partners.indexOf("Partner Summary") < partners.indexOf("Open Add Partner Form"), "Partner Summary should appear before the Add Partner form");
-assert(partners.indexOf("Next Partner Move") < partners.indexOf("Open Add Partner Form"), "Next Partner Move should appear before the Add Partner form");
-assert(partners.indexOf("Follow-Ups") < partners.indexOf("Open Add Partner Form"), "Follow-Ups should appear before the Add Partner form");
+assert(partners.includes('growthItems("partners").map(partner => normalizePartnerLifecycle(partner))'), "Partners should normalize partner lifecycle records before rendering.");
+assert(partners.includes("partnerLifecycleInsights({ ...state, partners })"), "Partners should read lifecycle insights for partner movement.");
+assert(partners.includes("state.partnerPrograms || []"), "Partners should read partnerPrograms directly.");
+assert(partners.includes("state.pilots || []"), "Partners should read pilots directly.");
+assert(!partners.includes("Add a new partner prospect or program."), "Top-level Partners should not lead with the old add-partner form.");
 
 for (const forbidden of [
   "API status",
