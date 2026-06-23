@@ -7,11 +7,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const server = readFileSync(join(here, "preview-server.mjs"), "utf8");
 
 assert.match(server, /<header class="app-topbar">/, "App shell should render a stable app-topbar.");
-assert.match(server, /<a class="brand-lockup" href="#overview">/, "Brand lockup should link to Today.");
+assert.match(server, /<a class="brand-lockup" href="#today">/, "Brand lockup should link to Today.");
 assert.match(server, /<nav class="top-nav" aria-label="Primary">/, "Primary navigation should use top-nav.");
 assert.match(server, /class="nav-top-link" href="#today" data-nav-section="today"/, "Today should be a direct #today link.");
 assert.match(server, /class="nav-top-link" href="#growth" data-nav-section="growth"/, "Growth should be a direct #growth link.");
-assert.match(server, /class="nav-top-link" href="#partner-hub" data-nav-section="partners"/, "Partners should route to #partner-hub.");
+assert.match(server, /class="nav-top-link" href="#partners" data-nav-section="partners"/, "Partners should route to #partners.");
 assert.match(server, /class="nav-top-link" href="#production" data-nav-section="production"/, "Production should be a direct #production link.");
 assert.match(server, /class="nav-top-link" href="#proof" data-nav-section="proof"/, "Proof should be a direct #proof link.");
 assert.match(server, /class="nav-top-link" href="#settings" data-nav-section="settings"/, "Settings & Health should route to #settings.");

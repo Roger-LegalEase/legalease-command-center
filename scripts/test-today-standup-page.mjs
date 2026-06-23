@@ -34,7 +34,8 @@ const todayHelpers = [
 const todayVisibleSource = today + "\n" + todayHelpers;
 const renderBlock = functionBlock("render()");
 
-assert(renderBlock.includes('today:"overview"'), "#today should route to the Today standup");
+assert(renderBlock.includes('overview:"today"'), "#overview should route to the Today standup");
+assert(renderBlock.includes('["today", "overview"].includes(pageId)'), "#today should render the Today standup directly");
 assert(today.includes("operator-v31"), "Today should keep the existing LegalEase cockpit visual style");
 assert(today.includes("app-intention"), "Today should keep the large intention hero");
 assert(intention.includes("Today is for"), "Today hero should use the Today is for framing");

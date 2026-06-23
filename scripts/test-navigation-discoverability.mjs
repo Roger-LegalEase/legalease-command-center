@@ -27,7 +27,7 @@ const safeMode = functionBlock("renderSafeBootShell");
 const primaryLinks = [
   ["Today", "#today", "today"],
   ["Growth", "#growth", "growth"],
-  ["Partners", "#partner-hub", "partners"],
+  ["Partners", "#partners", "partners"],
   ["Production", "#production", "production"],
   ["Proof", "#proof", "proof"],
   ["Settings &amp; Health", "#settings", "settings"],
@@ -53,7 +53,8 @@ for (const label of ["Production Home", "Proof Home", "Partners Home", "More Hom
 assert(source.includes('link.dataset.navSection === navSectionForPage(pageId)'), "Active nav state should be based on the current route section");
 assert(!source.includes('.nav-menu[open] > .nav-menu-summary'), "Open nav menus should not create an additional active state");
 
-assert(renderBlock.includes('today:"overview"'), "#today should route to Today/Overview");
+assert(renderBlock.includes('overview:"today"'), "#overview should remain a compatibility alias for Today");
+assert(renderBlock.includes('"partner-hub":"partners"'), "#partner-hub should remain a compatibility alias for Partners");
 assert(renderBlock.includes('command:"growth"'), "#command should remain a compatibility alias for Growth");
 assert(renderBlock.includes('metrics:"proof"'), "#metrics should route to Proof / Metrics");
 assert(renderBlock.includes('kpis:"proof"'), "#kpis should route to Proof / Metrics");

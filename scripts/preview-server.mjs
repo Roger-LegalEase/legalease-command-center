@@ -15596,11 +15596,11 @@ function htmlShell() {
 <body>
   <div class="shell">
     <header class="app-topbar">
-      <a class="brand-lockup" href="#overview"><span>LegalEase</span><strong>Command Center</strong></a>
+      <a class="brand-lockup" href="#today"><span>LegalEase</span><strong>Command Center</strong></a>
       <nav class="top-nav" aria-label="Primary">
         <a class="nav-top-link" href="#today" data-nav-section="today">Today</a>
         <a class="nav-top-link" href="#growth" data-nav-section="growth">Growth</a>
-        <a class="nav-top-link" href="#partner-hub" data-nav-section="partners">Partners</a>
+        <a class="nav-top-link" href="#partners" data-nav-section="partners">Partners</a>
         <a class="nav-top-link" href="#production" data-nav-section="production">Production</a>
         <a class="nav-top-link" href="#proof" data-nav-section="proof">Proof</a>
         <a class="nav-top-link" href="#settings" data-nav-section="settings">Settings &amp; Health</a>
@@ -24542,8 +24542,8 @@ function htmlShell() {
       };
       const items = groups[surface] || [];
       return \`<nav class="surface-tabs" aria-label="\${esc(surface)} surface">\${items.map(([label, href]) => {
-        const target = href === "today" ? "overview" : href === "rcap" ? "production-activation-rcap" : href;
-        const active = target === activePage || (href === "rcap" && activePage === "production-activation-rcap");
+        const target = href === "rcap" ? "production-activation-rcap" : href;
+        const active = target === activePage || (href === "today" && activePage === "overview") || (href === "rcap" && activePage === "production-activation-rcap");
         return \`<a class="\${active ? "active" : ""}" href="#\${esc(href)}">\${esc(label)}</a>\`;
       }).join("")}</nav>\`;
     }
@@ -26932,12 +26932,14 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const pathRoute = String(location.pathname || "/").replace(/^\\/+|\\/+$/g, "");
-      const requestedPage = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#overview")).replace("#", "");
-      const routeAliases = { today:"overview", command:"growth", "le-e":"lee", partner:"partner-hub", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings" };
+      const requestedPage = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#today")).replace("#", "");
+      const routeAliases = { overview:"today", command:"growth", "le-e":"lee", partner:"partners", "partner-hub":"partners", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings" };
       const normalizedPage = routeAliases[requestedPage] || requestedPage;
-      const knownPages = ["overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
-      const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "overview";
+      const knownPages = ["today", "overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
+      const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "today";
       currentPageId = pageId;
+      const canonicalHash = pageId === "overview" ? "today" : pageId === "partner-hub" ? "partners" : pageId;
+      if (location.hash !== "#" + canonicalHash && !pathRoute) history.replaceState(null, "", "#" + canonicalHash);
       if (pageId === "safe-mode") {
         renderSafeBootShell({
           ...(stateFetchDiagnostics || {}),
@@ -26958,7 +26960,7 @@ function htmlShell() {
         : \`Current store: \${state.persistence === "supabase" ? "Supabase" : "local JSON fallback"}\`;
       const healthTone = schemaStale ? "danger" : supabaseHealth?.connected ? "good" : supabaseHealth?.configured ? "warn" : "danger";
       document.querySelector("#app").innerHTML = \`
-        \${safeRenderModule("overview", () => pageId === "overview" ? commandCenterOverviewHtml(reviewPosts) : "")}
+        \${safeRenderModule("overview", () => ["today", "overview"].includes(pageId) ? commandCenterOverviewHtml(reviewPosts) : "")}
         \${safeRenderModule("focus", () => focusPageHtml(pageClass))}
         \${safeRenderModule("lee", () => leePageHtml(pageClass))}
         \${safeRenderModule("growth", () => growthWorkspaceHtml(pageClass))}
@@ -27235,8 +27237,8 @@ function htmlShell() {
       tickCockpitClock();
     }
 
-    function navSectionForPage(pageId = "overview") {
-      if (["overview", "focus", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout"].includes(pageId)) return "today";
+    function navSectionForPage(pageId = "today") {
+      if (["today", "overview", "focus", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout"].includes(pageId)) return "today";
       if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "content-bank", "sources"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports", "production-activation-rcap", "pilots"].includes(pageId)) return "partners";
       if (["production", "queue", "posted", "assets", "autonomy"].includes(pageId)) return "production";

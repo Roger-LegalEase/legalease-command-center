@@ -13,7 +13,7 @@ const topNav = source.slice(navStart, navEnd);
 for (const [label, href] of [
   ["Today", "#today"],
   ["Growth", "#growth"],
-  ["Partners", "#partner-hub"],
+  ["Partners", "#partners"],
   ["Production", "#production"],
   ["Proof", "#proof"],
   ["Settings &amp; Health", "#settings"],

@@ -31,7 +31,8 @@ for (const marker of hiddenMarkers) {
   assert(!source.includes(`<span>${marker}</span>`), `${marker} should not be shown as visible debug text`);
 }
 
-assert(routeBlock.includes('today:"overview"'), "#today should render the Today/Overview page");
+assert(routeBlock.includes('overview:"today"'), "#overview should render the Today page");
+assert(source.includes('["today", "overview"].includes(pageId)'), "#today should render the Today page directly");
 assert(routeBlock.includes('metrics:"proof"'), "#metrics should render Proof / Metrics");
 assert(routeBlock.includes('kpis:"proof"'), "#kpis should render Proof / Metrics");
 assert(routeBlock.includes('marketing:"growth"'), "#marketing should render Growth/Marketing");

@@ -78,7 +78,8 @@ for (const action of [
 
 assert(today.includes("${dailyRunTodayPanelHtml()}"), "Today should render the Daily Run bookend panel.");
 assert(dailyRunPanel.includes("bestBucketHeadline"), "Today Start Here headline should use the brain-provided bucket count headline.");
-assert(renderBlock.includes('today:"overview"'), "#today should still route to the approved Today page.");
+assert(renderBlock.includes('overview:"today"'), "#overview should still route to the approved Today page.");
+assert(renderBlock.includes('["today", "overview"].includes(pageId)'), "#today should render the approved Today page directly.");
 assert(topNav.includes("#production"), "Production should now be a primary surface in the approved six-surface nav.");
 assert(topNav.includes("Settings &amp; Health"), "Settings & Health should be visible in the approved six-surface nav.");
 assert(source.includes('state.runwayInputs || {}'), "Today runway should read the dedicated manual operator-input state.");

@@ -25,7 +25,7 @@ assert.doesNotMatch(server, />Enable live publishing<\/button>/, "Enable live pu
 assert.doesNotMatch(server, /Live posting:\s*<strong>\\\$\{liveEnabled \? "Enabled" : "Disabled"\}<\/strong>/, "Channels should not repeat live posting status on every row.");
 assert.match(server, /onclick="startRcapActivation\(\)"/, "RCAP activation button should still be wired.");
 assert.match(server, /class="nav-top-link" href="#growth" data-nav-section="growth"/, "Growth top nav link should route directly.");
-assert.match(server, /class="nav-top-link" href="#partner-hub" data-nav-section="partners"/, "Partners top nav link should route directly.");
+assert.match(server, /class="nav-top-link" href="#partners" data-nav-section="partners"/, "Partners top nav link should route directly.");
 assert.match(server, /class="nav-top-link" href="#production" data-nav-section="production"/, "Production top nav link should route directly.");
 assert.match(server, /class="nav-top-link" href="#proof" data-nav-section="proof"/, "Proof top nav link should route directly.");
 assert.match(server, /class="nav-top-link" href="#settings" data-nav-section="settings"/, "Settings & Health top nav link should route directly.");

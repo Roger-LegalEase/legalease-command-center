@@ -54,7 +54,7 @@ assert.match(server, /function focusPageHtml\(pageClass\)/, "Focus Mode page sho
 assert.match(server, /--le-shell-bg:\s*#EEF2F6/, "Operator shell should use a cooler high-contrast page background token.");
 assert.match(server, /class="nav-top-link" href="#today" data-nav-section="today"/, "Today top nav item should be a real link to #today.");
 assert.match(server, /class="nav-top-link" href="#growth" data-nav-section="growth"/, "Simplified nav should expose Growth as a direct route.");
-assert.match(server, /class="nav-top-link" href="#partner-hub" data-nav-section="partners"/, "Simplified nav should expose Partners as a direct route.");
+assert.match(server, /class="nav-top-link" href="#partners" data-nav-section="partners"/, "Simplified nav should expose Partners as a direct route.");
 assert.match(server, /class="nav-top-link" href="#production" data-nav-section="production"/, "Simplified nav should expose Production as a direct route.");
 assert.match(server, /class="nav-top-link" href="#proof" data-nav-section="proof"/, "Simplified nav should expose Proof as a direct route.");
 assert.match(server, /class="nav-top-link" href="#settings" data-nav-section="settings"/, "Simplified nav should expose Settings & Health as a direct route.");
@@ -66,7 +66,7 @@ assert.doesNotMatch(topNav, /(?:Growth|Partners|Production|Proof|More) Home/, "N
 assert.match(server, /function sectionLandingPageHtml\(pageClass, section\)/, "Top-level sections should have compact landing pages.");
 assert.match(server, /command:"growth"/, "Command route should preserve the existing Growth workspace as an alias.");
 assert.match(server, /id:"growth"/, "Growth landing route should exist.");
-assert.match(server, /id:"partner-hub"/, "Partners landing route should exist.");
+assert.match(server, /"partner-hub":"partners"/, "Partners compatibility alias should exist.");
 assert.match(server, /id:"production"/, "Production landing route should exist.");
 assert.match(server, /id:"proof"/, "Proof landing route should exist.");
 assert.match(server, /id:"more"/, "More landing route should exist.");

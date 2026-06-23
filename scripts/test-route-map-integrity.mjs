@@ -6,13 +6,13 @@ const source = readFileSync(new URL("./preview-server.mjs", import.meta.url), "u
 const routeAliases = source.match(/const routeAliases = \{([\s\S]*?)\};/)?.[1] || "";
 const knownPages = source.match(/const knownPages = \[([\s\S]*?)\];/)?.[1] || "";
 const navBlock = source.match(/<nav class="top-nav"[\s\S]*?<\/nav>/)?.[0] || "";
-const navSectionBlock = source.match(/function navSectionForPage\(pageId = "overview"\) \{([\s\S]*?)\n    \}/)?.[1] || "";
+const navSectionBlock = source.match(/function navSectionForPage\(pageId = "today"\) \{([\s\S]*?)\n    \}/)?.[1] || "";
 
 assert(navBlock, "Top nav should render.");
 for (const [label, href, section] of [
   ["Today", "#today", "today"],
   ["Growth", "#growth", "growth"],
-  ["Partners", "#partner-hub", "partners"],
+  ["Partners", "#partners", "partners"],
   ["Production", "#production", "production"],
   ["Proof", "#proof", "proof"],
   ["Settings &amp; Health", "#settings", "settings"],
@@ -28,7 +28,8 @@ for (const retiredLabel of [">Command<", ">Queue<", ">Sources<", ">More<"]) {
 }
 
 for (const alias of [
-  'today:"overview"',
+  'overview:"today"',
+  '"partner-hub":"partners"',
   'command:"growth"',
   'marketing:"growth"',
   'social:"growth"',
@@ -45,6 +46,7 @@ for (const alias of [
 }
 
 for (const route of [
+  "today",
   "overview",
   "growth",
   "partner-hub",
@@ -89,7 +91,7 @@ assert(navSectionBlock.includes('"proof"') && navSectionBlock.includes('return "
 assert(navSectionBlock.includes('"more"') && navSectionBlock.includes('return "settings"'), "#more should remain available but map to Settings.");
 
 assert.match(source, /normalizedPage = routeAliases\[requestedPage\] \|\| requestedPage/, "Aliases should normalize before route validation.");
-assert.match(source, /knownPages\.includes\(normalizedPage\) \? normalizedPage : "overview"/, "Unknown routes should fall back to Today.");
+assert.match(source, /knownPages\.includes\(normalizedPage\) \? normalizedPage : "today"/, "Unknown routes should fall back to Today.");
 assert(/liveGatesCount[^,\n]*0|Publishing is off/i.test(source), "Publishing-off/live-gates-0 signal should remain present.");
 
 console.log("route map integrity tests passed");
