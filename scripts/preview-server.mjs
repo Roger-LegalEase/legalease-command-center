@@ -483,6 +483,14 @@ function openAIDraftEnvStatus() {
   };
 }
 
+function anthropicEnvStatus() {
+  return {
+    anthropicKeyPresent: Boolean(process.env.ANTHROPIC_API_KEY),
+    anthropicModel: process.env.ANTHROPIC_DRAFT_MODEL || process.env.ANTHROPIC_MODEL || "claude-opus-4-8",
+    claudeModeAvailable: Boolean(process.env.ANTHROPIC_API_KEY)
+  };
+}
+
 function logOpenAIImageConfigStatus() {
   const status = openAIImageEnvStatus();
   console.log("OpenAI image config:");
@@ -2010,6 +2018,44 @@ async function draftPostFromIdeaWithAI(idea = {}, platform = "linkedin") {
     throw new Error("OpenAI draft response was not valid JSON. Local fallback used.");
   }
   return applyAIDraftToPost(localPost, parsed, { model: env.openaiDraftModel, generatedAt: new Date().toISOString() });
+}
+
+// Minimal Claude (Anthropic) client. Key + transport only, mirroring the OpenAI
+// wiring above. Server-side only; the key is never sent to the browser.
+async function callAnthropic({ system = "", prompt = "", maxTokens = 1024 } = {}) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is missing.");
+  const env = anthropicEnvStatus();
+  let response;
+  try {
+    response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: env.anthropicModel,
+        max_tokens: maxTokens,
+        ...(system ? { system } : {}),
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+  } catch (error) {
+    throw new Error(`Anthropic request failed. ${safeShortError(error.message)}`);
+  }
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = payload?.error?.message || response.statusText || "Anthropic request failed.";
+    throw new Error(`Anthropic request failed. ${safeShortError(message)}`);
+  }
+  const text = (payload.content || [])
+    .filter((block) => block?.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
+  return { text, model: env.anthropicModel };
 }
 
 async function importContentBankIdeas(payload = {}) {
@@ -14685,9 +14731,23 @@ function htmlShell() {
     .command-footer svg { width:13px; height:13px; flex:none; }
     .command-empty { text-align:center; color:#8693a1; padding:30px 18px; }
     .command-empty b { display:block; color:var(--muted); font-size:14px; margin-bottom:3px; }
-    .command-not-wired { border:1px dashed color-mix(in srgb, var(--stop) 34%, white); border-radius:12px; background:var(--stop-bg); color:var(--stop); padding:12px 14px; font-size:13px; font-weight:800; }
-    @media (max-width:1080px) { .command-cols,.command-grid-2 { grid-template-columns:1fr; } .command-pulse { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-    @media (max-width:720px) { .command-surface { padding:0 16px 42px; } .command-pulse { grid-template-columns:1fr; } .command-panel-head { align-items:flex-start; flex-direction:column; } .command-item { padding:13px 14px; } }
+    .command-not-wired { display:inline-block; border:1px dashed color-mix(in srgb, var(--stop) 34%, white); border-radius:12px; background:var(--stop-bg); color:var(--stop); padding:8px 12px; font-size:12.5px; font-weight:800; }
+    .cockpit-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; align-items:stretch; }
+    .cockpit-card { display:flex; flex-direction:column; gap:9px; text-align:left; width:100%; min-height:172px; background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); padding:16px 18px; cursor:pointer; color:var(--ink); transition:box-shadow .15s ease, transform .15s ease, border-color .15s ease; }
+    .cockpit-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-lift,0 18px 44px rgba(10,26,92,.12)); border-color:var(--teal); }
+    .cockpit-card:focus-visible { outline:3px solid color-mix(in srgb, var(--teal) 40%, white); outline-offset:2px; }
+    .cockpit-card-top { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .cockpit-card-label { display:flex; align-items:center; gap:7px; font-size:14.5px; font-weight:850; color:var(--ink); }
+    .cockpit-card-go { font-size:12px; font-weight:800; color:var(--teal-deep); white-space:nowrap; }
+    .cockpit-card-value { font-size:25px; line-height:1.08; font-weight:850; color:var(--ink); }
+    .cockpit-card-value small { font-size:14px; font-weight:700; color:var(--muted); }
+    .cockpit-card-note { font-size:12.5px; color:var(--muted); line-height:1.4; }
+    .cockpit-card-list { display:flex; flex-direction:column; gap:6px; }
+    .cockpit-card-row { display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--muted); line-height:1.3; }
+    .cockpit-card-row .src { font-size:10.5px; font-weight:850; letter-spacing:.04em; text-transform:uppercase; color:#8693a1; flex:none; }
+    .cockpit-card-row b { color:var(--ink); font-weight:750; }
+    @media (max-width:1080px) { .command-cols,.command-grid-2 { grid-template-columns:1fr; } .command-pulse { grid-template-columns:repeat(2,minmax(0,1fr)); } .cockpit-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media (max-width:720px) { .command-surface { padding:0 16px 42px; } .command-pulse { grid-template-columns:1fr; } .command-panel-head { align-items:flex-start; flex-direction:column; } .command-item { padding:13px 14px; } .cockpit-grid { grid-template-columns:1fr; } }
     :root {
       --le-navy:#0A1A5C;
       --le-navy-mid:#16245f;
@@ -15675,8 +15735,9 @@ function htmlShell() {
 <body>
   <div class="shell">
     <header class="app-topbar">
-      <a class="brand-lockup" href="#today"><span>LegalEase</span><strong>Command Center</strong></a>
+      <a class="brand-lockup" href="#cockpit"><span>LegalEase</span><strong>Command Center</strong></a>
       <nav class="top-nav" aria-label="Primary">
+        <a class="nav-top-link" href="#cockpit" data-nav-section="cockpit">Cockpit</a>
         <a class="nav-top-link" href="#today" data-nav-section="today">Today</a>
         <a class="nav-top-link" href="#growth" data-nav-section="growth">Growth</a>
         <a class="nav-top-link" href="#partners" data-nav-section="partners">Partners</a>
@@ -24248,6 +24309,87 @@ function htmlShell() {
       </section>\`;
     }
 
+    function cockpitHomeHtml(pageClass) {
+      const ranked = todayRankedWorkItems();
+      const needTop = ranked.slice(0, 3);
+      const partnerItems = (typeof focusItemsForMode === "function" ? focusItemsForMode("partner-follow-up") : []) || [];
+      const partnerTop = partnerItems.slice(0, 3);
+      const posts = Array.isArray(state.posts) ? state.posts : [];
+      const isPosted = post => post.manuallyPostedAt || /posted|manually/i.test(String(post.status || ""));
+      const inProduction = posts.filter(post => /draft|ready_to_generate/i.test(String(post.status || "")) && !isPosted(post)).length;
+      const readyCount = posts.filter(post => /approved|ready/i.test(String(post.status || "")) && !isPosted(post)).length;
+      const connectors = connectorItems();
+      const connectorFor = key => connectors.find(item => item.connector === key) || {};
+      const platformStatus = product => product.configured ? { label:"Running", tone:"go" } : { label:"Needs attention", tone:"warn" };
+      const rcapStatus = platformStatus(connectorFor("recordshield"));
+      const expungementStatus = platformStatus(connectorFor("expungement_ai"));
+      const platformHealthy = rcapStatus.tone === "go" && expungementStatus.tone === "go";
+      const liveGates = liveGatesCountFromState(state);
+      const dot = tone => \`<span class="command-dot \${esc(tone)}"></span>\`;
+      const itemRows = items => items.map(entry => {
+        const item = entry.item || entry;
+        const bucket = entry.bucket || {};
+        const tone = entry.tone || "warn";
+        const title = item.title || item.whyItMatters || bucket.label || "Review item";
+        const src = entry.item ? todayItemSource(item, bucket) : (item.type === "task" ? "Task" : "Partner");
+        return \`<div class="cockpit-card-row">\${dot(tone)}<span class="src">\${esc(src)}</span><b>\${esc(title)}</b></div>\`;
+      }).join("");
+      return \`<section id="cockpit" class="\${pageClass("cockpit")}">
+        <div class="command-surface">
+          <div class="command-top">
+            <div class="command-heading">
+              <h1>Good morning, Roger.</h1>
+              <p>\${esc(cockpitLongDate())} · Your whole operation at a glance. Tap any box to open that area. Nothing here sends, posts, or files.</p>
+            </div>
+            <button class="command-run-button" type="button" onclick="location.hash='today'">Open Today <span class="count">\${esc(String(ranked.length))}</span></button>
+          </div>
+          <div class="cockpit-grid">
+            <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='today'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='today'}">
+              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot(needTop[0]?.tone || "go")}What needs me today</span><span class="cockpit-card-go">Today →</span></div>
+              <div class="cockpit-card-value">\${esc(String(ranked.length))} <small>need you</small></div>
+              <div class="cockpit-card-list">\${needTop.length ? itemRows(needTop) : '<div class="cockpit-card-note">Nothing needs you right now. The systems are running quietly.</div>'}</div>
+            </div>
+            <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='partners'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='partners'}">
+              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot(partnerTop.length ? "warn" : "go")}Prospect follow-up</span><span class="cockpit-card-go">Partners →</span></div>
+              <div class="cockpit-card-value">\${esc(String(partnerItems.length))} <small>due or quiet</small></div>
+              <div class="cockpit-card-list">\${partnerTop.length ? itemRows(partnerTop) : '<div class="cockpit-card-note">No partner follow-ups are due or stalled right now.</div>'}</div>
+            </div>
+            <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='production'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='production'}">
+              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot(posts.length ? "go" : "warn")}Social media</span><span class="cockpit-card-go">Production →</span></div>
+              <div class="cockpit-card-value">\${posts.length ? esc(String(readyCount)) + " <small>ready</small>" : '<span class="command-not-wired">not yet wired</span>'}</div>
+              <div class="cockpit-card-list">\${posts.length ? \`<div class="cockpit-card-row">\${dot("hold")}<b>\${esc(String(inProduction))}</b> in production</div><div class="cockpit-card-note">Posting pending platform approval — drafts are prepared for your review, never auto-posted.</div>\` : '<div class="cockpit-card-note">No posts in state yet. Drafts appear here as they are created.</div>'}</div>
+            </div>
+            <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='settings'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='settings'}">
+              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot(platformHealthy ? "go" : "warn")}Platform health</span><span class="cockpit-card-go">Settings →</span></div>
+              <div class="cockpit-card-value">\${platformHealthy ? "All clear" : "Attention"}</div>
+              <div class="cockpit-card-list">
+                <div class="cockpit-card-row">\${dot(rcapStatus.tone)}<b>RCAP</b> \${esc(rcapStatus.label)}</div>
+                <div class="cockpit-card-row">\${dot(expungementStatus.tone)}<b>Expungement.ai</b> \${esc(expungementStatus.label)}</div>
+              </div>
+            </div>
+            <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='settings'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='settings'}">
+              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot("warn")}Revenue</span><span class="cockpit-card-go">Settings →</span></div>
+              <div class="cockpit-card-list">
+                <span class="command-not-wired">not yet wired — connect Stripe</span>
+                <div class="cockpit-card-note">Live revenue appears here once Stripe is connected. No number is shown until a real source is wired.</div>
+              </div>
+            </div>
+            <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='settings'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='settings'}">
+              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot("warn")}Users / new signups</span><span class="cockpit-card-go">Settings →</span></div>
+              <div class="cockpit-card-list">
+                <span class="command-not-wired">not yet wired — connect signup source</span>
+                <div class="cockpit-card-note">New Expungement.ai signups appear here once the signup source is connected. No count is shown until it is wired.</div>
+              </div>
+            </div>
+          </div>
+          <div class="command-footer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+            Nothing here sends, posts, or files. Every box is read-only and links to where you decide. Live gates: \${esc(String(liveGates))}.
+          </div>
+        </div>
+      </section>\`;
+    }
+
     function commandCenterOverviewHtml(posts) {
       const dailyRunBookendCompatibility = "\${dailyRunTodayPanelHtml()}";
       void dailyRunBookendCompatibility;
@@ -26861,10 +27003,10 @@ function htmlShell() {
       const blockedCount = c.blocked_channel_not_connected || 0;
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const pathRoute = String(location.pathname || "/").replace(/^\\/+|\\/+$/g, "");
-      const requestedPage = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#today")).replace("#", "");
+      const requestedPage = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#cockpit")).replace("#", "");
       const routeAliases = { overview:"today", command:"growth", "le-e":"lee", partner:"partners", "partner-hub":"partners", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings" };
       const normalizedPage = routeAliases[requestedPage] || requestedPage;
-      const knownPages = ["today", "overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
+      const knownPages = ["cockpit", "today", "overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "today";
       currentPageId = pageId;
       const canonicalHash = pageId === "overview" ? "today" : pageId === "partner-hub" ? "partners" : pageId;
@@ -26889,6 +27031,7 @@ function htmlShell() {
         : \`Current store: \${state.persistence === "supabase" ? "Supabase" : "local JSON fallback"}\`;
       const healthTone = schemaStale ? "danger" : supabaseHealth?.connected ? "good" : supabaseHealth?.configured ? "warn" : "danger";
       document.querySelector("#app").innerHTML = \`
+        \${safeRenderModule("cockpit", () => pageId === "cockpit" ? cockpitHomeHtml(pageClass) : "")}
         \${safeRenderModule("overview", () => ["today", "overview"].includes(pageId) ? commandCenterOverviewHtml(reviewPosts) : "")}
         \${safeRenderModule("focus", () => focusPageHtml(pageClass))}
         \${safeRenderModule("lee", () => leePageHtml(pageClass))}
@@ -27167,6 +27310,7 @@ function htmlShell() {
     }
 
     function navSectionForPage(pageId = "today") {
+      if (pageId === "cockpit") return "cockpit";
       if (["today", "overview", "focus", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout"].includes(pageId)) return "today";
       if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "content-bank", "sources"].includes(pageId)) return "growth";
       if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports", "production-activation-rcap", "pilots"].includes(pageId)) return "partners";

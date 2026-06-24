@@ -59,7 +59,7 @@ assert.match(server, /class="nav-top-link" href="#production" data-nav-section="
 assert.match(server, /class="nav-top-link" href="#proof" data-nav-section="proof"/, "Simplified nav should expose Proof as a direct route.");
 assert.match(server, /class="nav-top-link" href="#settings" data-nav-section="settings"/, "Simplified nav should expose Settings & Health as a direct route.");
 assert.match(server, /class="nav-top-link" href="#le-e" data-nav-section="lee"/, "Simplified nav should expose Le-E as the assistant route.");
-assert.equal((server.match(/data-nav-section="/g) || []).length, 7, "Top navigation should have six surfaces plus Le-E.");
+assert.equal((server.match(/data-nav-section="/g) || []).length, 8, "Top navigation should have the Cockpit landing, six surfaces, plus Le-E.");
 const topNav = server.match(/<nav class="top-nav" aria-label="Primary">([\s\S]*?)<\/nav>/)?.[1] || "";
 assert.doesNotMatch(topNav, /<details class="nav-menu">/, "Navigation should not use hover preview menus.");
 assert.doesNotMatch(topNav, /(?:Growth|Partners|Production|Proof|More) Home/, "Navigation should not expose floating Home preview labels.");

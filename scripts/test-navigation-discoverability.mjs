@@ -42,8 +42,8 @@ for (const [label, href, section] of primaryLinks) {
   );
 }
 
-assert.equal((topNav.match(/class="nav-top-link"/g) || []).length, 7, "Top nav should expose six surfaces plus Le-E");
-assert.equal((topNav.match(/data-nav-section="/g) || []).length, 7, "Top nav should expose six surface targets plus Le-E");
+assert.equal((topNav.match(/class="nav-top-link"/g) || []).length, 8, "Top nav should expose the Cockpit landing, six surfaces, plus Le-E");
+assert.equal((topNav.match(/data-nav-section="/g) || []).length, 8, "Top nav should expose the Cockpit landing, six surface targets, plus Le-E");
 assert(!topNav.includes("<details"), "Top nav should not use dropdown preview details");
 assert(!topNav.includes("nav-menu-panel"), "Top nav should not render floating preview panels");
 for (const label of ["Production Home", "Proof Home", "Partners Home", "More Home", "Growth Home"]) {
