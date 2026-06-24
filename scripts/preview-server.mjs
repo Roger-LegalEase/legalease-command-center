@@ -23009,54 +23009,81 @@ function htmlShell() {
       const liveGates = clientLiveGatesCount(state);
       const integrityWarnings = (integrity.errors || []).length + (integrity.warnings || []).length + (integrity.duplicate_warnings || []).length + (integrity.missing_field_warnings || []).length;
       const connectorProblems = connectors.filter(item => !item.configured || item.lastError).length;
-      const rows = [
-        {
-          label:"OS Health",
-          status:health.overall_health || "needs_attention",
-          detail:health.summary?.next_operator_action || "Refresh App Status when something feels off.",
-          tone:/healthy|protected|ready|ok/i.test(String(health.overall_health || "")) ? "good" : "warn"
-        },
-        {
-          label:"State Integrity",
-          status:integrity.integrity_status || (integrityWarnings ? "needs_attention" : "healthy"),
-          detail:integrityWarnings ? integrityWarnings + " warning(s) across duplicate, missing-field, and structural checks." : "Saved records are structurally healthy.",
-          tone:integrityWarnings ? "warn" : "good"
-        },
-        {
-          label:"Integration Health",
-          status:connectorProblems ? "needs_attention" : "green",
-          detail:connectorProblems ? connectorProblems + " connector(s) need setup or review." : "Available connectors are quiet. Read-only sources stay manual or approval-gated.",
-          tone:connectorProblems ? "warn" : "good"
-        },
-        {
-          label:"Smoke Test",
-          status:smoke.last_status || "not_started",
-          detail:smoke.warning || (smoke.last_run_timestamp ? "Last run " + formatDateTime(smoke.last_run_timestamp) : "No self-check run recorded yet."),
-          tone:Number(smoke.failed_count || 0) ? "danger" : smoke.last_status === "passed" ? "good" : "warn"
-        },
-        {
-          label:"Live Gates",
-          status:String(liveGates),
-          detail:"Live gates must remain 0. This readout is visible here, outside the daily flow.",
-          tone:liveGates ? "danger" : "good"
-        }
+      const socialChannels = [
+        ["LinkedIn", linkedinSetupState(state).status, state.runtime?.livePostingGates?.linkedin?.enabled, "linkedinSetupState(state) + runtime.livePostingGates.linkedin"],
+        ["Twitter / X", xSetupState(state).status, state.runtime?.livePostingGates?.x?.enabled, "xSetupState(state) + runtime.livePostingGates.x"],
+        ["Meta", metaSetupState(state).status, state.runtime?.livePostingGates?.facebook?.enabled || state.runtime?.livePostingGates?.instagram?.enabled, "metaSetupState(state) + runtime live gates"]
       ];
-      return \`<section class="panel operating-memory-card settings-health-readout">
-        <div class="simple-panel-head">
-          <div><h2>Settings &amp; Health Readout</h2><p class="muted">One machine-room panel for OS Health, State Integrity, Integration Health, Smoke Test, and live-gate status.</p></div>
-          <span class="badge \${liveGates ? "danger" : "good"}">Live gates: \${esc(String(liveGates))}</span>
+      const liveGateRows = ["linkedin", "facebook", "instagram", "x"].map(channel => {
+        const gate = state.runtime?.livePostingGates?.[channel] || {};
+        return {
+          channel,
+          enabled:Boolean(gate.enabled),
+          source:\`state.runtime.livePostingGates.\${channel}\`
+        };
+      });
+      const hostedSupabaseConfirmed = state.persistence === "supabase" && Boolean(supabaseHealth?.connected || health.supabase_db?.ok || health.connection_health?.supabase_db?.ok);
+      const hostedStateStatus = hostedSupabaseConfirmed ? "confirmed" : "not yet wired";
+      const sourceRows = [
+        ["OS Health", health.overall_health || "needs_attention", health.generated_at ? "state.osHealthSnapshots latest record" : "cockpitOsHealthRecord() fallback", health.summary?.next_operator_action || "Open App Status and refresh the snapshot.", /healthy|protected|ready|ok/i.test(String(health.overall_health || "")) ? "go" : "warn"],
+        ["State Integrity", integrity.integrity_status || (integrityWarnings ? "needs_attention" : "pass"), integrity.generated_at ? "state.dataIntegritySnapshots latest record" : "buildDataIntegritySnapshot(state) fallback", integrityWarnings ? integrityWarnings + " warning(s) across integrity checks." : "No integrity findings recorded.", integrityWarnings ? "warn" : "go"],
+        ["Connectors", connectorProblems ? "needs_attention" : "quiet", "connectorItems() from connectorStatus + socialAccounts + env readiness", connectorProblems ? connectorProblems + " connector(s) need setup or review." : "Configured connectors are quiet; external actions remain gated.", connectorProblems ? "warn" : "go"],
+        ["Live Gates", String(liveGates), "state.runtime.livePostingGates", liveGates ? liveGates + " live gate(s) enabled." : "All live publishing gates are off.", liveGates ? "stop" : "go"],
+        ["Hosted Supabase State", hostedStateStatus, "state.persistence + Supabase health", hostedSupabaseConfirmed ? "Hosted Supabase state is connected in this served state." : "Confirm command surfaces against hosted Supabase state at end of build.", hostedSupabaseConfirmed ? "go" : "warn"],
+        ["Smoke Test", smoke.last_status || "not_started", "buildSmokeTestStatus(state)", smoke.warning || (smoke.last_run_timestamp ? "Last run " + formatDateTime(smoke.last_run_timestamp) : "No self-check run recorded yet."), Number(smoke.failed_count || 0) ? "stop" : smoke.last_status === "passed" ? "go" : "warn"]
+      ];
+      const connectorRows = connectors.map(item => ({
+        label:growthLabel(item.connector),
+        status:item.lastError ? "needs review" : item.configured ? item.lastSyncStatus || "configured" : "not yet wired",
+        detail:item.configured ? "Source: state.connectorStatus/defaultConnectorStatus; no external action triggered here." : "not yet wired: connector setup is not confirmed in state.",
+        tone:item.lastError ? "stop" : item.configured ? "go" : "warn"
+      }));
+      return \`<section class="settings-command-surface settings-health-readout">
+        <div class="command-top">
+          <div class="command-heading">
+            <h1>Settings &amp; Health</h1>
+            <p>Health, integrity, connectors, storage, and safety switches in one display-only control surface.</p>
+          </div>
+          <button class="command-run-button" type="button" onclick="refreshOsHealth()">Refresh health <span class="count">\${esc(String(integrityWarnings + connectorProblems + liveGates))}</span></button>
         </div>
-        <div class="operating-memory-grid">\${rows.map(row => \`<section class="operating-memory-tile">
-          <h3>\${esc(row.label)}</h3>
-          <ul><li><strong><span class="badge \${esc(row.tone)}">\${esc(plainOperatorState(row.status))}</span></strong><br><span>\${esc(row.detail)}</span></li></ul>
-        </section>\`).join("")}</div>
+        <div class="command-pulse">\${sourceRows.map(([label, status, source, detail, tone]) => \`<div class="command-stat">
+          <div class="label"><span class="command-dot \${esc(tone)}"></span>\${esc(label)}</div>
+          <div class="value">\${status === "not yet wired" ? '<span class="command-not-wired">not yet wired</span>' : esc(plainOperatorState(status))}</div>
+          <div class="detail">\${esc(source)} · \${esc(detail)}</div>
+        </div>\`).join("")}</div>
+        <div class="command-cols">
+          <div>
+            <div class="command-panel">
+              <div class="command-panel-head"><h2>Health &amp; Integrity</h2><span class="meta">osHealthSnapshots + dataIntegritySnapshots</span></div>
+              \${sourceRows.slice(0, 2).map(([label, status, source, detail, tone]) => \`<div class="command-list-row"><span class="command-dot \${esc(tone)}"></span><div class="text"><b>\${esc(label)}</b><span>\${esc(source)} · \${esc(detail)}</span></div><div class="value">\${esc(plainOperatorState(status))}</div></div>\`).join("")}
+              <div class="command-list-row"><span class="command-dot \${esc(Number(smoke.failed_count || 0) ? "stop" : smoke.last_status === "passed" ? "go" : "warn")}"></span><div class="text"><b>Self-check</b><span>Source: buildSmokeTestStatus(state). \${esc(smoke.warning || "Manual post-deploy checklist record.")}</span></div><div class="value">\${esc(plainOperatorState(smoke.last_status || "not_started"))}</div></div>
+            </div>
+            <div class="command-panel">
+              <div class="command-panel-head"><h2>Connector Readiness</h2><span class="meta">connectorStatus + socialAccounts</span></div>
+              \${connectorRows.slice(0, 8).map(row => \`<div class="command-list-row"><span class="command-dot \${esc(row.tone)}"></span><div class="text"><b>\${esc(row.label)}</b><span>\${esc(row.detail)}</span></div><div class="value">\${row.status === "not yet wired" ? '<span class="command-not-wired">not yet wired</span>' : esc(plainOperatorState(row.status))}</div></div>\`).join("")}
+            </div>
+          </div>
+          <div>
+            <div class="command-panel">
+              <div class="command-panel-head"><h2>Live Gate Config</h2><span class="meta">display-only safety posture</span></div>
+              \${liveGateRows.map(row => \`<div class="command-list-row"><span class="command-dot \${row.enabled ? "stop" : "go"}"></span><div class="text"><b>\${esc(growthLabel(row.channel))}</b><span>Source: \${esc(row.source)}. Settings shows status only.</span></div><div class="value">\${row.enabled ? "enabled" : "off"}</div></div>\`).join("")}
+              <div class="command-footer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Safety posture is display-only here. This surface does not enable live gates, send email, publish posts, write calendars, activate dashboards, or contact external systems.</div>
+            </div>
+            <div class="command-panel">
+              <div class="command-panel-head"><h2>Connected Accounts</h2><span class="meta">setup helpers</span></div>
+              \${socialChannels.map(([label, status, liveEnabled, source]) => \`<div class="command-list-row"><span class="command-dot \${liveEnabled ? "stop" : /connected|ready/i.test(String(status)) ? "go" : "warn"}"></span><div class="text"><b>\${esc(label)}</b><span>Source: \${esc(source)}. Approval remains required.</span></div><div class="value">\${esc(plainOperatorState(status))}</div></div>\`).join("")}
+              <div class="command-list-row"><span class="command-dot \${hostedSupabaseConfirmed ? "go" : "warn"}"></span><div class="text"><b>Hosted Supabase state</b><span>Source: state.persistence + Supabase health. End-of-build confirmation remains required.</span></div><div class="value">\${hostedSupabaseConfirmed ? "confirmed" : '<span class="command-not-wired">not yet wired</span>'}</div></div>
+            </div>
+          </div>
+        </div>
         <div class="card-actions" style="margin-top:12px">
           <button class="primary" type="button" onclick="refreshOsHealth()">Refresh OS Health</button>
           <button type="button" onclick="refreshDataIntegrity()">Refresh State Integrity</button>
           <button type="button" onclick="startSmokeTestRun()">Start Smoke Test</button>
           <button type="button" onclick="location.hash='automation'">Open Connector Inbox</button>
+          <button type="button" onclick="location.hash='os-health'">Open App Status</button>
+          <button type="button" onclick="location.hash='data-integrity'">Open Data Check</button>
         </div>
-        <p class="muted">Systems surface as decisions on Today or as this green/amber/red readout. No emails, posts, files, calendar writes, payment actions, or external changes happen from this panel.</p>
       </section>\`;
     }
 

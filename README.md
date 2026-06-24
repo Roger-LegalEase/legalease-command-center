@@ -314,7 +314,10 @@ npm run verify:production
 
 The production verifier checks syntax, npm audit, health endpoint behavior, Supabase/OpenAI readiness reporting, secret exposure prevention, live-gate status, autonomy rules, SOC 2 snapshot access, and fail-closed live publishing policy. By default it runs in local fallback mode. Set `VERIFY_HOSTED_MODE=true` when validating a hosted Supabase-mode environment.
 
-End-of-build checklist: confirm the command surfaces against hosted Supabase state before treating a build as production-ready.
+End-of-build checklist:
+
+- Confirm the command surfaces against hosted Supabase state before treating a build as production-ready.
+- Clean up the pre-existing browser helper-scope failure in `scripts/test-render-helper-scope.mjs` for `buildDailyRunSnapshot`, `buildFounderCapacityPulse`, and `stat`.
 
 Hosted access control:
 
