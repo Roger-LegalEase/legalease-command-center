@@ -1,0 +1,672 @@
+Context. You are working in the LegalEase OS Command Center repository. I have a finished visual + information-architecture spec for a six-surface redesign of the operator UI: Today, Growth, Partners, Production, Proof, Settings & Health. The spec is a standalone HTML file named legalease-command-center.html (I will place it in the repo root, or paste its path). Treat that file as the design and IA source of truth only — its markup, layout, panel structure, copy, and the navy/teal/orange brand tokens. Its sample numbers and list items are placeholders, not data.
+Your job is to implant this redesign into the real app and wire each surface to real data — but first you will investigate and report, and you will not write code until I approve your plan.
+This is a presentation and routing reorganization, not a logic change. Read this rule twice:
+DO NOT TOUCH THE SAFETY CORE. Specifically, do not modify, weaken, bypass, or refactor: the suppression matrix, approval rules, Wilma protection/asset guardian, live-gate controls, the inert outbox, the "no external action / approval ≠ execution" policy, read-only Google Workspace scope, or any PII-handling boundary. These stay exactly as built. The redesign hides machinery; it never hides the locks. Every redesigned surface must keep its one-line safety-reassurance footer. If any task would require changing safety-core behavior, stop and ask me instead.
+Phase 0 — Investigate and report back BEFORE writing any code. Do not edit anything yet. Inspect the repo and tell me, in a short written report:
+1. The frontend stack and rendering model (server-rendered HTML/templates with hash routes? React/components? something else?) and the exact files that own the current operator views.
+2. How the existing nav and routing work today (the doc says hash routes and a Today/Growth/Partners/Production/Proof/Settings nav — confirm or correct this against the actual code).
+3. For each of the six surfaces, the real data source that should feed it: the loop(s), service, query, or endpoint that already exists. Map each panel in the spec to a real source. Where the redesign implies data that has no source yet (e.g. the Cash/Runway, Support, Capacity, and Aging loops called for in the architecture), list them as gaps — do not invent endpoints or fabricate values.
+4. Your proposed implementation plan as a short ordered list of commits, smallest safe steps first, plus anything you're unsure about. Then stop and wait for my approval. Do not proceed to Phase 1 until I reply.
+Phase 1 — Implant the structure (after I approve the plan).
+* Add the five new surfaces (Growth, Partners, Production, Proof, Settings & Health) alongside the existing Today view, matching the spec's layout, panels, and brand tokens. Reuse the app's existing component/template patterns — match how the current Today view is built; do not introduce a parallel styling system.
+* Make the nav actually route between all six surfaces using the app's existing routing mechanism.
+* Honor the architecture intent: the operator sees decisions, not systems. Collapse the redundant queue types per the spec (the four warm-audience reviews → one filtered list; the content-review types → one stage-filtered list). Render the loops as the single "Systems running for you" status panel, not as separate destinations. Subsystems (suppression, approval, asset guardians, health diagnostics) appear only as silent green/amber/orange status lines that surface a card only when they fire.
+* Keep the urgent/blocker accent as the Expungement.ai orange already in the spec (#E4541B), not red.
+Phase 2 — Wire real data.
+* Bind each panel to the real source you identified in Phase 0. Replace every placeholder number and list with live data.
+* Read ground truth: confirm each field exists and is shaped the way you assume before binding to it. Do not assume a field, endpoint, or shape — verify it in the code or schema. If something you need doesn't exist, surface it as a gap and leave a clearly-labeled, obviously-fake placeholder rather than inventing a real-looking value.
+* For the gap loops (Cash/Runway, Support, Capacity, Aging) from the architecture doc: if their data sources don't exist yet, do not build them in this pass. Render their panels with a visible "not yet wired" state and list them for a follow-up. Don't fabricate.
+Working discipline (this has burned me before, follow it exactly):
+* Verify against real state, never against a green checkmark or your own summary. After any change you believe is merged, confirm it on the actual branch/build, not from memory of what you did.
+* If CI references an old commit or a stale artifact, re-run against current HEAD before acting on the failure. Do not "fix" a failure by undoing a deliberate prior change.
+* Work in small commits in the order from your approved plan. After each, state what you changed and how you verified it renders and pulls real data.
+* Use plain language alongside any technical notes — I am not a developer.
+Definition of done:
+* All six surfaces render and the nav routes between them in the real app, in the existing stack, matching the spec's look.
+* Every panel with an available data source shows live data; every gap is clearly labeled and listed, not faked.
+* The safety core is provably untouched (show me it's unchanged), and every surface keeps its safety footer.
+* Orange, not red, for urgent states.
+Start with Phase 0 only. Investigate, map data sources, propose your commit plan, and wait for my go.<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LegalEase OS — Command</title>
+<style>
+  :root{
+    --ink:#0A1A5C;
+    --ink-2:#16245f;
+    --teal:#00A99D;
+    --teal-deep:#0c7d75;
+    --paper:#EEF2F1;
+    --card:#ffffff;
+    --line:#e2e8e6;
+    --muted:#5f6b78;
+    --soft:#8693a1;
+    --warn:#9a6700;
+    --warn-bg:#fdf3da;
+    --stop:#E4541B;
+    --stop-bg:#fcebe3;
+    --go:#1d7f48;
+    --go-bg:#e7f4ec;
+    --hold:#5b6475;
+    --hold-bg:#eef0f2;
+    --shadow:0 1px 2px rgba(10,26,92,.04), 0 8px 28px rgba(10,26,92,.06);
+    --shadow-lift:0 2px 6px rgba(10,26,92,.07), 0 18px 44px rgba(10,26,92,.10);
+    --r:14px;
+    --r-sm:10px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font:15px/1.5 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:100vh}
+
+  /* ---------- SIDEBAR ---------- */
+  aside{
+    background:var(--ink);color:#dfe6ff;padding:18px 14px;
+    position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:4px;
+  }
+  .brand{display:flex;align-items:center;gap:9px;padding:4px 6px 16px;}
+  .brand .mark{width:30px;height:30px;border-radius:8px;background:var(--teal);
+    display:grid;place-items:center;color:#012;font-weight:800;font-size:15px;flex:none}
+  .brand b{font-size:15px;color:#fff;letter-spacing:.2px}
+  .brand span{display:block;font-size:11px;color:#9fb0e6;font-weight:600;margin-top:1px}
+  nav a{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;
+    color:#c3cdf2;text-decoration:none;font-weight:600;font-size:14px;position:relative}
+  nav a .ico{width:17px;height:17px;flex:none;opacity:.85}
+  nav a:hover{background:rgba(255,255,255,.06);color:#fff}
+  nav a.on{background:var(--teal);color:#012;font-weight:700}
+  nav a.on .ico{opacity:1}
+  nav a .badge{margin-left:auto;background:#243178;color:#fff;font-size:11px;font-weight:700;
+    padding:1px 7px;border-radius:20px;min-width:20px;text-align:center}
+  nav a.on .badge{background:rgba(0,30,20,.25);color:#012}
+  nav a .badge.hot{background:var(--stop);color:#fff}
+  .nav-sep{height:1px;background:rgba(255,255,255,.08);margin:9px 8px}
+  .lee{margin-top:auto;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);
+    border-radius:11px;padding:11px 12px}
+  .lee b{color:#fff;font-size:13px;display:flex;align-items:center;gap:7px}
+  .lee b i{width:7px;height:7px;border-radius:50%;background:var(--teal);display:inline-block;
+    box-shadow:0 0 0 3px rgba(0,169,157,.25)}
+  .lee p{margin:6px 0 0;font-size:12px;color:#9fb0e6;line-height:1.45}
+
+  /* ---------- MAIN ---------- */
+  main{padding:24px 30px 60px;min-width:0;max-width:1180px}
+  .top{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:20px;flex-wrap:wrap}
+  .hello h1{margin:0;font-size:27px;letter-spacing:-.4px}
+  .hello p{margin:4px 0 0;color:var(--muted);font-size:14px}
+  .hello p b{color:var(--ink)}
+  .run-btn{background:var(--ink);color:#fff;border:none;padding:13px 22px;border-radius:12px;
+    font-size:15px;font-weight:700;cursor:pointer;box-shadow:var(--shadow);display:flex;align-items:center;gap:9px}
+  .run-btn:hover{background:var(--ink-2)}
+  .run-btn .n{background:var(--teal);color:#012;border-radius:7px;padding:2px 9px;font-size:13px}
+
+  /* ---------- PULSE STRIP ---------- */
+  .pulse{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:15px 16px;box-shadow:var(--shadow)}
+  .stat .lab{font-size:11.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--soft);display:flex;align-items:center;gap:6px}
+  .stat .val{font-size:25px;font-weight:800;margin-top:7px;letter-spacing:-.5px}
+  .stat .val small{font-size:14px;font-weight:600;color:var(--muted)}
+  .stat .sub{font-size:12.5px;margin-top:3px;color:var(--muted)}
+  .stat .sub.up{color:var(--go)} .stat .sub.dn{color:var(--stop)}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .dot.go{background:var(--go)} .dot.warn{background:var(--warn)} .dot.stop{background:var(--stop)}
+
+  /* ---------- COLUMNS ---------- */
+  .cols{display:grid;grid-template-columns:1.5fr .95fr;gap:22px;align-items:start}
+  @media(max-width:1080px){.cols{grid-template-columns:1fr}.pulse{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:760px){.wrap{grid-template-columns:1fr}aside{position:static;height:auto;flex-direction:row;flex-wrap:wrap}.lee{display:none}}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;margin-bottom:22px}
+  .panel-h{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 13px;border-bottom:1px solid var(--line)}
+  .panel-h h2{margin:0;font-size:16px;letter-spacing:-.2px}
+  .panel-h .meta{font-size:12.5px;color:var(--soft);font-weight:600}
+  .panel-h a{font-size:13px;color:var(--teal-deep);text-decoration:none;font-weight:700}
+  .panel-h a:hover{text-decoration:underline}
+
+  /* ---------- WORK ITEMS ---------- */
+  .item{display:flex;gap:13px;padding:14px 18px;border-bottom:1px solid var(--line);align-items:flex-start}
+  .item:last-child{border-bottom:none}
+  .item:hover{background:#fafcfb}
+  .rail{width:4px;align-self:stretch;border-radius:4px;flex:none}
+  .rail.stop{background:var(--stop)} .rail.warn{background:var(--warn)} .rail.go{background:var(--teal)} .rail.hold{background:var(--soft)}
+  .item-body{flex:1;min-width:0}
+  .item-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .item-top .ttl{font-weight:700;font-size:14.5px}
+  .src{font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--soft)}
+  .why{font-size:13px;color:var(--muted);margin-top:3px}
+  .age{font-size:11.5px;color:var(--soft);font-weight:600;white-space:nowrap}
+  .age.old{color:var(--stop)}
+  .acts{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 13px;font-size:13px;font-weight:700;cursor:pointer;color:var(--ink)}
+  .btn:hover{border-color:var(--teal);color:var(--teal-deep)}
+  .btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .btn.primary:hover{background:var(--ink-2);color:#fff}
+  .btn.ghost{border-color:transparent;color:var(--soft)}
+  .btn.ghost:hover{color:var(--ink);background:var(--paper)}
+
+  .pill{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;letter-spacing:.2px}
+  .pill.stop{background:var(--stop-bg);color:var(--stop)}
+  .pill.warn{background:var(--warn-bg);color:var(--warn)}
+  .pill.go{background:var(--go-bg);color:var(--go)}
+  .pill.hold{background:var(--hold-bg);color:var(--hold)}
+
+  /* ---------- SIDE PANELS ---------- */
+  .mini{padding:6px 0}
+  .mini-row{display:flex;align-items:center;gap:11px;padding:11px 18px;border-bottom:1px solid var(--line)}
+  .mini-row:last-child{border-bottom:none}
+  .mini-row .t{flex:1;min-width:0}
+  .mini-row .t b{font-size:13.5px;display:block}
+  .mini-row .t span{font-size:12px;color:var(--muted)}
+  .mini-row .v{font-weight:800;font-size:15px}
+  .mini-row .v small{font-size:11px;color:var(--soft);font-weight:600;display:block;text-align:right}
+
+  .health{display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid var(--line)}
+  .health:last-child{border-bottom:none}
+  .health .t{flex:1}
+  .health .t b{font-size:13.5px;display:block}
+  .health .t span{font-size:12px;color:var(--muted)}
+  .health .stat-pill{font-size:11px;font-weight:800;padding:3px 10px;border-radius:8px}
+  .ok{background:var(--go-bg);color:var(--go)} .hold-s{background:var(--hold-bg);color:var(--hold)}
+
+  .footnote{font-size:12px;color:var(--soft);padding:13px 18px;background:#fafcfb;border-top:1px solid var(--line);display:flex;align-items:center;gap:8px}
+  .lock{width:13px;height:13px;flex:none}
+
+  .quiet{text-align:center;padding:30px 18px;color:var(--soft)}
+  .quiet b{display:block;color:var(--muted);font-size:14px;margin-bottom:3px}
+
+  /* ---------- VIEW SWITCHING ---------- */
+  .view{display:none;animation:vfade .25s ease}
+  .view.on{display:block}
+  @keyframes vfade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .view-intro{margin:-4px 0 20px;color:var(--muted);font-size:14px;max-width:760px}
+  .view-intro b{color:var(--ink)}
+
+  /* section subhead */
+  .subhead{font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--soft);margin:6px 0 11px}
+
+  /* pipeline (Production) */
+  .pipe{display:flex;gap:0;background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;margin-bottom:14px}
+  .pipe .stage{flex:1;padding:13px 14px;border-right:1px solid var(--line);position:relative}
+  .pipe .stage:last-child{border-right:none}
+  .pipe .stage .sh{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--soft);display:flex;align-items:center;gap:6px;margin-bottom:9px}
+  .pipe .card-mini{background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:12.5px;font-weight:600;margin-bottom:7px;line-height:1.3}
+  .pipe .card-mini:last-child{margin-bottom:0}
+  .pipe .card-mini.alert{background:var(--stop-bg);border-color:#f3ccb9;color:var(--stop)}
+  .pipe .card-mini.done{background:var(--go-bg);border-color:#bfe3cc;color:var(--go)}
+  .pipe .card-mini span{display:block;font-weight:500;color:var(--muted);font-size:11px;margin-top:2px}
+
+  /* simple two-col grid of panels */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+  @media(max-width:1080px){.grid2{grid-template-columns:1fr}}
+
+  /* health rows in a panel are reused; add a tiny table */
+  .ktable{width:100%;border-collapse:collapse}
+  .ktable td,.ktable th{padding:11px 18px;border-bottom:1px solid var(--line);font-size:13.5px;text-align:left}
+  .ktable th{font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--soft)}
+  .ktable tr:last-child td{border-bottom:none}
+  .ktable td.r{text-align:right;font-weight:700}
+  .ktable .nm{font-weight:700}
+  .ktable .sub2{font-size:12px;color:var(--muted);font-weight:500}
+
+  /* filter chips */
+  .chips{display:flex;gap:7px;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--line);background:#fafcfb}
+  .chip{font-size:12.5px;font-weight:700;padding:5px 12px;border-radius:20px;border:1px solid var(--line);background:#fff;color:var(--muted);cursor:default}
+  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+  /* big readiness ring number */
+  .ring-stat{display:flex;align-items:center;gap:16px;padding:18px}
+  .ring{width:74px;height:74px;border-radius:50%;display:grid;place-items:center;flex:none;
+    background:conic-gradient(var(--teal) var(--p,72%), #e3eae9 0);}
+  .ring i{width:58px;height:58px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:19px;font-weight:800;font-style:normal;color:var(--ink)}
+  .ring-stat .rt b{font-size:15px;display:block}
+  .ring-stat .rt span{font-size:12.5px;color:var(--muted)}
+
+  /* safety lock list */
+  .locks{display:grid;grid-template-columns:1fr 1fr;gap:0}
+  @media(max-width:760px){.locks{grid-template-columns:1fr}}
+  .lockrow{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);font-size:13.5px;font-weight:600}
+  .lockrow .ck{width:18px;height:18px;border-radius:50%;background:var(--go-bg);color:var(--go);display:grid;place-items:center;flex:none;font-size:11px;font-weight:900}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside>
+    <div class="brand">
+      <div class="mark">LE</div>
+      <div><b>LegalEase OS</b><span>Command</span></div>
+    </div>
+    <nav>
+      <a data-view="today" class="on" href="#today"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>Today <span class="badge hot">9</span></a>
+      <a data-view="growth" href="#growth"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/><path d="M21 7h-5"/><path d="M21 7v5"/></svg>Growth <span class="badge">14</span></a>
+      <a data-view="partners" href="#partners"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 6"/><path d="M21 20a6 6 0 0 0-4-5.6"/></svg>Partners <span class="badge">5</span></a>
+      <a data-view="production" href="#production"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Production <span class="badge">22</span></a>
+      <a data-view="proof" href="#proof"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>Proof</a>
+      <div class="nav-sep"></div>
+      <a data-view="settings" href="#settings"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3"/></svg>Settings &amp; Health</a>
+    </nav>
+    <div class="lee">
+      <b><i></i>Le-E</b>
+      <p>“Two RCAP follow-ups are 6 days old. Want me to draft them for your review?”</p>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <main>
+    <section id="view-today" class="view on">
+    <div class="top">
+      <div class="hello">
+        <h1>Good morning, Roger.</h1>
+        <p>Saturday, June 20 · <b>9 things need you today</b>, 31 can wait. Nothing live fired overnight.</p>
+      </div>
+      <button class="run-btn">Start Daily Run <span class="n">9</span></button>
+    </div>
+
+    <!-- PULSE: the 4 numbers that actually move the company -->
+    <div class="pulse">
+      <div class="stat">
+        <div class="lab"><span class="dot go"></span>Revenue · 30d</div>
+        <div class="val">$18.4k <small>MRR</small></div>
+        <div class="sub up">▲ $2.1k vs prior 30d</div>
+      </div>
+      <div class="stat">
+        <div class="lab"><span class="dot go"></span>Runway</div>
+        <div class="val">14<small> mo</small></div>
+        <div class="sub">Burn $9.2k/mo · steady</div>
+      </div>
+      <div class="stat">
+        <div class="lab"><span class="dot warn"></span>Your load</div>
+        <div class="val">9 <small>need you</small></div>
+        <div class="sub dn">Backlog grew +3 this week</div>
+      </div>
+      <div class="stat">
+        <div class="lab"><span class="dot go"></span>Systems</div>
+        <div class="val">All clear</div>
+        <div class="sub">11 loops green · 0 live gates</div>
+      </div>
+    </div>
+
+    <div class="cols">
+      <!-- LEFT: the single work queue, ranked by consequence -->
+      <div>
+        <div class="panel">
+          <div class="panel-h">
+            <h2>Needs you now</h2>
+            <span class="meta">Ranked by consequence · 9 items</span>
+          </div>
+
+          <div class="item">
+            <div class="rail stop"></div>
+            <div class="item-body">
+              <div class="item-top">
+                <span class="src">Safety</span>
+                <span class="ttl">Wilma flagged a possible verdict-style answer</span>
+                <span class="pill stop">Blocker</span>
+              </div>
+              <div class="why">One IL session drifted toward "you qualify." Held before it reached the user. Needs your read before the pattern repeats.</div>
+              <div class="acts">
+                <button class="btn primary">Review held response</button>
+                <button class="btn">Mark false alarm</button>
+                <button class="btn ghost">Park</button>
+              </div>
+            </div>
+            <span class="age old">2h</span>
+          </div>
+
+          <div class="item">
+            <div class="rail warn"></div>
+            <div class="item-body">
+              <div class="item-top">
+                <span class="src">Revenue</span>
+                <span class="ttl">2 RCAP follow-ups overdue</span>
+                <span class="pill warn">Aging · 6d</span>
+              </div>
+              <div class="why">Harris County and a PA reentry org both went quiet after the demo. Le-E has drafts ready. Approval doesn't send.</div>
+              <div class="acts">
+                <button class="btn primary">Review 2 drafts</button>
+                <button class="btn">Push to Monday</button>
+                <button class="btn ghost">Do not contact</button>
+              </div>
+            </div>
+            <span class="age old">6d</span>
+          </div>
+
+          <div class="item">
+            <div class="rail warn"></div>
+            <div class="item-body">
+              <div class="item-top">
+                <span class="src">Support</span>
+                <span class="ttl">3 consumer questions Wilma couldn't close</span>
+                <span class="pill warn">Inbound</span>
+              </div>
+              <div class="why">All three are packet-status questions, not legal advice. ~5 min each. None are PII-exposed in this view.</div>
+              <div class="acts">
+                <button class="btn primary">Open inbox (3)</button>
+                <button class="btn ghost">Snooze 2h</button>
+              </div>
+            </div>
+            <span class="age">4h</span>
+          </div>
+
+          <div class="item">
+            <div class="rail go"></div>
+            <div class="item-body">
+              <div class="item-top">
+                <span class="src">Production</span>
+                <span class="ttl">Juneteenth Day 1 post is built and waiting</span>
+                <span class="pill go">Ready</span>
+              </div>
+              <div class="why">Static asset + caption passed every gate: text, contrast, source label, Wilma composited from approved PNG. Approval ≠ publish.</div>
+              <div class="acts">
+                <button class="btn primary">Review &amp; approve</button>
+                <button class="btn">See next 6 days</button>
+              </div>
+            </div>
+            <span class="age">1d</span>
+          </div>
+
+          <div class="item">
+            <div class="rail warn"></div>
+            <div class="item-body">
+              <div class="item-top">
+                <span class="src">Production</span>
+                <span class="ttl">Needs a Wilma pose that doesn't exist yet</span>
+                <span class="pill warn">Blocked</span>
+              </div>
+              <div class="why">Thursday's myth/reality post wants a "pointing left, half-body" pose. Not in the library. OS will not generate her. Upload or swap the layout.</div>
+              <div class="acts">
+                <button class="btn primary">Choose another pose</button>
+                <button class="btn">Upload asset</button>
+              </div>
+            </div>
+            <span class="age">1d</span>
+          </div>
+
+          <div class="item">
+            <div class="rail go"></div>
+            <div class="item-body">
+              <div class="item-top">
+                <span class="src">Source</span>
+                <span class="ttl">Illinois forms refresh against 06/26 ATJ set</span>
+                <span class="pill hold">Standing</span>
+              </div>
+              <div class="why">The one that's been open across the whole corpus build. Not urgent, but it keeps surfacing. Knock it out or formally defer it.</div>
+              <div class="acts">
+                <button class="btn primary">Start refresh</button>
+                <button class="btn ghost">Defer 30 days</button>
+              </div>
+            </div>
+            <span class="age old">long</span>
+          </div>
+
+          <div class="footnote">
+            <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+            Nothing here sends, posts, or files. Every action prepares work for your review. Live gates: 0.
+          </div>
+        </div>
+
+        <!-- Can wait — collapsed by default in real build -->
+        <div class="panel">
+          <div class="panel-h">
+            <h2>Can wait</h2>
+            <span class="meta">31 items · surfaced only when you ask</span>
+          </div>
+          <div class="quiet">
+            <b>Bulk review, not decisions.</b>
+            22 production briefs, 6 new followers, 3 conversion samples. The Daily Run batches these so they don't interrupt the 9 above.
+            <div style="margin-top:14px"><button class="btn">Open bulk review</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: money, systems, the governor -->
+      <div>
+        <div class="panel">
+          <div class="panel-h"><h2>Money</h2><a href="#">Partners →</a></div>
+          <div class="mini">
+            <div class="mini-row"><div class="t"><b>Expungement.ai</b><span>Consumer DTC · Stripe</span></div><div class="v">$11.2k<small>30d</small></div></div>
+            <div class="mini-row"><div class="t"><b>RCAP partners</b><span>3 active · 1 in pilot</span></div><div class="v">$7.2k<small>30d</small></div></div>
+            <div class="mini-row"><div class="t"><b>Pipeline</b><span>PA pilot $75k · 4 prospects</span></div><div class="v">$96k<small>open</small></div></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h"><h2>Systems running for you</h2><span class="meta">11 loops</span></div>
+          <div>
+            <div class="health"><span class="dot go"></span><div class="t"><b>Safety &amp; Wilma</b><span>1 held this week, surfaced above</span></div><span class="stat-pill ok">Watching</span></div>
+            <div class="health"><span class="dot go"></span><div class="t"><b>Revenue &amp; partners</b><span>Suppression clean · 9 task paths gated</span></div><span class="stat-pill ok">Watching</span></div>
+            <div class="health"><span class="dot go"></span><div class="t"><b>Production pipeline</b><span>22 briefs queued, 1 blocked on pose</span></div><span class="stat-pill ok">Watching</span></div>
+            <div class="health"><span class="dot go"></span><div class="t"><b>Packet readiness &amp; QA</b><span>No failures in 30d</span></div><span class="stat-pill ok">Watching</span></div>
+            <div class="health"><span class="dot go"></span><div class="t"><b>Audience &amp; conversion</b><span>6 new followers to review</span></div><span class="stat-pill ok">Watching</span></div>
+            <div class="health"><span class="dot go"></span><div class="t"><b>Integration health</b><span>Connectors green · no replay fails</span></div><span class="stat-pill ok">Watching</span></div>
+          </div>
+          <div class="footnote">
+            <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg>
+            Loops watch and prepare. They never act outside your approval.
+          </div>
+        </div>
+      </div>
+    </div>
+    </section>
+    <!-- ===================== GROWTH ===================== -->
+    <section id="view-growth" class="view">
+      <div class="top"><div class="hello"><h1>Growth</h1><p>Everything you make and everyone you reach. <b>14 items</b> need a look.</p></div>
+        <button class="run-btn">Review warm audience <span class="n">7</span></button></div>
+      <div class="pulse">
+        <div class="stat"><div class="lab"><span class="dot go"></span>Followers · 30D</div><div class="val">+412 <small>net</small></div><div class="sub up">▲ 1.9k reached this week</div></div>
+        <div class="stat"><div class="lab"><span class="dot go"></span>Warm to review</div><div class="val">7</div><div class="sub">mutuals &amp; recent follows</div></div>
+        <div class="stat"><div class="lab"><span class="dot warn"></span>Outreach due</div><div class="val">3</div><div class="sub">follow-ups aging</div></div>
+        <div class="stat"><div class="lab"><span class="dot go"></span>Content live · 30D</div><div class="val">18 <small>posts</small></div><div class="sub up">▲ 6 vs prior 30d</div></div>
+      </div>
+      <div class="cols">
+        <div>
+          <div class="panel">
+            <div class="panel-h"><h2>Warm audience — review &amp; reach out</h2><span class="meta">one list · was 4 queues</span></div>
+            <div class="chips"><span class="chip on">All 7</span><span class="chip">Mutuals</span><span class="chip">Recent follows</span><span class="chip">Follow-up due</span></div>
+            <div class="item"><div class="rail go"></div><div class="item-body"><div class="item-top"><span class="ttl">@reentry_now (mutual)</span><span class="pill go">Warm</span></div><div class="why">Followed back 2d ago, reshared your Juneteenth post. Le-E drafted a thank-you + soft intro.</div><div class="acts"><button class="btn primary">Review draft</button><button class="btn">Open profile</button><button class="btn ghost">Skip</button></div></div><span class="age">2d</span></div>
+            <div class="item"><div class="rail warn"></div><div class="item-body"><div class="item-top"><span class="ttl">3 follow-ups aging</span><span class="pill warn">Due</span></div><div class="why">DMs opened 6+ days ago, no reply yet. Le-E has nudge drafts ready. Approval doesn't send.</div><div class="acts"><button class="btn primary">Review 3 drafts</button><button class="btn">Push to Monday</button></div></div><span class="age old">6d</span></div>
+            <div class="item"><div class="rail go"></div><div class="item-body"><div class="item-top"><span class="ttl">2 recent follows worth a look</span></div><div class="why">Both work at reentry orgs in covered states. Possible RCAP signal — routed from audience review.</div><div class="acts"><button class="btn">Review</button><button class="btn ghost">Not relevant</button></div></div><span class="age">1d</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="panel"><div class="panel-h"><h2>Audience pipeline</h2></div>
+            <div class="mini">
+              <div class="mini-row"><div class="t"><b>Import parser</b><span>last run 4h ago · clean</span></div><div class="v" style="color:var(--go)">OK</div></div>
+              <div class="mini-row"><div class="t"><b>Reconciliation</b><span>0 conflicts</span></div><div class="v" style="color:var(--go)">OK</div></div>
+              <div class="mini-row"><div class="t"><b>Warm review queue</b><span>7 surfaced</span></div><div class="v">7</div></div>
+              <div class="mini-row"><div class="t"><b>Manual outreach</b><span>3 due · 0 sent automatically</span></div><div class="v">3</div></div>
+            </div>
+          </div>
+          <div class="panel"><div class="panel-h"><h2>Make content</h2><a href="#production">Open Production →</a></div>
+            <div class="mini">
+              <div class="mini-row"><div class="t"><b>In production</b><span>Juneteenth series</span></div><div class="v">4</div></div>
+              <div class="mini-row"><div class="t"><b>Ready to approve</b><span>passed every gate</span></div><div class="v" style="color:var(--go)">2</div></div>
+            </div>
+            <div class="footnote"><svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Nothing posts itself. Outreach and content are prepared for your approval only.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== PARTNERS ===================== -->
+    <section id="view-partners" class="view">
+      <div class="top"><div class="hello"><h1>Partners</h1><p>RCAP and revenue. <b>5 partners</b> · 1 in pilot · 4 prospects open.</p></div>
+        <button class="run-btn">Review follow-ups <span class="n">2</span></button></div>
+      <div class="pulse">
+        <div class="stat"><div class="lab"><span class="dot go"></span>RCAP · 30D</div><div class="val">$7.2k</div><div class="sub">3 active · 1 in pilot</div></div>
+        <div class="stat"><div class="lab"><span class="dot warn"></span>Pipeline open</div><div class="val">$96k</div><div class="sub">PA pilot $75k · 4 prospects</div></div>
+        <div class="stat"><div class="lab"><span class="dot warn"></span>Follow-ups overdue</div><div class="val">2</div><div class="sub">6 days quiet</div></div>
+        <div class="stat"><div class="lab"><span class="dot go"></span>Suppression</div><div class="val">Clean</div><div class="sub">9 paths gated · 0 leaks</div></div>
+      </div>
+      <div class="cols">
+        <div>
+          <div class="panel">
+            <div class="panel-h"><h2>Partner pipeline</h2><span class="meta">ranked by consequence</span></div>
+            <div class="item"><div class="rail warn"></div><div class="item-body"><div class="item-top"><span class="src">Revenue</span><span class="ttl">Harris County — went quiet after demo</span><span class="pill warn">Aging · 6d</span></div><div class="why">Pilot proposal sent, no reply. Le-E drafted a re-engage note with the new "live in IL" data point. Approval doesn't send.</div><div class="acts"><button class="btn primary">Review draft</button><button class="btn">Push to Monday</button><button class="btn ghost">Do not contact</button></div></div><span class="age old">6d</span></div>
+            <div class="item"><div class="rail warn"></div><div class="item-body"><div class="item-top"><span class="src">Revenue</span><span class="ttl">PA reentry org — pilot interest</span><span class="pill warn">Aging · 6d</span></div><div class="why">Asked for pricing. The Pilot tier ($75k path) covers it. Draft ready with the fixed-tier sheet attached.</div><div class="acts"><button class="btn primary">Review draft</button><button class="btn">Open record</button></div></div><span class="age old">6d</span></div>
+            <div class="item"><div class="rail go"></div><div class="item-body"><div class="item-top"><span class="src">Pilot</span><span class="ttl">Clean Slate Initiative — pilot live</span><span class="pill go">Healthy</span></div><div class="why">Owner set, qualification complete, next action scheduled, follow-up dated. All weak-state checks pass.</div><div class="acts"><button class="btn">Open pilot</button><button class="btn ghost">View proof</button></div></div><span class="age">on track</span></div>
+            <div class="item"><div class="rail hold"></div><div class="item-body"><div class="item-top"><span class="src">Prospect</span><span class="ttl">2 prospects missing an owner</span><span class="pill hold">Incomplete</span></div><div class="why">Weak-state rule: a partner needs an owner, qualification inputs, a next action, and a follow-up before it can advance.</div><div class="acts"><button class="btn">Assign &amp; complete</button></div></div><span class="age">held</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="panel"><div class="panel-h"><h2>Money</h2></div>
+            <div class="mini">
+              <div class="mini-row"><div class="t"><b>RCAP partners</b><span>3 active · 1 in pilot</span></div><div class="v">$7.2k<small>30d</small></div></div>
+              <div class="mini-row"><div class="t"><b>Pipeline</b><span>PA pilot + 4 prospects</span></div><div class="v">$96k<small>open</small></div></div>
+              <div class="mini-row"><div class="t"><b>Pilot → Program</b><span>conversion target</span></div><div class="v">1<small>this Q</small></div></div>
+            </div>
+          </div>
+          <div class="panel"><div class="panel-h"><h2>Safety rails</h2><span class="meta">invisible until they fire</span></div>
+            <div class="health"><div class="t"><b>Suppression matrix</b><span>9 paths gated · nothing leaked</span></div><span class="stat-pill ok">Clean</span></div>
+            <div class="health"><div class="t"><b>Approval rules</b><span>every send waits for you</span></div><span class="stat-pill ok">Armed</span></div>
+            <div class="footnote"><svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Suppression and approval run silently. They only ever pass a follow-up to your review, or block it and tell you why.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== PRODUCTION ===================== -->
+    <section id="view-production" class="view">
+      <div class="top"><div class="hello"><h1>Production</h1><p>The content factory. Watch the pipeline — you don't manage each station. <b>22 in flight</b>.</p></div>
+        <button class="run-btn">Approve ready <span class="n">2</span></button></div>
+      <div class="subhead">Campaign pipeline · brief → background → Wilma → typography → review</div>
+      <div class="pipe">
+        <div class="stage"><div class="sh"><span class="dot hold" style="background:var(--soft)"></span>Brief</div>
+          <div class="card-mini">Myth/reality #3<span>queued</span></div>
+          <div class="card-mini">Stat drop — IL<span>queued</span></div>
+        </div>
+        <div class="stage"><div class="sh"><span class="dot warn"></span>Background</div>
+          <div class="card-mini">Juneteenth Day 2<span>generating</span></div>
+        </div>
+        <div class="stage"><div class="sh"><span class="dot warn"></span>Wilma composite</div>
+          <div class="card-mini alert">Myth/reality #2<span>pose missing — blocked</span></div>
+        </div>
+        <div class="stage"><div class="sh"><span class="dot go"></span>Typography</div>
+          <div class="card-mini">Welcome carousel<span>in layout</span></div>
+        </div>
+        <div class="stage"><div class="sh"><span class="dot go"></span>Review</div>
+          <div class="card-mini done">Juneteenth Day 1<span>ready — approve</span></div>
+          <div class="card-mini done">Fresh-start reel<span>ready — approve</span></div>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="panel"><div class="panel-h"><h2>Needs you in Production</h2></div>
+          <div class="item"><div class="rail stop"></div><div class="item-body"><div class="item-top"><span class="ttl">Wilma pose that doesn't exist yet</span><span class="pill stop">Blocked</span></div><div class="why">Myth/reality #2 wants a "pointing left, half-body" pose. Not in the library. The OS will not generate Wilma — upload or swap the layout.</div><div class="acts"><button class="btn primary">Upload pose</button><button class="btn">Swap layout</button></div></div><span class="age">1d</span></div>
+          <div class="item"><div class="rail go"></div><div class="item-body"><div class="item-top"><span class="ttl">Juneteenth Day 1 — ready</span><span class="pill go">Ready</span></div><div class="why">Passed every gate: text, contrast, source label, Wilma composited from an approved PNG. Approval ≠ publish.</div><div class="acts"><button class="btn primary">Review &amp; approve</button></div></div><span class="age">1d</span></div>
+        </div>
+        <div>
+          <div class="panel"><div class="panel-h"><h2>Roger video tasks</h2><span class="meta">the one place you're the worker</span></div>
+            <div class="mini">
+              <div class="mini-row"><div class="t"><b>Record: "$50 not $1,500" hook</b><span>script ready · 40s</span></div><div class="v">Today</div></div>
+              <div class="mini-row"><div class="t"><b>Record: IL went live</b><span>script ready · 25s</span></div><div class="v">This wk</div></div>
+            </div>
+          </div>
+          <div class="panel"><div class="panel-h"><h2>Asset guardians</h2><span class="meta">silent unless broken</span></div>
+            <div class="health"><div class="t"><b>Wilma asset guardian</b><span>checksums valid</span></div><span class="stat-pill ok">OK</span></div>
+            <div class="health"><div class="t"><b>Compositor</b><span>last 30 composites clean</span></div><span class="stat-pill ok">OK</span></div>
+            <div class="health"><div class="t"><b>Protection gate</b><span>1 blocked (missing pose)</span></div><span class="stat-pill hold-s">1 hold</span></div>
+            <div class="footnote"><svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Wilma is never AI-generated. She is only composited from approved poses. A missing pose blocks; it never improvises.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== PROOF ===================== -->
+    <section id="view-proof" class="view">
+      <div class="top"><div class="hello"><h1>Proof</h1><p>Outcomes and reporting. The only look-back surface — investor, partner, and acquirer evidence.</p></div>
+        <button class="run-btn">Build weekly pack <span class="n">↗</span></button></div>
+      <div class="pulse">
+        <div class="stat"><div class="lab"><span class="dot go"></span>People helped · 30D</div><div class="val">1,284</div><div class="sub up">▲ across 51 states</div></div>
+        <div class="stat"><div class="lab"><span class="dot go"></span>Packets created</div><div class="val">16,367</div><div class="sub">all-time</div></div>
+        <div class="stat"><div class="lab"><span class="dot go"></span>Case studies</div><div class="val">3</div><div class="sub">candidates ready</div></div>
+        <div class="stat"><div class="lab"><span class="dot go"></span>Data room</div><div class="val">Fresh</div><div class="sub">0 stale artifacts</div></div>
+      </div>
+      <div class="cols">
+        <div>
+          <div class="panel"><div class="panel-h"><h2>Recent proof</h2><span class="meta">wins · outcomes · notes</span></div>
+            <div class="item"><div class="rail go"></div><div class="item-body"><div class="item-top"><span class="src">Win</span><span class="ttl">Clean Slate pilot cleared its first 40 records</span><span class="pill go">Outcome</span></div><div class="why">Attributed to the partner. Becomes the case study that opens the next ten pilots.</div><div class="acts"><button class="btn primary">Add to data room</button><button class="btn">Draft case study</button></div></div><span class="age">2d</span></div>
+            <div class="item"><div class="rail go"></div><div class="item-body"><div class="item-top"><span class="src">Outcome</span><span class="ttl">Consumer conversion held at 31%</span></div><div class="why">Funnel snapshot saved. Trend is up 4 points since save-and-resume shipped.</div><div class="acts"><button class="btn">View snapshot</button></div></div><span class="age">3d</span></div>
+            <div class="item"><div class="rail go"></div><div class="item-body"><div class="item-top"><span class="src">Note</span><span class="ttl">Partner quote — "defensible to our funder"</span></div><div class="why">Customer note captured from the CSI check-in. Strong pull-quote for the deck.</div><div class="acts"><button class="btn">Use in deck</button></div></div><span class="age">5d</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="panel"><div class="panel-h"><h2>Acquisition readiness</h2></div>
+            <div class="ring-stat"><div class="ring" style="--p:78%"><i>78</i></div><div class="rt"><b>Data room 78% ready</b><span>up from 64% last month</span></div></div>
+          </div>
+          <div class="panel"><div class="panel-h"><h2>Reports</h2><span class="meta">low-frequency</span></div>
+            <div class="mini">
+              <div class="mini-row"><div class="t"><b>Weekly evidence pack</b><span>auto-built Fridays</span></div><div class="v" style="color:var(--go)">Ready</div></div>
+              <div class="mini-row"><div class="t"><b>Growth report</b><span>last: Jun 16</span></div><div class="v">↗</div></div>
+              <div class="mini-row"><div class="t"><b>SOC 2 readiness</b><span>tracked, audit-ready posture</span></div><div class="v">62%</div></div>
+            </div>
+            <div class="footnote"><svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Proof events carry totals only — no raw PII ever enters the evidence layer.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== SETTINGS & HEALTH ===================== -->
+    <section id="view-settings" class="view">
+      <div class="top"><div class="hello"><h1>Settings &amp; Health</h1><p>The machine room. Touched rarely, trusted completely. <b>11 loops green · 0 live gates.</b></p></div></div>
+      <div class="pulse">
+        <div class="stat"><div class="lab"><span class="dot go"></span>System health</div><div class="val">All clear</div><div class="sub">3 diagnostics → 1 readout</div></div>
+        <div class="stat"><div class="lab"><span class="dot go"></span>Loops running</div><div class="val">11</div><div class="sub">all green</div></div>
+        <div class="stat"><div class="lab"><span class="dot go"></span>Live gates</div><div class="val">0</div><div class="sub">nothing acts externally</div></div>
+        <div class="stat"><div class="lab"><span class="dot go"></span>Outbox</div><div class="val">Inert</div><div class="sub">prepared, never sent</div></div>
+      </div>
+      <div class="grid2">
+        <div class="panel"><div class="panel-h"><h2>Safety posture</h2><span class="meta">visible, not buried</span></div>
+          <div class="locks">
+            <div class="lockrow"><span class="ck">✓</span>No auto-publish</div>
+            <div class="lockrow"><span class="ck">✓</span>No auto-send</div>
+            <div class="lockrow"><span class="ck">✓</span>Approval ≠ execution</div>
+            <div class="lockrow"><span class="ck">✓</span>Wilma never generated</div>
+            <div class="lockrow"><span class="ck">✓</span>No raw PII in loops</div>
+            <div class="lockrow"><span class="ck">✓</span>Live gates at 0</div>
+            <div class="lockrow"><span class="ck">✓</span>Google Workspace read-only</div>
+            <div class="lockrow"><span class="ck">✓</span>Inert outbox</div>
+          </div>
+        </div>
+        <div>
+          <div class="panel"><div class="panel-h"><h2>Machine health</h2><span class="meta">3 agents → 1 line</span></div>
+            <div class="health"><div class="t"><b>OS health</b><span>state integrity + integration merged</span></div><span class="stat-pill ok">Healthy</span></div>
+            <div class="health"><div class="t"><b>Connectors</b><span>Gmail, Calendar, Drive · read-only</span></div><span class="stat-pill ok">Linked</span></div>
+            <div class="health"><div class="t"><b>Auth hardening</b><span>roles &amp; access</span></div><span class="stat-pill ok">OK</span></div>
+            <div class="health"><div class="t"><b>Database</b><span>Postgres · durable</span></div><span class="stat-pill ok">OK</span></div>
+          </div>
+          <div class="panel"><div class="panel-h"><h2>Config</h2></div>
+            <table class="ktable">
+              <tr><td class="nm">Wilma pose library<div class="sub2">approved poses only</div></td><td class="r">14</td></tr>
+              <tr><td class="nm">Art-direction profiles<div class="sub2">anti-template rules</div></td><td class="r">5</td></tr>
+              <tr><td class="nm">Live-gate controls<div class="sub2">master external switch</div></td><td class="r" style="color:var(--go)">OFF</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function(){
+  var views = ['today','growth','partners','production','proof','settings'];
+  function show(v){
+    if(views.indexOf(v)<0) v='today';
+    document.querySelectorAll('.view').forEach(function(s){ s.classList.toggle('on', s.id==='view-'+v); });
+    document.querySelectorAll('nav a[data-view]').forEach(function(a){ a.classList.toggle('on', a.getAttribute('data-view')===v); });
+    if(window.scrollTo) window.scrollTo(0,0);
+  }
+  document.querySelectorAll('nav a[data-view]').forEach(function(a){
+    a.addEventListener('click', function(e){ e.preventDefault(); var v=a.getAttribute('data-view'); history.replaceState(null,'','#'+v); show(v); });
+  });
+  window.addEventListener('hashchange', function(){ show((location.hash||'#today').slice(1)); });
+  show((location.hash||'#today').slice(1));
+})();
+</script>
+</body>
+</html>
