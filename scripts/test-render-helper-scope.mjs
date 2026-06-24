@@ -27,7 +27,9 @@ for (const match of inlineRuntime.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w
 const runtimeImportReferences = [];
 for (const name of importedNames) {
   if (name === "roleCapabilities") continue; // Rendered into clientRoleCapabilities by template interpolation.
-  if (new RegExp(`\\b${name}\\b`).test(inlineRuntime) && !definedNames.has(name)) runtimeImportReferences.push(name);
+  // Match the import name only as a standalone JS identifier. Exclude hyphen/word-adjacent
+  // matches so CSS class fragments like "command-stat" do not count as a reference to "stat".
+  if (new RegExp(`(?<![\\w$-])${name}(?![\\w$-])`).test(inlineRuntime) && !definedNames.has(name)) runtimeImportReferences.push(name);
 }
 assert.deepEqual(runtimeImportReferences.sort(), [], `Imported server helpers referenced in browser runtime without browser definitions: ${runtimeImportReferences.sort().join(", ")}`);
 

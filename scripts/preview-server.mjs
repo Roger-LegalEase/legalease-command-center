@@ -695,7 +695,16 @@ function buildCompactBootState(rawState = {}, actor = {}) {
   const handoffContractPreviews = compactRecent(source.handoffContractPreviews, 3);
   return {
     settings: source.settings || {},
-    runtime: source.runtime || {},
+    runtime: {
+      ...(source.runtime || {}),
+      socialChannelStatuses: {
+        linkedin: linkedinSetupState(source).status,
+        x: xSetupState(source).status,
+        meta: metaSetupState(source).status
+      },
+      founderCapacityPulse: buildFounderCapacityPulse(source, { warningThreshold:12 }),
+      dailyRunSnapshot: buildDailyRunSnapshot(source)
+    },
     metrics: source.metrics || {},
     systemHealth: source.systemHealth || {},
     schemaStatus: source.schemaStatus || {},
@@ -1402,6 +1411,13 @@ function withPublicChannelSetup(state) {
 	      livePostingGates,
 	      openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
       oauthTokenEncryptionConfigured: Boolean(process.env.OAUTH_TOKEN_ENCRYPTION_KEY),
+      socialChannelStatuses: {
+        linkedin: linkedinSetupState(state).status,
+        x: xSetupState(state).status,
+        meta: metaSetupState(state).status
+      },
+      founderCapacityPulse: buildFounderCapacityPulse(state, { warningThreshold:12 }),
+      dailyRunSnapshot: buildDailyRunSnapshot(state),
       accessControl: {
         roles: Object.fromEntries(Object.entries(roleDefinitions).map(([key, value]) => [key, { label:value.label, permissions:value.can }])),
         authRequired: storageRuntimeConfig().requestedStorageBackend === "supabase" && !storageRuntimeConfig().localDemoMode,
@@ -14875,10 +14891,10 @@ function htmlShell() {
     .asset-thumb { aspect-ratio:16/10; border-radius:14px; background:linear-gradient(135deg,var(--le-navy),#0F766E); display:grid; place-items:center; color:white; font-weight:900; overflow:hidden; }
     .asset-thumb img { width:100%; height:100%; object-fit:cover; }
     .command-overlay,.modal-backdrop { position:fixed; inset:0; z-index:50; display:grid; place-items:start center; padding-top:9vh; background:rgba(8,20,95,.32); backdrop-filter:blur(10px); }
-    .command-panel,.modal-panel { width:min(760px,calc(100vw - 32px)); border-radius:20px; background:white; box-shadow:0 30px 80px rgba(8,20,95,.24); border:1px solid rgba(8,20,95,.1); padding:18px; }
+    .command-palette-panel,.modal-panel { width:min(760px,calc(100vw - 32px)); border-radius:20px; background:white; box-shadow:0 30px 80px rgba(8,20,95,.24); border:1px solid rgba(8,20,95,.1); padding:18px; }
     .command-input { width:100%; min-height:48px; border:0; border-bottom:1px solid rgba(8,20,95,.1); border-radius:0; font-size:18px; }
     .command-list { display:grid; gap:8px; margin-top:14px; }
-    .command-item { display:flex; align-items:center; justify-content:space-between; min-height:48px; padding:10px 12px; border:1px solid rgba(8,20,95,.08); border-radius:12px; background:#F9FAF7; cursor:pointer; }
+    .command-palette-item { display:flex; align-items:center; justify-content:space-between; min-height:48px; padding:10px 12px; border:1px solid rgba(8,20,95,.08); border-radius:12px; background:#F9FAF7; cursor:pointer; }
     .modal-grid { display:grid; grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr); gap:16px; }
     .publish-preview { min-height:260px; border-radius:16px; overflow:hidden; background:#111827; display:grid; place-items:center; }
     .publish-preview img { width:100%; height:100%; object-fit:cover; }
@@ -16407,6 +16423,15 @@ function htmlShell() {
       if (text.includes("facebook")) return "Facebook";
       if (text.includes("instagram")) return "Instagram";
       return String(value || "").trim();
+    }
+    function normalizePlatformName(value = "") {
+      const text = String(value || "").trim().toLowerCase();
+      if (["twitter", "twitter/x", "twitter-x", "x/twitter", "x-twitter", "x"].includes(text)) return "x";
+      if (text.includes("linkedin")) return "linkedin";
+      if (text.includes("facebook")) return "facebook";
+      if (text.includes("instagram")) return "instagram";
+      if (text.includes("thread")) return "threads";
+      return platforms.includes(text) ? text : "";
     }
     function campaignPlatformKey(value = "") {
       const label = campaignPlatformLabel(value).toLowerCase();
@@ -23009,10 +23034,11 @@ function htmlShell() {
       const liveGates = clientLiveGatesCount(state);
       const integrityWarnings = (integrity.errors || []).length + (integrity.warnings || []).length + (integrity.duplicate_warnings || []).length + (integrity.missing_field_warnings || []).length;
       const connectorProblems = connectors.filter(item => !item.configured || item.lastError).length;
+      const socialChannelStatuses = state.runtime?.socialChannelStatuses || {};
       const socialChannels = [
-        ["LinkedIn", linkedinSetupState(state).status, state.runtime?.livePostingGates?.linkedin?.enabled, "linkedinSetupState(state) + runtime.livePostingGates.linkedin"],
-        ["Twitter / X", xSetupState(state).status, state.runtime?.livePostingGates?.x?.enabled, "xSetupState(state) + runtime.livePostingGates.x"],
-        ["Meta", metaSetupState(state).status, state.runtime?.livePostingGates?.facebook?.enabled || state.runtime?.livePostingGates?.instagram?.enabled, "metaSetupState(state) + runtime live gates"]
+        ["LinkedIn", socialChannelStatuses.linkedin || "not yet wired", state.runtime?.livePostingGates?.linkedin?.enabled, "runtime.socialChannelStatuses.linkedin + runtime.livePostingGates.linkedin"],
+        ["Twitter / X", socialChannelStatuses.x || "not yet wired", state.runtime?.livePostingGates?.x?.enabled, "runtime.socialChannelStatuses.x + runtime.livePostingGates.x"],
+        ["Meta", socialChannelStatuses.meta || "not yet wired", state.runtime?.livePostingGates?.facebook?.enabled || state.runtime?.livePostingGates?.instagram?.enabled, "runtime.socialChannelStatuses.meta + runtime live gates"]
       ];
       const liveGateRows = ["linkedin", "facebook", "instagram", "x"].map(channel => {
         const gate = state.runtime?.livePostingGates?.[channel] || {};
@@ -23899,7 +23925,7 @@ function htmlShell() {
     }
 
     function todayCapacitySummary(needCount = 0) {
-      const pulse = buildFounderCapacityPulse(state, { warningThreshold:12 });
+      const pulse = state.runtime?.founderCapacityPulse || {};
       const itemsNeedingOperator = Number.isFinite(Number(pulse.items_needing_operator)) ? Number(pulse.items_needing_operator) : needCount;
       const completedToday = Number.isFinite(Number(pulse.completed_today)) ? Number(pulse.completed_today) : 0;
       const trend = pulse.backlog_trend || (itemsNeedingOperator > completedToday ? "growing" : itemsNeedingOperator < completedToday ? "clearing" : "steady");
@@ -23909,7 +23935,7 @@ function htmlShell() {
         overload:Boolean(pulse.overload_warning),
         itemsNeedingOperator,
         wired:Boolean(pulse.read_only && pulse.external_action === false),
-        source:"buildFounderCapacityPulse(state)"
+        source:"runtime.founderCapacityPulse (server capacity feeder)"
       };
     }
 
@@ -23918,7 +23944,7 @@ function htmlShell() {
       const active = view.activeSession || null;
       const savedBuckets = active?.bucket_snapshot?.buckets || view.startSnapshot?.buckets || [];
       if (savedBuckets.length) return savedBuckets;
-      return buildDailyRunSnapshot(state).buckets || [];
+      return state.runtime?.dailyRunSnapshot?.buckets || [];
     }
 
     function todayBucketTone(key = "") {
@@ -26494,7 +26520,7 @@ function htmlShell() {
         ["Petitions", state.metrics?.petitions || "Needs update", state.metrics?.petitions ? "Current value added" : "No value added yet.", true],
         ["Partners", partners.length || "Needs update", partners.length ? "Current partner count" : "No value added yet.", !partners.length],
         ["Content output", posts.length || "Needs update", posts.length ? "Manual posts tracked" : "No value added yet.", !posts.length],
-        ["Proof captured", evidenceNotes.length || "Needs update", evidenceNotes.length ? "Evidence ready to review" : "No value added yet.", !evidenceNotes.length],
+        ["Proof captured", evidenceItems.length || "Needs update", evidenceItems.length ? "Evidence ready to review" : "No value added yet.", !evidenceItems.length],
         ["Manual posts", posts.length || "Needs update", posts.length ? "Posted outside the OS" : "No value added yet.", !posts.length],
         ["Runway", state.metrics?.runway || "Needs update", state.metrics?.runway ? "Current value added" : "No value added yet.", true]
       ];
@@ -27426,6 +27452,17 @@ function htmlShell() {
       if (collection === "soc2Incidents") { patch.status = "Closed"; patch.dateResolved = patch.dateResolved || new Date().toISOString().slice(0, 10); }
       if (collection === "soc2Evidence") { patch.collectionDate = new Date().toISOString().slice(0, 10); patch.evidenceStatus = patch.evidenceStatus || "Ready for Review"; patch.evidenceQuality = patch.evidenceQuality || "Acceptable"; }
       await saveGrowth(collection, patch);
+    }
+
+    async function reviewSoc2Evidence(id, action) {
+      try {
+        const result = await api("/api/soc2/evidence/" + encodeURIComponent(id) + "/review", { method:"POST", body:JSON.stringify({ action }) });
+        state = result.state;
+        toast(result.message || "Evidence review updated.");
+        render();
+      } catch (error) {
+        toast(error.message || "Could not update evidence review.");
+      }
     }
 
     async function generateSoc2EvidenceSnapshot() {
@@ -28545,7 +28582,7 @@ function htmlShell() {
       const root = document.querySelector("#commandPaletteRoot");
       const actions = commandActions();
       root.innerHTML = \`<div class="command-overlay" onclick="closeCommandPalette(event)">
-        <div class="command-panel" role="dialog" aria-modal="true" aria-label="Command palette" onclick="event.stopPropagation()">
+        <div class="command-palette-panel" role="dialog" aria-modal="true" aria-label="Command palette" onclick="event.stopPropagation()">
           <input id="commandSearch" class="command-input" placeholder="Type a command..." oninput="renderCommandActions(this.value)" autofocus>
           <div id="commandList" class="command-list"></div>
         </div>
@@ -28559,7 +28596,7 @@ function htmlShell() {
       const actions = commandActions().filter(action => (action.label + " " + action.detail).toLowerCase().includes(normalized));
       const target = document.querySelector("#commandList");
       if (!target) return;
-      target.innerHTML = actions.map((action, index) => \`<button class="command-item" onclick="runCommandAction(\${index}, '\${esc(normalized)}')"><span><strong>\${esc(action.label)}</strong><br><span class="muted">\${esc(action.detail)}</span></span><span class="badge info">Enter</span></button>\`).join("") || '<div class="empty">No commands found.</div>';
+      target.innerHTML = actions.map((action, index) => \`<button class="command-palette-item" onclick="runCommandAction(\${index}, '\${esc(normalized)}')"><span><strong>\${esc(action.label)}</strong><br><span class="muted">\${esc(action.detail)}</span></span><span class="badge info">Enter</span></button>\`).join("") || '<div class="empty">No commands found.</div>';
     }
 
     function runCommandAction(index, query = "") {
