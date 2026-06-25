@@ -427,12 +427,39 @@ export class SupabaseCoreStore extends JsonStore {
 
   async writeStateNow(state) {
     const rows = coreRecordsFromState(state);
-    if (!rows.length) return;
-    await supabaseRestRequest(supabaseRecordsTable + "?on_conflict=collection,item_id", {
-      method:"POST",
-      body: rows,
-      prefer:"resolution=merge-duplicates,return=minimal"
-    });
+    if (rows.length) {
+      await supabaseRestRequest(supabaseRecordsTable + "?on_conflict=collection,item_id", {
+        method:"POST",
+        body: rows,
+        prefer:"resolution=merge-duplicates,return=minimal"
+      });
+    }
+    // Reconcile so the snapshot is the source of truth, matching the JSON backend.
+    // Upsert happens first (current data is never at risk); then, within each collection
+    // that is present in this snapshot, delete any table rows whose (collection,item_id)
+    // is no longer part of the snapshot. This stops regenerated ids and removed items from
+    // accumulating as orphan duplicates. Collections absent from the snapshot are left
+    // untouched, so a partial state write can never mass-delete persisted data.
+    const presentCollections = new Set(
+      coreStateCollections.filter((collection) => state[collection] !== undefined && state[collection] !== null)
+    );
+    if (presentCollections.size) {
+      const keep = new Set(rows.map((row) => row.collection + " " + row.item_id));
+      const existing = (await supabaseRestRequest(supabaseRecordsTable + "?select=collection,item_id")) || [];
+      const orphans = existing.filter(
+        (row) => presentCollections.has(row.collection) && !keep.has(row.collection + " " + row.item_id)
+      );
+      for (let i = 0; i < orphans.length; i += 25) {
+        await Promise.all(orphans.slice(i, i + 25).map((row) =>
+          supabaseRestRequest(
+            supabaseRecordsTable
+              + "?collection=eq." + encodeURIComponent(row.collection)
+              + "&item_id=eq." + encodeURIComponent(row.item_id),
+            { method:"DELETE", prefer:"return=minimal" }
+          )
+        ));
+      }
+    }
     this.lastError = "";
   }
 }
