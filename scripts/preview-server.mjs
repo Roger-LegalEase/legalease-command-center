@@ -11607,6 +11607,85 @@ function defaultConnectorStatus(state = {}) {
   }));
 }
 
+// Count only new-model revenue: charges created on or after this date (00:00 UTC).
+// Legacy charges before the cutoff are excluded so the box reflects new revenue
+// only, not the old baseline. Change this one line to move the cutoff.
+const STRIPE_REVENUE_CUTOFF_ISO = "2026-06-25";
+
+// Live Stripe revenue, computed server-side only. The secret key is read here in
+// Node scope and is NEVER serialized into any client payload — only the computed
+// dollar amount and a status flag reach the browser. Returns gross captured
+// revenue (sum of amount_captured across paid, succeeded charges) for charges on
+// or after STRIPE_REVENUE_CUTOFF_ISO.
+// On ANY failure — missing key, non-live key, auth rejection, network/timeout —
+// it returns available:false so the Revenue box renders a clear unavailable
+// state. It never returns a cached, stale, estimated, or fabricated number, and
+// a test-mode key can never surface as live revenue.
+async function fetchStripeRevenueSnapshot() {
+  const base = { source: "stripe_live", fetchedAt: new Date().toISOString() };
+  const key = process.env.STRIPE_SECRET_KEY || "";
+  if (!key) {
+    return { ...base, available: false, configured: false, error: "Stripe is not connected yet." };
+  }
+  if (!(key.startsWith("sk_live_") || key.startsWith("rk_live_"))) {
+    // Honesty guard: a test-mode (or restricted test) key must never read as live.
+    return { ...base, available: false, configured: true, error: "Stripe key is not in live mode. Live revenue requires a live key." };
+  }
+  const cutoffUnix = Math.floor(Date.parse(STRIPE_REVENUE_CUTOFF_ISO + "T00:00:00Z") / 1000);
+  const sinceLabel = new Date(cutoffUnix * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    let totalMinorUnits = 0;
+    let currency = "";
+    let after = "";
+    let pages = 0;
+    while (true) {
+      // created[gte] makes Stripe return only on/after-cutoff charges; the local
+      // check below is a defensive double-guard so legacy charges can never count.
+      const query = "charges?limit=100&created%5Bgte%5D=" + cutoffUnix + (after ? "&starting_after=" + encodeURIComponent(after) : "");
+      const res = await fetch("https://api.stripe.com/v1/" + query, {
+        headers: { authorization: "Bearer " + key },
+        signal: controller.signal
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const safe = res.status === 401 ? "Stripe rejected the API key." : "Stripe request failed (status " + res.status + ").";
+        return { ...base, available: false, configured: true, error: safe };
+      }
+      pages += 1;
+      for (const charge of (data && data.data) || []) {
+        if (charge && charge.livemode === false) {
+          // Defensive: a live key returning test-mode data should never count.
+          return { ...base, available: false, configured: true, error: "Stripe returned test-mode data for a live key." };
+        }
+        if (charge && charge.paid && charge.status === "succeeded" && Number(charge.created) >= cutoffUnix) {
+          totalMinorUnits += Number(charge.amount_captured ?? charge.amount ?? 0);
+          if (!currency) currency = charge.currency || "";
+        }
+      }
+      if (!data || !data.has_more || !data.data?.length) break;
+      after = data.data[data.data.length - 1].id;
+      if (pages >= 100) break; // defensive page cap (~10k charges)
+    }
+    return {
+      ...base,
+      available: true,
+      configured: true,
+      livemode: true,
+      gross: Math.round(totalMinorUnits) / 100,
+      since: STRIPE_REVENUE_CUTOFF_ISO,
+      sinceLabel,
+      currency: currency || "usd"
+    };
+  } catch (error) {
+    const aborted = error && (error.name === "AbortError" || error.aborted);
+    return { ...base, available: false, configured: true, error: aborted ? "Stripe request timed out." : "Stripe is unavailable right now." };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const googleSyncTerms = [
   "LegalEase",
   "Expungement.ai",
@@ -24292,6 +24371,13 @@ function htmlShell() {
       const platformHealthy = rcapStatus.tone === "go" && expungementStatus.tone === "go";
       const liveGates = liveGatesCountFromState(state);
       const dot = tone => \`<span class="command-dot \${esc(tone)}"></span>\`;
+      const stripeRevenue = state.stripeRevenue || null;
+      const revenueCard = (() => {
+        if (!stripeRevenue) return { tone:"hold", value:'<span class="command-not-wired">connecting to Stripe…</span>', note:"Loading live revenue from Stripe." };
+        if (stripeRevenue.available) return { tone:"go", value: esc(todayMoney(stripeRevenue.gross)) + ' <small>live · since ' + esc(stripeRevenue.sinceLabel || "cutoff") + '</small>', note:"Live Stripe revenue (gross) since " + esc(stripeRevenue.sinceLabel || "the cutoff") + ". Legacy charges before the cutoff are excluded. Updates automatically as new charges settle — no further setup needed." };
+        if (stripeRevenue.configured) return { tone:"warn", value:'<span class="command-not-wired">revenue unavailable</span>', note:"Live Stripe is unavailable right now: " + esc(stripeRevenue.error || "could not reach Stripe.") + " No cached or estimated number is shown." };
+        return { tone:"warn", value:'<span class="command-not-wired">not yet wired — connect Stripe</span>', note:"Live revenue appears here once Stripe is connected. No number is shown until a real source is wired." };
+      })();
       const itemRows = items => items.map(entry => {
         const item = entry.item || entry;
         const bucket = entry.bucket || {};
@@ -24334,10 +24420,10 @@ function htmlShell() {
               </div>
             </div>
             <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='settings'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='settings'}">
-              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot("warn")}Revenue</span><span class="cockpit-card-go">Settings →</span></div>
+              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot(revenueCard.tone)}Revenue</span><span class="cockpit-card-go">Settings →</span></div>
+              <div class="cockpit-card-value">\${revenueCard.value}</div>
               <div class="cockpit-card-list">
-                <span class="command-not-wired">not yet wired — connect Stripe</span>
-                <div class="cockpit-card-note">Live revenue appears here once Stripe is connected. No number is shown until a real source is wired.</div>
+                <div class="cockpit-card-note">\${revenueCard.note}</div>
               </div>
             </div>
             <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='settings'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='settings'}">
@@ -30949,7 +31035,12 @@ async function handleRequest(request, response) {
   }
 
 	  if (url.pathname === "/api/state" && request.method === "GET") {
-    sendJson(response, withPublicChannelSetup(await store.readState()));
+    const fullState = withPublicChannelSetup(await store.readState());
+    // Live revenue is fetched fresh server-side on every full-state load so the
+    // Revenue box always reflects real Stripe data (or a clear unavailable state),
+    // and new charges appear automatically with no further code change.
+    fullState.stripeRevenue = await fetchStripeRevenueSnapshot();
+    sendJson(response, fullState);
     return;
   }
 
