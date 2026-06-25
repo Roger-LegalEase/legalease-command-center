@@ -76,6 +76,12 @@ The Command Center should eventually make adding a new capability feel like regi
 
 ---
 
+## DEFERRED DECISIONS
+
+**Durable audit history (raised during A1, June 24 2026).** The Supabase reconcile-on-write fix makes the database hold exactly the current in-memory state, same as the old JSON backend. This means audit and activity logs (soc2AuditLogs, activityEvents) are NOT retained as permanent append-only history, only the current window persists. For a justice-tech product under SOC 2, durable audit trails may be required (who approved what, when). If durable audit history is needed, it requires a separate dedicated append-only audit table, designed on purpose, not part of the reconcile fix. Revisit before SOC 2 audit or before any compliance commitment that assumes full audit retention.
+
+---
+
 ## TRACK B — THE AUTONOMOUS ENGINES
 
 Seven engines, hung off one heartbeat. Build in this order — each proven before the next.
