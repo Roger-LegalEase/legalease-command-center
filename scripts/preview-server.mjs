@@ -7820,6 +7820,10 @@ function sanitizeOutboundText(value = "") {
   return String(value || "")
     .replace(/SUPABASE_SERVICE_ROLE_KEY/g, "Supabase server credential")
     .replace(/OPENAI_API_KEY/g, "OpenAI server key")
+    .replace(/LINKEDIN_CLIENT_SECRET/g, "LinkedIn client secret")
+    .replace(/GOOGLE_CLIENT_SECRET/g, "Google client secret")
+    .replace(/X_CLIENT_SECRET/g, "X client secret")
+    .replace(/DATABASE_URL/g, "database connection string")
     .replace(/COMMAND_CENTER_OWNER_TOKEN/g, "owner access token")
     .replace(/OWNER_TOKEN/g, "owner access token")
     .replace(/OAUTH_TOKEN_ENCRYPTION_KEY/g, "OAuth token encryption setting")
@@ -18846,7 +18850,7 @@ function htmlShell() {
           ok: linkedinConfigured,
           body: linkedinConfigured
             ? "Server-side LinkedIn OAuth configuration is present."
-            : \`Missing env vars: \${linkedinMissing.join(", ") || "LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET, LINKEDIN_REDIRECT_URI"}.\`,
+            : \`Missing LinkedIn setup: \${linkedinMissing.join(", ") || "client ID, client secret, redirect URI"}.\`,
           detail: "Add credentials to .env.local. Values are never shown in the browser."
         },
         {
@@ -18937,7 +18941,7 @@ function htmlShell() {
       const finalCount = (state.postImages || []).filter(image => finalPngReady((state.posts || []).find(post => post.id === image.postId), image)).length;
       const publicCount = (state.posts || []).filter(post => publicHttpsUrlReady(publicImageUrlForPost(post, imageForPost(post.id)))).length;
       const checks = [
-        ["Storage configured", Boolean(storage.configured), storage.message || "Add SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and SUPABASE_STORAGE_BUCKET."],
+        ["Storage configured", Boolean(storage.configured), storage.message || "Add your Supabase URL, service-role key, and storage bucket."],
         ["Bucket", Boolean(storage.bucket), storage.bucket || "social-assets"],
         ["Final PNGs", finalCount > 0, finalCount + " local final PNG" + (finalCount === 1 ? "" : "s") + " ready to upload."],
         ["Public URLs", publicCount > 0, publicCount + " post" + (publicCount === 1 ? "" : "s") + " already have public image URLs."]
@@ -19116,8 +19120,8 @@ function htmlShell() {
         {
           title: "OpenAI content and image key",
           ok: Boolean(state.runtime?.openAIConfigured),
-          body: state.runtime?.openAIConfigured ? \`OpenAI key detected. Image model: \${state.runtime?.imageModel || "gpt-image-1.5"}.\` : "OPENAI_API_KEY is missing.",
-          action: "Add OPENAI_API_KEY in production and confirm billing limits."
+          body: state.runtime?.openAIConfigured ? \`OpenAI key detected. Image model: \${state.runtime?.imageModel || "gpt-image-1.5"}.\` : "OpenAI API key is missing.",
+          action: "Add your OpenAI API key in production and confirm billing limits."
         },
         {
           title: "Final image composer",
@@ -25851,7 +25855,7 @@ function htmlShell() {
               <button class="\${contentBankDraftMode === "local" ? "primary" : ""}" onclick="setContentBankDraftMode('local')">\${localDraftLabel}</button>
               <button class="\${contentBankDraftMode === "ai" ? "primary" : ""}" onclick="setContentBankDraftMode('ai')">AI Draft Mode</button>
             </div>
-            <p class="muted">\${contentBankDraftMode === "ai" ? (aiReady ? "AI Draft Mode uses OPENAI_API_KEY on the server only. Drafts still go to Approval Queue." : "AI Draft Mode selected, but OPENAI_API_KEY is missing. The server will fall back to local generation.") : localDraftCopy}</p>
+            <p class="muted">\${contentBankDraftMode === "ai" ? (aiReady ? "AI Draft Mode uses your OpenAI API key on the server only. Drafts still go to Approval Queue." : "AI Draft Mode selected, but the OpenAI API key is missing. The server will fall back to local generation.") : localDraftCopy}</p>
             <div class="card-actions">
               <button class="primary" onclick="generateSelectedContentBank()">Generate selected</button>
               <button onclick="generateContentBank({limit:10})">Generate this week</button>
