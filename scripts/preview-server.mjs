@@ -14732,6 +14732,14 @@ function htmlShell() {
     .command-empty { text-align:center; color:#8693a1; padding:30px 18px; }
     .command-empty b { display:block; color:var(--muted); font-size:14px; margin-bottom:3px; }
     .command-not-wired { display:inline-block; border:1px dashed color-mix(in srgb, var(--stop) 34%, white); border-radius:12px; background:var(--stop-bg); color:var(--stop); padding:8px 12px; font-size:12.5px; font-weight:800; }
+    .command-panel-pad { padding:14px 18px; display:grid; gap:8px; }
+    .command-panel-actions { display:flex; flex-wrap:wrap; gap:7px; padding:13px 18px; border-top:1px solid var(--line); }
+    .command-ring-stat { display:flex; align-items:center; gap:14px; padding:15px 18px; border-bottom:1px solid var(--line); }
+    .command-ring { position:relative; width:76px; height:76px; flex:none; border-radius:50%; display:grid; place-items:center; background:conic-gradient(var(--teal) var(--p,0%), var(--line) 0); }
+    .command-ring::after { content:""; position:absolute; inset:9px; border-radius:50%; background:var(--card); z-index:1; }
+    .command-ring i { position:relative; z-index:2; font-style:normal; font-weight:850; font-size:20px; color:var(--ink); }
+    .command-ring-text b { display:block; color:var(--ink); font-size:13.5px; line-height:1.25; }
+    .command-ring-text span { color:var(--muted); font-size:12px; line-height:1.35; }
     .cockpit-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; align-items:stretch; }
     .cockpit-card { display:flex; flex-direction:column; gap:9px; text-align:left; width:100%; min-height:172px; background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); padding:16px 18px; cursor:pointer; color:var(--ink); transition:box-shadow .15s ease, transform .15s ease, border-color .15s ease; }
     .cockpit-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-lift,0 18px 44px rgba(10,26,92,.12)); border-color:var(--teal); }
@@ -15560,50 +15568,6 @@ function htmlShell() {
     .account-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; margin-top:3px; }
     @media (max-width:1180px) { .production-summary-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .production-main-grid,.production-hero,.campaign-upload-grid { grid-template-columns:1fr; } .production-actions { justify-content:flex-start; } }
     @media (max-width:760px) { .production-workspace { max-width:calc(100vw - 20px); padding:18px 12px 96px; } .production-summary-grid,.platform-preview-grid,.campaign-preview-metrics,.campaign-step-row,.campaign-safety-lines { grid-template-columns:1fr; } .account-row,.campaign-upload-row { grid-template-columns:1fr; } .production-board { grid-auto-columns:minmax(230px,82vw); } }
-    .proof-workspace { display:grid; gap:18px; width:100%; max-width:1240px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
-    .proof-workspace * { box-sizing:border-box; min-width:0; }
-    .proof-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
-    .proof-hero h1 { margin:4px 0 0; font-size:clamp(34px,4vw,54px); line-height:1; letter-spacing:-.02em; color:var(--text-primary); }
-    .proof-hero p { margin:8px 0 0; max-width:780px; color:var(--text-secondary); font-size:15px; line-height:1.45; }
-    .proof-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
-    .proof-actions button { min-height:38px; padding:0 14px; font-size:13px; }
-    .proof-pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
-    .proof-pill { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border-default); border-radius:999px; background:rgba(255,255,255,.72); color:var(--text-secondary); padding:6px 10px; font-size:12px; font-weight:800; }
-    .proof-pill::before { content:""; width:7px; height:7px; border-radius:999px; background:var(--accent); }
-    .proof-summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; }
-    .proof-summary-card { border:1px solid var(--border-light); border-radius:17px; background:#fff; padding:13px; display:grid; gap:5px; box-shadow:0 10px 24px rgba(0,38,36,.04); }
-    .proof-summary-card span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
-    .proof-summary-card strong { color:var(--text-primary); font-size:26px; line-height:1; }
-    .proof-summary-card small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
-    .proof-summary-card.urgent { border-left:4px solid var(--urgent); }
-    .proof-main-grid { display:grid; grid-template-columns:minmax(0,1.42fr) minmax(300px,.58fr); gap:18px; align-items:start; }
-    .proof-stack { display:grid; gap:16px; min-width:0; }
-    .proof-card { border:1px solid var(--border-default); border-radius:20px; background:#fff; padding:17px; box-shadow:0 12px 30px rgba(0,38,36,.045); display:grid; gap:13px; min-width:0; overflow:hidden; }
-    .proof-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
-    .proof-card-head h2 { margin:0; color:var(--text-primary); font-size:20px; line-height:1.15; letter-spacing:-.01em; }
-    .proof-card-head small { color:var(--text-tertiary); font-size:12px; line-height:1.35; text-align:right; }
-    .proof-card-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-    .proof-card-actions button { min-height:32px; padding:0 10px; font-size:12px; }
-    .proof-next-card { gap:8px; }
-    .proof-next-card p { margin:0; }
-    .proof-output-card { align-content:start; }
-    .proof-preview { min-height:76px; border:1px dashed var(--border-emphasis); border-radius:13px; background:linear-gradient(135deg,#eef7f6,#fff); display:grid; place-items:center; gap:4px; text-align:center; padding:10px; color:var(--text-tertiary); font-size:12px; font-weight:800; }
-    .proof-preview strong { color:var(--text-primary); font-size:13px; }
-    .proof-preview small { color:var(--text-tertiary); font-size:11px; line-height:1.3; }
-    .proof-builder-checklist { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; }
-    .proof-builder-checklist li { border:1px solid var(--border-light); border-radius:13px; background:#fbfefd; padding:9px; color:var(--text-secondary); font-size:12px; font-weight:750; line-height:1.3; }
-    .proof-list { display:grid; gap:9px; }
-    .proof-row { border:1px solid var(--border-light); border-radius:15px; background:#fbfefd; padding:11px; display:grid; grid-template-columns:minmax(0,1fr); gap:8px; align-items:start; }
-    .proof-row strong { display:block; color:var(--text-primary); font-size:13px; line-height:1.25; overflow-wrap:break-word; }
-    .proof-row span { display:block; color:var(--text-tertiary); font-size:12px; line-height:1.35; overflow-wrap:break-word; }
-    .proof-row .badge { justify-self:start; }
-    .proof-metric-grid { display:grid; grid-template-columns:1fr; gap:8px; }
-    .proof-metric { border:1px solid var(--border-light); border-radius:14px; background:#fbfefd; padding:10px; display:grid; gap:4px; }
-    .proof-metric span { color:var(--text-tertiary); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.035em; }
-    .proof-metric strong { color:var(--text-primary); font-size:17px; line-height:1.1; }
-    .proof-metric small { color:var(--text-tertiary); font-size:12px; line-height:1.3; }
-    .proof-metric.urgent { border-left:4px solid var(--urgent); }
-    .proof-two-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
     .more-workspace { display:grid; gap:18px; width:100%; max-width:1180px; margin:0 auto; padding:24px 32px 96px; box-sizing:border-box; overflow-x:hidden; }
     .more-workspace * { box-sizing:border-box; min-width:0; }
     .more-hero { border:1px solid rgba(0,169,157,.18); border-radius:22px; background:linear-gradient(135deg,#fff 0%,#f8fffe 56%,#edf8f6 100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:start; box-shadow:0 18px 42px rgba(0,38,36,.06); }
@@ -15661,8 +15625,6 @@ function htmlShell() {
     .support-details summary { cursor:pointer; color:var(--accent-hover); font-weight:850; }
     @media (max-width:920px) { .support-hero { grid-template-columns:1fr; } .support-actions { justify-content:flex-start; } }
     @media (max-width:760px) { .support-workspace { padding:18px 16px 96px; } .support-status-row { flex-direction:column; align-items:flex-start; } .support-status-row span { text-align:left; } }
-    @media (max-width:1180px) { .proof-summary-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .proof-main-grid,.proof-hero,.proof-two-grid { grid-template-columns:1fr; } .proof-actions { justify-content:flex-start; } }
-    @media (max-width:760px) { .proof-workspace { padding:18px 16px 96px; } .proof-summary-grid,.proof-metric-grid { grid-template-columns:1fr; } }
     @media (max-width:1180px) { .growth-main-grid { grid-template-columns:1fr; } }
     @media (max-width:1100px) { .growth-summary-grid,.growth-board { grid-template-columns:repeat(2,minmax(0,1fr)); } .growth-hero { grid-template-columns:1fr; } .growth-hero-actions { justify-content:flex-start; } }
     @media (max-width:860px) { .command-workstream-grid { grid-template-columns:1fr; } .command-workstream { grid-template-columns:1fr; align-items:start; } }
@@ -26645,15 +26607,20 @@ function htmlShell() {
       const proofStatusTone = value => /blocked|needs|draft|review|required|stale/i.test(String(value || "")) ? "warn" : "info";
       const proofDateLabel = item => formatDate(item.date || item.updated_at || item.updatedAt || item.created_at || item.createdAt) || "date not recorded";
       const evidenceRouteButton = item => \`<button type="button" onclick="location.hash='\${esc(item.route || "evidence-room")}'">Open Source</button>\`;
-      const evidenceRowHtml = item => \`<article class="proof-row">
-        <div class="proof-preview"><strong>\${esc(growthLabel(item.type || "evidence"))}</strong><small>\${esc(item.source || "Evidence")}</small></div>
-        <strong>\${esc(item.title || "Evidence item")}</strong>
-        <span>\${esc(item.source || "Evidence")} · \${esc(proofDateLabel(item))}</span>
-        <span class="badge \${proofStatusTone(item.review_state || item.status)}">\${esc(growthLabel(item.review_state || item.status || "recorded"))}</span>
-        <span>\${esc(item.summary || item.next_manual_action || "Review internally before external use.")}</span>
-        <div class="proof-card-actions">\${evidenceRouteButton(item)}<button type="button" onclick="toast('Evidence linked internally for review.')">Link to Win</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button><button type="button" onclick="toast('Evidence moved into an internal report draft.')">Turn into Report</button></div>
-      </article>\`;
-      const emptyEvidenceHtml = (message = "No confirmed evidence records are available yet.") => \`<div class="command-not-wired">not yet wired: \${esc(message)}</div>\`;
+      const pillTone = value => proofStatusTone(value) === "warn" ? "warn" : "go";
+      const evidenceRowHtml = item => {
+        const status = item.review_state || item.status || "recorded";
+        const tone = pillTone(status);
+        return \`<div class="command-item">
+          <div class="command-rail \${esc(tone)}"></div>
+          <div class="command-item-body">
+            <div class="command-item-top"><span class="command-source">\${esc(item.source || "Evidence")}</span><span class="command-title">\${esc(item.title || "Evidence item")}</span><span class="command-pill \${esc(tone)}">\${esc(growthLabel(status))}</span></div>
+            <div class="command-why">\${esc(item.summary || item.next_manual_action || "Review internally before external use.")}</div>
+            <div class="command-actions">\${evidenceRouteButton(item)}<button type="button" onclick="toast('Evidence linked internally for review.')">Link to Win</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button><button type="button" onclick="toast('Evidence moved into an internal report draft.')">Turn into Report</button></div>
+          </div>
+          <span class="command-age">\${esc(proofDateLabel(item))}</span>
+        </div>\`;
+      };
       const peopleHelped = { value:"not yet wired", detail:"No dedicated people-helped source collection is present in state." };
       const packetsCreated = { value:"not yet wired", detail:"No dedicated packets-created source collection is present in state." };
       const metrics = [
@@ -26683,122 +26650,135 @@ function htmlShell() {
         ["SOC 2 evidence", overview.soc2_readiness_evidence_count || 0, "soc2Evidence"],
         ["Open review", overview.open_review_items || 0, "items requiring review"]
       ];
-      return \`<section id="proof" class="\${pageClass("proof")} proof-workspace">
-        <section class="proof-hero">
-          <div>
-            <div class="eyebrow">Proof</div>
-            <h1>Proof</h1>
-            <p>Capture wins, evidence, metrics, reports, and investor-ready proof.</p>
-            <div class="proof-pills"><span class="proof-pill">Internal only</span><span class="proof-pill">Ready for review</span></div>
+      const readyPopulated = acquisitionReadiness.filter(row => Number(row[1]) > 0).length;
+      const readyTotal = acquisitionReadiness.length;
+      const readyPct = readyTotal ? Math.round((readyPopulated / readyTotal) * 100) : 0;
+      const summaryRow = ([label, value, detail]) => \`<div class="command-list-row"><div class="text"><b>\${esc(label)}</b><span>\${esc(detail)}</span></div><div class="value">\${esc(String(value))}</div></div>\`;
+      const outputRows = (items, fallback, withStatus) => items.length ? items.map(item => \`<div class="command-list-row"><div class="text"><b>\${esc(item.title)}</b><span>\${esc(item.source || "Evidence")} · \${esc(item.summary || item.next_manual_action || "Review before use.")}</span></div>\${withStatus ? \`<span class="command-pill \${pillTone(item.status)}">\${esc(growthLabel(item.status || "recorded"))}</span>\` : ""}</div>\`).join("") : \`<div class="command-empty"><b>Not yet wired</b>\${esc(fallback)}</div>\`;
+      return \`<section id="proof" class="\${pageClass("proof")}">
+        <div class="command-surface">
+          <div class="command-top">
+            <div class="command-heading">
+              <h1>Proof</h1>
+              <p>Outcomes and reporting — the look-back surface for investor, partner, and acquirer evidence. Everything here stays internal until you review it.</p>
+            </div>
+            <div class="command-actions" style="margin:0">
+              <button class="command-run-button" type="button" onclick="toast('Proof item saved internally for review.')">Add Proof</button>
+              <button type="button" onclick="toast('Metric entry stays internal until Roger reviews it.')">Add Metric</button>
+              <button type="button" onclick="toast('Report draft created for internal review only.')">Generate Report</button>
+              <button type="button" onclick="toast('Data Room item queued internally for review.')">Add to Data Room</button>
+            </div>
           </div>
-          <div class="proof-actions">
-            <button class="primary" type="button" onclick="toast('Proof item saved internally for review.')">Add Proof</button>
-            <button type="button" onclick="toast('Metric entry stays internal until Roger reviews it.')">Add Metric</button>
-            <button type="button" onclick="toast('Report draft created for internal review only.')">Generate Report</button>
-            <button type="button" onclick="toast('Data Room item queued internally for review.')">Add to Data Room</button>
+          \${surfaceTabsHtml("proof", currentPageId)}
+
+          <div class="command-pulse">
+            <div class="command-stat"><div class="label"><span class="command-dot warn"></span>People helped · 30D</div><div class="value"><span class="command-not-wired">not yet wired</span></div><div class="detail">\${esc(peopleHelped.detail)}</div></div>
+            <div class="command-stat"><div class="label"><span class="command-dot warn"></span>Packets created</div><div class="value"><span class="command-not-wired">not yet wired</span></div><div class="detail">\${esc(packetsCreated.detail)}</div></div>
+            <div class="command-stat"><div class="label"><span class="command-dot go"></span>Evidence items</div><div class="value">\${esc(String(overview.total_evidence_items || 0))}</div><div class="detail">\${esc(String(overview.recent_evidence_items || 0))} updated in last 7 days</div></div>
+            <div class="command-stat"><div class="label"><span class="command-dot \${dataRoomEvidence.length ? "go" : "warn"}"></span>Data room</div><div class="value">\${esc(String(dataRoomEvidence.length))} <small>records</small></div><div class="detail">\${esc(String(overview.report_count || 0))} reports in state</div></div>
           </div>
-        </section>
-        \${surfaceTabsHtml("proof", currentPageId)}
 
-        <section class="proof-card">
-          <div class="proof-card-head"><div><h2>Proof Summary</h2><small>What can support the next update</small></div></div>
-          <div class="proof-summary-grid">\${summaryCards.map(([label, value, detail, urgent]) => \`<article class="proof-summary-card \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
-        </section>
+          <div class="command-cols">
+            <div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Next proof move</h2><span class="meta">do this first</span></div>
+                <div class="command-panel-pad">
+                  <div class="command-title">\${esc(openReviewEvidence[0]?.title || recentEvidence[0]?.title || "Review the Evidence Room before sharing proof externally.")}</div>
+                  <div class="command-why">\${esc(openReviewEvidence[0]?.next_manual_action || recentEvidence[0]?.next_manual_action || "Proof is internal until Roger reviews source records, gaps, and report drafts.")}</div>
+                </div>
+                <div class="command-panel-actions"><button class="primary" type="button" onclick="toast('Proof item queued internally for Roger review.')">Create Proof Item</button><button type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Metric update stays internal until reviewed.')">Update Metrics</button></div>
+              </div>
 
-        <div class="proof-main-grid">
-          <main class="proof-stack">
-            <section class="proof-card proof-next-card">
-              <div class="proof-card-head"><div><h2>Next Proof Move</h2><small>Do this first</small></div></div>
-              <p><strong>\${esc(openReviewEvidence[0]?.title || recentEvidence[0]?.title || "Review the Evidence Room before sharing proof externally.")}</strong></p>
-              <p class="muted">\${esc(openReviewEvidence[0]?.next_manual_action || recentEvidence[0]?.next_manual_action || "Proof is internal until Roger reviews source records, gaps, and report drafts.")}</p>
-              <div class="proof-card-actions"><button class="primary" type="button" onclick="toast('Proof item queued internally for Roger review.')">Create Proof Item</button><button type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Metric update stays internal until reviewed.')">Update Metrics</button></div>
-            </section>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Recent proof</h2><span class="meta">latest evidence-room records</span></div>
+                \${recentEvidence.length ? recentEvidence.slice(0, 3).map(evidenceRowHtml).join("") : \`<div class="command-empty"><b>Not yet wired</b>No evidence-room records are available for recent proof.</div>\`}
+              </div>
 
-            <section class="proof-card">
-              <div class="proof-card-head"><div><h2>Recent Proof</h2><small>Latest evidence-room records</small></div><button type="button" onclick="toast('Win saved internally for review.')">Add Win</button></div>
-              <div class="proof-list">\${recentEvidence.length ? recentEvidence.slice(0, 3).map(evidenceRowHtml).join("") : emptyEvidenceHtml("no evidence-room records are available for recent proof.")}</div>
-            </section>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Evidence / data room</h2><span class="meta">index · reports · data room · SOC 2</span></div>
+                \${evidenceItems.length ? evidenceItems.slice(0, 6).map(evidenceRowHtml).join("") : \`<div class="command-empty"><b>Not yet wired</b>buildEvidenceIndex() returned no evidence records.</div>\`}
+                <div class="command-panel-actions"><button type="button" onclick="toast('Evidence note saved internally.')">Add Evidence</button><button type="button" disabled title="File attachments can be added next.">Attach File</button><button type="button" onclick="toast('Metric linked internally for review.')">Link Metric</button></div>
+              </div>
+            </div>
 
-            <section class="proof-card">
-              <div class="proof-card-head"><div><h2>Evidence / Data Room</h2><small>Evidence index, reports, data room, and SOC 2 records</small></div><div class="proof-card-actions"><button type="button" onclick="toast('Evidence note saved internally.')">Add Evidence</button><button type="button" disabled title="File attachments can be added next.">Attach File</button><button type="button" onclick="toast('Metric linked internally for review.')">Link Metric</button><button type="button" onclick="toast('Evidence note saved internally.')">Add Note</button></div></div>
-              <div class="proof-list">\${evidenceItems.length ? evidenceItems.slice(0, 6).map(evidenceRowHtml).join("") : emptyEvidenceHtml("buildEvidenceIndex() returned no evidence records.")}</div>
-            </section>
-          </main>
+            <div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Proof summary</h2><span class="meta">what supports the next update</span></div>
+                \${summaryCards.map(summaryRow).join("")}
+              </div>
 
-          <aside class="proof-stack">
-            <section id="metrics-kpis" class="proof-card">
-              <div class="proof-card-head"><div><h2>Metrics / KPIs</h2><small>Track the numbers that prove LegalEase is moving.</small></div><button type="button" onclick="toast('Metric entry stays internal until reviewed.')">Add Metric</button></div>
-              <div class="proof-metric-grid">\${metrics.map(([label, value, note, urgent]) => \`<article class="proof-metric \${urgent ? "urgent" : ""}"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(note)}</small><div class="proof-card-actions"><button type="button" onclick="toast('Metric update saved for review.')">Update Metric</button><button type="button" onclick="toast('Metric note saved internally.')">Add Note</button></div></article>\`).join("")}</div>
-            </section>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Acquisition readiness</h2><span class="meta">\${esc(formatDate(overview.last_evidence_update) || "no dated evidence")}</span></div>
+                <div class="command-ring-stat"><div class="command-ring" style="--p:\${readyPct}%"><i>\${readyPct}</i></div><div class="command-ring-text"><b>\${readyPopulated} of \${readyTotal} evidence sources populated</b><span>Derived from evidence index, reports, data room, SOC 2, and open-review counts.</span></div></div>
+                \${acquisitionReadiness.map(([label, value, source]) => \`<div class="command-list-row"><div class="text"><b>\${esc(label)}</b><span>\${esc(source)}</span></div><div class="value">\${proofMetricValue(value)}</div></div>\`).join("")}
+              </div>
 
-            <section class="proof-card">
-              <div class="proof-card-head"><div><h2>Proof Gaps</h2><small>Evidence that needs filling</small></div></div>
-              <div class="proof-list">\${gapRows.map(([title, reason, action]) => \`<article class="proof-row"><span class="badge warn">Needs update</span><strong>\${esc(title)}</strong><span>\${esc(reason)}</span><div class="proof-card-actions"><button type="button" onclick="toast('Gap moved into the next proof review.')">\${esc(action)}</button></div></article>\`).join("")}</div>
-            </section>
+              <div class="command-panel" id="metrics-kpis">
+                <div class="command-panel-head"><h2>Metrics / KPIs</h2><button type="button" onclick="toast('Metric entry stays internal until reviewed.')">Add Metric</button></div>
+                \${metrics.map(([label, value, note]) => \`<div class="command-list-row"><div class="text"><b>\${esc(label)}</b><span>\${esc(note)}</span></div><div class="value">\${esc(String(value))}</div></div>\`).join("")}
+              </div>
 
-            <section class="proof-card">
-              <div class="proof-card-head"><div><h2>Acquisition Readiness</h2><small>Evidence-room source coverage</small></div><span class="badge info">\${esc(formatDate(overview.last_evidence_update) || "no dated evidence")}</span></div>
-              <div class="proof-list">\${acquisitionReadiness.map(([label, value, source]) => \`<article class="proof-row"><strong>\${esc(label)}</strong><span>\${esc(source)}</span><span class="badge \${Number(value) ? "info" : "warn"}">\${proofMetricValue(value)}</span></article>\`).join("")}</div>
-            </section>
-          </aside>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Proof gaps</h2><span class="meta">evidence that needs filling</span></div>
+                \${gapRows.map(([title, reason, action]) => \`<div class="command-list-row"><div class="text"><b>\${esc(title)}</b><span>\${esc(reason)}</span></div><button type="button" onclick="toast('Gap moved into the next proof review.')">\${esc(action)}</button></div>\`).join("")}
+              </div>
+            </div>
+          </div>
+
+          <div class="command-panel">
+            <div class="command-panel-head"><h2>Proof outputs</h2><span class="meta">reports · investor · partner · data room</span></div>
+            <div class="command-grid-2 command-panel-pad">
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Reports</h2><span class="meta">\${esc(String(overview.report_count || 0))} records</span></div>
+                \${outputRows(reportEvidence, "state.reports has no report records.", false)}
+                <div class="command-panel-actions"><button type="button" onclick="toast('Report draft created for internal review only.')">Generate Report</button><button type="button" onclick="toast('Report opened for internal review.')">Review Report</button><button type="button" onclick="location.hash='growth'">Turn into Post</button></div>
+              </div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Investor proof</h2><span class="meta">\${esc(String(investorEvidence.length))} records</span></div>
+                \${outputRows(investorEvidence.slice(0, 3), "no investor/data-room proof records are indexed.", false)}
+                <div class="command-panel-actions"><button type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button></div>
+              </div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Partner proof</h2><span class="meta">\${esc(String(partnerEvidence.length))} records</span></div>
+                \${outputRows(partnerEvidence.slice(0, 3), "no partner proof records are indexed.", true)}
+                <div class="command-panel-actions"><button type="button" onclick="toast('Partner proof note saved internally.')">Add Partner Proof</button><button type="button" onclick="location.hash='partners'">Link to Partner</button></div>
+              </div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>Data room</h2><span class="meta">\${esc(String(dataRoomEvidence.length))} records</span></div>
+                \${dataRoomGroups.length ? dataRoomGroups.map(group => \`<div class="command-list-row"><div class="text"><b>\${esc(growthLabel(group.category))}</b><span>Data Room category from evidence index</span></div><div class="value">\${esc(String(group.count))}</div></div>\`).join("") : \`<div class="command-empty"><b>Not yet wired</b>No data room categories are indexed.</div>\`}
+                <div class="command-panel-actions"><button type="button" onclick="toast('Document queued internally for Data Room review.')">Add Document</button><button type="button" onclick="toast('Export prepared for Roger review only.')">Prepare Export</button></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="command-grid-2">
+            <div class="command-panel">
+              <div class="command-panel-head"><h2>Investor update builder</h2><span class="meta">review-ready draft</span></div>
+              <div class="command-panel-pad">
+                <div class="command-actions" style="margin:0">\${["Select wins", "Select metrics", "Select evidence", "Add founder note", "Review draft"].map(step => \`<span class="command-pill hold">\${esc(step)}</span>\`).join("")}</div>
+                <div class="command-why" style="margin-top:10px">Investor updates are internal drafts until Roger shares them.</div>
+              </div>
+              <div class="command-panel-actions"><button class="primary" type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Founder note saved internally.')">Add Founder Note</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button></div>
+            </div>
+
+            <div class="command-panel">
+              <div class="command-panel-head"><h2>SOC 2 evidence</h2><span class="meta">\${esc(String(soc2Evidence.length))} records</span></div>
+              \${soc2Evidence.length ? soc2Evidence.map(item => \`<div class="command-list-row"><div class="text"><b>\${esc(item.title)}</b><span>\${esc(item.summary || item.next_manual_action || "Review internally before auditor use.")}</span></div><span class="command-pill \${pillTone(item.status)}">\${esc(growthLabel(item.status || "recorded"))}</span></div>\`).join("") : \`<div class="command-empty"><b>Not yet wired</b>state.soc2Evidence has no readiness records.</div>\`}
+            </div>
+          </div>
+
+          <div class="command-panel">
+            <div class="command-panel-head"><h2>Source integrity</h2><span class="meta">high-risk metrics stay unfabricated</span></div>
+            <div class="command-list-row"><div class="text"><b>People helped</b><span>\${esc(peopleHelped.detail)}</span></div><span class="command-not-wired">not yet wired</span></div>
+            <div class="command-list-row"><div class="text"><b>Packets created</b><span>\${esc(packetsCreated.detail)}</span></div><span class="command-not-wired">not yet wired</span></div>
+            <div class="command-list-row"><div class="text"><b>Latest evidence summary</b><span>\${esc(latestSummary ? latestSummary.title || latestSummary.key || "Summary recorded" : "No evidence summary record yet.")}</span></div><div class="value">\${esc(latestSummary ? growthLabel(latestSummary.status || "recorded") : "not wired")}</div></div>
+          </div>
+
+          <div class="command-footer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+            Proof stays internal until Roger reviews it. No emails, posts, partner pages, dashboards, or external systems are triggered from this surface.
+          </div>
         </div>
-
-        <section class="proof-card">
-          <div class="proof-card-head"><div><h2>Investor Update Builder</h2><small>Turn proof, metrics, and wins into a review-ready investor update.</small></div><span class="badge info">Review-ready draft</span></div>
-          <ul class="proof-builder-checklist">
-            <li>Select wins</li>
-            <li>Select metrics</li>
-            <li>Select evidence</li>
-            <li>Add founder note</li>
-            <li>Review draft</li>
-          </ul>
-          <p class="muted">Investor updates are internal drafts until Roger shares them.</p>
-          <div class="proof-card-actions"><button class="primary" type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Founder note saved internally.')">Add Founder Note</button><button type="button" onclick="toast('Investor update draft opened for review.')">Review Draft</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button></div>
-        </section>
-
-        <section class="proof-card">
-          <div class="proof-card-head"><div><h2>Proof Outputs</h2><small>Turn evidence into reports, investor updates, partner materials, and data room assets.</small></div></div>
-          <div class="proof-two-grid">
-            <article class="proof-card proof-output-card">
-              <div class="proof-card-head"><div><h2>Reports</h2><small>Turn proof into usable updates.</small></div><span class="badge info">\${esc(String(overview.report_count || 0))} records</span></div>
-              <div class="proof-list">\${reportEvidence.length ? reportEvidence.map(item => \`<article class="proof-row"><strong>\${esc(item.title)}</strong><span>\${esc(item.source)} · \${esc(item.summary || item.next_manual_action || "Review before use.")}</span></article>\`).join("") : emptyEvidenceHtml("state.reports has no report records.")}</div>
-              <div class="proof-card-actions"><button type="button" onclick="toast('Report draft created for internal review only.')">Generate Report</button><button type="button" onclick="toast('Report opened for internal review.')">Review Report</button><button type="button" onclick="location.hash='growth'">Turn into Post</button></div>
-            </article>
-
-            <article class="proof-card proof-output-card">
-              <div class="proof-card-head"><div><h2>Investor Proof</h2><small>Updates, decks, and data room materials.</small></div><span class="badge info">\${esc(String(investorEvidence.length))} records</span></div>
-              <div class="proof-list">\${investorEvidence.length ? investorEvidence.slice(0, 3).map(item => \`<article class="proof-row"><strong>\${esc(item.title)}</strong><span>\${esc(item.source)} · \${esc(item.summary || item.next_manual_action || "Review before investor use.")}</span></article>\`).join("") : emptyEvidenceHtml("no investor/data-room proof records are indexed.")}</div>
-              <div class="proof-card-actions"><button type="button" onclick="toast('Investor update draft created internally for review.')">Generate Investor Update</button><button type="button" onclick="toast('Data Room draft updated internally.')">Add to Data Room</button><button type="button" onclick="toast('Pitch deck note queued internally.')">Add to Pitch Deck Notes</button></div>
-            </article>
-
-            <article class="proof-card proof-output-card">
-              <div class="proof-card-head"><div><h2>Partner Proof</h2><small>Movement from partners and programs.</small></div><span class="badge info">\${esc(String(partnerEvidence.length))} records</span></div>
-              <div class="proof-list">\${partnerEvidence.length ? partnerEvidence.slice(0, 3).map(item => \`<article class="proof-row"><strong>\${esc(item.title)}</strong><span>\${esc(item.source)} · \${esc(item.summary || item.next_manual_action || "Review partner proof before use.")}</span><span class="badge info">\${esc(growthLabel(item.status || "recorded"))}</span></article>\`).join("") : emptyEvidenceHtml("no partner proof records are indexed.")}</div>
-              <div class="proof-card-actions"><button type="button" onclick="toast('Partner proof note saved internally.')">Add Partner Proof</button><button type="button" onclick="toast('Partner report draft created internally.')">Turn into Partner Report</button><button type="button" onclick="location.hash='partners'">Link to Partner</button></div>
-            </article>
-
-            <article class="proof-card proof-output-card">
-              <div class="proof-card-head"><div><h2>Data Room</h2><small>Keep investor-ready documents organized.</small></div><span class="badge info">\${esc(String(dataRoomEvidence.length))} records</span></div>
-              <div class="proof-list">\${dataRoomGroups.map(group => \`<article class="proof-row"><strong>\${esc(growthLabel(group.category))}</strong><span>Data Room category from evidence index</span><span class="badge \${group.count ? "info" : "warn"}">\${esc(String(group.count))}</span></article>\`).join("") || emptyEvidenceHtml("no data room categories are indexed.")}</div>
-              <div class="proof-card-actions"><button type="button" onclick="toast('Document queued internally for Data Room review.')">Add Document</button><button type="button" onclick="toast('Report added internally for review.')">Add Report</button><button type="button" onclick="toast('Export prepared for Roger review only.')">Prepare Export</button></div>
-            </article>
-          </div>
-        </section>
-
-        <section class="proof-card">
-          <div class="proof-card-head"><div><h2>SOC 2 Evidence</h2><small>Readiness evidence from the evidence room</small></div><span class="badge info">\${esc(String(soc2Evidence.length))} records</span></div>
-          <div class="proof-list">\${soc2Evidence.length ? soc2Evidence.map(item => \`<article class="proof-row"><strong>\${esc(item.title)}</strong><span>\${esc(item.summary || item.next_manual_action || "Review internally before auditor use.")}</span><span class="badge info">\${esc(growthLabel(item.status || "recorded"))}</span></article>\`).join("") : emptyEvidenceHtml("state.soc2Evidence has no readiness records.")}</div>
-        </section>
-
-        <section class="proof-card">
-          <div class="proof-card-head"><div><h2>Source Integrity</h2><small>High-risk metrics stay unfabricated</small></div><span class="badge warn">not wired where unconfirmed</span></div>
-          <div class="proof-list">
-            <article class="proof-row"><strong>People helped</strong><span>\${esc(peopleHelped.detail)}</span><span class="badge warn">\${notWiredBadge}</span></article>
-            <article class="proof-row"><strong>Packets created</strong><span>\${esc(packetsCreated.detail)}</span><span class="badge warn">\${notWiredBadge}</span></article>
-            <article class="proof-row"><strong>Latest evidence summary</strong><span>\${esc(latestSummary ? latestSummary.title || latestSummary.key || "Summary recorded" : "No evidence summary record yet.")}</span><span class="badge info">\${esc(latestSummary ? growthLabel(latestSummary.status || "recorded") : "not wired")}</span></article>
-          </div>
-          <div class="command-footer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Proof stays internal until Roger reviews it. No emails, posts, partner pages, dashboards, or external systems are triggered from this surface.</div>
-        </section>
       </section>\`;
     }
 
