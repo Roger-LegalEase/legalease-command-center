@@ -80,6 +80,8 @@ The Command Center should eventually make adding a new capability feel like regi
 
 **Durable audit history (raised during A1, June 24 2026).** The Supabase reconcile-on-write fix makes the database hold exactly the current in-memory state, same as the old JSON backend. This means audit and activity logs (soc2AuditLogs, activityEvents) are NOT retained as permanent append-only history, only the current window persists. For a justice-tech product under SOC 2, durable audit trails may be required (who approved what, when). If durable audit history is needed, it requires a separate dedicated append-only audit table, designed on purpose, not part of the reconcile fix. Revisit before SOC 2 audit or before any compliance commitment that assumes full audit retention.
 
+**Signup endpoint URL at domain cutover (raised during A2, June 25 2026).** The Users box calls the signup metrics endpoint at https://legaleasepartner.com/api/metrics/signups, because the new Next.js app is currently served on the partner domain, not expungement.ai (still the dead Frappe site). When expungement.ai is cut over to the new app, update this URL in the Command Center caller to the expungement.ai host. Also rotate COMMAND_CENTER_API_KEY at that time (it was printed in chat during setup, low-privilege count-only key, harmless but worth a clean rotation at cutover).
+
 ---
 
 ## TRACK B — THE AUTONOMOUS ENGINES
