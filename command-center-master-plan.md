@@ -84,6 +84,15 @@ The Command Center should eventually make adding a new capability feel like regi
 
 **Heartbeat double-run safety (B1, June 2026).** Correctness relies on a single Render web instance (mutex + idempotency ledger). If scaling to >1 instance, double-run safety MUST move to a Supabase-level atomic claim — see heartbeat.mjs header.
 
+**Render deploy + hostname gotchas (B1, resolved June 26 2026 — cost a morning; bake into every B2–B7 deploy).** Two traps caused hours of false leads (the heartbeat tick returned 401 on every cron run until both were found):
+
+1. **`autoDeploy: false` (render.yaml) means deploys do NOT auto-promote.** A git push deploys nothing; saving env vars or "Restart" redeploys the *old* commit. Only **Manual Deploy → Deploy latest commit**, watched until it reads **LIVE** (not merely "Build succeeded"), advances the running code. Compounding trap: the **Render Shell runs the latest build while the public URL serves the last *promoted* deploy** — so a `curl localhost:$PORT/...` test inside the Shell can return 200 (new code) while the public URL returns 401 (stale code). They diverge silently; never treat a Shell-local 200 as proof the public deploy is current.
+
+2. **The public hostname is the `-prod` URL: `legalease-command-center-prod.onrender.com`.** There are two services; `legalease-command-center.onrender.com` (no `-prod`) is a STALE service running old code. The actual root cause of the morning's failures: the cron's `HEARTBEAT_TICK_URL` pointed at the non-prod stale host, so every tick hit old code and 401'd. **Every service-to-service call (cron, webhooks, internal fetches) MUST target the `-prod` host.** `render.yaml` currently hardcodes the non-prod host in `HEARTBEAT_TICK_URL` — audit/fix it and any other onrender.com URLs.
+
+**Deploy verification check (no Shell, no token needed) — run after every B2–B7 deploy:**
+`curl -sS -X POST "https://legalease-command-center-prod.onrender.com/api/heartbeat/autopilot" -d '{}'` → `requiredPermission:"admin"` means the new code is LIVE on public; `"write"` means stale code is still serving. (This works because `permissionForRequest` derives the permission from method+path alone, independent of any auth header — so it's a pure code-version probe.) Note: the Authorization header *does* survive Cloudflare→Render to the app (public `/api/auth/diagnostics` shows `receivedAuthHeaderPresent:true`); header loss is a red herring, not a real failure mode here.
+
 ---
 
 ## TRACK B — THE AUTONOMOUS ENGINES
