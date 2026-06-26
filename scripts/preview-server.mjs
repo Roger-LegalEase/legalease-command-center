@@ -20133,17 +20133,42 @@ function htmlShell() {
       const existing = new Map(automationItems("connectorStatus").map(item => [item.connector, item]));
       const googleAccount = (state.socialAccounts || []).find(account => account.platform === "google_workspace") || {};
       const googleConnected = Boolean(googleAccount.connected || googleAccount.status === "connected" || googleAccount.hasStoredToken || googleAccount.accountName);
-      return ["gmail", "calendar", "stripe", "supabase", "drive", "website", "recordshield", "expungement_ai", "social", "manual_import"].map(connector => ({
-        connector,
-        enabled: ["website", "manual_import"].includes(connector) || (["gmail", "calendar"].includes(connector) && googleConnected),
-        configured: ["website", "manual_import"].includes(connector) || (["gmail", "calendar"].includes(connector) && googleConnected) || (["recordshield", "expungement_ai"].includes(connector) && Boolean(existing.get(connector)?.configured)) || (connector === "supabase" && Boolean(supabaseHealth?.configured || state.persistence === "supabase")),
-        lastSyncAt: "",
-        lastSyncStatus: ["website", "manual_import"].includes(connector) ? "available" : "not connected",
-        lastError: "",
-        recordsImported: 0,
-        recordsSuggested: 0,
-        ...(existing.get(connector) || {})
-      }));
+      // Stripe and Supabase status come from live server-fetched signals already in
+      // the served state — state.stripeRevenue (the Revenue box's source) and
+      // supabaseHealth — so these tiles reflect the real connection instead of a
+      // never-populated connectorStatus record. Client-side only; no env access here.
+      const stripeRevenue = state.stripeRevenue || null;
+      const stripeConfigured = Boolean(stripeRevenue?.configured || stripeRevenue?.available);
+      const supabaseConnected = Boolean(supabaseHealth?.connected);
+      const supabaseConfigured = Boolean(supabaseHealth?.configured || state.persistence === "supabase");
+      return ["gmail", "calendar", "stripe", "supabase", "drive", "website", "recordshield", "expungement_ai", "social", "manual_import"].map(connector => {
+        const item = {
+          connector,
+          enabled: ["website", "manual_import"].includes(connector) || (["gmail", "calendar"].includes(connector) && googleConnected),
+          configured: ["website", "manual_import"].includes(connector) || (["gmail", "calendar"].includes(connector) && googleConnected) || (["recordshield", "expungement_ai"].includes(connector) && Boolean(existing.get(connector)?.configured)),
+          lastSyncAt: "",
+          lastSyncStatus: ["website", "manual_import"].includes(connector) ? "available" : "not connected",
+          lastError: "",
+          recordsImported: 0,
+          recordsSuggested: 0,
+          ...(existing.get(connector) || {})
+        };
+        // Live signals win over any stored (often stale) connectorStatus record for
+        // Stripe and Supabase — the stored record can say "not connected" long after
+        // the connection is live, so apply these AFTER the spread above.
+        if (connector === "supabase") {
+          item.configured = supabaseConfigured;
+          item.lastSyncStatus = supabaseConfigured ? (supabaseConnected ? "connected" : "configured") : "not connected";
+          item.lastError = "";
+        }
+        if (connector === "stripe") {
+          item.configured = stripeConfigured;
+          if (stripeConfigured && stripeRevenue?.available) { item.lastSyncStatus = "connected"; item.lastError = ""; }
+          else if (stripeConfigured) { item.lastSyncStatus = "needs review"; item.lastError = stripeRevenue?.error || "Stripe is configured but not returning live data."; }
+          else { item.lastSyncStatus = "not connected"; item.lastError = ""; }
+        }
+        return item;
+      });
     }
 
     function automationSuggestionsFiltered(filter = automationFilter) {
