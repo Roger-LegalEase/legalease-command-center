@@ -12,6 +12,7 @@
 
 import { runAutonomyCycleOnState } from "./autonomy-engine.mjs";
 import { buildOutreachEngine, OUTREACH_ENGINE_ID } from "./outreach-os.mjs";
+import { buildProspectEngine, PROSPECT_ENGINE_ID } from "./prospect-discovery.mjs";
 
 export function buildHeartbeatRegistry(deps = {}) {
   const engines = [];
@@ -76,9 +77,19 @@ export function buildHeartbeatRegistry(deps = {}) {
   // NO network send. Always registered so the autopilot toggle surfaces; safe by construction.
   engines.push(buildOutreachEngine({ runOutreachSend: deps.runOutreachSend }));
 
+  // B5 prospect discovery (Tier-1 datasets only, NO send path). plan() classifies/dedups/scores
+  // staged findings with no network; act() does once/day discovery (behind the inert
+  // deps.runProspectDiscovery executor) + promotion of human-APPROVED candidates into the B2
+  // outreach collections. Code can never write review_state "approved"; autopilot OFF by
+  // default is the outer gate. Always registered so the autopilot toggle surfaces.
+  engines.push(buildProspectEngine({
+    runProspectDiscovery: deps.runProspectDiscovery,
+    classifyProspect: deps.classifyProspect
+  }));
+
   return engines;
 }
 
 // Stable list of registered engine ids (for surfacing autopilot toggles in the UI even
 // when an engine hasn't run yet). Mirrors buildHeartbeatRegistry's ids.
-export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID];
+export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID];

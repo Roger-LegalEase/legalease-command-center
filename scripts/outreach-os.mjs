@@ -21,6 +21,11 @@
 import crypto from "node:crypto";
 import { etParts } from "./heartbeat.mjs";
 import { isRcapContactSuppressed } from "./rcap-revenue-os.mjs";
+// Shared classification vocab — B2 campaigns/sequence steps key off the SAME constant B5
+// uses to label prospects, so a promoted B5 prospect's classification always matches a B2
+// outreachSequenceSteps key exactly. Re-exported so existing B2 importers have one path.
+import { OUTREACH_CLASSIFICATIONS, isOutreachClassification, normalizeClassification } from "./outreach-classifications.mjs";
+export { OUTREACH_CLASSIFICATIONS, isOutreachClassification, normalizeClassification };
 
 // ---------------------------------------------------------------------------
 // 1. DATA MODEL — single source of truth for collection membership.

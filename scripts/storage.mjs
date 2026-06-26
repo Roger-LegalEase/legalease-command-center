@@ -78,9 +78,15 @@ const coreStateCollections = [
   "outreachBounces",
   "outreachSuppressions",
   "outreachUnsubscribes",
-  "outreachConfig"
+  "outreachConfig",
+  // B5 prospect discovery. MUST stay in sync with PROSPECT_COLLECTIONS /
+  // PROSPECT_SINGLETON_COLLECTIONS in prospect-discovery.mjs, or they silently fail to
+  // persist to Supabase (the B1/B2 trap). test-prospect-discovery.mjs asserts membership.
+  "prospectCandidates",
+  "prospectDiscoveryRuns",
+  "prospectConfig"
 ];
-const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig"]);
+const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig"]);
 
 function parseBoolean(value = "") {
   return ["true", "1", "yes", "on"].includes(String(value || "").toLowerCase());

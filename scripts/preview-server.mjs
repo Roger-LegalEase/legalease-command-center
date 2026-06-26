@@ -10,6 +10,7 @@ import { buildAutonomyGovernance, buildAutonomyReport, runAutonomyCycleOnState }
 import { runHeartbeat, autopilotEnabled } from "./heartbeat.mjs";
 import { buildHeartbeatRegistry, HEARTBEAT_ENGINE_IDS } from "./heartbeat-engines.mjs";
 import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_QUEUE_TYPE, OUTREACH_ENGINE_ID } from "./outreach-os.mjs";
+import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
 import { actorFromRequest, authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequest, publicActor, roleDefinitions, tokenCandidatesFromRequest, tokenFromRequest } from "./access-control.mjs";
 import {
   classifyGrowthInboxText,
@@ -5112,6 +5113,19 @@ async function runOutreachSend(message, { env = process.env } = {}) {
   // Live path intentionally unimplemented in Phase 0 — guarantees no real send can slip out
   // just by setting an env flag. The SendGrid client is wired in a later, explicit step.
   throw new Error("Live SendGrid sending is not wired yet (Phase 0). Implement the SendGrid client before enabling OUTREACH_LIVE_SEND.");
+}
+
+// B5 — the Tier-1 prospect-discovery fetch executor injected into the heartbeat (like
+// runOutreachSend). Phase 0 is INERT: with PROSPECT_LIVE_DISCOVERY off it returns ZERO rows
+// (the engine stages nothing), proving the whole classify/dedup/score/promote stack on clean
+// fixtures first. Even with the flag on the live fetch client is intentionally unwritten, so
+// it throws rather than risk an un-vetted, ToS-uncertain network pull. Wiring the live
+// dataset clients (IRS BMF / LSC / NLADA — robots-respecting, public pages only, per-source
+// tos_risk, source_url stored) is the LAST step, done deliberately after this stack is proven.
+async function runProspectDiscovery({ source, env = process.env } = {}) {
+  const liveEnabled = ["true", "1", "yes", "on"].includes(String(env.PROSPECT_LIVE_DISCOVERY || "").toLowerCase());
+  if (!liveEnabled) return { rows: [], live: false };
+  throw new Error(`Live Tier-1 prospect discovery is not wired yet (Phase 0). Implement the ${source?.id || "dataset"} client before enabling PROSPECT_LIVE_DISCOVERY.`);
 }
 
 async function runPublishingWorker() {
@@ -32119,7 +32133,11 @@ async function handleRequest(request, response) {
         // B2 outreach send — inert (dry_run) until the live SendGrid client is wired and
         // OUTREACH_LIVE_SEND is flipped. The outreach engine's act() only runs when its
         // autopilot toggle is ON (default OFF), so this is gated twice over.
-        runOutreachSend
+        runOutreachSend,
+        // B5 prospect discovery — inert (zero rows) until the live Tier-1 dataset clients are
+        // wired and PROSPECT_LIVE_DISCOVERY is flipped. The prospect engine's act() only runs
+        // when its autopilot toggle is ON (default OFF), so this is gated twice over.
+        runProspectDiscovery
       });
       const result = await runHeartbeat({
         store,
@@ -32294,6 +32312,115 @@ async function handleRequest(request, response) {
       sendJson(response, { ok: true, outreachConfig: merged });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update outreach config." }, 400);
+    }
+    return;
+  }
+
+  // ---- B5 prospect discovery (Tier-1 datasets only, NO send path) ----------
+  // Status — staged-candidate counts by review_state, config, and discovery posture (read).
+  if (url.pathname === "/api/prospects/status" && request.method === "GET") {
+    const currentState = await store.readState();
+    const candidates = serverList(currentState.prospectCandidates);
+    const byState = {};
+    for (const c of candidates) {
+      const s = String(c.review_state || "").toLowerCase() || "unknown";
+      byState[s] = (byState[s] || 0) + 1;
+    }
+    const cfg = prospectConfigOf(currentState);
+    const liveEnabled = ["true", "1", "yes", "on"].includes(String(process.env.PROSPECT_LIVE_DISCOVERY || "").toLowerCase());
+    sendJson(response, {
+      autopilotEnabled: autopilotEnabled(currentState, PROSPECT_ENGINE_ID, process.env),
+      liveDiscoveryWired: false,
+      liveDiscoveryFlag: liveEnabled,
+      scope: cfg.scope,
+      classifications: cfg.classifications,
+      enabledSources: cfg.enabledSources,
+      sources: PROSPECT_SOURCES,
+      total: candidates.length,
+      byReviewState: byState,
+      pending: byState[PROSPECT_REVIEW.PENDING] || 0,
+      approved: byState[PROSPECT_REVIEW.APPROVED] || 0,
+      promoted: byState[PROSPECT_REVIEW.PROMOTED] || 0,
+      duplicates: candidates.filter((c) => c.is_duplicate).length,
+      recentRuns: serverList(currentState.prospectDiscoveryRuns).slice(0, 30)
+    });
+    return;
+  }
+
+  // Set prospect discovery config (national scope, classifications, source toggles) — admin.
+  if (url.pathname === "/api/prospects/config" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const currentState = await store.readState();
+      const sourceIds = new Set(PROSPECT_SOURCES.map((s) => s.id));
+      const merged = {
+        ...(currentState.prospectConfig || {}),
+        ...(input.scope !== undefined ? { scope: String(input.scope) } : {}),
+        ...(Array.isArray(input.states) ? { states: input.states.map(String) } : {}),
+        ...(Array.isArray(input.classifications)
+          ? { classifications: input.classifications.map(normalizeClassification).filter(Boolean) } : {}),
+        ...(Array.isArray(input.enabledSources)
+          ? { enabledSources: input.enabledSources.map(String).filter((id) => sourceIds.has(id)) } : {}),
+        ...(input.maxStagedPerRun !== undefined ? { maxStagedPerRun: Math.max(1, Number(input.maxStagedPerRun) || 0) } : {})
+      };
+      await store.writeState({ ...currentState, prospectConfig: merged });
+      sendJson(response, { ok: true, prospectConfig: prospectConfigOf({ prospectConfig: merged }) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update prospect config." }, 400);
+    }
+    return;
+  }
+
+  // Approve staged candidates — THE ONLY place review_state becomes "approved". Promotion into
+  // the B2 collections happens later in the engine's act() (under autopilot). An optional
+  // classification override is validated against the shared B2 vocab.
+  if (url.pathname === "/api/prospects/approve" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const ids = new Set((Array.isArray(input.ids) ? input.ids : [input.id]).filter(Boolean).map(String));
+      const overrideClass = input.classification !== undefined ? normalizeClassification(input.classification) : "";
+      const currentState = await store.readState();
+      let approvedCount = 0;
+      const candidates = serverList(currentState.prospectCandidates).map((c) => {
+        if (!ids.has(c.id) || String(c.review_state || "").toLowerCase() !== PROSPECT_REVIEW.PENDING) return c;
+        approvedCount += 1;
+        return {
+          ...c,
+          ...(overrideClass ? { classification: overrideClass } : {}),
+          review_state: PROSPECT_REVIEW.APPROVED,
+          approved_at: new Date().toISOString(),
+          approved_by: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
+        };
+      });
+      await store.writeState({ ...currentState, prospectCandidates: candidates });
+      sendJson(response, { ok: true, approved: approvedCount });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not approve prospects." }, 400);
+    }
+    return;
+  }
+
+  // Reject staged candidates (human only) — moves pending_review -> rejected.
+  if (url.pathname === "/api/prospects/reject" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const ids = new Set((Array.isArray(input.ids) ? input.ids : [input.id]).filter(Boolean).map(String));
+      const currentState = await store.readState();
+      let rejectedCount = 0;
+      const candidates = serverList(currentState.prospectCandidates).map((c) => {
+        if (!ids.has(c.id) || String(c.review_state || "").toLowerCase() !== PROSPECT_REVIEW.PENDING) return c;
+        rejectedCount += 1;
+        return {
+          ...c,
+          review_state: PROSPECT_REVIEW.REJECTED,
+          rejected_at: new Date().toISOString(),
+          rejected_by: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
+        };
+      });
+      await store.writeState({ ...currentState, prospectCandidates: candidates });
+      sendJson(response, { ok: true, rejected: rejectedCount });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not reject prospects." }, 400);
     }
     return;
   }

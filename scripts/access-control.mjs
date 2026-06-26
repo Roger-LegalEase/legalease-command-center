@@ -120,6 +120,11 @@ export function permissionForRequest(method = "GET", pathname = "/") {
   // outreach mutations (config, enroll, manual send) are admin-only.
   if (pathname === "/api/outreach/approve") return "approve";
   if (pathname.startsWith("/api/outreach/")) return "admin";
+  // B5 prospect discovery: approving/rejecting staged candidates needs the approve permission
+  // (the ONLY place review_state -> "approved" happens); config and all other mutations are
+  // admin-only. GET status falls through to the "read" rule above.
+  if (pathname === "/api/prospects/approve" || pathname === "/api/prospects/reject") return "approve";
+  if (pathname.startsWith("/api/prospects/")) return "admin";
   if (/\/api\/channels|\/api\/oauth|\/api\/settings|\/api\/backups\/restore/.test(pathname)) return "admin";
   if (/\/api\/publish|\/api\/posts\/.*\/publish/.test(pathname)) return "publish_review";
   if (/\/api\/approval|\/api\/autonomy\/actions|\/api\/automation\/suggestions/.test(pathname)) return "approve";
