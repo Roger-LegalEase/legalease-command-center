@@ -61,9 +61,12 @@ const coreStateCollections = [
   "leeKnowledgeSources",
   "leeKnowledgeChunks",
   "leeRuns",
-  "leeMemory"
+  "leeMemory",
+  "heartbeatRuns",
+  "heartbeatLease",
+  "autopilotSettings"
 ];
-const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory"]);
+const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings"]);
 
 function parseBoolean(value = "") {
   return ["true", "1", "yes", "on"].includes(String(value || "").toLowerCase());

@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { createStore, getSupabaseHealth, storageRuntimeConfig } from "./storage.mjs";
 import { analyzeOperations } from "./priority-engine.mjs";
 import { buildAutonomyGovernance, buildAutonomyReport, runAutonomyCycleOnState } from "./autonomy-engine.mjs";
+import { runHeartbeat, autopilotEnabled } from "./heartbeat.mjs";
+import { buildHeartbeatRegistry, HEARTBEAT_ENGINE_IDS } from "./heartbeat-engines.mjs";
 import { actorFromRequest, authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequest, publicActor, roleDefinitions, tokenCandidatesFromRequest, tokenFromRequest } from "./access-control.mjs";
 import {
   classifyGrowthInboxText,
@@ -31111,6 +31113,12 @@ async function handleRequest(request, response) {
       fetchStripeRevenueSnapshot(),
       fetchSignupsSnapshot()
     ]);
+    // B1: resolved autopilot toggles (persisted autopilotSettings + env seed; default OFF)
+    // so the UI can show each engine's gate without re-deriving the resolution rules.
+    fullState.autopilot = HEARTBEAT_ENGINE_IDS.map((engineId) => ({
+      engineId,
+      enabled: autopilotEnabled(fullState, engineId, process.env)
+    }));
     sendJson(response, fullState);
     return;
   }
@@ -32070,6 +32078,77 @@ async function handleRequest(request, response) {
       sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not run autonomy cycle." }, 400);
+    }
+    return;
+  }
+
+  // B1 heartbeat: the cron-driven tick the other engines run on. Auth: dedicated cron
+  // token (POST tick only) or owner/admin via the normal role path. plan() always runs;
+  // act() runs only for engines whose autopilot toggle is on (default OFF).
+  if (url.pathname === "/api/heartbeat/tick" && request.method === "POST") {
+    try {
+      const payload = request.headers["content-length"] === "0" ? {} : await readJson(request).catch(() => ({}));
+      const registry = buildHeartbeatRegistry({
+        runSourcesDaily: async () => {
+          const r = await runSourceAutomation();
+          return { state: r.state, results: r.posts || [] };
+        },
+        runPublishing: async () => {
+          const r = await runPublishingWorker();
+          const summary = publishingRunSummaryFromResults(r.results);
+          const stateWithSummary = { ...r.state, dailyRunPublisherRuns: [summary, ...serverList(r.state.dailyRunPublisherRuns)].slice(0, 20) };
+          return { state: stateWithSummary, results: r.results || [] };
+        }
+      });
+      const result = await runHeartbeat({
+        store,
+        registry,
+        env: process.env,
+        force: payload && payload.force === true,
+        actor: accessDecision.actor?.role || "cron"
+      });
+      sendJson(response, result);
+    } catch (error) {
+      sendJson(response, { error: error.message || "Heartbeat tick failed." }, 500);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/heartbeat/status" && request.method === "GET") {
+    const currentState = await store.readState();
+    const autopilot = HEARTBEAT_ENGINE_IDS.map((engineId) => ({
+      engineId,
+      enabled: autopilotEnabled(currentState, engineId, process.env)
+    }));
+    sendJson(response, {
+      lease: currentState.heartbeatLease || null,
+      autopilot,
+      recentRuns: serverList(currentState.heartbeatRuns).slice(0, 50)
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/heartbeat/autopilot" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const engineId = String(input.engineId || "");
+      if (!HEARTBEAT_ENGINE_IDS.includes(engineId)) {
+        sendJson(response, { error: "Unknown engineId." }, 400);
+        return;
+      }
+      const enabled = input.enabled === true;
+      const currentState = await store.readState();
+      const settings = { ...(currentState.autopilotSettings || {}) };
+      settings[engineId] = {
+        enabled,
+        updatedAt: new Date().toISOString(),
+        updatedBy: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
+      };
+      const nextState = { ...currentState, autopilotSettings: settings };
+      await store.writeState(nextState);
+      sendJson(response, { engineId, enabled, autopilotSettings: settings, state: withPublicChannelSetup(nextState) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update autopilot toggle." }, 400);
     }
     return;
   }

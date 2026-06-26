@@ -28,3 +28,19 @@ services:
         value: "false"
       - key: ENABLE_LIVE_THREADS_POSTING
         value: "false"
+
+  # B1 heartbeat: a single hourly cron POSTs the protected tick endpoint. ET-aware due
+  # logic in the app decides what runs (hourly engines every tick; daily engines at 6am
+  # ET, DST-correct). Authenticated with a dedicated, independently-revocable cron token.
+  - type: cron
+    name: legalease-heartbeat
+    env: node
+    schedule: "0 * * * *"
+    buildCommand: echo "no build needed for the heartbeat cron"
+    startCommand: 'curl -fsS --max-time 60 -X POST -H "Authorization: Bearer $COMMAND_CENTER_CRON_TOKEN" "$HEARTBEAT_TICK_URL"'
+    autoDeploy: false
+    envVars:
+      - key: HEARTBEAT_TICK_URL
+        value: https://legalease-command-center.onrender.com/api/heartbeat/tick
+      - key: COMMAND_CENTER_CRON_TOKEN
+        sync: false

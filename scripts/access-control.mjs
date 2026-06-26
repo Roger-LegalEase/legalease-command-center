@@ -110,6 +110,8 @@ export function permissionForRequest(method = "GET", pathname = "/") {
     return "read";
   }
   if (/\/api\/soc2\/evidence\/|\/api\/growth\/upsert/.test(pathname) && /compliance|soc2/i.test(pathname)) return "compliance_review";
+  if (pathname === "/api/heartbeat/autopilot") return "admin";
+  if (pathname === "/api/heartbeat/tick") return "write";
   if (/\/api\/channels|\/api\/oauth|\/api\/settings|\/api\/backups\/restore/.test(pathname)) return "admin";
   if (/\/api\/publish|\/api\/posts\/.*\/publish/.test(pathname)) return "publish_review";
   if (/\/api\/approval|\/api\/autonomy\/actions|\/api\/automation\/suggestions/.test(pathname)) return "approve";
@@ -119,6 +121,19 @@ export function permissionForRequest(method = "GET", pathname = "/") {
 export function authorizeRequest(request = {}, urlLike = null, env = process.env) {
   const url = urlLike || new URL(request.url || "/", "http://localhost");
   const pathname = url.pathname || "/";
+
+  // Dedicated cron token (least privilege): may ONLY POST the heartbeat tick. It is
+  // independent of the owner/role tokens and grants no other access whatsoever, so it
+  // can be rotated/revoked on its own without touching operator access.
+  const cronToken = normalizeToken(env.COMMAND_CENTER_CRON_TOKEN || "");
+  if (cronToken.length >= 16 && tokenCandidatesFromRequest(request).includes(cronToken)) {
+    const cronActor = { id:"cron", role:"cron", label:"Scheduled Cron", authenticated:true, authRequired:true, permissions:[] };
+    if ((request.method || "GET").toUpperCase() === "POST" && pathname === "/api/heartbeat/tick") {
+      return { ok:true, actor:cronActor, requiredPermission:"operate_heartbeat" };
+    }
+    return { ok:false, status:403, actor:cronActor, requiredPermission:"operate_heartbeat", reason:"Cron token may only trigger the heartbeat tick." };
+  }
+
   const requiredPermission = permissionForRequest(request.method || "GET", pathname);
   const actor = actorFromRequest(request, env);
   if (requiredPermission === "public") return { ok:true, actor, requiredPermission };
