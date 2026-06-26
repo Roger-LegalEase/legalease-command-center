@@ -82,6 +82,8 @@ The Command Center should eventually make adding a new capability feel like regi
 
 **Signup endpoint URL at domain cutover (raised during A2, June 25 2026).** The Users box calls the signup metrics endpoint at https://legaleasepartner.com/api/metrics/signups, because the new Next.js app is currently served on the partner domain, not expungement.ai (still the dead Frappe site). When expungement.ai is cut over to the new app, update this URL in the Command Center caller to the expungement.ai host. Also rotate COMMAND_CENTER_API_KEY at that time (it was printed in chat during setup, low-privilege count-only key, harmless but worth a clean rotation at cutover).
 
+**Heartbeat double-run safety (B1, June 2026).** Correctness relies on a single Render web instance (mutex + idempotency ledger). If scaling to >1 instance, double-run safety MUST move to a Supabase-level atomic claim — see heartbeat.mjs header.
+
 ---
 
 ## TRACK B — THE AUTONOMOUS ENGINES
