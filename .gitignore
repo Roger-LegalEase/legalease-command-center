@@ -20,3 +20,9 @@ data/backups/
 data/exports/
 !data/seed/
 !data/seed/**
+
+# Local planning artifacts (kept local, not versioned)
+LegalEase_Fresh_Start_Sprint_Wilma_Optimized.xlsx
+legalease-os-redesign.html
+docs/reports/legalese-os-complete-capability-map.html
+docs/reports/legalese-os-complete-capability-map.md
