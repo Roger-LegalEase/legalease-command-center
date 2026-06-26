@@ -11,6 +11,7 @@
 // returned state is threaded to the next engine, so engines compose within one tick.
 
 import { runAutonomyCycleOnState } from "./autonomy-engine.mjs";
+import { buildOutreachEngine, OUTREACH_ENGINE_ID } from "./outreach-os.mjs";
 
 export function buildHeartbeatRegistry(deps = {}) {
   const engines = [];
@@ -68,9 +69,16 @@ export function buildHeartbeatRegistry(deps = {}) {
     });
   }
 
+  // B2 outreach sequencer (controlled, approval-gated). plan() queues proposals with no
+  // side effects; act() sends ONLY approved+compliant+unsuppressed+within-caps messages, and
+  // only when autopilot is ON (default OFF). The live send is delegated to deps.runOutreachSend
+  // (injected by the server); with no dep, or in dry-run, act() records attempts but performs
+  // NO network send. Always registered so the autopilot toggle surfaces; safe by construction.
+  engines.push(buildOutreachEngine({ runOutreachSend: deps.runOutreachSend }));
+
   return engines;
 }
 
 // Stable list of registered engine ids (for surfacing autopilot toggles in the UI even
 // when an engine hasn't run yet). Mirrors buildHeartbeatRegistry's ids.
-export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run"];
+export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID];

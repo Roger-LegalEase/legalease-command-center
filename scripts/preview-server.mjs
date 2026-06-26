@@ -9,6 +9,7 @@ import { analyzeOperations } from "./priority-engine.mjs";
 import { buildAutonomyGovernance, buildAutonomyReport, runAutonomyCycleOnState } from "./autonomy-engine.mjs";
 import { runHeartbeat, autopilotEnabled } from "./heartbeat.mjs";
 import { buildHeartbeatRegistry, HEARTBEAT_ENGINE_IDS } from "./heartbeat-engines.mjs";
+import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_QUEUE_TYPE, OUTREACH_ENGINE_ID } from "./outreach-os.mjs";
 import { actorFromRequest, authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequest, publicActor, roleDefinitions, tokenCandidatesFromRequest, tokenFromRequest } from "./access-control.mjs";
 import {
   classifyGrowthInboxText,
@@ -5095,6 +5096,22 @@ async function schedulePostForPublishing(postId, { scheduledFor, targetChannels,
     errorCode: readiness.ok ? "" : readiness.status
   });
   return { state: nextState, readiness: { ...readiness, status }, message: readiness.ok ? "Post scheduled." : readiness.message };
+}
+
+// B2 — the outreach send executor injected into the heartbeat (like runPublishing). Phase 0
+// is INERT: it returns a dry_run outcome (recorded, NO network send) unless OUTREACH_LIVE_SEND
+// is on AND a SendGrid key is present — and even then the live SendGrid HTTP call is not yet
+// written, so it throws rather than risk an accidental send. Wiring the live client + flipping
+// OUTREACH_LIVE_SEND is the LAST step, done deliberately after this whole stack is proven.
+async function runOutreachSend(message, { env = process.env } = {}) {
+  const liveEnabled = ["true", "1", "yes", "on"].includes(String(env.OUTREACH_LIVE_SEND || "").toLowerCase());
+  const sendgridKey = env.SENDGRID_API_KEY || "";
+  if (!liveEnabled || !sendgridKey) {
+    return { status: "dry_run", provider: "sendgrid", provider_message_id: "" };
+  }
+  // Live path intentionally unimplemented in Phase 0 — guarantees no real send can slip out
+  // just by setting an env flag. The SendGrid client is wired in a later, explicit step.
+  throw new Error("Live SendGrid sending is not wired yet (Phase 0). Implement the SendGrid client before enabling OUTREACH_LIVE_SEND.");
 }
 
 async function runPublishingWorker() {
@@ -32098,7 +32115,11 @@ async function handleRequest(request, response) {
           const summary = publishingRunSummaryFromResults(r.results);
           const stateWithSummary = { ...r.state, dailyRunPublisherRuns: [summary, ...serverList(r.state.dailyRunPublisherRuns)].slice(0, 20) };
           return { state: stateWithSummary, results: r.results || [] };
-        }
+        },
+        // B2 outreach send — inert (dry_run) until the live SendGrid client is wired and
+        // OUTREACH_LIVE_SEND is flipped. The outreach engine's act() only runs when its
+        // autopilot toggle is ON (default OFF), so this is gated twice over.
+        runOutreachSend
       });
       const result = await runHeartbeat({
         store,
@@ -32149,6 +32170,130 @@ async function handleRequest(request, response) {
       sendJson(response, { engineId, enabled, autopilotSettings: settings, state: withPublicChannelSetup(nextState) });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update autopilot toggle." }, 400);
+    }
+    return;
+  }
+
+  // ---- B2 outreach OS (Phase 0) -------------------------------------------
+  // One-click unsubscribe — PUBLIC, signed token, idempotent. Honored immediately
+  // (CAN-SPAM requires within 10 days). Handles both the browser GET and the Gmail/Yahoo
+  // List-Unsubscribe-Post one-click POST.
+  if (url.pathname === "/api/outreach/unsubscribe" && (request.method === "GET" || request.method === "POST")) {
+    const token = url.searchParams.get("token") || "";
+    const verified = verifyUnsubscribeToken(token, process.env);
+    if (!verified.ok) {
+      response.writeHead(400, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      response.end("<!doctype html><meta charset=utf-8><p>This unsubscribe link is invalid or expired.</p>");
+      return;
+    }
+    try {
+      const currentState = await store.readState();
+      const email = verified.payload.email || "";
+      const contactId = verified.payload.contact_id || "";
+      let nextState = recordSuppression(currentState, { contactId, email, reason: "unsubscribed", source: "one_click" });
+      nextState.outreachUnsubscribes = [
+        { id: `outreach-unsub-${Date.now().toString(16)}`, contact_id: contactId, email, campaign_id: verified.payload.campaign_id || "", created_at: new Date().toISOString() },
+        ...serverList(currentState.outreachUnsubscribes)
+      ];
+      await store.writeState(nextState);
+    } catch (error) {
+      // Suppression is best-effort idempotent; never surface an error that makes the user
+      // think they're still subscribed.
+    }
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    response.end("<!doctype html><meta charset=utf-8><title>Unsubscribed</title><p>You've been unsubscribed and will receive no further messages.</p>");
+    return;
+  }
+
+  // SendGrid event webhook — PUBLIC (verified by signature in production). Phase 0 records
+  // bounces/unsubscribes into the suppression ledger. MUST be the -prod host URL at SendGrid.
+  if (url.pathname === "/api/outreach/webhooks/sendgrid" && request.method === "POST") {
+    try {
+      const events = await readJson(request).catch(() => []);
+      const list = Array.isArray(events) ? events : [];
+      let currentState = await store.readState();
+      for (const ev of list) {
+        const type = String(ev.event || "").toLowerCase();
+        const email = String(ev.email || "");
+        if (!email) continue;
+        if (["bounce", "dropped", "blocked"].includes(type)) {
+          currentState = recordSuppression(currentState, { email, reason: "bounced", source: "sendgrid_webhook" });
+          currentState.outreachBounces = [{ id: `outreach-bounce-${Date.now().toString(16)}-${Math.round((ev.timestamp||0))}`, email, type, reason: ev.reason || "", created_at: new Date().toISOString() }, ...serverList(currentState.outreachBounces)];
+        } else if (["unsubscribe", "group_unsubscribe", "spamreport"].includes(type)) {
+          currentState = recordSuppression(currentState, { email, reason: "unsubscribed", source: "sendgrid_webhook" });
+        }
+      }
+      await store.writeState(currentState);
+      sendJson(response, { ok: true, processed: list.length });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Webhook processing failed." }, 400);
+    }
+    return;
+  }
+
+  // Approve a queued outreach message (does NOT send — act() sends only when autopilot is on).
+  if (url.pathname === "/api/outreach/approve" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const ids = new Set((Array.isArray(input.ids) ? input.ids : [input.id]).filter(Boolean).map(String));
+      const currentState = await store.readState();
+      const queue = serverList(currentState.approvalQueue).map((q) =>
+        (q.type === OUTREACH_QUEUE_TYPE && ids.has(q.id) && String(q.status).toLowerCase() === "queued_for_approval")
+          ? { ...q, status: "approved", approved_at: new Date().toISOString(), approved_by: accessDecision.actor?.label || accessDecision.actor?.role || "operator" }
+          : q
+      );
+      const approvedCount = queue.filter((q) => ids.has(q.id) && q.status === "approved").length;
+      await store.writeState({ ...currentState, approvalQueue: queue });
+      sendJson(response, { ok: true, approved: approvedCount });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not approve outreach messages." }, 400);
+    }
+    return;
+  }
+
+  // Outreach status — queue counts, autopilot state, dry-run/live posture (read).
+  if (url.pathname === "/api/outreach/status" && request.method === "GET") {
+    const currentState = await store.readState();
+    const queue = serverList(currentState.approvalQueue).filter((q) => q.type === OUTREACH_QUEUE_TYPE);
+    const cfg = outreachConfigOf(currentState);
+    const liveEnabled = ["true", "1", "yes", "on"].includes(String(process.env.OUTREACH_LIVE_SEND || "").toLowerCase());
+    sendJson(response, {
+      autopilotEnabled: autopilotEnabled(currentState, OUTREACH_ENGINE_ID, process.env),
+      liveSendWired: false,
+      liveSendFlag: liveEnabled,
+      sendgridKeyPresent: Boolean(process.env.SENDGRID_API_KEY),
+      postalAddressSet: Boolean(cfg.postalAddress),
+      fromEmailSet: Boolean(cfg.fromEmail),
+      caps: cfg.caps,
+      queued: queue.filter((q) => String(q.status).toLowerCase() === "queued_for_approval").length,
+      approved: queue.filter((q) => String(q.status).toLowerCase() === "approved").length,
+      sent: serverList(currentState.outreachAttempts).filter((a) => a.status === "sent").length,
+      dryRun: serverList(currentState.outreachAttempts).filter((a) => a.status === "dry_run").length,
+      suppressions: serverList(currentState.outreachSuppressions).length,
+      unsubscribes: serverList(currentState.outreachUnsubscribes).length,
+      bounces: serverList(currentState.outreachBounces).length
+    });
+    return;
+  }
+
+  // Set outreach config (postal address, From identity, caps) — admin.
+  if (url.pathname === "/api/outreach/config" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const currentState = await store.readState();
+      const merged = {
+        ...(currentState.outreachConfig || {}),
+        ...(input.postalAddress !== undefined ? { postalAddress: String(input.postalAddress) } : {}),
+        ...(input.fromEmail !== undefined ? { fromEmail: String(input.fromEmail) } : {}),
+        ...(input.fromName !== undefined ? { fromName: String(input.fromName) } : {}),
+        ...(input.replyTo !== undefined ? { replyTo: String(input.replyTo) } : {}),
+        ...(input.sendingDomain !== undefined ? { sendingDomain: String(input.sendingDomain) } : {}),
+        ...(input.caps && typeof input.caps === "object" ? { caps: { ...(currentState.outreachConfig?.caps || {}), ...input.caps } } : {})
+      };
+      await store.writeState({ ...currentState, outreachConfig: merged });
+      sendJson(response, { ok: true, outreachConfig: merged });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update outreach config." }, 400);
     }
     return;
   }

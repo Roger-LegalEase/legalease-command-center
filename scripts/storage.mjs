@@ -64,9 +64,23 @@ const coreStateCollections = [
   "leeMemory",
   "heartbeatRuns",
   "heartbeatLease",
-  "autopilotSettings"
+  "autopilotSettings",
+  // B2 outreach OS (Phase 0). MUST stay in sync with OUTREACH_COLLECTIONS /
+  // OUTREACH_SINGLETON_COLLECTIONS in outreach-os.mjs, or these silently fail to persist
+  // to Supabase (the B1 trap). test-outreach-os.mjs asserts membership.
+  "outreachOrganizations",
+  "outreachContacts",
+  "outreachLists",
+  "outreachCampaigns",
+  "outreachSequenceSteps",
+  "outreachAttempts",
+  "outreachReplies",
+  "outreachBounces",
+  "outreachSuppressions",
+  "outreachUnsubscribes",
+  "outreachConfig"
 ];
-const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings"]);
+const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig"]);
 
 function parseBoolean(value = "") {
   return ["true", "1", "yes", "on"].includes(String(value || "").toLowerCase());
@@ -486,4 +500,4 @@ export function storageRuntimeConfig() {
   };
 }
 
-export { coreStateCollections, coreRecordsFromState, supabaseRestRequest };
+export { coreStateCollections, singletonCollections, coreRecordsFromState, supabaseRestRequest };

@@ -105,6 +105,10 @@ export function permissionForRequest(method = "GET", pathname = "/") {
   if (pathname.startsWith("/data/exports/final-pngs/")) return "public";
   if (pathname.startsWith("/data/exports/openai-images/")) return "public";
   if (pathname.startsWith("/assets/")) return "public";
+  // B2 outreach: the one-click unsubscribe (recipients, no auth — signed token) and the
+  // SendGrid event webhook (verified by signature in the handler) must be publicly reachable.
+  if (pathname === "/api/outreach/unsubscribe") return "public";
+  if (pathname === "/api/outreach/webhooks/sendgrid") return "public";
   if (method === "GET" || method === "HEAD") {
     if (pathname.includes("settings")) return "admin";
     return "read";
@@ -112,6 +116,10 @@ export function permissionForRequest(method = "GET", pathname = "/") {
   if (/\/api\/soc2\/evidence\/|\/api\/growth\/upsert/.test(pathname) && /compliance|soc2/i.test(pathname)) return "compliance_review";
   if (pathname === "/api/heartbeat/autopilot") return "admin";
   if (pathname === "/api/heartbeat/tick") return "write";
+  // B2 outreach: approving queued messages needs the approve permission; all other
+  // outreach mutations (config, enroll, manual send) are admin-only.
+  if (pathname === "/api/outreach/approve") return "approve";
+  if (pathname.startsWith("/api/outreach/")) return "admin";
   if (/\/api\/channels|\/api\/oauth|\/api\/settings|\/api\/backups\/restore/.test(pathname)) return "admin";
   if (/\/api\/publish|\/api\/posts\/.*\/publish/.test(pathname)) return "publish_review";
   if (/\/api\/approval|\/api\/autonomy\/actions|\/api\/automation\/suggestions/.test(pathname)) return "approve";
