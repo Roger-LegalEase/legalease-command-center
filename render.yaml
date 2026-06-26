@@ -41,6 +41,6 @@ services:
     autoDeploy: false
     envVars:
       - key: HEARTBEAT_TICK_URL
-        value: https://legalease-command-center.onrender.com/api/heartbeat/tick
+        value: https://legalease-command-center-prod.onrender.com/api/heartbeat/tick
       - key: COMMAND_CENTER_CRON_TOKEN
         sync: false
