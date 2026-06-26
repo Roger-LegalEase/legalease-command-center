@@ -11686,6 +11686,66 @@ async function fetchStripeRevenueSnapshot() {
   }
 }
 
+// Live end-user signup counts, fetched server-side only. The signup endpoint lives
+// on the new Next.js app (currently served on the partner domain — see the
+// "signup endpoint URL at cutover" deferred decision). The API key is read here in
+// Node scope and is NEVER serialized into any client payload — only the two
+// integer counts and a status flag reach the browser.
+//
+// Returns { paid, registered } where:
+//   paid       = real paying ($50) customers — the headline number.
+//   registered = saved items at the top of the funnel. This counts SAVED ITEMS,
+//                not distinct users — one person with several saved items is
+//                counted more than once. Labelled "saved items" in the UI so the
+//                number is never mistaken for distinct signups.
+//
+// On ANY failure — missing key, 401 auth rejection, 503/unreachable, timeout, or a
+// malformed body — it returns available:false so the Users box renders a clear
+// unavailable state. It never returns a cached, stale, estimated, or fabricated
+// number. This is the connector's health check + safe failure; the box tone is its
+// visible status.
+const SIGNUPS_METRICS_URL = "https://legaleasepartner.com/api/metrics/signups";
+
+async function fetchSignupsSnapshot() {
+  const base = { source: "expungement_signups", fetchedAt: new Date().toISOString() };
+  const key = process.env.COMMAND_CENTER_API_KEY || "";
+  if (!key) {
+    return { ...base, available: false, configured: false, error: "Signup metrics are not connected yet." };
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(SIGNUPS_METRICS_URL, {
+      headers: { authorization: "Bearer " + key },
+      signal: controller.signal
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      const safe = res.status === 401
+        ? "Signup endpoint rejected the API key."
+        : res.status === 503
+          ? "Signup endpoint is unavailable (503)."
+          : "Signup request failed (status " + res.status + ").";
+      return { ...base, available: false, configured: true, error: safe };
+    }
+    if (!data || !Number.isFinite(Number(data.paid)) || !Number.isFinite(Number(data.registered))) {
+      return { ...base, available: false, configured: true, error: "Signup endpoint returned an unexpected response." };
+    }
+    return {
+      ...base,
+      available: true,
+      configured: true,
+      paid: Math.max(0, Math.round(Number(data.paid))),
+      registered: Math.max(0, Math.round(Number(data.registered)))
+    };
+  } catch (error) {
+    const aborted = error && (error.name === "AbortError" || error.aborted);
+    return { ...base, available: false, configured: true, error: aborted ? "Signup request timed out." : "Signup endpoint is unavailable right now." };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const googleSyncTerms = [
   "LegalEase",
   "Expungement.ai",
@@ -24347,6 +24407,18 @@ function htmlShell() {
         if (stripeRevenue.configured) return { tone:"warn", value:'<span class="command-not-wired">revenue unavailable</span>', note:"Live Stripe is unavailable right now: " + esc(stripeRevenue.error || "could not reach Stripe.") + " No cached or estimated number is shown." };
         return { tone:"warn", value:'<span class="command-not-wired">not yet wired — connect Stripe</span>', note:"Live revenue appears here once Stripe is connected. No number is shown until a real source is wired." };
       })();
+      const signups = state.signups || null;
+      const signupsCard = (() => {
+        if (!signups) return { tone:"hold", value:'<span class="command-not-wired">connecting to signup source…</span>', secondary:"", note:"Loading live signups from the Expungement.ai signup endpoint." };
+        if (signups.available) return {
+          tone:"go",
+          value: esc(String(signups.paid)) + ' <small>paid · live</small>',
+          secondary: '<b>' + esc(String(signups.registered)) + '</b> saved items <small>(top of funnel)</small>',
+          note:"Live from the signup endpoint. Paid = real $50 customers (the headline number). Registered counts saved items, not distinct users — one person with several saved items counts more than once. Updates automatically as new signups arrive — no further setup needed."
+        };
+        if (signups.configured) return { tone:"warn", value:'<span class="command-not-wired">signups unavailable</span>', secondary:"", note:"Live signup metrics are unavailable right now: " + esc(signups.error || "could not reach the signup endpoint.") + " No cached or estimated number is shown." };
+        return { tone:"warn", value:'<span class="command-not-wired">not yet wired — connect signup source</span>', secondary:"", note:"Live signups appear here once the signup source is connected. No count is shown until a real source is wired." };
+      })();
       const itemRows = items => items.map(entry => {
         const item = entry.item || entry;
         const bucket = entry.bucket || {};
@@ -24396,10 +24468,11 @@ function htmlShell() {
               </div>
             </div>
             <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='settings'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='settings'}">
-              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot("warn")}Users / new signups</span><span class="cockpit-card-go">Settings →</span></div>
+              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot(signupsCard.tone)}Users / new signups</span><span class="cockpit-card-go">Settings →</span></div>
+              <div class="cockpit-card-value">\${signupsCard.value}</div>
               <div class="cockpit-card-list">
-                <span class="command-not-wired">not yet wired — connect signup source</span>
-                <div class="cockpit-card-note">New Expungement.ai signups appear here once the signup source is connected. No count is shown until it is wired.</div>
+                \${signupsCard.secondary ? \`<div class="cockpit-card-row">\${dot("hold")}\${signupsCard.secondary}</div>\` : ""}
+                <div class="cockpit-card-note">\${signupsCard.note}</div>
               </div>
             </div>
           </div>
@@ -31005,10 +31078,14 @@ async function handleRequest(request, response) {
 
 	  if (url.pathname === "/api/state" && request.method === "GET") {
     const fullState = withPublicChannelSetup(await store.readState());
-    // Live revenue is fetched fresh server-side on every full-state load so the
-    // Revenue box always reflects real Stripe data (or a clear unavailable state),
-    // and new charges appear automatically with no further code change.
-    fullState.stripeRevenue = await fetchStripeRevenueSnapshot();
+    // Live revenue and signups are fetched fresh server-side on every full-state
+    // load so the Revenue and Users boxes always reflect real source data (or a
+    // clear unavailable state), and new charges/signups appear automatically with
+    // no further code change. Fetched in parallel so neither blocks the other.
+    [fullState.stripeRevenue, fullState.signups] = await Promise.all([
+      fetchStripeRevenueSnapshot(),
+      fetchSignupsSnapshot()
+    ]);
     sendJson(response, fullState);
     return;
   }
