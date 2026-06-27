@@ -92,7 +92,11 @@ const coreStateCollections = [
   // B4 engagement & growth monitor. MUST stay in sync with ENGAGEMENT_GROWTH_COLLECTIONS in
   // engagement-growth.mjs, or the report silently fails to persist to Supabase (same trap).
   // test-engagement-growth.mjs asserts membership.
-  "engagementGrowthSnapshots"
+  "engagementGrowthSnapshots",
+  // B7 operating-loop registry. MUST stay in sync with OPERATING_PULSE_COLLECTIONS in
+  // operating-loops.mjs, or the per-loop pulse snapshots silently fail to persist (same trap).
+  // test-operating-loops.mjs asserts membership. (os-health loop reuses osHealthSnapshots above.)
+  "operatingPulseSnapshots"
 ];
 const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig"]);
 

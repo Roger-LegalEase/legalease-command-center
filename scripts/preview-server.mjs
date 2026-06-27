@@ -13,6 +13,7 @@ import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_Q
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
+import { LOOP_REGISTRY } from "./operating-loops.mjs";
 import { actorFromRequest, authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequest, publicActor, roleDefinitions, tokenCandidatesFromRequest, tokenFromRequest } from "./access-control.mjs";
 import {
   classifyGrowthInboxText,
@@ -24263,6 +24264,33 @@ function htmlShell() {
       </div>\`;
     }
 
+    // B7 operating-loop registry — read-only pulse strip. Shows the latest snapshot per loop from
+    // state.operatingPulseSnapshots (persisted by the heartbeat). Honest: a loop with no snapshot
+    // yet says "Not yet run"; it never shows a fabricated value.
+    function todayOperatingPulseHtml() {
+      const snaps = Array.isArray(state.operatingPulseSnapshots) ? state.operatingPulseSnapshots : [];
+      const order = [
+        ["cash-runway", "Cash & Runway"], ["capacity", "Founder Capacity"], ["aging", "Aging Items"],
+        ["partner-health", "Partner Health"], ["outreach-health", "Outreach Health"], ["os-health", "System Health"]
+      ];
+      const latestByLoop = {};
+      for (const s of snaps) if (!latestByLoop[s.loop]) latestByLoop[s.loop] = s; // snaps newest-first
+      const dot = (status) =>
+        ["stop_items", "overloaded", "critical"].includes(status) ? "stop"
+          : ["needs_input", "warn_items", "attention", "needs_attention", "never_run"].includes(status) ? "warn"
+          : "go";
+      const anyRun = order.some(([k]) => latestByLoop[k]);
+      const cards = order.map(([key, label]) => {
+        const s = latestByLoop[key];
+        if (!s) return \`<div class="command-stat"><div class="label"><span class="command-dot warn"></span>\${esc(label)}</div><div class="detail">Not yet run — schedules on the heartbeat.</div></div>\`;
+        return \`<div class="command-stat"><div class="label"><span class="command-dot \${dot(s.status)}"></span>\${esc(label)}</div><div class="detail">\${esc(s.headline || s.status)}</div></div>\`;
+      }).join("");
+      return \`<div class="command-panel">
+        <div class="command-panel-head"><h2>Operating Pulse</h2><span class="meta">\${anyRun ? "Heartbeat monitors · read-only" : "Scheduled on the heartbeat · awaiting first run"}</span></div>
+        <div class="command-pulse" style="grid-template-columns:repeat(3,minmax(0,1fr));">\${cards}</div>
+      </div>\`;
+    }
+
     function todayMoneyPanelHtml() {
       const revenue = todayRevenueSummary();
       const runway = todayRunwaySummary();
@@ -24307,6 +24335,7 @@ function htmlShell() {
             <button class="command-run-button" type="button" onclick="\${startAction}">\${esc(startLabel)} <span class="count">\${esc(String(ranked.length))}</span></button>
           </div>
           \${todayPulseHtml()}
+          \${todayOperatingPulseHtml()}
           <div class="command-cols">
             <div>
               <div class="command-panel">
@@ -32146,6 +32175,21 @@ async function handleRequest(request, response) {
         fetchEngagementMetrics: async () => {
           const [revenue, signups] = await Promise.all([fetchStripeRevenueSnapshot(), fetchSignupsSnapshot()]);
           return { revenue, signups };
+        },
+        // B7 operating-loop registry — the os-health loop reads live connection flags here (same
+        // values the manual /api/os-health/refresh passes), so the scheduled snapshot matches the
+        // on-demand one. Read-only; the loops never act. Absent this, os-health falls back to
+        // in-state runtime flags.
+        fetchConnectionHealth: async () => {
+          const health = await getSupabaseHealth();
+          return {
+            endpointInventorySource,
+            supabaseDbConnected: Boolean(health?.db?.ok),
+            supabaseStorageConnected: Boolean(health?.storage?.ok),
+            openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
+            ownerTokenAuthConfigured: authRequiredForEnv(),
+            localFallbackAvailable: true
+          };
         }
       });
       const result = await runHeartbeat({
@@ -32416,6 +32460,35 @@ async function handleRequest(request, response) {
       whatsWorking: latest?.deltas?.whats_working || [],
       history: snapshots.slice(0, 30).map((s) => ({ id: s.id, generated_at: s.generated_at, status: s.status, live_sources_connected: s.live_sources_connected }))
     });
+    return;
+  }
+
+  // ---- B7 operating-loop registry (READ-ONLY monitors on the heartbeat) ------
+  // Status — latest pulse per loop (cash-runway, capacity, aging, partner-health, outreach-health,
+  // os-health). Read-only surface; every loop is a pure monitor with no act() path.
+  if (url.pathname === "/api/operating-pulse/status" && request.method === "GET") {
+    const currentState = await store.readState();
+    const snaps = serverList(currentState.operatingPulseSnapshots);
+    const latestByLoop = {};
+    for (const s of snaps) if (!latestByLoop[s.loop]) latestByLoop[s.loop] = s; // snaps newest-first
+    const loops = LOOP_REGISTRY.map((d) => {
+      const s = latestByLoop[d.key] || null;
+      return {
+        loop: d.key,
+        label: d.label,
+        cadence: d.cadence,
+        engineId: d.engineId,
+        autopilotEnabled: autopilotEnabled(currentState, d.engineId, process.env),
+        hasActPath: false,                 // structural: B7 loops are pure monitors
+        status: s?.status || "never_run",
+        data_connected: s?.data_connected ?? null,
+        headline: s?.headline || "",
+        metrics: s?.metrics || null,
+        delta: s?.delta ?? null,
+        generated_at: s?.generated_at || null
+      };
+    });
+    sendJson(response, { loops, generatedAny: loops.some((l) => l.generated_at) });
     return;
   }
 

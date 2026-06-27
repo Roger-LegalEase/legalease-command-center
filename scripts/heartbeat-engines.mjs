@@ -15,6 +15,7 @@ import { buildOutreachEngine, OUTREACH_ENGINE_ID } from "./outreach-os.mjs";
 import { buildProspectEngine, PROSPECT_ENGINE_ID } from "./prospect-discovery.mjs";
 import { buildCodebaseHealthEngine, CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { buildEngagementGrowthEngine, ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
+import { buildAllOperatingLoopEngines, OPERATING_LOOP_ENGINE_IDS } from "./operating-loops.mjs";
 
 export function buildHeartbeatRegistry(deps = {}) {
   const engines = [];
@@ -106,9 +107,21 @@ export function buildHeartbeatRegistry(deps = {}) {
   // not-connected sources when the live fetcher is absent). Autopilot OFF by default.
   engines.push(buildEngagementGrowthEngine({ fetchEngagementMetrics: deps.fetchEngagementMetrics }));
 
+  // B7 operating-loop registry (READ-ONLY monitors). Schedules the EXISTING operating loops
+  // (cash/runway, capacity, aging, partner health, outreach health, system health) on the
+  // heartbeat — one engine per loop via this same registry pattern, cadence per loop. Each loop's
+  // plan() CALLS the existing loop function (no rewrite), persists a pulse snapshot, and returns
+  // observations. Every loop is a pure monitor: NO act() path, so a toggled-ON autopilot is a
+  // no-op. The os-health loop reads live connection flags via the injected deps.fetchConnectionHealth
+  // (falls back to in-state runtime flags when absent — never fabricates a connected status).
+  // Autopilot OFF by default is the uniform outer posture.
+  for (const engine of buildAllOperatingLoopEngines({ fetchConnectionHealth: deps.fetchConnectionHealth })) {
+    engines.push(engine);
+  }
+
   return engines;
 }
 
 // Stable list of registered engine ids (for surfacing autopilot toggles in the UI even
 // when an engine hasn't run yet). Mirrors buildHeartbeatRegistry's ids.
-export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID, ENGAGEMENT_GROWTH_ENGINE_ID];
+export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID, ENGAGEMENT_GROWTH_ENGINE_ID, ...OPERATING_LOOP_ENGINE_IDS];

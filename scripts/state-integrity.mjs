@@ -355,6 +355,19 @@ export function buildDataModelInventory() {
       related_routes: ["#engagement-growth"],
       related_tests: ["scripts/test-engagement-growth.mjs"],
       duplicate_risk_level: "medium"
+    },
+    {
+      collection: "operatingPulseSnapshots",
+      purpose: "B7 operating-loop registry: read-only pulse snapshots, one per loop (cash-runway, capacity, aging, partner-health, outreach-health, os-health) per date, scheduled on the B1 heartbeat. Each wraps an existing loop function; reports real signals only with a trend delta vs the loop's previous run. os-health additionally persists full detail to osHealthSnapshots.",
+      storage_mode: "hybrid",
+      required_fields: ["id", "loop", "generated_at", "status"],
+      optional_fields: ["label", "cadence", "data_connected", "headline", "metrics", "trend", "delta", "no_external_actions_confirmation"],
+      stable_key_fields: ["id"],
+      idempotency_rules: "One snapshot per loop per date. Stable id format pulse-<loop-key>-YYYY-MM-DD.",
+      audit_behavior: "Each loop's daily plan() run creates auditHistory and activityEvents entries. B7 loops have no act() path; they never post, send, or write outward.",
+      related_routes: ["#today"],
+      related_tests: ["scripts/test-operating-loops.mjs"],
+      duplicate_risk_level: "medium"
     }
   ];
 }
