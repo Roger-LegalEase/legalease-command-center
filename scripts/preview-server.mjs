@@ -12,6 +12,7 @@ import { buildHeartbeatRegistry, HEARTBEAT_ENGINE_IDS } from "./heartbeat-engine
 import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_QUEUE_TYPE, OUTREACH_ENGINE_ID } from "./outreach-os.mjs";
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
+import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
 import { actorFromRequest, authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequest, publicActor, roleDefinitions, tokenCandidatesFromRequest, tokenFromRequest } from "./access-control.mjs";
 import {
   classifyGrowthInboxText,
@@ -32138,7 +32139,14 @@ async function handleRequest(request, response) {
         // B5 prospect discovery — inert (zero rows) until the live Tier-1 dataset clients are
         // wired and PROSPECT_LIVE_DISCOVERY is flipped. The prospect engine's act() only runs
         // when its autopilot toggle is ON (default OFF), so this is gated twice over.
-        runProspectDiscovery
+        runProspectDiscovery,
+        // B4 engagement & growth — READ-ONLY live read (GET only). Reuses the existing honest
+        // fetchers; passes their {available,configured,error} shapes through untouched. B4 has no
+        // act() and never posts/sends, so this fetcher is the ONLY external contact, and it reads.
+        fetchEngagementMetrics: async () => {
+          const [revenue, signups] = await Promise.all([fetchStripeRevenueSnapshot(), fetchSignupsSnapshot()]);
+          return { revenue, signups };
+        }
       });
       const result = await runHeartbeat({
         store,
@@ -32387,6 +32395,26 @@ async function handleRequest(request, response) {
       counts: latest?.counts || { would_break_prod: 0, accumulating_risk: 0, cosmetic: 0, total: 0 },
       deltas: latest?.deltas || null,
       history: snapshots.slice(0, 30).map((s) => ({ id: s.id, generated_at: s.generated_at, status: s.status, counts: s.counts }))
+    });
+    return;
+  }
+
+  // ---- B4 engagement & growth monitor (READ-ONLY observe-and-report) --------
+  // Status — latest growth report (live metrics, trends/deltas, honest blocked-source ladder).
+  // Read-only surface; the engine never posts/sends and has no act() method.
+  if (url.pathname === "/api/engagement-growth/status" && request.method === "GET") {
+    const currentState = await store.readState();
+    const snapshots = serverList(currentState.engagementGrowthSnapshots);
+    const latest = snapshots[0] || null;
+    sendJson(response, {
+      autopilotEnabled: autopilotEnabled(currentState, ENGAGEMENT_GROWTH_ENGINE_ID, process.env),
+      hasActPath: false,                 // structural: B4 never posts, sends, or writes outward
+      latest,
+      status: latest?.status || "never_run",
+      liveSourcesConnected: latest?.live_sources_connected ?? 0,
+      blockedSources: latest?.blocked_sources || [],
+      whatsWorking: latest?.deltas?.whats_working || [],
+      history: snapshots.slice(0, 30).map((s) => ({ id: s.id, generated_at: s.generated_at, status: s.status, live_sources_connected: s.live_sources_connected }))
     });
     return;
   }

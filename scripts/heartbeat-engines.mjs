@@ -14,6 +14,7 @@ import { runAutonomyCycleOnState } from "./autonomy-engine.mjs";
 import { buildOutreachEngine, OUTREACH_ENGINE_ID } from "./outreach-os.mjs";
 import { buildProspectEngine, PROSPECT_ENGINE_ID } from "./prospect-discovery.mjs";
 import { buildCodebaseHealthEngine, CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
+import { buildEngagementGrowthEngine, ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
 
 export function buildHeartbeatRegistry(deps = {}) {
   const engines = [];
@@ -96,9 +97,18 @@ export function buildHeartbeatRegistry(deps = {}) {
   // even toggled ON there is no action path to run.
   engines.push(buildCodebaseHealthEngine());
 
+  // B4 engagement & growth monitor (READ-ONLY observe-and-report). plan() pulls the available
+  // growth signals (revenue/signups via the injected read-only deps.fetchEngagementMetrics, plus
+  // in-state publishing/content/funnel telemetry), trends them with deltas, and reports every
+  // social source it cannot read as "not connected — gated on <reason>". It has NO act() method —
+  // no posting, no sending, no outward writes; "read-only" is structural. Always registered so
+  // the autopilot toggle surfaces; needs no dep to run (reports in-state telemetry + honest
+  // not-connected sources when the live fetcher is absent). Autopilot OFF by default.
+  engines.push(buildEngagementGrowthEngine({ fetchEngagementMetrics: deps.fetchEngagementMetrics }));
+
   return engines;
 }
 
 // Stable list of registered engine ids (for surfacing autopilot toggles in the UI even
 // when an engine hasn't run yet). Mirrors buildHeartbeatRegistry's ids.
-export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID];
+export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID, ENGAGEMENT_GROWTH_ENGINE_ID];

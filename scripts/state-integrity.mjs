@@ -342,6 +342,19 @@ export function buildDataModelInventory() {
       related_routes: ["#codebase-health"],
       related_tests: ["scripts/test-codebase-health.mjs"],
       duplicate_risk_level: "medium"
+    },
+    {
+      collection: "engagementGrowthSnapshots",
+      purpose: "B4 engagement & growth monitor reports: read-only trend of available growth signals (revenue, signups, publishing cadence, operator-entered content performance) with deltas since the last run, plus an honest not-connected ladder for blocked social sources (LinkedIn/Meta/X).",
+      storage_mode: "hybrid",
+      required_fields: ["id", "generated_at", "status"],
+      optional_fields: ["live_sources_connected", "metrics", "sources", "blocked_sources", "deltas", "no_external_actions_confirmation"],
+      stable_key_fields: ["id"],
+      idempotency_rules: "One Engagement & Growth snapshot per date. Stable id format engagement-growth-YYYY-MM-DD.",
+      audit_behavior: "Each daily plan() run creates auditHistory and activityEvents entries. B4 has no act() path; it never posts, sends, or writes outward.",
+      related_routes: ["#engagement-growth"],
+      related_tests: ["scripts/test-engagement-growth.mjs"],
+      duplicate_risk_level: "medium"
     }
   ];
 }

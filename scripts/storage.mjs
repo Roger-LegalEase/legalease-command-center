@@ -88,7 +88,11 @@ const coreStateCollections = [
   // B3 codebase-health monitor. MUST stay in sync with CODEBASE_HEALTH_COLLECTIONS in
   // codebase-health.mjs, or the findings report silently fails to persist to Supabase (the
   // B1/B2/B5 trap). test-codebase-health.mjs asserts membership — and B3 itself flags this drift.
-  "codebaseHealthSnapshots"
+  "codebaseHealthSnapshots",
+  // B4 engagement & growth monitor. MUST stay in sync with ENGAGEMENT_GROWTH_COLLECTIONS in
+  // engagement-growth.mjs, or the report silently fails to persist to Supabase (same trap).
+  // test-engagement-growth.mjs asserts membership.
+  "engagementGrowthSnapshots"
 ];
 const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig"]);
 
