@@ -329,6 +329,19 @@ export function buildDataModelInventory() {
       related_routes: ["#data-integrity"],
       related_tests: ["scripts/test-state-integrity.mjs"],
       duplicate_risk_level: "medium"
+    },
+    {
+      collection: "codebaseHealthSnapshots",
+      purpose: "B3 codebase-health monitor reports: read-only structural source audit findings (registration drift, dead/orphaned code, documentation/CI gaps), severity-ranked, with deltas since the last run.",
+      storage_mode: "hybrid",
+      required_fields: ["id", "generated_at", "status"],
+      optional_fields: ["counts", "scan_error", "findings", "deltas", "scanned", "no_external_actions_confirmation"],
+      stable_key_fields: ["id"],
+      idempotency_rules: "One Codebase Health snapshot per date. Stable id format codebase-health-YYYY-MM-DD.",
+      audit_behavior: "Each daily plan() run creates auditHistory and activityEvents entries. B3 has no act() path; it never modifies source files.",
+      related_routes: ["#codebase-health"],
+      related_tests: ["scripts/test-codebase-health.mjs"],
+      duplicate_risk_level: "medium"
     }
   ];
 }

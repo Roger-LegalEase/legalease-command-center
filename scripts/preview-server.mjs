@@ -11,6 +11,7 @@ import { runHeartbeat, autopilotEnabled } from "./heartbeat.mjs";
 import { buildHeartbeatRegistry, HEARTBEAT_ENGINE_IDS } from "./heartbeat-engines.mjs";
 import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_QUEUE_TYPE, OUTREACH_ENGINE_ID } from "./outreach-os.mjs";
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
+import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { actorFromRequest, authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequest, publicActor, roleDefinitions, tokenCandidatesFromRequest, tokenFromRequest } from "./access-control.mjs";
 import {
   classifyGrowthInboxText,
@@ -11737,7 +11738,7 @@ async function fetchStripeRevenueSnapshot() {
 // unavailable state. It never returns a cached, stale, estimated, or fabricated
 // number. This is the connector's health check + safe failure; the box tone is its
 // visible status.
-const SIGNUPS_METRICS_URL = "https://legaleasepartner.com/api/metrics/signups";
+const SIGNUPS_METRICS_URL = "https://expungement.ai/api/metrics/signups";
 
 async function fetchSignupsSnapshot() {
   const base = { source: "expungement_signups", fetchedAt: new Date().toISOString() };
@@ -32368,6 +32369,25 @@ async function handleRequest(request, response) {
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update prospect config." }, 400);
     }
+    return;
+  }
+
+  // ---- B3 codebase-health monitor (detect-and-report only; NO act path) -----
+  // Status — latest read-only structural audit report (findings, severity counts, deltas).
+  // Read-only surface; the engine itself never modifies source files and has no act() method.
+  if (url.pathname === "/api/codebase-health/status" && request.method === "GET") {
+    const currentState = await store.readState();
+    const snapshots = serverList(currentState.codebaseHealthSnapshots);
+    const latest = snapshots[0] || null;
+    sendJson(response, {
+      autopilotEnabled: autopilotEnabled(currentState, CODEBASE_HEALTH_ENGINE_ID, process.env),
+      hasActPath: false,                 // structural: B3 cannot modify, delete, refactor, or merge
+      latest,
+      status: latest?.status || "never_run",
+      counts: latest?.counts || { would_break_prod: 0, accumulating_risk: 0, cosmetic: 0, total: 0 },
+      deltas: latest?.deltas || null,
+      history: snapshots.slice(0, 30).map((s) => ({ id: s.id, generated_at: s.generated_at, status: s.status, counts: s.counts }))
+    });
     return;
   }
 

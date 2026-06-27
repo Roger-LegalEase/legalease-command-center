@@ -147,10 +147,12 @@ export async function runHeartbeat(options = {}) {
 
       // act() ONLY when the autopilot toggle is ON (default OFF). The engine's own
       // gates (live posting, approval, outbox kill switch) still apply UNDER this gate.
+      // A plan()-only engine (no act method — e.g. B3 codebase-health, which structurally
+      // cannot act) is a clean no-op here even when toggled ON: there is no action path.
       const enabled = autopilotEnabled(state, engine.id, env);
       let acted = false;
       let actResult = {};
-      if (enabled) {
+      if (enabled && typeof engine.act === "function") {
         try {
           actResult = (await engine.act(state, ctx)) || {};
           if (actResult.state) state = actResult.state;

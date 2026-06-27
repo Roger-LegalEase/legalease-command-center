@@ -84,7 +84,11 @@ const coreStateCollections = [
   // persist to Supabase (the B1/B2 trap). test-prospect-discovery.mjs asserts membership.
   "prospectCandidates",
   "prospectDiscoveryRuns",
-  "prospectConfig"
+  "prospectConfig",
+  // B3 codebase-health monitor. MUST stay in sync with CODEBASE_HEALTH_COLLECTIONS in
+  // codebase-health.mjs, or the findings report silently fails to persist to Supabase (the
+  // B1/B2/B5 trap). test-codebase-health.mjs asserts membership — and B3 itself flags this drift.
+  "codebaseHealthSnapshots"
 ];
 const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig"]);
 

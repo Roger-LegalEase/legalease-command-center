@@ -13,6 +13,7 @@
 import { runAutonomyCycleOnState } from "./autonomy-engine.mjs";
 import { buildOutreachEngine, OUTREACH_ENGINE_ID } from "./outreach-os.mjs";
 import { buildProspectEngine, PROSPECT_ENGINE_ID } from "./prospect-discovery.mjs";
+import { buildCodebaseHealthEngine, CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 
 export function buildHeartbeatRegistry(deps = {}) {
   const engines = [];
@@ -87,9 +88,17 @@ export function buildHeartbeatRegistry(deps = {}) {
     classifyProspect: deps.classifyProspect
   }));
 
+  // B3 codebase-health monitor (detect-and-report only; auto-fix deliberately removed). plan()
+  // runs a READ-ONLY structural source audit and writes a findings report to the
+  // codebaseHealthSnapshots surface. It has NO act() method — "never modifies the app" is
+  // structural, not a toggle. Always registered so the autopilot toggle surfaces; needs no deps
+  // (it reads the local source tree). Autopilot OFF by default is the uniform outer posture, but
+  // even toggled ON there is no action path to run.
+  engines.push(buildCodebaseHealthEngine());
+
   return engines;
 }
 
 // Stable list of registered engine ids (for surfacing autopilot toggles in the UI even
 // when an engine hasn't run yet). Mirrors buildHeartbeatRegistry's ids.
-export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID];
+export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID];
