@@ -159,6 +159,33 @@ async function supabaseRestRequest(pathname, options = {}) {
   return data;
 }
 
+// PostgREST caps EVERY response at a fixed row count (Supabase default 1000), no matter what
+// limit you ask for. So a single unpaginated `select=*` SILENTLY truncates the table the moment
+// it grows past the cap — whole collections vanish from hydration with no error. (This is exactly
+// how engagementGrowthSnapshots / codebaseHealthSnapshots — and any collection ordered past row
+// 1000 — disappeared on read once leos_core_records crossed 1000 rows.) We page with limit+offset
+// under a STABLE order (collection,item_id) until a short/empty page proves we've read everything.
+const SUPABASE_PAGE_SIZE = 1000;
+
+async function supabaseFetchAllRows(selectColumns) {
+  const base = supabaseRecordsTable + "?select=" + selectColumns + "&order=collection.asc,item_id.asc";
+  const all = [];
+  let offset = 0;
+  let pageSize = 0;
+  // The server's effective cap is whatever the first request returns; once a page comes back
+  // smaller than that cap we've reached the end. The hard page ceiling is a runaway guard in
+  // case a server ever ignored offset (it would otherwise loop forever).
+  for (let page = 0; page < 100000; page += 1) {
+    const rows = (await supabaseRestRequest(base + "&limit=" + SUPABASE_PAGE_SIZE + "&offset=" + offset)) || [];
+    if (!rows.length) break;
+    all.push(...rows);
+    if (pageSize === 0) pageSize = rows.length;
+    if (rows.length < pageSize) break;
+    offset += rows.length;
+  }
+  return all;
+}
+
 function coreRecordId(collection, item, index = 0) {
   if (singletonCollections.has(collection)) return "singleton";
   return String(item?.id || item?.postId || item?.title || item?.name || collection + "-" + index);
@@ -442,7 +469,7 @@ export class SupabaseCoreStore extends JsonStore {
       fallback = { ...this.initialState };
     }
     try {
-      const rows = await supabaseRestRequest(supabaseRecordsTable + "?select=collection,item_id,payload,updated_at");
+      const rows = await supabaseFetchAllRows("collection,item_id,payload,updated_at");
       this.lastError = "";
       return { ...applyCoreRecordsToState(fallback, rows || []), persistence:"supabase" };
     } catch (error) {
@@ -476,7 +503,9 @@ export class SupabaseCoreStore extends JsonStore {
     );
     if (presentCollections.size) {
       const keep = new Set(rows.map((row) => row.collection + " " + row.item_id));
-      const existing = (await supabaseRestRequest(supabaseRecordsTable + "?select=collection,item_id")) || [];
+      // Must page too: a truncated read here would hide orphans past row 1000, leaving stale
+      // rows to accumulate (and, before the readState fix, could resurrect deleted items).
+      const existing = (await supabaseFetchAllRows("collection,item_id")) || [];
       const orphans = existing.filter(
         (row) => presentCollections.has(row.collection) && !keep.has(row.collection + " " + row.item_id)
       );
