@@ -9,7 +9,7 @@ import { analyzeOperations } from "./priority-engine.mjs";
 import { buildAutonomyGovernance, buildAutonomyReport, runAutonomyCycleOnState } from "./autonomy-engine.mjs";
 import { runHeartbeat, autopilotEnabled } from "./heartbeat.mjs";
 import { buildHeartbeatRegistry, HEARTBEAT_ENGINE_IDS } from "./heartbeat-engines.mjs";
-import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_QUEUE_TYPE, OUTREACH_ENGINE_ID } from "./outreach-os.mjs";
+import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_QUEUE_TYPE, OUTREACH_ENGINE_ID, resolveOutreachSendDecision, outreachLiveSendEnabled } from "./outreach-os.mjs";
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
@@ -5102,20 +5102,45 @@ async function schedulePostForPublishing(postId, { scheduledFor, targetChannels,
   return { state: nextState, readiness: { ...readiness, status }, message: readiness.ok ? "Post scheduled." : readiness.message };
 }
 
-// B2 — the outreach send executor injected into the heartbeat (like runPublishing). Phase 0
-// is INERT: it returns a dry_run outcome (recorded, NO network send) unless OUTREACH_LIVE_SEND
-// is on AND a SendGrid key is present — and even then the live SendGrid HTTP call is not yet
-// written, so it throws rather than risk an accidental send. Wiring the live client + flipping
-// OUTREACH_LIVE_SEND is the LAST step, done deliberately after this whole stack is proven.
+// B2 — the outreach send executor injected into the heartbeat (like runPublishing). The routing
+// + gate decision lives in resolveOutreachSendDecision (outreach-os): it fails closed on
+// do-not-enroll/unmapped classification and non-compliant messages, and returns dry_run unless
+// OUTREACH_LIVE_SEND is truthy AND a SendGrid key is present. Only a "live" decision reaches the
+// SendGrid HTTP call below — so dry_run/not_sent NEVER touch the network. The API key is read
+// from env and never logged.
 async function runOutreachSend(message, { env = process.env } = {}) {
-  const liveEnabled = ["true", "1", "yes", "on"].includes(String(env.OUTREACH_LIVE_SEND || "").toLowerCase());
-  const sendgridKey = env.SENDGRID_API_KEY || "";
-  if (!liveEnabled || !sendgridKey) {
-    return { status: "dry_run", provider: "sendgrid", provider_message_id: "" };
+  const decision = resolveOutreachSendDecision(message, { env });
+  // dry_run (gate off) or not_sent (failed closed) — return WITHOUT any network send.
+  if (decision.status !== "live") return decision;
+
+  // Live path: assemble the SendGrid v3 payload from the already-compliant message.
+  const apiKey = env.SENDGRID_API_KEY;
+  const payload = {
+    personalizations: [{ to: [{ email: message.to }] }],
+    from: message.fromName ? { email: message.from, name: message.fromName } : { email: message.from },
+    ...(message.replyTo ? { reply_to: { email: message.replyTo } } : {}),
+    subject: message.subject,
+    content: [
+      { type: "text/plain", value: message.text },
+      ...(message.html ? [{ type: "text/html", value: message.html }] : [])
+    ],
+    ...(message.headers && Object.keys(message.headers).length ? { headers: message.headers } : {})
+  };
+  const resp = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    // Never include the API key in the error; only the status + provider detail.
+    throw new Error(`SendGrid send failed: ${resp.status} ${String(detail).slice(0, 300)}`);
   }
-  // Live path intentionally unimplemented in Phase 0 — guarantees no real send can slip out
-  // just by setting an env flag. The SendGrid client is wired in a later, explicit step.
-  throw new Error("Live SendGrid sending is not wired yet (Phase 0). Implement the SendGrid client before enabling OUTREACH_LIVE_SEND.");
+  return {
+    status: "sent",
+    provider: "sendgrid",
+    provider_message_id: resp.headers.get("x-message-id") || ""
+  };
 }
 
 // B5 — the Tier-1 prospect-discovery fetch executor injected into the heartbeat (like
@@ -32161,9 +32186,10 @@ async function handleRequest(request, response) {
           const stateWithSummary = { ...r.state, dailyRunPublisherRuns: [summary, ...serverList(r.state.dailyRunPublisherRuns)].slice(0, 20) };
           return { state: stateWithSummary, results: r.results || [] };
         },
-        // B2 outreach send — inert (dry_run) until the live SendGrid client is wired and
-        // OUTREACH_LIVE_SEND is flipped. The outreach engine's act() only runs when its
-        // autopilot toggle is ON (default OFF), so this is gated twice over.
+        // B2 outreach send — live SendGrid client is wired, but stays dry_run until
+        // OUTREACH_LIVE_SEND is flipped AND a SendGrid key is present. The outreach engine's
+        // act() also only runs when its autopilot toggle is ON (default OFF) — gated twice over,
+        // plus fail-closed classification routing inside the executor.
         runOutreachSend,
         // B5 prospect discovery — inert (zero rows) until the live Tier-1 dataset clients are
         // wired and PROSPECT_LIVE_DISCOVERY is flipped. The prospect engine's act() only runs
@@ -32327,10 +32353,10 @@ async function handleRequest(request, response) {
     const currentState = await store.readState();
     const queue = serverList(currentState.approvalQueue).filter((q) => q.type === OUTREACH_QUEUE_TYPE);
     const cfg = outreachConfigOf(currentState);
-    const liveEnabled = ["true", "1", "yes", "on"].includes(String(process.env.OUTREACH_LIVE_SEND || "").toLowerCase());
+    const liveEnabled = outreachLiveSendEnabled(process.env);
     sendJson(response, {
       autopilotEnabled: autopilotEnabled(currentState, OUTREACH_ENGINE_ID, process.env),
-      liveSendWired: false,
+      liveSendWired: true,
       liveSendFlag: liveEnabled,
       sendgridKeyPresent: Boolean(process.env.SENDGRID_API_KEY),
       postalAddressSet: Boolean(cfg.postalAddress),

@@ -26,6 +26,13 @@ import { isRcapContactSuppressed } from "./rcap-revenue-os.mjs";
 // outreachSequenceSteps key exactly. Re-exported so existing B2 importers have one path.
 import { OUTREACH_CLASSIFICATIONS, isOutreachClassification, normalizeClassification } from "./outreach-classifications.mjs";
 export { OUTREACH_CLASSIFICATIONS, isOutreachClassification, normalizeClassification };
+// Per-classification sequence routing + the approved copy. resolveSequenceForClassification is
+// the fail-closed chokepoint (no mapped sequence => no send; CSI => do_not_enroll).
+import {
+  resolveSequenceForClassification, getSequenceTouch, CALENDAR_URL,
+  renderTouchText, renderTouchHtml
+} from "./outreach-sequences.mjs";
+export { resolveSequenceForClassification };
 
 // ---------------------------------------------------------------------------
 // 1. DATA MODEL — single source of truth for collection membership.
@@ -57,9 +64,26 @@ export const DEFAULT_OUTREACH_CAPS = {
   weekdaysOnly: true
 };
 
+// Compliance identity defaults (CAN-SPAM). Baked in so assembleCompliantMessage never throws
+// for missing config in production; a stored outreachConfig still overrides any field. Setting
+// these is the go-live config step — they do NOT enable sending (autopilot + OUTREACH_LIVE_SEND
+// remain the gates).
+export const OUTREACH_IDENTITY_DEFAULTS = Object.freeze({
+  postalAddress: "8 The Green, Suite D, Dover, DE 19901",
+  fromEmail: "roger@legalease.com",
+  fromName: "Roger Roman",
+  sendingDomain: "legalease.com",
+  companyName: "LegalEase"
+});
+
 const clean = (v = "") => String(v ?? "").trim();
 const lower = (v = "") => clean(v).toLowerCase();
 const list = (v) => (Array.isArray(v) ? v : []);
+
+// The single OUTREACH_LIVE_SEND gate reader (default OFF). Anything but a truthy flag => dry-run.
+export function outreachLiveSendEnabled(env = process.env) {
+  return ["true", "1", "yes", "on"].includes(String((env || {}).OUTREACH_LIVE_SEND || "").toLowerCase());
+}
 
 export function normalizeEmail(email = "") {
   return lower(email);
@@ -223,13 +247,34 @@ export const PROD_PUBLIC_BASE = "https://legalease-command-center-prod.onrender.
 export function outreachConfigOf(state = {}) {
   const cfg = state.outreachConfig || {};
   return {
+    ...OUTREACH_IDENTITY_DEFAULTS,
     ...cfg,
     caps: { ...DEFAULT_OUTREACH_CAPS, ...(cfg.caps || {}) }
   };
 }
 
+// Split a single-line postal address into a display block: street/suite line + city/state/zip
+// line. The last two comma-segments are the locality; everything before is the street block.
+// "8 The Green, Suite D, Dover, DE 19901" => { line1:"8 The Green, Suite D", line2:"Dover, DE 19901" }.
+export function splitPostalAddress(address = "") {
+  const segs = clean(address).split(",").map((s) => s.trim()).filter(Boolean);
+  if (segs.length <= 1) return { line1: clean(address), line2: "" };
+  if (segs.length === 2) return { line1: segs[0], line2: segs[1] };
+  return { line1: segs.slice(0, -2).join(", "), line2: segs.slice(-2).join(", ") };
+}
+
+function escapeHtml(s = "") {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 // THROWS if the postal address is unset: no compliant message can be built, so none can
-// ever be sent. This is the structural CAN-SPAM guarantee.
+// ever be sent. This is the structural CAN-SPAM guarantee. Produces BOTH a plaintext and an
+// HTML body (the calendar link renders as a real hyperlink in HTML, a raw URL in plaintext) and
+// carries the resolved classification/sequence/touch so the send gate can fail closed.
 export function assembleCompliantMessage({ contact = {}, org = {}, step = {}, config = {}, baseUrl = PROD_PUBLIC_BASE, env = process.env } = {}) {
   const postalAddress = clean(config.postalAddress);
   if (!postalAddress) {
@@ -242,18 +287,33 @@ export function assembleCompliantMessage({ contact = {}, org = {}, step = {}, co
   }
   const toEmail = normalizeEmail(contact.email);
   const subject = clean(step.subject);
-  const bodyText = clean(step.body);
+  const rawBody = clean(step.body);
+
+  const classification = clean(step.classification || contact.classification || org.classification);
+  const seq = resolveSequenceForClassification(classification);
+  const firstName = clean(contact.contact_name).split(/\s+/)[0] || "";
+  const organization = clean(org.organization_name || contact.organization_name);
+  const bodyText = renderTouchText(rawBody, { firstName, organization, calendarUrl: CALENDAR_URL });
+  const bodyHtml = renderTouchHtml(rawBody, { firstName, organization, calendarUrl: CALENDAR_URL });
 
   const token = signUnsubscribeToken({ contact_id: contact.contact_id || "", email: toEmail, campaign_id: step.campaign_id || "" }, env);
   const unsubscribeUrl = `${String(baseUrl).replace(/\/+$/, "")}/api/outreach/unsubscribe?token=${encodeURIComponent(token)}`;
 
-  const footer = [
-    "",
+  // CAN-SPAM footer: brand + physical postal address (street line / city-state-zip line) + unsubscribe.
+  const brand = clean(config.companyName || org.organization_name || "LegalEase");
+  const addr = splitPostalAddress(postalAddress);
+  const footerLines = ["", "—", brand, addr.line1];
+  if (addr.line2) footerLines.push(addr.line2);
+  footerLines.push(`Unsubscribe: ${unsubscribeUrl}`);
+  const footer = footerLines.join("\n");
+
+  const footerHtml = [
     "—",
-    clean(config.fromName || org.organization_name || "LegalEase"),
-    postalAddress,
-    `Unsubscribe: ${unsubscribeUrl}`
-  ].join("\n");
+    escapeHtml(brand),
+    escapeHtml(addr.line1),
+    ...(addr.line2 ? [escapeHtml(addr.line2)] : []),
+    `Unsubscribe: <a href="${escapeHtml(unsubscribeUrl)}">${escapeHtml(unsubscribeUrl)}</a>`
+  ].join("<br>\n");
 
   return {
     to: toEmail,
@@ -262,6 +322,7 @@ export function assembleCompliantMessage({ contact = {}, org = {}, step = {}, co
     replyTo,
     subject,
     text: `${bodyText}\n${footer}`,
+    html: `<div>${bodyHtml}<br>\n<br>\n${footerHtml}</div>`,
     headers: {
       // Gmail/Yahoo one-click unsubscribe (2024 bulk-sender rules).
       "List-Unsubscribe": `<${unsubscribeUrl}>`,
@@ -269,6 +330,9 @@ export function assembleCompliantMessage({ contact = {}, org = {}, step = {}, co
     },
     unsubscribeUrl,
     postalAddress,
+    classification,
+    sequence: seq.sequenceId,
+    touch: step.step_number || 1,
     contact_id: contact.contact_id || "",
     campaign_id: step.campaign_id || "",
     step_number: step.step_number || 1
@@ -286,8 +350,43 @@ export function validateCompliance(message = {}) {
   if (!message.headers || !clean(message.headers["List-Unsubscribe"])) errors.push("missing_list_unsubscribe");
   if (!message.headers || !/one-click/i.test(clean(message.headers["List-Unsubscribe-Post"]))) errors.push("missing_one_click");
   if (!clean(message.unsubscribeUrl)) errors.push("missing_unsubscribe_link");
-  if (!clean(message.text) || !clean(message.text).includes(clean(message.postalAddress))) errors.push("address_not_in_body");
+  if (!clean(message.text) || !addressInBody(message.text, message.postalAddress)) errors.push("address_not_in_body");
   return { ok: errors.length === 0, errors };
+}
+
+// Address-presence check tolerant of cosmetic line-wrapping: the footer may render the address
+// across two lines (street / city-state-zip), so compare comma-and-whitespace-normalized forms.
+function normalizeAddr(s = "") {
+  return clean(s).toLowerCase().replace(/,/g, " ").replace(/\s+/g, " ").trim();
+}
+function addressInBody(text = "", postalAddress = "") {
+  const addr = normalizeAddr(postalAddress);
+  return addr.length > 0 && normalizeAddr(text).includes(addr);
+}
+
+// Send-time routing + gate decision. Fail-closed, no default sequence. Returns one of:
+//   { status:"not_sent", reason, classification }            — do_not_enroll / unmapped / non-compliant
+//   { status:"dry_run", sequence, touch, classification, to, subject, liveSend:false }  — gate off
+//   { status:"live",    sequence, touch, classification, to, subject, liveSend:true }   — caller does the SendGrid call
+// "live" is the ONLY status that authorizes a real network send, and only when OUTREACH_LIVE_SEND
+// is truthy AND a SendGrid key is present.
+export function resolveOutreachSendDecision(message = {}, { env = process.env } = {}) {
+  const classification = clean(message.classification);
+  const seq = resolveSequenceForClassification(classification);
+  if (!seq.ok) return { status: "not_sent", reason: seq.reason, classification };
+  const compliance = validateCompliance(message);
+  if (!compliance.ok) return { status: "not_sent", reason: `compliance:${compliance.errors.join(",")}`, classification };
+  const base = {
+    sequence: seq.sequenceId,
+    touch: message.touch || message.step_number || 1,
+    classification,
+    to: clean(message.to),
+    subject: clean(message.subject)
+  };
+  if (!outreachLiveSendEnabled(env) || !clean((env || {}).SENDGRID_API_KEY)) {
+    return { status: "dry_run", ...base, liveSend: false };
+  }
+  return { status: "live", ...base, liveSend: true };
 }
 
 function isDeceptiveSubject(subject = "") {
@@ -416,6 +515,11 @@ export function planOutreach(state = {}, ctx = {}) {
       const supp = isSuppressed(contact, { state, org });
       if (supp.suppressed) { observations.push({ type: "skip_suppressed", contact_id: contact.contact_id, reason: supp.reason }); continue; }
 
+      // Fail-closed classification routing: no mapped sequence (or do-not-enroll/CSI) => never queue.
+      const classification = contact.classification || campaign.classification;
+      const seqRes = resolveSequenceForClassification(classification);
+      if (!seqRes.ok) { observations.push({ type: `skip_${seqRes.reason}`, contact_id: contact.contact_id, classification: clean(classification) }); continue; }
+
       const { count, lastAt } = touchesFor(state, contact.contact_id, campaignId);
       if (count >= caps.maxTouches) { observations.push({ type: "sequence_complete", contact_id: contact.contact_id }); continue; }
       if (!spacingElapsed(lastAt, caps.minSpacingBusinessDays, nowMs)) { observations.push({ type: "spacing_wait", contact_id: contact.contact_id }); continue; }
@@ -426,7 +530,7 @@ export function planOutreach(state = {}, ctx = {}) {
 
       let message;
       try {
-        message = assembleCompliantMessage({ contact, org, step: { ...step, campaign_id: campaignId }, config, baseUrl: config.publicBaseUrl || PROD_PUBLIC_BASE, env });
+        message = assembleCompliantMessage({ contact, org, step: { ...step, campaign_id: campaignId, classification }, config, baseUrl: config.publicBaseUrl || PROD_PUBLIC_BASE, env });
       } catch (error) {
         observations.push({ type: "compliance_blocked_assembly", reason: String(error.message || error) });
         continue; // e.g. no postal address — nothing can be built or sent
@@ -489,6 +593,13 @@ export async function actOutreach(state = {}, ctx = {}) {
       results.push({ contact_id: item.contact_id, status: "blocked", reason: `suppressed:${supp.reason}` });
       continue;
     }
+    // Re-check classification routing at SEND time (fail-closed; no default sequence).
+    const seqRes = resolveSequenceForClassification(item.classification);
+    if (!seqRes.ok) {
+      markQueue(next, item.id, "rejected", { reject_reason: `routing:${seqRes.reason}` });
+      results.push({ contact_id: item.contact_id, status: "not_sent", reason: seqRes.reason });
+      continue;
+    }
     // Re-validate compliance at SEND time.
     const compliance = validateCompliance(item.message || {});
     if (!compliance.ok) {
@@ -508,6 +619,12 @@ export async function actOutreach(state = {}, ctx = {}) {
     if (typeof ctx.runOutreachSend === "function") {
       try {
         const r = (await ctx.runOutreachSend(item.message, { env })) || {};
+        // The send executor can itself fail closed (routing/compliance) — honor it, don't record a send.
+        if (lower(r.status) === "not_sent") {
+          markQueue(next, item.id, "rejected", { reject_reason: `routing:${r.reason || "not_sent"}` });
+          results.push({ contact_id: item.contact_id, status: "not_sent", reason: r.reason || "not_sent" });
+          continue;
+        }
         sendOutcome = { status: lower(r.status) === "sent" ? "sent" : (r.status || "dry_run"), provider: r.provider || "unknown", provider_message_id: r.provider_message_id || "" };
       } catch (error) {
         markQueue(next, item.id, "approved", {}); // leave for retry

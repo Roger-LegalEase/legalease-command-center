@@ -159,7 +159,8 @@ function testAssembleThrowsNoAddress() {
   );
   // and a fully-configured assembly succeeds + is compliant
   const msg = assembleCompliantMessage({ contact: state.outreachContacts[0], org: state.outreachOrganizations[0], step: stepFor(state), config: state.outreachConfig, env: {} });
-  assert.ok(msg.text.includes(CONFIG.postalAddress), "postal address embedded in body");
+  // Footer renders the postal address across street + locality lines; both parts must appear.
+  assert.ok(msg.text.includes("907 W Peace Street") && msg.text.includes("Canton, MS 39046"), "postal address embedded in body");
   assert.ok(msg.headers["List-Unsubscribe"], "List-Unsubscribe header present");
   assert.match(msg.headers["List-Unsubscribe-Post"], /one-click/i, "one-click header present");
   ok("assembleCompliantMessage throws with no postal address (and builds compliant msg otherwise)");

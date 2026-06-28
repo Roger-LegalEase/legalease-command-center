@@ -80,8 +80,8 @@ function testClassificationVocab() {
   assert.deepEqual([...OUTREACH_CLASSIFICATIONS].sort(), [...B2_CLASSIFICATIONS].sort(), "B5 vocab === B2 vocab");
   assert.deepEqual(
     [...OUTREACH_CLASSIFICATIONS].sort(),
-    ["county_reentry", "government", "legal_aid", "nonprofit", "public_defender", "second_chance_employer"],
-    "exactly the six locked classifications"
+    ["clinic", "county_reentry", "funders_intermediaries", "government", "legal_aid", "nonprofit", "public_defender", "second_chance_employer"],
+    "exactly the locked classifications (incl. clinic + funders_intermediaries added for B2 sequence routing)"
   );
   // Every label classifyFromText can emit is a member of the vocab (or "").
   const samples = [

@@ -13,7 +13,9 @@ export const OUTREACH_CLASSIFICATIONS = Object.freeze([
   "public_defender",
   "county_reentry",
   "second_chance_employer",
+  "clinic",                  // clinic-running orgs (legal-aid/PD/nonprofit that run clearing clinics)
   "nonprofit",
+  "funders_intermediaries",  // funders / re-grantors / intermediaries
   "government"
 ]);
 
