@@ -41,7 +41,9 @@ for (const r of recipients) {
   if (contactEmails.has(r)) fail(`recipient ${r} is in the reactivation list — refusing (seed test is for Roger only).`);
 }
 
-const config = outreachConfigOf(state); // baked Delaware compliance identity
+// Baked Delaware compliance identity, with the From DISPLAY NAME overridden to "LegalEase" so the
+// seed renders EXACTLY as the live campaign will (parent-brand From name, not a personal name).
+const config = { ...outreachConfigOf(state), fromName: "LegalEase" };
 const touch = getReactivationTouch(0);  // Touch 0 = seed
 if (!touch) fail("could not load the seed touch.");
 

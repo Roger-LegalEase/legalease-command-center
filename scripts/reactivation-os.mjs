@@ -371,8 +371,10 @@ export function applyReactivationEvent(state = {}, ev = {}, { now = nowIso() } =
 // 7. PLAN / ACT — wave-released, suppression-checked, compliant, capped, threshold-paused sends.
 // ---------------------------------------------------------------------------
 function reactivationMessageConfig(state = {}) {
-  // Reuse the B2 compliance identity (Dover DE postal, From, signature) — same legal footer.
-  return outreachConfigOf(state);
+  // Reuse the B2 compliance identity (Dover DE postal, From email, signature, footer) but override
+  // the From DISPLAY NAME to the parent brand "LegalEase" — more recognition than a personal name
+  // for this consumer list. Scoped to this campaign; does NOT touch the B2 outreach identity.
+  return { ...outreachConfigOf(state), fromName: "LegalEase" };
 }
 
 function todaysReactivationTally(state = {}, parts = etParts()) {
@@ -534,11 +536,12 @@ export async function actReactivation(state = {}, ctx = {}) {
 // specific URL with the consumer return URL in both text and html bodies.
 function retargetCta(message, ctaUrl, touch) {
   if (!ctaUrl) return message;
-  const calMatch = String(touch.body).match(/\[CALENDAR_LINK:([^\]]+)\]/);
-  void calMatch;
+  // Per-touch attribution: utm_content=touch<N>.
+  const step = touch && (touch.step_number != null) ? touch.step_number : null;
+  const url = step != null ? `${ctaUrl}${ctaUrl.includes("?") ? "&" : "?"}utm_content=touch${step}` : ctaUrl;
   // Replace the calendar URL occurrences (text + href) with the reactivation URL.
-  const text = String(message.text || "").split(/https:\/\/calendar\.google\.com\/[^\s)]+/).join(ctaUrl);
-  const html = String(message.html || "").split(/https:\/\/calendar\.google\.com\/[^"<\s)]+/).join(ctaUrl);
+  const text = String(message.text || "").split(/https:\/\/calendar\.google\.com\/[^\s)]+/).join(url);
+  const html = String(message.html || "").split(/https:\/\/calendar\.google\.com\/[^"<\s)]+/).join(url);
   return { ...message, text, html };
 }
 
