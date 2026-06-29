@@ -11,6 +11,7 @@ import { runHeartbeat, autopilotEnabled } from "./heartbeat.mjs";
 import { buildHeartbeatRegistry, HEARTBEAT_ENGINE_IDS } from "./heartbeat-engines.mjs";
 import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_QUEUE_TYPE, OUTREACH_ENGINE_ID, resolveOutreachSendDecision, outreachLiveSendEnabled } from "./outreach-os.mjs";
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
+import { applyReactivationEvent, reactivationCampaignOf, reactivationLiveSendEnabled, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
@@ -32198,6 +32199,12 @@ async function handleRequest(request, response) {
         // act() also only runs when its autopilot toggle is ON (default OFF) — gated twice over,
         // plus fail-closed classification routing inside the executor.
         runOutreachSend,
+        // MVP reactivation send (consumer B2C) — reuses the SAME gated SendGrid client as B2
+        // (runOutreachSend); the message is already CAN-SPAM-assembled identically. Stays dry_run
+        // until REACTIVATION_LIVE_SEND is flipped AND a SendGrid key is present, and the
+        // reactivation engine's act() only runs when its autopilot toggle is ON (default OFF) and
+        // only for RELEASED waves. Gated four times over.
+        runReactivationSend: runOutreachSend,
         // B5 prospect discovery — inert (zero rows) until the live Tier-1 dataset clients are
         // wired and PROSPECT_LIVE_DISCOVERY is flipped. The prospect engine's act() only runs
         // when its autopilot toggle is ON (default OFF), so this is gated twice over.
@@ -32326,6 +32333,11 @@ async function handleRequest(request, response) {
         } else if (["unsubscribe", "group_unsubscribe", "spamreport"].includes(type)) {
           currentState = recordSuppression(currentState, { email, reason: "unsubscribed", source: "sendgrid_webhook" });
         }
+        // MVP reactivation: if this email is a reactivation contact, also record the event into
+        // the campaign ledger (delivered/click/bounce/spamreport/unsubscribe) and pause that
+        // contact's cadence. No-op for non-reactivation emails. Feeds per-wave metrics + the
+        // stop-threshold monitor. (delivered/click are tracked here only for the consumer campaign.)
+        currentState = applyReactivationEvent(currentState, { event: type, email, reason: ev.reason || "" });
       }
       await store.writeState(currentState);
       sendJson(response, { ok: true, processed: list.length });
@@ -32399,6 +32411,46 @@ async function handleRequest(request, response) {
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update outreach config." }, 400);
     }
+    return;
+  }
+
+  // ---- MVP reactivation (consumer B2C) ----------
+  // Status — contact/wave counts, send posture, per-wave metrics, threshold state (read-only).
+  if (url.pathname === "/api/reactivation/status" && request.method === "GET") {
+    const currentState = await store.readState();
+    const config = reactivationCampaignOf(currentState);
+    const contacts = serverList(currentState.reactivationContacts);
+    const byWave = {};
+    let enrolled = 0, suppressed = 0;
+    for (const c of contacts) {
+      const w = c.wave || "unassigned";
+      byWave[w] = (byWave[w] || 0) + 1;
+      if (c.enrolled_at) enrolled++;
+      if (c.suppressed_at_import) suppressed++;
+    }
+    const thr = evaluateThresholds(currentState, config);
+    sendJson(response, {
+      autopilotEnabled: autopilotEnabled(currentState, REACTIVATION_ENGINE_ID, process.env),
+      liveSendWired: true,
+      liveSendFlag: reactivationLiveSendEnabled(process.env),
+      sendgridKeyPresent: Boolean(process.env.SENDGRID_API_KEY),
+      campaignStatus: config.status,
+      pausedReason: config.pausedReason || "",
+      releasedWaves: config.releasedWaves,
+      autoAdvanceWaves: config.autoAdvanceWaves,
+      waves: config.waves,
+      caps: config.caps,
+      thresholds: config.thresholds,
+      totalContacts: contacts.length,
+      enrolled,
+      suppressedAtImport: suppressed,
+      contactsByWave: byWave,
+      rates: campaignRates(currentState),
+      thresholdTripped: thr.tripped,
+      thresholdReasons: thr.reasons,
+      belowSample: thr.belowSample,
+      metricsByWave: waveMetrics(currentState)
+    });
     return;
   }
 

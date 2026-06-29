@@ -16,6 +16,7 @@ import { buildProspectEngine, PROSPECT_ENGINE_ID } from "./prospect-discovery.mj
 import { buildCodebaseHealthEngine, CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { buildEngagementGrowthEngine, ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
 import { buildAllOperatingLoopEngines, OPERATING_LOOP_ENGINE_IDS } from "./operating-loops.mjs";
+import { buildReactivationEngine, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 
 export function buildHeartbeatRegistry(deps = {}) {
   const engines = [];
@@ -119,9 +120,18 @@ export function buildHeartbeatRegistry(deps = {}) {
     engines.push(engine);
   }
 
+  // MVP reactivation sequencer (consumer B2C, SEPARATE from the RCAP B2 outreach engine). plan()
+  // computes due touches for RELEASED waves with no side effects; act() sends only when autopilot
+  // is ON, only for released waves, only within caps, and auto-pauses the campaign if a stop-
+  // threshold (bounce/complaint/unsubscribe) trips. The live send is delegated to
+  // deps.runReactivationSend (the server injects runOutreachSend); with no dep, or with
+  // REACTIVATION_LIVE_SEND off, act() records dry-run attempts and performs NO network send.
+  // Always registered so the autopilot toggle surfaces; safe by construction (four gates).
+  engines.push(buildReactivationEngine({ runReactivationSend: deps.runReactivationSend }));
+
   return engines;
 }
 
 // Stable list of registered engine ids (for surfacing autopilot toggles in the UI even
 // when an engine hasn't run yet). Mirrors buildHeartbeatRegistry's ids.
-export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID, ENGAGEMENT_GROWTH_ENGINE_ID, ...OPERATING_LOOP_ENGINE_IDS];
+export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID, ENGAGEMENT_GROWTH_ENGINE_ID, ...OPERATING_LOOP_ENGINE_IDS, REACTIVATION_ENGINE_ID];

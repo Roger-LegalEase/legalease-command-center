@@ -368,6 +368,45 @@ export function buildDataModelInventory() {
       related_routes: ["#today"],
       related_tests: ["scripts/test-operating-loops.mjs"],
       duplicate_risk_level: "medium"
+    },
+    {
+      collection: "reactivationContacts",
+      purpose: "MVP reactivation (consumer B2C): one row per former Expungement.ai/LegalEase user staged for re-engagement. Holds email, provider bucket, priority (warm/cold/never_logged_in), assigned wave, enrollment timestamp, and per-contact pause signals (replied/clicked/converted/unsubscribed/bounced/complained). Inert until its wave is released; SEPARATE from B2 outreachContacts.",
+      storage_mode: "hybrid",
+      required_fields: ["contact_id", "email", "campaign_id"],
+      optional_fields: ["first_name", "full_name", "phone", "domain", "provider", "priority", "wave", "enrolled_at", "sequence_status", "replied", "clicked", "converted", "unsubscribed", "bounced", "complained", "do_not_contact", "suppressed_at_import"],
+      stable_key_fields: ["contact_id"],
+      idempotency_rules: "Stable contact_id = react-<sha1(normalized email)>; re-import upserts by contact_id and never duplicates.",
+      audit_behavior: "Import stages contacts only (no send). Enrollment happens on wave release. The reactivation engine has an act() path but sends only when REACTIVATION_LIVE_SEND is on, autopilot is on, and the wave is released.",
+      related_routes: ["#reactivation"],
+      related_tests: ["scripts/test-reactivation-os.mjs"],
+      duplicate_risk_level: "medium"
+    },
+    {
+      collection: "reactivationAttempts",
+      purpose: "MVP reactivation: one row per send attempt (sent or dry_run) for a consumer touch, carrying campaign_id, wave, step_number, recipient, provider, and SendGrid message id. The basis for per-wave sent counts and stop-threshold denominators.",
+      storage_mode: "hybrid",
+      required_fields: ["id", "contact_id", "campaign_id", "status"],
+      optional_fields: ["wave", "step_number", "to", "provider", "provider_message_id", "sent_date", "created_at"],
+      stable_key_fields: ["id"],
+      idempotency_rules: "One attempt per contact per touch per send; cadence + spacing prevent re-sending the same touch.",
+      audit_behavior: "Recorded by the engine act() path. status is 'sent' only when a live SendGrid send actually occurred; otherwise 'dry_run'.",
+      related_routes: ["#reactivation"],
+      related_tests: ["scripts/test-reactivation-os.mjs"],
+      duplicate_risk_level: "low"
+    },
+    {
+      collection: "reactivationEvents",
+      purpose: "MVP reactivation: SendGrid (and internal) engagement events for consumer contacts — delivered, click, bounce, spamreport, unsubscribe — feeding per-wave metrics and the stop-threshold monitor (hard_bounce/spam_complaint/unsubscribe rates).",
+      storage_mode: "hybrid",
+      required_fields: ["id", "email", "type"],
+      optional_fields: ["contact_id", "reason", "created_at"],
+      stable_key_fields: ["id"],
+      idempotency_rules: "Append-only event log (capped). Hard signals also write a sticky suppression and pause the contact.",
+      audit_behavior: "Appended by the /api/outreach/webhooks/sendgrid handler via applyReactivationEvent for emails that belong to a reactivation contact (no-op otherwise).",
+      related_routes: ["#reactivation"],
+      related_tests: ["scripts/test-reactivation-os.mjs"],
+      duplicate_risk_level: "low"
     }
   ];
 }

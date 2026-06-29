@@ -21,6 +21,12 @@ data/exports/
 !data/seed/
 !data/seed/**
 
+# Consumer PII — the MVP reactivation list (real emails/phones). Read locally by
+# reactivation-import.mjs; NEVER committed (the workbook's own data-hygiene note forbids it).
+expungement_ai_mvp_users_organized.xlsx
+*mvp_users*.xlsx
+*mvp-users*.xlsx
+
 # Local planning artifacts (kept local, not versioned)
 LegalEase_Fresh_Start_Sprint_Wilma_Optimized.xlsx
 legalease-os-redesign.html

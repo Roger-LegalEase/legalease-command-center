@@ -96,9 +96,16 @@ const coreStateCollections = [
   // B7 operating-loop registry. MUST stay in sync with OPERATING_PULSE_COLLECTIONS in
   // operating-loops.mjs, or the per-loop pulse snapshots silently fail to persist (same trap).
   // test-operating-loops.mjs asserts membership. (os-health loop reuses osHealthSnapshots above.)
-  "operatingPulseSnapshots"
+  "operatingPulseSnapshots",
+  // MVP reactivation (consumer B2C). MUST stay in sync with REACTIVATION_COLLECTIONS /
+  // REACTIVATION_SINGLETON_COLLECTIONS in reactivation-os.mjs, or the contacts/attempts/events
+  // silently fail to persist to Supabase (same trap). test-reactivation-os.mjs asserts membership.
+  "reactivationContacts",
+  "reactivationAttempts",
+  "reactivationEvents",
+  "reactivationCampaign"
 ];
-const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig"]);
+const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign"]);
 
 function parseBoolean(value = "") {
   return ["true", "1", "yes", "on"].includes(String(value || "").toLowerCase());
