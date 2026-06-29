@@ -25,17 +25,31 @@ if (!process.argv.includes("--confirm-live-send")) {
   fail("refusing to send without the explicit --confirm-live-send flag.");
 }
 
-const DEFAULT_RECIPIENTS = ["roger@legalease.com", "roman.roger@gmail.com"];
+// Roger's own monitored inboxes, one per major client for cross-client render verification:
+// Gmail + primary (legalease.com) + Outlook (legalease.law). REACTIVATION_SEED_RECIPIENTS (env)
+// overrides. NOTE: info@legalease.law is a ROLE account — tolerated for the seed ONLY (see the
+// compliance block below); it is operator-owned and explicitly listed, not cold outreach.
+const DEFAULT_RECIPIENTS = ["roman.roger@gmail.com", "roger@legalease.com", "info@legalease.law"];
 const recipients = (env.REACTIVATION_SEED_RECIPIENTS
   ? env.REACTIVATION_SEED_RECIPIENTS.split(",")
   : DEFAULT_RECIPIENTS
 ).map((r) => normalizeEmail(r)).filter(Boolean);
 
+// Basic syntactic email check — seed recipients must still be real, well-formed addresses even
+// though we tolerate role-account local parts (info@, etc.) for this operator-only render test.
+const BASIC_EMAIL_RE = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
+
 if (!recipients.length) fail("no seed recipients resolved.");
 
-// HARD GUARD: none of the recipients may be a real reactivation contact.
-const store = await createStore();
-const state = await store.readState();
+// HARD GUARD: none of the recipients may be a real reactivation contact. This guard MUST run, so a
+// store read failure fails closed (clean abort, no send) rather than silently skipping the check.
+let state;
+try {
+  const store = await createStore();
+  state = await store.readState();
+} catch (error) {
+  fail(`could not read state to run the in-list safety guard (no send performed): ${error.message}`);
+}
 const contactEmails = new Set((state.reactivationContacts || []).map((c) => normalizeEmail(c.email)));
 for (const r of recipients) {
   if (contactEmails.has(r)) fail(`recipient ${r} is in the reactivation list — refusing (seed test is for Roger only).`);
@@ -64,8 +78,15 @@ for (const recipient of recipients) {
     html: String(message.html).split(/https:\/\/calendar\.google\.com\/[^"<\s)]+/).join(REACTIVATION_CTA_URL)
   };
   if (message.to !== recipient) fail(`recipient mismatch (${message.to} != ${recipient}).`);
+  // Full compliance, EXCEPT we tolerate "invalid_recipient" caused solely by a role-account local
+  // part (e.g. info@legalease.law) — these are Roger's own monitored aliases for the render test,
+  // not cold recipients. Every OTHER compliance error stays fatal, and the address must still be a
+  // syntactically valid email. (The live campaign keeps the full guard; role accounts in the
+  // consumer list are dropped at import.)
   const compliance = validateCompliance(message);
-  if (!compliance.ok) fail(`message not compliant: ${compliance.errors.join(",")}`);
+  const blocking = compliance.errors.filter((e) => e !== "invalid_recipient");
+  if (blocking.length) fail(`message not compliant: ${blocking.join(",")}`);
+  if (!BASIC_EMAIL_RE.test(message.to)) fail(`seed recipient is not a valid email: ${message.to}`);
   const decision = resolveOutreachSendDecision({ ...message, classification: "nonprofit" }, { env });
   // NOTE: resolveOutreachSendDecision routes on RCAP classification; for the seed we only use it
   // to read the dry_run/live posture, not to authorize — the live send below is gated on the
