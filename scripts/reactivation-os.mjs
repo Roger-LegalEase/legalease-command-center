@@ -81,8 +81,12 @@ export const DEFAULT_REACTIVATION_CONFIG = Object.freeze({
     { wave: 4, plannedSize: null }   // remainder
   ],
   caps: {
-    perTickMax: 50,            // intraday spread: at most N sends per hourly tick (no all-at-once burst)
-    perWaveDayCap: 1400,       // ceiling on first-touch sends in a single day (covers the largest wave)
+    // Intraday spread: at most N sends per hourly tick (no all-at-once burst). 150/tick x the
+    // 9-hour ET window (8..16) = up to ~1,350/day, so even Wave 3 (~1,200) lands within a single
+    // business day, stratified by domain — the "aggressive ramp, spread over the day" intent.
+    // Conservative-but-tunable: lower it to slow the ramp, raise it to compress further.
+    perTickMax: 150,
+    perWaveDayCap: 1400,       // ceiling on sends in a single day (covers the largest single-day wave)
     maxTouches: REACTIVATION_MAX_TOUCHES, // 5
     minSpacingDays: 2,         // floor between touches for one contact
     windowStartHourET: 8,
