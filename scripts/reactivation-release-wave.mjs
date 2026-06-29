@@ -8,6 +8,13 @@
 //
 //   node scripts/reactivation-release-wave.mjs 1            # DRY RUN: preview wave 1, write NOTHING
 //   node scripts/reactivation-release-wave.mjs 1 --confirm  # release wave 1 (enroll its contacts)
+//   node scripts/reactivation-release-wave.mjs 1 --confirm --start-today
+//                                                           # release AND backdate enrollment by one
+//                                                           # cadence day so Touch 1 is due in TODAY's
+//                                                           # ET window (instead of next business day).
+//                                                           # Throttle (perTickMax), provider
+//                                                           # stratification, and the 8-5 ET weekday
+//                                                           # send window ALL still apply.
 //
 // A live email goes out ONLY when ALL of these are also true (this script does none of them):
 //   - REACTIVATION_LIVE_SEND=true   (else the engine records dry-run attempts, no network send)
@@ -29,6 +36,7 @@ const lower = (v = "") => String(v ?? "").trim().toLowerCase();
 async function main() {
   const args = process.argv.slice(2);
   const confirm = args.includes("--confirm");
+  const startToday = args.includes("--start-today");
   const waveArg = args.find((a) => /^\d+$/.test(a));
   if (!waveArg) { console.error("Usage: node scripts/reactivation-release-wave.mjs <waveNumber> [--confirm]"); process.exit(1); }
   const waveNumber = Number(waveArg);
@@ -42,6 +50,15 @@ async function main() {
     console.error(`Wave ${waveNumber} is not in the campaign plan (${config.waves.map((w) => w.wave).join(", ")}). Aborting.`);
     process.exit(1);
   }
+
+  // --start-today backdates enrollment by one cadence day (the first cadence offset) so Touch 1's
+  // due-day has already elapsed and it fires on the next IN-WINDOW tick today, rather than +1 day.
+  // The throttle (perTickMax), provider stratification, and the ET weekday send window still gate it.
+  const firstCadenceDay = Number((config.cadenceDays || [1])[0]) || 1;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const releaseNow = startToday
+    ? new Date(Date.now() - firstCadenceDay * DAY_MS - 60_000).toISOString() // 1-min buffer past the due-day boundary
+    : new Date().toISOString();
 
   // CRITICAL SAFETY: operate on ONLY the reactivation collections and write back ONLY those, so the
   // scoped reconcile can never touch any other prod collection (same pattern as reactivation-import).
@@ -73,13 +90,14 @@ async function main() {
   console.log(`  SENDGRID_API_KEY set          : ${Boolean(process.env.SENDGRID_API_KEY)}`);
   console.log(`  autopilot (${REACTIVATION_ENGINE_ID}) : ${autopilotEnabled(full, REACTIVATION_ENGINE_ID, process.env) ? "ON" : "OFF"}`);
   console.log(`  campaign status / released    : ${config.status} / [${config.releasedWaves.join(", ")}]`);
+  console.log(`  enrollment timing             : ${startToday ? `start-today (enrolled_at backdated ${firstCadenceDay}d -> Touch 1 due in today's window)` : "standard (Touch 1 due next business-day window)"}`);
 
   if (!confirm) {
     console.log(`\nDRY RUN — nothing written. Re-run with --confirm to release Wave ${waveNumber}.`);
     return;
   }
 
-  const rel = releaseWave(scoped, waveNumber);
+  const rel = releaseWave(scoped, waveNumber, { now: releaseNow });
   const writeState = {
     reactivationContacts: rel.state.reactivationContacts,
     reactivationAttempts: scoped.reactivationAttempts,
@@ -90,10 +108,12 @@ async function main() {
 
   console.log(`\nRELEASED Wave ${waveNumber} (reactivation collections only — no other prod data touched).`);
   console.log(`  Enrolled now     : ${rel.enrolled}`);
+  console.log(`  enrolled_at      : ${releaseNow}${startToday ? `  (backdated ${firstCadenceDay}d for --start-today)` : ""}`);
   console.log(`  Campaign status  : ${writeState.reactivationCampaign.status}`);
   console.log(`  Released waves   : [${(writeState.reactivationCampaign.releasedWaves || []).join(", ")}]`);
-  console.log(`\nThe heartbeat will send Touch 1 to enrolled contacts on its next in-window tick (Day-1`);
-  console.log(`cadence), throttled + provider-stratified — ONLY if the three gate states above are ON.`);
+  console.log(`\nThe heartbeat will send Touch 1 to enrolled contacts on its next in-window tick`);
+  console.log(`(${startToday ? "due in TODAY's ET window" : "Day-1 cadence: next business-day window"}), throttled + provider-stratified —`);
+  console.log(`ONLY if the three gate states above are ON.`);
 }
 
 main().catch((e) => { console.error("Release failed:", e.message); process.exit(1); });
