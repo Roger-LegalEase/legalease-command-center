@@ -103,7 +103,16 @@ const coreStateCollections = [
   "reactivationContacts",
   "reactivationAttempts",
   "reactivationEvents",
-  "reactivationCampaign"
+  "reactivationCampaign",
+  // RCAP revenue/workbook import foundation. MUST stay in sync with rcap-revenue-os.mjs, or
+  // workbook accounts/contacts/deal seeds/tasks silently fail to persist to Supabase.
+  "rcapRevenueAccounts",
+  "rcapRevenueContacts",
+  "rcapRevenueDealSeeds",
+  "rcapRevenueQueueTasks",
+  "rcapRevenueImportBatches",
+  "rcapRevenueEvents",
+  "rcapRevenueSignals"
 ];
 const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign"]);
 

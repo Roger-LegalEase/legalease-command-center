@@ -19,8 +19,8 @@ assert.match(server, /type="button" onclick="connectGoogle\(\)"/, "Connect Googl
 assert.match(server, /type="button" onclick="syncGmail\(\)"/, "Sync Gmail should be an explicit button.");
 assert.match(server, /type="button" onclick="syncCalendar\(\)"/, "Sync Calendar should be an explicit button.");
 assert.match(server, /Google sync never sends email or creates calendar events/, "Google sync controls should state read-only safety.");
-assert.match(server, /Safe mode:<\/strong> nothing posts, sends, files, or publishes automatically/, "Channels should show one calm section-level safety state.");
-assert.match(server, /Manual review required before anything live can happen/, "Collapsed channel details should explain manual review.");
+assert.match(server, /Connection status only:<\/strong> Connected, Needs attention, or Not connected/, "Settings connections should show one calm section-level status state.");
+assert.match(server, /Posting remains approval-gated|No agent auto-posts to social/, "Collapsed channel details should explain manual review.");
 assert.doesNotMatch(server, />Enable live publishing<\/button>/, "Enable live publishing should not appear as a normal visible control.");
 assert.doesNotMatch(server, /Live posting:\s*<strong>\\\$\{liveEnabled \? "Enabled" : "Disabled"\}<\/strong>/, "Channels should not repeat live posting status on every row.");
 assert.match(server, /onclick="startRcapActivation\(\)"/, "RCAP activation button should still be wired.");

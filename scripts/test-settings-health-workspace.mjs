@@ -15,62 +15,67 @@ function functionBlock(name) {
 }
 
 const renderBlock = functionBlock("render()");
-const settings = functionBlock("settingsHealthReadoutHtml");
+const settings = functionBlock("plainSettingsPageHtml");
+const connectionCards = functionBlock("plainConnectionCardsHtml");
 
+assert(renderBlock.includes("${plainSettingsPageHtml({ imageStatusTone, imageStatusLabel, imageStatusDetail, healthTone, schemaStale })}"), "Settings should render the consolidated plain Settings surface.");
 assert(renderBlock.includes('safeRenderModule("os-health", () => osHealthPageHtml(pageClass))'), "OS Health page should remain routable.");
 assert(renderBlock.includes('safeRenderModule("data-integrity", () => dataIntegrityPageHtml(pageClass))'), "Data Integrity page should remain routable.");
-assert(renderBlock.includes("${settingsHealthReadoutHtml()}"), "Settings should render the Settings & Health command readout.");
 
 for (const required of [
-  "Settings &amp; Health",
-  "Health, integrity, connectors, storage, and safety switches in one display-only control surface.",
-  "Health &amp; Integrity",
-  "Connector Readiness",
-  "Live Gate Config",
-  "Connected Accounts",
-  "Hosted Supabase State",
-  "Hosted Supabase state",
-  "not yet wired",
-  "state.osHealthSnapshots latest record",
-  "cockpitOsHealthRecord() fallback",
-  "state.dataIntegritySnapshots latest record",
-  "buildDataIntegritySnapshot(state) fallback",
-  "connectorItems() from connectorStatus + socialAccounts + env readiness",
-  "state.runtime.livePostingGates",
-  "buildSmokeTestStatus(state)",
-  "linkedinSetupState(state) + runtime.livePostingGates.linkedin",
-  "xSetupState(state) + runtime.livePostingGates.x",
-  "metaSetupState(state) + runtime live gates",
-  "state.persistence + Supabase health",
-  "End-of-build confirmation remains required.",
-  "Safety posture is display-only here.",
-  "This surface does not enable live gates, send email, publish posts, write calendars, activate dashboards, or contact external systems.",
-  "Refresh OS Health",
-  "Refresh State Integrity",
-  "Start Smoke Test",
-  "Open Connector Inbox",
-  "Open App Status",
-  "Open Data Check"
+  "Company Info",
+  "Connections",
+  "Sending &amp; Posting Rules",
+  "Contact &amp; Campaign Rules",
+  "Partner Defaults",
+  "Brand Assets",
+  "System Health Details",
+  "Operational work lives in Cockpit, Contacts, Campaigns, Revenue, Growth, Meetings, Support, Pages, and Health.",
+  "Connected",
+  "Needs attention",
+  "Not connected",
+  "Connect",
+  "Reconnect",
+  "Test",
+  "View technical details",
+  "No agent auto-sends to a human.",
+  "No agent auto-posts to social.",
+  "No agent auto-publishes partner pages.",
+  "Suppressed, unsubscribed, bounced, and do-not-contact records are not eligible for email.",
+  "This Settings page does not expose controls to enable gates."
 ]) {
-  assert(settings.includes(required), `Settings & Health should include ${required}`);
+  assert(settings.includes(required) || connectionCards.includes(required), `Settings should include ${required}`);
+}
+
+for (const connector of ["Gmail", "Google Calendar", "SendGrid", "LinkedIn", "Facebook", "Instagram", "X", "Stripe", "Supabase", "Render", "GitHub"]) {
+  assert(connectionCards.includes(connector), `Settings connection cards should include ${connector}`);
 }
 
 for (const forbidden of [
+  "<summary>Launch setup</summary>",
+  "<summary>Launch readiness</summary>",
+  "<summary>Backup & Restore</summary>",
+  "<summary>Admin seed data</summary>",
+  "<summary>Channels / Integrations</summary>",
+  "<summary>Production setup checklist</summary>",
+  "<summary>Content intelligence</summary>",
+  "<summary>Content library</summary>",
+  "<summary>Admin brand system</summary>",
   "Enable live gates",
   "Turn on publishing",
   "Send email",
   "Publish post",
   "Write calendar",
   "Activate dashboard",
-  "OAuth token",
   "secret value"
 ]) {
-  assert(!settings.includes(forbidden), `Settings & Health should not expose unsafe action/copy: ${forbidden}`);
+  assert(!settings.includes(forbidden), `Consolidated Settings should not expose old or unsafe section/action: ${forbidden}`);
 }
 
+assert(!settings.includes("settingsHealthReadoutHtml()"), "Settings should not embed the operational health workspace.");
+assert(settings.includes("Overall status"), "System Health Details should keep a compact health status inside the allowed health section.");
 assert(settings.includes("clientLiveGatesCount(state)"), "Settings should compute live gate count from runtime state.");
-assert(settings.includes("connectorItems()"), "Settings should use connectorItems for connector readiness.");
-assert(settings.includes("cockpitDataIntegrityRecord()"), "Settings should use the data integrity source.");
-assert(settings.includes("cockpitOsHealthRecord()"), "Settings should use the OS health source.");
+assert(connectionCards.includes("connectorItems()"), "Connection cards should use connectorItems for connector readiness.");
+assert(settings.includes("View technical details"), "Technical details should be hidden behind a disclosure.");
 
 console.log("settings health workspace tests passed.");
