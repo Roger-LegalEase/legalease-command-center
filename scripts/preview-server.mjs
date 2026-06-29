@@ -821,6 +821,52 @@ function hostedModeEnabled() {
   return !localDemoModeEnabled() && activeStorageBackend() === "supabase";
 }
 
+function safeRuntimeCommitHash() {
+  const candidates = [
+    process.env.RENDER_GIT_COMMIT,
+    process.env.COMMIT_SHA,
+    process.env.GIT_COMMIT,
+    process.env.SOURCE_VERSION,
+    process.env.VERCEL_GIT_COMMIT_SHA
+  ];
+  const value = candidates.map(item => String(item || "").trim()).find(item => /^[a-f0-9]{7,40}$/i.test(item));
+  return value || "unknown";
+}
+
+function safeRuntimeBuildTime() {
+  const candidates = [
+    process.env.RENDER_DEPLOY_CREATED_AT,
+    process.env.BUILD_TIME,
+    process.env.BUILD_TIMESTAMP,
+    process.env.DEPLOYED_AT,
+    process.env.RELEASE_CREATED_AT
+  ];
+  return candidates.map(item => String(item || "").trim()).find(Boolean) || "unknown";
+}
+
+async function safeVersionPayload() {
+  const hostingConfig = storageRuntimeConfig();
+  let supabaseConnected = false;
+  try {
+    const supabaseDb = await getSupabaseHealth();
+    supabaseConnected = Boolean(supabaseDb.connected);
+  } catch {
+    supabaseConnected = false;
+  }
+  return {
+    app: "LegalEase Command Center",
+    environment: hostedModeEnabled() ? "production" : "development",
+    commit: safeRuntimeCommitHash(),
+    deployedAt: safeRuntimeBuildTime(),
+    storageBackend: hostingConfig.activeStorageBackend,
+    localDemoMode: Boolean(hostingConfig.localDemoMode),
+    supabaseConnected,
+    liveGatesCount: Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length,
+    authProtected: true,
+    noSecretsExposed: true
+  };
+}
+
 function appBaseUrl() {
   return String(process.env.APP_BASE_URL || process.env.PUBLIC_APP_BASE_URL || process.env.APP_PUBLIC_URL || "").replace(/\/+$/, "");
 }
@@ -31469,6 +31515,11 @@ async function handleRequest(request, response) {
 	    await sendFinalPngDownload(decodeURIComponent(finalPngDownload[1]), response);
 	    return;
 	  }
+
+	  if (url.pathname === "/api/version" && request.method === "GET") {
+    sendJson(response, await safeVersionPayload());
+    return;
+  }
 
 	  if (url.pathname === "/api/health" && request.method === "GET") {
     const supabaseDb = await getSupabaseHealth();
