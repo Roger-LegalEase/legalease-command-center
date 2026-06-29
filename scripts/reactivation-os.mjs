@@ -496,8 +496,33 @@ export function planReactivation(state = {}, ctx = {}) {
     observations.push({ type: "outside_window", due: due.length });
     return { state, proposals: [], observations };
   }
+  // Stratify the due sends across provider buckets BEFORE the per-tick budget slice, so any single
+  // tick carries a balanced provider mix instead of an all-Gmail burst (wave membership is already
+  // stratified; this also balances each individual tick). Deterministic — no randomness.
+  const proposals = stratifyDueByProvider(due).slice(0, budget);
   observations.push({ type: "due_sends", due: due.length, budget, releasedWaves: [...releasable] });
-  return { state, proposals: due.slice(0, budget), observations };
+  return { state, proposals, observations };
+}
+
+// Round-robin interleave due sends by provider bucket (largest bucket first, stable within bucket)
+// so each contiguous prefix — i.e. each per-tick budget slice — is provider-balanced.
+function stratifyDueByProvider(due = []) {
+  const buckets = new Map();
+  for (const d of due) {
+    const b = providerBucket(d.contact.email);
+    if (!buckets.has(b)) buckets.set(b, []);
+    buckets.get(b).push(d);
+  }
+  const lists = [...buckets.values()].sort((a, b) => b.length - a.length);
+  const out = [];
+  let i = 0;
+  while (out.length < due.length) {
+    let advanced = false;
+    for (const l of lists) { if (l[i]) { out.push(l[i]); advanced = true; } }
+    if (!advanced) break;
+    i++;
+  }
+  return out;
 }
 
 // act(): runs ONLY when autopilot is ON. Sends due touches for released waves, re-checking

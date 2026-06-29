@@ -115,6 +115,23 @@ assert(planAfter.proposals.length <= cfg.caps.perTickMax, "intraday throttle cap
 assert(planAfter.proposals.every((p) => p.step === 1), "first due touch is step 1");
 ok("contacts inert until wave release; cadence timing + per-tick throttle respected");
 
+// ---- 5b. Per-tick provider stratification (no all-Gmail burst) ----------------
+// Stored order is provider-CLUSTERED (all Gmail, then all Yahoo). Without stratifying the due list,
+// the first 150-send tick would be 100% Gmail; planReactivation must interleave so it is mixed.
+{
+  const clustered = [];
+  for (let i = 0; i < 200; i++) clustered.push({ email: `g${i}@gmail.com`, full_name: `G ${i}`, priority: "cold" });
+  for (let i = 0; i < 200; i++) clustered.push({ email: `y${i}@yahoo.com`, full_name: `Y ${i}`, priority: "cold" });
+  const impC = importReactivationContacts({}, clustered);
+  const appliedC = applyWaveAssignment(impC.state, reactivationCampaignOf(impC.state));
+  const relC = releaseWave(appliedC.state, 1, { now: new Date(IN_WINDOW.getTime() - 2 * DAY) });
+  const tick = planReactivation(relC.state, { now: IN_WINDOW }).proposals;
+  const gmailInTick = tick.filter((p) => providerBucket(p.contact.email) === "gmail").length;
+  assert(gmailInTick > 0 && gmailInTick < tick.length, "first tick is provider-mixed, not all Gmail");
+  assert(tick.some((p) => providerBucket(p.contact.email) === "yahoo"), "Yahoo present in first tick despite clustered import order");
+  ok("per-tick sends are provider-stratified (no all-Gmail burst)");
+}
+
 // ---- 6. Pause signals stop the cadence ---------------------------------------
 const relPaused = {
   ...rel.state,
