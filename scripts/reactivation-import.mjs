@@ -119,28 +119,48 @@ async function main() {
   }
 
   const store = await createStore();
-  const state = await store.readState();
-  const imported = importReactivationContacts(state, rows);
+  // Read full state ONLY to pull existing reactivation collections (idempotent re-import +
+  // preserve any released-wave/campaign state). The read is harmless; the WRITE is what matters.
+  const full = await store.readState();
+  console.log(`Store backend   : ${full.persistence || "json"}`);
+
+  // CRITICAL SAFETY: seed the importer with ONLY the existing reactivation collections, and write
+  // back ONLY those collections. SupabaseCoreStore.writeState reconciles (orphan-deletes) within
+  // every collection present in the snapshot and leaves absent collections untouched — so a
+  // snapshot scoped to the 4 reactivation collections can NEVER modify any other prod data, even
+  // when run from a laptop whose local fallback state differs from prod. Writing the full merged
+  // state here could resurrect flushed/seed data or clobber prod collections; we do not do that.
+  const scoped = {
+    reactivationContacts: Array.isArray(full.reactivationContacts) ? full.reactivationContacts : [],
+    reactivationAttempts: Array.isArray(full.reactivationAttempts) ? full.reactivationAttempts : [],
+    reactivationEvents: Array.isArray(full.reactivationEvents) ? full.reactivationEvents : [],
+    reactivationCampaign: full.reactivationCampaign || {}
+  };
+  const imported = importReactivationContacts(scoped, rows);
   const config = reactivationCampaignOf(imported.state);
   const assigned = applyWaveAssignment(imported.state, config);
-  // Stamp the campaign config so the wave plan + staged status persist.
-  const nextState = {
-    ...assigned.state,
+
+  const writeState = {
+    reactivationContacts: assigned.state.reactivationContacts,
+    // Preserve existing attempts/events; present (even if []) so reconcile is correct and scoped.
+    reactivationAttempts: scoped.reactivationAttempts,
+    reactivationEvents: scoped.reactivationEvents,
     reactivationCampaign: {
-      ...(assigned.state.reactivationCampaign || {}),
+      ...scoped.reactivationCampaign,
       campaignId: config.campaignId,
-      status: assigned.state.reactivationCampaign?.status || "staged",
+      status: scoped.reactivationCampaign.status || "staged",
       waves: config.waves,
-      releasedWaves: assigned.state.reactivationCampaign?.releasedWaves || [],
+      releasedWaves: scoped.reactivationCampaign.releasedWaves || [],
       imported_at: new Date().toISOString()
     }
   };
-  await store.writeState(nextState);
+  await store.writeState(writeState);
 
-  console.log("\nSTAGED.");
+  console.log("\nSTAGED (reactivation collections only — no other prod data touched).");
   console.log("Import summary  :", imported.summary);
   console.log("Wave sizes      :", assigned.waveSizes);
-  console.log("Campaign status :", nextState.reactivationCampaign.status, "(no wave released; nothing enrolled)");
+  console.log("Campaign status :", writeState.reactivationCampaign.status, "(no wave released; nothing enrolled)");
+  console.log("Released waves  :", writeState.reactivationCampaign.releasedWaves);
   console.log("\nNext: run the seed test, flip REACTIVATION_LIVE_SEND, turn on the engine autopilot, then release Wave 1.");
 }
 
