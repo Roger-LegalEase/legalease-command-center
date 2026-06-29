@@ -217,7 +217,11 @@ function stageCandidate(row = {}, sourceId = "", ctx = {}) {
   const llm = typeof ctx.classifyProspect === "function"
     ? normalizeClassification(ctx.classifyProspect(row, { sourceId }))
     : "";
-  const classification = llm || classifyFromText(row.organization_name, row.name, row.description, row.raw_text);
+  // Priority: injected LLM refinement > the loader's authoritative classification (e.g. the
+  // IRS NTEE-derived label) > deterministic text rules. All three pass through the vocab guard
+  // so a candidate can never carry a label outside OUTREACH_CLASSIFICATIONS.
+  const rowClass = normalizeClassification(row.classification);
+  const classification = llm || rowClass || classifyFromText(row.organization_name, row.name, row.description, row.raw_text);
   const base = {
     id,
     type: "prospect_candidate",
@@ -230,6 +234,8 @@ function stageCandidate(row = {}, sourceId = "", ctx = {}) {
     city: clean(row.city),
     state: clean(row.state),
     classification,
+    ntee_code: clean(row.ntee_code),            // provenance: why the loader matched it (IRS BMF)
+    ntee_label: clean(row.ntee_label),
     source: sourceId,
     source_url: clean(row.source_url),
     tos_risk: (PROSPECT_SOURCES.find((s) => s.id === sourceId) || {}).tos_risk || "unknown",

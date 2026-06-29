@@ -11,6 +11,7 @@ import { runHeartbeat, autopilotEnabled } from "./heartbeat.mjs";
 import { buildHeartbeatRegistry, HEARTBEAT_ENGINE_IDS } from "./heartbeat-engines.mjs";
 import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_QUEUE_TYPE, OUTREACH_ENGINE_ID, resolveOutreachSendDecision, outreachLiveSendEnabled } from "./outreach-os.mjs";
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
+import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
 import { LOOP_REGISTRY } from "./operating-loops.mjs";
@@ -5144,16 +5145,22 @@ async function runOutreachSend(message, { env = process.env } = {}) {
 }
 
 // B5 — the Tier-1 prospect-discovery fetch executor injected into the heartbeat (like
-// runOutreachSend). Phase 0 is INERT: with PROSPECT_LIVE_DISCOVERY off it returns ZERO rows
-// (the engine stages nothing), proving the whole classify/dedup/score/promote stack on clean
-// fixtures first. Even with the flag on the live fetch client is intentionally unwritten, so
-// it throws rather than risk an un-vetted, ToS-uncertain network pull. Wiring the live
-// dataset clients (IRS BMF / LSC / NLADA — robots-respecting, public pages only, per-source
-// tos_risk, source_url stored) is the LAST step, done deliberately after this stack is proven.
-async function runProspectDiscovery({ source, env = process.env } = {}) {
-  const liveEnabled = ["true", "1", "yes", "on"].includes(String(env.PROSPECT_LIVE_DISCOVERY || "").toLowerCase());
-  if (!liveEnabled) return { rows: [], live: false };
-  throw new Error(`Live Tier-1 prospect discovery is not wired yet (Phase 0). Implement the ${source?.id || "dataset"} client before enabling PROSPECT_LIVE_DISCOVERY.`);
+// runOutreachSend). Now WIRED to the real dataset loaders (prospect-datasets.mjs): IRS BMF
+// (per-state CSV extracts, filtered by NTEE), the curated LSC grantee roster, and NLADA (not
+// built — access-restricted, returns nothing). It stays gated behind PROSPECT_LIVE_DISCOVERY:
+// with the flag OFF (default) the dispatcher returns ZERO rows and performs no network/disk I/O,
+// so the engine stages nothing. The loaders return ROWS only; the engine still does all
+// classify/dedup/score/stage work and stamps every candidate review_state="pending_review".
+// They never attach an email/website, so a discovered org can never become sendable here.
+async function runProspectDiscovery({ source, config = {}, env = process.env } = {}) {
+  return runProspectDiscoverySource({
+    source,
+    config,
+    env,
+    // readFile lets the operator pre-upload BMF CSVs / an official LSC roster (BMF_DATA_DIR /
+    // LSC_ROSTER_PATH) if the IRS host is blocked from the deploy environment.
+    deps: { readFile: (p) => readFile(p, "utf8") }
+  });
 }
 
 async function runPublishingWorker() {
@@ -32406,11 +32413,13 @@ async function handleRequest(request, response) {
       byState[s] = (byState[s] || 0) + 1;
     }
     const cfg = prospectConfigOf(currentState);
-    const liveEnabled = ["true", "1", "yes", "on"].includes(String(process.env.PROSPECT_LIVE_DISCOVERY || "").toLowerCase());
+    const liveEnabled = prospectLiveDiscoveryEnabled(process.env);
     sendJson(response, {
       autopilotEnabled: autopilotEnabled(currentState, PROSPECT_ENGINE_ID, process.env),
-      liveDiscoveryWired: false,
-      liveDiscoveryFlag: liveEnabled,
+      liveDiscoveryWired: true,                  // dataset loaders are wired (IRS BMF + LSC; NLADA not built)
+      liveDiscoveryFlag: liveEnabled,            // the actual on/off gate (PROSPECT_LIVE_DISCOVERY)
+      nteeFilter: RCAP_NTEE_FILTER,              // the full selectable NTEE catalog (default flag per code)
+      nteeActive: [...activeNteeSet(cfg)],       // the prefixes actually filtering this run (default subset unless overridden)
       scope: cfg.scope,
       classifications: cfg.classifications,
       enabledSources: cfg.enabledSources,
@@ -32440,6 +32449,11 @@ async function handleRequest(request, response) {
           ? { classifications: input.classifications.map(normalizeClassification).filter(Boolean) } : {}),
         ...(Array.isArray(input.enabledSources)
           ? { enabledSources: input.enabledSources.map(String).filter((id) => sourceIds.has(id)) } : {}),
+        ...(Array.isArray(input.nteePrefixes)
+          ? { nteePrefixes: (() => {
+              const known = new Set(RCAP_NTEE_FILTER.map((e) => e.prefix));
+              return input.nteePrefixes.map((p) => String(p).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3)).filter((p) => known.has(p));
+            })() } : {}),
         ...(input.maxStagedPerRun !== undefined ? { maxStagedPerRun: Math.max(1, Number(input.maxStagedPerRun) || 0) } : {})
       };
       await store.writeState({ ...currentState, prospectConfig: merged });
