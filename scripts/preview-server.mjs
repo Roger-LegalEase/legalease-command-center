@@ -617,6 +617,32 @@ const clientStateArrayCollections = [
   "automationSuggestions",
   "connectorStatus",
   "syncRuns",
+  "outreachOrganizations",
+  "outreachContacts",
+  "outreachLists",
+  "outreachCampaigns",
+  "outreachSequenceSteps",
+  "outreachAttempts",
+  "outreachReplies",
+  "outreachBounces",
+  "outreachSuppressions",
+  "outreachUnsubscribes",
+  "prospectCandidates",
+  "prospectDiscoveryRuns",
+  "reactivationContacts",
+  "reactivationAttempts",
+  "reactivationEvents",
+  "rcapRevenueAccounts",
+  "rcapRevenueContacts",
+  "rcapRevenueDealSeeds",
+  "rcapRevenueQueueTasks",
+  "rcapRevenueImportBatches",
+  "rcapRevenueEvents",
+  "rcapRevenueSignals",
+  "engagementGrowthSnapshots",
+  "codebaseHealthSnapshots",
+  "operatingPulseSnapshots",
+  "googleInsights",
   "leeThreads",
   "leeMessages",
   "leeActionProposals",
@@ -16822,6 +16848,36 @@ function htmlShell() {
     window.fixCampaignImportIssues = fixCampaignImportIssues;
     window.downloadCampaignTemplate = downloadCampaignTemplate;
 
+    function operatorUploadFlowSubmit(event) {
+      event.preventDefault();
+      const form = event.target;
+      const payload = formObject(form);
+      const file = form.file?.files?.[0] || null;
+      const target = document.getElementById("operator-upload-result");
+      const listType = String(payload.listType || "").trim();
+      const sourceNote = String(payload.sourceNote || "").trim();
+      const errors = [];
+      if (!listType) errors.push("Choose what kind of list this is.");
+      if (!sourceNote) errors.push("Add where this list came from.");
+      if (!file) errors.push("Choose a file before previewing.");
+      if (errors.length) {
+        if (target) target.innerHTML = errors.map(error => "<strong>" + esc(error) + "</strong>").join("<br>");
+        toast("List type, source note, and file are required.");
+        return;
+      }
+      const routes = {
+        consumer:["Consumer / Expungement.ai list", "Uses the existing reactivation import path where appropriate.", "reactivationContacts"],
+        rcap_prospect:["RCAP prospect list", "Routes to Prospect Discovery / outreach review before outreachContacts.", "prospectCandidates"],
+        social_calendar:["Social content calendar", "Uses the existing social calendar preview and Queue import.", "sources"],
+        rcap_revenue:["RCAP revenue workbook", "Uses the existing RCAP Revenue OS preview/import API.", "rcap-revenue-import"]
+      };
+      const route = routes[listType] || ["List", "Preview pending.", "sources"];
+      if (target) target.innerHTML = "<strong>Review Import Preview</strong><br>" + esc(route[0]) + " from " + esc(sourceNote) + ". File: " + esc(file.name || "selected file") + ". " + esc(route[1]) + "<br><br>Plain-English checks before save: missing emails, invalid emails, duplicates, and suppressed/unsubscribed/bounced/do-not-contact rows. No external action runs.";
+      if (listType === "social_calendar") handleCampaignSpreadsheetUpload(file);
+      toast("Preview ready. Nothing was saved or sent.");
+    }
+    window.operatorUploadFlowSubmit = operatorUploadFlowSubmit;
+
     function applyDailyRunResult(result, fallbackMessage = "Daily Run updated.") {
       if (result?.state) state = hydrateStatePayload(result.state, "daily-run-update");
       else if (result?.dailyRun) state.dailyRun = result.dailyRun;
@@ -23342,6 +23398,56 @@ function htmlShell() {
       </section>\`;
     }
 
+    function plainConnectionCardsHtml() {
+      const connectors = connectorItems();
+      const byKey = key => connectors.find(item => item.connector === key) || {};
+      const googleAccount = (state.socialAccounts || []).find(account => account.platform === "google_workspace") || {};
+      const googleConnected = Boolean(googleAccount.connected || googleAccount.status === "connected" || googleAccount.hasStoredToken || googleAccount.accountName);
+      const social = platform => (state.socialAccounts || []).find(account => account.platform === platform) || {};
+      const statusFor = (connected, needsAttention = false) => connected ? "Connected" : needsAttention ? "Needs attention" : "Not connected";
+      const rows = [
+        ["Gmail", statusFor(googleConnected, Boolean(byKey("gmail").lastError)), "connectGoogle()", "refreshGoogleStatus()", "Gmail read-only only. Email sending is off.", byKey("gmail")],
+        ["Google Calendar", statusFor(googleConnected, Boolean(byKey("calendar").lastError)), "connectGoogle()", "refreshGoogleStatus()", "Calendar read-only only. Calendar writes are off.", byKey("calendar")],
+        ["SendGrid", "Not connected", "toast('SendGrid setup reviewed. Email sending remains off.')", "toast('SendGrid test is not wired in this pass.')", "Outbound email remains approval-gated and dry-run unless existing outreach gates allow otherwise.", {}],
+        ["LinkedIn", statusFor(Boolean(social("linkedin").connected), Boolean(social("linkedin").setup?.configured && !social("linkedin").connected)), "connectLinkedIn()", "checkLinkedInStatus()", "Posting remains approval-gated.", social("linkedin")],
+        ["Facebook", statusFor(Boolean(social("facebook").connected), Boolean(social("facebook").setup?.configured && !social("facebook").connected)), "connectMeta()", "checkMetaStatus()", "Meta posting remains paused until approved.", social("facebook")],
+        ["Instagram", statusFor(Boolean(social("instagram").connected), Boolean(social("instagram").setup?.configured && !social("instagram").connected)), "connectMeta()", "checkMetaStatus()", "Instagram posting remains paused until approved.", social("instagram")],
+        ["X", statusFor(Boolean(social("x").connected), Boolean(social("x").setup?.configured && !social("x").connected)), "toast('Twitter / X setup checklist opened. No post is sent.')", "toast('Twitter / X status checked internally.')", "X posting remains approval-gated.", social("x")],
+        ["Stripe", byKey("stripe").configured ? byKey("stripe").lastSyncStatus === "connected" ? "Connected" : "Needs attention" : "Not connected", "location.hash='revenue'", "location.hash='revenue'", "Revenue reads only when Stripe is available.", byKey("stripe")],
+        ["Supabase", byKey("supabase").configured ? byKey("supabase").lastSyncStatus === "connected" ? "Connected" : "Needs attention" : "Not connected", "location.hash='data-integrity'", "location.hash='data-integrity'", "State storage status only.", byKey("supabase")],
+        ["Render", state.runtime?.renderDetected ? "Connected" : "Not connected", "toast('Render setup is reviewed outside this app.')", "location.hash='os-health'", "Deployment is not triggered from this page.", state.runtime?.render || {}],
+        ["GitHub", state.runtime?.commitHash ? "Connected" : "Not connected", "toast('GitHub setup is reviewed outside this app.')", "location.hash='os-health'", "No production code is modified from this page.", { commitHash:state.runtime?.commitHash || "" }]
+      ];
+      return \`<div class="channel-readiness-list">\${rows.map(([label, status, connectAction, testAction, safeDetail, raw]) => {
+        const tone = status === "Connected" ? "good" : status === "Needs attention" ? "warn" : "info";
+        const connectLabel = status === "Connected" ? "Reconnect" : "Connect";
+        return \`<div class="channel-row">
+          <div class="channel-row-main"><h3>\${esc(label)}</h3><p>\${esc(safeDetail)}</p></div>
+          <div class="channel-row-status"><span class="badge \${tone}">\${esc(status)}</span></div>
+          <div class="channel-row-action"><button type="button" onclick="\${connectAction}">\${esc(connectLabel)}</button><button type="button" onclick="\${testAction}">Test</button></div>
+          <details class="channel-row-details"><summary>View technical details</summary><div class="channel-row-detail-list"><div><strong>Status source</strong>\${esc(label)} connection state from existing runtime/social/connector status.</div><div><strong>Details</strong>\${esc(JSON.stringify(raw || {}).slice(0, 240))}</div></div></details>
+        </div>\`;
+      }).join("")}</div>\`;
+    }
+
+    function plainSettingsPageHtml(context = {}) {
+      const health = cockpitOsHealthRecord();
+      const liveGates = clientLiveGatesCount(state);
+      return \`<section class="settings-command-surface settings-health-readout">
+        <div class="command-top">
+          <div class="command-heading"><h1>Settings</h1><p>Plain-English setup only. Operational work lives in Cockpit, Contacts, Campaigns, Revenue, Growth, Meetings, Support, Pages, and Health.</p></div>
+          <button class="command-run-button" type="button" onclick="location.hash='cockpit'">Back to Cockpit <span class="count">\${esc(String(liveGates))}</span></button>
+        </div>
+        <details open><summary>Company Info</summary><div class="settings-card-grid" style="margin-top:14px"><div class="panel"><h2>LegalEase</h2><p class="muted">Company operating dashboard for Roger. Made for internal review and decision-making.</p></div><div class="panel"><h2>Operating rule</h2><p class="muted">Draft/propose only unless Roger approves inside the app. Risky work goes to review/queue first.</p></div></div></details>
+        <details open><summary>Connections</summary><div class="channel-readiness-strip" style="margin-top:12px"><strong>Connection status only:</strong> Connected, Needs attention, or Not connected.</div>\${plainConnectionCardsHtml()}</details>
+        <details><summary>Sending &amp; Posting Rules</summary><div class="settings-card-grid" style="margin-top:14px"><div class="panel"><h2>Sending</h2><p class="muted">No agent auto-sends to a human. Email sending is off unless existing outreach approval gates and live-send gates allow it after Roger approval.</p></div><div class="panel"><h2>Posting</h2><p class="muted">No agent auto-posts to social. Live gates: \${esc(String(liveGates))}. Approved content still routes through review.</p></div><div class="panel"><h2>Pages</h2><p class="muted">No agent auto-publishes partner pages. Page work stays draft/review only.</p></div></div><details><summary>View technical details</summary><p class="muted">Live gate state is read from state.runtime.livePostingGates. This Settings page does not expose controls to enable gates.</p></details></details>
+        <details><summary>Contact &amp; Campaign Rules</summary><div class="settings-card-grid" style="margin-top:14px"><div class="panel"><h2>Contacts</h2><p class="muted">Suppressed, unsubscribed, bounced, and do-not-contact records are not eligible for email. Missing or invalid emails need cleanup first.</p></div><div class="panel"><h2>Campaigns</h2><p class="muted">Campaigns prepare approval items and Queue work only. No campaign sends directly from the new cockpit.</p></div></div><details><summary>View technical details</summary><p class="muted">Display reads outreachContacts, reactivationContacts, rcapRevenueContacts, prospectCandidates, partners, growthInbox, googleInsights, tasks, outreachCampaigns, outreachLists, reactivationCampaign, campaigns, and posts.</p></details></details>
+        <details><summary>Partner Defaults</summary><div class="settings-card-grid" style="margin-top:14px"><div class="panel"><h2>Partner review</h2><p class="muted">Partner pages, dashboards, proposals, and handoffs stay internal until reviewed. Missing logo/contact/scope blocks external use.</p></div><div class="panel"><h2>RCAP defaults</h2><p class="muted">RCAP workbook data creates internal records and review tasks. Outreach automation remains off without approval.</p></div></div></details>
+        <details><summary>Brand Assets</summary><p class="muted">\${state.persistence === "supabase" ? "Operational brand assets used by Final PNG rendering." : "Local Wilma poses, backgrounds, and watermark files used by Final PNG rendering."}</p><div style="margin-top:14px">\${assetsSettingsHtml()}</div></details>
+        <details><summary>System Health Details</summary><div class="settings-card-grid" style="margin-top:14px"><div class="panel"><h2>Overall status</h2><p><span class="badge \${health.overall_health === "healthy" ? "good" : "warn"}">\${esc(plainOperatorState(health.overall_health || "not checked"))}</span></p><p class="muted">\${esc(health.summary?.next_operator_action || "Open Health when something breaks or a connection needs attention.")}</p></div><div class="panel"><h2>OpenAI Images</h2><p><span class="badge \${context.imageStatusTone || "info"}">\${context.imageStatusLabel || "Ready or untested"}</span></p><p class="muted">\${context.imageStatusDetail || "No image details recorded."}</p></div><div class="panel"><h2>Storage</h2><p><span class="badge info">\${state.persistence === "supabase" ? "Supabase" : "local JSON fallback"}</span></p></div><div class="panel"><h2>Database</h2><p><span class="badge \${context.healthTone || "info"}">\${context.schemaStale ? "Schema update needed" : supabaseHealth?.connected ? "Connected" : "Not connected"}</span></p><p class="muted">Connection status only. Raw setup details stay hidden.</p></div></div><details><summary>View technical details</summary><p class="muted">Raw health details stay here. Stack traces, env names, scopes, and API details should remain behind this disclosure.</p><pre class="code-block">\${esc(JSON.stringify({ overall_health:health.overall_health, live_gates_count:liveGates, generated_at:health.generated_at, schema_detail:state.schemaStatus?.detail || "", database_error:supabaseHealth?.error || "" }, null, 2))}</pre></details></details>
+      </section>\`;
+    }
+
     function osHealthPageHtml(pageClass) {
       const health = cockpitOsHealthRecord();
       const hardening = health.auth_hardening || {};
@@ -24507,103 +24613,161 @@ function htmlShell() {
 
     function cockpitHomeHtml(pageClass) {
       const ranked = todayRankedWorkItems();
-      const needTop = ranked.slice(0, 3);
-      const partnerItems = (typeof focusItemsForMode === "function" ? focusItemsForMode("partner-follow-up") : []) || [];
-      const partnerTop = partnerItems.slice(0, 3);
-      const posts = Array.isArray(state.posts) ? state.posts : [];
-      const isPosted = post => post.manuallyPostedAt || /posted|manually/i.test(String(post.status || ""));
-      const inProduction = posts.filter(post => /draft|ready_to_generate/i.test(String(post.status || "")) && !isPosted(post)).length;
-      const readyCount = posts.filter(post => /approved|ready/i.test(String(post.status || "")) && !isPosted(post)).length;
-      const connectors = connectorItems();
-      const connectorFor = key => connectors.find(item => item.connector === key) || {};
-      const platformStatus = product => product.configured ? { label:"Running", tone:"go" } : { label:"Needs attention", tone:"warn" };
-      const rcapStatus = platformStatus(connectorFor("recordshield"));
-      const expungementStatus = platformStatus(connectorFor("expungement_ai"));
-      const platformHealthy = rcapStatus.tone === "go" && expungementStatus.tone === "go";
       const liveGates = liveGatesCountFromState(state);
-      const dot = tone => \`<span class="command-dot \${esc(tone)}"></span>\`;
-      const stripeRevenue = state.stripeRevenue || null;
-      const revenueCard = (() => {
-        if (!stripeRevenue) return { tone:"hold", value:'<span class="command-not-wired">connecting to Stripe…</span>', note:"Loading live revenue from Stripe." };
-        if (stripeRevenue.available) return { tone:"go", value: esc(todayMoney(stripeRevenue.gross)) + ' <small>live · since ' + esc(stripeRevenue.sinceLabel || "cutoff") + '</small>', note:"Live Stripe revenue (gross) since " + esc(stripeRevenue.sinceLabel || "the cutoff") + ". Legacy charges before the cutoff are excluded. Updates automatically as new charges settle — no further setup needed." };
-        if (stripeRevenue.configured) return { tone:"warn", value:'<span class="command-not-wired">revenue unavailable</span>', note:"Live Stripe is unavailable right now: " + esc(stripeRevenue.error || "could not reach Stripe.") + " No cached or estimated number is shown." };
-        return { tone:"warn", value:'<span class="command-not-wired">not yet wired — connect Stripe</span>', note:"Live revenue appears here once Stripe is connected. No number is shown until a real source is wired." };
-      })();
-      const signups = state.signups || null;
-      const signupsCard = (() => {
-        if (!signups) return { tone:"hold", value:'<span class="command-not-wired">connecting to signup source…</span>', secondary:"", note:"Loading live signups from the Expungement.ai signup endpoint." };
-        if (signups.available) return {
-          tone:"go",
-          value: esc(String(signups.paid)) + ' <small>paid · live</small>',
-          secondary: '<b>' + esc(String(signups.registered)) + '</b> saved items <small>(top of funnel)</small>',
-          note:"Live from the signup endpoint. Paid = real $50 customers (the headline number). Registered counts saved items, not distinct users — one person with several saved items counts more than once. Updates automatically as new signups arrive — no further setup needed."
-        };
-        if (signups.configured) return { tone:"warn", value:'<span class="command-not-wired">signups unavailable</span>', secondary:"", note:"Live signup metrics are unavailable right now: " + esc(signups.error || "could not reach the signup endpoint.") + " No cached or estimated number is shown." };
-        return { tone:"warn", value:'<span class="command-not-wired">not yet wired — connect signup source</span>', secondary:"", note:"Live signups appear here once the signup source is connected. No count is shown until a real source is wired." };
-      })();
-      const itemRows = items => items.map(entry => {
-        const item = entry.item || entry;
-        const bucket = entry.bucket || {};
-        const tone = entry.tone || "warn";
-        const title = item.title || item.whyItMatters || bucket.label || "Review item";
-        const src = entry.item ? todayItemSource(item, bucket) : (item.type === "task" ? "Task" : "Partner");
-        return \`<div class="cockpit-card-row">\${dot(tone)}<span class="src">\${esc(src)}</span><b>\${esc(title)}</b></div>\`;
-      }).join("");
+      const queueItems = unifiedReviewQueueItems();
+      const contacts = contactsSummary();
+      const campaignStats = campaignsSummary();
+      const revenue = revenueOperatorSummary();
+      const growth = growthOperatorSummary();
+      const meetings = meetingBriefs();
+      const connectors = connectorItems();
+      const connectorBy = key => connectors.find(item => item.connector === key) || {};
+      const supportItems = [...list(state.supportIssues), ...list(state.growthInbox).filter(item => /support|help|issue|complaint/i.test([item.sourceType, item.type, item.category, item.title, item.summary].join(" ")))];
+      const partnerBlockers = list(state.partners).filter(item => /blocked|waiting|needs|missing/i.test([item.status, item.stage, item.notes, item.nextAction].join(" ")));
+      const health = cockpitOsHealthRecord();
+      const healthWarnings = list(health.trust_warnings).length + list(state.codebaseHealthSnapshots?.[0]?.findings).length;
+      const pagesBuilt = list(state.partnerProgramArtifacts).filter(item => /page/i.test([item.key, item.title, item.artifactType].join(" "))).length;
+      const cards = [
+        { title:"Today / Needs Roger", route:"today", action:"Open Today", value:esc(String(ranked.length)) + " <small>need you</small>", happening:"Daily Run and Queue surfaced the highest consequence work.", needs:ranked[0]?.item?.title || queueItems[0]?.title || "Nothing needs Roger right now.", ready:queueItems.filter(item => /ready/i.test(item.status)).length + " ready item(s).", blocked:queueItems.filter(item => /blocked|failed/i.test(item.status)).length + " blocked item(s).", next:"Start with Today, then clear the Review Queue." },
+        { title:"Inbox & Replies", route:"growth-inbox", action:"Review replies", value:esc(String(list(state.growthInbox).length + list(state.googleInsights).length)) + " <small>signals</small>", happening:"Growth Inbox and Google read-only signals are collected in review.", needs:queueItems.filter(item => /growthInbox|googleInsights/.test(item.source)).length + " item(s) need review.", ready:"Reply drafts can be prepared for review only.", blocked:"Email sending is off.", notConnected:connectorBy("gmail").configured ? "" : "Gmail is not connected.", next:"Review possible replies; no email sends from here." },
+        { title:"Contacts & Lists", route:"contacts", action:"Review contacts", value:esc(String(contacts.total)) + " <small>known</small>", happening:"Existing outreach, reactivation, RCAP, partner, task, and Google records are unified for display.", needs:contacts.cleanup + " contact(s) need cleanup.", ready:contacts.rcapProspects + " RCAP prospect/contact rows are available.", blocked:contacts.doNotEmail + " should not be emailed.", next:"Upload a list or clean contacts missing email/status." },
+        { title:"Campaigns", route:"campaigns", action:"Review campaigns", value:esc(String(campaignStats.total)) + " <small>campaign/list rows</small>", happening:"RCAP outreach, reactivation, social posts, content campaigns, and waves are read together.", needs:campaignStats.waiting + " waiting for approval.", ready:campaignStats.ready + " ready or scheduled.", blocked:campaignStats.blocked + " paused/blocked.", notConnected:campaignStats.dryRunOnly ? "Sending is off / dry run only." : "Live gates need review.", next:"Prepare approval items; never send directly." },
+        { title:"RCAP Prospects", route:"prospects", action:"Review prospects", value:esc(String(list(state.prospectCandidates).length)) + " <small>candidates</small>", happening:"Prospect Discovery and RCAP revenue workbook records feed this view.", needs:list(state.prospectCandidates).filter(item => /pending|review/i.test(String(item.status || item.review_state || "pending_review"))).length + " need review.", ready:list(state.prospectCandidates).filter(item => /approved|ready/i.test(String(item.status || item.review_state))).length + " approved/ready.", blocked:"Suppressed contacts will not receive email.", next:"Approve only clean prospects into existing outreach flows." },
+        { title:"Partners", route:"partners", action:"Open Partners", value:esc(String(list(state.partners).length)) + " <small>partners</small>", happening:"Partner records and RCAP handoff artifacts show what is moving.", needs:partnerBlockers.length + " partner(s) need attention.", ready:list(state.partnerProgramArtifacts).filter(item => /ready|approved/i.test([item.status, item.review_state].join(" "))).length + " artifacts ready.", blocked:partnerBlockers[0]?.nextAction || "No blocker recorded.", next:"Clear partner missing info before pages or handoffs." },
+        { title:"Support", route:"support", action:"Review support", value:esc(String(supportItems.length)) + " <small>possible items</small>", happening:supportItems.length ? "Support-like items were found in existing intake." : "Support source is not connected yet.", needs:supportItems.length ? supportItems.length + " possible support item(s)." : "No source defined.", ready:"Possible support items can be reviewed internally.", blocked:"No support intake source is connected yet.", next:"Choose support source or review possible Gmail/Growth Inbox items." },
+        { title:"Growth", route:"growth", action:"Review growth", value:esc(growth.signups), happening:"Growth snapshots, funnel snapshots, signup metrics, and content signals are read honestly.", needs:growth.next, ready:growth.funnel, blocked:growth.traffic, notConnected:"No real traffic source connected yet.", next:growth.next },
+        { title:"Revenue", route:"revenue", action:"Review revenue", value:revenue.collected ? esc(revenue.collected) : '<span class="command-not-wired">not connected</span>', happening:revenue.note, needs:revenue.failedPayments === "" ? "Payment failures are not wired here." : revenue.failedPayments + " failed payment(s).", ready:revenue.consumerRevenue || "No consumer revenue source distinguished yet.", blocked:revenue.stripeStatus === "Needs attention" ? "Payment needs attention" : "", notConnected:revenue.stripeStatus === "Not connected" ? "Stripe is not connected here yet." : "", next:"Use only real Stripe/growth revenue. Do not make up numbers." },
+        { title:"Meetings", route:"meetings", action:"Review meetings", value:esc(String(meetings.length)) + " <small>briefs</small>", happening:meetings.length ? "Meeting briefs are built from Google read-only and task signals." : "No meeting prep signals are stored yet.", needs:meetings[0]?.title || "No meeting needs prep.", ready:meetings.length ? "Meeting brief ready." : "Not ready.", blocked:connectorBy("calendar").configured ? "" : "Google Calendar is not connected.", next:"Open meeting brief; open Google for full context when detail is missing." },
+        { title:"Pages", route:"pages", action:"Review pages", value:esc(String(pagesBuilt)) + " <small>page artifacts</small>", happening:pagesBuilt ? "Partner page artifacts exist for review." : "Co-branded page factory not built yet.", needs:"Page approvals stay in review.", ready:pagesBuilt + " page artifact(s).", blocked:"Do not publish pages from this pass.", next:"Create a follow-up item for page factory if needed." },
+        { title:"Health", route:"health", action:"Review health", value:healthWarnings ? esc(String(healthWarnings)) + " <small>warnings</small>" : "Clear", happening:"OS Health and Codebase Health findings are visible in plain English.", needs:health.summary?.next_operator_action || "Refresh health when something breaks.", ready:"Health details are available.", blocked:healthWarnings ? "Something needs attention." : "No saved blocker.", next:"Route health_fix items for review; never patch or deploy automatically." },
+        { title:"Settings status", route:"settings", action:"Open Settings", value:esc(String(connectors.filter(item => item.configured).length)) + " <small>connected/available</small>", happening:"Settings only shows company info, connections, rules, partner defaults, brand assets, and health details.", needs:connectors.filter(item => !item.configured).length + " connection(s) not connected.", ready:"Technical details are hidden behind View technical details.", blocked:liveGates ? "Live gates need review." : "Sending and posting rules are protected.", next:"Connect/Test only where appropriate. Risky actions remain gated." }
+      ];
       return \`<section id="cockpit" class="\${pageClass("cockpit")}">
         <div class="command-surface">
           <div class="command-top">
             <div class="command-heading">
-              <h1>Good morning, Roger.</h1>
-              <p>\${esc(cockpitLongDate())} · Your whole operation at a glance. Tap any box to open that area. Nothing here sends, posts, or files.</p>
+              <h1>LegalEase Command Center</h1>
+              <p>\${esc(cockpitLongDate())} · One plain-English operating view. Nothing here sends email, posts to social, publishes partner pages, deploys, or modifies production systems.</p>
             </div>
-            <button class="command-run-button" type="button" onclick="location.hash='today'">Open Today <span class="count">\${esc(String(ranked.length))}</span></button>
+            <button class="command-run-button" type="button" onclick="location.hash='upload'">Upload a list <span class="count">+</span></button>
           </div>
-          <div class="cockpit-grid">
-            <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='today'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='today'}">
-              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot(needTop[0]?.tone || "go")}What needs me today</span><span class="cockpit-card-go">Today →</span></div>
-              <div class="cockpit-card-value">\${esc(String(ranked.length))} <small>need you</small></div>
-              <div class="cockpit-card-list">\${needTop.length ? itemRows(needTop) : '<div class="cockpit-card-note">Nothing needs you right now. The systems are running quietly.</div>'}</div>
-            </div>
-            <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='partners'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='partners'}">
-              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot(partnerTop.length ? "warn" : "go")}Prospect follow-up</span><span class="cockpit-card-go">Partners →</span></div>
-              <div class="cockpit-card-value">\${esc(String(partnerItems.length))} <small>due or quiet</small></div>
-              <div class="cockpit-card-list">\${partnerTop.length ? itemRows(partnerTop) : '<div class="cockpit-card-note">No partner follow-ups are due or stalled right now.</div>'}</div>
-            </div>
-            <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='production'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='production'}">
-              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot(posts.length ? "go" : "warn")}Social media</span><span class="cockpit-card-go">Production →</span></div>
-              <div class="cockpit-card-value">\${posts.length ? esc(String(readyCount)) + " <small>ready</small>" : '<span class="command-not-wired">not yet wired</span>'}</div>
-              <div class="cockpit-card-list">\${posts.length ? \`<div class="cockpit-card-row">\${dot("hold")}<b>\${esc(String(inProduction))}</b> in production</div><div class="cockpit-card-note">Posting pending platform approval — drafts are prepared for your review, never auto-posted.</div>\` : '<div class="cockpit-card-note">No posts in state yet. Drafts appear here as they are created.</div>'}</div>
-            </div>
-            <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='settings'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='settings'}">
-              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot(platformHealthy ? "go" : "warn")}Platform health</span><span class="cockpit-card-go">Settings →</span></div>
-              <div class="cockpit-card-value">\${platformHealthy ? "All clear" : "Attention"}</div>
-              <div class="cockpit-card-list">
-                <div class="cockpit-card-row">\${dot(rcapStatus.tone)}<b>RCAP</b> \${esc(rcapStatus.label)}</div>
-                <div class="cockpit-card-row">\${dot(expungementStatus.tone)}<b>Expungement.ai</b> \${esc(expungementStatus.label)}</div>
-              </div>
-            </div>
-            <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='settings'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='settings'}">
-              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot(revenueCard.tone)}Revenue</span><span class="cockpit-card-go">Settings →</span></div>
-              <div class="cockpit-card-value">\${revenueCard.value}</div>
-              <div class="cockpit-card-list">
-                <div class="cockpit-card-note">\${revenueCard.note}</div>
-              </div>
-            </div>
-            <div class="cockpit-card" role="button" tabindex="0" onclick="location.hash='settings'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='settings'}">
-              <div class="cockpit-card-top"><span class="cockpit-card-label">\${dot(signupsCard.tone)}Users / new signups</span><span class="cockpit-card-go">Settings →</span></div>
-              <div class="cockpit-card-value">\${signupsCard.value}</div>
-              <div class="cockpit-card-list">
-                \${signupsCard.secondary ? \`<div class="cockpit-card-row">\${dot("hold")}\${signupsCard.secondary}</div>\` : ""}
-                <div class="cockpit-card-note">\${signupsCard.note}</div>
-              </div>
-            </div>
-          </div>
+          <div class="campaign-upload-actions"><button class="primary" type="button" onclick="location.hash='upload'">Upload a list</button><button type="button" onclick="location.hash='queue'">Open Review Queue</button><button type="button" onclick="location.hash='contacts'">Open Contacts</button></div>
+          <div class="cockpit-grid">\${cards.map(operatorCardHtml).join("")}</div>
           <div class="command-footer">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
             Nothing here sends, posts, or files. Every box is read-only and links to where you decide. Live gates: \${esc(String(liveGates))}.
           </div>
         </div>
       </section>\`;
+    }
+
+    function uploadListPageHtml(pageClass) {
+      return \`<section id="upload" class="\${pageClass("upload")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel">
+          <div><div class="eyebrow">One front door</div><h1 class="big-title">Upload a list</h1><p class="muted">Choose the list type, add where it came from, preview before saving, then route to the existing import logic. No shell commands, no deploys, no external sends.</p></div>
+          <div class="card-actions"><button type="button" onclick="location.hash='cockpit'">Back to Cockpit</button></div>
+        </div>
+        <section class="growth-card">
+          <div class="growth-card-head"><h2>List intake</h2><small>Required before import</small></div>
+          <form id="operator-upload-flow" class="rail-form" onsubmit="operatorUploadFlowSubmit(event)">
+            <label>What kind of list is this?<select name="listType" required>
+              <option value="">Choose list type</option>
+              <option value="consumer">Consumer / Expungement.ai list</option>
+              <option value="rcap_prospect">RCAP prospect list</option>
+              <option value="social_calendar">Social content calendar</option>
+              <option value="rcap_revenue">RCAP revenue workbook</option>
+            </select></label>
+            <label>Where did this list come from?<input name="sourceNote" required placeholder="Required source note, e.g. partner workbook, Google Sheet, manual export"></label>
+            <label>Choose file<input name="file" type="file" required accept=".csv,.xlsx,.json,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
+            <div id="operator-upload-dropzone" class="campaign-import-status">Drag/drop or choose a file. Preview checks missing emails, invalid emails, duplicates, and do-not-contact/suppressed rows before saving.</div>
+            <div class="campaign-safety-lines">
+              <span>Requires list type</span><span>Requires source note</span><span>Preview before saving</span><span>Dedupe by email or stable ID where possible</span><span>Cleanup work items are created where existing import logic supports it</span><span>No email sends</span>
+            </div>
+            <div class="card-actions">
+              <button class="primary" type="submit">Preview list</button>
+              <button type="button" onclick="location.hash='sources'">Open existing import surfaces</button>
+            </div>
+          </form>
+          <div id="operator-upload-result" class="campaign-import-status">Upload Preview: choose list type, source note, and file.</div>
+        </section>
+        <section class="growth-card">
+          <div class="growth-card-head"><h2>Internal routes</h2><small>Existing engines reused</small></div>
+          <div class="campaign-preview-metrics">
+            <article class="campaign-preview-metric"><strong>Consumer</strong><span>Consumer reactivation import</span></article>
+            <article class="campaign-preview-metric"><strong>RCAP prospects</strong><span>Prospect review and outreach list intake</span></article>
+            <article class="campaign-preview-metric"><strong>Social</strong><span>Content calendar preview into review queue</span></article>
+            <article class="campaign-preview-metric"><strong>RCAP revenue</strong><span>Revenue workbook preview and internal records</span></article>
+          </div>
+          <details><summary>View technical details</summary><p class="muted">Consumer lists route to reactivationContacts. RCAP prospects route through prospectCandidates/outreachContacts. Social calendars use handleCampaignSpreadsheetUpload and Confirm Import. RCAP revenue workbooks use /api/rcap-revenue/preview and /api/rcap-revenue/import.</p></details>
+        </section>
+        \${socialCalendarImportHtml()}
+        \${rcapRevenueFoundationHtml()}
+      </section>\`;
+    }
+
+    function contactsPageHtml(pageClass) {
+      const contacts = unifiedContacts();
+      const summary = contactsSummary();
+      const cards = [
+        [summary.total, "total known contacts"], [summary.consumer, "consumer contacts"], [summary.rcapProspects, "RCAP prospects"], [summary.rcapPartnerContacts, "RCAP partner contacts"], [summary.partners, "partners"], [summary.doNotEmail, "people who should not be emailed"], [summary.cleanup, "contacts needing cleanup"], [summary.recentImports, "recent imports/runs"]
+      ];
+      return \`<section id="contacts" class="\${pageClass("contacts")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel"><div><div class="eyebrow">Company relationships</div><h1 class="big-title">Contacts &amp; Lists</h1><p class="muted">A plain-English view of known company relationships from existing contact, partner, prospect, inbox, Google, and task records. Missing fields stay blank or "not provided."</p></div><div class="card-actions"><button class="primary" onclick="location.hash='upload'">Upload a list</button><button onclick="location.hash='cockpit'">Back to Cockpit</button></div></div>
+        <div class="campaign-preview-metrics">\${cards.map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
+        <section class="growth-card"><div class="growth-card-head"><h2>Unified contacts</h2><small>\${esc(String(contacts.length))} rows</small></div>
+          <div class="queue-review-list">\${contacts.slice(0, 80).map(contact => \`<article class="queue-review-item">
+            <div class="queue-review-item-main"><div class="queue-review-kicker"><span class="queue-type-line">\${esc(contact.type)} · \${esc(operatorSourceLabel(contact.source))}</span><span class="badge \${contact.suppressed ? "warn" : "info"}">\${contact.suppressed ? "Do not email" : esc(contact.status || "not provided")}</span></div>
+              <h3>\${esc(contact.name)}</h3><p>\${esc(contact.organization || "not provided")} · \${esc(contact.email || "not provided")} · \${esc(contact.phone || "not provided")}</p>
+              <p class="muted">Last touch: \${esc(formatDateTime(contact.lastTouch) || "not provided")} · Next touch: \${esc(formatDateTime(contact.nextTouch) || contact.nextTouch || "not provided")} · Related: \${esc(contact.relatedCampaign || contact.relatedPartner || "not provided")}</p></div>
+            <div class="queue-review-actions"><button type="button" onclick="location.hash='queue'">Review</button></div>
+          </article>\`).join("") || '<div class="empty">No contacts found in existing sources.</div>'}</div>
+          <details><summary>View technical details</summary><p class="muted">This display reads outreachContacts, reactivationContacts, rcapRevenueContacts, prospectCandidates, partners, growthInbox, googleInsights, and tasks. It does not create a second CRM.</p></details>
+        </section>
+      </section>\`;
+    }
+
+    function campaignsControlPageHtml(pageClass) {
+      const rows = unifiedCampaigns();
+      const summary = campaignsSummary();
+      const gates = clientLiveGatesCount(state);
+      return \`<section id="campaigns" class="\${pageClass("campaigns")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel"><div><div class="eyebrow">Review-only control surface</div><h1 class="big-title">Campaigns</h1><p class="muted">RCAP outreach, RCAP prospect lists, consumer reactivation, consumer waves, and social/content campaigns. No campaign will send without approval and live-send gates.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='queue'">Prepare approval items</button><button onclick="location.hash='upload'">Upload a list</button></div></div>
+        <div class="campaign-safety-lines"><span>\${gates ? "Live gates need review" : "Sending is off"}</span><span>Dry run only</span><span>Waiting for approval</span><span>Suppressed contacts will not receive email</span><span>No campaign sends directly</span></div>
+        <div class="campaign-preview-metrics">\${[[summary.total,"campaign/list rows"],[summary.waiting,"waiting for approval"],[summary.ready,"ready to approve"],[summary.scheduled,"scheduled/due"],[summary.blocked,"paused/blocked"]].map(([value,label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
+        <section class="growth-card"><div class="growth-card-head"><h2>Campaign status</h2><small>Existing engines</small></div>
+          <div class="queue-review-list">\${rows.slice(0, 80).map(row => \`<article class="queue-review-item"><div class="queue-review-item-main"><div class="queue-review-kicker"><span class="queue-type-line">\${esc(row.type)} · \${esc(operatorSourceLabel(row.source))}</span><span class="badge \${row.blocked ? "warn" : row.ready ? "good" : "info"}">\${esc(row.status)}</span></div><h3>\${esc(row.title)}</h3><p>\${esc(row.nextAction)}</p><p class="muted">\${row.scheduled ? "Scheduled/due: " + esc(formatDateTime(row.scheduled) || row.scheduled) : "No schedule recorded."}</p></div><div class="queue-review-actions"><button type="button" onclick="location.hash='queue'">Review</button></div></article>\`).join("") || '<div class="empty">No campaign records found yet.</div>'}</div>
+          <details><summary>View technical details</summary><p class="muted">This display reads outreachCampaigns, outreachLists, outreachAttempts, reactivationCampaign, reactivationContacts, campaigns, and posts. It does not rebuild SendGrid, outreach, reactivation, or posting.</p></details>
+        </section>
+      </section>\`;
+    }
+
+    function rcapProspectsPageHtml(pageClass) {
+      const candidates = list(state.prospectCandidates);
+      const revenueAccounts = list(state.rcapRevenueAccounts);
+      return \`<section id="prospects" class="\${pageClass("prospects")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel"><div><div class="eyebrow">RCAP pipeline</div><h1 class="big-title">RCAP Prospects</h1><p class="muted">Prospect Discovery candidates and RCAP Revenue OS accounts. Pending candidates stay in review until approved by Roger.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='upload'">Upload RCAP prospect list</button><button onclick="location.hash='production-activation-rcap'">Open RCAP review</button></div></div>
+        <div class="campaign-preview-metrics">\${[[candidates.length,"prospect candidates"],[revenueAccounts.length,"revenue accounts"],[candidates.filter(c => /pending|review/i.test(String(c.status || c.review_state || "pending_review"))).length,"needs review"],[candidates.filter(c => /approved|ready/i.test(String(c.status || c.review_state))).length,"ready"]].map(([value,label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
+      </section>\`;
+    }
+
+    function revenuePageHtml(pageClass) {
+      const revenue = revenueOperatorSummary();
+      return \`<section id="revenue" class="\${pageClass("revenue")} command-page section-page lee-bubble-safe-space"><div class="panel hero-panel"><div><div class="eyebrow">Money</div><h1 class="big-title">Revenue</h1><p class="muted">Uses Stripe, engagement growth, funnel, and RCAP revenue sources only when real data is available. No fake revenue numbers.</p></div><div class="card-actions"><button onclick="location.hash='growth'">Open Growth</button><button onclick="location.hash='settings'">Connections</button></div></div><section class="growth-card"><div class="growth-card-head"><h2>Revenue status</h2><small>\${esc(revenue.stripeStatus)}</small></div><div class="metric-table">\${[["Money collected", revenue.collected || "Stripe is not connected here yet."],["Failed payments", revenue.failedPayments === "" ? "Not wired yet" : revenue.failedPayments],["Consumer revenue", revenue.consumerRevenue || "Not distinguishable yet"],["RCAP partner revenue", revenue.rcapRevenue || "Not booked from a real source yet"],["Next action", revenue.note]].map(([label,value]) => \`<div class="metric-row"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong></div>\`).join("")}</div></section></section>\`;
+    }
+
+    function meetingsPageHtml(pageClass) {
+      const briefs = meetingBriefs();
+      return \`<section id="meetings" class="\${pageClass("meetings")} command-page section-page lee-bubble-safe-space"><div class="panel hero-panel"><div><div class="eyebrow">Read-only prep</div><h1 class="big-title">Meetings</h1><p class="muted">Meeting briefs come from existing Google read-only Calendar/Gmail signals and tasks. Open Google for full context when body/detail is unavailable.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='settings'">Google connection</button></div></div><div class="queue-review-list">\${briefs.map(brief => \`<article class="queue-review-item"><div class="queue-review-item-main"><div class="queue-review-kicker"><span class="queue-type-line">\${esc(brief.source)} · confidence \${esc(brief.confidence)}</span><span class="badge info">Meeting brief ready</span></div><h3>\${esc(brief.title)}</h3><p>\${esc(formatDateTime(brief.date) || brief.date || "Time not provided")} · \${esc(brief.attendees)} · \${esc(brief.organization)}</p><p><strong>Why it matters:</strong> \${esc(brief.why)}</p><p><strong>Suggested agenda:</strong> \${esc(brief.agenda)}</p><p class="muted"><strong>Missing info:</strong> \${esc(brief.missing)}</p></div><div class="queue-review-actions"><button type="button" onclick="location.hash='tasks'">Create prep task</button></div></article>\`).join("") || '<div class="empty">No meeting prep signals found. Connect Google Calendar read-only or add a prep task.</div>'}</div></section>\`;
+    }
+
+    function supportPageHtml(pageClass) {
+      const items = [...list(state.supportIssues), ...list(state.growthInbox).filter(item => /support|help|issue|complaint/i.test([item.sourceType, item.type, item.category, item.title, item.summary].join(" ")))];
+      return \`<section id="support" class="\${pageClass("support")} support-workspace lee-bubble-safe-space"><section class="support-hero"><div><div class="eyebrow">Support</div><h1>Support</h1><p>\${items.length ? "Possible support items from existing inbox sources." : "Support source is not connected yet."}</p></div><div class="support-actions"><button onclick="location.hash='growth-inbox'">Open Growth Inbox</button></div></section><section class="support-card"><h2>Possible support items</h2><div class="support-status-list">\${items.map(item => \`<div class="support-status-row"><strong>\${esc(item.title || item.summary || "Support item")}</strong><span>\${esc(item.status || item.sourceType || "Review")}</span></div>\`).join("") || '<div class="support-status-row"><strong>Support source is not connected yet.</strong><span>Not connected</span></div>'}</div></section></section>\`;
+    }
+
+    function pagesPageHtml(pageClass) {
+      const pageArtifacts = list(state.partnerProgramArtifacts).filter(item => /page/i.test([item.key, item.title, item.artifactType].join(" ")));
+      return \`<section id="pages" class="\${pageClass("pages")} command-page section-page lee-bubble-safe-space"><div class="panel hero-panel"><div><div class="eyebrow">Pages</div><h1 class="big-title">Pages</h1><p class="muted">\${pageArtifacts.length ? "Partner page artifacts are available for review." : "Co-branded page factory not built yet."} This pass does not publish pages.</p></div><div class="card-actions"><button onclick="location.hash='partner-pages'">Open existing Partner Pages</button></div></div><div class="queue-review-list">\${pageArtifacts.map(item => \`<article class="queue-review-item"><div class="queue-review-item-main"><h3>\${esc(item.title || item.key || "Page artifact")}</h3><p>\${esc(item.summary?.answer || item.summary || item.notes || "Review page artifact before any external use.")}</p><p class="muted">Status: \${esc(item.review_state || item.status || "Needs review")}</p></div><div class="queue-review-actions"><button onclick="location.hash='partner-pages'">Review</button></div></article>\`).join("") || '<div class="empty">Co-branded page factory not built yet. Create a follow-up item before building it.</div>'}</div></section>\`;
     }
 
     function commandCenterOverviewHtml(posts) {
@@ -25153,6 +25317,247 @@ function htmlShell() {
         <div class="command-workstream-grid" style="margin-top:12px">\${rows}</div>
         <div class="growth-card-actions"><button type="button" onclick="runGoogleScan()">Run Scan</button><button type="button" onclick="location.hash='settings'">Google Settings</button></div>
       </section>\`;
+    }
+
+    function companyStatusTone(status = "") {
+      const value = String(status || "").toLowerCase();
+      if (/blocked|failed|broken|error|missing|attention|not connected|not wired|unavailable|suppressed|bounced/i.test(value)) return "warn";
+      if (/ready|connected|approved|clear|live|open|review/i.test(value)) return "go";
+      return "hold";
+    }
+
+    function contactEmail(item = {}) {
+      return firstPresent(item, ["email", "primary_email", "email_address", "contact_email", "work_email"]);
+    }
+
+    function contactPhone(item = {}) {
+      return firstPresent(item, ["phone", "phone_number", "mobile", "contact_phone"]);
+    }
+
+    function contactOrg(item = {}) {
+      return firstPresent(item, ["organization", "organizationName", "org_name", "account_name", "company", "agency", "partnerName", "name"]);
+    }
+
+    function contactName(item = {}) {
+      return firstPresent(item, ["name", "full_name", "contact_name", "primary_contact_name", "primaryContact", "person", "title"]) || contactOrg(item) || "Name not provided";
+    }
+
+    function contactSuppressed(item = {}) {
+      return Boolean(item.do_not_email || item.doNotEmail || item.suppressed || item.unsubscribed || item.bounced || item.complained || /suppress|unsubscribe|bounce|do not contact|do-not-contact/i.test([item.status, item.email_status, item.suppression_status, item.notes].join(" ")));
+    }
+
+    function operatorSourceLabel(source = "") {
+      const labels = {
+        outreachContacts:"RCAP outreach",
+        reactivationContacts:"Consumer reactivation",
+        rcapRevenueContacts:"RCAP revenue workbook",
+        prospectCandidates:"RCAP prospect review",
+        partners:"Partners",
+        growthInbox:"Inbox signal",
+        googleInsights:"Google read-only signal",
+        tasks:"Task",
+        outreachCampaigns:"RCAP outreach",
+        outreachLists:"RCAP prospect list",
+        outreachAttempts:"RCAP outreach attempt",
+        reactivationCampaign:"Consumer reactivation",
+        campaigns:"Social/content campaign",
+        posts:"Social post"
+      };
+      return labels[source] || plainOperatorState(source || "not provided");
+    }
+
+    function unifiedContacts() {
+      const rows = [];
+      const add = (items, type, source, mapper = item => item) => list(items).forEach((raw, index) => {
+        const item = mapper(raw) || {};
+        rows.push({
+          id:String(item.id || item.contact_id || item.candidate_id || item.account_id || stableClientId(source, contactEmail(item) || contactName(item), index)),
+          name:contactName(item),
+          organization:contactOrg(item),
+          email:contactEmail(item),
+          phone:contactPhone(item),
+          type,
+          source,
+          status:firstPresent(item, ["status", "email_status", "sequence_status", "review_state", "candidate_status", "stage"]) || "not provided",
+          tags:list(item.tags).join(", ") || item.source_note || item.provenance || item.source || "",
+          lastTouch:firstPresent(item, ["lastTouch", "last_touch", "lastContactedAt", "updatedAt", "updated_at", "scannedAt"]),
+          nextTouch:firstPresent(item, ["nextTouch", "next_touch", "nextActionDate", "next_follow_up", "dueDate"]),
+          suppressed:contactSuppressed(item),
+          relatedCampaign:item.campaignId || item.campaign_id || item.relatedCampaign || "",
+          relatedPartner:item.partnerId || item.partner_id || item.relatedPartner || item.source_prospect_id || "",
+          raw:item
+        });
+      });
+      add(state.outreachContacts, "RCAP prospect contact", "outreachContacts");
+      add(state.reactivationContacts, "Consumer / Expungement.ai", "reactivationContacts");
+      add(state.rcapRevenueContacts, "RCAP revenue contact", "rcapRevenueContacts");
+      add(state.prospectCandidates, "RCAP prospect", "prospectCandidates");
+      add(state.partners, "Partner", "partners");
+      add(state.growthInbox, "Growth signal", "growthInbox", item => ({ ...item, name:item.contactName || item.person || item.title, organization:item.organization || item.company || item.partnerName }));
+      add(state.googleInsights, "Google read-only signal", "googleInsights", item => ({ ...item, name:item.person || item.attendeeName || item.title || item.subject, organization:item.organization || item.domain }));
+      add(state.tasks, "Task contact", "tasks", item => ({ ...item, name:item.contactName || item.person || item.title, organization:item.organization || item.partnerName }));
+      const seen = new Set();
+      return rows.filter(row => {
+        const key = String(row.email || row.id || row.name + row.organization).toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    function contactsSummary() {
+      const contacts = unifiedContacts();
+      return {
+        total:contacts.length,
+        consumer:contacts.filter(c => /consumer|expungement|reactivation/i.test(c.type)).length,
+        rcapProspects:contacts.filter(c => /rcap prospect/i.test(c.type)).length,
+        rcapPartnerContacts:contacts.filter(c => /rcap revenue|outreach/i.test(c.source)).length,
+        partners:contacts.filter(c => c.source === "partners").length,
+        doNotEmail:contacts.filter(c => c.suppressed).length,
+        cleanup:contacts.filter(c => !c.email || !/.+@.+\..+/.test(c.email) || c.suppressed).length,
+        recentImports:list(state.rcapRevenueImportBatches).length + list(state.prospectDiscoveryRuns).length
+      };
+    }
+
+    function unifiedCampaigns() {
+      const rows = [];
+      const add = (items, type, source, mapper = item => item) => list(items).forEach((raw, index) => {
+        const item = mapper(raw) || {};
+        rows.push({
+          id:String(item.id || item.campaign_id || stableClientId(source, item.title || item.name || type, index)),
+          title:firstPresent(item, ["title", "campaignName", "name", "subject", "hook"]) || type,
+          type,
+          source,
+          status:firstPresent(item, ["status", "approvalStatus", "review_state", "send_status"]) || "Needs review",
+          ready:/approved|ready|scheduled/i.test([item.status, item.approvalStatus, item.review_state].join(" ")),
+          blocked:/blocked|paused|failed|missing|suppressed/i.test([item.status, item.approvalStatus, item.notes, item.blocker].join(" ")),
+          approval:/review|approval|draft|pending/i.test([item.status, item.approvalStatus, item.review_state].join(" ")),
+          scheduled:firstPresent(item, ["scheduledAt", "scheduled_at", "scheduledFor", "send_at"]),
+          nextAction:firstPresent(item, ["nextAction", "recommendedAction", "suggestedAction"]) || "Review status before anything moves.",
+          raw:item
+        });
+      });
+      add(state.outreachCampaigns, "RCAP outreach campaign", "outreachCampaigns");
+      add(state.outreachLists, "RCAP prospect list", "outreachLists", item => ({ ...item, title:item.name || item.list_name || "RCAP prospect list" }));
+      add(state.outreachAttempts, "RCAP outreach attempt", "outreachAttempts", item => ({ ...item, title:item.subject || item.email || item.contact_id || "RCAP outreach attempt", status:item.status || item.send_status || "Needs review" }));
+      add(list(state.reactivationCampaign).length ? [state.reactivationCampaign] : [], "Consumer reactivation campaign", "reactivationCampaign");
+      add(state.reactivationContacts, "Consumer wave", "reactivationContacts", item => ({ ...item, title:"Wave " + (item.wave || "not assigned") + " - " + (item.email || item.contact_id || "contact"), status:item.wave_released_at ? "released" : "Wave not released" }));
+      add(state.campaigns, "Social/content campaign", "campaigns");
+      add(state.posts, "Social post", "posts");
+      return rows;
+    }
+
+    function campaignsSummary() {
+      const rows = unifiedCampaigns();
+      return {
+        total:rows.length,
+        waiting:rows.filter(row => row.approval).length,
+        ready:rows.filter(row => row.ready).length,
+        blocked:rows.filter(row => row.blocked).length,
+        scheduled:rows.filter(row => row.scheduled || /scheduled/i.test(row.status)).length,
+        dryRunOnly:clientLiveGatesCount(state) === 0
+      };
+    }
+
+    function unifiedReviewQueueItems() {
+      const rows = [];
+      const add = (items, source, type, route, mapper = item => item) => list(items).forEach((raw, index) => {
+        const item = mapper(raw) || {};
+        rows.push({
+          id:String(item.id || item.key || stableClientId(source, item.title || type, index)),
+          title:firstPresent(item, ["title", "summary", "subject", "name"]) || type,
+          summary:firstPresent(item, ["summary", "description", "detail", "notes", "suggestedNextAction", "nextAction"]) || "Review and decide the next internal step.",
+          source,
+          type,
+          priority:item.priority || item.riskLevel || "medium",
+          status:firstPresent(item, ["status", "review_state", "approvalStatus", "insightType"]) || "Needs review",
+          recommendedAction:firstPresent(item, ["recommendedAction", "suggestedAction", "suggestedNextAction", "nextAction"]) || "Review",
+          riskLevel:item.riskLevel || item.complianceRisk || "low",
+          approvalRequired:/approval|review|pending|draft/i.test([item.status, item.review_state, item.approvalStatus].join(" ")) || type.includes("approval"),
+          createdAt:firstPresent(item, ["createdAt", "created_at", "updatedAt", "updated_at", "scannedAt"]),
+          route
+        });
+      });
+      add(state.approvalQueue, "approvalQueue", "approval item", "queue");
+      add(state.tasks, "tasks", "task", "tasks");
+      add(state.growthInbox, "growthInbox", "inbox item", "growth-inbox");
+      add(state.googleInsights, "googleInsights", "Google signal", "meetings");
+      add(list(state.prospectCandidates).filter(item => /pending|review/i.test(String(item.status || item.review_state || "pending_review"))), "prospectCandidates", "RCAP prospect", "prospects");
+      add(unifiedCampaigns().filter(item => item.approval || item.blocked), "campaigns", "campaign approval", "campaigns");
+      add(state.partners, "partners", "partner blocker", "partners", item => ({ ...item, title:item.organizationName || item.name || "Partner", summary:item.nextAction || item.blocker || item.notes }));
+      add(state.dataRoomItems, "pages", "page/proof approval", "pages");
+      add([...(state.osHealthSnapshots || []), ...(state.codebaseHealthSnapshots || [])].slice(0, 10), "health", "health finding", "health", item => ({ ...item, title:item.summary?.next_operator_action || item.overall_health || item.status || "Health finding", summary:(item.trust_warnings || [])[0]?.detail || item.notes || "Review health details." }));
+      return rows.filter(item => !/done|completed|approved|ignored|dismissed|archived/i.test(String(item.status || ""))).slice(0, 40);
+    }
+
+    function revenueOperatorSummary() {
+      const stripe = state.stripeRevenue || {};
+      const latestGrowth = list(state.engagementGrowthSnapshots)[0] || {};
+      const metrics = latestGrowth.metrics || {};
+      const rcapDeals = list(state.rcapRevenueDealSeeds);
+      return {
+        collected:stripe.available ? todayMoney(stripe.gross || 0) : "",
+        stripeStatus:stripe.available ? "Connected" : stripe.configured ? "Needs attention" : "Not connected",
+        failedPayments:stripe.failedPayments ?? stripe.failed_payment_count ?? "",
+        consumerRevenue:metrics.revenue?.available ? todayMoney(metrics.revenue.gross || metrics.revenue.net || 0) : "",
+        rcapRevenue:rcapDeals.length ? rcapDeals.length + " RCAP deal seed(s), not booked cash" : "",
+        note:stripe.available ? "Live Stripe gross revenue is available." : stripe.configured ? "Stripe is configured but live revenue is unavailable here." : "Stripe is not connected here yet."
+      };
+    }
+
+    function growthOperatorSummary() {
+      const latest = list(state.engagementGrowthSnapshots)[0] || {};
+      const metrics = latest.metrics || {};
+      const signups = state.signups || metrics.signups || {};
+      return {
+        signups:signups.available ? String(signups.paid || 0) + " paid / " + String(signups.registered || 0) + " registered" : "Not connected",
+        funnel:list(state.funnelSnapshots).length ? String(list(state.funnelSnapshots).length) + " funnel snapshot(s)" : "Not wired yet",
+        outcomes:list(state.engagementGrowthSnapshots).length ? "Engagement growth snapshots available" : "Not connected",
+        traffic:"Website traffic source is not connected yet.",
+        next:"Choose traffic source for LegalEase / Expungement.ai."
+      };
+    }
+
+    function meetingBriefs() {
+      const insights = list(state.googleInsights).filter(item => /meeting|calendar|brief|prep/i.test([item.insightType, item.title, item.subject, item.summary, item.snippet].join(" ")));
+      const taskMeetings = list(state.tasks).filter(item => /meeting|agenda|prep|follow-up/i.test([item.title, item.description, item.sourceType].join(" ")));
+      return [...insights.map(item => ({
+        title:item.title || item.subject || "Meeting brief",
+        date:firstPresent(item, ["start", "startTime", "eventStart", "date", "scannedAt"]),
+        attendees:list(item.attendees).join(", ") || item.attendee || "not provided",
+        organization:item.organization || item.domain || "not provided",
+        why:item.summary || item.snippet || "Google read-only signal suggests this meeting needs context.",
+        agenda:item.suggestedAgenda || item.suggestedNextAction || "Confirm goals, blockers, decision owner, and next step.",
+        missing:item.bodyAvailable === false ? "Open Google for full context." : "Full context may live in Google.",
+        confidence:item.confidence || "medium",
+        source:"googleInsights"
+      })), ...taskMeetings.map(item => ({
+        title:item.title || "Meeting prep task",
+        date:item.dueDate || item.due_date || item.createdAt,
+        attendees:"not provided",
+        organization:item.partnerName || item.organization || "not provided",
+        why:item.description || "Task generated from existing operating signals.",
+        agenda:item.nextAction || "Use task notes to prepare.",
+        missing:"Open source task for full context.",
+        confidence:"medium",
+        source:"tasks"
+      }))].slice(0, 12);
+    }
+
+    function operatorCardHtml(card = {}) {
+      const tone = companyStatusTone([card.status, card.blocked, card.notConnected].join(" "));
+      return \`<article class="cockpit-card operator-company-card" role="button" tabindex="0" onclick="location.hash='\${esc(card.route || "queue")}'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.hash='\${esc(card.route || "queue")}'}">
+        <div class="cockpit-card-top"><span class="cockpit-card-label"><span class="command-dot \${esc(tone)}"></span>\${esc(card.title)}</span><span class="cockpit-card-go">\${esc(card.action || "Review")} →</span></div>
+        <div class="cockpit-card-value">\${card.value || esc(card.status || "Review")}</div>
+        <div class="cockpit-card-list">
+          <div class="cockpit-card-row"><b>What is happening?</b> \${esc(card.happening || "No active signal recorded yet.")}</div>
+          <div class="cockpit-card-row"><b>Needs Roger?</b> \${esc(card.needs || "Nothing urgent.")}</div>
+          <div class="cockpit-card-row"><b>Ready?</b> \${esc(card.ready || "Not ready yet.")}</div>
+          <div class="cockpit-card-row"><b>Blocked?</b> \${esc(card.blocked || "No blocker recorded.")}</div>
+          <div class="cockpit-card-row"><b>Not connected?</b> \${esc(card.notConnected || "No missing source flagged.")}</div>
+          <div class="cockpit-card-note"><b>Next:</b> \${esc(card.next || "Review and decide.")}</div>
+        </div>
+      </article>\`;
     }
 
     function growthOpenInboxItems() {
@@ -27238,9 +27643,9 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const pathRoute = String(location.pathname || "/").replace(/^\\/+|\\/+$/g, "");
       const requestedPage = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#cockpit")).replace("#", "");
-      const routeAliases = { overview:"today", command:"growth", "le-e":"lee", partner:"partners", "partner-hub":"partners", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings" };
+      const routeAliases = { overview:"today", command:"growth", "le-e":"lee", partner:"partners", "partner-hub":"partners", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", health:"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings", replies:"growth-inbox", "inbox-replies":"growth-inbox", lists:"contacts", contact:"contacts", people:"contacts", "upload-list":"upload", "list-upload":"upload", import:"upload", "import-list":"upload", campaign:"campaigns", "campaign-control":"campaigns", "campaigns-control":"campaigns", prospect:"prospects", prospects:"prospects", "rcap-prospects":"prospects", "rcap-pipeline":"prospects", money:"revenue", payments:"revenue", stripe:"revenue", calendar:"meetings", meeting:"meetings", "meeting-prep":"meetings", "support-inbox":"support", "partner-pages-review":"pages", "page-review":"pages", "co-branded-pages":"pages", system:"os-health" };
       const normalizedPage = routeAliases[requestedPage] || requestedPage;
-      const knownPages = ["cockpit", "today", "overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
+      const knownPages = ["cockpit", "upload", "contacts", "prospects", "revenue", "meetings", "support", "pages", "today", "overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "today";
       currentPageId = pageId;
       const canonicalHash = pageId === "overview" ? "today" : pageId === "partner-hub" ? "partners" : pageId;
@@ -27266,6 +27671,13 @@ function htmlShell() {
       const healthTone = schemaStale ? "danger" : supabaseHealth?.connected ? "good" : supabaseHealth?.configured ? "warn" : "danger";
       document.querySelector("#app").innerHTML = \`
         \${safeRenderModule("cockpit", () => pageId === "cockpit" ? cockpitHomeHtml(pageClass) : "")}
+        \${safeRenderModule("upload", () => pageId === "upload" ? uploadListPageHtml(pageClass) : "")}
+        \${safeRenderModule("contacts", () => pageId === "contacts" ? contactsPageHtml(pageClass) : "")}
+        \${safeRenderModule("prospects", () => pageId === "prospects" ? rcapProspectsPageHtml(pageClass) : "")}
+        \${safeRenderModule("revenue", () => pageId === "revenue" ? revenuePageHtml(pageClass) : "")}
+        \${safeRenderModule("meetings", () => pageId === "meetings" ? meetingsPageHtml(pageClass) : "")}
+        \${safeRenderModule("support", () => pageId === "support" ? supportPageHtml(pageClass) : "")}
+        \${safeRenderModule("pages", () => pageId === "pages" ? pagesPageHtml(pageClass) : "")}
         \${safeRenderModule("overview", () => ["today", "overview"].includes(pageId) ? commandCenterOverviewHtml(reviewPosts) : "")}
         \${safeRenderModule("focus", () => focusPageHtml(pageClass))}
         \${safeRenderModule("lee", () => leePageHtml(pageClass))}
@@ -27298,7 +27710,7 @@ function htmlShell() {
         \${safeRenderModule("partner-proposals", () => partnerProposalsPageHtml(pageClass))}
         \${safeRenderModule("milestones", () => milestonesPageHtml(pageClass))}
         \${safeRenderModule("partners", () => partnersPageHtml(pageClass))}
-        \${safeRenderModule("campaigns", () => campaignsPageHtml(pageClass))}
+        \${safeRenderModule("campaigns", () => pageId === "campaigns" ? campaignsControlPageHtml(pageClass) : "")}
         \${safeRenderModule("funnel", () => funnelPageHtml(pageClass))}
         \${safeRenderModule("content-bank", () => contentBankPageHtml(pageClass))}
         \${safeRenderModule("autonomy", () => pageId === "autonomy" ? autonomyPageHtml(pageClass) : "")}
@@ -27451,83 +27863,7 @@ function htmlShell() {
         \${safeRenderModule("metrics", () => ["metrics", "kpis"].includes(pageId) ? metricsDashboardHtml(pageClass) : "")}
         <section id="settings" class="section secondary section-page lee-bubble-safe-space \${pageClass("settings")}">
           \${surfaceTabsHtml("settings", currentPageId)}
-          \${settingsHealthReadoutHtml()}
-          <details>
-            <summary>Launch setup</summary>
-            <div style="margin-top:14px">\${productionReadinessSettingsHtml()}</div>
-            <div style="margin-top:14px">\${manualModeHtml()}</div>
-            <div style="margin-top:14px">\${googleWorkspaceSettingsHtml()}</div>
-            <div style="margin-top:14px">\${storageDiagnosticsHtml()}</div>
-            <div style="margin-top:14px">\${linkedInDryTestChecklistHtml()}</div>
-            <div style="margin-top:14px">\${dailyRhythmHtml()}</div>
-            <div class="settings-card-grid" style="margin-top:14px">\${credentialReadinessHtml()}</div>
-          </details>
-          <details>
-            <summary>Launch readiness</summary>
-            <div style="margin-top:14px">\${launchChecklistHtml()}</div>
-          </details>
-          <details>
-            <summary>Assets</summary>
-            <p class="muted">\${state.persistence === "supabase" ? "Operational brand assets used by Final PNG rendering." : "Local Wilma poses, backgrounds, and watermark files used by Final PNG rendering."}</p>
-            <div style="margin-top:14px">\${assetsSettingsHtml()}</div>
-          </details>
-          <details>
-            <summary>Backup & Restore</summary>
-            <p class="muted">\${state.persistence === "supabase" ? "Operational safety snapshots and export records for recovery workflows." : "Local safety snapshots for operational data and generated posting files."}</p>
-            <div style="margin-top:14px">\${backupRestoreHtml()}</div>
-          </details>
-          \${state.runtime?.localDemoMode === false || state.persistence === "supabase" ? "" : \`<details>
-            <summary>Admin seed data</summary>
-            <p class="muted">Optional startup data for the LegalEase six-month operating plan. This adds missing seed records and keeps user-created data.</p>
-            <div style="margin-top:14px">\${sixMonthSeedHtml()}</div>
-          </details>\`}
-          <details open>
-            <summary>Channels / Integrations</summary>
-	            <div class="channel-readiness-strip" style="margin-top:12px"><strong>Safe mode:</strong> nothing posts, sends, files, or publishes automatically.</div>
-	            \${linkedinConnectorBannerHtml()}
-	            <div class="channel-readiness-list">\${channelCards()}\${rcapConnectionCardHtml()}\${rcapRevenueSettingsStatusHtml()}</div>
-	          </details>
-          <details>
-            <summary>System status</summary>
-            <div class="settings-card-grid" style="margin-top:14px">
-              <div class="panel"><h2>OpenAI Images</h2><p><span class="badge \${imageStatusTone}">\${imageStatusLabel}</span></p><p class="muted">\${imageStatusDetail}</p></div>
-              <div class="panel"><h2>Storage</h2><p><span class="badge info">\${state.persistence === "supabase" ? "Supabase" : "local JSON fallback"}</span></p></div>
-              <div class="panel"><h2>Supabase</h2><p><span class="badge \${healthTone}">\${schemaStale ? "Schema update needed" : supabaseHealth?.connected ? "Connected" : "Not connected"}</span></p><p class="muted">\${esc(state.schemaStatus?.detail || supabaseHealth?.error || "No connection errors.")}</p></div>
-            </div>
-          </details>
-          <details style="margin-top:12px">
-            <summary>Production setup checklist</summary>
-            <p class="muted">Production readiness status for hosted operations. It shows status only, never secret values.</p>
-            <div class="settings-card-grid" style="margin-top:14px">\${setupChecklistHtml()}</div>
-          </details>
-          <details style="margin-top:12px">
-            <summary>Content intelligence</summary>
-            <p class="muted">Scoring and compliance stay mostly invisible. Normal users see simple labels; admin details explain why.</p>
-            <div style="margin-top:14px">\${contentIntelligenceHtml()}</div>
-          </details>
-          <details style="margin-top:12px">
-            <summary>Content library</summary>
-            <div class="grid layout" style="margin-top:14px">
-              <form class="panel" onsubmit="addLibrary(event)">
-                <label>Category<select name="category"><option>hook</option><option>cta</option><option>fact</option><option>wilma</option><option>statistic</option><option>guardrail</option></select></label>
-                <label>Title<input name="title" required placeholder="Approved CTA"></label>
-                <label>Body<textarea name="body" required placeholder="Make second chances easier to act on."></textarea></label>
-                <button class="primary">Add item</button>
-              </form>
-              <div class="grid">\${state.library.map(item => \`<article class="card"><span class="badge info">\${esc(item.category)}</span><h3>\${esc(item.title)}</h3><p class="muted">\${esc(item.body)}</p></article>\`).join("")}</div>
-            </div>
-          </details>
-          <details style="margin-top:12px">
-            <summary>Admin brand system</summary>
-            <p class="muted">Advanced controls for assets, rules, generation defaults, and prompt debugging.</p>
-            <div class="tabs">
-              <button class="tab active" onclick="showBrandTab('assets', this)">Brand Assets</button>
-              <button class="tab" onclick="showBrandTab('rules', this)">Brand Rules</button>
-              <button class="tab" onclick="showBrandTab('defaults', this)">Image Defaults</button>
-              <button class="tab" onclick="showBrandTab('advanced', this)">Advanced Prompt Controls</button>
-            </div>
-            <div id="brandTab"></div>
-          </details>
+          \${plainSettingsPageHtml({ imageStatusTone, imageStatusLabel, imageStatusDetail, healthTone, schemaStale })}
         </section>
         \${leeBubbleHtml()}\`;
       document.querySelectorAll("nav a").forEach(link => {

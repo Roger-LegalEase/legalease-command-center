@@ -10,6 +10,7 @@ const navSectionBlock = source.match(/function navSectionForPage\(pageId = "toda
 
 assert(navBlock, "Top nav should render.");
 for (const [label, href, section] of [
+  ["Cockpit", "#cockpit", "cockpit"],
   ["Today", "#today", "today"],
   ["Growth", "#growth", "growth"],
   ["Partners", "#partners", "partners"],
@@ -22,7 +23,7 @@ for (const [label, href, section] of [
   assert(navBlock.includes(`data-nav-section="${section}"`), `${label} should have a stable nav section.`);
 }
 
-assert.equal((navBlock.match(/class="nav-top-link"/g) || []).length, 7, "Primary nav should expose six founder-facing surfaces plus Le-E.");
+assert.equal((navBlock.match(/class="nav-top-link"/g) || []).length, 8, "Primary nav should expose the Cockpit landing, six founder-facing surfaces, plus Le-E.");
 for (const retiredLabel of [">Command<", ">Queue<", ">Sources<", ">More<"]) {
   assert(!navBlock.includes(retiredLabel), `Primary nav should not expose retired label ${retiredLabel}.`);
 }
@@ -46,6 +47,14 @@ for (const alias of [
 }
 
 for (const route of [
+  "cockpit",
+  "upload",
+  "contacts",
+  "prospects",
+  "revenue",
+  "meetings",
+  "support",
+  "pages",
   "today",
   "overview",
   "growth",
@@ -82,7 +91,7 @@ for (const section of ["command", "queue", "sources", "settings"]) {
   assert(navSectionBlock.includes(`"${section}"`) || routeAliases.includes(`${section}:`), `${section} compatibility route should remain visible to the route map.`);
 }
 
-for (const section of ["today", "growth", "partners", "production", "proof", "settings", "lee"]) {
+for (const section of ["cockpit", "today", "growth", "partners", "production", "proof", "settings", "lee"]) {
   assert(navSectionBlock.includes(`return "${section}"`), `${section} active nav mapping should exist.`);
 }
 
