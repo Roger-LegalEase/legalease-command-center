@@ -176,13 +176,50 @@ function testLiveSendGateOff() {
 function testCalendarLinkRendering() {
   const msg = assembleFor("legal_aid", "clinic-extension");
   assert.ok(msg.html.includes(`<a href="${CALENDAR_URL}">`), "HTML body has a calendar anchor");
-  assert.ok(!msg.html.includes("[CALENDAR_LINK]"), "no unrendered token left in HTML");
+  assert.ok(!msg.html.includes("[CALENDAR_LINK"), "no unrendered token left in HTML");
   assert.ok(msg.text.includes(CALENDAR_URL), "plaintext body has the raw calendar URL");
-  assert.ok(!msg.text.includes("[CALENDAR_LINK]"), "no unrendered token left in plaintext");
-  // direct render helpers
-  assert.ok(renderTouchHtml("book here: [CALENDAR_LINK]").includes(`<a href="${CALENDAR_URL}">`), "renderTouchHtml anchors the link");
+  assert.ok(!msg.text.includes("[CALENDAR_LINK"), "no unrendered token left in plaintext");
+  // The raw calendar URL must NEVER appear as VISIBLE anchor text — only inside the href.
+  assert.ok(!msg.html.includes(`>${CALENDAR_URL}<`), "raw calendar URL is never visible body text");
+
+  // Labeled token: visible anchor text is the SHORT LABEL, URL only in href.
+  const labeled = renderTouchHtml("You can [CALENDAR_LINK:grab a time here]");
+  assert.ok(labeled.includes(`<a href="${CALENDAR_URL}">grab a time here</a>`), "anchor visible text is the label");
+  assert.ok(!labeled.includes(`>${CALENDAR_URL}<`), "label render hides the raw URL");
+  // Plaintext keeps the label + usable URL ("label: URL").
+  assert.equal(renderTouchText("You can [CALENDAR_LINK:grab a time here]"),
+    `You can grab a time here: ${CALENDAR_URL}`, "plaintext renders 'label: URL'");
+  // Bare token (no label) falls back to a default label, still no raw URL as visible text.
+  const bare = renderTouchHtml("book here: [CALENDAR_LINK]");
+  assert.ok(bare.includes(`<a href="${CALENDAR_URL}">grab a time here</a>`), "bare token uses default label");
   assert.ok(renderTouchText("book here: [CALENDAR_LINK]").includes(CALENDAR_URL), "renderTouchText uses raw URL");
-  ok("calendar link renders as an HTML hyperlink and a plaintext raw URL");
+
+  // Every approved touch across all four sequences renders cleanly (no bare URL as text).
+  for (const id of OUTREACH_SEQUENCE_IDS) {
+    for (const t of OUTREACH_SEQUENCES[id].touches) {
+      const html = renderTouchHtml(t.body);
+      assert.ok(!html.includes(`>${CALENDAR_URL}<`), `${id} touch ${t.step_number}: no visible raw URL`);
+      assert.ok(html.includes(`<a href="${CALENDAR_URL}">`), `${id} touch ${t.step_number}: has calendar anchor`);
+    }
+  }
+  ok("calendar link renders as a labeled HTML hyperlink (short label visible, URL only in href) and a usable plaintext URL");
+}
+
+// ---- signature block present between body and compliance footer ---------------
+function testSignatureBlock() {
+  const msg = assembleFor("nonprofit", "verified-reporting");
+  for (const line of ["Roger Roman", "COO, LegalEase", "(323) 394-8201", "legaleasepartner.com",
+    "LegalEase is not a law firm and does not provide legal advice."]) {
+    assert.ok(msg.text.includes(line), `plaintext signature contains: ${line}`);
+    assert.ok(msg.html.includes(line.replace(/&/g, "&amp;")), `HTML signature contains: ${line}`);
+  }
+  // Signature sits BETWEEN the body sign-off ("Roger") and the compliance footer divider.
+  const sigAt = msg.text.indexOf("Roger Roman");
+  const footerAt = msg.text.indexOf("\n—\n");
+  assert.ok(sigAt > 0 && footerAt > sigAt, "signature appears before the compliance footer");
+  // No image / logo embedded — text only.
+  assert.ok(!/<img/i.test(msg.html), "signature embeds no image");
+  ok("text signature block renders between body and compliance footer (no image)");
 }
 
 // ---- 14. unsubscribe + footer + Delaware postal address present ---------------
@@ -195,7 +232,9 @@ function testFooterCompliance() {
   assert.ok(msg.text.includes("Unsubscribe:"), "plaintext unsubscribe present");
   assert.ok(/List-Unsubscribe/i.test(JSON.stringify(msg.headers)), "List-Unsubscribe header present");
   assert.match(msg.headers["List-Unsubscribe-Post"], /one-click/i, "one-click header present");
-  assert.ok(msg.html.includes("Unsubscribe:") && /<a href=/.test(msg.html), "HTML unsubscribe link present");
+  // HTML unsubscribe renders as just the word "Unsubscribe" (clickable); the token URL is href-only.
+  assert.match(msg.html, /<a href="[^"]*\/api\/outreach\/unsubscribe[^"]*">Unsubscribe<\/a>/, "HTML unsubscribe is a clickable 'Unsubscribe' word");
+  assert.ok(!msg.html.includes(`>${msg.unsubscribeUrl}<`), "raw unsubscribe URL is never visible body text");
   // compliance validator accepts the split-line address
   assert.equal(validateCompliance(msg).ok, true, "assembled message is fully compliant");
   // address splitter
@@ -212,6 +251,7 @@ function main() {
   testEveryRealClassificationMaps();
   testLiveSendGateOff();
   testCalendarLinkRendering();
+  testSignatureBlock();
   testFooterCompliance();
   console.log(`\n${passed} checks passed.\n`);
 }

@@ -76,6 +76,16 @@ export const OUTREACH_IDENTITY_DEFAULTS = Object.freeze({
   companyName: "LegalEase"
 });
 
+// Cold-outreach signature block (TEXT only — no logo image; lightweight for deliverability).
+// Rendered between the body sign-off and the CAN-SPAM compliance footer, in both text and HTML.
+export const OUTREACH_SIGNATURE_LINES = Object.freeze([
+  "Roger Roman",
+  "COO, LegalEase",
+  "(323) 394-8201 | roger@legalease.com | legaleasepartner.com",
+  "",
+  "LegalEase provides self-help technology and information. LegalEase is not a law firm and does not provide legal advice."
+]);
+
 const clean = (v = "") => String(v ?? "").trim();
 const lower = (v = "") => clean(v).toLowerCase();
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -312,8 +322,14 @@ export function assembleCompliantMessage({ contact = {}, org = {}, step = {}, co
     escapeHtml(brand),
     escapeHtml(addr.line1),
     ...(addr.line2 ? [escapeHtml(addr.line2)] : []),
-    `Unsubscribe: <a href="${escapeHtml(unsubscribeUrl)}">${escapeHtml(unsubscribeUrl)}</a>`
+    // Unsubscribe renders as just the word "Unsubscribe" (clickable); the token URL lives only in href.
+    `<a href="${escapeHtml(unsubscribeUrl)}">Unsubscribe</a>`
   ].join("<br>\n");
+
+  // Text signature block (cold outreach: TEXT only, no images — keep it lightweight for
+  // deliverability). Sits between the body and the CAN-SPAM compliance footer.
+  const signatureText = OUTREACH_SIGNATURE_LINES.join("\n");
+  const signatureHtml = OUTREACH_SIGNATURE_LINES.map(escapeHtml).join("<br>\n");
 
   return {
     to: toEmail,
@@ -321,8 +337,8 @@ export function assembleCompliantMessage({ contact = {}, org = {}, step = {}, co
     fromName: clean(config.fromName),
     replyTo,
     subject,
-    text: `${bodyText}\n${footer}`,
-    html: `<div>${bodyHtml}<br>\n<br>\n${footerHtml}</div>`,
+    text: `${bodyText}\n\n${signatureText}\n${footer}`,
+    html: `<div>${bodyHtml}<br>\n<br>\n${signatureHtml}<br>\n<br>\n${footerHtml}</div>`,
     headers: {
       // Gmail/Yahoo one-click unsubscribe (2024 bulk-sender rules).
       "List-Unsubscribe": `<${unsubscribeUrl}>`,

@@ -12,8 +12,11 @@
 //     nor sent.
 //
 // The copy below is the APPROVED outreach copy and must not be rewritten. [First Name] /
-// [Organization] are filled at assembly time; [CALENDAR_LINK] is replaced with a real anchor
-// (HTML) or the raw URL (plaintext); [specific reason: ...] in the final touch is a manual fill.
+// [Organization] are filled at assembly time; [specific reason: ...] in the final touch is a
+// manual fill. The calendar booking link is a labeled token [CALENDAR_LINK:visible label]:
+//   - HTML  => <a href="URL">visible label</a>  (the raw URL NEVER appears as visible text)
+//   - text  => "visible label: URL"             (URL stays usable in plaintext)
+// A bare [CALENDAR_LINK] (no label) falls back to a default label so no raw URL ever shows.
 
 // Google Calendar booking link (rendered as an HTML hyperlink; raw URL in plaintext).
 export const CALENDAR_URL =
@@ -38,7 +41,7 @@ The harder part is turning that work into a report a funder can trust without re
 
 That is what RCAP is built for. Your record-clearing workflow runs through RCAP, key steps are captured as timestamped events, and the result is a verified impact report showing distinct people served, case progress, filing milestones, and outcomes where they are reported.
 
-Worth 15 minutes to see a sample report and pressure-test whether this would help before your next funder update? You can grab a time here: [CALENDAR_LINK]
+Worth 15 minutes to see a sample report and pressure-test whether this would help before your next funder update? You can [CALENDAR_LINK:grab a time here]
 
 Roger`
   },
@@ -61,7 +64,7 @@ The report can show:
 
 The goal is less manual reporting, stronger proof, and a cleaner story for the people funding the work.
 
-Open to walking through the sample report? Pick a time that works: [CALENDAR_LINK]
+Open to walking through the sample report? [CALENDAR_LINK:Pick a time that works]
 
 Roger`
   },
@@ -77,7 +80,7 @@ The shift is from "we served X people" to "here is what happened, where each cas
 
 RCAP is built for that second standard. It gives your team a way to run the work through one trackable workflow and come out with a verified impact report at the end.
 
-Would it be useful to look at what a 90-day RCAP launch could look like for [Organization]? You can grab a time here: [CALENDAR_LINK]
+Would it be useful to look at what a 90-day RCAP launch could look like for [Organization]? You can [CALENDAR_LINK:grab a time here]
 
 Roger`
   },
@@ -89,7 +92,7 @@ Roger`
 
 I do not want to clutter your inbox.
 
-If proving record-clearing outcomes to funders, boards, or program partners is a priority this year, I would be glad to show you the sample RCAP report. You can book a quick 15 minutes here: [CALENDAR_LINK]
+If proving record-clearing outcomes to funders, boards, or program partners is a priority this year, I would be glad to show you the sample RCAP report. You can [CALENDAR_LINK:book a quick 15 minutes here]
 
 If timing is not right, no problem. Just say so and I can step back.
 
@@ -108,7 +111,7 @@ Reaching back out because [specific reason: upcoming grant report, new report sa
 
 The strongest use case for RCAP is not "another tool." It is a cleaner way to produce the report most funders already want: who moved through the process, where cases stand, what milestones were reached, and what proof supports the numbers.
 
-If your team has a funder update, board report, or campaign recap coming up, RCAP may be worth pressure-testing now. Here is my calendar if it is easier: [CALENDAR_LINK]
+If your team has a funder update, board report, or campaign recap coming up, RCAP may be worth pressure-testing now. [CALENDAR_LINK:Here is my calendar if it is easier]
 
 Roger`
   }
@@ -130,7 +133,7 @@ RCAP helps move part of that work before and after the clinic. People can scan a
 
 Your clinic stops being the only moment someone can get started. It becomes a record-clearing access pathway.
 
-Worth 15 minutes to see how it works? You can reply here or grab a time directly: [CALENDAR_LINK]
+Worth 15 minutes to see how it works? You can reply here or [CALENDAR_LINK:grab a time directly]
 
 Roger`
   },
@@ -148,7 +151,7 @@ That means clinic time can be used for the higher-value work: helping prepared p
 
 It is capacity, not just software.
 
-Open to a short walkthrough? You can pick a time that works: [CALENDAR_LINK]
+Open to a short walkthrough? You can [CALENDAR_LINK:pick a time that works]
 
 Roger`
   },
@@ -166,7 +169,7 @@ With RCAP, the same co-branded path can keep people moving after the clinic, whi
 
 Every flyer, QR code, and referral source can become measurable too, so you can see what outreach actually produced intake.
 
-Want me to send over the sample report, or would it be easier to grab 15 minutes here: [CALENDAR_LINK]
+Want me to send over the sample report, or would it be easier to [CALENDAR_LINK:grab 15 minutes here]
 
 Roger`
   },
@@ -182,7 +185,7 @@ If extending your record-clearing clinic before and after the event is a priorit
 
 The idea is simple: reach people earlier, make clinic day more efficient, keep people moving afterward, and come out with a cleaner impact report for funders, boards, or program partners.
 
-You can book a quick 15 minutes here: [CALENDAR_LINK]
+You can [CALENDAR_LINK:book a quick 15 minutes here]
 
 If timing is not right, no problem. Just say so and I can step back.
 
@@ -203,7 +206,7 @@ The strongest case for RCAP is not "another tool." It is a way to reach more peo
 
 If you have a clinic, campaign, or funding cycle coming up, it may be worth a look now.
 
-Here is my calendar if it is easier: [CALENDAR_LINK]
+[CALENDAR_LINK:Here is my calendar if it is easier]
 
 Roger`
   }
@@ -223,7 +226,7 @@ Reentry programs are increasingly asked to show more than activity. Commissioner
 
 RCAP is the infrastructure that makes that possible. Record-clearing work runs through it, key steps are captured as timestamped events, and the result is a defensible report showing distinct people served, case progress, filing milestones, and outcomes where they are reported.
 
-Worth 15 minutes to see how it works for a county program? You can grab a time here: [CALENDAR_LINK]
+Worth 15 minutes to see how it works for a county program? You can [CALENDAR_LINK:grab a time here]
 
 Roger`
   },
@@ -239,7 +242,7 @@ A lot of reentry intake happens cold: people arrive with uneven information, sta
 
 That means public dollars go toward moving people forward, not sorting paperwork.
 
-Open to a short walkthrough? Pick a time that works: [CALENDAR_LINK]
+Open to a short walkthrough? [CALENDAR_LINK:Pick a time that works]
 
 Roger`
   },
@@ -253,7 +256,7 @@ One more piece. The reason RCAP reporting holds up is that every figure traces t
 
 For a public program, that matters: you can show distinct people served, where cases stand, outcomes by jurisdiction, and the trail behind every number, without rebuilding it from spreadsheets at reporting time.
 
-Would it be useful to see what a 90-day RCAP launch could look like for your program? You can grab a time here: [CALENDAR_LINK]
+Would it be useful to see what a 90-day RCAP launch could look like for your program? You can [CALENDAR_LINK:grab a time here]
 
 Roger`
   },
@@ -265,7 +268,7 @@ Roger`
 
 I do not want to clutter your inbox.
 
-If documenting demand, tracking outcomes, and showing public accountability for your reentry work is a priority this year, I would be glad to show you how RCAP works. You can book a quick 15 minutes here: [CALENDAR_LINK]
+If documenting demand, tracking outcomes, and showing public accountability for your reentry work is a priority this year, I would be glad to show you how RCAP works. You can [CALENDAR_LINK:book a quick 15 minutes here]
 
 If timing is not right, no problem. Just say so and I can step back.
 
@@ -284,7 +287,7 @@ Reaching back out because [specific reason: upcoming budget cycle, council or co
 
 The strongest case for RCAP is not "another tool." It is a cleaner way to produce the accountability most public programs already need: who moved through the process, where cases stand, what milestones were reached, and what proof supports the numbers.
 
-If you have a reporting cycle or program review coming up, it may be worth a look now. Here is my calendar if it is easier: [CALENDAR_LINK]
+If you have a reporting cycle or program review coming up, it may be worth a look now. [CALENDAR_LINK:Here is my calendar if it is easier]
 
 Roger`
   }
@@ -304,7 +307,7 @@ const EMPLOYER_PATHWAY_TOUCHES = [
 
 RCAP gives you a way to offer a record-clearing pathway, for your own workforce or alongside the reentry partners you work with, without becoming a legal provider yourself. People start from a co-branded path, get routed and prepared, and you can see what the program produces.
 
-Worth 15 minutes to see how it works? You can reply here or grab a time directly: [CALENDAR_LINK]
+Worth 15 minutes to see how it works? You can reply here or [CALENDAR_LINK:grab a time directly]
 
 Roger`
   },
@@ -320,7 +323,7 @@ For a lot of justice-impacted workers, a record limits which roles, certificatio
 
 RCAP gives your people a safe, guided record-clearing path, and gives you visibility into who started, where they are, and what it produced, without your team taking on legal work.
 
-Open to a short walkthrough? You can pick a time that works: [CALENDAR_LINK]
+Open to a short walkthrough? You can [CALENDAR_LINK:pick a time that works]
 
 Roger`
   },
@@ -336,7 +339,7 @@ You can offer the record-clearing pathway directly to your own workforce as a be
 
 Either way, you get a measurable program instead of a one-time gesture, backed by a reporting trail.
 
-Would it be useful to see what a 90-day RCAP launch could look like? You can grab a time here: [CALENDAR_LINK]
+Would it be useful to see what a 90-day RCAP launch could look like? You can [CALENDAR_LINK:grab a time here]
 
 Roger`
   },
@@ -348,7 +351,7 @@ Roger`
 
 I do not want to clutter your inbox.
 
-If offering a record-clearing pathway, for your workforce or your reentry partners, is something [Organization] wants to explore this year, I would be glad to show you how RCAP works. You can book a quick 15 minutes here: [CALENDAR_LINK]
+If offering a record-clearing pathway, for your workforce or your reentry partners, is something [Organization] wants to explore this year, I would be glad to show you how RCAP works. You can [CALENDAR_LINK:book a quick 15 minutes here]
 
 If timing is not right, no problem. Just say so and I can step back.
 
@@ -367,7 +370,7 @@ Reaching back out because [specific reason: hiring cycle, new partnership, workf
 
 The strongest case for RCAP is not "another tool." It is a way to turn second-chance hiring into a fuller pathway: help people clear the records that block advancement, for your workforce or your reentry partners, and see what the program produces.
 
-If you have a workforce initiative or partnership coming up, it may be worth a look now. Here is my calendar if it is easier: [CALENDAR_LINK]
+If you have a workforce initiative or partnership coming up, it may be worth a look now. [CALENDAR_LINK:Here is my calendar if it is easier]
 
 Roger`
   }
@@ -450,7 +453,10 @@ export function getSequenceTouch(sequenceId = "", stepNumber = 1) {
 // ---------------------------------------------------------------------------
 // Rendering: personalization + calendar link (HTML anchor vs plaintext raw URL).
 // ---------------------------------------------------------------------------
-const CAL_TOKEN = "[CALENDAR_LINK]";
+// Calendar token: [CALENDAR_LINK] or [CALENDAR_LINK:visible label]. The label becomes the
+// anchor text (HTML) / lead-in (plaintext); the URL lives only in the href / trailing URL.
+const CAL_TOKEN_PATTERN = /\[CALENDAR_LINK(?::([^\]]*))?\]/g;
+const DEFAULT_CAL_LABEL = "grab a time here";
 const clean = (v = "") => String(v ?? "").trim();
 
 function fillPersonalization(body = "", { firstName = "", organization = "" } = {}) {
@@ -468,16 +474,24 @@ function escapeHtml(s = "") {
     .replace(/"/g, "&quot;");
 }
 
-// Plaintext body: [CALENDAR_LINK] -> raw URL (always present, usable).
+// Plaintext body: [CALENDAR_LINK:label] -> "label: URL" (raw URL kept usable in plaintext).
 export function renderTouchText(body = "", { firstName = "", organization = "", calendarUrl = CALENDAR_URL } = {}) {
   const filled = fillPersonalization(body, { firstName, organization });
-  return filled.split(CAL_TOKEN).join(calendarUrl);
+  return filled.replace(new RegExp(CAL_TOKEN_PATTERN), (_m, label) => {
+    const text = clean(label) || DEFAULT_CAL_LABEL;
+    return `${text}: ${calendarUrl}`;
+  });
 }
 
-// HTML body: copy is HTML-escaped, newlines -> <br>, [CALENDAR_LINK] -> a real anchor.
+// HTML body: copy is HTML-escaped, newlines -> <br>, [CALENDAR_LINK:label] -> a real anchor whose
+// VISIBLE text is the label (the raw URL appears only in href, never as body text).
 export function renderTouchHtml(body = "", { firstName = "", organization = "", calendarUrl = CALENDAR_URL } = {}) {
   const filled = fillPersonalization(body, { firstName, organization });
-  const anchor = `<a href="${escapeHtml(calendarUrl)}">${escapeHtml(calendarUrl)}</a>`;
-  const escaped = escapeHtml(filled).split(escapeHtml(CAL_TOKEN)).join(anchor);
-  return escaped.replace(/\n/g, "<br>\n");
+  const href = escapeHtml(calendarUrl);
+  // Escape the whole body first; the captured label is therefore already escaped.
+  const linked = escapeHtml(filled).replace(new RegExp(CAL_TOKEN_PATTERN), (_m, label) => {
+    const text = clean(label) || DEFAULT_CAL_LABEL;
+    return `<a href="${href}">${text}</a>`;
+  });
+  return linked.replace(/\n/g, "<br>\n");
 }
