@@ -301,35 +301,62 @@ export function assembleCompliantMessage({ contact = {}, org = {}, step = {}, co
 
   const classification = clean(step.classification || contact.classification || org.classification);
   const seq = resolveSequenceForClassification(classification);
-  const firstName = clean(contact.contact_name).split(/\s+/)[0] || "";
+  // Optional per-campaign first-name fallback (reactivation uses "there" -> "Hi there,") so a
+  // contact with no name never leaves a raw [First Name] merge field in the body.
+  const firstName = (clean(contact.contact_name).split(/\s+/)[0] || clean(config.firstNameFallback)) || "";
   const organization = clean(org.organization_name || contact.organization_name);
-  const bodyText = renderTouchText(rawBody, { firstName, organization, calendarUrl: CALENDAR_URL });
-  const bodyHtml = renderTouchHtml(rawBody, { firstName, organization, calendarUrl: CALENDAR_URL });
+  // CTA link URL: a campaign may override the calendar URL with its own CTA href (reactivation
+  // points "Start Free Check" at expungement.ai, so no Google Calendar URL ever renders). Defaults
+  // to the RCAP calendar booking URL.
+  const ctaRenderUrl = clean(config.calendarUrl) || CALENDAR_URL;
+  const bodyText = renderTouchText(rawBody, { firstName, organization, calendarUrl: ctaRenderUrl });
+  let bodyHtml = renderTouchHtml(rawBody, { firstName, organization, calendarUrl: ctaRenderUrl });
+  // Optional: linkify plain brand mentions in the HTML body (reactivation hyperlinks every visible
+  // "Expungement.ai"). Safe because the CTA href uses lowercase "expungement.ai", so replacing the
+  // capitalized brand string never touches an existing href/anchor.
+  for (const link of (Array.isArray(config.bodyHtmlLinks) ? config.bodyHtmlLinks : [])) {
+    const text = clean(link && link.text);
+    const href = clean(link && link.href);
+    if (!text || !href) continue;
+    bodyHtml = bodyHtml.split(escapeHtml(text)).join(`<a href="${escapeHtml(href)}">${escapeHtml(text)}</a>`);
+  }
 
   const token = signUnsubscribeToken({ contact_id: contact.contact_id || "", email: toEmail, campaign_id: step.campaign_id || "" }, env);
   const unsubscribeUrl = `${String(baseUrl).replace(/\/+$/, "")}/api/outreach/unsubscribe?token=${encodeURIComponent(token)}`;
 
   // CAN-SPAM footer: brand + physical postal address (street line / city-state-zip line) + unsubscribe.
+  // A campaign may override the single brand line with multiple lines (reactivation: "Expungement.ai"
+  // then "LegalEase") and append extra footer lines (a website). footerLinkMap turns any footer
+  // content line whose exact text is a key into a clickable link in the HTML footer.
   const brand = clean(config.companyName || org.organization_name || "LegalEase");
+  const brandLines = (Array.isArray(config.footerBrandLines) && config.footerBrandLines.length)
+    ? config.footerBrandLines.map(clean).filter(Boolean)
+    : [brand];
+  const extraLines = (Array.isArray(config.footerExtraLines) ? config.footerExtraLines.map(clean).filter(Boolean) : []);
+  const linkMap = (config.footerLinkMap && typeof config.footerLinkMap === "object") ? config.footerLinkMap : {};
   const addr = splitPostalAddress(postalAddress);
-  const footerLines = ["", "—", brand, addr.line1];
-  if (addr.line2) footerLines.push(addr.line2);
-  footerLines.push(`Unsubscribe: ${unsubscribeUrl}`);
-  const footer = footerLines.join("\n");
+  const contentLines = [...brandLines, addr.line1, ...(addr.line2 ? [addr.line2] : []), ...extraLines];
 
+  const footer = ["", "—", ...contentLines, `Unsubscribe: ${unsubscribeUrl}`].join("\n");
+
+  const linkifyFooter = (txt) => {
+    const href = clean(linkMap[txt]);
+    return href ? `<a href="${escapeHtml(href)}">${escapeHtml(txt)}</a>` : escapeHtml(txt);
+  };
   const footerHtml = [
     "—",
-    escapeHtml(brand),
-    escapeHtml(addr.line1),
-    ...(addr.line2 ? [escapeHtml(addr.line2)] : []),
+    ...contentLines.map(linkifyFooter),
     // Unsubscribe renders as just the word "Unsubscribe" (clickable); the token URL lives only in href.
     `<a href="${escapeHtml(unsubscribeUrl)}">Unsubscribe</a>`
   ].join("<br>\n");
 
   // Text signature block (cold outreach: TEXT only, no images — keep it lightweight for
-  // deliverability). Sits between the body and the CAN-SPAM compliance footer.
-  const signatureText = OUTREACH_SIGNATURE_LINES.join("\n");
-  const signatureHtml = OUTREACH_SIGNATURE_LINES.map(escapeHtml).join("<br>\n");
+  // deliverability). Sits between the body and the CAN-SPAM compliance footer. A campaign may
+  // override the signature lines (reactivation drops the RCAP phone/legaleasepartner.com line).
+  const signatureLines = (Array.isArray(config.signatureLines) && config.signatureLines.length)
+    ? config.signatureLines : OUTREACH_SIGNATURE_LINES;
+  const signatureText = signatureLines.join("\n");
+  const signatureHtml = signatureLines.map(escapeHtml).join("<br>\n");
 
   return {
     to: toEmail,

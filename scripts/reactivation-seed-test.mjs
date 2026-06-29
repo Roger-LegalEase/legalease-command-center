@@ -11,11 +11,11 @@
 // sends nothing. Defaults to Roger's two known addresses if REACTIVATION_SEED_RECIPIENTS is unset.
 
 import {
-  outreachConfigOf, assembleCompliantMessage, validateCompliance, resolveOutreachSendDecision,
+  assembleCompliantMessage, validateCompliance, resolveOutreachSendDecision,
   normalizeEmail
 } from "./outreach-os.mjs";
-import { REACTIVATION_CTA_URL, getReactivationTouch } from "./reactivation-sequences.mjs";
-import { reactivationLiveSendEnabled } from "./reactivation-os.mjs";
+import { getReactivationTouch, DEFAULT_REACTIVATION_SEQUENCE_ID } from "./reactivation-sequences.mjs";
+import { reactivationLiveSendEnabled, reactivationMessageConfig } from "./reactivation-os.mjs";
 import { createStore } from "./storage.mjs";
 
 const env = process.env;
@@ -55,10 +55,10 @@ for (const r of recipients) {
   if (contactEmails.has(r)) fail(`recipient ${r} is in the reactivation list — refusing (seed test is for Roger only).`);
 }
 
-// Baked Delaware compliance identity, with the From DISPLAY NAME overridden to "LegalEase" so the
-// seed renders EXACTLY as the live campaign will (parent-brand From name, not a personal name).
-const config = { ...outreachConfigOf(state), fromName: "LegalEase" };
-const touch = getReactivationTouch(0);  // Touch 0 = seed
+// Reactivation compliance config (Delaware postal, "LegalEase" From name, expungement.ai CTA +
+// footer, reactivation signature) so the seed renders EXACTLY as the live campaign will.
+const config = reactivationMessageConfig(state, { sequenceId: DEFAULT_REACTIVATION_SEQUENCE_ID, touchNumber: 0 });
+const touch = getReactivationTouch(0);  // Touch 0 = seed (shared across sequences)
 if (!touch) fail("could not load the seed touch.");
 
 const live = reactivationLiveSendEnabled(env) && Boolean(env.SENDGRID_API_KEY);
@@ -67,16 +67,10 @@ console.log("Live gate       :", live ? "ON (REACTIVATION_LIVE_SEND + SENDGRID_A
 
 for (const recipient of recipients) {
   const contact = { contact_id: `seed-${recipient}`, contact_name: "Roger Roman", email: recipient };
-  let message = assembleCompliantMessage({
+  const message = assembleCompliantMessage({
     contact, org: {}, step: { ...touch, campaign_id: "mvp-reactivation", classification: "" },
     config, env
   });
-  // Retarget the CTA link from the calendar default to the reactivation URL.
-  message = {
-    ...message,
-    text: String(message.text).split(/https:\/\/calendar\.google\.com\/[^\s)]+/).join(REACTIVATION_CTA_URL),
-    html: String(message.html).split(/https:\/\/calendar\.google\.com\/[^"<\s)]+/).join(REACTIVATION_CTA_URL)
-  };
   if (message.to !== recipient) fail(`recipient mismatch (${message.to} != ${recipient}).`);
   // Full compliance, EXCEPT we tolerate "invalid_recipient" caused solely by a role-account local
   // part (e.g. info@legalease.law) — these are Roger's own monitored aliases for the render test,

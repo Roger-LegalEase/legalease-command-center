@@ -24,7 +24,8 @@ import {
 } from "./outreach-os.mjs";
 import {
   REACTIVATION_CADENCE_DAYS, REACTIVATION_CTA_URL, REACTIVATION_MAX_TOUCHES,
-  getReactivationTouch
+  getReactivationTouch, sequenceIdForContact, reactivationCtaUrl, reactivationFooterUrl,
+  REACTIVATION_SIGNATURE_LINES, DEFAULT_REACTIVATION_SEQUENCE_ID
 } from "./reactivation-sequences.mjs";
 
 // ---------------------------------------------------------------------------
@@ -370,11 +371,30 @@ export function applyReactivationEvent(state = {}, ev = {}, { now = nowIso() } =
 // ---------------------------------------------------------------------------
 // 7. PLAN / ACT — wave-released, suppression-checked, compliant, capped, threshold-paused sends.
 // ---------------------------------------------------------------------------
-function reactivationMessageConfig(state = {}) {
-  // Reuse the B2 compliance identity (Dover DE postal, From email, signature, footer) but override
-  // the From DISPLAY NAME to the parent brand "LegalEase" — more recognition than a personal name
-  // for this consumer list. Scoped to this campaign; does NOT touch the B2 outreach identity.
-  return { ...outreachConfigOf(state), fromName: "LegalEase" };
+// Build the per-message compliance config for a reactivation touch. Reuses the B2 compliance
+// identity (Dover DE postal, From email) but overrides this campaign's consumer-facing details:
+//   - From DISPLAY NAME -> "LegalEase" (parent brand recognition over a personal name).
+//   - CTA href ("Start Free Check") -> the tracked expungement.ai URL for THIS sequence + touch
+//     (so NO Google Calendar / booking URL ever renders).
+//   - Footer -> "Expungement.ai" + "LegalEase" + Dover address + clickable expungement.ai website
+//     (NOT legaleasepartner.com); the "Expungement.ai" brand line + website are hyperlinked.
+//   - Signature -> reactivation disclaimer (drops the RCAP phone/legaleasepartner.com line).
+//   - Body brand mentions ("Expungement.ai") hyperlinked to the base campaign URL.
+//   - First-name fallback -> "there" so an unnamed contact renders "Hi there,".
+// Scoped to this campaign; does NOT touch the B2 outreach identity.
+export function reactivationMessageConfig(state = {}, { sequenceId = DEFAULT_REACTIVATION_SEQUENCE_ID, touchNumber = 0 } = {}) {
+  const footerUrl = reactivationFooterUrl();
+  return {
+    ...outreachConfigOf(state),
+    fromName: "LegalEase",
+    calendarUrl: reactivationCtaUrl(sequenceId, touchNumber),
+    firstNameFallback: "there",
+    signatureLines: REACTIVATION_SIGNATURE_LINES,
+    footerBrandLines: ["Expungement.ai", "LegalEase"],
+    footerExtraLines: ["expungement.ai"],
+    footerLinkMap: { "Expungement.ai": footerUrl, "expungement.ai": footerUrl },
+    bodyHtmlLinks: [{ text: "Expungement.ai", href: REACTIVATION_CTA_URL }]
+  };
 }
 
 function todaysReactivationTally(state = {}, parts = etParts()) {
@@ -456,7 +476,6 @@ export async function actReactivation(state = {}, ctx = {}) {
   const env = ctx.env || process.env;
   const parts = ctx.etParts || etParts(ctx.now || new Date());
   const config = reactivationCampaignOf(state);
-  const messageConfig = { ...reactivationMessageConfig(state), publicBaseUrl: PROD_PUBLIC_BASE };
   let next = { ...state, reactivationAttempts: list(state.reactivationAttempts).slice() };
   const results = [];
 
@@ -475,8 +494,14 @@ export async function actReactivation(state = {}, ctx = {}) {
       results.push({ contact_id: contact.contact_id, status: "skipped", reason: "suppressed_or_paused" });
       continue;
     }
-    const touch = getReactivationTouch(step);
+    // Sequence variant by login history (logged_in vs never_logged_in) — copy selection only.
+    const sequenceId = sequenceIdForContact(contact);
+    const touch = getReactivationTouch(sequenceId, step);
     if (!touch) { results.push({ contact_id: contact.contact_id, status: "not_sent", reason: "no_touch" }); continue; }
+
+    // Per-touch config: CTA href, footer, signature, and brand links for THIS sequence + touch. The
+    // CTA href is already the tracked expungement.ai URL, so no calendar URL is rendered or swapped.
+    const messageConfig = { ...reactivationMessageConfig(next, { sequenceId, touchNumber: step }), publicBaseUrl: PROD_PUBLIC_BASE };
 
     let message;
     try {
@@ -492,9 +517,6 @@ export async function actReactivation(state = {}, ctx = {}) {
       results.push({ contact_id: contact.contact_id, status: "not_sent", reason: `assembly:${error.message}` });
       continue;
     }
-    // Re-point the CTA link at the reactivation URL (assembleCompliantMessage renders the
-    // [CALENDAR_LINK] token with the calendar URL; for consumers we want the return link).
-    message = retargetCta(message, config.ctaUrl, touch);
 
     const compliance = validateCompliance(message);
     if (!compliance.ok) { results.push({ contact_id: contact.contact_id, status: "not_sent", reason: `compliance:${compliance.errors.join(",")}` }); continue; }
@@ -529,20 +551,6 @@ export async function actReactivation(state = {}, ctx = {}) {
     results.push({ contact_id: contact.contact_id, status: sendOutcome.status, wave: contact.wave, step });
   }
   return { state: next, results };
-}
-
-// Swap the rendered CTA link target/label from the calendar default to the reactivation URL.
-// assembleCompliantMessage renders [CALENDAR_LINK:label] using CALENDAR_URL; here we replace that
-// specific URL with the consumer return URL in both text and html bodies.
-function retargetCta(message, ctaUrl, touch) {
-  if (!ctaUrl) return message;
-  // Per-touch attribution: utm_content=touch<N>.
-  const step = touch && (touch.step_number != null) ? touch.step_number : null;
-  const url = step != null ? `${ctaUrl}${ctaUrl.includes("?") ? "&" : "?"}utm_content=touch${step}` : ctaUrl;
-  // Replace the calendar URL occurrences (text + href) with the reactivation URL.
-  const text = String(message.text || "").split(/https:\/\/calendar\.google\.com\/[^\s)]+/).join(url);
-  const html = String(message.html || "").split(/https:\/\/calendar\.google\.com\/[^"<\s)]+/).join(url);
-  return { ...message, text, html };
 }
 
 // ---------------------------------------------------------------------------
