@@ -328,8 +328,10 @@ export function assembleCompliantMessage({ contact = {}, org = {}, step = {}, co
   // A campaign may override the single brand line with multiple lines (reactivation: "Expungement.ai"
   // then "LegalEase") and append extra footer lines (a website). footerLinkMap turns any footer
   // content line whose exact text is a key into a clickable link in the HTML footer.
+  // An empty footerBrandLines array means "no brand lines" (reactivation moves identity into its
+  // signature block); undefined keeps the single companyName brand line (RCAP default).
   const brand = clean(config.companyName || org.organization_name || "LegalEase");
-  const brandLines = (Array.isArray(config.footerBrandLines) && config.footerBrandLines.length)
+  const brandLines = Array.isArray(config.footerBrandLines)
     ? config.footerBrandLines.map(clean).filter(Boolean)
     : [brand];
   const extraLines = (Array.isArray(config.footerExtraLines) ? config.footerExtraLines.map(clean).filter(Boolean) : []);
@@ -337,26 +339,31 @@ export function assembleCompliantMessage({ contact = {}, org = {}, step = {}, co
   const addr = splitPostalAddress(postalAddress);
   const contentLines = [...brandLines, addr.line1, ...(addr.line2 ? [addr.line2] : []), ...extraLines];
 
-  const footer = ["", "—", ...contentLines, `Unsubscribe: ${unsubscribeUrl}`].join("\n");
+  // Divider above the CAN-SPAM block. Defaults to the RCAP em-dash rule; a campaign may set it to ""
+  // to omit it (reactivation bans em-dashes and uses <hr> dividers inside its own signature block).
+  const footerDividerText = (config.footerDividerText != null) ? String(config.footerDividerText) : "—";
+  const footerDividerHtml = (config.footerDividerHtml != null) ? String(config.footerDividerHtml) : "—";
+  const footer = ["", ...(footerDividerText ? [footerDividerText] : []), ...contentLines, `Unsubscribe: ${unsubscribeUrl}`].join("\n");
 
   const linkifyFooter = (txt) => {
     const href = clean(linkMap[txt]);
     return href ? `<a href="${escapeHtml(href)}">${escapeHtml(txt)}</a>` : escapeHtml(txt);
   };
   const footerHtml = [
-    "—",
+    ...(footerDividerHtml ? [footerDividerHtml] : []),
     ...contentLines.map(linkifyFooter),
     // Unsubscribe renders as just the word "Unsubscribe" (clickable); the token URL lives only in href.
     `<a href="${escapeHtml(unsubscribeUrl)}">Unsubscribe</a>`
   ].join("<br>\n");
 
-  // Text signature block (cold outreach: TEXT only, no images — keep it lightweight for
-  // deliverability). Sits between the body and the CAN-SPAM compliance footer. A campaign may
-  // override the signature lines (reactivation drops the RCAP phone/legaleasepartner.com line).
+  // Signature block between the body and the CAN-SPAM footer. A campaign may supply a fully-built
+  // block (raw HTML/text) — e.g. reactivation's <hr> dividers + clickable identity links + italic
+  // disclaimer — via signatureHtml/signatureText; otherwise it is rendered from signatureLines
+  // (RCAP keeps its TEXT-only phone/legaleasepartner.com block).
   const signatureLines = (Array.isArray(config.signatureLines) && config.signatureLines.length)
     ? config.signatureLines : OUTREACH_SIGNATURE_LINES;
-  const signatureText = signatureLines.join("\n");
-  const signatureHtml = signatureLines.map(escapeHtml).join("<br>\n");
+  const signatureText = (config.signatureText != null) ? String(config.signatureText) : signatureLines.join("\n");
+  const signatureHtml = (config.signatureHtml != null) ? String(config.signatureHtml) : signatureLines.map(escapeHtml).join("<br>\n");
 
   return {
     to: toEmail,

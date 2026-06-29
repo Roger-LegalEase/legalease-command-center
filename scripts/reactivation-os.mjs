@@ -25,7 +25,7 @@ import {
 import {
   REACTIVATION_CADENCE_DAYS, REACTIVATION_CTA_URL, REACTIVATION_MAX_TOUCHES,
   getReactivationTouch, sequenceIdForContact, reactivationCtaUrl, reactivationFooterUrl,
-  REACTIVATION_SIGNATURE_LINES, DEFAULT_REACTIVATION_SEQUENCE_ID
+  REACTIVATION_DISCLAIMER, DEFAULT_REACTIVATION_SEQUENCE_ID
 } from "./reactivation-sequences.mjs";
 
 // ---------------------------------------------------------------------------
@@ -371,28 +371,59 @@ export function applyReactivationEvent(state = {}, ev = {}, { now = nowIso() } =
 // ---------------------------------------------------------------------------
 // 7. PLAN / ACT — wave-released, suppression-checked, compliant, capped, threshold-paused sends.
 // ---------------------------------------------------------------------------
+// Signature block for the reactivation campaign. Thin <hr> dividers (NO em-dash characters), the
+// clickable identity line (mailto / legalease.com / expungement.ai), and the ITALIC disclaimer.
+// The CAN-SPAM block (Dover address + Unsubscribe) renders BELOW this, in the compliance footer.
+const REACTIVATION_HR_HTML = '<hr style="border:none;border-top:1px solid #d9d9d9;margin:18px 0" />';
+const REACTIVATION_HR_TEXT = "------------------------------";
+
+function reactivationSignatureBlock() {
+  const site = reactivationFooterUrl();
+  const siteHref = site.replace(/&/g, "&amp;"); // valid HTML attribute (the URL lives in href only)
+  const html = [
+    REACTIVATION_HR_HTML,
+    "Roger Roman<br>",
+    "COO, LegalEase<br>",
+    `<a href="mailto:roger@legalease.com">Roger@legalease.com</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="https://legalease.com">legalease.com</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="${siteHref}">expungement.ai</a>`,
+    REACTIVATION_HR_HTML,
+    `<em>${REACTIVATION_DISCLAIMER}</em>`
+  ].join("\n");
+  const text = [
+    REACTIVATION_HR_TEXT,
+    "Roger Roman",
+    "COO, LegalEase",
+    "Roger@legalease.com  |  legalease.com  |  expungement.ai",
+    REACTIVATION_HR_TEXT,
+    REACTIVATION_DISCLAIMER
+  ].join("\n");
+  return { html, text };
+}
+
 // Build the per-message compliance config for a reactivation touch. Reuses the B2 compliance
 // identity (Dover DE postal, From email) but overrides this campaign's consumer-facing details:
 //   - From DISPLAY NAME -> "LegalEase" (parent brand recognition over a personal name).
 //   - CTA href ("Start Free Check") -> the tracked expungement.ai URL for THIS sequence + touch
 //     (so NO Google Calendar / booking URL ever renders).
-//   - Footer -> "Expungement.ai" + "LegalEase" + Dover address + clickable expungement.ai website
-//     (NOT legaleasepartner.com); the "Expungement.ai" brand line + website are hyperlinked.
-//   - Signature -> reactivation disclaimer (drops the RCAP phone/legaleasepartner.com line).
+//   - Signature -> Roger Roman / COO, LegalEase / clickable identity line, framed by <hr> dividers
+//     (no em-dashes), with the italic "Expungement.ai is a LegalEase product ..." disclaimer.
+//   - Footer (CAN-SPAM) -> Dover address + Unsubscribe only (identity now lives in the signature);
+//     no brand lines and no em-dash divider.
 //   - Body brand mentions ("Expungement.ai") hyperlinked to the base campaign URL.
 //   - First-name fallback -> "there" so an unnamed contact renders "Hi there,".
 // Scoped to this campaign; does NOT touch the B2 outreach identity.
 export function reactivationMessageConfig(state = {}, { sequenceId = DEFAULT_REACTIVATION_SEQUENCE_ID, touchNumber = 0 } = {}) {
-  const footerUrl = reactivationFooterUrl();
+  const sig = reactivationSignatureBlock();
   return {
     ...outreachConfigOf(state),
     fromName: "LegalEase",
     calendarUrl: reactivationCtaUrl(sequenceId, touchNumber),
     firstNameFallback: "there",
-    signatureLines: REACTIVATION_SIGNATURE_LINES,
-    footerBrandLines: ["Expungement.ai", "LegalEase"],
-    footerExtraLines: ["expungement.ai"],
-    footerLinkMap: { "Expungement.ai": footerUrl, "expungement.ai": footerUrl },
+    signatureHtml: sig.html,
+    signatureText: sig.text,
+    footerBrandLines: [],     // identity now lives in the signature; footer = address + unsubscribe
+    footerExtraLines: [],
+    footerDividerHtml: "",    // no em-dash divider before the CAN-SPAM block
+    footerDividerText: "",
     bodyHtmlLinks: [{ text: "Expungement.ai", href: REACTIVATION_CTA_URL }]
   };
 }

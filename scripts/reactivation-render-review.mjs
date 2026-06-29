@@ -38,7 +38,8 @@ function ctaHrefOf(html = "") {
   return m ? m[1] : "(not found)";
 }
 function footerHtmlOf(html = "") {
-  const idx = String(html).indexOf("—<br>");
+  // The signature + CAN-SPAM footer begins at the first <hr> divider.
+  const idx = String(html).indexOf("<hr");
   return idx === -1 ? "(footer not found)" : String(html).slice(idx).replace(/<\/div>$/, "");
 }
 

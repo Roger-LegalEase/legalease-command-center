@@ -9,8 +9,9 @@
 //   - No "guaranteed", "court-approved", "lawyer-reviewed", or "legal advice" claims.
 //   - Expungement.ai was ALWAYS part of LegalEase: NO acquisition / merger / "now part of" /
 //     "joined LegalEase" brand-transition framing anywhere.
-//   - The signature carries the "not a law firm / not legal advice / no court-outcome guarantee"
-//     disclaimer (REACTIVATION_SIGNATURE_LINES).
+//   - The signature block (built in reactivation-os.mjs) carries the italic "Expungement.ai is a
+//     LegalEase product ... not legal advice ... not a law firm" disclaimer (REACTIVATION_DISCLAIMER).
+//     Dividers are HTML <hr> rules — NO em-dash characters anywhere in this campaign's copy.
 //   - The ONLY CTA is "Start Free Check" — a link to https://expungement.ai/ (with campaign UTMs)
 //     to start a free check on the rebuilt system. NO calendar link, NO booking link, NO "grab a
 //     time / book a call". The CTA reuses the labeled-link token machinery so a raw URL never shows
@@ -48,12 +49,10 @@ export const REACTIVATION_SEQUENCE_IDS = Object.freeze([
   REACTIVATION_SEQUENCE_NEVER_LOGGED_IN
 ]);
 
-// Reactivation signature block — DELIBERATELY distinct from the RCAP OUTREACH_SIGNATURE_LINES:
-// no phone, NO legaleasepartner.com (the footer website for this campaign is expungement.ai), and
-// the UPL disclaimer carries the "not legal advice / no court-outcome guarantee" language.
-export const REACTIVATION_SIGNATURE_LINES = Object.freeze([
-  "LegalEase provides self-help technology and information. LegalEase is not a law firm and does not provide legal advice. The free check is not legal advice and does not guarantee a court outcome."
-]);
+// Reactivation disclaimer — rendered ITALIC in HTML, between the signature block and the CAN-SPAM
+// footer. "Expungement.ai is a LegalEase product" — NEVER acquisition/merger/"now part of" framing.
+export const REACTIVATION_DISCLAIMER =
+  "Expungement.ai is a LegalEase product. LegalEase provides self-help technology and information, not legal advice, and is not a law firm.";
 
 // Per-touch CTA href: base + utm_content=<sequence_id>_touch_<n>. Falls back to the base URL when
 // no touch number is supplied (e.g. the seed). This is the ONLY place per-touch attribution is
@@ -83,8 +82,9 @@ This is the Day 0 seed test for the MVP reactivation campaign. If you're reading
 
 No consumer has received anything. The live gate is still off.
 
-Roger
-Expungement.ai`
+Best,
+
+Roger`
 });
 
 // ---------------------------------------------------------------------------
@@ -109,8 +109,9 @@ If clearing or sealing a record is still something you want to look into, you ca
 
 No pressure either way. I just wanted to make sure you knew the rebuilt version is live.
 
-Roger
-Expungement.ai`
+Best,
+
+Roger`
   },
   {
     step_number: 2,
@@ -130,8 +131,9 @@ You can start again here:
 
 [CALENDAR_LINK:Start Free Check]
 
-Roger
-Expungement.ai`
+Best,
+
+Roger`
   },
   {
     step_number: 3,
@@ -151,8 +153,9 @@ Start a free check here:
 
 [CALENDAR_LINK:Start Free Check]
 
-Roger
-Expungement.ai`
+Best,
+
+Roger`
   },
   {
     step_number: 4,
@@ -170,8 +173,9 @@ If this is still on your mind, you can start here:
 
 [CALENDAR_LINK:Start Free Check]
 
-Roger
-Expungement.ai`
+Best,
+
+Roger`
   },
   {
     step_number: 5,
@@ -191,8 +195,9 @@ If not, no problem. You can ignore this, or unsubscribe below and we will not ke
 
 Wishing you the best either way.
 
-Roger
-Expungement.ai`
+Best,
+
+Roger`
   }
 ]);
 
@@ -218,8 +223,9 @@ If clearing or sealing a record is still something you want to look into, you ca
 
 No pressure either way. I just wanted to make sure you knew the rebuilt version is live.
 
-Roger
-Expungement.ai`
+Best,
+
+Roger`
   },
   {
     step_number: 2,
@@ -239,8 +245,9 @@ You can start here:
 
 [CALENDAR_LINK:Start Free Check]
 
-Roger
-Expungement.ai`
+Best,
+
+Roger`
   },
   {
     step_number: 3,
@@ -260,8 +267,9 @@ Start a free check here:
 
 [CALENDAR_LINK:Start Free Check]
 
-Roger
-Expungement.ai`
+Best,
+
+Roger`
   },
   {
     step_number: 4,
@@ -279,8 +287,9 @@ If this is still on your mind, you can start here:
 
 [CALENDAR_LINK:Start Free Check]
 
-Roger
-Expungement.ai`
+Best,
+
+Roger`
   },
   {
     step_number: 5,
@@ -300,8 +309,9 @@ If not, no problem. You can ignore this, or unsubscribe below and we will not ke
 
 Wishing you the best either way.
 
-Roger
-Expungement.ai`
+Best,
+
+Roger`
   }
 ]);
 

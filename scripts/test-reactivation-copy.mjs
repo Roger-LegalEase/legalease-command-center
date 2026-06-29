@@ -86,19 +86,48 @@ for (const m of allMessages) {
 }
 ok("11/12. footer website is expungement.ai; Delaware address exact in every message");
 
-// 13. Every visible "Expungement.ai" in HTML is hyperlinked (none left outside an anchor).
-for (const html of allHtml) {
-  assert(!/Expungement\.ai/.test(visibleOutsideAnchors(html)), "no un-hyperlinked Expungement.ai in HTML");
-  assert(/<a href="[^"]+">Expungement\.ai<\/a>/.test(html), "Expungement.ai rendered as an anchor");
-}
-ok("13. every visible Expungement.ai in HTML is hyperlinked");
+// Body region = everything before the first <hr> divider (signature/footer starts at the first <hr>).
+const bodyRegionOf = (html) => String(html).split("<hr")[0];
 
-// 14. Every visible "expungement.ai" (footer website) is hyperlinked.
+// 13. Every visible "Expungement.ai" in the BODY is hyperlinked (none left outside an anchor). The
+// disclaimer's plain-italic "Expungement.ai is a LegalEase product" is intentionally NOT a link.
 for (const html of allHtml) {
-  assert(!/expungement\.ai/i.test(visibleOutsideAnchors(html)), "no un-hyperlinked expungement.ai in HTML");
+  assert(!/Expungement\.ai/.test(visibleOutsideAnchors(bodyRegionOf(html))), "no un-hyperlinked Expungement.ai in body");
+}
+// And where a touch body DOES mention the brand, it renders as an anchor (linkification works).
+const t1LoggedIn = rendered.find((r) => r.sequenceId === REACTIVATION_SEQUENCE_LOGGED_IN && r.touch === 1).message.html;
+assert(/<a href="[^"]+">Expungement\.ai<\/a>/.test(t1LoggedIn), "Touch 1 brand mention is an anchor");
+ok("13. every visible Expungement.ai in the body is hyperlinked");
+
+// 14. Every visible lowercase "expungement.ai" is hyperlinked (case-sensitive; the capitalized
+// disclaimer mention is allowed to be plain italic text).
+for (const html of allHtml) {
+  assert(!/expungement\.ai/.test(visibleOutsideAnchors(html)), "no un-hyperlinked expungement.ai in HTML");
   assert(/<a href="[^"]+">expungement\.ai<\/a>/.test(html), "footer expungement.ai is an anchor");
 }
-ok("14. every visible expungement.ai in footer HTML is hyperlinked");
+ok("14. every visible expungement.ai (footer website) is hyperlinked");
+
+// 14b. Signature layout: TWO <hr> dividers, clickable identity line, italic disclaimer, NO em-dash.
+for (const m of allMessages) {
+  const html = m.html;
+  assert((html.match(/<hr\b/g) || []).length === 2, "exactly two <hr> dividers");
+  assert(/<a href="mailto:roger@legalease\.com">Roger@legalease\.com<\/a>/.test(html), "mailto link present");
+  assert(/<a href="https:\/\/legalease\.com">legalease\.com<\/a>/.test(html), "legalease.com link present");
+  assert(/Roger Roman<br>/.test(html) && /COO, LegalEase<br>/.test(html), "Roger Roman / COO, LegalEase block");
+  assert(/<em>Expungement\.ai is a LegalEase product\..*is not a law firm\.<\/em>/s.test(html), "disclaimer italicized");
+}
+ok("14b. signature: two <hr> dividers, clickable identity line, italic disclaimer");
+
+// 14c. NO em-dash characters anywhere in the reactivation campaign (HTML or plaintext).
+everyBlob(/—/, "no em-dash (U+2014) anywhere");
+ok("14c. no em-dash characters anywhere (dividers are <hr>)");
+
+// 14d. Body sign-off is "Best," then "Roger"; the old "Roger / Expungement.ai" sign-off is gone.
+for (const r of rendered) {
+  assert(r.message.text.includes("Best,\n\nRoger"), `${r.sequenceId} t${r.touch} sign-off "Best, / Roger"`);
+}
+assert(allText.every((t) => !/\nRoger\nExpungement\.ai/.test(t)), "old Roger/Expungement.ai sign-off removed");
+ok("14d. body sign-off is \"Best,\" then \"Roger\" across all touches");
 
 // 15. Every Start Free Check CTA is a hyperlink (none as plain visible text).
 for (const r of rendered) {
