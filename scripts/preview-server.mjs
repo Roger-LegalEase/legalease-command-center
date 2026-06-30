@@ -13,7 +13,7 @@ import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_Q
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
 import { applyReactivationEvent, reactivationCampaignOf, reactivationLiveSendEnabled, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
-import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords } from "./expungement-lifecycle-sync.mjs";
+import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview } from "./expungement-lifecycle-sync.mjs";
 import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
@@ -17105,6 +17105,80 @@ function htmlShell() {
     window.expungementSyncConfirm = expungementSyncConfirm;
     window.expungementSyncCancel = expungementSyncCancel;
 
+    // Held contacts review — read-only. Fetches GET /api/contacts/held-review and renders safe,
+    // masked rows + counts. Nothing here writes, sends, enrolls, or releases.
+    let heldReviewData = null;
+    async function loadHeldContactsReview() {
+      const target = document.getElementById("held-review-result");
+      if (target) target.innerHTML = "<strong>Loading held contacts review...</strong> Nothing sends from this page.";
+      let data;
+      try {
+        data = await api("/api/contacts/held-review");
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Could not load review.</strong> " + esc(error.message || "Request failed.");
+        toast("Could not load held contacts review.");
+        return;
+      }
+      heldReviewData = data;
+      const sel = document.getElementById("held-review-filter");
+      renderHeldContactsReview(sel ? sel.value : "all");
+      toast("Held contacts review loaded. Nothing sends from this page.");
+    }
+    function filterHeldReview(sel) { renderHeldContactsReview(sel ? sel.value : "all"); }
+    function heldReviewStageMatch(stage, filter) {
+      if (filter === "all") return true;
+      if (filter === "held") return true;
+      return String(stage || "") === filter;
+    }
+    function heldReviewLifecycleMatch(row, filter) {
+      if (filter === "all") return true;
+      if (filter === "held") return false;
+      if (filter === "suppressed") return Boolean(row.suppressed);
+      if (filter === "deleted") return Boolean(row.deleted_or_erasure_requested);
+      if (filter === "revoked") return ["revoked", "declined", "withdrawn", "denied"].indexOf(String(row.consent_status || "").toLowerCase()) !== -1;
+      return String(row.lifecycle_stage || "") === filter;
+    }
+    function renderHeldContactsReview(filter) {
+      const data = heldReviewData;
+      const target = document.getElementById("held-review-result");
+      if (!data || !target) return;
+      const f = filter || "all";
+      const c = data.counts || {};
+      const cards = [
+        [c.totalLifecycleContacts, "lifecycle contacts"], [c.heldReactivation, "held for review"],
+        [c.staged, "staged"], [c.enrolled, "enrolled"], [c.excludedSuppressed, "excluded / suppressed"],
+        [c.deleted, "deleted / erasure"], [c.revokedConsent, "revoked consent"]
+      ].map(function(pair){ return "<article class=\"campaign-preview-metric\"><strong>" + esc(String(pair[0] || 0)) + "</strong><span>" + esc(pair[1]) + "</span></article>"; }).join("");
+      const byStage = data.lifecycleByStage || {};
+      const stageLine = Object.keys(byStage).filter(function(k){ return byStage[k] > 0; }).map(function(k){ return esc(k) + ": " + esc(String(byStage[k])); }).join(" &middot; ") || "none";
+      const heldRows = (data.heldRows || []).filter(function(r){ return heldReviewStageMatch(r.lifecycle_stage, f); }).map(function(r){
+        return "<li>" + esc(String(r.masked_email)) + (r.first_name ? " (" + esc(String(r.first_name)) + ")" : "")
+          + " &middot; " + esc(String(r.lifecycle_stage || r.source_note || "held"))
+          + (r.state ? " &middot; " + esc(String(r.state)) : "")
+          + " &middot; hold: " + esc(String(r.campaign_hold_reason || ""))
+          + " &middot; " + esc(String(r.import_status || "")) + " &middot; wave: " + esc(String(r.wave === null ? "none" : r.wave))
+          + " &middot; " + (r.enrolled ? "enrolled" : "not enrolled") + "</li>";
+      }).join("");
+      const lifeRows = (data.lifecycleRows || []).filter(function(r){ return heldReviewLifecycleMatch(r, f); }).map(function(r){
+        const flags = [r.unsubscribed ? "unsubscribed" : "", r.bounced ? "bounced" : "", r.complained ? "complained" : "", r.do_not_contact ? "do-not-contact" : "", r.deleted_or_erasure_requested ? "deleted" : "", r.consent_status ? "consent:" + r.consent_status : ""].filter(Boolean).join(", ");
+        return "<li>" + esc(String(r.masked_email)) + (r.first_name ? " (" + esc(String(r.first_name)) + ")" : "")
+          + " &middot; " + esc(String(r.lifecycle_stage || "unknown"))
+          + (r.state ? " &middot; " + esc(String(r.state)) : "")
+          + (flags ? " &middot; " + esc(flags) : "") + "</li>";
+      }).join("");
+      const events = (data.recentEvents || []).map(function(e){ return "<li>" + esc(String(e.masked_email)) + " &middot; " + esc(String(e.stage)) + (e.created_at ? " &middot; " + esc(String(e.created_at)) : "") + "</li>"; }).join("");
+      target.innerHTML = "<strong>Held contacts &amp; Expungement.ai lifecycle</strong> &middot; <em>Nothing sends from this page. Held contacts are blocked from campaigns until intentionally released.</em>"
+        + "<div class=\"campaign-preview-metrics\">" + cards + "</div>"
+        + "<p class=\"muted\">Lifecycle by stage: " + stageLine + "</p>"
+        + "<strong>Held contacts (" + esc(String((data.heldRows || []).length)) + ")</strong>"
+        + (heldRows ? "<ul>" + heldRows + "</ul>" : "<p class=\"muted\">No held contacts for this filter.</p>")
+        + "<strong>Expungement.ai lifecycle (" + esc(String((data.lifecycleRows || []).length)) + ")</strong>"
+        + (lifeRows ? "<ul>" + lifeRows + "</ul>" : "<p class=\"muted\">No lifecycle contacts for this filter.</p>")
+        + (events ? "<details><summary>Recent lifecycle events</summary><ul>" + events + "</ul></details>" : "");
+    }
+    window.loadHeldContactsReview = loadHeldContactsReview;
+    window.filterHeldReview = filterHeldReview;
+
     function applyDailyRunResult(result, fallbackMessage = "Daily Run updated.") {
       if (result?.state) state = hydrateStatePayload(result.state, "daily-run-update");
       else if (result?.dailyRun) state.dailyRun = result.dailyRun;
@@ -24941,6 +25015,27 @@ function htmlShell() {
             </div>
           </form>
           <div id="expungement-sync-result" class="campaign-import-status">Expungement.ai sync preview: add a source note and paste lifecycle records.</div>
+        </section>
+        <section class="growth-card">
+          <div class="growth-card-head"><h2>Held contacts &amp; Expungement.ai lifecycle</h2><small>Read-only review</small></div>
+          <p class="muted">Review held contacts and Expungement.ai lifecycle contacts before anyone is released. Nothing sends from this page. Held contacts are blocked from campaigns until intentionally released.</p>
+          <div class="card-actions">
+            <button class="primary" type="button" onclick="loadHeldContactsReview()">Load held contacts review</button>
+            <label class="inline-filter">Filter
+              <select id="held-review-filter" onchange="filterHeldReview(this)">
+                <option value="all">All</option>
+                <option value="held">Held for review</option>
+                <option value="screening_abandoned">Screening abandoned</option>
+                <option value="checkout_abandoned">Checkout abandoned</option>
+                <option value="screening_completed">Screening completed</option>
+                <option value="paid">Paid</option>
+                <option value="suppressed">Unsubscribed / suppressed</option>
+                <option value="deleted">Deleted / erasure requested</option>
+                <option value="revoked">Revoked consent</option>
+              </select>
+            </label>
+          </div>
+          <div id="held-review-result" class="campaign-import-status">Load the read-only review of held contacts and Expungement.ai lifecycle contacts. Nothing sends from this page.</div>
         </section>
         \${socialCalendarImportHtml()}
         \${rcapRevenueFoundationHtml()}
@@ -33103,6 +33198,14 @@ async function handleRequest(request, response) {
     } catch (error) {
       sendJson(response, { error: error.message || "Could not run the Expungement.ai sync." }, 400);
     }
+    return;
+  }
+
+  // ---- Held contacts review (read-only operator surface) -----------------------------------
+  // Safe counts + masked rows for held reactivation contacts and Expungement.ai lifecycle contacts.
+  // GET => "read" permission (auth required). Writes NO state; returns only safe, masked fields.
+  if (url.pathname === "/api/contacts/held-review" && request.method === "GET") {
+    sendJson(response, buildHeldContactsReview(await store.readState()));
     return;
   }
 

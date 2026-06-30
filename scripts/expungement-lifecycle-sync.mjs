@@ -392,3 +392,104 @@ export function confirmExpungementSync(state = {}, records = [], opts = {}) {
     writesState: true
   };
 }
+
+// ---------------------------------------------------------------------------
+// HELD CONTACTS REVIEW — read-only operator surface. Pure: NEVER writes state, never sends,
+// never enrolls/releases. Returns SAFE fields only (emails masked; no raw eligibility/case detail).
+// Joins each held reactivation contact to its Expungement.ai lifecycle row (by email) for
+// state/jurisdiction/stage when available. Used by GET /api/contacts/held-review.
+// ---------------------------------------------------------------------------
+const REVOKED_CONSENT_VALUES = ["revoked", "declined", "withdrawn", "denied"];
+
+export function buildHeldContactsReview(state = {}) {
+  const lifecycle = list(state.expungementLifecycleContacts);
+  const lifecycleById = new Map(lifecycle.map((c) => [c.lifecycle_contact_id, c]));
+  const reactivation = list(state.reactivationContacts);
+  const ledgerEmails = new Set(list(state.outreachSuppressions).map((s) => normalizeEmail(s.email)).filter(Boolean));
+
+  // Lifecycle contacts by stage (all known stages present + an "unknown" bucket).
+  const lifecycleByStage = { unknown: 0 };
+  for (const stage of LIFECYCLE_STAGES) lifecycleByStage[stage] = 0;
+  let deleted = 0, revokedConsent = 0, excludedSuppressed = 0;
+  const lifecycleRows = [];
+  for (const c of lifecycle) {
+    const stage = c.lifecycle_stage || "unknown";
+    lifecycleByStage[stage] = (lifecycleByStage[stage] || 0) + 1;
+    const isDeleted = c.deleted_or_erasure_requested === true;
+    const revoked = REVOKED_CONSENT_VALUES.includes(lower(c.consent_status));
+    const suppressed = c.unsubscribed === true || c.bounced === true || c.complained === true
+      || c.do_not_contact === true || ledgerEmails.has(normalizeEmail(c.email)) || revoked || isDeleted;
+    if (isDeleted) deleted++;
+    if (revoked) revokedConsent++;
+    if (suppressed) excludedSuppressed++;
+    lifecycleRows.push({
+      masked_email: maskEmail(c.email),
+      first_name: c.first_name || "",
+      state: c.state || "",
+      jurisdiction: c.jurisdiction || "",
+      lifecycle_stage: c.lifecycle_stage || "",
+      sync_source_note: c.sync_source_note || "",
+      source_type: c.source_type || "",
+      last_synced_at: c.last_synced_at || "",
+      unsubscribed: c.unsubscribed === true,
+      bounced: c.bounced === true,
+      complained: c.complained === true,
+      do_not_contact: c.do_not_contact === true,
+      deleted_or_erasure_requested: isDeleted,
+      consent_status: c.consent_status || "",
+      suppressed
+    });
+  }
+
+  // Held reactivation contacts (campaign_hold) — joined to lifecycle for state/stage when present.
+  let held = 0, staged = 0, enrolled = 0;
+  const heldRows = [];
+  for (const c of reactivation) {
+    if (c.enrolled_at) enrolled++;
+    if (c.import_status === "staged") staged++;
+    if (c.campaign_hold === true) {
+      held++;
+      const lc = lifecycleById.get(lifecycleIdForEmail(c.email)) || {};
+      heldRows.push({
+        masked_email: maskEmail(c.email),
+        first_name: c.first_name || "",
+        state: lc.state || "",
+        jurisdiction: lc.jurisdiction || "",
+        lifecycle_stage: lc.lifecycle_stage || "",
+        source_note: c.source_note || "",
+        source_type: c.source_type || "",
+        source_imported_at: c.source_imported_at || "",
+        campaign_hold_reason: c.campaign_hold_reason || "",
+        import_status: c.import_status || "",
+        wave: c.wave == null ? null : c.wave,
+        enrolled: Boolean(c.enrolled_at)
+      });
+    }
+  }
+
+  const recentEvents = list(state.expungementLifecycleEvents).slice(0, 25).map((e) => ({
+    masked_email: maskEmail(e.email),
+    stage: e.stage || "",
+    payment_status: e.payment_status || "",
+    sync_source_note: e.sync_source_note || "",
+    created_at: e.created_at || ""
+  }));
+
+  return {
+    ok: true,
+    writesState: false,
+    counts: {
+      totalLifecycleContacts: lifecycle.length,
+      heldReactivation: held,
+      staged,
+      enrolled,
+      excludedSuppressed,
+      deleted,
+      revokedConsent
+    },
+    lifecycleByStage,
+    heldRows,
+    lifecycleRows,
+    recentEvents
+  };
+}
