@@ -16980,9 +16980,10 @@ function htmlShell() {
       if (result && result.state) state = hydrateStatePayload(result.state, "consumer-list-import");
       const s = result.summary || {};
       const lines = [
-        "<strong>Import contacts: done. Contacts are staged for review.</strong>",
+        "<strong>" + esc(String(result.heldMessage || "Contacts imported and held for review. Nothing sends until you intentionally release them.")) + "</strong>",
         "Added: " + esc(String(s.added || 0)),
         "Updated: " + esc(String(s.updated || 0)),
+        "Held for review: " + esc(String(result.held || 0)),
         "Bad emails skipped: " + esc(String(s.skippedBad || 0)),
         "Duplicates skipped: " + esc(String(s.skippedDup || 0)),
         "Suppressed contacts flagged: " + esc(String(s.skippedSuppressed || 0)),
@@ -16992,7 +16993,7 @@ function htmlShell() {
       consumerImportPending = null;
       render();
       if (target) target.innerHTML = lines.join("<br>");
-      toast("Imported. Contacts are staged for review. Nothing was sent.");
+      toast("Imported and held for review. Nothing was sent.");
     }
     function consumerListImportCancel() {
       consumerImportPending = null;
@@ -32923,9 +32924,11 @@ async function handleRequest(request, response) {
         listType: result.listType,
         sourceNote: result.sourceNote,
         summary: result.summary,
+        held: result.held,
         waveSizes: result.waveSizes,
         totalContacts: result.totalContacts,
         warning: result.warning,
+        heldMessage: result.heldMessage,
         state: withPublicChannelSetup(result.state)
       });
     } catch (error) {
@@ -32941,12 +32944,14 @@ async function handleRequest(request, response) {
     const config = reactivationCampaignOf(currentState);
     const contacts = serverList(currentState.reactivationContacts);
     const byWave = {};
-    let enrolled = 0, suppressed = 0;
+    let enrolled = 0, suppressed = 0, staged = 0, held = 0;
     for (const c of contacts) {
       const w = c.wave || "unassigned";
       byWave[w] = (byWave[w] || 0) + 1;
       if (c.enrolled_at) enrolled++;
       if (c.suppressed_at_import) suppressed++;
+      if (c.campaign_hold === true) held++;
+      if (c.import_status === "staged") staged++;
     }
     const thr = evaluateThresholds(currentState, config);
     sendJson(response, {
@@ -32963,6 +32968,8 @@ async function handleRequest(request, response) {
       thresholds: config.thresholds,
       totalContacts: contacts.length,
       enrolled,
+      staged,
+      held,
       suppressedAtImport: suppressed,
       contactsByWave: byWave,
       rates: campaignRates(currentState),

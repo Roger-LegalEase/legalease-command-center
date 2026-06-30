@@ -18,8 +18,12 @@ import crypto from "node:crypto";
 
 export const CONSUMER_LIST_TYPE = "consumer";
 export const CONSUMER_SOURCE_TYPE = "consumer_upload";
+export const CONSUMER_HOLD_REASON = "consumer_upload_review";
+export const CONSUMER_IMPORT_STATUS = "staged";
 export const CONSUMER_IMPORT_WARNING =
   "Nothing sends from import. Contacts are staged for review only — no email goes out until a wave is released elsewhere.";
+export const CONSUMER_IMPORT_HELD_MESSAGE =
+  "Contacts imported and held for review. Nothing sends until you intentionally release them.";
 
 const clean = (v = "") => String(v ?? "").trim();
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -178,44 +182,66 @@ function importedContactIds(rows = []) {
   return ids;
 }
 
-// Stamp durable import provenance on the contacts this import touched. Adds ONLY the four safe
-// source_* fields — it never reads or writes send/signal/suppression state. First-seen
-// source_imported_at / source_import_id are read from `priorById` (the state BEFORE import, since
-// importReactivationContacts rebuilds the contact object) so original provenance survives re-import;
-// source_note / source_type refresh to the current upload.
-function stampProvenance(state = {}, importedIds, priorById, { sourceNote, now, importId }) {
+// Stamp durable import provenance AND the explicit campaign hold on the contacts this import
+// touched. Adds ONLY the source_* provenance fields and the import_status / campaign_hold /
+// campaign_hold_reason hold fields — it never reads or writes send/signal/suppression state.
+//
+// - Provenance: first-seen source_imported_at / source_import_id are read from `priorById` (the
+//   state BEFORE import, since importReactivationContacts rebuilds the contact object) so original
+//   provenance survives re-import; source_note / source_type refresh to the current upload.
+// - Hold: a NEW contact is held (import_status="staged", campaign_hold=true, reason) so it cannot be
+//   swept into an active/released wave. An EXISTING contact inherits its prior hold/staging state —
+//   we never force a hold onto an already-enrolled/active contact, preserving its send state.
+function stampImportMetadata(state = {}, importedIds, priorById, { sourceNote, now, importId }) {
   const contacts = list(state.reactivationContacts).map((c) => {
     if (!importedIds.has(c.contact_id)) return c;
+    const isNew = !priorById.has(c.contact_id);
     const prior = priorById.get(c.contact_id) || {};
-    return {
+    const next = {
       ...c,
       source_type: CONSUMER_SOURCE_TYPE,
       source_note: clean(sourceNote),
       source_imported_at: prior.source_imported_at || c.source_imported_at || now,
       source_import_id: prior.source_import_id || c.source_import_id || importId
     };
+    if (isNew) {
+      next.import_status = CONSUMER_IMPORT_STATUS;
+      next.campaign_hold = true;
+      next.campaign_hold_reason = CONSUMER_HOLD_REASON;
+    } else {
+      // Inherit prior hold/staging state (don't disturb an already-enrolled/active contact).
+      if (prior.import_status !== undefined) next.import_status = prior.import_status;
+      if (prior.campaign_hold !== undefined) next.campaign_hold = prior.campaign_hold;
+      if (prior.campaign_hold_reason !== undefined) next.campaign_hold_reason = prior.campaign_hold_reason;
+    }
+    return next;
   });
   return { ...state, reactivationContacts: contacts };
 }
 
-// CONFIRM — routes rows through the existing import path, stamps durable provenance on the touched
-// contacts, then applies safe (inert) wave numbers. Returns the NEW state for the caller to persist.
-// No enroll, no release, no send, no gate change.
+// CONFIRM — routes rows through the existing import path, stamps durable provenance + an explicit
+// campaign hold on the touched contacts, then applies wave numbers (held contacts get NONE).
+// Returns the NEW state for the caller to persist. No enroll, no release, no send, no gate change.
 export function confirmConsumerImport(state = {}, csvText = "", opts = {}) {
   assertInputs(csvText, opts);
   const now = opts.now || new Date().toISOString();
   const importId = opts.importId || `consumer-import-${crypto.randomBytes(6).toString("hex")}`;
   const parsed = parseConsumerCsv(csvText);
-  // Capture existing provenance from the input state BEFORE import (importReactivationContacts
-  // rebuilds the contact object and would otherwise drop the source_* fields).
+  // Capture existing provenance/hold from the input state BEFORE import (importReactivationContacts
+  // rebuilds the contact object and would otherwise drop the source_* / hold fields).
   const priorById = new Map(list(state.reactivationContacts).map((c) => [c.contact_id, c]));
+  const importedIds = importedContactIds(parsed.rows);
   const imported = importReactivationContacts(state, parsed.rows, { now });
-  // Durable provenance (compliance + list hygiene) on just the contacts from THIS upload.
-  const stamped = stampProvenance(imported.state, importedContactIds(parsed.rows), priorById, {
+  // Durable provenance + explicit campaign hold on just the contacts from THIS upload.
+  const stamped = stampImportMetadata(imported.state, importedIds, priorById, {
     sourceNote: opts.sourceNote, now, importId
   });
-  // Wave assignment sets wave NUMBERS only — contacts stay "Not Enrolled" and inert.
+  // Wave assignment: held contacts are NOT bucketed into any wave (assignWaves skips holds), so a
+  // freshly imported contact gets no wave number and stays fully inert until released.
   const waved = applyWaveAssignment(stamped, reactivationCampaignOf(stamped), { now });
+  // Newly imported contacts (not previously present) are the ones placed on hold this run.
+  let held = 0;
+  for (const id of importedIds) if (!priorById.has(id)) held++;
   return {
     ok: true,
     listType: CONSUMER_LIST_TYPE,
@@ -223,9 +249,11 @@ export function confirmConsumerImport(state = {}, csvText = "", opts = {}) {
     sourceImportId: importId,
     state: waved.state,
     summary: imported.summary,
+    held,
     waveSizes: waved.waveSizes,
     totalContacts: len(waved.state.reactivationContacts),
     warning: CONSUMER_IMPORT_WARNING,
+    heldMessage: CONSUMER_IMPORT_HELD_MESSAGE,
     writesState: true
   };
 }

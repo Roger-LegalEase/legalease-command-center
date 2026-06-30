@@ -115,6 +115,31 @@ assert(planAfter.proposals.length <= cfg.caps.perTickMax, "intraday throttle cap
 assert(planAfter.proposals.every((p) => p.step === 1), "first due touch is step 1");
 ok("contacts inert until wave release; cadence timing + per-tick throttle respected");
 
+// ---- 5a. Campaign hold: held contacts are never bucketed, enrolled, or sent ----
+{
+  // Two contacts in Wave 1: one normal, one explicitly held. Both look due once enrolled.
+  const held = {
+    reactivationContacts: [
+      { contact_id: "react-norm", email: "norm@gmail.com", wave: 1, priority: "warm" },
+      { contact_id: "react-held", email: "held@gmail.com", wave: 1, priority: "warm", campaign_hold: true, campaign_hold_reason: "consumer_upload_review", import_status: "staged" }
+    ]
+  };
+  // assignWaves does not bucket a held contact.
+  const assignment = assignWaves(held.reactivationContacts, cfg);
+  assert.equal(assignment.get("react-held"), undefined, "held contact gets no wave from assignWaves");
+  assert.equal(assignment.get("react-norm"), 1, "normal contact still bucketed");
+  // releaseWave enrolls the normal contact but NOT the held one.
+  const r = releaseWave(held, 1, { now: new Date(IN_WINDOW.getTime() - 2 * DAY) });
+  assert.equal(r.enrolled, 1, "releaseWave enrolls only the non-held contact");
+  assert.ok(r.state.reactivationContacts.find((c) => c.contact_id === "react-held").enrolled_at === undefined || !r.state.reactivationContacts.find((c) => c.contact_id === "react-held").enrolled_at, "held contact never enrolled");
+  // Even force-enrolled, planReactivation skips a held contact; the control (hold off) is due.
+  const forced = { reactivationContacts: held.reactivationContacts.map((c) => ({ ...c, enrolled_at: new Date(IN_WINDOW.getTime() - 2 * DAY).toISOString() })), reactivationCampaign: { releasedWaves: [1], status: "active" } };
+  const plan = planReactivation(forced, { now: IN_WINDOW });
+  assert.ok(plan.proposals.every((p) => p.contact.contact_id !== "react-held"), "planReactivation never proposes a held contact");
+  assert.ok(plan.proposals.some((p) => p.contact.contact_id === "react-norm"), "non-held contact is due (control)");
+  ok("campaign hold: held contacts are unbucketed, never enrolled, never proposed");
+}
+
 // ---- 5b. Per-tick provider stratification (no all-Gmail burst) ----------------
 // Stored order is provider-CLUSTERED (all Gmail, then all Yahoo). Without stratifying the due list,
 // the first 150-send tick would be 100% Gmail; planReactivation must interleave so it is mixed.

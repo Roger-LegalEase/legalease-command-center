@@ -58,6 +58,14 @@ export function contactIdForEmail(email = "") {
   return `react-${crypto.createHash("sha1").update(norm).digest("hex").slice(0, 16)}`;
 }
 
+// Explicit campaign hold — a contact may live in reactivationContacts yet be blocked from ALL
+// campaign action (wave bucketing, enrollment, sends) until intentionally released. Set by the
+// consumer-upload import so newly imported/synced contacts can't be accidentally swept into an
+// active/released wave. Distinct from suppression (compliance) and from per-contact pause signals.
+export function contactOnHold(contact = {}) {
+  return contact.campaign_hold === true;
+}
+
 // Coarse provider bucket used for domain stratification + per-wave reporting.
 export function providerBucket(emailOrDomain = "") {
   const d = lower(emailOrDomain).includes("@") ? domainOfEmail(emailOrDomain) : lower(emailOrDomain);
@@ -179,7 +187,10 @@ export function importReactivationContacts(state = {}, rows = [], { now = nowIso
 //    each contiguous wave slice carries ~the overall provider mix. Deterministic (no randomness).
 // ---------------------------------------------------------------------------
 export function assignWaves(contacts = [], config = DEFAULT_REACTIVATION_CONFIG) {
-  const eligible = list(contacts).filter((c) => !c.suppressed_at_import && !isSuppressed(c, {}).suppressed);
+  // Contacts on an explicit campaign hold (e.g. freshly imported consumer-upload rows awaiting
+  // review) are NOT bucketed into any wave — they get no wave number until released from hold, so
+  // they cannot be swept into an active/released wave by future automation.
+  const eligible = list(contacts).filter((c) => !contactOnHold(c) && !c.suppressed_at_import && !isSuppressed(c, {}).suppressed);
   const warm = eligible.filter((c) => lower(c.priority).startsWith("warm"));
   const rest = eligible.filter((c) => !lower(c.priority).startsWith("warm"));
 
@@ -242,6 +253,7 @@ export function releaseWave(state = {}, waveNumber, { now = nowIso() } = {}) {
   let enrolled = 0;
   const contacts = list(state.reactivationContacts).map((c) => {
     if (Number(c.wave) !== Number(waveNumber)) return c;
+    if (contactOnHold(c)) return c; // explicit campaign hold — never enroll a held contact
     if (c.suppressed_at_import || isSuppressed(c, { state }).suppressed) return c;
     if (c.enrolled_at) return c; // already enrolled (idempotent)
     enrolled++;
@@ -483,6 +495,7 @@ export function planReactivation(state = {}, ctx = {}) {
 
   for (const contact of list(state.reactivationContacts)) {
     if (!releasable.has(Number(contact.wave))) continue;
+    if (contactOnHold(contact)) continue; // explicit campaign hold — not eligible for sends
     if (!contact.enrolled_at) continue;
     if (contactPaused(contact)) { continue; }
     if (isSuppressed(contact, { state }).suppressed) continue;
@@ -545,9 +558,10 @@ export async function actReactivation(state = {}, ctx = {}) {
 
   const plan = planReactivation(next, ctx);
   for (const { contact, step } of plan.proposals) {
-    // Re-check suppression + pause at SEND time.
-    if (contactPaused(contact) || isSuppressed(contact, { state: next }).suppressed) {
-      results.push({ contact_id: contact.contact_id, status: "skipped", reason: "suppressed_or_paused" });
+    // Re-check hold + suppression + pause at SEND time (planReactivation already excludes these;
+    // this is belt-and-suspenders so a held contact can never reach a live send).
+    if (contactOnHold(contact) || contactPaused(contact) || isSuppressed(contact, { state: next }).suppressed) {
+      results.push({ contact_id: contact.contact_id, status: "skipped", reason: "held_suppressed_or_paused" });
       continue;
     }
     // Sequence variant by login history (logged_in vs never_logged_in) — copy selection only.
