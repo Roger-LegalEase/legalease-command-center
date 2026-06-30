@@ -17,7 +17,7 @@ import {
   EXPUNGEMENT_LIFECYCLE_COLLECTIONS, EXPUNGEMENT_SOURCE_TYPE, EXPUNGEMENT_HOLD_REASON,
   EXPUNGEMENT_SYNC_WARNING, EXPUNGEMENT_SYNC_HELD_MESSAGE
 } from "./expungement-lifecycle-sync.mjs";
-import { planReactivation, actReactivation } from "./reactivation-os.mjs";
+import { planReactivation, actReactivation, contactIdForEmail } from "./reactivation-os.mjs";
 import { permissionForRequest, authorizeRequest } from "./access-control.mjs";
 
 let passed = 0;
@@ -189,6 +189,70 @@ ok("preview + confirm require auth/owner (write); anonymous rejected, owner acce
     "confirm writes only lifecycle + suppression + staged reactivation collections"
   );
   ok("no live-send/autopilot gate changes (only safe collections written)");
+}
+
+// ---- 12. Blocker 1: operator source note persists on lifecycle rows -----------
+{
+  for (const c of conf.state.expungementLifecycleContacts) {
+    assert.equal(c.sync_source_note, SRC.sourceNote, "lifecycle contact carries the batch source note");
+    assert.ok(c.first_synced_at && c.last_synced_at, "sync timestamps recorded");
+  }
+  for (const e of conf.state.expungementLifecycleEvents) {
+    assert.equal(e.sync_source_note, SRC.sourceNote, "lifecycle event carries the batch source note");
+  }
+  ok("confirm persists the operator source note on lifecycle contacts and events");
+}
+
+// ---- 13. Blocker 1: re-sync updates the note predictably (first-seen preserved) ----
+{
+  const first = confirmExpungementSync({}, RECORDS, { sourceNote: "batch one", now: NOW });
+  const resync = confirmExpungementSync(first.state, RECORDS, { sourceNote: "batch two", now: "2026-07-10T00:00:00Z" });
+  const lc = resync.state.expungementLifecycleContacts.find((c) => c.email === "abandon@gmail.com");
+  const lc0 = first.state.expungementLifecycleContacts.find((c) => c.email === "abandon@gmail.com");
+  assert.equal(lc.sync_source_note, "batch two", "latest batch note wins on re-sync");
+  assert.equal(lc.first_synced_at, lc0.first_synced_at, "first_synced_at preserved across re-sync");
+  assert.equal(lc.last_synced_at, "2026-07-10T00:00:00Z", "last_synced_at refreshes");
+  assert.equal(resync.state.expungementLifecycleContacts.length, first.state.expungementLifecycleContacts.length, "no duplicate lifecycle contacts");
+  // Each sync appends an event carrying its own note (immutable per-sync history).
+  assert.ok(resync.state.expungementLifecycleEvents.some((e) => e.sync_source_note === "batch two"), "new event carries the new note");
+  assert.ok(resync.state.expungementLifecycleEvents.some((e) => e.sync_source_note === "batch one"), "prior event note preserved");
+  ok("re-sync updates the source note predictably (latest wins; per-sync events immutable)");
+}
+
+// ---- 14. Blocker 2: revoked consent => sticky suppression, never staged -------
+{
+  const recs = [{ email: "revoked@gmail.com", first_name: "Rev", consent_status: "revoked", screening_status: "abandoned", source_record_id: "r1" }];
+  const r = confirmExpungementSync({}, recs, { sourceNote: "consent test", now: NOW });
+  // Lifecycle-recorded with consent_status preserved.
+  const lc = r.state.expungementLifecycleContacts.find((c) => c.email === "revoked@gmail.com");
+  assert.ok(lc, "revoked-consent contact is lifecycle-recorded");
+  assert.equal(lc.consent_status, "revoked", "consent_status preserved on the lifecycle row");
+  // Not campaign-staged.
+  assert.ok(!(r.state.reactivationContacts || []).some((c) => c.email === "revoked@gmail.com"), "revoked consent not campaign-staged");
+  assert.equal(r.excludedUnsubscribed, 1, "revoked consent counted as an exclusion");
+  // Sticky suppression written.
+  const supp = (r.state.outreachSuppressions || []).find((s) => s.email === "revoked@gmail.com");
+  assert.ok(supp, "revoked consent writes a sticky suppression");
+  assert.ok(["manually_suppressed", "do_not_contact"].includes(supp.reason), "uses a supported non-contact reason");
+  ok("revoked consent is recorded, excluded from staging, and writes sticky suppression");
+}
+
+// ---- 15. Blocker 2: suppression blocks a PRE-EXISTING reactivation contact ----
+{
+  // The person is already an enrolled, released, due reactivation contact. After a revoked-consent
+  // sync, the suppression ledger must make planReactivation stop proposing them.
+  const id = contactIdForEmail("already@gmail.com");
+  const seeded = {
+    reactivationContacts: [{ contact_id: id, email: "already@gmail.com", wave: 1, enrolled_at: "2026-06-01T00:00:00Z", sequence_status: "Enrolled", campaign_id: "mvp-reactivation" }],
+    reactivationCampaign: { campaignId: "mvp-reactivation", releasedWaves: [1], status: "active" }
+  };
+  const IN_WINDOW = new Date("2026-07-02T15:00:00Z");
+  // Sanity: before the sync they WOULD be due (proves the test setup is live).
+  assert.ok(planReactivation(seeded, { now: IN_WINDOW }).proposals.some((p) => p.contact.email === "already@gmail.com"), "contact is due before suppression");
+  const synced = confirmExpungementSync(seeded, [{ email: "already@gmail.com", consent_status: "withdrawn" }], { sourceNote: "consent test", now: NOW });
+  const due = { ...synced.state, reactivationCampaign: { campaignId: "mvp-reactivation", releasedWaves: [1], status: "active" } };
+  assert.ok(!planReactivation(due, { now: IN_WINDOW }).proposals.some((p) => p.contact.email === "already@gmail.com"), "after revoked-consent sync, planReactivation no longer proposes them");
+  ok("revoked-consent suppression blocks a pre-existing reactivation contact from planReactivation()");
 }
 
 console.log(`\nAll ${passed} expungement-lifecycle-sync checks passed.`);

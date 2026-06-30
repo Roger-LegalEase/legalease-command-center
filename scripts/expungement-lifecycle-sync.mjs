@@ -116,9 +116,10 @@ function sourceNoteForStage(stage = "") {
 }
 
 // Build the safe lifecycle-contact row — operational fields ONLY. Sensitive eligibility/case detail
-// is never copied; only a short eligibility_status_summary string is kept. First-seen created_at and
-// source_record_id are preserved on re-sync.
-function buildLifecycleContact(raw, email, stage, now, prior = {}) {
+// is never copied; only a short eligibility_status_summary string is kept. First-seen created_at,
+// source_record_id, and synced_at are preserved on re-sync; sync_source_note refreshes to the
+// operator-provided note for the LATEST sync batch (events keep the per-sync note immutably).
+function buildLifecycleContact(raw, email, stage, now, sourceNote, prior = {}) {
   return {
     lifecycle_contact_id: lifecycleIdForEmail(email),
     email,
@@ -129,6 +130,9 @@ function buildLifecycleContact(raw, email, stage, now, prior = {}) {
     lifecycle_stage: stage,
     dropoff_step: clean(raw.dropoff_step),
     payment_status: lower(raw.payment_status),
+    sync_source_note: clean(sourceNote),
+    first_synced_at: prior.first_synced_at || now,
+    last_synced_at: now,
     eligibility_status_summary: clean(raw.eligibility_status_summary).slice(0, 160),
     last_seen_at: clean(raw.last_seen_at) || prior.last_seen_at || now,
     source_type: EXPUNGEMENT_SOURCE_TYPE,
@@ -219,7 +223,7 @@ export function confirmExpungementSync(state = {}, records = [], opts = {}) {
     const email = normalizeEmail(raw.email);
     if (!email) continue; // identity-less record — cannot record a contact
     const stage = classifyLifecycleStage(raw);
-    const lc = buildLifecycleContact(raw, email, stage, now, lcById.get(lifecycleIdForEmail(email)));
+    const lc = buildLifecycleContact(raw, email, stage, now, opts.sourceNote, lcById.get(lifecycleIdForEmail(email)));
     lcById.set(lc.lifecycle_contact_id, lc);
     lifecycleUpserted++;
     newEvents.push({
@@ -230,14 +234,17 @@ export function confirmExpungementSync(state = {}, records = [], opts = {}) {
       payment_status: lc.payment_status,
       source_type: EXPUNGEMENT_SOURCE_TYPE,
       source_record_id: lc.source_record_id,
+      sync_source_note: clean(opts.sourceNote),
       import_id: importId,
       created_at: now
     });
 
-    // Honor unsubscribe/bounce/complaint/deletion by recording a sticky suppression so NO path
-    // (this sync or a later CSV import) can ever enroll them.
-    if (hasSuppressionSignal(raw) || isDeleted(raw)) {
-      const reason = isDeleted(raw) ? "manually_suppressed" : (truthy(raw.bounced) ? "bounced" : "unsubscribed");
+    // Honor unsubscribe/bounce/complaint/deletion AND revoked consent by recording a sticky
+    // suppression so NO path (this sync or a later CSV import) can ever enroll them.
+    if (hasSuppressionSignal(raw) || isDeleted(raw) || consentRevoked(raw)) {
+      const reason = (truthy(raw.bounced) && !isDeleted(raw)) ? "bounced"
+        : (truthy(raw.unsubscribed) && !isDeleted(raw)) ? "unsubscribed"
+        : "manually_suppressed"; // deletion + revoked-consent + do_not_contact/complaint => manual suppression
       nextState = recordSuppression(nextState, { contactId: contactIdForEmail(email), email, reason, source: "expungement_ai_sync" }, now);
     }
 
