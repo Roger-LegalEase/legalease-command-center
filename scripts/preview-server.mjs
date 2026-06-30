@@ -13,7 +13,7 @@ import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_Q
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
 import { applyReactivationEvent, reactivationCampaignOf, reactivationLiveSendEnabled, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
-import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview } from "./expungement-lifecycle-sync.mjs";
+import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
@@ -17151,13 +17151,24 @@ function htmlShell() {
       ].map(function(pair){ return "<article class=\"campaign-preview-metric\"><strong>" + esc(String(pair[0] || 0)) + "</strong><span>" + esc(pair[1]) + "</span></article>"; }).join("");
       const byStage = data.lifecycleByStage || {};
       const stageLine = Object.keys(byStage).filter(function(k){ return byStage[k] > 0; }).map(function(k){ return esc(k) + ": " + esc(String(byStage[k])); }).join(" &middot; ") || "none";
-      const heldRows = (data.heldRows || []).filter(function(r){ return heldReviewStageMatch(r.lifecycle_stage, f); }).map(function(r){
+      const dispositionOptions = [["keep_held","Keep held"],["approved_for_later","Approve for later"],["needs_more_info","Needs more info"],["suppress","Suppress / do not contact"],["exclude_paid_customer","Exclude paid customer"]];
+      const heldRows = (data.heldRows || []).filter(function(r){ return heldReviewStageMatch(r.lifecycle_stage, f); }).map(function(r, i){
+        const cid = String(r.contact_id || "");
+        const selId = "disp-status-" + i, noteId = "disp-note-" + i;
+        const opts = dispositionOptions.map(function(o){ return "<option value=\"" + esc(o[0]) + "\"" + (r.review_status === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("");
+        const controls = cid && !r.enrolled ? ("<div class=\"held-disposition\">"
+          + "<select id=\"" + selId + "\">" + opts + "</select> "
+          + "<input id=\"" + noteId + "\" placeholder=\"Review note (optional)\" value=\"" + esc(String(r.review_note || "")) + "\"> "
+          + "<button type=\"button\" onclick=\"applyHeldContactDisposition('" + esc(cid) + "','" + selId + "','" + noteId + "')\">Apply</button>"
+          + "</div>") : "";
         return "<li>" + esc(String(r.masked_email)) + (r.first_name ? " (" + esc(String(r.first_name)) + ")" : "")
           + " &middot; " + esc(String(r.lifecycle_stage || r.source_note || "held"))
           + (r.state ? " &middot; " + esc(String(r.state)) : "")
           + " &middot; hold: " + esc(String(r.campaign_hold_reason || ""))
           + " &middot; " + esc(String(r.import_status || "")) + " &middot; wave: " + esc(String(r.wave === null ? "none" : r.wave))
-          + " &middot; " + (r.enrolled ? "enrolled" : "not enrolled") + "</li>";
+          + " &middot; " + (r.enrolled ? "enrolled" : "not enrolled")
+          + " &middot; review: " + esc(String(r.review_status || "held")) + (r.do_not_contact ? " &middot; do-not-contact" : "")
+          + controls + "</li>";
       }).join("");
       const lifeRows = (data.lifecycleRows || []).filter(function(r){ return heldReviewLifecycleMatch(r, f); }).map(function(r){
         const flags = [r.unsubscribed ? "unsubscribed" : "", r.bounced ? "bounced" : "", r.complained ? "complained" : "", r.do_not_contact ? "do-not-contact" : "", r.deleted_or_erasure_requested ? "deleted" : "", r.consent_status ? "consent:" + r.consent_status : ""].filter(Boolean).join(", ");
@@ -17171,13 +17182,32 @@ function htmlShell() {
         + "<div class=\"campaign-preview-metrics\">" + cards + "</div>"
         + "<p class=\"muted\">Lifecycle by stage: " + stageLine + "</p>"
         + "<strong>Held contacts (" + esc(String((data.heldRows || []).length)) + ")</strong>"
+        + "<p class=\"muted\">This does not release contacts. Nothing sends from this action.</p>"
         + (heldRows ? "<ul>" + heldRows + "</ul>" : "<p class=\"muted\">No held contacts for this filter.</p>")
         + "<strong>Expungement.ai lifecycle (" + esc(String((data.lifecycleRows || []).length)) + ")</strong>"
         + (lifeRows ? "<ul>" + lifeRows + "</ul>" : "<p class=\"muted\">No lifecycle contacts for this filter.</p>")
         + (events ? "<details><summary>Recent lifecycle events</summary><ul>" + events + "</ul></details>" : "");
     }
+    async function applyHeldContactDisposition(contactId, statusFieldId, noteFieldId) {
+      const statusEl = document.getElementById(statusFieldId);
+      const noteEl = document.getElementById(noteFieldId);
+      const reviewStatus = statusEl ? statusEl.value : "";
+      const reviewNote = noteEl ? noteEl.value : "";
+      if (!contactId || !reviewStatus) { toast("Choose a disposition first."); return; }
+      if (reviewStatus === "suppress" && typeof confirm === "function" && !confirm("Suppress this contact (do not contact)? They stay held; nothing sends.")) return;
+      let result;
+      try {
+        result = await api("/api/contacts/held-review/disposition", { method:"POST", body: JSON.stringify({ contactId:contactId, review_status:reviewStatus, review_note:reviewNote }) });
+      } catch (error) {
+        toast("Could not save disposition: " + (error.message || "request failed"));
+        return;
+      }
+      toast("Disposition saved. This did not release anyone. Nothing was sent.");
+      loadHeldContactsReview();
+    }
     window.loadHeldContactsReview = loadHeldContactsReview;
     window.filterHeldReview = filterHeldReview;
+    window.applyHeldContactDisposition = applyHeldContactDisposition;
 
     function applyDailyRunResult(result, fallbackMessage = "Daily Run updated.") {
       if (result?.state) state = hydrateStatePayload(result.state, "daily-run-update");
@@ -33206,6 +33236,48 @@ async function handleRequest(request, response) {
   // GET => "read" permission (auth required). Writes NO state; returns only safe, masked fields.
   if (url.pathname === "/api/contacts/held-review" && request.method === "GET") {
     sendJson(response, buildHeldContactsReview(await store.readState()));
+    return;
+  }
+
+  // Disposition — owner/admin records what should happen to a held contact LATER. Never releases,
+  // enrolls, sends, or wave-assigns. campaign_hold stays true; "suppress" adds sticky suppression.
+  if (url.pathname === "/api/contacts/held-review/disposition" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const payload = await readJson(request);
+      // Hard guard: this slice can never clear the hold, assign a wave, or enroll a contact.
+      if ((payload && payload.campaign_hold !== undefined && payload.campaign_hold !== true && String(payload.campaign_hold).toLowerCase() !== "true")
+        || "wave" in (payload || {}) || "enrolled_at" in (payload || {})
+        || (payload?.sequence_status && /enrolled/i.test(String(payload.sequence_status)))) {
+        sendJson(response, { error: "This action cannot clear the hold, assign a wave, or enroll a contact." }, 400);
+        return;
+      }
+      const result = applyHeldDisposition(await store.readState(), {
+        contactId: payload?.contactId,
+        contact_id: payload?.contact_id,
+        contactIds: payload?.contactIds,
+        contact_ids: payload?.contact_ids,
+        review_status: payload?.review_status,
+        review_note: payload?.review_note,
+        reviewed_by: accessDecision.actor?.label || accessDecision.actor?.role || "owner",
+        now: new Date().toISOString()
+      });
+      await store.writeState(result.state);
+      sendJson(response, {
+        ok: true,
+        review_status: result.review_status,
+        updatedCount: result.updatedCount,
+        rejected: result.rejected,
+        updated: result.updated,
+        noSend: true
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not record the disposition.", rejected: error.rejected || [] }, 400);
+    }
     return;
   }
 

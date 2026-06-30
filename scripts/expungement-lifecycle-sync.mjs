@@ -451,6 +451,7 @@ export function buildHeldContactsReview(state = {}) {
       held++;
       const lc = lifecycleById.get(lifecycleIdForEmail(c.email)) || {};
       heldRows.push({
+        contact_id: c.contact_id || "", // stable hash id (not PII) — lets the UI target a disposition
         masked_email: maskEmail(c.email),
         first_name: c.first_name || "",
         state: lc.state || "",
@@ -462,7 +463,12 @@ export function buildHeldContactsReview(state = {}) {
         campaign_hold_reason: c.campaign_hold_reason || "",
         import_status: c.import_status || "",
         wave: c.wave == null ? null : c.wave,
-        enrolled: Boolean(c.enrolled_at)
+        enrolled: Boolean(c.enrolled_at),
+        review_status: c.review_status || "held",
+        review_note: c.review_note || "",
+        reviewed_at: c.reviewed_at || "",
+        reviewed_by: c.reviewed_by || "",
+        do_not_contact: c.do_not_contact === true
       });
     }
   }
@@ -491,5 +497,113 @@ export function buildHeldContactsReview(state = {}) {
     heldRows,
     lifecycleRows,
     recentEvents
+  };
+}
+
+// ---------------------------------------------------------------------------
+// HELD CONTACT DISPOSITION — let an owner/admin record what should happen to a held contact LATER,
+// without releasing, enrolling, sending, or wave-assigning anything. Every disposition keeps
+// campaign_hold === true. "suppress" additionally writes a sticky outreach suppression + sets
+// do_not_contact (the lifecycle record is preserved). Pure reducer the endpoint calls.
+// ---------------------------------------------------------------------------
+export const HELD_REVIEW_STATUSES = new Set([
+  "held", "approved_for_later", "keep_held", "suppress", "needs_more_info", "exclude_paid_customer"
+]);
+export const OPERATOR_REVIEWED_HOLD_REASON = "operator_reviewed_hold";
+
+export function applyHeldDisposition(state = {}, opts = {}) {
+  const reviewStatus = clean(opts.review_status);
+  if (!HELD_REVIEW_STATUSES.has(reviewStatus)) {
+    throw new Error('Invalid review status. Allowed: ' + [...HELD_REVIEW_STATUSES].join(", ") + ".");
+  }
+  const ids = [
+    ...list(opts.contactIds),
+    ...list(opts.contact_ids)
+  ].map(clean).filter(Boolean);
+  if (clean(opts.contactId)) ids.push(clean(opts.contactId));
+  if (clean(opts.contact_id)) ids.push(clean(opts.contact_id));
+  const uniqueIds = [...new Set(ids)];
+  if (!uniqueIds.length) throw new Error("Provide at least one held contact_id.");
+  const now = opts.now || new Date().toISOString();
+  const reviewedBy = clean(opts.reviewed_by) || "owner";
+  const reviewNote = clean(opts.review_note).slice(0, 500);
+
+  const byId = new Map(list(state.reactivationContacts).map((c) => [clean(c.contact_id), c]));
+  const rejected = [];
+  for (const id of uniqueIds) {
+    const c = byId.get(id);
+    if (!c) { rejected.push({ contact_id: id, reason: "not_found" }); continue; }
+    if (c.campaign_hold !== true) { rejected.push({ contact_id: id, reason: "not_held" }); continue; }
+    if (c.enrolled_at || lower(c.sequence_status) === "enrolled") { rejected.push({ contact_id: id, reason: "enrolled" }); continue; }
+  }
+  if (rejected.length) {
+    const error = new Error("Disposition can only update held, non-enrolled contacts.");
+    error.rejected = rejected;
+    throw error;
+  }
+  const applyIds = new Set(uniqueIds);
+
+  let nextState = { ...state };
+  // suppress => sticky outreach suppression first (so the ledger blocks any future planning/send).
+  if (reviewStatus === "suppress") {
+    for (const id of applyIds) {
+      const c = byId.get(id);
+      nextState = recordSuppression(nextState, { contactId: id, email: c.email, reason: "manually_suppressed", source: "operator_held_disposition" }, now);
+    }
+  }
+
+  const newContacts = list(nextState.reactivationContacts).map((c) => {
+    const id = clean(c.contact_id);
+    if (!applyIds.has(id)) return c;
+    const patch = {
+      ...c,
+      review_status: reviewStatus,
+      review_note: reviewNote,
+      reviewed_at: now,
+      reviewed_by: reviewedBy,
+      campaign_hold: true,                          // ALWAYS stays held in this slice
+      campaign_hold_reason: OPERATOR_REVIEWED_HOLD_REASON,
+      updated_at: now
+    };
+    if (reviewStatus === "suppress") {
+      patch.do_not_contact = true;
+      patch.import_status = "suppressed";
+    } else if (reviewStatus === "exclude_paid_customer") {
+      patch.import_status = "excluded";
+    } else {
+      patch.import_status = c.import_status || "staged";
+    }
+    // NEVER touch wave / enrolled_at / sequence_status — held contacts stay unbucketed + Not Enrolled.
+    return patch;
+  });
+  nextState = { ...nextState, reactivationContacts: newContacts };
+
+  const updated = [...applyIds].map((id) => {
+    const c = newContacts.find((x) => clean(x.contact_id) === id);
+    return {
+      contact_id: id,
+      masked_email: maskEmail(c.email),
+      review_status: c.review_status,
+      review_note: c.review_note,
+      reviewed_at: c.reviewed_at,
+      reviewed_by: c.reviewed_by,
+      campaign_hold: c.campaign_hold === true,
+      campaign_hold_reason: c.campaign_hold_reason,
+      import_status: c.import_status,
+      do_not_contact: c.do_not_contact === true,
+      wave: c.wave == null ? null : c.wave,
+      enrolled: Boolean(c.enrolled_at)
+    };
+  });
+
+  return {
+    ok: true,
+    writesState: true,
+    review_status: reviewStatus,
+    updatedCount: applyIds.size,
+    rejected: [],
+    updated,
+    noSend: true,
+    state: nextState
   };
 }

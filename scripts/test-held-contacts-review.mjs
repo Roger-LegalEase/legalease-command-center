@@ -120,7 +120,11 @@ ok("held review endpoint requires auth; anonymous rejected, authenticated allowe
   // Isolate the builder function body and assert it has no mutating/sending call sites.
   const start = src.indexOf("export function buildHeldContactsReview");
   assert.ok(start !== -1, "builder present");
-  const body = src.slice(start);
+  // Bound the slice to JUST the builder function (stop at the next top-level export), so unrelated
+  // functions later in the module (e.g. applyHeldDisposition, which legitimately suppresses) don't
+  // bleed into this structural check.
+  const after = src.indexOf("\nexport ", start + 1);
+  const body = src.slice(start, after === -1 ? undefined : after);
   for (const callSite of ["writeState", "recordSuppression(", "releaseWave(", "actReactivation(", "runOutreachSend(", "runReactivationSend(", ".send(", "enrolled_at:"]) {
     assert.ok(!body.includes(callSite), `held review builder must not contain ${callSite}`);
   }
