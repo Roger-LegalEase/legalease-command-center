@@ -16956,7 +16956,7 @@ function htmlShell() {
         "Valid contacts: " + esc(String(preview.validContacts)),
         "Bad emails skipped: " + esc(String(preview.badEmails)) + " (" + esc(String(preview.missingEmails)) + " missing, " + esc(String(preview.invalidEmails)) + " invalid)",
         "Duplicates skipped: " + esc(String(preview.duplicates)),
-        "Suppressed contacts skipped: " + esc(String(preview.suppressed)),
+        "Suppressed contacts flagged: " + esc(String(preview.suppressed)),
         "Likely columns detected: " + cols,
         "<em>" + esc(String(preview.warning || "Nothing sends from import.")) + "</em>"
       ];
@@ -16985,7 +16985,7 @@ function htmlShell() {
         "Updated: " + esc(String(s.updated || 0)),
         "Bad emails skipped: " + esc(String(s.skippedBad || 0)),
         "Duplicates skipped: " + esc(String(s.skippedDup || 0)),
-        "Suppressed contacts skipped: " + esc(String(s.skippedSuppressed || 0)),
+        "Suppressed contacts flagged: " + esc(String(s.skippedSuppressed || 0)),
         "Total staged contacts: " + esc(String(result.totalContacts || 0)),
         "<em>" + esc(String(result.warning || "Nothing sends from import. Contacts are staged for review.")) + "</em>"
       ];
