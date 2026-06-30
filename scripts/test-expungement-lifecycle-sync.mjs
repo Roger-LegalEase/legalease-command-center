@@ -14,6 +14,7 @@ import { coreStateCollections } from "./storage.mjs";
 import { buildDataModelInventory } from "./state-integrity.mjs";
 import {
   classifyLifecycleStage, previewExpungementSync, confirmExpungementSync,
+  csvToLifecycleRecords, resolveSyncRecords,
   EXPUNGEMENT_LIFECYCLE_COLLECTIONS, EXPUNGEMENT_SOURCE_TYPE, EXPUNGEMENT_HOLD_REASON,
   EXPUNGEMENT_SYNC_WARNING, EXPUNGEMENT_SYNC_HELD_MESSAGE
 } from "./expungement-lifecycle-sync.mjs";
@@ -253,6 +254,70 @@ ok("preview + confirm require auth/owner (write); anonymous rejected, owner acce
   const due = { ...synced.state, reactivationCampaign: { campaignId: "mvp-reactivation", releasedWaves: [1], status: "active" } };
   assert.ok(!planReactivation(due, { now: IN_WINDOW }).proposals.some((p) => p.contact.email === "already@gmail.com"), "after revoked-consent sync, planReactivation no longer proposes them");
   ok("revoked-consent suppression blocks a pre-existing reactivation contact from planReactivation()");
+}
+
+// ---- 16. CSV/paste support: parser + header aliasing -------------------------
+{
+  // Mixed-case / spaced headers, a quoted name with an embedded comma, plus boolean string cells.
+  const CSV = [
+    "Email,First Name,Full Name,Payment Status,Screening Status,Checkout Status,Consent Status,Unsubscribed,Deleted Or Erasure Requested,State",
+    'ab@gmail.com,Ann,"Smith, Ann",,abandoned,,,,,PA',
+    "co@yahoo.com,Cal,,,,abandoned,,,,",
+    "pd@outlook.com,Pat,,paid,,,,,,",
+    "un@gmail.com,Uma,,,abandoned,,,true,,",
+    "de@gmail.com,Ed,,,abandoned,,,,true,",
+    "rv@gmail.com,Rev,,,,,revoked,,,"
+  ].join("\n");
+  const recs = csvToLifecycleRecords(CSV);
+  assert.equal(recs.length, 6, "one record per CSV data row");
+  // Header aliasing: First Name / Full Name / Payment Status map to canonical fields.
+  assert.equal(recs[0].first_name, "Ann");
+  assert.equal(recs[0].full_name, "Smith, Ann", "quoted comma stays inside one field");
+  assert.equal(recs[0].state, "PA");
+  assert.equal(recs[2].payment_status, "paid", "Payment Status header mapped");
+  assert.equal(recs[0].screening_status, "abandoned", "Screening Status header mapped");
+  // resolveSyncRecords prefers JSON records, falls back to CSV.
+  assert.equal(resolveSyncRecords({ records: [{ email: "x@y.com" }] }).length, 1, "JSON records path preserved");
+  assert.equal(resolveSyncRecords({ csvText: CSV }).length, 6, "CSV text path resolves");
+  ok("CSV parser handles normal + First Name/Full Name/Payment Status headers + quoted commas");
+
+  // Preview from CSV writes nothing; sample masked; warning says nothing sends.
+  const before = { reactivationContacts: [], expungementLifecycleContacts: [] };
+  const snap = JSON.stringify(before);
+  const prev = previewExpungementSync(before, resolveSyncRecords({ csvText: CSV }), { sourceNote: "CSV paste" });
+  assert.equal(prev.writesState, false);
+  assert.equal(JSON.stringify(before), snap, "CSV preview must not mutate state");
+  assert.equal(prev.totalRecords, 6);
+  assert.equal(prev.abandonedScreenings, 1, "abandoned counted");
+  assert.equal(prev.paidCustomers, 1, "paid counted");
+  assert.ok(prev.checkoutAbandoned >= 1, "checkout counted");
+  assert.ok(prev.sampleContacts.every((c) => /\*\*\*/.test(c.email) || !/@/.test(c.email)), "CSV sample emails masked");
+  assert.match(prev.warning, /nothing sends/i);
+  ok("preview from CSV writes nothing; samples masked; warning says nothing sends");
+
+  // Confirm from CSV writes lifecycle contacts/events; campaign-stageable held; excludes enforced.
+  const conf = confirmExpungementSync({}, resolveSyncRecords({ csvText: CSV }), { sourceNote: "CSV paste", now: NOW });
+  assert.equal(conf.writesState, true);
+  assert.equal(conf.state.expungementLifecycleContacts.length, 6, "CSV confirm writes lifecycle contacts");
+  assert.equal(conf.state.expungementLifecycleEvents.length, 6, "CSV confirm writes lifecycle events");
+  const stagedEmails = conf.state.reactivationContacts.map((c) => c.email).sort();
+  assert.deepEqual(stagedEmails, ["ab@gmail.com", "co@yahoo.com"], "only screening/checkout-abandoned staged");
+  for (const c of conf.state.reactivationContacts) {
+    assert.equal(c.campaign_hold, true, "CSV-staged contact is held");
+    assert.equal(c.campaign_hold_reason, EXPUNGEMENT_HOLD_REASON);
+    assert.equal(c.wave, null, "held CSV contact gets no wave");
+    assert.ok(!c.enrolled_at, "not enrolled");
+  }
+  assert.ok(!stagedEmails.includes("pd@outlook.com"), "paid CSV contact not campaign-staged");
+  const supp = (conf.state.outreachSuppressions || []).map((s) => s.email);
+  assert.ok(supp.includes("un@gmail.com"), "unsubscribed CSV contact suppressed");
+  assert.ok(supp.includes("de@gmail.com"), "deleted CSV contact suppressed");
+  assert.ok(supp.includes("rv@gmail.com"), "revoked-consent CSV contact suppressed");
+  assert.ok(!stagedEmails.includes("un@gmail.com") && !stagedEmails.includes("de@gmail.com") && !stagedEmails.includes("rv@gmail.com"), "unsub/deleted/revoked CSV contacts not staged");
+  // No send attempts; only safe collections written.
+  assert.ok(!(conf.state.reactivationAttempts && conf.state.reactivationAttempts.length), "no send attempts from CSV confirm");
+  assert.ok(!("autopilotSettings" in conf.state) && !("reactivationCampaign" in conf.state), "no gate/autopilot/campaign mutation from CSV confirm");
+  ok("confirm from CSV writes lifecycle + holds eligible; paid/unsub/deleted/revoked excluded; no send/gate change");
 }
 
 console.log(`\nAll ${passed} expungement-lifecycle-sync checks passed.`);

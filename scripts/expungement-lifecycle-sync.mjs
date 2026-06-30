@@ -19,6 +19,7 @@ import {
   importReactivationContacts, applyWaveAssignment, reactivationCampaignOf, contactIdForEmail
 } from "./reactivation-os.mjs";
 import { normalizeEmail, isBadDomain, isSuppressed, recordSuppression } from "./outreach-os.mjs";
+import { parseCsv } from "./consumer-list-import.mjs";
 import crypto from "node:crypto";
 
 // MUST stay in sync with the entries added to coreStateCollections in storage.mjs, or these
@@ -47,12 +48,83 @@ export const CAMPAIGN_STAGEABLE_STAGES = new Set([
 export const EXPUNGEMENT_SYNC_WARNING =
   "Nothing sends from sync. Lifecycle data is recorded and campaign-eligible contacts are held for review — no email goes out until they are intentionally released.";
 export const EXPUNGEMENT_SYNC_HELD_MESSAGE =
-  "Contacts are held for review. Nothing sends until you intentionally release them. Deleted or unsubscribed people are excluded from campaign staging.";
+  "Contacts are held for review. Nothing sends until you intentionally release them. Deleted, unsubscribed, or revoked-consent people are excluded from campaign staging.";
 
 const clean = (v = "") => String(v ?? "").trim();
 const lower = (v = "") => clean(v).toLowerCase();
 const list = (v) => (Array.isArray(v) ? v : []);
 const truthy = (v) => v === true || ["true", "1", "yes", "y", "on"].includes(lower(v));
+
+// ---------------------------------------------------------------------------
+// CSV / paste support — convert a pasted CSV export into the SAME lifecycle record shape the JSON
+// path uses, so previewExpungementSync()/confirmExpungementSync() are unchanged. Headers match
+// case/space/underscore/hyphen-insensitively. First matching column wins per canonical field.
+// ---------------------------------------------------------------------------
+const CSV_FIELD_ALIASES = {
+  email: ["email", "emailaddress", "e-mail"],
+  first_name: ["firstname", "fname", "givenname"],
+  full_name: ["fullname", "name", "contactname"],
+  phone: ["phone", "phonenumber", "mobile", "cell", "tel"],
+  state: ["state"],
+  jurisdiction: ["jurisdiction"],
+  lifecycle_stage: ["lifecyclestage"],
+  stage: ["stage"],
+  event: ["event", "eventtype"],
+  screening_status: ["screeningstatus"],
+  checkout_status: ["checkoutstatus"],
+  payment_status: ["paymentstatus"],
+  dropoff_step: ["dropoffstep", "dropoff"],
+  source_record_id: ["sourcerecordid", "recordid"],
+  last_seen_at: ["lastseenat", "lastseen"],
+  eligibility_status_summary: ["eligibilitystatussummary", "eligibilitysummary"],
+  consent_status: ["consentstatus", "consent"],
+  consent_captured_at: ["consentcapturedat"],
+  privacy_version: ["privacyversion"],
+  utm_source: ["utmsource"],
+  utm_campaign: ["utmcampaign"],
+  referrer: ["referrer", "referer"],
+  unsubscribed: ["unsubscribed", "unsub"],
+  bounced: ["bounced", "bounce"],
+  complained: ["complained", "complaint"],
+  do_not_contact: ["donotcontact", "dnc"],
+  deleted_or_erasure_requested: ["deletedorerasurerequested", "deleted", "erasure", "erasurerequested", "deletionrequested"]
+};
+
+const normalizeHeaderKey = (header = "") => clean(header).toLowerCase().replace(/[\s_\-]+/g, "");
+
+const CSV_HEADER_LOOKUP = (() => {
+  const map = new Map();
+  for (const [field, aliases] of Object.entries(CSV_FIELD_ALIASES)) {
+    for (const alias of aliases) map.set(normalizeHeaderKey(alias), field);
+  }
+  return map;
+})();
+
+// Parse pasted CSV text into lifecycle record objects keyed by the canonical field names that
+// classifyLifecycleStage()/buildLifecycleContact() already understand. Reuses the consumer import's
+// RFC-4180 parser (quoted fields, embedded commas, BOM). Unknown columns are ignored.
+export function csvToLifecycleRecords(csvText = "") {
+  const grid = parseCsv(csvText);
+  if (grid.length < 1) return [];
+  const headers = grid[0].map(clean);
+  const fieldByIndex = headers.map((h) => CSV_HEADER_LOOKUP.get(normalizeHeaderKey(h)) || null);
+  return grid.slice(1).map((cells) => {
+    const rec = {};
+    headers.forEach((h, i) => {
+      const field = fieldByIndex[i];
+      if (field && rec[field] === undefined) rec[field] = clean(cells[i]); // first matching column wins
+    });
+    return rec;
+  });
+}
+
+// Resolve either a JSON `records` array or pasted `csvText` into the lifecycle record array. CSV
+// takes precedence only when records is absent/empty, so the JSON path is unchanged.
+export function resolveSyncRecords({ records, csvText } = {}) {
+  if (Array.isArray(records) && records.length) return records;
+  if (clean(csvText)) return csvToLifecycleRecords(csvText);
+  return Array.isArray(records) ? records : [];
+}
 
 // Stable id for a lifecycle contact (own namespace, distinct from react-* ids).
 export function lifecycleIdForEmail(email = "") {
