@@ -13,7 +13,7 @@ import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_Q
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
 import { applyReactivationEvent, reactivationCampaignOf, reactivationLiveSendEnabled, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
-import { previewExpungementSync, confirmExpungementSync } from "./expungement-lifecycle-sync.mjs";
+import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords } from "./expungement-lifecycle-sync.mjs";
 import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
@@ -17016,29 +17016,38 @@ function htmlShell() {
       const sourceNote = String(payload.sourceNote || "").trim();
       const target = document.getElementById("expungement-sync-result");
       if (!sourceNote) { toast("Add where this batch came from."); return; }
-      let records;
-      try {
-        records = JSON.parse(String(payload.records || "").trim() || "[]");
-      } catch (error) {
-        if (target) target.innerHTML = "<strong>Could not read records.</strong> Paste a valid JSON array.";
-        toast("Records must be a valid JSON array.");
-        return;
+      const text = String(payload.records || "").trim();
+      if (!text) { if (target) target.innerHTML = "<strong>Paste JSON or CSV first.</strong>"; toast("Paste JSON or CSV."); return; }
+      // Detect format: JSON if it starts with [ or {, otherwise treat as CSV text.
+      let body;
+      if (text[0] === "[" || text[0] === "{") {
+        let records;
+        try {
+          records = JSON.parse(text);
+        } catch (error) {
+          if (target) target.innerHTML = "<strong>Could not read JSON.</strong> Paste a valid JSON array, or paste CSV with headers.";
+          toast("Invalid JSON. Paste a valid array or CSV.");
+          return;
+        }
+        if (!Array.isArray(records) || !records.length) { if (target) target.innerHTML = "<strong>Add at least one lifecycle record.</strong>"; toast("Add at least one record."); return; }
+        body = { records: records };
+      } else {
+        body = { csvText: text };
       }
-      if (!Array.isArray(records) || !records.length) { if (target) target.innerHTML = "<strong>Add at least one lifecycle record.</strong>"; toast("Add at least one record."); return; }
-      expungementSyncPreview(records, sourceNote);
+      expungementSyncPreview(body, sourceNote);
     }
-    async function expungementSyncPreview(records, sourceNote) {
+    async function expungementSyncPreview(body, sourceNote) {
       const target = document.getElementById("expungement-sync-result");
       if (target) target.innerHTML = "<strong>Preview sync...</strong> Nothing is saved or sent.";
       let preview;
       try {
-        preview = await api("/api/sync/expungement-ai/preview", { method:"POST", body: JSON.stringify({ records:records, sourceNote:sourceNote }) });
+        preview = await api("/api/sync/expungement-ai/preview", { method:"POST", body: JSON.stringify(Object.assign({ sourceNote:sourceNote }, body)) });
       } catch (error) {
         if (target) target.innerHTML = "<strong>Preview failed.</strong> " + esc(error.message || "Could not preview this sync.");
         toast("Preview failed. Nothing was saved.");
         return;
       }
-      expungementSyncPending = { records:records, sourceNote:sourceNote };
+      expungementSyncPending = { body:body, sourceNote:sourceNote };
       const sample = (preview.sampleContacts || []).map(function(c){ return "<li>" + esc(String(c.email)) + " &mdash; " + esc(String(c.lifecycle_stage)) + (c.payment_status ? " (" + esc(String(c.payment_status)) + ")" : "") + (c.state ? " &middot; " + esc(String(c.state)) : "") + "</li>"; }).join("");
       const lines = [
         "<strong>Preview sync: " + esc(String(preview.sourceNote || sourceNote)) + "</strong>",
@@ -17064,7 +17073,7 @@ function htmlShell() {
       if (target) target.innerHTML = "<strong>Import held contacts...</strong> Nothing sends.";
       let result;
       try {
-        result = await api("/api/sync/expungement-ai/confirm", { method:"POST", body: JSON.stringify({ records:expungementSyncPending.records, sourceNote:expungementSyncPending.sourceNote }) });
+        result = await api("/api/sync/expungement-ai/confirm", { method:"POST", body: JSON.stringify(Object.assign({ sourceNote:expungementSyncPending.sourceNote }, expungementSyncPending.body)) });
       } catch (error) {
         if (target) target.innerHTML = "<strong>Sync failed.</strong> " + esc(error.message || "Could not import this sync.");
         toast("Sync failed. Nothing was saved.");
@@ -24920,12 +24929,12 @@ function htmlShell() {
         </section>
         <section class="growth-card">
           <div class="growth-card-head"><h2>Expungement.ai sync</h2><small>Ingest only — nothing sends</small></div>
-          <p class="muted">Bring Expungement.ai people (started/abandoned screening, abandoned checkout, paid, unsubscribed, deletion requests) into the Command Center without a manual CSV. Paste a JSON array of lifecycle records, preview, then import. Campaign-eligible people are held for review. Deleted or unsubscribed people are excluded from campaign staging.</p>
+          <p class="muted">Bring Expungement.ai people (started/abandoned screening, abandoned checkout, paid, unsubscribed, deletion requests) into the Command Center. Paste JSON or CSV, preview, then import. Campaign-eligible people are held for review. Deleted, unsubscribed, or revoked-consent people are excluded from campaign staging.</p>
           <form id="expungement-sync-flow" class="rail-form" onsubmit="expungementSyncPreviewSubmit(event)">
             <label>Where did this batch come from?<input name="sourceNote" required placeholder="Required source note, e.g. Expungement.ai nightly export"></label>
-            <label>Lifecycle records (JSON array)<textarea name="records" rows="6" placeholder='[{"email":"person@example.com","lifecycle_stage":"screening_abandoned","state":"PA"}]'></textarea></label>
+            <label>Paste JSON or CSV<textarea name="records" rows="6" placeholder='Paste a JSON array, or CSV with headers like: email,first_name,lifecycle_stage,state'></textarea></label>
             <div class="campaign-safety-lines">
-              <span>Nothing sends from sync</span><span>Contacts are held for review</span><span>Deleted or unsubscribed people are excluded from campaign staging</span><span>Preview before saving</span>
+              <span>Nothing sends from sync</span><span>Contacts are held for review</span><span>Deleted, unsubscribed, or revoked-consent people are excluded from campaign staging</span><span>Preview before saving</span>
             </div>
             <div class="card-actions">
               <button class="primary" type="submit">Preview sync</button>
@@ -33051,7 +33060,8 @@ async function handleRequest(request, response) {
     // POST is gated as "write" by access-control (owner/auth-protected). Preview writes NO state.
     try {
       const payload = await readJson(request);
-      const preview = previewExpungementSync(await store.readState(), payload?.records ?? [], {
+      const records = resolveSyncRecords({ records: payload?.records, csvText: payload?.csvText });
+      const preview = previewExpungementSync(await store.readState(), records, {
         sourceNote: payload?.sourceNote
       });
       sendJson(response, preview);
@@ -33070,7 +33080,8 @@ async function handleRequest(request, response) {
     }
     try {
       const payload = await readJson(request);
-      const result = confirmExpungementSync(await store.readState(), payload?.records ?? [], {
+      const records = resolveSyncRecords({ records: payload?.records, csvText: payload?.csvText });
+      const result = confirmExpungementSync(await store.readState(), records, {
         sourceNote: payload?.sourceNote,
         now: new Date().toISOString()
       });
