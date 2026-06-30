@@ -12,6 +12,7 @@ import { buildHeartbeatRegistry, HEARTBEAT_ENGINE_IDS } from "./heartbeat-engine
 import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_QUEUE_TYPE, OUTREACH_ENGINE_ID, resolveOutreachSendDecision, outreachLiveSendEnabled } from "./outreach-os.mjs";
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
 import { applyReactivationEvent, reactivationCampaignOf, reactivationLiveSendEnabled, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
+import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
 import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
@@ -16911,6 +16912,7 @@ function htmlShell() {
         toast("List type, source note, and file are required.");
         return;
       }
+      if (listType === "consumer") { consumerListImportPreview(file, sourceNote); return; }
       const routes = {
         consumer:["Consumer / Expungement.ai list", "Uses the existing reactivation import path where appropriate.", "reactivationContacts"],
         rcap_prospect:["RCAP prospect list", "Routes to Prospect Discovery / outreach review before outreachContacts.", "prospectCandidates"],
@@ -16923,6 +16925,84 @@ function htmlShell() {
       toast("Preview ready. Nothing was saved or sent.");
     }
     window.operatorUploadFlowSubmit = operatorUploadFlowSubmit;
+
+    // Consumer / Expungement.ai list import — real preview + confirm against the internal endpoints.
+    // Preview never writes; confirm stages contacts into reactivationContacts. Nothing sends.
+    let consumerImportPending = null;
+    async function consumerListImportPreview(file, sourceNote) {
+      const target = document.getElementById("operator-upload-result");
+      if (!file) { toast("Choose a CSV file before previewing."); return; }
+      let csv = "";
+      try { csv = await file.text(); }
+      catch (error) { if (target) target.innerHTML = "<strong>Could not read the file.</strong>"; toast("Could not read the file."); return; }
+      if (target) target.innerHTML = "<strong>Preview list...</strong> Nothing is saved or sent.";
+      let preview;
+      try {
+        preview = await api("/api/upload/consumer/preview", { method:"POST", body: JSON.stringify({ csv:csv, sourceNote:sourceNote, listType:"consumer" }) });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Preview failed.</strong> " + esc(error.message || "Could not preview this list.");
+        toast("Preview failed. Nothing was saved.");
+        return;
+      }
+      consumerImportPending = { csv:csv, sourceNote:sourceNote, fileName:String(file.name || "consumer list") };
+      const cols = (preview.columnsDetected || []).map(function(c){ return esc(String(c.header)) + " &rarr; " + esc(String(c.field)); }).join(", ") || "none detected";
+      const sample = (preview.sampleRows || []).map(function(row){
+        return "<li>" + Object.keys(row).map(function(k){ return esc(k) + ": " + esc(String(row[k])); }).join(" | ") + "</li>";
+      }).join("");
+      const lines = [
+        "<strong>Preview list: " + esc(String(preview.sourceNote || sourceNote)) + "</strong>",
+        "File: " + esc(consumerImportPending.fileName),
+        "Total rows: " + esc(String(preview.totalRows)),
+        "Valid contacts: " + esc(String(preview.validContacts)),
+        "Bad emails skipped: " + esc(String(preview.badEmails)) + " (" + esc(String(preview.missingEmails)) + " missing, " + esc(String(preview.invalidEmails)) + " invalid)",
+        "Duplicates skipped: " + esc(String(preview.duplicates)),
+        "Suppressed contacts skipped: " + esc(String(preview.suppressed)),
+        "Likely columns detected: " + cols,
+        "<em>" + esc(String(preview.warning || "Nothing sends from import.")) + "</em>"
+      ];
+      if (target) target.innerHTML = lines.join("<br>") +
+        (sample ? "<br><br><strong>Sample rows</strong><ul>" + sample + "</ul>" : "") +
+        "<br><div class=\"card-actions\"><button class=\"primary\" type=\"button\" onclick=\"consumerListImportConfirm()\">Import contacts</button> <button type=\"button\" onclick=\"consumerListImportCancel()\">Cancel</button></div>";
+      toast("Preview ready. Nothing was saved or sent.");
+    }
+    async function consumerListImportConfirm() {
+      const target = document.getElementById("operator-upload-result");
+      if (!consumerImportPending) { toast("Preview a list before importing."); return; }
+      if (target) target.innerHTML = "<strong>Import contacts...</strong> Nothing sends.";
+      let result;
+      try {
+        result = await api("/api/upload/consumer/confirm", { method:"POST", body: JSON.stringify({ csv:consumerImportPending.csv, sourceNote:consumerImportPending.sourceNote, listType:"consumer" }) });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Import failed.</strong> " + esc(error.message || "Could not import this list.");
+        toast("Import failed. Nothing was saved.");
+        return;
+      }
+      if (result && result.state) state = hydrateStatePayload(result.state, "consumer-list-import");
+      const s = result.summary || {};
+      const lines = [
+        "<strong>Import contacts: done. Contacts are staged for review.</strong>",
+        "Added: " + esc(String(s.added || 0)),
+        "Updated: " + esc(String(s.updated || 0)),
+        "Bad emails skipped: " + esc(String(s.skippedBad || 0)),
+        "Duplicates skipped: " + esc(String(s.skippedDup || 0)),
+        "Suppressed contacts skipped: " + esc(String(s.skippedSuppressed || 0)),
+        "Total staged contacts: " + esc(String(result.totalContacts || 0)),
+        "<em>" + esc(String(result.warning || "Nothing sends from import. Contacts are staged for review.")) + "</em>"
+      ];
+      consumerImportPending = null;
+      render();
+      if (target) target.innerHTML = lines.join("<br>");
+      toast("Imported. Contacts are staged for review. Nothing was sent.");
+    }
+    function consumerListImportCancel() {
+      consumerImportPending = null;
+      const target = document.getElementById("operator-upload-result");
+      if (target) target.innerHTML = "<strong>Preview cleared.</strong> Nothing was saved.";
+      toast("Preview cleared. Nothing was saved.");
+    }
+    window.consumerListImportPreview = consumerListImportPreview;
+    window.consumerListImportConfirm = consumerListImportConfirm;
+    window.consumerListImportCancel = consumerListImportCancel;
 
     function applyDailyRunResult(result, fallbackMessage = "Daily Run updated.") {
       if (result?.state) state = hydrateStatePayload(result.state, "daily-run-update");
@@ -32797,6 +32877,59 @@ async function handleRequest(request, response) {
       sendJson(response, { ok: true, outreachConfig: merged });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update outreach config." }, 400);
+    }
+    return;
+  }
+
+  // ---- Consumer / Expungement.ai list import ("Upload a list" front door) -----------------
+  // IMPORT ONLY. Preview never writes state; confirm routes rows through the EXISTING reactivation
+  // import path (importReactivationContacts + safe wave-number assignment). Neither endpoint sends,
+  // calls a provider, releases a wave, enrolls a contact, or changes a live-send/autopilot gate.
+  if (url.pathname === "/api/upload/consumer/preview" && request.method === "POST") {
+    // POST is gated as "write" by access-control, so this is already owner/auth-protected. Preview
+    // performs NO state write — it is a faithful dry-run only.
+    try {
+      const payload = await readJson(request);
+      const currentState = await store.readState();
+      const preview = previewConsumerImport(currentState, payload?.csv ?? payload?.csvText ?? "", {
+        sourceNote: payload?.sourceNote,
+        listType: payload?.listType || CONSUMER_LIST_TYPE
+      });
+      sendJson(response, preview);
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not preview the consumer list." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/upload/consumer/confirm" && request.method === "POST") {
+    // Explicit owner/admin guard for the state-writing step (mirrors /api/rcap-revenue/import).
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const payload = await readJson(request);
+      const currentState = await store.readState();
+      const result = confirmConsumerImport(currentState, payload?.csv ?? payload?.csvText ?? "", {
+        sourceNote: payload?.sourceNote,
+        listType: payload?.listType || CONSUMER_LIST_TYPE,
+        now: new Date().toISOString()
+      });
+      await store.writeState(result.state);
+      sendJson(response, {
+        ok: true,
+        listType: result.listType,
+        sourceNote: result.sourceNote,
+        summary: result.summary,
+        waveSizes: result.waveSizes,
+        totalContacts: result.totalContacts,
+        warning: result.warning,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not import the consumer list." }, 400);
     }
     return;
   }
