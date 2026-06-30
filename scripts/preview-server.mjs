@@ -13,6 +13,7 @@ import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_Q
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
 import { applyReactivationEvent, reactivationCampaignOf, reactivationLiveSendEnabled, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
+import { previewExpungementSync, confirmExpungementSync } from "./expungement-lifecycle-sync.mjs";
 import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
@@ -17005,6 +17006,96 @@ function htmlShell() {
     window.consumerListImportConfirm = consumerListImportConfirm;
     window.consumerListImportCancel = consumerListImportCancel;
 
+    // Expungement.ai lifecycle sync — ingest-only preview + confirm. Nothing sends; campaign-eligible
+    // contacts are held for review; deleted/unsubscribed people are excluded from campaign staging.
+    let expungementSyncPending = null;
+    function expungementSyncPreviewSubmit(event) {
+      event.preventDefault();
+      const form = event.target;
+      const payload = formObject(form);
+      const sourceNote = String(payload.sourceNote || "").trim();
+      const target = document.getElementById("expungement-sync-result");
+      if (!sourceNote) { toast("Add where this batch came from."); return; }
+      let records;
+      try {
+        records = JSON.parse(String(payload.records || "").trim() || "[]");
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Could not read records.</strong> Paste a valid JSON array.";
+        toast("Records must be a valid JSON array.");
+        return;
+      }
+      if (!Array.isArray(records) || !records.length) { if (target) target.innerHTML = "<strong>Add at least one lifecycle record.</strong>"; toast("Add at least one record."); return; }
+      expungementSyncPreview(records, sourceNote);
+    }
+    async function expungementSyncPreview(records, sourceNote) {
+      const target = document.getElementById("expungement-sync-result");
+      if (target) target.innerHTML = "<strong>Preview sync...</strong> Nothing is saved or sent.";
+      let preview;
+      try {
+        preview = await api("/api/sync/expungement-ai/preview", { method:"POST", body: JSON.stringify({ records:records, sourceNote:sourceNote }) });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Preview failed.</strong> " + esc(error.message || "Could not preview this sync.");
+        toast("Preview failed. Nothing was saved.");
+        return;
+      }
+      expungementSyncPending = { records:records, sourceNote:sourceNote };
+      const sample = (preview.sampleContacts || []).map(function(c){ return "<li>" + esc(String(c.email)) + " &mdash; " + esc(String(c.lifecycle_stage)) + (c.payment_status ? " (" + esc(String(c.payment_status)) + ")" : "") + (c.state ? " &middot; " + esc(String(c.state)) : "") + "</li>"; }).join("");
+      const lines = [
+        "<strong>Preview sync: " + esc(String(preview.sourceNote || sourceNote)) + "</strong>",
+        "Total source records: " + esc(String(preview.totalRecords)),
+        "Valid contacts: " + esc(String(preview.validContacts)),
+        "Abandoned screenings: " + esc(String(preview.abandonedScreenings)),
+        "Completed, no payment: " + esc(String(preview.completedNoPayment)),
+        "Checkout abandoned: " + esc(String(preview.checkoutAbandoned)),
+        "Paid customers: " + esc(String(preview.paidCustomers)),
+        "Excluded (unsubscribed/suppressed): " + esc(String(preview.excludedUnsubscribed)),
+        "Excluded (deleted/erasure requested): " + esc(String(preview.excludedDeleted)),
+        "Campaign-stageable (held): " + esc(String(preview.campaignStageable)),
+        "<em>" + esc(String(preview.warning || "Nothing sends from sync.")) + "</em>"
+      ];
+      if (target) target.innerHTML = lines.join("<br>") +
+        (sample ? "<br><br><strong>Sample contacts</strong><ul>" + sample + "</ul>" : "") +
+        "<br><div class=\"card-actions\"><button class=\"primary\" type=\"button\" onclick=\"expungementSyncConfirm()\">Import held contacts</button> <button type=\"button\" onclick=\"expungementSyncCancel()\">Cancel</button></div>";
+      toast("Preview ready. Nothing was saved or sent.");
+    }
+    async function expungementSyncConfirm() {
+      const target = document.getElementById("expungement-sync-result");
+      if (!expungementSyncPending) { toast("Preview a sync before importing."); return; }
+      if (target) target.innerHTML = "<strong>Import held contacts...</strong> Nothing sends.";
+      let result;
+      try {
+        result = await api("/api/sync/expungement-ai/confirm", { method:"POST", body: JSON.stringify({ records:expungementSyncPending.records, sourceNote:expungementSyncPending.sourceNote }) });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Sync failed.</strong> " + esc(error.message || "Could not import this sync.");
+        toast("Sync failed. Nothing was saved.");
+        return;
+      }
+      if (result && result.state) state = hydrateStatePayload(result.state, "expungement-lifecycle-sync");
+      const lines = [
+        "<strong>" + esc(String(result.heldMessage || "Contacts are held for review. Nothing sends until you intentionally release them.")) + "</strong>",
+        "Lifecycle contacts upserted: " + esc(String(result.lifecycleUpserted || 0)),
+        "Lifecycle events recorded: " + esc(String(result.lifecycleEventsRecorded || 0)),
+        "Reactivation contacts staged (held): " + esc(String(result.reactivationStaged || 0)),
+        "Held for review: " + esc(String(result.held || 0)),
+        "Excluded (unsubscribed/suppressed): " + esc(String(result.excludedUnsubscribed || 0)),
+        "Excluded (deleted/erasure requested): " + esc(String(result.excludedDeleted || 0)),
+        "<em>" + esc(String(result.warning || "Nothing sends from sync.")) + "</em>"
+      ];
+      expungementSyncPending = null;
+      render();
+      if (target) target.innerHTML = lines.join("<br>");
+      toast("Synced and held for review. Nothing was sent.");
+    }
+    function expungementSyncCancel() {
+      expungementSyncPending = null;
+      const target = document.getElementById("expungement-sync-result");
+      if (target) target.innerHTML = "<strong>Preview cleared.</strong> Nothing was saved.";
+      toast("Preview cleared. Nothing was saved.");
+    }
+    window.expungementSyncPreviewSubmit = expungementSyncPreviewSubmit;
+    window.expungementSyncConfirm = expungementSyncConfirm;
+    window.expungementSyncCancel = expungementSyncCancel;
+
     function applyDailyRunResult(result, fallbackMessage = "Daily Run updated.") {
       if (result?.state) state = hydrateStatePayload(result.state, "daily-run-update");
       else if (result?.dailyRun) state.dailyRun = result.dailyRun;
@@ -24826,6 +24917,21 @@ function htmlShell() {
             <article class="campaign-preview-metric"><strong>RCAP revenue</strong><span>Revenue workbook preview and internal records</span></article>
           </div>
           <details><summary>View technical details</summary><p class="muted">Consumer lists route to reactivationContacts. RCAP prospects route through prospectCandidates/outreachContacts. Social calendars use handleCampaignSpreadsheetUpload and Confirm Import. RCAP revenue workbooks use /api/rcap-revenue/preview and /api/rcap-revenue/import.</p></details>
+        </section>
+        <section class="growth-card">
+          <div class="growth-card-head"><h2>Expungement.ai sync</h2><small>Ingest only — nothing sends</small></div>
+          <p class="muted">Bring Expungement.ai people (started/abandoned screening, abandoned checkout, paid, unsubscribed, deletion requests) into the Command Center without a manual CSV. Paste a JSON array of lifecycle records, preview, then import. Campaign-eligible people are held for review. Deleted or unsubscribed people are excluded from campaign staging.</p>
+          <form id="expungement-sync-flow" class="rail-form" onsubmit="expungementSyncPreviewSubmit(event)">
+            <label>Where did this batch come from?<input name="sourceNote" required placeholder="Required source note, e.g. Expungement.ai nightly export"></label>
+            <label>Lifecycle records (JSON array)<textarea name="records" rows="6" placeholder='[{"email":"person@example.com","lifecycle_stage":"screening_abandoned","state":"PA"}]'></textarea></label>
+            <div class="campaign-safety-lines">
+              <span>Nothing sends from sync</span><span>Contacts are held for review</span><span>Deleted or unsubscribed people are excluded from campaign staging</span><span>Preview before saving</span>
+            </div>
+            <div class="card-actions">
+              <button class="primary" type="submit">Preview sync</button>
+            </div>
+          </form>
+          <div id="expungement-sync-result" class="campaign-import-status">Expungement.ai sync preview: add a source note and paste lifecycle records.</div>
         </section>
         \${socialCalendarImportHtml()}
         \${rcapRevenueFoundationHtml()}
@@ -32933,6 +33039,58 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not import the consumer list." }, 400);
+    }
+    return;
+  }
+
+  // ---- Expungement.ai lifecycle sync (ingest-only; no live source pull) --------------------
+  // Preview never writes; confirm upserts lifecycle contacts/events and stages campaign-eligible
+  // contacts into reactivationContacts ALWAYS held. Neither endpoint sends, calls a provider,
+  // releases a wave, enrolls a contact, or changes a live-send/autopilot gate.
+  if (url.pathname === "/api/sync/expungement-ai/preview" && request.method === "POST") {
+    // POST is gated as "write" by access-control (owner/auth-protected). Preview writes NO state.
+    try {
+      const payload = await readJson(request);
+      const preview = previewExpungementSync(await store.readState(), payload?.records ?? [], {
+        sourceNote: payload?.sourceNote
+      });
+      sendJson(response, preview);
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not preview the Expungement.ai sync." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/sync/expungement-ai/confirm" && request.method === "POST") {
+    // Explicit owner/admin guard for the state-writing step (mirrors the consumer import confirm).
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const payload = await readJson(request);
+      const result = confirmExpungementSync(await store.readState(), payload?.records ?? [], {
+        sourceNote: payload?.sourceNote,
+        now: new Date().toISOString()
+      });
+      await store.writeState(result.state);
+      sendJson(response, {
+        ok: true,
+        sourceNote: result.sourceNote,
+        lifecycleUpserted: result.lifecycleUpserted,
+        lifecycleEventsRecorded: result.lifecycleEventsRecorded,
+        reactivationStaged: result.reactivationStaged,
+        held: result.held,
+        excludedUnsubscribed: result.excludedUnsubscribed,
+        excludedDeleted: result.excludedDeleted,
+        warning: result.warning,
+        heldMessage: result.heldMessage,
+        noSend: true,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not run the Expungement.ai sync." }, 400);
     }
     return;
   }

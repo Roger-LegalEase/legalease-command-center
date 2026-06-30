@@ -1,0 +1,194 @@
+// Expungement.ai lifecycle sync tests. Proves the ingest is import/stage ONLY and inherits the
+// reactivation hold safety BEFORE it can touch the live campaign:
+//   1. Collections persist (membership in coreStateCollections) + documented in the data model.
+//   2. Preview never writes; confirm writes lifecycle contacts + events.
+//   3. Stage classification (abandoned screening / checkout abandoned / paid).
+//   4. Unsubscribed/suppressed and deleted/erasure contacts are NEVER campaign-staged.
+//   5. Campaign-staged contacts are held (campaign_hold), get no wave, are ignored by
+//      planReactivation(), and generate no reactivationAttempts.
+//   6. No SendGrid/send function is called. Confirm requires owner/admin. No gate changes.
+
+import assert from "node:assert";
+import fs from "node:fs";
+import { coreStateCollections } from "./storage.mjs";
+import { buildDataModelInventory } from "./state-integrity.mjs";
+import {
+  classifyLifecycleStage, previewExpungementSync, confirmExpungementSync,
+  EXPUNGEMENT_LIFECYCLE_COLLECTIONS, EXPUNGEMENT_SOURCE_TYPE, EXPUNGEMENT_HOLD_REASON,
+  EXPUNGEMENT_SYNC_WARNING, EXPUNGEMENT_SYNC_HELD_MESSAGE
+} from "./expungement-lifecycle-sync.mjs";
+import { planReactivation, actReactivation } from "./reactivation-os.mjs";
+import { permissionForRequest, authorizeRequest } from "./access-control.mjs";
+
+let passed = 0;
+function ok(name) { console.log("  ✓ " + name); passed += 1; }
+
+const NOW = "2026-06-30T00:00:00Z";
+const SRC = { sourceNote: "Expungement.ai nightly export", now: NOW };
+
+const RECORDS = [
+  { email: "abandon@gmail.com", first_name: "Ann", screening_status: "abandoned", dropoff_step: "charges", state: "PA", source_record_id: "u1" },
+  { email: "checkout@yahoo.com", first_name: "Cal", checkout_status: "abandoned" },
+  { email: "paid@outlook.com", first_name: "Pat", payment_status: "paid" },
+  { email: "done@gmail.com", first_name: "Dee", screening_status: "completed" },
+  { email: "unsub@gmail.com", first_name: "Uma", unsubscribed: true, screening_status: "abandoned" },
+  { email: "erased@gmail.com", first_name: "Ed", deleted_or_erasure_requested: true, screening_status: "abandoned" },
+  { email: "bad", first_name: "Bo", screening_status: "abandoned" }
+];
+
+// ---- 1. Collections persist + documented --------------------------------------
+for (const c of EXPUNGEMENT_LIFECYCLE_COLLECTIONS) {
+  assert.ok(coreStateCollections.includes(c), `${c} must be in coreStateCollections (persists to Supabase)`);
+  assert.ok(buildDataModelInventory().some((s) => s.collection === c), `${c} must be documented in buildDataModelInventory()`);
+}
+ok("lifecycle collections persist and are documented in the data model");
+
+// ---- 2. Stage classification --------------------------------------------------
+assert.equal(classifyLifecycleStage({ screening_status: "abandoned" }), "screening_abandoned");
+assert.equal(classifyLifecycleStage({ dropoff_step: "charges" }), "screening_abandoned");
+assert.equal(classifyLifecycleStage({ checkout_status: "abandoned" }), "checkout_abandoned");
+assert.equal(classifyLifecycleStage({ payment_status: "paid" }), "paid");
+assert.equal(classifyLifecycleStage({ lifecycle_stage: "packet_generated" }), "packet_generated");
+assert.equal(classifyLifecycleStage({ unsubscribed: true }), "unsubscribed");
+assert.equal(classifyLifecycleStage({ deleted_or_erasure_requested: true }), "deleted_or_erasure_requested");
+ok("abandoned screening / checkout abandoned / paid are classified correctly");
+
+// ---- 3. Preview does not write ------------------------------------------------
+{
+  const before = { reactivationContacts: [], expungementLifecycleContacts: [{ lifecycle_contact_id: "keep", email: "k@x.com" }] };
+  const snapshot = JSON.stringify(before);
+  const prev = previewExpungementSync(before, RECORDS, SRC);
+  assert.equal(prev.writesState, false);
+  assert.equal(JSON.stringify(before), snapshot, "preview must not mutate state");
+  assert.equal(prev.totalRecords, 7);
+  assert.equal(prev.validContacts, 6, "bad-email record is not a valid contact");
+  assert.equal(prev.abandonedScreenings, 2, "two abandoned screenings (incl bad email)");
+  assert.equal(prev.completedNoPayment, 1);
+  assert.equal(prev.checkoutAbandoned, 1);
+  assert.equal(prev.paidCustomers, 1);
+  assert.equal(prev.excludedUnsubscribed, 1, "unsubscribed excluded");
+  assert.equal(prev.excludedDeleted, 1, "deleted excluded");
+  assert.equal(prev.campaignStageable, 3, "abandon + checkout + completed are stageable");
+  assert.match(prev.warning, /nothing sends/i);
+  assert.ok(prev.sampleContacts.every((c) => /\*\*\*/.test(c.email) || !/@/.test(c.email)), "sample emails masked");
+  ok("preview does not write; counts + masked samples correct");
+}
+
+// ---- 4. Confirm writes lifecycle contacts + events; stages held campaign contacts ----
+const conf = confirmExpungementSync({}, RECORDS, SRC);
+assert.equal(conf.writesState, true);
+assert.equal(conf.lifecycleUpserted, 7, "all records become lifecycle rows");
+assert.equal(conf.lifecycleEventsRecorded, 7, "one event per record");
+assert.equal(conf.state.expungementLifecycleContacts.length, 7);
+assert.equal(conf.state.expungementLifecycleEvents.length, 7);
+ok("confirm writes lifecycle contacts and events");
+
+// ---- 5. Campaign staging: only eligible, and only valid emails ----------------
+{
+  const staged = conf.state.reactivationContacts;
+  assert.equal(staged.length, 3, "abandon + checkout + done (paid/unsub/deleted/bad excluded)");
+  const emails = staged.map((c) => c.email).sort();
+  assert.deepEqual(emails, ["abandon@gmail.com", "checkout@yahoo.com", "done@gmail.com"]);
+  assert.ok(!emails.includes("paid@outlook.com"), "paid customer not campaign-staged");
+  assert.equal(conf.reactivationStaged, 3);
+  ok("only campaign-eligible, valid contacts are staged into reactivationContacts");
+}
+
+// ---- 6. Unsubscribed + deleted are excluded AND suppressed --------------------
+{
+  assert.equal(conf.excludedUnsubscribed, 1);
+  assert.equal(conf.excludedDeleted, 1);
+  const stagedEmails = conf.state.reactivationContacts.map((c) => c.email);
+  assert.ok(!stagedEmails.includes("unsub@gmail.com"), "unsubscribed not staged");
+  assert.ok(!stagedEmails.includes("erased@gmail.com"), "deleted not staged");
+  // Hard signals also write a sticky suppression so a later import can't enroll them either.
+  const suppressed = (conf.state.outreachSuppressions || []).map((s) => s.email);
+  assert.ok(suppressed.includes("unsub@gmail.com"), "unsubscribed recorded as suppression");
+  assert.ok(suppressed.includes("erased@gmail.com"), "deleted recorded as suppression");
+  // Deletion flag is recorded on the lifecycle row.
+  assert.equal(conf.state.expungementLifecycleContacts.find((c) => c.email === "erased@gmail.com").deleted_or_erasure_requested, true);
+  ok("unsubscribed/suppressed and deleted/erasure contacts are not campaign-staged (and are suppressed)");
+}
+
+// ---- 7. Staged contacts are held, get no wave, are inert ----------------------
+{
+  for (const c of conf.state.reactivationContacts) {
+    assert.equal(c.campaign_hold, true, "staged contact is held");
+    assert.equal(c.campaign_hold_reason, EXPUNGEMENT_HOLD_REASON);
+    assert.equal(c.import_status, "staged");
+    assert.equal(c.source_type, EXPUNGEMENT_SOURCE_TYPE);
+    assert.match(c.source_note, /Expungement\.ai/);
+    assert.ok(c.source_imported_at && c.source_import_id, "provenance stamped");
+    assert.equal(c.wave, null, "held contact gets no wave");
+    assert.ok(!c.enrolled_at, "not enrolled");
+    assert.equal(c.sequence_status, "Not Enrolled");
+  }
+  assert.equal(conf.held, 3);
+  assert.equal(conf.heldMessage, EXPUNGEMENT_SYNC_HELD_MESSAGE);
+  ok("campaign-staged synced contacts are held, unbucketed, and inert");
+}
+
+// ---- 8. Held contacts ignored by planReactivation + no attempts ---------------
+{
+  const IN_WINDOW = new Date("2026-07-02T15:00:00Z");
+  const due = {
+    ...conf.state,
+    reactivationContacts: conf.state.reactivationContacts.map((c) => ({ ...c, wave: 1, enrolled_at: "2026-06-01T00:00:00Z" })),
+    reactivationCampaign: { campaignId: "mvp-reactivation", releasedWaves: [1], status: "active" }
+  };
+  assert.equal(planReactivation(due, { now: IN_WINDOW }).proposals.length, 0, "held synced contacts are not due");
+  ok("held synced contacts are ignored by planReactivation()");
+}
+{
+  const IN_WINDOW = new Date("2026-07-02T15:00:00Z");
+  const due = {
+    ...conf.state,
+    reactivationContacts: conf.state.reactivationContacts.map((c) => ({ ...c, wave: 1, enrolled_at: "2026-06-01T00:00:00Z" })),
+    reactivationCampaign: { campaignId: "mvp-reactivation", releasedWaves: [1], status: "active" }
+  };
+  const acted = await actReactivation(due, { now: IN_WINDOW });
+  assert.ok(!(acted.state.reactivationAttempts && acted.state.reactivationAttempts.length), "no attempts for held synced contacts");
+  ok("held synced contacts generate no reactivationAttempts");
+}
+
+// ---- 9. No send function is called; only safe collections written -------------
+{
+  const src = fs.readFileSync(new URL("./expungement-lifecycle-sync.mjs", import.meta.url), "utf8");
+  for (const callSite of ["runOutreachSend(", "runReactivationSend(", "releaseWave(", "actReactivation(", "sgMail", ".send("]) {
+    assert.ok(!src.includes(callSite), `sync module must not call ${callSite}`);
+  }
+  assert.ok(!(conf.state.reactivationAttempts && conf.state.reactivationAttempts.length), "no send attempts recorded");
+  ok("no SendGrid/outreach send function is called (no call sites, no attempts)");
+}
+
+// ---- 10. Confirm requires owner/admin -----------------------------------------
+assert.equal(permissionForRequest("POST", "/api/sync/expungement-ai/preview"), "write");
+assert.equal(permissionForRequest("POST", "/api/sync/expungement-ai/confirm"), "write");
+{
+  const ownerToken = "x".repeat(20);
+  const env = { COMMAND_CENTER_REQUIRE_AUTH: "true", COMMAND_CENTER_OWNER_TOKEN: ownerToken };
+  const anon = authorizeRequest({ method: "POST", url: "/api/sync/expungement-ai/confirm", headers: {} }, null, env);
+  assert.equal(anon.ok, false);
+  assert.equal(anon.status, 401, "anonymous confirm rejected");
+  const owner = authorizeRequest({ method: "POST", url: "/api/sync/expungement-ai/confirm", headers: { authorization: "Bearer " + ownerToken } }, null, env);
+  assert.equal(owner.ok, true);
+  assert.equal(owner.actor.role, "owner");
+}
+ok("preview + confirm require auth/owner (write); anonymous rejected, owner accepted");
+
+// ---- 11. No live-send / autopilot gate changes --------------------------------
+{
+  // Confirm must not introduce or mutate any gate/toggle/campaign-status collection.
+  const c2 = confirmExpungementSync({}, RECORDS, SRC);
+  assert.ok(!("autopilotSettings" in c2.state), "no autopilot settings written");
+  assert.ok(!("reactivationCampaign" in c2.state), "campaign config untouched (no release/activate)");
+  const touched = Object.keys(c2.state).sort();
+  assert.deepEqual(
+    touched,
+    ["expungementLifecycleContacts", "expungementLifecycleEvents", "outreachContacts", "outreachSuppressions", "reactivationContacts"],
+    "confirm writes only lifecycle + suppression + staged reactivation collections"
+  );
+  ok("no live-send/autopilot gate changes (only safe collections written)");
+}
+
+console.log(`\nAll ${passed} expungement-lifecycle-sync checks passed.`);
