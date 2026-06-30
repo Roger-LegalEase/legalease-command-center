@@ -14,8 +14,10 @@ import assert from "node:assert";
 import fs from "node:fs";
 import {
   parseCsv, parseConsumerCsv, previewConsumerImport, confirmConsumerImport,
-  CONSUMER_LIST_TYPE, CONSUMER_SOURCE_TYPE, CONSUMER_IMPORT_WARNING
+  CONSUMER_LIST_TYPE, CONSUMER_SOURCE_TYPE, CONSUMER_IMPORT_WARNING,
+  CONSUMER_HOLD_REASON, CONSUMER_IMPORT_STATUS, CONSUMER_IMPORT_HELD_MESSAGE
 } from "./consumer-list-import.mjs";
+import { releaseWave, planReactivation, actReactivation } from "./reactivation-os.mjs";
 import { permissionForRequest, authorizeRequest } from "./access-control.mjs";
 
 let passed = 0;
@@ -185,6 +187,79 @@ ok("confirm + preview require auth/owner (write); anonymous rejected, owner acce
   assert.equal(alice.source_note, "second pass", "source_note refreshes to the latest upload");
   assert.equal(reimport.state.reactivationContacts.length, conf.state.reactivationContacts.length, "re-import does not duplicate");
   ok("re-import inherits provenance + preserves send/signal/suppression state, no duplicates");
+}
+
+// ---- 13. Newly imported contacts are explicitly staged + held -----------------
+{
+  for (const c of conf.state.reactivationContacts) {
+    assert.equal(c.import_status, CONSUMER_IMPORT_STATUS, 'import_status = "staged"');
+    assert.equal(c.import_status, "staged");
+    assert.equal(c.campaign_hold, true, "campaign_hold = true");
+    assert.equal(c.campaign_hold_reason, CONSUMER_HOLD_REASON, 'campaign_hold_reason = "consumer_upload_review"');
+    assert.equal(c.campaign_hold_reason, "consumer_upload_review");
+    assert.equal(c.wave, null, "held contact is NOT bucketed into a wave");
+  }
+  assert.equal(conf.held, conf.state.reactivationContacts.length, "held count = newly imported contacts");
+  assert.equal(conf.heldMessage, CONSUMER_IMPORT_HELD_MESSAGE);
+  assert.match(conf.heldMessage, /held for review/i);
+  ok("confirm stamps campaign_hold=true / import_status=staged on newly imported contacts");
+}
+
+// ---- 14. releaseWave() does NOT enroll held contacts --------------------------
+{
+  // Force the held contacts onto wave 1 so releaseWave WOULD enroll them but for the hold.
+  const onWave1 = { ...conf.state, reactivationContacts: conf.state.reactivationContacts.map((c) => ({ ...c, wave: 1 })) };
+  const released = releaseWave(onWave1, 1, { now: "2026-07-01T00:00:00Z" });
+  assert.equal(released.enrolled, 0, "no held contact enrolled by releaseWave");
+  assert.ok(released.state.reactivationContacts.every((c) => !c.enrolled_at), "held contacts stay Not Enrolled after release");
+  assert.ok(released.state.reactivationContacts.every((c) => c.sequence_status === "Not Enrolled"), "sequence_status unchanged");
+  ok("held contacts are not enrolled by releaseWave()");
+}
+
+// ---- 15. planReactivation() ignores held; actReactivation() makes no attempt ---
+{
+  const IN_WINDOW = new Date("2026-07-02T15:00:00Z"); // Thu ~11:00 ET, inside the send window
+  // Make the held contacts look fully due (wave 1, enrolled, released active campaign).
+  const due = {
+    ...conf.state,
+    reactivationContacts: conf.state.reactivationContacts.map((c) => ({ ...c, wave: 1, enrolled_at: "2026-06-01T00:00:00Z" })),
+    reactivationCampaign: { campaignId: "mvp-reactivation", releasedWaves: [1], status: "active" }
+  };
+  assert.equal(planReactivation(due, { now: IN_WINDOW }).proposals.length, 0, "held contacts are not due");
+  // Control: with the hold removed, the SAME contacts ARE due — proves the hold is the blocker.
+  const unheld = { ...due, reactivationContacts: due.reactivationContacts.map((c) => ({ ...c, campaign_hold: false })) };
+  assert.ok(planReactivation(unheld, { now: IN_WINDOW }).proposals.length > 0, "without hold the contacts would be due");
+  ok("held contacts are ignored by planReactivation() (control proves the gate)");
+}
+{
+  const IN_WINDOW = new Date("2026-07-02T15:00:00Z");
+  const due = {
+    ...conf.state,
+    reactivationContacts: conf.state.reactivationContacts.map((c) => ({ ...c, wave: 1, enrolled_at: "2026-06-01T00:00:00Z" })),
+    reactivationCampaign: { campaignId: "mvp-reactivation", releasedWaves: [1], status: "active" }
+  };
+  const acted = await actReactivation(due, { now: IN_WINDOW }); // no live dep -> dry-run path
+  assert.ok(!(acted.state.reactivationAttempts && acted.state.reactivationAttempts.length), "held contacts generate no attempts");
+  ok("held contacts generate no reactivationAttempts");
+}
+
+// ---- 16. Existing enrolled contact is NOT force-held on re-import --------------
+{
+  const aliceId = conf.state.reactivationContacts.find((c) => c.email === "alice@gmail.com").contact_id;
+  // Pre-existing, enrolled, NOT held (e.g. a live campaign contact).
+  const live = {
+    reactivationContacts: [{
+      contact_id: aliceId, email: "alice@gmail.com", wave: 1, enrolled_at: "2026-02-01T00:00:00Z",
+      sequence_status: "Enrolled", campaign_id: "mvp-reactivation"
+    }]
+  };
+  const reimport = confirmConsumerImport(live, BASE_CSV, { listType: "consumer", sourceNote: "re-sync", now: "2026-09-01T00:00:00Z" });
+  const alice = reimport.state.reactivationContacts.find((c) => c.contact_id === aliceId);
+  assert.notEqual(alice.campaign_hold, true, "existing enrolled contact is NOT force-held");
+  assert.equal(alice.enrolled_at, "2026-02-01T00:00:00Z", "enrolled_at preserved");
+  assert.equal(alice.sequence_status, "Enrolled", "sequence_status preserved");
+  assert.equal(alice.source_note, "re-sync", "provenance still stamped on the existing contact");
+  ok("re-import does not sweep an already-enrolled contact into a hold");
 }
 
 // ---- warning ------------------------------------------------------------------
