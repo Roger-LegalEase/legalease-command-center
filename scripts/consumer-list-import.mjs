@@ -11,15 +11,18 @@
 // from importReactivationContacts — this module does not re-implement them.
 
 import {
-  importReactivationContacts, applyWaveAssignment, reactivationCampaignOf
+  importReactivationContacts, applyWaveAssignment, reactivationCampaignOf, contactIdForEmail
 } from "./reactivation-os.mjs";
 import { normalizeEmail, isBadDomain } from "./outreach-os.mjs";
+import crypto from "node:crypto";
 
 export const CONSUMER_LIST_TYPE = "consumer";
+export const CONSUMER_SOURCE_TYPE = "consumer_upload";
 export const CONSUMER_IMPORT_WARNING =
   "Nothing sends from import. Contacts are staged for review only — no email goes out until a wave is released elsewhere.";
 
 const clean = (v = "") => String(v ?? "").trim();
+const list = (v) => (Array.isArray(v) ? v : []);
 const len = (v) => (Array.isArray(v) ? v.length : 0);
 
 // ---------------------------------------------------------------------------
@@ -164,19 +167,60 @@ export function previewConsumerImport(state = {}, csvText = "", opts = {}) {
   };
 }
 
-// CONFIRM — routes rows through the existing import path, then applies safe (inert) wave numbers.
-// Returns the NEW state for the caller to persist. No enroll, no release, no send, no gate change.
+// The contact_ids the uploaded rows resolve to — exactly the contacts importReactivationContacts
+// adds or updates (bad/missing emails never become contacts; duplicates collapse to one id).
+function importedContactIds(rows = []) {
+  const ids = new Set();
+  for (const row of list(rows)) {
+    const email = normalizeEmail(row.email);
+    if (email && !isBadDomain(email)) ids.add(contactIdForEmail(email));
+  }
+  return ids;
+}
+
+// Stamp durable import provenance on the contacts this import touched. Adds ONLY the four safe
+// source_* fields — it never reads or writes send/signal/suppression state. First-seen
+// source_imported_at / source_import_id are read from `priorById` (the state BEFORE import, since
+// importReactivationContacts rebuilds the contact object) so original provenance survives re-import;
+// source_note / source_type refresh to the current upload.
+function stampProvenance(state = {}, importedIds, priorById, { sourceNote, now, importId }) {
+  const contacts = list(state.reactivationContacts).map((c) => {
+    if (!importedIds.has(c.contact_id)) return c;
+    const prior = priorById.get(c.contact_id) || {};
+    return {
+      ...c,
+      source_type: CONSUMER_SOURCE_TYPE,
+      source_note: clean(sourceNote),
+      source_imported_at: prior.source_imported_at || c.source_imported_at || now,
+      source_import_id: prior.source_import_id || c.source_import_id || importId
+    };
+  });
+  return { ...state, reactivationContacts: contacts };
+}
+
+// CONFIRM — routes rows through the existing import path, stamps durable provenance on the touched
+// contacts, then applies safe (inert) wave numbers. Returns the NEW state for the caller to persist.
+// No enroll, no release, no send, no gate change.
 export function confirmConsumerImport(state = {}, csvText = "", opts = {}) {
   assertInputs(csvText, opts);
   const now = opts.now || new Date().toISOString();
+  const importId = opts.importId || `consumer-import-${crypto.randomBytes(6).toString("hex")}`;
   const parsed = parseConsumerCsv(csvText);
+  // Capture existing provenance from the input state BEFORE import (importReactivationContacts
+  // rebuilds the contact object and would otherwise drop the source_* fields).
+  const priorById = new Map(list(state.reactivationContacts).map((c) => [c.contact_id, c]));
   const imported = importReactivationContacts(state, parsed.rows, { now });
+  // Durable provenance (compliance + list hygiene) on just the contacts from THIS upload.
+  const stamped = stampProvenance(imported.state, importedContactIds(parsed.rows), priorById, {
+    sourceNote: opts.sourceNote, now, importId
+  });
   // Wave assignment sets wave NUMBERS only — contacts stay "Not Enrolled" and inert.
-  const waved = applyWaveAssignment(imported.state, reactivationCampaignOf(imported.state), { now });
+  const waved = applyWaveAssignment(stamped, reactivationCampaignOf(stamped), { now });
   return {
     ok: true,
     listType: CONSUMER_LIST_TYPE,
     sourceNote: clean(opts.sourceNote),
+    sourceImportId: importId,
     state: waved.state,
     summary: imported.summary,
     waveSizes: waved.waveSizes,

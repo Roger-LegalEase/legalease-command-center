@@ -14,7 +14,7 @@ import assert from "node:assert";
 import fs from "node:fs";
 import {
   parseCsv, parseConsumerCsv, previewConsumerImport, confirmConsumerImport,
-  CONSUMER_LIST_TYPE, CONSUMER_IMPORT_WARNING
+  CONSUMER_LIST_TYPE, CONSUMER_SOURCE_TYPE, CONSUMER_IMPORT_WARNING
 } from "./consumer-list-import.mjs";
 import { permissionForRequest, authorizeRequest } from "./access-control.mjs";
 
@@ -144,14 +144,52 @@ ok("confirm + preview require auth/owner (write); anonymous rejected, owner acce
   ok("no live-send/autopilot flag is changed (only reactivationContacts written)");
 }
 
-// ---- warning + idempotency ----------------------------------------------------
+// ---- 11. Durable import provenance on every imported contact -------------------
+{
+  for (const c of conf.state.reactivationContacts) {
+    assert.equal(c.source_note, SRC.sourceNote, "source_note persisted = required source note");
+    assert.equal(c.source_type, CONSUMER_SOURCE_TYPE, 'source_type = "consumer_upload"');
+    assert.equal(c.source_type, "consumer_upload");
+    assert.ok(c.source_imported_at, "source_imported_at present");
+    assert.ok(c.source_import_id, "source_import_id present");
+  }
+  ok("confirmed contacts carry source_note / consumer_upload / source_imported_at / source_import_id");
+}
+
+// ---- 12. Provenance does not disturb send/signal/suppression state -------------
+{
+  // Pre-existing contact carrying live signal + first-seen provenance, plus a real suppression
+  // ledger entry (so suppressed_at_import recomputes truthy). A re-import must refresh provenance
+  // ONLY and leave all send/signal/suppression state intact. (alice already exists in conf.state.)
+  const aliceId = conf.state.reactivationContacts.find((c) => c.email === "alice@gmail.com").contact_id;
+  const seeded = {
+    outreachSuppressions: [{ id: "supp-1", contact_id: aliceId, email: "alice@gmail.com", reason: "unsubscribed", source: "test" }],
+    reactivationContacts: conf.state.reactivationContacts.map((c) => c.contact_id === aliceId
+      ? { ...c, enrolled_at: "2026-01-01T00:00:00Z", sequence_status: "Paused", replied: true, clicked: true,
+          converted: true, unsubscribed: true, bounced: true, complained: true, do_not_contact: true,
+          source_import_id: "first-batch", source_imported_at: "2026-01-01T00:00:00Z" }
+      : c)
+  };
+  const reimport = confirmConsumerImport(seeded, BASE_CSV, { listType: "consumer", sourceNote: "second pass", now: "2026-08-01T00:00:00Z" });
+  const alice = reimport.state.reactivationContacts.find((c) => c.contact_id === aliceId);
+  // Send / signal state preserved exactly.
+  assert.equal(alice.enrolled_at, "2026-01-01T00:00:00Z", "enrolled_at preserved");
+  assert.equal(alice.sequence_status, "Paused", "sequence_status preserved");
+  for (const flag of ["replied", "clicked", "converted", "unsubscribed", "bounced", "complained", "do_not_contact"]) {
+    assert.equal(alice[flag], true, `${flag} preserved`);
+  }
+  assert.ok(alice.suppressed_at_import, "suppressed_at_import stays set (ledger entry honored)");
+  // First-seen provenance preserved; note refreshes; no duplicate row.
+  assert.equal(alice.source_import_id, "first-batch", "first-seen source_import_id preserved on re-import");
+  assert.equal(alice.source_imported_at, "2026-01-01T00:00:00Z", "first-seen source_imported_at preserved");
+  assert.equal(alice.source_note, "second pass", "source_note refreshes to the latest upload");
+  assert.equal(reimport.state.reactivationContacts.length, conf.state.reactivationContacts.length, "re-import does not duplicate");
+  ok("re-import inherits provenance + preserves send/signal/suppression state, no duplicates");
+}
+
+// ---- warning ------------------------------------------------------------------
 assert.equal(prev.warning, CONSUMER_IMPORT_WARNING);
 assert.match(prev.warning, /nothing sends/i);
 ok("preview surfaces the 'nothing sends from import' warning");
-{
-  const again = confirmConsumerImport(conf.state, BASE_CSV, { ...SRC, now: NOW });
-  assert.equal(again.state.reactivationContacts.length, 3, "re-import does not duplicate");
-  ok("re-import is idempotent (stable contact ids)");
-}
 
 console.log(`\nAll ${passed} consumer-list-import checks passed.`);
