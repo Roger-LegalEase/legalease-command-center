@@ -18,8 +18,10 @@ import {
   importReactivationContacts, assignWaves, applyWaveAssignment, releaseWave,
   planReactivation, actReactivation, buildReactivationEngine,
   evaluateThresholds, campaignRates, waveMetrics, applyReactivationEvent,
-  reactivationCampaignOf, DEFAULT_REACTIVATION_CONFIG
+  reactivationCampaignOf, DEFAULT_REACTIVATION_CONFIG, resolveReactivationSendDecision,
+  reactivationMessageConfig
 } from "./reactivation-os.mjs";
+import { assembleCompliantMessage } from "./outreach-os.mjs";
 import { getReactivationTouch, REACTIVATION_CADENCE_DAYS } from "./reactivation-sequences.mjs";
 
 let passed = 0;
@@ -41,6 +43,23 @@ assert.equal(reactivationLiveSendEnabled({}), false, "default OFF");
 assert.equal(reactivationLiveSendEnabled({ REACTIVATION_LIVE_SEND: "true" }), true);
 assert.equal(reactivationLiveSendEnabled({ REACTIVATION_LIVE_SEND: "false" }), false);
 ok("REACTIVATION_LIVE_SEND defaults OFF; only a truthy flag enables");
+
+{
+  const contact = { email: "alice@gmail.com", first_name: "Alice", contact_id: contactIdForEmail("alice@gmail.com") };
+  const touch = getReactivationTouch("logged_in", 1);
+  const message = assembleCompliantMessage({
+    contact,
+    org: {},
+    step: { ...touch, campaign_id: "mvp-reactivation", classification: "" },
+    config: { ...reactivationMessageConfig({}, { sequenceId: "logged_in", touchNumber: 1 }), publicBaseUrl: "https://legalease-command-center-prod.onrender.com" },
+    baseUrl: "https://legalease-command-center-prod.onrender.com",
+    env: {}
+  });
+  assert.equal(resolveReactivationSendDecision(message, { env: { OUTREACH_LIVE_SEND: "true", SENDGRID_API_KEY: "SG.fake" } }).status, "dry_run", "OUTREACH_LIVE_SEND must not authorize reactivation");
+  assert.equal(resolveReactivationSendDecision(message, { env: { REACTIVATION_LIVE_SEND: "true", SENDGRID_API_KEY: "SG.fake" } }).status, "live", "REACTIVATION_LIVE_SEND authorizes compliant reactivation");
+  assert.equal(resolveReactivationSendDecision({ ...message, classification: "" }, { env: { REACTIVATION_LIVE_SEND: "true", SENDGRID_API_KEY: "SG.fake" } }).status, "live", "reactivation does not require B2 classification");
+  ok("reactivation send decision uses REACTIVATION_LIVE_SEND and bypasses B2 classification routing");
+}
 
 // ---- 3. Import: dedup, bad-domain drop, suppression honored, idempotent -------
 const rawRows = [

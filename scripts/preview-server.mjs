@@ -11,7 +11,7 @@ import { runHeartbeat, autopilotEnabled } from "./heartbeat.mjs";
 import { buildHeartbeatRegistry, HEARTBEAT_ENGINE_IDS } from "./heartbeat-engines.mjs";
 import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_QUEUE_TYPE, OUTREACH_ENGINE_ID, resolveOutreachSendDecision, outreachLiveSendEnabled } from "./outreach-os.mjs";
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
-import { applyReactivationEvent, reactivationCampaignOf, reactivationLiveSendEnabled, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
+import { applyReactivationEvent, reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
@@ -5211,6 +5211,40 @@ async function runOutreachSend(message, { env = process.env } = {}) {
     const detail = await resp.text().catch(() => "");
     // Never include the API key in the error; only the status + provider detail.
     throw new Error(`SendGrid send failed: ${resp.status} ${String(detail).slice(0, 300)}`);
+  }
+  return {
+    status: "sent",
+    provider: "sendgrid",
+    provider_message_id: resp.headers.get("x-message-id") || ""
+  };
+}
+
+// MVP reactivation send executor. It uses the same compliant SendGrid payload shape as B2, but it
+// is gated by REACTIVATION_LIVE_SEND and intentionally bypasses B2's RCAP classification router.
+async function runReactivationSend(message, { env = process.env } = {}) {
+  const decision = resolveReactivationSendDecision(message, { env });
+  if (decision.status !== "live") return decision;
+
+  const apiKey = env.SENDGRID_API_KEY;
+  const payload = {
+    personalizations: [{ to: [{ email: message.to }] }],
+    from: message.fromName ? { email: message.from, name: message.fromName } : { email: message.from },
+    ...(message.replyTo ? { reply_to: { email: message.replyTo } } : {}),
+    subject: message.subject,
+    content: [
+      { type: "text/plain", value: message.text },
+      ...(message.html ? [{ type: "text/html", value: message.html }] : [])
+    ],
+    ...(message.headers && Object.keys(message.headers).length ? { headers: message.headers } : {})
+  };
+  const resp = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    throw new Error(`SendGrid reactivation send failed: ${resp.status} ${String(detail).slice(0, 300)}`);
   }
   return {
     status: "sent",
@@ -32907,12 +32941,11 @@ async function handleRequest(request, response) {
         // act() also only runs when its autopilot toggle is ON (default OFF) — gated twice over,
         // plus fail-closed classification routing inside the executor.
         runOutreachSend,
-        // MVP reactivation send (consumer B2C) — reuses the SAME gated SendGrid client as B2
-        // (runOutreachSend); the message is already CAN-SPAM-assembled identically. Stays dry_run
-        // until REACTIVATION_LIVE_SEND is flipped AND a SendGrid key is present, and the
-        // reactivation engine's act() only runs when its autopilot toggle is ON (default OFF) and
-        // only for RELEASED waves. Gated four times over.
-        runReactivationSend: runOutreachSend,
+        // MVP reactivation send (consumer B2C) — uses the same compliant SendGrid payload shape as
+        // B2 but has its own gate (REACTIVATION_LIVE_SEND) and no RCAP classification routing.
+        // The reactivation engine's act() only runs when its autopilot toggle is ON (default OFF)
+        // and only for RELEASED waves.
+        runReactivationSend,
         // B5 prospect discovery — inert (zero rows) until the live Tier-1 dataset clients are
         // wired and PROSPECT_LIVE_DISCOVERY is flipped. The prospect engine's act() only runs
         // when its autopilot toggle is ON (default OFF), so this is gated twice over.

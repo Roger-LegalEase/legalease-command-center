@@ -124,8 +124,9 @@ export function buildHeartbeatRegistry(deps = {}) {
   // computes due touches for RELEASED waves with no side effects; act() sends only when autopilot
   // is ON, only for released waves, only within caps, and auto-pauses the campaign if a stop-
   // threshold (bounce/complaint/unsubscribe) trips. The live send is delegated to
-  // deps.runReactivationSend (the server injects runOutreachSend); with no dep, or with
-  // REACTIVATION_LIVE_SEND off, act() records dry-run attempts and performs NO network send.
+  // deps.runReactivationSend (the server injects the reactivation-specific SendGrid executor);
+  // with no dep, or with REACTIVATION_LIVE_SEND off, act() records dry-run attempts and performs
+  // NO network send.
   // Always registered so the autopilot toggle surfaces; safe by construction (four gates).
   engines.push(buildReactivationEngine({ runReactivationSend: deps.runReactivationSend }));
 

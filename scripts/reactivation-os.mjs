@@ -52,6 +52,25 @@ export function reactivationLiveSendEnabled(env = process.env) {
   return ["true", "1", "yes", "on"].includes(String((env || {}).REACTIVATION_LIVE_SEND || "").toLowerCase());
 }
 
+// Reactivation send-time gate. This is deliberately separate from B2/RCAP outreach routing:
+// consumer reactivation messages do not carry an RCAP classification and must not be rejected by
+// resolveOutreachSendDecision's nonprofit/court/partner sequence map. "live" only means the caller
+// may perform the SendGrid POST; dry_run/not_sent perform no network send.
+export function resolveReactivationSendDecision(message = {}, { env = process.env } = {}) {
+  const compliance = validateCompliance(message);
+  if (!compliance.ok) return { status: "not_sent", reason: `compliance:${compliance.errors.join(",")}` };
+  const base = {
+    campaign: REACTIVATION_CAMPAIGN_ID,
+    touch: message.touch || message.step_number || 1,
+    to: clean(message.to),
+    subject: clean(message.subject)
+  };
+  if (!reactivationLiveSendEnabled(env) || !clean((env || {}).SENDGRID_API_KEY)) {
+    return { status: "dry_run", ...base, liveSend: false };
+  }
+  return { status: "live", ...base, liveSend: true };
+}
+
 // Stable contact id derived from the normalized email (idempotent import / dedup key).
 export function contactIdForEmail(email = "") {
   const norm = normalizeEmail(email);
