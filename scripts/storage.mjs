@@ -112,7 +112,12 @@ const coreStateCollections = [
   "rcapRevenueQueueTasks",
   "rcapRevenueImportBatches",
   "rcapRevenueEvents",
-  "rcapRevenueSignals"
+  "rcapRevenueSignals",
+  // Expungement.ai lifecycle sync. MUST stay in sync with EXPUNGEMENT_LIFECYCLE_COLLECTIONS in
+  // expungement-lifecycle-sync.mjs, or the lifecycle contacts/events silently fail to persist to
+  // Supabase. test-expungement-lifecycle-sync.mjs asserts membership.
+  "expungementLifecycleContacts",
+  "expungementLifecycleEvents"
 ];
 const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign"]);
 

@@ -407,6 +407,32 @@ export function buildDataModelInventory() {
       related_routes: ["#reactivation"],
       related_tests: ["scripts/test-reactivation-os.mjs"],
       duplicate_risk_level: "low"
+    },
+    {
+      collection: "expungementLifecycleContacts",
+      purpose: "Expungement.ai lifecycle sync: one safe operational row per Expungement.ai user (email, first_name, optional phone, state/jurisdiction, lifecycle_stage, dropoff_step, payment_status, a short eligibility_status_summary ONLY — never raw case detail, last_seen_at, consent/privacy + utm fields, and unsubscribe/bounce/deletion flags). Ingest-only mirror; campaign-eligible rows are separately staged (always held) into reactivationContacts.",
+      storage_mode: "hybrid",
+      required_fields: ["lifecycle_contact_id", "email", "source_type"],
+      optional_fields: ["first_name", "phone", "state", "jurisdiction", "lifecycle_stage", "dropoff_step", "payment_status", "eligibility_status_summary", "last_seen_at", "sync_source_note", "first_synced_at", "last_synced_at", "source_system", "source_record_id", "consent_status", "consent_captured_at", "privacy_version", "utm_source", "utm_campaign", "referrer", "do_not_contact", "unsubscribed", "bounced", "complained", "deleted_or_erasure_requested"],
+      stable_key_fields: ["lifecycle_contact_id"],
+      idempotency_rules: "Stable lifecycle_contact_id = exp-<sha1(normalized email)>; re-sync upserts by id and preserves first-seen created_at / source_record_id.",
+      audit_behavior: "Written by /api/sync/expungement-ai/confirm (owner/admin). Ingest-only: no send, no enroll, no wave release. Hard suppression signals also write a sticky outreach suppression.",
+      related_routes: ["#upload"],
+      related_tests: ["scripts/test-expungement-lifecycle-sync.mjs"],
+      duplicate_risk_level: "medium"
+    },
+    {
+      collection: "expungementLifecycleEvents",
+      purpose: "Expungement.ai lifecycle sync: append-only log of synced lifecycle observations (one row per record per sync) carrying the lifecycle_contact_id, email, stage, payment_status, source_record_id, and import_id. Feeds per-user lifecycle history without storing sensitive case detail.",
+      storage_mode: "hybrid",
+      required_fields: ["id", "lifecycle_contact_id", "stage"],
+      optional_fields: ["email", "payment_status", "source_type", "source_record_id", "sync_source_note", "import_id", "created_at"],
+      stable_key_fields: ["id"],
+      idempotency_rules: "Append-only (capped). Each confirm appends one event per synced record; no in-place mutation.",
+      audit_behavior: "Appended by /api/sync/expungement-ai/confirm (owner/admin). Recording only — no campaign action.",
+      related_routes: ["#upload"],
+      related_tests: ["scripts/test-expungement-lifecycle-sync.mjs"],
+      duplicate_risk_level: "low"
     }
   ];
 }
