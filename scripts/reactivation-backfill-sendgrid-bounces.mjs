@@ -1,0 +1,320 @@
+// MVP Reactivation — SendGrid bounce/drop/block backfill into the production webhook.
+//
+// Run this in the PROD Render Shell, where SENDGRID_API_KEY and the production store env live.
+//
+//   node scripts/reactivation-backfill-sendgrid-bounces.mjs --date=2026-06-30
+//   node scripts/reactivation-backfill-sendgrid-bounces.mjs --date=2026-06-30 --confirm
+//
+// Dry-run is the default. --confirm is required before it POSTs events to:
+//   https://legalease-command-center-prod.onrender.com/api/outreach/webhooks/sendgrid
+//
+// Scope:
+//   1. Query SendGrid for bounce/drop/block events on the selected date.
+//   2. Filter them to sent Wave 1 reactivation recipients in the production store.
+//   3. Replay only those matched events into the production SendGrid webhook.
+//   4. Confirm /api/reactivation/status reflects hardBounces > 0.
+//
+// This script does not send email, release waves, toggle gates, or deploy anything.
+
+import { createHash } from "node:crypto";
+import { createStore } from "./storage.mjs";
+import { normalizeEmail } from "./outreach-os.mjs";
+import { campaignRates } from "./reactivation-os.mjs";
+
+const DEFAULT_BASE_URL = "https://legalease-command-center-prod.onrender.com";
+const HARD_EVENTS = new Set(["bounce", "dropped", "blocked"]);
+
+const clean = (v = "") => String(v ?? "").trim();
+const lower = (v = "") => clean(v).toLowerCase();
+const list = (v) => Array.isArray(v) ? v : [];
+
+function fail(message) {
+  console.error("ABORTED: " + message);
+  process.exit(1);
+}
+
+function argValue(name, fallback = "") {
+  const prefix = `--${name}=`;
+  const hit = process.argv.slice(2).find((a) => a.startsWith(prefix));
+  return hit ? hit.slice(prefix.length) : fallback;
+}
+
+function previousUtcDateKey() {
+  const d = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+
+function dayWindow(dateKey) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) fail("--date must be YYYY-MM-DD.");
+  const start = new Date(`${dateKey}T00:00:00.000Z`);
+  const end = new Date(`${dateKey}T23:59:59.999Z`);
+  return {
+    start,
+    end,
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+    startUnix: Math.floor(start.getTime() / 1000),
+    endUnix: Math.floor(end.getTime() / 1000)
+  };
+}
+
+function maskEmail(email = "") {
+  const e = normalizeEmail(email);
+  if (!e || !e.includes("@")) return "";
+  const [local, domain] = e.split("@");
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
+function emailHash(email = "") {
+  return createHash("sha256").update(normalizeEmail(email)).digest("hex").slice(0, 12);
+}
+
+function ownerToken() {
+  return process.env.COMMAND_CENTER_OWNER_TOKEN || process.env.COMMAND_CENTER_ACCESS_TOKEN || "";
+}
+
+async function sendgridGet(path, params = {}) {
+  const apiKey = process.env.SENDGRID_API_KEY;
+  if (!apiKey) fail("SENDGRID_API_KEY is not set. Run this in the prod Render Shell.");
+  const url = new URL(`https://api.sendgrid.com${path}`);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
+  }
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" }
+  });
+  const text = await response.text();
+  let body;
+  try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text.slice(0, 500) }; }
+  if (!response.ok) {
+    const safe = JSON.stringify(body).slice(0, 700);
+    throw new Error(`${path} failed HTTP ${response.status}: ${safe}`);
+  }
+  return body;
+}
+
+function normalizeSendgridEvent(raw = {}, forcedType = "") {
+  const email = normalizeEmail(raw.email || raw.to_email || raw.to || raw.recipient);
+  if (!email) return null;
+  const event = lower(forcedType || raw.event || raw.type || raw.status || raw.last_event_name || raw.reason);
+  const mapped = event.includes("block") ? "blocked"
+    : event.includes("drop") ? "dropped"
+    : event.includes("bounce") ? "bounce"
+    : HARD_EVENTS.has(event) ? event
+    : "";
+  if (!mapped) return null;
+  return {
+    email,
+    event: mapped,
+    reason: clean(raw.reason || raw.response || raw.status || raw.last_event_time || ""),
+    timestamp: Number(raw.timestamp || raw.created || raw.created_at || raw.last_event_time || 0) || undefined
+  };
+}
+
+async function queryEmailActivity(window) {
+  // Email Activity gives the best event fidelity, including dropped/blocked. Some SendGrid plans do
+  // not enable this endpoint; if unavailable, the script falls back to suppression endpoints.
+  const query = `last_event_time BETWEEN TIMESTAMP "${window.startIso}" AND TIMESTAMP "${window.endIso}" AND (event="bounce" OR event="dropped" OR event="blocked")`;
+  const body = await sendgridGet("/v3/messages", { limit: 1000, query });
+  const messages = list(body?.messages || body?.result || body);
+  const out = [];
+  for (const msg of messages) {
+    const email = normalizeEmail(msg.to_email || msg.email || msg.to);
+    const msgId = clean(msg.msg_id || msg.message_id || msg.id);
+    if (!msgId) {
+      const ev = normalizeSendgridEvent(msg);
+      if (ev) out.push(ev);
+      continue;
+    }
+    try {
+      const detail = await sendgridGet(`/v3/messages/${encodeURIComponent(msgId)}`);
+      const events = list(detail?.events || detail?.messages?.[0]?.events || detail?.result?.events);
+      for (const event of events) {
+        const ev = normalizeSendgridEvent({ ...event, email: event.email || email });
+        if (ev && HARD_EVENTS.has(ev.event)) out.push(ev);
+      }
+    } catch {
+      const ev = normalizeSendgridEvent(msg);
+      if (ev) out.push(ev);
+    }
+  }
+  return out;
+}
+
+async function querySuppressionFallback(window) {
+  const out = [];
+  const sources = [
+    ["/v3/suppression/bounces", "bounce"],
+    ["/v3/suppression/blocks", "blocked"]
+  ];
+  for (const [path, type] of sources) {
+    try {
+      const body = await sendgridGet(path, { start_time: window.startUnix, end_time: window.endUnix });
+      const rows = list(body?.result || body);
+      for (const row of rows) {
+        const ev = normalizeSendgridEvent(row, type);
+        if (ev) out.push(ev);
+      }
+    } catch (error) {
+      console.log(`SendGrid fallback ${path}: unavailable (${error.message.slice(0, 180)})`);
+    }
+  }
+  return out;
+}
+
+function dedupeEvents(events = []) {
+  const seen = new Set();
+  const out = [];
+  for (const ev of events) {
+    if (!ev || !HARD_EVENTS.has(ev.event)) continue;
+    const key = `${normalizeEmail(ev.email)}|${ev.event}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ev);
+  }
+  return out;
+}
+
+function wave1SentEmailSet(state = {}) {
+  const contactsById = new Map(list(state.reactivationContacts).map((c) => [clean(c.contact_id), c]));
+  const emails = new Set();
+  for (const attempt of list(state.reactivationAttempts)) {
+    if (lower(attempt.status) !== "sent") continue;
+    const contact = contactsById.get(clean(attempt.contact_id));
+    const isWave1 = Number(attempt.wave) === 1 || Number(contact?.wave) === 1;
+    if (!isWave1) continue;
+    const email = normalizeEmail(attempt.to || contact?.email);
+    if (email) emails.add(email);
+  }
+  return emails;
+}
+
+function existingHardEventKeys(state = {}) {
+  const keys = new Set();
+  for (const ev of list(state.reactivationEvents)) {
+    const event = lower(ev.type || ev.event);
+    if (!HARD_EVENTS.has(event)) continue;
+    const email = normalizeEmail(ev.email);
+    if (email) keys.add(`${email}|${event}`);
+  }
+  return keys;
+}
+
+async function postWebhook(baseUrl, events) {
+  const response = await fetch(`${baseUrl}/api/outreach/webhooks/sendgrid`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(events)
+  });
+  const text = await response.text();
+  let body;
+  try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text.slice(0, 500) }; }
+  if (!response.ok) throw new Error(`webhook HTTP ${response.status}: ${JSON.stringify(body).slice(0, 700)}`);
+  return { status: response.status, body };
+}
+
+async function fetchStatus(baseUrl) {
+  const token = ownerToken();
+  if (!token) return null;
+  const response = await fetch(`${baseUrl}/api/reactivation/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store"
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(`status HTTP ${response.status}: ${JSON.stringify(body).slice(0, 700)}`);
+  return body;
+}
+
+async function main() {
+  const confirm = process.argv.includes("--confirm");
+  const dateKey = argValue("date", previousUtcDateKey());
+  const baseUrl = argValue("base-url", DEFAULT_BASE_URL).replace(/\/$/, "");
+  const window = dayWindow(dateKey);
+
+  console.log("Reactivation SendGrid hard-bounce backfill");
+  console.log(`  Date UTC      : ${dateKey}`);
+  console.log(`  Webhook       : ${baseUrl}/api/outreach/webhooks/sendgrid`);
+  console.log(`  Mode          : ${confirm ? "CONFIRM - will replay matched events" : "DRY RUN - no webhook POST"}`);
+  console.log(`  SendGrid key  : ${process.env.SENDGRID_API_KEY ? "present" : "missing"}`);
+  console.log(`  Owner token   : ${ownerToken() ? "present" : "missing (status confirmation will use local rates only)"}`);
+
+  const store = await createStore();
+  const stateBefore = await store.readState();
+  const beforeRates = campaignRates(stateBefore);
+  const wave1Emails = wave1SentEmailSet(stateBefore);
+  if (!wave1Emails.size) fail("No sent Wave 1 reactivation attempts found in the production store.");
+
+  console.log("\nBefore");
+  console.log(`  Sent attempts : ${beforeRates.sent}`);
+  console.log(`  hardBounces   : ${beforeRates.hardBounces}`);
+  console.log(`  Wave 1 sent recipients considered: ${wave1Emails.size}`);
+
+  let sendgridEvents = [];
+  try {
+    sendgridEvents = await queryEmailActivity(window);
+    console.log(`\nSendGrid Email Activity events found: ${sendgridEvents.length}`);
+  } catch (error) {
+    console.log(`\nSendGrid Email Activity unavailable: ${error.message.slice(0, 220)}`);
+    sendgridEvents = await querySuppressionFallback(window);
+    console.log(`SendGrid suppression fallback events found: ${sendgridEvents.length}`);
+  }
+
+  const unique = dedupeEvents(sendgridEvents);
+  const existing = existingHardEventKeys(stateBefore);
+  const matched = unique
+    .filter((ev) => wave1Emails.has(normalizeEmail(ev.email)))
+    .filter((ev) => !existing.has(`${normalizeEmail(ev.email)}|${ev.event}`));
+
+  console.log("\nMatched Wave 1 hard events");
+  console.log(`  Unique SendGrid hard events : ${unique.length}`);
+  console.log(`  Matched to Wave 1 sent list : ${matched.length}`);
+  console.log(`  Already in reactivationEvents skipped: ${unique.filter((ev) => existing.has(`${normalizeEmail(ev.email)}|${ev.event}`)).length}`);
+  const byEvent = {};
+  for (const ev of matched) byEvent[ev.event] = (byEvent[ev.event] || 0) + 1;
+  console.log(`  By event type: ${JSON.stringify(byEvent)}`);
+  console.log(`  Masked sample: ${matched.slice(0, 5).map((ev) => `${ev.event}:${maskEmail(ev.email)}:${emailHash(ev.email)}`).join(", ") || "(none)"}`);
+
+  if (!confirm) {
+    console.log("\nDRY RUN complete. Re-run with --confirm to replay these events into the production webhook.");
+    return;
+  }
+  if (!matched.length) fail("No new Wave 1 hard events matched; refusing to POST an empty/no-op backfill.");
+
+  const replayPayload = matched.map((ev) => ({
+    email: ev.email,
+    event: ev.event,
+    reason: ev.reason || "sendgrid_backfill",
+    timestamp: ev.timestamp || Math.floor(Date.now() / 1000),
+    source: "sendgrid_backfill_reactivation_wave1"
+  }));
+  const webhook = await postWebhook(baseUrl, replayPayload);
+  console.log("\nWebhook replay");
+  console.log(`  HTTP status : ${webhook.status}`);
+  console.log(`  Processed   : ${webhook.body?.processed ?? "(unknown)"}`);
+
+  const stateAfter = await store.readState();
+  const localAfterRates = campaignRates(stateAfter);
+  const remoteStatus = await fetchStatus(baseUrl).catch((error) => {
+    console.log(`  Status endpoint confirmation unavailable: ${error.message.slice(0, 220)}`);
+    return null;
+  });
+  const rates = remoteStatus?.rates || localAfterRates;
+
+  console.log("\nAfter");
+  console.log(`  hardBounces       : ${rates.hardBounces}`);
+  console.log(`  hard_bounce rate  : ${((rates.hard_bounce || 0) * 100).toFixed(2)}%`);
+  console.log(`  thresholdTripped  : ${remoteStatus ? remoteStatus.thresholdTripped : "(check /api/reactivation/status)"}`);
+  console.log(`  thresholdReasons  : ${remoteStatus ? JSON.stringify(remoteStatus.thresholdReasons || []) : "(check /api/reactivation/status)"}`);
+
+  if ((rates.hardBounces || 0) <= (beforeRates.hardBounces || 0)) {
+    fail("Webhook POST returned success, but hardBounces did not increase. Check whether the emails matched reactivationContacts.");
+  }
+
+  console.log("\nDONE: production reactivation metrics moved from SendGrid hard events.");
+  console.log("Note: this proves the webhook processing/store/status path. Cryptographic SendGrid signature verification is not currently enforced by the app handler.");
+}
+
+main().catch((error) => {
+  console.error("FAILED:", error.message || error);
+  process.exit(1);
+});
