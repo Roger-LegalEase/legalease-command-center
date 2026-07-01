@@ -114,8 +114,25 @@ function normalizeSendgridEvent(raw = {}, forcedType = "") {
 async function queryEmailActivity(window) {
   // Email Activity gives the best event fidelity, including dropped/blocked. Some SendGrid plans do
   // not enable this endpoint; if unavailable, the script falls back to suppression endpoints.
-  const query = `last_event_time BETWEEN TIMESTAMP "${window.startIso}" AND TIMESTAMP "${window.endIso}" AND (event="bounce" OR event="dropped" OR event="blocked")`;
-  const body = await sendgridGet("/v3/messages", { limit: 1000, query });
+  // /v3/messages does not accept an "event" identifier in the top-level query. Query messages by
+  // delivery status/time, then inspect each message's detail events for bounce/drop/block.
+  const queries = [
+    `last_event_time BETWEEN TIMESTAMP "${window.startIso}" AND TIMESTAMP "${window.endIso}" AND status="not_delivered"`,
+    `last_event_time BETWEEN TIMESTAMP "${window.startIso}" AND TIMESTAMP "${window.endIso}"`
+  ];
+  let body;
+  let lastError;
+  for (const query of queries) {
+    try {
+      body = await sendgridGet("/v3/messages", { limit: 1000, query });
+      console.log(`SendGrid Email Activity query used: ${query.includes("not_delivered") ? "date + status=not_delivered" : "date only"}`);
+      break;
+    } catch (error) {
+      lastError = error;
+      console.log(`SendGrid Email Activity query failed (${query.includes("not_delivered") ? "date + status" : "date only"}): ${error.message.slice(0, 220)}`);
+    }
+  }
+  if (!body) throw lastError || new Error("SendGrid Email Activity query failed.");
   const messages = list(body?.messages || body?.result || body);
   const out = [];
   for (const msg of messages) {
@@ -175,18 +192,31 @@ function dedupeEvents(events = []) {
   return out;
 }
 
-function wave1SentEmailSet(state = {}) {
+function sentReactivationEmailSet(state = {}) {
   const contactsById = new Map(list(state.reactivationContacts).map((c) => [clean(c.contact_id), c]));
   const emails = new Set();
+  const diagnostics = {
+    sentAttempts: 0,
+    dateMatched: 0,
+    explicitWave1: 0,
+    inferredCampaign: 0,
+    missingEmail: 0
+  };
   for (const attempt of list(state.reactivationAttempts)) {
     if (lower(attempt.status) !== "sent") continue;
+    diagnostics.sentAttempts++;
+    diagnostics.dateMatched++;
     const contact = contactsById.get(clean(attempt.contact_id));
-    const isWave1 = Number(attempt.wave) === 1 || Number(contact?.wave) === 1;
-    if (!isWave1) continue;
+    const explicitWave1 = Number(attempt.wave) === 1 || Number(contact?.wave) === 1;
+    const inferredCampaign = lower(attempt.campaign_id) === "mvp-reactivation"
+      || /^react-attempt-/i.test(clean(attempt.id))
+      || /^react-/i.test(clean(attempt.contact_id));
+    if (!explicitWave1 && !inferredCampaign) continue;
+    if (explicitWave1) diagnostics.explicitWave1++; else diagnostics.inferredCampaign++;
     const email = normalizeEmail(attempt.to || contact?.email);
-    if (email) emails.add(email);
+    if (email) emails.add(email); else diagnostics.missingEmail++;
   }
-  return emails;
+  return { emails, diagnostics };
 }
 
 function existingHardEventKeys(state = {}) {
@@ -241,13 +271,18 @@ async function main() {
   const store = await createStore();
   const stateBefore = await store.readState();
   const beforeRates = campaignRates(stateBefore);
-  const wave1Emails = wave1SentEmailSet(stateBefore);
-  if (!wave1Emails.size) fail("No sent Wave 1 reactivation attempts found in the production store.");
+  const sentSet = sentReactivationEmailSet(stateBefore);
+  const wave1Emails = sentSet.emails;
+  if (!wave1Emails.size) fail("No sent reactivation campaign attempts found in the production store.");
 
   console.log("\nBefore");
   console.log(`  Sent attempts : ${beforeRates.sent}`);
   console.log(`  hardBounces   : ${beforeRates.hardBounces}`);
-  console.log(`  Wave 1 sent recipients considered: ${wave1Emails.size}`);
+  console.log(`  Sent reactivation attempts considered: ${sentSet.diagnostics.dateMatched}`);
+  console.log(`  Recipients considered: ${wave1Emails.size}`);
+  console.log(`  Explicit Wave 1 attempts: ${sentSet.diagnostics.explicitWave1}`);
+  console.log(`  Inferred campaign attempts included: ${sentSet.diagnostics.inferredCampaign}`);
+  if (sentSet.diagnostics.missingEmail) console.log(`  Missing-email attempts skipped: ${sentSet.diagnostics.missingEmail}`);
 
   let sendgridEvents = [];
   try {
@@ -265,9 +300,9 @@ async function main() {
     .filter((ev) => wave1Emails.has(normalizeEmail(ev.email)))
     .filter((ev) => !existing.has(`${normalizeEmail(ev.email)}|${ev.event}`));
 
-  console.log("\nMatched Wave 1 hard events");
+  console.log("\nMatched reactivation campaign hard events");
   console.log(`  Unique SendGrid hard events : ${unique.length}`);
-  console.log(`  Matched to Wave 1 sent list : ${matched.length}`);
+  console.log(`  Matched to sent reactivation list : ${matched.length}`);
   console.log(`  Already in reactivationEvents skipped: ${unique.filter((ev) => existing.has(`${normalizeEmail(ev.email)}|${ev.event}`)).length}`);
   const byEvent = {};
   for (const ev of matched) byEvent[ev.event] = (byEvent[ev.event] || 0) + 1;
