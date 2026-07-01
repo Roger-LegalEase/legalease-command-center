@@ -217,17 +217,20 @@ function coreRecordId(collection, item, index = 0) {
 }
 
 function coreRecordsFromState(state = {}) {
-  const rows = [];
+  const rowsByKey = new Map();
+  const addRow = (row) => {
+    rowsByKey.set(row.collection + "\u0000" + row.item_id, row);
+  };
   for (const collection of coreStateCollections) {
     const value = state[collection];
     if (value === undefined || value === null) continue;
     if (Array.isArray(value)) {
-      value.forEach((item, index) => rows.push({ collection, item_id: coreRecordId(collection, item, index), payload: item || {}, updated_at: new Date().toISOString() }));
+      value.forEach((item, index) => addRow({ collection, item_id: coreRecordId(collection, item, index), payload: item || {}, updated_at: new Date().toISOString() }));
     } else if (typeof value === "object") {
-      rows.push({ collection, item_id: "singleton", payload: value, updated_at: new Date().toISOString() });
+      addRow({ collection, item_id: "singleton", payload: value, updated_at: new Date().toISOString() });
     }
   }
-  return rows;
+  return [...rowsByKey.values()];
 }
 
 function applyCoreRecordsToState(baseState = {}, rows = []) {
@@ -524,7 +527,7 @@ export class SupabaseCoreStore extends JsonStore {
     // accumulating as orphan duplicates. Collections absent from the snapshot are left
     // untouched, so a partial state write can never mass-delete persisted data.
     const presentCollections = new Set(
-      coreStateCollections.filter((collection) => state[collection] !== undefined && state[collection] !== null)
+      coreStateCollections.filter((collection) => state[collection] !== undefined)
     );
     if (presentCollections.size) {
       const keep = new Set(rows.map((row) => row.collection + " " + row.item_id));

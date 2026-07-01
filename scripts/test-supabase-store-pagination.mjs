@@ -12,7 +12,7 @@
 // collection in full — no dropped rows, no duplicates — while a single capped request would not.
 
 import assert from "node:assert";
-import { SupabaseCoreStore, coreStateCollections } from "./storage.mjs";
+import { SupabaseCoreStore, coreStateCollections, coreRecordsFromState } from "./storage.mjs";
 
 // Point the store at a Supabase that doesn't exist on disk, so the JsonStore fallback inside
 // SupabaseCoreStore.readState() resolves to initialState (no local file read interferes).
@@ -62,11 +62,38 @@ const TOTAL = TABLE_ROWS.length;
 
 // ---- fake PostgREST: honors order=collection.asc,item_id.asc + limit + offset, caps at 1000 ----
 let fetchCalls = 0;
+let lastPostRows = [];
+let deleteCalls = [];
 const realFetch = globalThis.fetch;
-globalThis.fetch = async (url) => {
+globalThis.fetch = async (url, options = {}) => {
   fetchCalls += 1;
+  const method = String(options.method || "GET").toUpperCase();
   const u = new URL(url);
   const params = u.searchParams;
+  if (method === "POST") {
+    lastPostRows = JSON.parse(options.body || "[]");
+    TABLE_ROWS.push(...lastPostRows.map((row) => ({ ...row, updated_at: row.updated_at || "2026-06-27T00:00:00.000Z" })));
+    return {
+      ok: true,
+      status: 201,
+      statusText: "Created",
+      async text() { return ""; }
+    };
+  }
+  if (method === "DELETE") {
+    const collection = params.get("collection")?.replace(/^eq\./, "");
+    const itemId = params.get("item_id")?.replace(/^eq\./, "");
+    deleteCalls.push({ collection, item_id: itemId });
+    for (let i = TABLE_ROWS.length - 1; i >= 0; i -= 1) {
+      if (TABLE_ROWS[i].collection === collection && TABLE_ROWS[i].item_id === itemId) TABLE_ROWS.splice(i, 1);
+    }
+    return {
+      ok: true,
+      status: 204,
+      statusText: "No Content",
+      async text() { return ""; }
+    };
+  }
   // Stable order, matching what the helper requests.
   const sorted = [...TABLE_ROWS].sort((a, b) =>
     a.collection < b.collection ? -1 : a.collection > b.collection ? 1
@@ -147,6 +174,34 @@ async function run() {
   assert.equal(onFirstPage, 0, `${tailCollection} falls entirely in the truncated tail (invisible without paging)`);
   assert.equal(state[tailCollection].length, SEED_COUNTS[tailCollection], `${tailCollection} is nonetheless fully hydrated WITH paging`);
   ok(`without paging, ${wouldHaveDropped} rows (incl. all ${tailCollection}) would silently vanish — paging recovers them`);
+
+  // 7. Duplicate item ids in a snapshot must not make a single Supabase upsert batch contain the
+  // same (collection,item_id) twice. Postgres rejects that with:
+  // "ON CONFLICT DO UPDATE command cannot affect row a second time".
+  const duplicateRows = coreRecordsFromState({
+    heartbeatRuns: [
+      { id: "same", engineId: "old", status: "success" },
+      { id: "same", engineId: "new", status: "success" }
+    ]
+  }).filter((row) => row.collection === "heartbeatRuns");
+  assert.equal(duplicateRows.length, 1, "duplicate heartbeatRuns ids collapse to one upsert row");
+  assert.equal(duplicateRows[0].payload.engineId, "new", "last duplicate wins");
+  ok("coreRecordsFromState dedupes duplicate upsert keys before Supabase writes");
+
+  // 8. Null singleton snapshots are intentional tombstones. They should not upsert a row, but the
+  // collection must still be reconciled so stale singleton rows (heartbeatLease) are deleted.
+  TABLE_ROWS.push({
+    collection: "heartbeatLease",
+    item_id: "singleton",
+    payload: { runId: "stale", expiresAt: "2026-06-30T23:05:00.000Z" },
+    updated_at: "2026-06-30T23:00:00.000Z"
+  });
+  lastPostRows = [];
+  deleteCalls = [];
+  await store.writeState({ heartbeatLease: null, heartbeatRuns: [] });
+  assert.ok(!lastPostRows.some((row) => row.collection === "heartbeatLease"), "null singleton is not upserted");
+  assert.ok(deleteCalls.some((row) => row.collection === "heartbeatLease" && row.item_id === "singleton"), "stale heartbeatLease singleton is deleted");
+  ok("null singleton snapshots clear stale persisted singleton rows");
 
   console.log(`\n${passed} checks passed.`);
 }
