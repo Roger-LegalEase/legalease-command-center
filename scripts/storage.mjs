@@ -117,9 +117,13 @@ const coreStateCollections = [
   // expungement-lifecycle-sync.mjs, or the lifecycle contacts/events silently fail to persist to
   // Supabase. test-expungement-lifecycle-sync.mjs asserts membership.
   "expungementLifecycleContacts",
-  "expungementLifecycleEvents"
+  "expungementLifecycleEvents",
+  // SendGrid Event Webhook health telemetry (singleton). MUST stay in sync with
+  // SENDGRID_WEBHOOK_HEALTH_COLLECTION in sendgrid-webhook.mjs, or webhook health silently
+  // fails to persist (same trap). test-sendgrid-webhook.mjs asserts membership.
+  "sendgridWebhookHealth"
 ];
-const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign"]);
+const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth"]);
 
 function parseBoolean(value = "") {
   return ["true", "1", "yes", "on"].includes(String(value || "").toLowerCase());
@@ -394,6 +398,15 @@ export class JsonStore {
     return this.writeQueue;
   }
 
+  // Scoped write: persist ONLY the collections in `patch`, leaving everything else untouched.
+  // The JSON backend rewrites the whole file, so a partial state must be merged into a fresh
+  // read first — writing `patch` directly would WIPE every other collection from the file.
+  // (The Supabase backend overrides this with a true partial write.)
+  async writeCollections(patch = {}) {
+    const state = await this.readState();
+    return this.writeState({ ...state, ...patch });
+  }
+
   async writeStateNow(state) {
     await this.ensure();
     const { persistence, ...persistedState } = state;
@@ -401,6 +414,32 @@ export class JsonStore {
     const tempPath = `${this.dataPath}.${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
     await writeFile(tempPath, JSON.stringify(persistedState, null, 2));
     await rename(tempPath, this.dataPath);
+    this.recordWriteOutcome();
+  }
+
+  // Write-health telemetry (Phase 0 trust fix): stamps of the last successful/failed persist and
+  // a running failure count, so status endpoints can surface "writes are failing" instead of the
+  // store failing silently. Shared by both backends.
+  recordWriteOutcome(error = null) {
+    const now = new Date().toISOString();
+    if (error) {
+      this.lastWriteErrorAt = now;
+      this.lastWriteError = String(error.message || error).slice(0, 500);
+      this.failedWriteCount = (this.failedWriteCount || 0) + 1;
+    } else {
+      this.lastWriteOkAt = now;
+      this.lastWriteError = "";
+    }
+  }
+
+  writeHealth() {
+    return {
+      backend: this.kind,
+      lastWriteOkAt: this.lastWriteOkAt || "",
+      lastWriteErrorAt: this.lastWriteErrorAt || "",
+      lastWriteError: this.lastWriteError || "",
+      failedWriteCount: this.failedWriteCount || 0
+    };
   }
 
   async generatePosts(posts) {
@@ -511,7 +550,25 @@ export class SupabaseCoreStore extends JsonStore {
     return this.writeQueue;
   }
 
+  // Scoped write, Supabase flavor: writeStateNow already only upserts + reconciles collections
+  // PRESENT in the snapshot, so passing the patch through IS the partial write — no read-merge
+  // needed and no risk to absent collections.
+  async writeCollections(patch = {}) {
+    return this.writeState(patch);
+  }
+
   async writeStateNow(state) {
+    try {
+      await this.writeStateToSupabase(state);
+      this.lastError = "";
+      this.recordWriteOutcome();
+    } catch (error) {
+      this.recordWriteOutcome(error);
+      throw error;
+    }
+  }
+
+  async writeStateToSupabase(state) {
     const rows = coreRecordsFromState(state);
     if (rows.length) {
       await supabaseRestRequest(supabaseRecordsTable + "?on_conflict=collection,item_id", {
@@ -548,7 +605,6 @@ export class SupabaseCoreStore extends JsonStore {
         ));
       }
     }
-    this.lastError = "";
   }
 }
 

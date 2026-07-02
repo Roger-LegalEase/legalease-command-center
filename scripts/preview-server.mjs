@@ -11,8 +11,9 @@ import { runHeartbeat, autopilotEnabled } from "./heartbeat.mjs";
 import { buildHeartbeatRegistry, HEARTBEAT_ENGINE_IDS } from "./heartbeat-engines.mjs";
 import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_QUEUE_TYPE, OUTREACH_ENGINE_ID, resolveOutreachSendDecision, outreachLiveSendEnabled } from "./outreach-os.mjs";
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
-import { applyReactivationEvent, reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
+import { reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
+import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
@@ -25842,7 +25843,7 @@ function htmlShell() {
       add(state.outreachLists, "RCAP prospect list", "outreachLists", item => ({ ...item, title:item.name || item.list_name || "RCAP prospect list" }));
       add(state.outreachAttempts, "RCAP outreach attempt", "outreachAttempts", item => ({ ...item, title:item.subject || item.email || item.contact_id || "RCAP outreach attempt", status:item.status || item.send_status || "Needs review" }));
       add(list(state.reactivationCampaign).length ? [state.reactivationCampaign] : [], "Consumer reactivation campaign", "reactivationCampaign");
-      add(state.reactivationContacts, "Consumer wave", "reactivationContacts", item => ({ ...item, title:"Wave " + (item.wave || "not assigned") + " - " + (item.email || item.contact_id || "contact"), status:item.wave_released_at ? "released" : "Wave not released" }));
+      add(state.reactivationContacts, "Consumer wave", "reactivationContacts", item => ({ ...item, title:"Wave " + (item.wave || "not assigned") + " - " + (item.email || item.contact_id || "contact"), status:item.enrolled_at ? "released" : "Wave not released" }));
       add(state.campaigns, "Social/content campaign", "campaigns");
       add(state.posts, "Social post", "posts");
       return rows;
@@ -33057,32 +33058,51 @@ async function handleRequest(request, response) {
     return;
   }
 
-  // SendGrid event webhook — PUBLIC (verified by signature in production). Phase 0 records
-  // bounces/unsubscribes into the suppression ledger. MUST be the -prod host URL at SendGrid.
+  // SendGrid event webhook — PUBLIC. Signature verification is ENFORCED when
+  // SENDGRID_WEBHOOK_PUBLIC_KEY is configured (fail closed); otherwise batches process but are
+  // counted "unverified" in health telemetry. Records bounces/unsubscribes into the suppression
+  // ledger and reactivation events into the campaign ledger, then writes back ONLY the touched
+  // collections (scoped write) — a webhook batch can never rewrite, or be broken by, unrelated
+  // state. Health telemetry persists to sendgridWebhookHealth and is surfaced (with warnings) on
+  // /api/reactivation/status. MUST be the -prod host URL at SendGrid.
   if (url.pathname === "/api/outreach/webhooks/sendgrid" && request.method === "POST") {
+    // Best-effort health stamp — never lets a telemetry failure mask the primary outcome.
+    const recordWebhookHealth = async (outcome) => {
+      try {
+        const s = await store.readState();
+        await store.writeCollections({
+          [SENDGRID_WEBHOOK_HEALTH_COLLECTION]: updateSendGridWebhookHealth(s[SENDGRID_WEBHOOK_HEALTH_COLLECTION], outcome)
+        });
+      } catch {}
+    };
     try {
-      const events = await readJson(request).catch(() => []);
-      const list = Array.isArray(events) ? events : [];
-      let currentState = await store.readState();
-      for (const ev of list) {
-        const type = String(ev.event || "").toLowerCase();
-        const email = String(ev.email || "");
-        if (!email) continue;
-        if (["bounce", "dropped", "blocked"].includes(type)) {
-          currentState = recordSuppression(currentState, { email, reason: "bounced", source: "sendgrid_webhook" });
-          currentState.outreachBounces = [{ id: `outreach-bounce-${Date.now().toString(16)}-${Math.round((ev.timestamp||0))}`, email, type, reason: ev.reason || "", created_at: new Date().toISOString() }, ...serverList(currentState.outreachBounces)];
-        } else if (["unsubscribe", "group_unsubscribe", "spamreport"].includes(type)) {
-          currentState = recordSuppression(currentState, { email, reason: "unsubscribed", source: "sendgrid_webhook" });
-        }
-        // MVP reactivation: if this email is a reactivation contact, also record the event into
-        // the campaign ledger (delivered/click/bounce/spamreport/unsubscribe) and pause that
-        // contact's cadence. No-op for non-reactivation emails. Feeds per-wave metrics + the
-        // stop-threshold monitor. (delivered/click are tracked here only for the consumer campaign.)
-        currentState = applyReactivationEvent(currentState, { event: type, email, reason: ev.reason || "" });
+      const { payload, rawBody } = await readJsonWithRawBody(request).catch(() => ({ payload: [], rawBody: "" }));
+      const verification = verifySendGridSignature({
+        env: process.env,
+        rawBody,
+        signature: request.headers[SENDGRID_SIGNATURE_HEADER] || "",
+        timestamp: request.headers[SENDGRID_TIMESTAMP_HEADER] || ""
+      });
+      if (verification.rejected) {
+        await recordWebhookHealth({ rejected: true, reason: verification.reason });
+        sendJson(response, { error: "Invalid webhook signature." }, 401);
+        return;
       }
-      await store.writeState(currentState);
-      sendJson(response, { ok: true, processed: list.length });
+      const events = Array.isArray(payload) ? payload : [];
+      const currentState = await store.readState();
+      const scoped = {};
+      for (const collection of SENDGRID_WEBHOOK_COLLECTIONS) scoped[collection] = serverList(currentState[collection]);
+      const { state: reduced, counters } = reduceSendGridEvents(scoped, events);
+      const writePatch = {};
+      for (const collection of SENDGRID_WEBHOOK_COLLECTIONS) writePatch[collection] = reduced[collection];
+      writePatch[SENDGRID_WEBHOOK_HEALTH_COLLECTION] = updateSendGridWebhookHealth(
+        currentState[SENDGRID_WEBHOOK_HEALTH_COLLECTION],
+        { ok: true, counters, verified: verification.verified }
+      );
+      await store.writeCollections(writePatch);
+      sendJson(response, { ok: true, processed: events.length, recorded: counters.recorded, verified: verification.verified });
     } catch (error) {
+      await recordWebhookHealth({ error: error.message || "Webhook processing failed." });
       sendJson(response, { error: error.message || "Webhook processing failed." }, 400);
     }
     return;
@@ -33331,6 +33351,7 @@ async function handleRequest(request, response) {
       if (c.import_status === "staged") staged++;
     }
     const thr = evaluateThresholds(currentState, config);
+    const rates = campaignRates(currentState);
     sendJson(response, {
       autopilotEnabled: autopilotEnabled(currentState, REACTIVATION_ENGINE_ID, process.env),
       liveSendWired: true,
@@ -33349,11 +33370,16 @@ async function handleRequest(request, response) {
       held,
       suppressedAtImport: suppressed,
       contactsByWave: byWave,
-      rates: campaignRates(currentState),
+      rates,
       thresholdTripped: thr.tripped,
       thresholdReasons: thr.reasons,
       belowSample: thr.belowSample,
-      metricsByWave: waveMetrics(currentState)
+      metricsByWave: waveMetrics(currentState),
+      // Webhook health posture (Phase 0 trust fix): whether delivery telemetry — and therefore
+      // the auto-pause threshold monitor — can be trusted. Carries a plain-English warning when
+      // sends exist but no events were ever recorded.
+      webhook: sendgridWebhookHealthSummary(currentState[SENDGRID_WEBHOOK_HEALTH_COLLECTION], { env: process.env, sent: rates.sent }),
+      writeHealth: typeof store.writeHealth === "function" ? store.writeHealth() : null
     });
     return;
   }
@@ -34346,7 +34372,9 @@ async function handleRequest(request, response) {
   }
 
   if (url.pathname === "/api/health/supabase" && request.method === "GET") {
-    sendJson(response, await getSupabaseHealth());
+    // writeHealth: last successful/failed persist + failure count (Phase 0 trust fix) — makes
+    // "writes are silently failing" visible instead of discoverable only via broken telemetry.
+    sendJson(response, { ...(await getSupabaseHealth()), writeHealth: typeof store.writeHealth === "function" ? store.writeHealth() : null });
     return;
   }
 
