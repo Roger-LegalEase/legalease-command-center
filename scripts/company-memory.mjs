@@ -190,15 +190,19 @@ export function transitionQueueItem(state = {}, { id = "", status = "", actor = 
   let approvals = list(state.approvals);
   let approvalId = item.approvalId;
   // Approving an approval-requiring item writes the Approval record — the audit trail the
-  // gated executors check. It never performs the underlying action here.
+  // gated executors check. It never performs the underlying action here. When the item was
+  // proposed with a pre-linked Approval, keep that record's action_type/preview — executors
+  // verify action_type, and re-deriving it from the queue item's type would corrupt it.
   if (status === "approved" && item.requiresApproval) {
+    const prior = approvals.find((a) => a.id === (approvalId || "")) || null;
     const approval = createApproval({
       id: approvalId || "",
-      actionType: item.type,
+      actionType: prior?.action_type || item.type,
       queueItemId: item.id,
-      preview: item.summary || item.title,
-      riskLevel: item.riskLevel,
+      preview: prior?.preview || item.summary || item.title,
+      riskLevel: prior?.risk_level || item.riskLevel,
       state: "approved",
+      requested_at: prior?.requested_at || "",
       approvedBy: actor || "owner",
       approvedAt: now()
     }, { now });

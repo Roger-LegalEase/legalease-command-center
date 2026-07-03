@@ -27,6 +27,7 @@ import {
   upsertCompanyOrganization
 } from "./company-memory.mjs";
 import { campaignRates, evaluateThresholds, reactivationCampaignOf } from "./reactivation-os.mjs";
+import { plainSafetyReasons } from "./campaign-command.mjs";
 import { sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
 
 export const COMPANY_MEMORY_ENGINE_ID = "company-memory";
@@ -160,28 +161,30 @@ function queueFromRcapRevenueTasks(state) {
 function queueFromCampaignSafety(state) {
   const items = [];
   const campaign = reactivationCampaignOf(state);
-  const rates = campaignRates(state);
-  const thresholds = evaluateThresholds(rates, campaign);
+  // evaluateThresholds takes STATE (it derives rates itself) — passing rates makes sent read
+  // as 0, belowSample always true, and this monitor report "safe" forever.
+  const thresholds = evaluateThresholds(state, campaign);
   if (thresholds.tripped) {
     items.push(createQueueItem({
       type: "campaign",
       sourceEngine: "reactivation-sequencer",
       sourceRef: { collection: "reactivationCampaign", itemId: "thresholds" },
       title: "Reactivation campaign paused itself — safety limit reached",
-      summary: `The campaign stopped because a safety limit tripped: ${list(thresholds.reasons).join("; ") || "see campaign safety"}. Nothing more sends until you decide.`,
+      summary: `The campaign stopped because a safety limit tripped: ${plainSafetyReasons(thresholds.reasons) || "see campaign safety"}. Nothing more sends until you decide.`,
       recommendation: "Review the bounce and complaint numbers before resuming anything.",
       requiresApproval: true,
       riskLevel: "dangerous",
       priority: 5
     }));
   }
-  if (lower(campaign.status) === "paused" && clean(campaign.paused_reason)) {
+  // reactivationCampaignOf exposes camelCase pausedReason — the snake_case field never exists.
+  if (lower(campaign.status) === "paused" && clean(campaign.pausedReason)) {
     items.push(createQueueItem({
       type: "campaign",
       sourceEngine: "reactivation-sequencer",
       sourceRef: { collection: "reactivationCampaign", itemId: "paused" },
       title: "Reactivation campaign is paused",
-      summary: `Paused: ${clean(campaign.paused_reason)}.`,
+      summary: `Paused: ${clean(campaign.pausedReason)}.`,
       recommendation: "Decide whether to keep it paused or resume.",
       requiresApproval: true,
       riskLevel: "caution",
@@ -590,7 +593,6 @@ export function buildTodaySummary(state = {}, { env = process.env, now = () => n
     ["webhook", "write_health", "system_health", "campaign", "funnel_alert", "source_monitor"].includes(i.type)
     && i.status !== "snoozed");
 
-  const rates = campaignRates(state);
   const campaign = reactivationCampaignOf(state);
   const funnel = latestFunnelSnapshot(state);
   const suppressed = suppressedEmailSet(state).size;
@@ -614,7 +616,7 @@ export function buildTodaySummary(state = {}, { env = process.env, now = () => n
       signupsConnected: Boolean(signups && signups.available),
       supportOpen: list(state.supportIssues).filter((i) => !/resolved|closed|done|archived/i.test(String(i.status || ""))).length,
       partnerFollowups: open.filter((i) => i.type === "partner_followup" || i.type === "prospect_followup").length,
-      campaignSafe: !evaluateThresholds(rates, campaign).tripped,
+      campaignSafe: !evaluateThresholds(state, campaign).tripped,
       campaignStatus: clean(campaign.status) || "unknown"
     },
     needsRoger: needsRoger.slice(0, 12),
