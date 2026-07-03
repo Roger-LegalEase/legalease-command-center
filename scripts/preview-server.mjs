@@ -19,6 +19,7 @@ import { buildSafetyPosture } from "./safety-posture.mjs";
 import { wakeSnoozedQueueItems, transitionQueueItem } from "./company-memory.mjs";
 import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID, buildTodaySummary, projectCompanyMemory } from "./company-memory-projector.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
+import { previewIntake, confirmIntake, INTAKE_TYPES, INTAKE_ACTIONS } from "./intake.mjs";
 import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
@@ -16948,13 +16949,18 @@ function htmlShell() {
     window.fixCampaignImportIssues = fixCampaignImportIssues;
     window.downloadCampaignTemplate = downloadCampaignTemplate;
 
-    function operatorUploadFlowSubmit(event) {
+    // Universal list intake — one preview + confirm flow for every list type. Preview never
+    // writes; confirm asks the server to import safely (nothing sends). Plain-English checks
+    // before save: missing emails, invalid emails, duplicates, and suppressed/unsubscribed/bounced/do-not-contact rows.
+    let intakePending = null;
+    async function operatorUploadFlowSubmit(event) {
       event.preventDefault();
       const form = event.target;
       const payload = formObject(form);
       const file = form.file?.files?.[0] || null;
       const target = document.getElementById("operator-upload-result");
       const listType = String(payload.listType || "").trim();
+      const afterAction = String(payload.afterAction || "").trim();
       const sourceNote = String(payload.sourceNote || "").trim();
       const errors = [];
       if (!listType) errors.push("Choose what kind of list this is.");
@@ -16965,19 +16971,72 @@ function htmlShell() {
         toast("List type, source note, and file are required.");
         return;
       }
-      if (listType === "consumer") { consumerListImportPreview(file, sourceNote); return; }
-      const routes = {
-        consumer:["Consumer / Expungement.ai list", "Uses the existing reactivation import path where appropriate.", "reactivationContacts"],
-        rcap_prospect:["RCAP prospect list", "Routes to Prospect Discovery / outreach review before outreachContacts.", "prospectCandidates"],
-        social_calendar:["Social content calendar", "Uses the existing social calendar preview and Queue import.", "sources"],
-        rcap_revenue:["RCAP revenue workbook", "Uses the existing RCAP Revenue OS preview/import API.", "rcap-revenue-import"]
-      };
-      const route = routes[listType] || ["List", "Preview pending.", "sources"];
-      if (target) target.innerHTML = "<strong>Review Import Preview</strong><br>" + esc(route[0]) + " from " + esc(sourceNote) + ". File: " + esc(file.name || "selected file") + ". " + esc(route[1]) + "<br><br>Plain-English checks before save: missing emails, invalid emails, duplicates, and suppressed/unsubscribed/bounced/do-not-contact rows. No external action runs.";
-      if (listType === "social_calendar") handleCampaignSpreadsheetUpload(file);
+      const fileName = String(file.name || "uploaded list");
+      if (/\\.(xlsx|xls)$/i.test(fileName)) {
+        let hint = "In Excel or Google Sheets choose File, then Download, then CSV, and upload again.";
+        if (listType === "social_calendar") hint += " Social calendars can also use the calendar import card lower on this page, which reads Excel directly.";
+        if (target) target.innerHTML = "<strong>Save this file as CSV first.</strong> " + esc(hint);
+        toast("Save as CSV first. Nothing was uploaded.");
+        return;
+      }
+      let csv = "";
+      try { csv = await file.text(); }
+      catch (error) { if (target) target.innerHTML = "<strong>Could not read the file.</strong>"; toast("Could not read the file."); return; }
+      if (target) target.innerHTML = "<strong>Preview list...</strong> Nothing is saved or sent.";
+      let preview;
+      try {
+        preview = await api("/api/intake/preview", { method:"POST", body: JSON.stringify({ csv:csv, intakeType:listType, afterAction:afterAction, sourceNote:sourceNote, fileName:fileName }) });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Preview failed.</strong> " + esc(error.message || "Could not preview this list.");
+        toast("Preview failed. Nothing was saved.");
+        return;
+      }
+      intakePending = { csv:csv, intakeType:listType, afterAction:String(preview.afterAction || afterAction), sourceNote:sourceNote, fileName:fileName };
+      const warnItems = (preview.warnings || []).map(function(w){ return "<li>" + esc(String(w)) + "</li>"; }).join("");
+      const lines = ["<strong>" + esc(String(preview.headline || "Preview ready. Nothing is saved or sent.")) + "</strong>"]
+        .concat((preview.lines || []).map(function(l){ return esc(String(l)); }));
+      lines.push("<em>" + esc(String(preview.warning || "Nothing sends from import.")) + "</em>");
+      const confirmLabel = preview.requiresApproval ? "Import and ask my approval" : "Import safely";
+      if (target) target.innerHTML = lines.join("<br>") +
+        (warnItems ? "<br><br><strong>Check first</strong><ul>" + warnItems + "</ul>" : "") +
+        "<br><div class=\\"card-actions\\"><button class=\\"primary\\" type=\\"button\\" onclick=\\"intakeImportConfirm()\\">" + esc(confirmLabel) + "</button> <button type=\\"button\\" onclick=\\"intakeImportCancel()\\">Cancel</button></div>";
       toast("Preview ready. Nothing was saved or sent.");
     }
+    async function intakeImportConfirm() {
+      const target = document.getElementById("operator-upload-result");
+      if (!intakePending) { toast("Preview a list before importing."); return; }
+      if (target) target.innerHTML = "<strong>Import list...</strong> Nothing sends.";
+      let result;
+      try {
+        result = await api("/api/intake/confirm", { method:"POST", body: JSON.stringify(intakePending) });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Import failed.</strong> " + esc(error.message || "Could not import this list.") + " Nothing was saved.";
+        toast("Import failed. Nothing was saved.");
+        return;
+      }
+      if (result && result.state) state = hydrateStatePayload(result.state, "list-intake");
+      const lines = ["<strong>" + esc(String(result.headline || "Imported safely. No one was emailed.")) + "</strong>"]
+        .concat((result.lines || []).map(function(l){ return esc(String(l)); }));
+      const checks = ((result.verified && result.verified.checks) || []).map(function(c){
+        return "<li>" + (c.ok ? "Checked: " : "Needs a look: ") + esc(String(c.note)) + "</li>";
+      }).join("");
+      lines.push("<em>" + esc(String(result.warning || "Nothing sends from import.")) + "</em>");
+      intakePending = null;
+      render();
+      const target2 = document.getElementById("operator-upload-result");
+      if (target2) target2.innerHTML = lines.join("<br>") +
+        (checks ? "<br><br><strong>Verified after saving</strong><ul>" + checks + "</ul>" : "");
+      toast("Imported. Nothing was sent to anyone.");
+    }
+    function intakeImportCancel() {
+      intakePending = null;
+      const target = document.getElementById("operator-upload-result");
+      if (target) target.innerHTML = "<strong>Preview cleared.</strong> Nothing was saved.";
+      toast("Preview cleared. Nothing was saved.");
+    }
     window.operatorUploadFlowSubmit = operatorUploadFlowSubmit;
+    window.intakeImportConfirm = intakeImportConfirm;
+    window.intakeImportCancel = intakeImportCancel;
 
     // Consumer / Expungement.ai list import — real preview + confirm against the internal endpoints.
     // Preview never writes; confirm stages contacts into reactivationContacts. Nothing sends.
@@ -25118,10 +25177,23 @@ function htmlShell() {
           <form id="operator-upload-flow" class="rail-form" onsubmit="operatorUploadFlowSubmit(event)">
             <label>What kind of list is this?<select name="listType" required>
               <option value="">Choose list type</option>
-              <option value="consumer">Consumer / Expungement.ai list</option>
-              <option value="rcap_prospect">RCAP prospect list</option>
+              <option value="expungement_lifecycle">People who used Expungement.ai</option>
+              <option value="consumer">People stuck at checkout / reactivation list</option>
+              <option value="rcap_prospects">RCAP prospects</option>
+              <option value="partner_contacts">Partner contacts</option>
               <option value="social_calendar">Social content calendar</option>
-              <option value="rcap_revenue">RCAP revenue workbook</option>
+              <option value="revenue_workbook">Revenue workbook</option>
+              <option value="support_list">Support list</option>
+              <option value="unknown">Something else / not sure</option>
+            </select></label>
+            <label>What should happen after import?<select name="afterAction">
+              <option value="">Use the safe default for this list type</option>
+              <option value="review_only">Review only</option>
+              <option value="add_to_contacts">Add to Contacts</option>
+              <option value="hold_for_campaign">Hold for campaign review</option>
+              <option value="create_followups">Create follow-up tasks</option>
+              <option value="draft_outreach">Draft outreach (asks for approval first)</option>
+              <option value="suppress">Suppress / do not contact</option>
             </select></label>
             <label>Where did this list come from?<input name="sourceNote" required placeholder="Required source note, e.g. partner workbook, Google Sheet, manual export"></label>
             <label>Choose file<input name="file" type="file" required accept=".csv,.xlsx,.json,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
@@ -25139,12 +25211,12 @@ function htmlShell() {
         <section class="growth-card">
           <div class="growth-card-head"><h2>Internal routes</h2><small>Existing engines reused</small></div>
           <div class="campaign-preview-metrics">
-            <article class="campaign-preview-metric"><strong>Consumer</strong><span>Consumer reactivation import</span></article>
-            <article class="campaign-preview-metric"><strong>RCAP prospects</strong><span>Prospect review and outreach list intake</span></article>
-            <article class="campaign-preview-metric"><strong>Social</strong><span>Content calendar preview into review queue</span></article>
-            <article class="campaign-preview-metric"><strong>RCAP revenue</strong><span>Revenue workbook preview and internal records</span></article>
+            <article class="campaign-preview-metric"><strong>Expungement.ai + checkout</strong><span>Existing reactivation and lifecycle imports — people land held, nothing sends</span></article>
+            <article class="campaign-preview-metric"><strong>Prospects, partners, support</strong><span>People land in Contacts with no duplicates; do-not-contact stays sticky</span></article>
+            <article class="campaign-preview-metric"><strong>Social calendars</strong><span>Reviewed only here; the calendar import card below brings drafts in</span></article>
+            <article class="campaign-preview-metric"><strong>Revenue workbooks</strong><span>Reviewed only — money records never change from an upload</span></article>
           </div>
-          <details><summary>View technical details</summary><p class="muted">Consumer lists route to reactivationContacts. RCAP prospects route through prospectCandidates/outreachContacts. Social calendars use handleCampaignSpreadsheetUpload and Confirm Import. RCAP revenue workbooks use /api/rcap-revenue/preview and /api/rcap-revenue/import.</p></details>
+          <details><summary>View technical details</summary><p class="muted">Universal intake previews via /api/intake/preview and imports via /api/intake/confirm. Consumer and Expungement.ai lists route to the existing reactivation/lifecycle importers (always held). Prospect, partner, and support lists write identity-only records to companyContacts/companyOrganizations. Every confirmed import records an event, an agent run, and an approval audit record; review-needed imports create queue items.</p></details>
         </section>
         <section class="growth-card">
           <div class="growth-card-head"><h2>Expungement.ai sync</h2><small>Ingest only — nothing sends</small></div>
@@ -33542,6 +33614,72 @@ async function handleRequest(request, response) {
       sendJson(response, { ok: true, outreachConfig: merged });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update outreach config." }, 400);
+    }
+    return;
+  }
+
+  // ---- Universal list intake — dead-simple "Upload a list" front door ----------------------
+  // ONE entry point for every list type. Preview is PURE (detects type, inspects headers, warns
+  // about sensitive columns, never writes). Confirm routes to the EXISTING importers (consumer
+  // reactivation, Expungement.ai sync) or the Company Memory identity layer, records the audit
+  // trail (Event + Agent Run + Approval), and creates Queue items for anything needing review.
+  // Neither endpoint sends, calls a provider, releases a wave, enrolls a contact, or changes a
+  // live-send/autopilot gate.
+  if (url.pathname === "/api/intake/preview" && request.method === "POST") {
+    // POST is gated as "write" by access-control (owner/auth-protected). Preview writes NO state.
+    try {
+      const payload = await readJson(request);
+      const currentState = await store.readState();
+      const preview = previewIntake(currentState, payload?.csv ?? payload?.csvText ?? "", {
+        intakeType: payload?.intakeType || payload?.listType,
+        afterAction: payload?.afterAction,
+        sourceNote: payload?.sourceNote,
+        fileName: payload?.fileName
+      });
+      sendJson(response, preview);
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not preview this list." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/intake/confirm" && request.method === "POST") {
+    // Explicit owner/admin guard for the state-writing step (mirrors /api/upload/consumer/confirm).
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const payload = await readJson(request);
+      const currentState = await store.readState();
+      const result = confirmIntake(currentState, payload?.csv ?? payload?.csvText ?? "", {
+        intakeType: payload?.intakeType || payload?.listType,
+        afterAction: payload?.afterAction,
+        sourceNote: payload?.sourceNote,
+        fileName: payload?.fileName,
+        actor: accessDecision.actor?.id || accessDecision.actor?.role || "owner",
+        now: new Date().toISOString()
+      });
+      await store.writeState(result.state);
+      sendJson(response, {
+        ok: true,
+        intakeType: result.intakeType,
+        typeLabel: result.typeLabel,
+        afterAction: result.afterAction,
+        actionLabel: result.actionLabel,
+        sourceNote: result.sourceNote,
+        fileName: result.fileName,
+        headline: result.headline,
+        lines: result.lines,
+        counts: result.counts,
+        verified: result.verified,
+        approvalRequested: result.approvalRequested,
+        warning: result.warning,
+        state: withPublicChannelSetup(result.state)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not import this list." }, 400);
     }
     return;
   }
