@@ -54,7 +54,7 @@ export function plainSafetyReasons(reasons = []) {
     .replace(/hard_bounce/g, "hard bounces at")
     .replace(/spam_complaint/g, "spam complaints at")
     .replace(/unsubscribe(?!s)/g, "unsubscribes at")
-    .replace(/>=/g, "— the limit is")).join("; ");
+    .replace(/>=/g, ", the limit is")).join("; ");
 }
 
 export const CAMPAIGN_COMMAND_SOURCE = "campaign-command";
@@ -106,8 +106,8 @@ function gateFacts(state, env) {
   return {
     liveSend, autopilot, sendgridKey, sendingOn,
     plain: sendingOn
-      ? "Sending is ON — released people receive emails inside the weekday window."
-      : "Sending is OFF — nothing goes out to anyone, even for released waves."
+      ? "Sending is ON. Released people receive emails inside the weekday window."
+      : "Sending is OFF. Nothing goes out to anyone, even for released waves."
   };
 }
 
@@ -142,20 +142,20 @@ function telemetryFacts(state, env) {
     plain: summary.warning
       ? summary.warning
       : rates.sent === 0
-        ? "No sends yet, so there is no delivery feedback to show — that is expected."
+        ? "No sends yet, so there is no delivery feedback to show. That is expected."
         : `Delivery feedback is flowing (${summary.totalEvents} signals recorded${summary.signatureVerification === "enforced" ? ", sender identity verified" : ""}).`
   };
 }
 
 function campaignStatusPlain(config, gates) {
   if (lower(config.status) === "paused") {
-    return `Paused${config.pausedReason ? ` — ${config.pausedReason}` : ""}. Nothing sends while paused.`;
+    return `Paused${config.pausedReason ? `: ${config.pausedReason}` : ""}. Nothing sends while paused.`;
   }
-  if (!config.releasedWaves.length) return "Staged — no waves released, nobody enrolled, nothing sending.";
+  if (!config.releasedWaves.length) return "Staged: no waves released, nobody enrolled, nothing sending.";
   const waves = listJoin(config.releasedWaves);
   return gates.sendingOn
-    ? `Running — wave ${waves} released and sending inside the daily window.`
-    : `Armed but quiet — wave ${waves} released, sending is off, so no email goes out.`;
+    ? `Running: wave ${waves} released and sending inside the daily window.`
+    : `Armed but quiet: wave ${waves} released, sending is off, so no email goes out.`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -177,8 +177,8 @@ export function buildCampaignCommandView(state = {}, { env = process.env, now = 
   const sequences = REACTIVATION_SEQUENCE_IDS.map((id) => ({
     id,
     plain: id === "reactivation_logged_in"
-      ? "People who logged in before — 5 emails over 30 days"
-      : "People who never logged in — 5 emails over 30 days",
+      ? "People who logged in before: 5 emails over 30 days"
+      : "People who never logged in: 5 emails over 30 days",
     schedule: `Days ${REACTIVATION_CADENCE_DAYS.join(", ")} after release`
   }));
 
@@ -204,8 +204,8 @@ export function buildCampaignCommandView(state = {}, { env = process.env, now = 
       ...w,
       metrics: metrics[w.wave] || null,
       plain: w.released
-        ? `Wave ${w.wave}: released — ${people(w.enrolled)} enrolled, ${metrics[w.wave]?.sent || 0} emails sent so far.`
-        : `Wave ${w.wave}: not released — ${people(w.eligibleOnRelease)} would be lined up (${w.held} held, ${w.suppressed} blocked).`
+        ? `Wave ${w.wave}: released. ${people(w.enrolled)} enrolled, ${metrics[w.wave]?.sent || 0} emails sent so far.`
+        : `Wave ${w.wave}: not released. ${people(w.eligibleOnRelease)} would be lined up (${w.held} held, ${w.suppressed} blocked).`
     })),
     totals,
     sequences,
@@ -225,7 +225,7 @@ export function buildCampaignCommandView(state = {}, { env = process.env, now = 
         ? "A safety limit tripped. Review bounces and complaints before anything else."
         : nextWave
           ? `Wave ${nextWave.wave} is ready to preview (${people(nextWave.eligibleOnRelease)} eligible). Releasing it does not send while sending is off.`
-          : "No action needed — everything releasable is released or empty.",
+          : "No action needed. Everything releasable is released or empty.",
     warning: CAMPAIGN_COMMAND_WARNING
   };
 }
@@ -252,12 +252,12 @@ export function previewWaveRelease(state = {}, waveNumber, { env = process.env, 
   const sendingDays = facts.eligibleOnRelease > 0 ? Math.ceil(facts.eligibleOnRelease / perDay) : 0;
 
   const who = `${people(facts.eligibleOnRelease)} would be lined up for wave ${wave}. Not included: ${facts.held} held for review, ${facts.suppressed} blocked (unsubscribed, bounced, complained, or do-not-contact), ${facts.enrolled} already in the campaign.`;
-  const which = `They start with email 1 of 5, then days ${config.cadenceDays.join(", ")} after release — but only while sending is on.`;
+  const which = `They start with email 1 of 5, then days ${config.cadenceDays.join(", ")} after release, but only while sending is on.`;
   const when = gates.sendingOn
     ? `Sending is ON, so emails would start in the next window (${sendWindowPlain(config.caps)}) and this wave would take about ${sendingDays} sending day${sendingDays === 1 ? "" : "s"}.`
     : `Sending is OFF. Releasing arms the wave and starts the schedule clock, but no email goes to anyone until sending is turned on, on purpose, elsewhere.`;
   const releasedCaution = config.releasedWaves.length
-    ? `Heads up: wave ${listJoin(config.releasedWaves)} ${config.releasedWaves.length === 1 ? "is" : "are"} already released — when sending turns on, their next follow-up emails go out too, not just this wave.`
+    ? `Heads up: wave ${listJoin(config.releasedWaves)} ${config.releasedWaves.length === 1 ? "is" : "are"} already released. When sending turns on, their next follow-up emails go out too, not just this wave.`
     : "";
 
   return {
@@ -297,10 +297,10 @@ export function proposeWaveRelease(state = {}, waveNumber, { scheduledFor = "", 
   const nowFn = () => nowIso;
   const preview = previewWaveRelease(state, waveNumber, { env, now: new Date(nowIso) });
   if (preview.alreadyReleased) {
-    return { ok: false, error: `Wave ${preview.wave} is already released — nothing to propose.`, state };
+    return { ok: false, error: `Wave ${preview.wave} is already released. There is nothing to propose.`, state };
   }
   if (preview.eligible === 0) {
-    return { ok: false, error: `No one in wave ${preview.wave} is eligible right now (${preview.held} held, ${preview.blocked} blocked) — there is nothing to release.`, state };
+    return { ok: false, error: `No one in wave ${preview.wave} is eligible right now (${preview.held} held, ${preview.blocked} blocked). There is nothing to release.`, state };
   }
   const schedule = clean(scheduledFor);
   if (schedule && !/^\d{4}-\d{2}-\d{2}$/.test(schedule)) {
@@ -317,7 +317,7 @@ export function proposeWaveRelease(state = {}, waveNumber, { scheduledFor = "", 
       return {
         ok: false,
         error: linked.state === "approved"
-          ? `Wave ${preview.wave} already has an approved release waiting to run${active.metadata?.scheduledFor ? ` (planned for ${active.metadata.scheduledFor})` : ""}. Run it or dismiss it — its plan cannot be changed by proposing again.`
+          ? `Wave ${preview.wave} already has an approved release waiting to run${active.metadata?.scheduledFor ? ` (planned for ${active.metadata.scheduledFor})` : ""}. Run it or dismiss it; its plan cannot be changed by proposing again.`
           : `Wave ${preview.wave} already ran.`,
         state,
         approvalId: linked.id,
@@ -404,7 +404,7 @@ export function executeApprovedWaveRelease(state = {}, { approvalId = "", actor 
   const wave = Number(item?.metadata?.wave);
   if (!item || !Number.isFinite(wave)) return blocked("The approval is missing its wave details. Propose the release again.");
   const schedule = clean(item.metadata?.scheduledFor);
-  if (schedule && etDateOf(nowIso) < schedule) return blocked(`This release is planned for ${schedule} (Eastern) — it is not that day yet.`);
+  if (schedule && etDateOf(nowIso) < schedule) return blocked(`This release is planned for ${schedule} (Eastern). It is not that day yet.`);
 
   const config = reactivationCampaignOf(state);
   if (config.releasedWaves.map(Number).includes(wave)) return blocked(`Wave ${wave} is already released.`);
@@ -422,7 +422,7 @@ export function executeApprovedWaveRelease(state = {}, { approvalId = "", actor 
       ...approval,
       state: "executed",
       executed_at: nowIso,
-      execution_result: `Wave ${wave} released: ${people(released.enrolled)} lined up. ${gates.sendingOn ? "Sending is on." : "Sending remains off — no email went out."}`
+      execution_result: `Wave ${wave} released: ${people(released.enrolled)} lined up. ${gates.sendingOn ? "Sending is on." : "Sending remains off. No email went out."}`
     }], { now: nowFn })
   };
   const transitioned = list(nextState.queueItems).map((q) =>
@@ -432,7 +432,7 @@ export function executeApprovedWaveRelease(state = {}, { approvalId = "", actor 
     source: CAMPAIGN_COMMAND_SOURCE,
     type: "campaign_wave_released",
     occurred_at: nowIso,
-    summary: `Wave ${wave} released by ${actor}: ${people(released.enrolled)} lined up. ${gates.sendingOn ? "Sending is on — emails begin in the next window." : "Sending is off — nobody was emailed."}`,
+    summary: `Wave ${wave} released by ${actor}: ${people(released.enrolled)} lined up. ${gates.sendingOn ? "Sending is on. Emails begin in the next window." : "Sending is off. Nobody was emailed."}`,
     risk: gates.sendingOn ? "needs_roger" : "info"
   }, { now: nowFn });
 
@@ -441,7 +441,7 @@ export function executeApprovedWaveRelease(state = {}, { approvalId = "", actor 
     state: nextState,
     wave,
     enrolled: released.enrolled,
-    headline: `Wave ${wave} released: ${people(released.enrolled)} lined up. ${gates.sendingOn ? "Emails begin in the next sending window." : "Sending is off — no one was emailed."}`,
+    headline: `Wave ${wave} released: ${people(released.enrolled)} lined up. ${gates.sendingOn ? "Emails begin in the next sending window." : "Sending is off. No one was emailed."}`,
     verified: {
       ok: reactivationCampaignOf(nextState).releasedWaves.map(Number).includes(wave),
       checks: [
@@ -495,12 +495,12 @@ export function proposeCampaignResume(state = {}, { actor = "owner", env = proce
   const nowFn = () => nowIso;
   const config = reactivationCampaignOf(state);
   if (lower(config.status) !== "paused") {
-    return { ok: false, error: "The campaign is not paused — there is nothing to resume.", state };
+    return { ok: false, error: "The campaign is not paused, so there is nothing to resume.", state };
   }
   const gates = gateFacts(state, env);
   const thresholds = thresholdFacts(state, config);
   const caution = config.releasedWaves.length
-    ? ` Wave ${listJoin(config.releasedWaves)} ${config.releasedWaves.length === 1 ? "is" : "are"} already released — with sending on, their next follow-up emails resume too.`
+    ? ` Wave ${listJoin(config.releasedWaves)} ${config.releasedWaves.length === 1 ? "is" : "are"} already released. With sending on, their next follow-up emails resume too.`
     : "";
   const item = createQueueItem({
     type: "campaign",
@@ -509,8 +509,8 @@ export function proposeCampaignResume(state = {}, { actor = "owner", env = proce
     title: "Approve resuming the reactivation campaign",
     summary: `It paused because: ${config.pausedReason || "operator pause"}. ${thresholds.plain}${caution}`,
     recommendation: gates.sendingOn
-      ? "Sending is ON — approving means emails resume in the next window."
-      : "Sending is off — approving un-pauses the campaign but nobody gets an email until sending is turned on.",
+      ? "Sending is ON. Approving means emails resume in the next window."
+      : "Sending is off. Approving un-pauses the campaign but nobody gets an email until sending is turned on.",
     requiresApproval: true,
     riskLevel: gates.sendingOn ? "dangerous" : "caution",
     priority: 10,
@@ -583,13 +583,13 @@ export function executeApprovedResume(state = {}, { approvalId = "", actor = "ow
     source: CAMPAIGN_COMMAND_SOURCE,
     type: "campaign_resumed",
     occurred_at: nowIso,
-    summary: `Reactivation campaign resumed by ${actor}. ${gates.sendingOn ? "Sending is on — emails resume in the next window." : "Sending is off — nobody gets an email until it is turned on."}`,
+    summary: `Reactivation campaign resumed by ${actor}. ${gates.sendingOn ? "Sending is on. Emails resume in the next window." : "Sending is off. Nobody gets an email until it is turned on."}`,
     risk: gates.sendingOn ? "needs_roger" : "info"
   }, { now: nowFn });
   return {
     ok: true,
     state: nextState,
-    headline: `Campaign resumed. ${gates.sendingOn ? "Emails resume in the next sending window." : "Sending is off — no one was emailed."}`,
+    headline: `Campaign resumed. ${gates.sendingOn ? "Emails resume in the next sending window." : "Sending is off. No one was emailed."}`,
     warning: CAMPAIGN_COMMAND_WARNING
   };
 }

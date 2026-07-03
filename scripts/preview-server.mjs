@@ -15089,15 +15089,18 @@ function htmlShell() {
     .cockpit-card-row b { color:var(--ink); font-weight:750; }
     @media (max-width:1080px) { .command-cols,.command-grid-2 { grid-template-columns:1fr; } .command-pulse { grid-template-columns:repeat(2,minmax(0,1fr)); } .cockpit-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
     @media (max-width:720px) { .command-surface { padding:0 16px 42px; } .command-pulse { grid-template-columns:1fr; } .command-panel-head { align-items:flex-start; flex-direction:column; } .command-item { padding:13px 14px; } .cockpit-grid { grid-template-columns:1fr; } }
-    /* ---- Today cockpit (ck-) — the mint dashboard skin. Scoped to .today-cockpit so the
-       shared .command-* layout used by Growth/Partners is untouched. ---- */
-    body.ck-mint { background:#DEF0E1; }
-    .today-cockpit { --ck-ink:#0B1220; --ck-ink2:#5B6572; --ck-muted:#8A94A0; --ck-line:#EAEDF1; --ck-tint:#F7FAFB;
+    /* ---- Today cockpit (ck-) — the LegalEase brand dashboard skin. Scoped to .today-cockpit
+       so the shared .command-* layout used by Growth/Partners is untouched.
+       Brand roles: navy = structure/headings/stable status; teal = healthy/active/progress;
+       orange = the app's alert color (critical/caution/needs-Roger); silver = neutral. ---- */
+    body.ck-wash { background:#E3F1EF; }
+    .today-cockpit { --ck-ink:#0A1A5C; --ck-ink2:#4E5A6E; --ck-muted:#8792A2; --ck-line:#E7EAF0; --ck-tint:#F6F9FA;
       --ck-orange:#F5812B; --ck-orange-deep:#E8590C; --ck-orange-tint:#FDEEE2; --ck-orange-text:#B54708;
-      --ck-good:#067647; --ck-good-tint:#E7F5E7; --ck-bad:#B91C1C; --ck-bad-tint:#FDECEC;
-      --ck-warn:#B54708; --ck-warn-tint:#FDF1E4; --ck-purple:#7C6CF0;
-      --ck-radius:16px; --ck-shadow:0 1px 2px rgba(15,23,42,.04), 0 10px 30px rgba(15,23,42,.06);
-      --ck-shadow-pop:0 4px 10px rgba(15,23,42,.08), 0 18px 44px rgba(15,23,42,.10);
+      --ck-teal:#0C7D75; --ck-teal-bright:#00A99D; --ck-teal-tint:#DFF2F0;
+      --ck-good:#0C7D75; --ck-good-tint:#DFF2F0; --ck-bad:#B54708; --ck-bad-tint:#FDEEE2;
+      --ck-warn:#B54708; --ck-warn-tint:#FDF1E4; --ck-crit:#C2410C; --ck-steel:#3040BF;
+      --ck-radius:16px; --ck-shadow:0 1px 2px rgba(10,26,92,.04), 0 10px 30px rgba(10,26,92,.06);
+      --ck-shadow-pop:0 4px 10px rgba(10,26,92,.08), 0 18px 44px rgba(10,26,92,.10);
       font-family:Geist, "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
       color:var(--ck-ink); font-size:16px; line-height:1.5; display:block; }
     .ck-sheet { max-width:1240px; margin:0 auto; background:#FDFEFD; border-radius:24px; box-shadow:var(--ck-shadow); padding:32px clamp(16px,3.5vw,44px) 44px; }
@@ -15113,14 +15116,15 @@ function htmlShell() {
     .ck-topbar .ck-when .d { font-weight:650; color:var(--ck-ink2); }
     .ck-topbar .ck-when .s { color:var(--ck-muted); font-size:14.5px; }
     .ck-run-btn { margin-top:10px; background:var(--ck-ink); color:#fff; border:0; border-radius:12px; min-height:48px; padding:12px 20px; font:inherit; font-size:16px; font-weight:650; display:inline-flex; align-items:center; gap:9px; cursor:pointer; }
-    .ck-run-btn:hover { background:#243041; }
+    .ck-run-btn:hover { background:#16245F; }
     .ck-run-btn .count { background:var(--ck-orange); color:#fff; border-radius:8px; padding:2px 9px; font-size:14px; }
     .ck-pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
     .ck-pill { display:inline-flex; align-items:center; gap:7px; border-radius:999px; padding:6px 14px; font-size:15px; font-weight:600; background:#F1F4F6; color:var(--ck-ink2); }
     .ck-pill .n { display:inline-grid; place-items:center; min-width:22px; height:22px; border-radius:999px; padding:0 6px; font-size:13px; font-weight:700; background:rgba(255,255,255,.85); }
     .ck-pill.orange { background:var(--ck-orange-tint); color:var(--ck-orange-text); }
-    .ck-pill.green { background:var(--ck-good-tint); color:var(--ck-good); }
-    .ck-pill.red { background:var(--ck-bad-tint); color:var(--ck-bad); }
+    .ck-pill.teal { background:var(--ck-teal-tint); color:var(--ck-teal); }
+    .ck-pill.navy { background:#EBEEF8; color:var(--ck-ink); }
+    .ck-pill.crit { background:var(--ck-orange-tint); color:var(--ck-crit); }
     .ck-dot { width:8px; height:8px; border-radius:50%; background:currentColor; flex:none; }
     .ck-section { margin-top:34px; }
     .ck-sec-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
@@ -15137,8 +15141,8 @@ function htmlShell() {
     .ck-actions { display:flex; flex-wrap:wrap; gap:10px; }
     .ck-btn { font:inherit; font-weight:650; font-size:16px; border-radius:12px; border:1px solid var(--ck-line); padding:12px 18px; background:#fff; color:var(--ck-ink); cursor:pointer; min-height:48px; }
     .ck-btn:hover { background:var(--ck-tint); }
-    .ck-btn.primary { background:#0E9F5D; border-color:#0E9F5D; color:#fff; flex:1 1 auto; }
-    .ck-btn.primary:hover { background:#0C8A50; }
+    .ck-btn.primary { background:var(--ck-teal); border-color:var(--ck-teal); color:#fff; flex:1 1 auto; }
+    .ck-btn.primary:hover { background:#0A6A63; }
     .ck-chip { font-size:13px; font-weight:700; border-radius:999px; padding:4px 11px; white-space:nowrap; }
     .ck-chip.ok { background:var(--ck-good-tint); color:var(--ck-good); }
     .ck-chip.warn { background:var(--ck-warn-tint); color:var(--ck-warn); }
@@ -15151,6 +15155,9 @@ function htmlShell() {
     .ck-kpi .ico svg { width:18px; height:18px; }
     .ck-kpi .value { font-size:44px; font-weight:700; letter-spacing:-.03em; margin:10px 0 8px; line-height:1; color:var(--ck-ink); }
     .ck-kpi .value small { font-size:24px; font-weight:650; color:var(--ck-ink2); }
+    .ck-kpi .value.na { font-size:21px; font-weight:650; letter-spacing:0; line-height:1.3; color:var(--ck-muted); }
+    .ck-score .value { font-size:38px; }
+    .ck-details-toggle { margin-top:12px; }
     .ck-delta { display:inline-flex; align-items:center; gap:5px; font-size:14px; font-weight:700; border-radius:999px; padding:4px 11px; }
     .ck-delta.up { background:var(--ck-good-tint); color:var(--ck-good); }
     .ck-delta.down { background:var(--ck-bad-tint); color:var(--ck-bad); }
@@ -15198,16 +15205,16 @@ function htmlShell() {
     .ck-meter .num { font-weight:700; font-variant-numeric:tabular-nums; color:var(--ck-ink); white-space:nowrap; }
     .ck-meter .track { height:10px; border-radius:999px; overflow:hidden; }
     .ck-meter .fill { height:100%; border-radius:999px; }
-    .ck-meter.green .track { background:#E3F2E5; } .ck-meter.green .fill { background:#17A34A; }
+    .ck-meter.teal .track { background:#DCEEEB; } .ck-meter.teal .fill { background:var(--ck-teal); }
     .ck-meter.orange .track { background:#FBE9DA; } .ck-meter.orange .fill { background:var(--ck-orange-deep); }
-    .ck-meter.red .track { background:#FADCDC; } .ck-meter.red .fill { background:#D03B3B; }
+    .ck-meter.crit .track { background:#F8DFCE; } .ck-meter.crit .fill { background:var(--ck-crit); }
     .ck-meter-note { font-size:13.5px; color:var(--ck-muted); margin-top:10px; }
     .ck-agents { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; margin-top:12px; }
     .ck-agent { background:var(--ck-tint); border-radius:12px; padding:16px; }
     .ck-agent .row1 { display:flex; justify-content:space-between; align-items:center; gap:8px; }
     .ck-agent h4 { margin:0; font-size:17px; font-weight:700; color:var(--ck-ink); }
     .ck-agent .when { color:var(--ck-muted); font-size:14px; margin:4px 0 10px; }
-    .ck-agent .stripe { height:6px; border-radius:999px; background:#17A34A; }
+    .ck-agent .stripe { height:6px; border-radius:999px; background:var(--ck-teal); }
     .ck-agent .stripe.warn { background:var(--ck-orange-deep); }
     .ck-agent .stripe.off { background:#DDE3E9; }
     .ck-panel-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
@@ -25713,27 +25720,29 @@ function htmlShell() {
       const label = cls === "flat" ? "steady" : arrow + (diff > 0 ? "+" : "") + diff.toFixed(1) + " pt";
       return \`<span class="ck-delta \${cls}">\${label}</span><span class="vs">\${esc(vsLabel)}</span>\`;
     }
-    function ckSummaryLineHtml(v) {
+    // Company-wide opening summary: revenue and product activity first, decisions next,
+    // campaign safety and deploy state as one closing clause. Honest about missing sources.
+    function ckSummaryLineHtml(v, needsRogerCount) {
       if (!todaySummary) return '<p class="ck-sub">Your summary is loading. Numbers appear only from connected sources.</p>';
       const gm = todaySummary.goodMorning || {};
+      const money = todaySummary.money || {};
       const bits = [];
-      if (gm.signupsConnected) bits.push(\`<b>\${esc(String(gm.paid))}</b> paid and <b>\${esc(String(gm.registered))}</b> registered users so far\`);
-      else bits.push("signup numbers are not connected yet");
-      if (gm.funnelConnected) bits.push(\`\${esc(String(gm.screeningsStarted))} screenings started, \${esc(String(gm.checkouts))} checkouts\`);
+      if (money.stripeConnected) bits.push(\`<b>$\${ckNum(money.gross)}</b> collected\${money.sinceLabel ? " since " + esc(money.sinceLabel) : ""}\`);
+      else bits.push("revenue is not connected yet");
+      if (gm.signupsConnected) bits.push(\`<b>\${ckNum(gm.registered)}</b> accounts created (\${ckNum(gm.paid)} paid)\`);
+      else bits.push("account numbers are not connected yet");
+      if (gm.funnelConnected) bits.push(\`<b>\${ckNum(gm.screeningsStarted)}</b> screenings started and <b>\${ckNum(gm.checkouts)}</b> reached checkout\`);
       else bits.push("screening and checkout numbers arrive once the product connection is live");
-      if (gm.supportOpen) bits.push(\`<b>\${esc(String(gm.supportOpen))}</b> support request\${gm.supportOpen === 1 ? "" : "s"} need review\`);
+      if (gm.supportOpen) bits.push(\`<b>\${ckNum(gm.supportOpen)}</b> support request\${gm.supportOpen === 1 ? "" : "s"} need review\`);
+      if (gm.partnerFollowups) bits.push(\`<b>\${ckNum(gm.partnerFollowups)}</b> partner follow up\${gm.partnerFollowups === 1 ? "" : "s"} due\`);
+      bits.push(needsRogerCount > 0
+        ? \`<b>\${ckNum(needsRogerCount)}</b> decision\${needsRogerCount === 1 ? "" : "s"} need\${needsRogerCount === 1 ? "s" : ""} you\`
+        : "nothing needs a decision right now");
       if (bits.length && /^[a-z]/.test(bits[0])) bits[0] = bits[0].charAt(0).toUpperCase() + bits[0].slice(1);
-      let campaignLine;
-      if (v && v.thresholds && v.thresholds.tripped) {
-        campaignLine = "A campaign safety limit tripped. It is waiting for you below.";
-      } else if (v && v.rates && v.rates.sent > 0) {
-        campaignLine = \`The reactivation campaign has sent <b>\${ckNum(v.rates.sent)}</b> emails with <b>\${ckPct(v.rates.delivered / v.rates.sent)}</b> delivered.\`;
-      } else if (gm.campaignSafe === false) {
-        campaignLine = "A campaign safety limit tripped. It is waiting for you below.";
-      } else {
-        campaignLine = \`The reactivation campaign is \${esc(gm.campaignStatus || (v ? v.status : "") || "not loaded yet")} and no safety limits are tripped.\`;
-      }
-      return \`<p class="ck-sub">\${bits.join("; ")}. \${campaignLine}</p>\`;
+      const campaignClause = (v && v.thresholds && v.thresholds.tripped) || gm.campaignSafe === false
+        ? "A campaign safety limit tripped and is waiting for you below."
+        : \`Campaign sending is \${v && v.gates && v.gates.sendingOn ? "on" : "off"}\${versionTruth && versionTruth.severity === "ok" ? " and production is current" : ""}.\`;
+      return \`<p class="ck-sub">\${bits.join("; ")}. \${campaignClause}</p>\`;
     }
     function ckDeployNoteHtml() {
       if (!versionTruth) return '<div class="s">Deploy state unverified</div>';
@@ -25745,15 +25754,38 @@ function htmlShell() {
       const pills = [];
       pills.push(needsRogerCount > 0
         ? \`<span class="ck-pill orange"><span class="ck-dot"></span>Needs you <span class="n">\${ckNum(needsRogerCount)}</span></span>\`
-        : '<span class="ck-pill green"><span class="ck-dot"></span>Nothing waiting on you</span>');
-      pills.push(\`<span class="ck-pill green"><span class="ck-dot"></span>Running safely <span class="n">\${ckNum(monitorCount)}</span></span>\`);
+        : '<span class="ck-pill teal"><span class="ck-dot"></span>Nothing waiting on you</span>');
+      pills.push(\`<span class="ck-pill teal"><span class="ck-dot"></span>Running safely <span class="n">\${ckNum(monitorCount)}</span></span>\`);
       pills.push(watchCount > 0
         ? \`<span class="ck-pill">Watching <span class="n">\${ckNum(watchCount)}</span></span>\`
         : '<span class="ck-pill">Watchlist quiet</span>');
       if (v && v.thresholds) pills.push(v.thresholds.tripped
-        ? '<span class="ck-pill red"><span class="ck-dot"></span>Safety limit tripped</span>'
-        : '<span class="ck-pill green">Campaign safe</span>');
+        ? '<span class="ck-pill crit"><span class="ck-dot"></span>Safety limit tripped</span>'
+        : '<span class="ck-pill navy">Campaign safe</span>');
       return \`<div class="ck-pills">\${pills.join("")}</div>\`;
+    }
+    // The company scoreboard: the primary numbers of the business, above any campaign module.
+    // Source-aware: "Not wired yet" when a source is not connected; honest zeros when it is.
+    function ckScoreCardHtml(label, icon, connected, valueHtml, subText) {
+      return \`<div class="ck-card ck-kpi ck-score">
+        <div class="top"><span class="label">\${esc(label)}</span><span class="ico">\${CK_ICONS[icon] || ""}</span></div>
+        \${connected ? \`<div class="value">\${valueHtml}</div>\` : '<div class="value na">Not wired yet</div>'}
+        <div class="vs" style="margin-left:0;">\${esc(subText)}</div>
+      </div>\`;
+    }
+    function ckScoreboardHtml() {
+      const s = todaySummary;
+      const gm = s ? (s.goodMorning || {}) : {};
+      const money = s ? (s.money || {}) : {};
+      const partners = s ? (s.partners || {}) : {};
+      return \`<div class="ck-kpis" id="ck-scoreboard">
+        \${ckScoreCardHtml("Revenue", "dollar", Boolean(money.stripeConnected), "$" + ckNum(money.gross), money.stripeConnected ? (money.sinceLabel ? "Stripe, since " + money.sinceLabel : "From Stripe") : "Connect payments to see money here")}
+        \${ckScoreCardHtml("Web visits", "search", false, "", "Traffic source not connected")}
+        \${ckScoreCardHtml("Accounts created", "users", Boolean(gm.signupsConnected), ckNum(gm.registered), gm.signupsConnected ? ckNum(gm.paid) + " paid" : "Signup source not connected")}
+        \${ckScoreCardHtml("Screenings started", "clock", Boolean(gm.funnelConnected), ckNum(gm.screeningsStarted), gm.funnelConnected ? "From the product funnel" : "Product connection not live yet")}
+        \${ckScoreCardHtml("Reached checkout", "cart", Boolean(gm.funnelConnected), ckNum(gm.checkouts), gm.funnelConnected ? ckNum(gm.paid) + " paid so far" : "Product connection not live yet")}
+        \${ckScoreCardHtml("Live partners", "check", Boolean(s), ckNum(partners.live), s ? ckNum(partners.prospectsPendingReview) + " prospects to review" : "Loading")}
+      </div>\`;
     }
     const CK_ICONS = {
       send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>',
@@ -25855,11 +25887,11 @@ function htmlShell() {
         const cx = plotL + slot * (i + 0.5);
         const x = cx - barW / 2;
         const isCurrent = i === currentIdx;
-        const fill = w.released ? (isCurrent ? "url(#ckorange)" : "url(#ckhatch)") : "#F3F6F9";
+        const fill = w.released ? (isCurrent ? "url(#cktealbar)" : "url(#ckhatch)") : "#F3F6F9";
         const stroke = w.released ? "" : ' stroke="#E5EAEF"';
         const rx = h >= 12 ? 8 : 2;
-        const cover = h > 2 ? \`<rect x="\${x}" y="\${base - Math.min(8, h)}" width="\${barW}" height="\${Math.min(8, h)}" fill="\${w.released ? (isCurrent ? "#E8590C" : "#E6EAEF") : "#F3F6F9"}"/>\` : "";
-        const dot = isCurrent && h > 0 ? \`<circle cx="\${cx}" cy="\${y}" r="5.5" fill="#E8590C" stroke="#fff" stroke-width="2.5"/>\` : "";
+        const cover = h > 2 ? \`<rect x="\${x}" y="\${base - Math.min(8, h)}" width="\${barW}" height="\${Math.min(8, h)}" fill="\${w.released ? (isCurrent ? "#0C7D75" : "#E6EAEF") : "#F3F6F9"}"/>\` : "";
+        const dot = isCurrent && h > 0 ? \`<circle cx="\${cx}" cy="\${y}" r="5.5" fill="#0C7D75" stroke="#fff" stroke-width="2.5"/>\` : "";
         const sub = w.released ? (isCurrent ? "newest release" : "released") : "planned";
         return \`\${h > 0 ? \`<rect x="\${x}" y="\${y}" width="\${barW}" height="\${h}" rx="\${rx}" fill="\${fill}"\${stroke}/>\` : ""}\${cover}\${dot}
           <text x="\${cx}" y="378" fill="#5B6572" font-size="15" text-anchor="middle" font-weight="600">Wave \${esc(String(w.wave))}</text>
@@ -25875,10 +25907,10 @@ function htmlShell() {
         const y = base - (yMax ? values[i] / yMax * plotH : 0);
         const m = w.metrics;
         const rows = [];
-        rows.push(\`<div class="t-row"><span class="k" style="background:\${i === currentIdx ? "#E8590C" : "#C7CDD4"}"></span><b>\${ckNum(values[i])}</b>&nbsp;people</div>\`);
+        rows.push(\`<div class="t-row"><span class="k" style="background:\${i === currentIdx ? "#00A99D" : "#C7CDD4"}"></span><b>\${ckNum(values[i])}</b>&nbsp;people</div>\`);
         if (w.released && m) {
-          rows.push(\`<div class="t-row"><span class="k" style="background:\${i === currentIdx ? "#E8590C" : "#C7CDD4"}"></span><b>\${ckNum(m.sent)}</b>&nbsp;sent so far</div>\`);
-          rows.push(\`<div class="t-row"><span class="k" style="background:#17A34A"></span><b>\${ckNum(m.delivered)}</b>&nbsp;delivered</div>\`);
+          rows.push(\`<div class="t-row"><span class="k" style="background:\${i === currentIdx ? "#00A99D" : "#C7CDD4"}"></span><b>\${ckNum(m.sent)}</b>&nbsp;sent so far</div>\`);
+          rows.push(\`<div class="t-row"><span class="k" style="background:#0C7D75"></span><b>\${ckNum(m.delivered)}</b>&nbsp;delivered</div>\`);
         } else if (!w.released) {
           rows.push(\`<div class="t-row"><b>\${ckNum(w.eligibleOnRelease)}</b>&nbsp;lined up on release</div>\`);
           if (w.held) rows.push(\`<div class="t-row">\${ckNum(w.held)} held for review</div>\`);
@@ -25890,7 +25922,7 @@ function htmlShell() {
       }).join("");
       const legendKeys = [];
       if (stats.released.length > 1) legendKeys.push('<span class="key"><span class="ck-sw" style="background:repeating-linear-gradient(45deg,#ECF0F4 0 4px,#DBE1E8 4px 7px);"></span>Released earlier</span>');
-      if (stats.current) legendKeys.push('<span class="key"><span class="ck-sw" style="background:#E8590C;"></span>Newest release</span>');
+      if (stats.current) legendKeys.push('<span class="key"><span class="ck-sw" style="background:#0C7D75;"></span>Newest release</span>');
       if (waves.some(w => !w.released)) legendKeys.push('<span class="key"><span class="ck-sw" style="background:#F3F6F9; border:1px solid #E5EAEF;"></span>Planned</span>');
       const releasedNote = \`\${stats.released.length} of \${waves.length} wave\${waves.length === 1 ? "" : "s"} released\`;
       return \`<div class="ck-card">
@@ -25906,7 +25938,7 @@ function htmlShell() {
           <svg viewBox="0 0 720 400" role="img" aria-label="Bar chart of people per campaign wave.">
             <defs>
               <pattern id="ckhatch" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#ECF0F4"/><rect width="3.5" height="8" fill="#DBE1E8"/></pattern>
-              <linearGradient id="ckorange" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F5812B"/><stop offset="1" stop-color="#E8590C"/></linearGradient>
+              <linearGradient id="cktealbar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00A99D"/><stop offset="1" stop-color="#0C7D75"/></linearGradient>
             </defs>
             \${grid}\${bars}\${hits}
           </svg>
@@ -25925,15 +25957,15 @@ function htmlShell() {
         const bounced = rates.hardBounces || 0;
         const pending = Math.max(0, sent - delivered - bounced);
         body = \`<div class="ck-stackbar" aria-hidden="true">
-          \${delivered ? \`<div style="flex:\${delivered}; background:#17A34A;"></div>\` : ""}
+          \${delivered ? \`<div style="flex:\${delivered}; background:#0C7D75;"></div>\` : ""}
           \${bounced ? \`<div style="flex:\${bounced}; background:#EC835A;"></div>\` : ""}
           \${pending ? \`<div style="flex:\${pending}; background:#C7CDD4;"></div>\` : ""}
         </div>
         <div class="ck-rows">
-          <div class="ck-row"><span class="k" style="background:#17A34A;"></span><span class="name">Delivered</span><span class="val">\${ckNum(delivered)} <span class="pct">\${ckPct(delivered / sent)}</span></span></div>
+          <div class="ck-row"><span class="k" style="background:#0C7D75;"></span><span class="name">Delivered</span><span class="val">\${ckNum(delivered)} <span class="pct">\${ckPct(delivered / sent)}</span></span></div>
           <div class="ck-row"><span class="k" style="background:#EC835A;"></span><span class="name">Bounced</span><span class="val">\${ckNum(bounced)} <span class="pct">\${ckPct(bounced / sent)}</span></span></div>
           <div class="ck-row"><span class="k" style="background:#C7CDD4;"></span><span class="name">Waiting for confirmation</span><span class="val">\${ckNum(pending)}</span></div>
-          <div class="ck-row"><span class="k" style="background:#D03B3B;"></span><span class="name">Spam complaints</span><span class="val">\${ckNum(rates.complaints)}</span></div>
+          <div class="ck-row"><span class="k" style="background:#C2410C;"></span><span class="name">Spam complaints</span><span class="val">\${ckNum(rates.complaints)}</span></div>
           <div class="ck-row"><span class="k" style="background:#8A94A0;"></span><span class="name">Unsubscribed</span><span class="val">\${ckNum(rates.unsubs)}</span></div>
         </div>\`;
       }
@@ -25947,7 +25979,7 @@ function htmlShell() {
         const reasonText = (t.reasons || []).join(" ");
         const meter = (label, rate, limit, key, digits) => {
           const fillPct = limit > 0 ? Math.min(100, rate / limit * 100) : 0;
-          const cls = (t.tripped && reasonText.indexOf(key) >= 0) || fillPct >= 100 ? "red" : fillPct >= 60 ? "orange" : "green";
+          const cls = (t.tripped && reasonText.indexOf(key) >= 0) || fillPct >= 100 ? "crit" : fillPct >= 60 ? "orange" : "teal";
           return \`<div class="ck-meter \${cls}">
             <div class="line"><span class="lab">\${esc(label)}</span><span class="num">\${ckPct(rate, digits)} of \${ckPct(limit, digits)}</span></div>
             <div class="track"><div class="fill" style="width:\${fillPct.toFixed(0)}%;"></div></div>
@@ -25987,7 +26019,7 @@ function htmlShell() {
           const h = yMax ? val / yMax * plotH : 0;
           const y = base - h;
           const cx = plotL + slot * (i + 0.5);
-          return \`\${h > 0 ? \`<rect x="\${cx - barW / 2}" y="\${y}" width="\${barW}" height="\${h}" rx="6" fill="#7C6CF0"/>\` : ""}
+          return \`\${h > 0 ? \`<rect x="\${cx - barW / 2}" y="\${y}" width="\${barW}" height="\${h}" rx="6" fill="#3040BF"/>\` : ""}
             <text x="\${cx}" y="\${y - 8}" fill="#5B6572" font-size="13" font-weight="700" text-anchor="middle">\${ckNum(val)}</text>
             <text x="\${cx}" y="182" fill="#8A94A0" font-size="12.5" text-anchor="middle">Wave \${esc(String(w.wave))}</text>\`;
         }).join("");
@@ -26023,23 +26055,23 @@ function htmlShell() {
       if (safetyPosture && safetyPosture.email) {
         pills.push(safetyPosture.email.tone === "ok"
           ? \`<span class="ck-pill">\${esc(safetyPosture.email.label)}</span>\`
-          : \`<span class="ck-pill red"><span class="ck-dot"></span>\${esc(safetyPosture.email.label)}</span>\`);
+          : \`<span class="ck-pill crit"><span class="ck-dot"></span>\${esc(safetyPosture.email.label)}</span>\`);
       } else {
         pills.push('<span class="ck-pill">Email sending: Unverified</span>');
       }
       if (safetyPosture && safetyPosture.social) {
         pills.push(safetyPosture.social.tone === "ok"
           ? \`<span class="ck-pill">\${esc(safetyPosture.social.label)}</span>\`
-          : \`<span class="ck-pill red"><span class="ck-dot"></span>\${esc(safetyPosture.social.label)}</span>\`);
+          : \`<span class="ck-pill crit"><span class="ck-dot"></span>\${esc(safetyPosture.social.label)}</span>\`);
       } else {
         pills.push('<span class="ck-pill">Live social posting: Unverified</span>');
       }
       pills.push(supabaseHealth && supabaseHealth.connected
-        ? '<span class="ck-pill green"><span class="ck-dot"></span>Database connected</span>'
+        ? '<span class="ck-pill teal"><span class="ck-dot"></span>Database connected</span>'
         : '<span class="ck-pill">Database: checking</span>');
       if (v && v.telemetry && v.rates && v.rates.sent > 0) {
         pills.push(v.telemetry.trusted
-          ? '<span class="ck-pill green"><span class="ck-dot"></span>Delivery feedback flowing</span>'
+          ? '<span class="ck-pill teal"><span class="ck-dot"></span>Delivery feedback flowing</span>'
           : '<span class="ck-pill orange"><span class="ck-dot"></span>Delivery feedback needs attention</span>');
       }
       return \`<div class="ck-card">
@@ -26048,6 +26080,78 @@ function htmlShell() {
         <div class="ck-health">\${pills.join("")}</div>
         <div class="ck-linkbtns"><button class="ck-linkbtn" type="button" onclick="location.hash='app-status'">Open App Status</button></div>
       </div>\`;
+    }
+
+    // Campaign visibility is one operating lane, not the scoreboard: a compact safety module
+    // by default, with the full analytics behind "View campaign details". Real campaign risk
+    // opens the details by default, but Roger's own toggle always wins over the default.
+    let ckCampaignDetailsOverride = null;
+    function ckCampaignDetailsShown(v) {
+      const view = v === undefined ? ckCampaignView() : v;
+      if (!view) return false;
+      return ckCampaignDetailsOverride === null ? ckCampaignRisk(view) : ckCampaignDetailsOverride;
+    }
+    function ckToggleCampaignDetails() {
+      ckCampaignDetailsOverride = !ckCampaignDetailsShown();
+      render();
+    }
+    function ckCampaignRisk(v) {
+      if (!v) return false;
+      const gm = todaySummary ? (todaySummary.goodMorning || {}) : {};
+      const telemetryBroken = v.telemetry && !v.telemetry.trusted && v.rates && v.rates.sent > 0;
+      return Boolean((v.thresholds && v.thresholds.tripped) || gm.campaignSafe === false || telemetryBroken);
+    }
+    function ckCampaignSafetyHtml(v, detailsShown) {
+      if (!v) {
+        return \`<div class="ck-card">
+          <div class="ck-sec-head" style="margin-bottom:6px;"><h2>Campaign safety</h2></div>
+          <div class="ck-empty">Campaign numbers are not available with this sign-in yet.</div>
+        </div>\`;
+      }
+      const stats = ckWaveStats(v);
+      const rates = v.rates || {};
+      const sent = rates.sent || 0;
+      const pills = [];
+      pills.push(\`<span class="ck-pill">\${esc(emailPostureLabel())}</span>\`);
+      pills.push(v.thresholds && v.thresholds.tripped
+        ? '<span class="ck-pill crit"><span class="ck-dot"></span>Safety limit tripped</span>'
+        : v.thresholds && v.thresholds.belowSample
+          ? \`<span class="ck-pill navy">Limits arm after \${ckNum(v.thresholds.minSampleSize || 0)} sends</span>\`
+          : '<span class="ck-pill teal"><span class="ck-dot"></span>Within safety limits</span>');
+      if (sent > 0) pills.push(v.telemetry && v.telemetry.trusted
+        ? '<span class="ck-pill teal"><span class="ck-dot"></span>Receiving delivery reports</span>'
+        : '<span class="ck-pill crit"><span class="ck-dot"></span>Delivery reports need attention</span>');
+      const deliveryLine = sent > 0
+        ? \`\${ckPct((rates.delivered || 0) / sent)} delivered &middot; \${ckNum(rates.hardBounces)} bounced &middot; \${ckNum(rates.unsubs)} unsubscribed\`
+        : "No emails have been sent yet.";
+      return \`<div class="ck-card">
+        <div class="ck-sec-head" style="margin-bottom:8px;"><h2>Campaign safety</h2><span class="hint">Reactivation</span></div>
+        <div class="ck-health" style="margin-bottom:12px;">\${pills.join("")}</div>
+        <div class="ck-rows">
+          <div class="ck-row"><span class="name">Waves released</span><span class="val">\${ckNum(stats.released.length)} of \${ckNum(stats.waves.length)}</span></div>
+          <div class="ck-row"><span class="name">Emails sent</span><span class="val">\${ckNum(sent)}</span></div>
+          <div class="ck-row"><span class="name">Delivery</span><span class="val" style="font-size:14px;">\${deliveryLine}</span></div>
+        </div>
+        <div class="ck-meter-note">Next: \${esc(v.nextRecommendedAction || "nothing right now.")}</div>
+        <div class="ck-linkbtns ck-details-toggle"><button class="ck-linkbtn" type="button" onclick="ckToggleCampaignDetails()">\${detailsShown ? "Hide campaign details" : "View campaign details"}</button></div>
+      </div>\`;
+    }
+    function ckCampaignDetailsHtml(v) {
+      return \`<section class="ck-section" id="ck-campaign-details">
+        <div class="ck-sec-head"><h2>Campaign details</h2><span class="hint">Reactivation, all waves combined</span></div>
+        \${ckKpiRowHtml(v)}
+        <div class="ck-chart-row" style="margin-top:16px;">
+          \${ckWaveChartHtml(v)}
+          <div style="display:grid; gap:16px; align-content:start;">
+            \${ckLandedHtml(v)}
+            \${ckSafetyHtml(v)}
+          </div>
+        </div>
+        <div class="ck-chart-row rev" style="margin-top:16px;">
+          \${ckClicksHtml(v)}
+          <div></div>
+        </div>
+      </section>\`;
     }
 
     function todayAtLegalEaseHtml() {
@@ -26064,28 +26168,11 @@ function htmlShell() {
       const grossLabel = money.stripeConnected
         ? "$" + Number(money.gross || 0).toLocaleString("en-US", { maximumFractionDigits: 2 })
         : "Not connected yet";
+      const detailsShown = ckCampaignDetailsShown(v);
 
       const needsRogerBody = needsRoger.length
-        ? \`<div class="ck-approve-grid">\${needsRoger.map(todayNeedsRogerCardHtml).join("")}</div>\`
-        : '<div class="ck-card"><div class="ck-empty"><b style="color:var(--ck-good);">Nothing needs you right now.</b> Decisions appear here the moment one is waiting.</div></div>';
-
-      const campaignSections = v
-        ? \`<section class="ck-section">
-            <div class="ck-sec-head"><h2>Campaign at a glance</h2><span class="hint">Reactivation, all waves combined</span></div>
-            \${ckKpiRowHtml(v)}
-          </section>
-          <section class="ck-section">
-            <div class="ck-chart-row">
-              \${ckWaveChartHtml(v)}
-              <div style="display:grid; gap:16px; align-content:start;">
-                \${ckLandedHtml(v)}
-                \${ckSafetyHtml(v)}
-              </div>
-            </div>
-          </section>\`
-        : \`<section class="ck-section">
-            <div class="ck-card"><div class="ck-empty">Campaign numbers are not available with this sign-in yet. Everything else on this page is live.</div></div>
-          </section>\`;
+        ? \`<div style="display:grid; gap:14px;">\${needsRoger.map(todayNeedsRogerCardHtml).join("")}</div>\`
+        : '<div class="ck-card"><div class="ck-empty"><b style="color:var(--ck-teal);">Nothing needs you right now.</b> Decisions appear here the moment one is waiting.</div></div>';
 
       const watchlistBody = watchlist.length
         ? \`<div class="ck-rows">\${watchlist.map(item => \`<div class="ck-lrow warned"><span class="txt"><span class="t">\${esc(item.title)}</span><span class="s">\${esc(item.summary || "")}</span></span></div>\`).join("")}</div>\`
@@ -26104,7 +26191,7 @@ function htmlShell() {
           <div>
             <div class="ck-eyebrow">Today at LegalEase</div>
             <h1>\${esc(ckGreeting())}, Roger</h1>
-            \${ckSummaryLineHtml(v)}
+            \${ckSummaryLineHtml(v, needsRoger.length)}
           </div>
           <div class="ck-when">
             <div class="d">\${esc(cockpitLongDate())}</div>
@@ -26115,29 +26202,15 @@ function htmlShell() {
         \${ckHeaderPillsHtml(v, needsRoger.length, watchlist.length, monitors.length)}
 
         <section class="ck-section">
-          <div class="ck-sec-head"><h2>Needs Roger</h2><span class="hint">Only decisions that need you. Everything else runs on its own.</span></div>
-          \${needsRogerBody}
-        </section>
-
-        \${campaignSections}
-
-        <section class="ck-section">
-          <div class="ck-chart-row rev">
-            \${v ? ckClicksHtml(v) : ""}
-            \${ckAgentsHtml(monitors)}
-          </div>
+          <div class="ck-sec-head"><h2>Company scoreboard</h2><span class="hint">The whole business first. Campaign details live further down.</span></div>
+          \${ckScoreboardHtml()}
         </section>
 
         <section class="ck-section">
           <div class="ck-panel-grid">
-            <div class="ck-card">
-              <h2>Money</h2>
-              <div class="ck-rows" style="margin-top:14px;">
-                \${ckListRowHtml("dollar", "Collected", money.stripeConnected ? (money.sinceLabel ? "Stripe, since " + money.sinceLabel : "Stripe") : "Appears when payments connect", grossLabel, money.stripeConnected ? "" : "small")}
-                \${ckListRowHtml("fail", "Failed payments", money.stripeConnected ? "Reported by Stripe" : "Appears when payments connect", money.stripeConnected ? "None reported" : "Waiting", "small")}
-                \${ckListRowHtml("users", "Partner revenue", "Not booked from a real source yet", "Waiting", "small")}
-              </div>
-              \${money.note ? \`<div class="ck-meter-note">\${esc(money.note)}</div>\` : ""}
+            <div>
+              <div class="ck-sec-head" style="margin-bottom:14px;"><h2>Needs Roger</h2></div>
+              \${needsRogerBody}
             </div>
             <div class="ck-card">
               <h2>People stuck</h2>
@@ -26148,6 +26221,20 @@ function htmlShell() {
                 \${ckListRowHtml("minus", "Do-not-contact list", "Never emailed", s ? ckNum(stuck.suppressedContacts) : "...", "")}
               </div>
             </div>
+            <div class="ck-card">
+              <h2>Money</h2>
+              <div class="ck-rows" style="margin-top:14px;">
+                \${ckListRowHtml("dollar", "Collected", money.stripeConnected ? (money.sinceLabel ? "Stripe, since " + money.sinceLabel : "Stripe") : "Appears when payments connect", grossLabel, money.stripeConnected ? "" : "small")}
+                \${ckListRowHtml("fail", "Failed payments", money.stripeConnected ? "Reported by Stripe" : "Appears when payments connect", money.stripeConnected ? "None reported" : "Waiting", "small")}
+                \${ckListRowHtml("users", "Partner revenue", "Not booked from a real source yet", "Waiting", "small")}
+              </div>
+              \${money.note ? \`<div class="ck-meter-note">\${esc(money.note)}</div>\` : ""}
+            </div>
+          </div>
+        </section>
+
+        <section class="ck-section">
+          <div class="ck-panel-grid">
             <div class="ck-card">
               <h2>Partners and prospects</h2>
               <div class="ck-rows" style="margin-top:14px;">
@@ -26160,7 +26247,15 @@ function htmlShell() {
                 <button class="ck-linkbtn" type="button" onclick="location.hash='prospects'">Open Prospects</button>
               </div>
             </div>
+            \${ckCampaignSafetyHtml(v, detailsShown)}
+            \${ckSystemHealthHtml(v)}
           </div>
+        </section>
+
+        \${detailsShown ? ckCampaignDetailsHtml(v) : ""}
+
+        <section class="ck-section">
+          \${ckAgentsHtml(monitors)}
         </section>
 
         <section class="ck-section">
@@ -26178,10 +26273,6 @@ function htmlShell() {
               \${draftsBody}
             </div>
           </div>
-        </section>
-
-        <section class="ck-section">
-          \${ckSystemHealthHtml(v)}
         </section>
       </div></section>\`;
     }
@@ -29064,7 +29155,7 @@ function htmlShell() {
       const knownPages = ["cockpit", "upload", "contacts", "prospects", "revenue", "meetings", "support", "pages", "today", "overview", "daily-run", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "today";
       currentPageId = pageId;
-      document.body.classList.toggle("ck-mint", ["today", "overview"].includes(pageId));
+      document.body.classList.toggle("ck-wash", ["today", "overview"].includes(pageId));
       const canonicalHash = pageId === "overview" ? "today" : pageId === "partner-hub" ? "partners" : pageId;
       if (location.hash !== "#" + canonicalHash && !pathRoute) history.replaceState(null, "", "#" + canonicalHash);
       if (pageId === "safe-mode") {
