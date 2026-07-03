@@ -121,7 +121,15 @@ const coreStateCollections = [
   // SendGrid Event Webhook health telemetry (singleton). MUST stay in sync with
   // SENDGRID_WEBHOOK_HEALTH_COLLECTION in sendgrid-webhook.mjs, or webhook health silently
   // fails to persist (same trap). test-sendgrid-webhook.mjs asserts membership.
-  "sendgridWebhookHealth"
+  "sendgridWebhookHealth",
+  // Phase 1 — Company Memory (company-memory.mjs). Projections + direct engine emits;
+  // domain collections stay authoritative. Registered here or Supabase silently drops them.
+  "queueItems",
+  "companyContacts",
+  "companyOrganizations",
+  "companyEvents",
+  "agentRuns",
+  "approvals"
 ];
 const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth"]);
 

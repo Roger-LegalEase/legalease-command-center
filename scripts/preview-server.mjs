@@ -16,6 +16,8 @@ import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from
 import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
 import { buildVersionDrift, createVersionDriftCache } from "./version-truth.mjs";
 import { buildSafetyPosture } from "./safety-posture.mjs";
+import { wakeSnoozedQueueItems, transitionQueueItem } from "./company-memory.mjs";
+import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID, buildTodaySummary, projectCompanyMemory } from "./company-memory-projector.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
@@ -16048,6 +16050,9 @@ function htmlShell() {
     // show an Unverified state, never fall back to a hardcoded "Off"/"current" claim.
     let safetyPosture = null;
     let versionTruth = null;
+    // Today at LegalEase operating summary (Phase 1). null means "not loaded yet" — sections
+    // render honest placeholders, never fabricated numbers.
+    let todaySummary = null;
     let safeBootActive = false;
     let fullStateLoaded = false;
     let stateFetchDiagnostics = null;
@@ -17631,12 +17636,14 @@ function htmlShell() {
         optionalBootApi("/api/health/supabase", { timeoutMs: 2500 }),
         optionalBootApi("/api/backups", { timeoutMs: 2500 }),
         optionalBootApi("/api/safety/posture", { timeoutMs: 2500 }),
-        optionalBootApi("/api/version/drift", { timeoutMs: 6000 })
+        optionalBootApi("/api/version/drift", { timeoutMs: 6000 }),
+        optionalBootApi("/api/today/summary", { timeoutMs: 6000 })
       ]).then(results => {
         if (results[0].status === "fulfilled") supabaseHealth = results[0].value;
         if (results[1].status === "fulfilled") backups = results[1].value.backups || [];
         if (results[2].status === "fulfilled") safetyPosture = results[2].value;
         if (results[3].status === "fulfilled") versionTruth = results[3].value;
+        if (results[4].status === "fulfilled") todaySummary = results[4].value;
         try {
           window.__LE_BOOT.stage = "secondary-render";
           render();
@@ -25245,10 +25252,190 @@ function htmlShell() {
       return \`<section id="pages" class="\${pageClass("pages")} command-page section-page lee-bubble-safe-space"><div class="panel hero-panel"><div><div class="eyebrow">Pages</div><h1 class="big-title">Pages</h1><p class="muted">\${pageArtifacts.length ? "Partner page artifacts are available for review." : "Co-branded page factory not built yet."} This pass does not publish pages.</p></div><div class="card-actions"><button onclick="location.hash='partner-pages'">Open existing Partner Pages</button></div></div><div class="queue-review-list">\${pageArtifacts.map(item => \`<article class="queue-review-item"><div class="queue-review-item-main"><h3>\${esc(item.title || item.key || "Page artifact")}</h3><p>\${esc(item.summary?.answer || item.summary || item.notes || "Review page artifact before any external use.")}</p><p class="muted">Status: \${esc(item.review_state || item.status || "Needs review")}</p></div><div class="queue-review-actions"><button onclick="location.hash='partner-pages'">Review</button></div></article>\`).join("") || '<div class="empty">Co-branded page factory not built yet. Create a follow-up item before building it.</div>'}</div></section>\`;
     }
 
+    // ---- Today at LegalEase (Phase 1 operating page) -----------------------------------------
+    // One scrollable page over the Company Memory layer. Reads /api/today/summary (loaded at
+    // boot into todaySummary) plus the existing trust globals. Plain English only; every number
+    // is honest — unconnected sources say so instead of showing fabricated zeros-as-progress.
+
+    const FRIENDLY_AGENT_NAMES = {
+      "autonomy-cycle": "Operations assistant",
+      "sources-daily": "Source importer",
+      "publishing-run": "Publishing desk",
+      "outreach-sequencer": "Outreach desk",
+      "prospect-discovery": "Partner scout",
+      "prospect-scout": "Partner scout",
+      "codebase-health": "Code health monitor",
+      "engagement-growth": "Growth monitor",
+      "reactivation-sequencer": "Campaign monitor",
+      "company-memory": "Memory keeper",
+      "le-e": "Le-E",
+      "review-desk": "Review desk",
+      "support-inbox": "Support inbox",
+      "task-desk": "Task desk",
+      "rcap-revenue": "RCAP revenue desk",
+      "email-telemetry": "Email delivery monitor",
+      "storage-monitor": "Data safety monitor",
+      "calendar-reader": "Calendar reader",
+      "operations-assistant": "Operations assistant"
+    };
+    function friendlyAgentName(id = "") {
+      if (FRIENDLY_AGENT_NAMES[id]) return FRIENDLY_AGENT_NAMES[id];
+      if (/^loop-/.test(id)) return id.replace(/^loop-/, "").replace(/-/g, " ").replace(/^\w/, c => c.toUpperCase()) + " monitor";
+      return id.replace(/-/g, " ").replace(/^\w/, c => c.toUpperCase());
+    }
+
+    async function decideQueueItem(id, action) {
+      try {
+        if (action === "approve") {
+          await api("/api/approvals/decide", { method: "POST", body: JSON.stringify({ queueItemId: id }) });
+          toast("Approved. The action still runs only through its safety gates.");
+        } else if (action === "snooze") {
+          const until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+          await api("/api/queue/transition", { method: "POST", body: JSON.stringify({ id, status: "snoozed", snoozedUntil: until }) });
+          toast("Snoozed until tomorrow.");
+        } else if (action === "dismiss") {
+          await api("/api/queue/transition", { method: "POST", body: JSON.stringify({ id, status: "dismissed" }) });
+          toast("Dismissed.");
+        }
+        todaySummary = await api("/api/today/summary");
+      } catch (error) {
+        toast("That decision did not save. Try again.");
+      }
+      render();
+    }
+
+    function todayNeedsRogerCardHtml(item) {
+      const risk = item.riskLevel === "dangerous" ? "danger" : item.riskLevel === "caution" ? "warn" : "info";
+      return \`<article class="queue-review-item">
+        <div class="queue-review-item-main">
+          <div class="queue-review-kicker"><span class="queue-type-line">\${esc(friendlyAgentName(item.sourceEngine))}</span><span class="badge \${risk}">\${esc(item.requiresApproval ? "Needs your approval" : "Needs review")}</span></div>
+          <h3>\${esc(item.title)}</h3>
+          \${item.summary ? \`<p><strong>Why this matters:</strong> \${esc(item.summary)}</p>\` : ""}
+          \${item.recommendation ? \`<p class="muted"><strong>Recommended:</strong> \${esc(item.recommendation)}</p>\` : ""}
+        </div>
+        <div class="queue-review-actions">
+          \${item.requiresApproval ? \`<button class="primary" type="button" onclick="decideQueueItem('\${esc(item.id)}','approve')">Approve</button>\` : ""}
+          <button type="button" onclick="decideQueueItem('\${esc(item.id)}','snooze')">Snooze</button>
+          <button type="button" onclick="decideQueueItem('\${esc(item.id)}','dismiss')">Dismiss</button>
+        </div>
+      </article>\`;
+    }
+
+    function todayGoodMorningHtml() {
+      if (!todaySummary) {
+        return \`<p>\${esc(cockpitLongDate())} · Your summary is loading. Numbers appear only from connected sources.</p>\`;
+      }
+      const gm = todaySummary.goodMorning || {};
+      const parts = [];
+      if (gm.signupsConnected) parts.push(\`<b>\${esc(String(gm.paid))}</b> paid and <b>\${esc(String(gm.registered))}</b> registered users so far\`);
+      else parts.push("signup numbers are not connected yet");
+      if (gm.funnelConnected) parts.push(\`\${esc(String(gm.screeningsStarted))} screenings started, \${esc(String(gm.checkouts))} checkouts\`);
+      else parts.push("screening and checkout numbers arrive once the product connection is live");
+      if (gm.supportOpen) parts.push(\`<b>\${esc(String(gm.supportOpen))}</b> support request\${gm.supportOpen === 1 ? "" : "s"} need review\`);
+      const campaignLine = gm.campaignSafe
+        ? \`The reactivation campaign is \${esc(gm.campaignStatus || "unknown")} and no safety limits are tripped.\`
+        : "A campaign safety limit tripped — it is waiting for you below.";
+      return \`<p>\${esc(cockpitLongDate())} · \${parts.join("; ")}. \${campaignLine}</p>\`;
+    }
+
+    function todaySectionHtml(title, meta, bodyHtml) {
+      return \`<div class="command-panel">
+        <div class="command-panel-head"><h2>\${esc(title)}</h2>\${meta ? \`<span class="meta">\${esc(meta)}</span>\` : ""}</div>
+        \${bodyHtml}
+      </div>\`;
+    }
+
+    function todayStatRowsHtml(rows) {
+      return \`<div class="support-status-list">\${rows.map(([label, value]) => \`<div class="support-status-row"><strong>\${esc(label)}</strong><span>\${esc(String(value))}</span></div>\`).join("")}</div>\`;
+    }
+
+    function todayAtLegalEaseHtml() {
+      const s = todaySummary;
+      const needsRoger = s ? (s.needsRoger || []) : [];
+      const watchlist = s ? (s.watchlist || []) : [];
+      const monitors = s ? (s.runningAutomatically || []) : [];
+      const money = s ? (s.money || {}) : {};
+      const stuck = s ? (s.peopleStuck || {}) : {};
+      const partners = s ? (s.partners || {}) : {};
+      const meetings = s ? (s.meetings || []) : [];
+      const drafts = s ? (s.draftsReady || []) : [];
+      const grossLabel = money.stripeConnected
+        ? "$" + Number(money.gross || 0).toLocaleString("en-US", { maximumFractionDigits: 2 }) + (money.sinceLabel ? " since " + money.sinceLabel : "")
+        : "Not connected yet";
+
+      return \`<section class="operator-v31"><div class="command-surface">
+        <div class="command-top">
+          <div class="command-heading">
+            <h1>Today at LegalEase</h1>
+            \${todayGoodMorningHtml()}
+          </div>
+          <button class="command-run-button" type="button" onclick="location.hash='daily-run'">Open Daily Run <span class="count">\${esc(String(needsRoger.length))}</span></button>
+        </div>
+
+        \${todaySectionHtml("Needs Roger", needsRoger.length + " decision" + (needsRoger.length === 1 ? "" : "s"),
+          needsRoger.map(todayNeedsRogerCardHtml).join("") ||
+          '<div class="command-empty"><b>Nothing needs you right now.</b>Decisions appear here the moment one is waiting.</div>')}
+
+        <div class="command-cols">
+          <div>
+            \${todaySectionHtml("Watchlist", watchlist.length ? watchlist.length + " item(s) to keep an eye on" : "All quiet",
+              watchlist.map(item => \`<div class="support-status-row"><strong>\${esc(item.title)}</strong><span>\${esc(item.summary || "")}</span></div>\`).join("") ||
+              '<p class="muted">Nothing is trending toward a problem. Email delivery, data saving, and campaign safety are all watched.</p>')}
+
+            \${todaySectionHtml("Money", "",
+              todayStatRowsHtml([
+                ["Collected", grossLabel],
+                ["Failed payments", money.stripeConnected ? "None reported" : "Appears when payments connect"],
+                ["Partner revenue", "Not booked from a real source yet"]
+              ]) + (money.note ? \`<p class="muted">\${esc(money.note)}</p>\` : ""))}
+
+            \${todaySectionHtml("People stuck", "",
+              todayStatRowsHtml([
+                ["Abandoned screenings", s ? stuck.abandonedScreenings : "…"],
+                ["Checkout abandoned", s ? stuck.checkoutAbandoned : "…"],
+                ["Held for your review", s ? stuck.heldContacts : "…"],
+                ["Do-not-contact list", s ? stuck.suppressedContacts : "…"]
+              ]))}
+
+            \${todaySectionHtml("Partners & prospects", "",
+              todayStatRowsHtml([
+                ["Live partners", s ? partners.live : "…"],
+                ["Prospects waiting for review", s ? partners.prospectsPendingReview : "…"],
+                ["Follow-ups due", s ? partners.followupsDue : "…"]
+              ]) + '<div class="more-card-actions"><button type="button" onclick="location.hash=\\'partners\\'">Open Partners</button><button type="button" onclick="location.hash=\\'prospects\\'">Open Prospects</button></div>')}
+          </div>
+          <div>
+            \${todaySectionHtml("Running automatically", monitors.length + " helper" + (monitors.length === 1 ? "" : "s"),
+              (monitors.length
+                ? \`<div class="support-status-list">\${monitors.map(id => \`<div class="support-status-row"><strong>\${esc(friendlyAgentName(id))}</strong><span>Running safely</span></div>\`).join("")}</div>\`
+                : '<p class="muted">Helpers report here after their next check-in.</p>') +
+              '<div class="command-footer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg> Helpers watch and prepare. They never send, publish, or spend without your approval.</div>')}
+
+            \${todaySectionHtml("Meetings", meetings.length ? meetings.length + " coming up" : "",
+              meetings.map(m => \`<div class="support-status-row"><strong>\${esc(m.title)}</strong><span>\${esc(m.recommendation || "Review the prep notes.")}</span></div>\`).join("") ||
+              '<p class="muted">No meetings need preparation. Briefs appear here from your calendar connection.</p>')}
+
+            \${todaySectionHtml("Drafts ready", drafts.length ? drafts.length + " waiting" : "",
+              drafts.map(d => \`<div class="support-status-row"><strong>\${esc(d.title)}</strong><span>\${esc(friendlyAgentName(d.sourceEngine))}</span></div>\`).join("") ||
+              '<p class="muted">Nothing is drafted right now. Drafts land here for your review — nothing sends itself.</p>')}
+
+            \${todaySectionHtml("System health", "",
+              \`\${versionTruthInlineHtml()}
+              <div class="support-status-list">
+                <div class="support-status-row"><strong>\${esc(emailPostureLabel())}</strong><span>\${safetyPosture ? "Verified" : "Checking"}</span></div>
+                <div class="support-status-row"><strong>\${esc(socialPostureLabel())}</strong><span>\${safetyPosture ? "Verified" : "Checking"}</span></div>
+                <div class="support-status-row"><strong>Database</strong><span>\${supabaseHealth?.connected ? "Healthy" : "Checking"}</span></div>
+              </div>
+              <div class="more-card-actions"><button type="button" onclick="location.hash='app-status'">Open App Status</button></div>\`)}
+          </div>
+        </div>
+      </div></section>\`;
+    }
+
     function commandCenterOverviewHtml(posts) {
       const dailyRunBookendCompatibility = "\${dailyRunTodayPanelHtml()}";
       void dailyRunBookendCompatibility;
-      return todaySinglePaneHtml();
+      return todayAtLegalEaseHtml();
       const nowItem = cockpitNowItem(posts);
       const intention = cockpitDailyIntention(nowItem);
       const threads = cockpitThreadsOpen();
@@ -28120,7 +28307,7 @@ function htmlShell() {
       const requestedPage = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#cockpit")).replace("#", "");
       const routeAliases = { overview:"today", command:"growth", "le-e":"lee", partner:"partners", "partner-hub":"partners", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", health:"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings", replies:"growth-inbox", "inbox-replies":"growth-inbox", lists:"contacts", contact:"contacts", people:"contacts", "upload-list":"upload", "list-upload":"upload", import:"upload", "import-list":"upload", campaign:"campaigns", "campaign-control":"campaigns", "campaigns-control":"campaigns", prospect:"prospects", prospects:"prospects", "rcap-prospects":"prospects", "rcap-pipeline":"prospects", money:"revenue", payments:"revenue", stripe:"revenue", calendar:"meetings", meeting:"meetings", "meeting-prep":"meetings", "support-inbox":"support", "partner-pages-review":"pages", "page-review":"pages", "co-branded-pages":"pages", system:"os-health" };
       const normalizedPage = routeAliases[requestedPage] || requestedPage;
-      const knownPages = ["cockpit", "upload", "contacts", "prospects", "revenue", "meetings", "support", "pages", "today", "overview", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
+      const knownPages = ["cockpit", "upload", "contacts", "prospects", "revenue", "meetings", "support", "pages", "today", "overview", "daily-run", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "today";
       currentPageId = pageId;
       const canonicalHash = pageId === "overview" ? "today" : pageId === "partner-hub" ? "partners" : pageId;
@@ -28154,6 +28341,7 @@ function htmlShell() {
         \${safeRenderModule("support", () => pageId === "support" ? supportPageHtml(pageClass) : "")}
         \${safeRenderModule("pages", () => pageId === "pages" ? pagesPageHtml(pageClass) : "")}
         \${safeRenderModule("overview", () => ["today", "overview"].includes(pageId) ? commandCenterOverviewHtml(reviewPosts) : "")}
+        \${safeRenderModule("daily-run", () => pageId === "daily-run" ? todaySinglePaneHtml() : "")}
         \${safeRenderModule("focus", () => focusPageHtml(pageClass))}
         \${safeRenderModule("lee", () => leePageHtml(pageClass))}
         \${safeRenderModule("growth", () => growthWorkspaceHtml(pageClass))}
@@ -31974,6 +32162,89 @@ async function handleRequest(request, response) {
       env: process.env,
       socialLiveGates: platforms.map((platform) => liveGateSummary(platform))
     }));
+    return;
+  }
+
+  // ---- Company Memory (Phase 1) ------------------------------------------------------------
+  // The shared operating layer over every engine (company-memory.mjs). Reads are session-gated
+  // GETs; transitions write ONLY the queueItems/approvals collections (scoped write — a queue
+  // decision can never rewrite unrelated state). Approving performs NO action: it records an
+  // Approval that the existing gated executors require; sends/publishes stay behind their gates.
+  // One call powers Today at LegalEase. Computed on demand from a fresh projection over the
+  // domain ledgers — reading the page never writes anything.
+  if (url.pathname === "/api/today/summary" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, buildTodaySummary(currentState, { env: process.env }));
+    return;
+  }
+
+  if (url.pathname === "/api/queue" && request.method === "GET") {
+    const currentState = await store.readState();
+    // Serve the same on-demand projection the Today summary uses, so the queue is complete
+    // even before the first scheduled refresh persisted it. Reading never writes.
+    const projected = projectCompanyMemory(currentState, { env: process.env }).state;
+    const items = wakeSnoozedQueueItems(Array.isArray(projected.queueItems) ? projected.queueItems : []);
+    const open = items.filter((i) => !["dismissed", "completed"].includes(i.status));
+    sendJson(response, {
+      items: items.slice(0, 200),
+      counts: {
+        needsRoger: open.filter((i) => i.status === "needs_roger").length,
+        open: open.length,
+        snoozed: open.filter((i) => i.status === "snoozed").length,
+        blocked: open.filter((i) => i.status === "blocked").length
+      }
+    });
+    return;
+  }
+
+  // Approval decisions route under /api/approvals/ ON PURPOSE: permissionForRequest grants
+  // POST /api/approval* the "approve" permission, so only approve-capable roles land here.
+  if (url.pathname === "/api/approvals/decide" && request.method === "POST") {
+    const body = (await readJson(request)) || {};
+    const currentState = await store.readState();
+    const decision = String(body.decision || "approved");
+    if (decision !== "approved") {
+      sendJson(response, { error: "This endpoint only records approvals. Use /api/queue/transition for snooze/dismiss." }, 400);
+      return;
+    }
+    // Project before transitioning: stable ids mean an item shown from the on-demand summary
+    // resolves here even if no scheduled refresh has persisted the queue yet.
+    const result = transitionQueueItem(projectCompanyMemory(currentState, { env: process.env }).state, {
+      id: String(body.queueItemId || body.id || ""),
+      status: "approved",
+      actor: accessDecision.actor?.label || accessDecision.actor?.role || "owner",
+      note: String(body.note || "")
+    });
+    if (!result.ok) {
+      sendJson(response, { error: result.error }, 400);
+      return;
+    }
+    await store.writeCollections({ queueItems: result.state.queueItems, approvals: result.state.approvals });
+    sendJson(response, { ok: true, item: result.item, approvalId: result.approvalId });
+    return;
+  }
+
+  if (url.pathname === "/api/queue/transition" && request.method === "POST") {
+    const body = (await readJson(request)) || {};
+    const status = String(body.status || "");
+    if (status === "approved") {
+      sendJson(response, { error: "Approvals must go through /api/approvals/decide." }, 400);
+      return;
+    }
+    const currentState = await store.readState();
+    const result = transitionQueueItem(projectCompanyMemory(currentState, { env: process.env }).state, {
+      id: String(body.id || ""),
+      status,
+      actor: accessDecision.actor?.label || accessDecision.actor?.role || "owner",
+      note: String(body.note || ""),
+      snoozedUntil: String(body.snoozedUntil || "")
+    });
+    if (!result.ok) {
+      sendJson(response, { error: result.error }, 400);
+      return;
+    }
+    await store.writeCollections({ queueItems: result.state.queueItems, approvals: result.state.approvals });
+    sendJson(response, { ok: true, item: result.item });
     return;
   }
 
