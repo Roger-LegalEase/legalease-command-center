@@ -15133,7 +15133,6 @@ function htmlShell() {
     .ck-pill.navy { background:#EBEEF8; color:var(--ck-ink); }
     .ck-pill.crit { background:var(--ck-orange-tint); color:var(--ck-crit); }
     .ck-dot { width:8px; height:8px; border-radius:50%; background:currentColor; flex:none; }
-    .ck-section { margin-top:34px; }
     .ck-sec-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
     .ck-sec-head .hint { color:var(--ck-muted); font-size:14.5px; }
     .ck-card { background:#fff; border:1px solid var(--ck-line); border-radius:var(--ck-radius); box-shadow:var(--ck-shadow); padding:22px; }
@@ -15156,6 +15155,7 @@ function htmlShell() {
     .ck-chip.bad { background:var(--ck-bad-tint); color:var(--ck-bad); }
     .ck-chip.off { background:#F1F4F6; color:var(--ck-ink2); }
     .ck-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; }
+    .ck-kpis.ck-kpis-score { grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); }
     .ck-kpi .top { display:flex; justify-content:space-between; align-items:center; }
     .ck-kpi .label { font-size:16px; font-weight:600; color:var(--ck-ink2); }
     .ck-kpi .ico { width:38px; height:38px; border-radius:50%; border:1px solid var(--ck-line); display:grid; place-items:center; color:var(--ck-ink2); flex:none; }
@@ -15170,8 +15170,27 @@ function htmlShell() {
     .ck-delta.down { background:var(--ck-bad-tint); color:var(--ck-bad); }
     .ck-delta.flat { background:#F1F4F6; color:var(--ck-ink2); }
     .ck-kpi .vs { font-size:13.5px; color:var(--ck-muted); margin-left:8px; }
-    .ck-chart-row { display:grid; grid-template-columns:1.65fr 1fr; gap:16px; align-items:stretch; }
-    .ck-chart-row.rev { grid-template-columns:1fr 1.4fr; }
+    /* ---- Modular dashboard layout system ----
+       DashboardShell (.ck-sheet) > DashboardSection (.ck-dash-section) > DashboardGrid
+       (.ck-dash-grid, 12 columns, dense flow) > ModuleCard (.ck-module, size-* spans).
+       Modules size to content; never fixed page heights, never absolute positioning. */
+    .ck-dash-section { margin-top:34px; }
+    .ck-dash-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:16px; grid-auto-flow:dense; align-items:start; }
+    .ck-module { min-width:0; grid-column:span 12; }
+    .ck-module.size-full { grid-column:span 12; }
+    .ck-module.size-wide { grid-column:span 8; }
+    .ck-module.size-half { grid-column:span 6; }
+    .ck-module.size-third { grid-column:span 4; }
+    .ck-module.size-quarter { grid-column:span 3; }
+    .ck-module-body { min-height:var(--mod-min, 0); }
+    .ck-module-body.scroll { max-height:var(--mod-max, none); overflow-y:auto; overflow-x:hidden; }
+    @media (max-width:1080px) {
+      .ck-module.size-wide { grid-column:span 12; }
+      .ck-module.size-half, .ck-module.size-third, .ck-module.size-quarter { grid-column:span 6; }
+    }
+    @media (max-width:720px) {
+      .ck-module, .ck-module.size-full, .ck-module.size-wide, .ck-module.size-half, .ck-module.size-third, .ck-module.size-quarter { grid-column:span 12; }
+    }
     .ck-chart-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
     .ck-chart-head .big { font-size:30px; font-weight:700; letter-spacing:-.02em; margin-top:6px; color:var(--ck-ink); }
     .ck-chart-head .big span { font-size:16px; font-weight:600; color:var(--ck-ink2); letter-spacing:0; }
@@ -15218,9 +15237,8 @@ function htmlShell() {
     .ck-meter.steel .track { background:#E9ECF7; } .ck-meter.steel .fill { background:var(--ck-steel); }
     .ck-meter .sub { font-size:13px; color:var(--ck-muted); margin-top:4px; }
     .ck-meter-note { font-size:13.5px; color:var(--ck-muted); margin-top:10px; }
-    .ck-viz-empty { display:grid; place-items:center; gap:6px; text-align:center; background:var(--ck-tint); border-radius:12px; padding:24px 16px; color:var(--ck-muted); font-size:14.5px; margin-top:14px; min-height:120px; }
+    .ck-viz-empty { display:grid; place-items:center; gap:6px; text-align:center; background:var(--ck-tint); border-radius:12px; padding:14px 16px; color:var(--ck-muted); font-size:14.5px; margin-top:12px; }
     .ck-viz-empty svg { width:20px; height:20px; }
-    .ck-viz-empty.slim { min-height:64px; padding:14px 16px; }
     .ck-minibar-caption { display:flex; justify-content:space-between; gap:10px; font-size:13.5px; color:var(--ck-muted); margin-top:6px; }
     .ck-minibar-caption b { color:var(--ck-ink); font-weight:650; }
     .ck-counters { display:grid; grid-template-columns:repeat(auto-fit,minmax(108px,1fr)); gap:8px; margin-top:12px; }
@@ -15255,7 +15273,6 @@ function htmlShell() {
     .ck-agent .stripe { height:6px; border-radius:999px; background:var(--ck-teal); }
     .ck-agent .stripe.warn { background:var(--ck-orange-deep); }
     .ck-agent .stripe.off { background:#DDE3E9; }
-    .ck-panel-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; align-items:start; }
     .ck-health { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
     .ck-health .ck-pill { font-size:14.5px; }
     .ck-empty { color:var(--ck-muted); font-size:15px; padding:8px 0; }
@@ -15265,7 +15282,6 @@ function htmlShell() {
     .ck-linkbtn { font:inherit; font-size:15px; font-weight:650; border-radius:10px; border:1px solid var(--ck-line); background:#fff; color:var(--ck-ink); padding:9px 16px; min-height:42px; cursor:pointer; }
     .ck-linkbtn:hover { background:var(--ck-tint); }
     .today-cockpit .deploy-truth-inline { margin:0 0 12px; }
-    @media (max-width:980px) { .ck-chart-row, .ck-chart-row.rev { grid-template-columns:1fr; } }
     @media (max-width:720px) { .ck-sheet { padding:22px 14px 30px; border-radius:18px; } .ck-sheet h1 { font-size:27px; } .ck-kpi .value { font-size:38px; } .ck-approve h3 { padding-right:0; } .ck-approve .risk { position:static; display:inline-block; margin-top:2px; } }
     :root {
       --le-navy:#0A1A5C;
@@ -25816,7 +25832,7 @@ function htmlShell() {
       const gm = s ? (s.goodMorning || {}) : {};
       const money = s ? (s.money || {}) : {};
       const partners = s ? (s.partners || {}) : {};
-      return \`<div class="ck-kpis" id="ck-scoreboard">
+      return \`<div class="ck-kpis ck-kpis-score" id="ck-scoreboard">
         \${ckScoreCardHtml("Revenue", "dollar", Boolean(money.stripeConnected), "$" + ckNum(money.gross), money.stripeConnected ? (money.sinceLabel ? "Stripe, since " + money.sinceLabel : "From Stripe") : "Connect payments to see money here")}
         \${ckScoreCardHtml("Web visits", "search", false, "", "Traffic source not connected")}
         \${ckScoreCardHtml("Accounts created", "users", Boolean(gm.signupsConnected), ckNum(gm.registered), gm.signupsConnected ? ckNum(gm.paid) + " paid" : "Signup source not connected")}
@@ -25997,10 +26013,7 @@ function htmlShell() {
           <div class="bar"><i style="width:\${pct.toFixed(0)}%; background:\${fillColor[tone]};"></i></div>
         </div>\`;
       }).join("");
-      return \`<div class="ck-card" style="margin-top:16px;">
-        <div class="ck-sec-head" style="margin-bottom:2px;"><h2>Conversion funnel</h2><span class="hint">\${wired ? "From the product funnel" : "Product funnel not wired yet"}</span></div>
-        <div class="ck-funnel">\${cells}</div>
-      </div>\`;
+      return \`<div class="ck-funnel">\${cells}</div>\`;
     }
     // Money extras: consumer/partner split, month-to-date, honest not-wired counters,
     // and the real last Stripe sync time from the served snapshot.
@@ -26047,12 +26060,9 @@ function htmlShell() {
         <div class="line"><span class="lab">\${esc(label)}</span><span class="num">\${ckNum(value)}</span></div>
         <div class="track"><div class="fill" style="width:\${Math.max(value / maxRow * 100, value > 0 ? 4 : 0).toFixed(0)}%;"></div></div>
       </div>\`).join("");
-      return \`<div class="ck-card">
-        <div class="ck-sec-head" style="margin-bottom:4px;"><h2>Social pulse</h2><span class="hint">Content pipeline</span></div>
-        <div class="ck-status-grid">\${dots}</div>
+      return \`<div class="ck-status-grid">\${dots}</div>
         \${bars}
-        <div class="ck-meter-note">Followers and engagement appear when a social account connects.</div>
-      </div>\`;
+        <div class="ck-meter-note">Followers and engagement appear when a social account connects.</div>\`;
     }
     // Comments & messages: real growth-inbox / support / partner counters; social
     // comments and DMs have no connected source yet.
@@ -26061,15 +26071,12 @@ function htmlShell() {
       const partners = todaySummary ? (todaySummary.partners || {}) : {};
       const inbox = Array.isArray(state.growthInbox) ? state.growthInbox : null;
       const openInbox = inbox ? inbox.filter(i => !["converted", "ignored"].includes(i.status)).length : null;
-      return \`<div class="ck-card">
-        <div class="ck-sec-head" style="margin-bottom:4px;"><h2>Comments and messages</h2><span class="hint">What needs a reply</span></div>
-        <div class="ck-counters">
+      return \`<div class="ck-counters" style="margin-top:0;">
           \${ckCounterHtml(openInbox === null ? "Loading" : openInbox, "Inbox items open", openInbox > 0 ? "alert" : "good")}
           \${ckCounterHtml(todaySummary ? Number(gm.supportOpen) || 0 : "Loading", "Support requests", (Number(gm.supportOpen) || 0) > 0 ? "alert" : "good")}
           \${ckCounterHtml(todaySummary ? Number(partners.followupsDue) || 0 : "Loading", "Partner follow ups", (Number(partners.followupsDue) || 0) > 0 ? "alert" : "good")}
           \${ckCounterHtml("Not connected yet", "Social comments and DMs", "")}
-        </div>
-      </div>\`;
+        </div>\`;
     }
     // Watchlist source-status dots: teal healthy, orange alert, navy stable, gray not wired.
     function ckWatchStatusHtml(v) {
@@ -26283,11 +26290,8 @@ function htmlShell() {
             <div class="stripe"></div>
           </div>\`).join("")
         : '<div class="ck-empty">Helpers report here after their next check-in.</div>';
-      return \`<div class="ck-card">
-        <div class="ck-sec-head" style="margin-bottom:4px;"><h2>Running automatically</h2><span class="hint">Quiet unless something needs you</span></div>
-        <div class="ck-agents">\${cards}</div>
-        <div class="ck-footnote">\${CK_ICONS.shield} Helpers watch and prepare. They never send, publish, or spend without your approval.</div>
-      </div>\`;
+      return \`<div class="ck-agents" style="margin-top:0;">\${cards}</div>
+        <div class="ck-footnote">\${CK_ICONS.shield} Helpers watch and prepare. They never send, publish, or spend without your approval.</div>\`;
     }
     function ckSystemHealthHtml(v) {
       const pills = [];
@@ -26313,12 +26317,9 @@ function htmlShell() {
           ? '<span class="ck-pill teal"><span class="ck-dot"></span>Delivery feedback flowing</span>'
           : '<span class="ck-pill orange"><span class="ck-dot"></span>Delivery feedback needs attention</span>');
       }
-      return \`<div class="ck-card">
-        <div class="ck-sec-head" style="margin-bottom:10px;"><h2>System health</h2><span class="hint">Quiet unless something is wrong. Details live on App Status.</span></div>
-        \${versionTruthInlineHtml()}
+      return \`\${versionTruthInlineHtml()}
         <div class="ck-health">\${pills.join("")}</div>
-        <div class="ck-linkbtns"><button class="ck-linkbtn" type="button" onclick="location.hash='app-status'">Open App Status</button></div>
-      </div>\`;
+        <div class="ck-linkbtns"><button class="ck-linkbtn" type="button" onclick="location.hash='app-status'">Open App Status</button></div>\`;
     }
 
     // Campaign visibility is one operating lane, not the scoreboard: a compact safety module
@@ -26341,12 +26342,7 @@ function htmlShell() {
       return Boolean((v.thresholds && v.thresholds.tripped) || gm.campaignSafe === false || telemetryBroken);
     }
     function ckCampaignSafetyHtml(v, detailsShown) {
-      if (!v) {
-        return \`<div class="ck-card">
-          <div class="ck-sec-head" style="margin-bottom:6px;"><h2>Campaign safety</h2></div>
-          <div class="ck-empty">Campaign numbers are not available with this sign-in yet.</div>
-        </div>\`;
-      }
+      if (!v) return "";
       const stats = ckWaveStats(v);
       const rates = v.rates || {};
       const sent = rates.sent || 0;
@@ -26377,9 +26373,7 @@ function htmlShell() {
           <div class="track"><div class="fill" style="width:\${Math.min(util, 100).toFixed(0)}%;"></div></div>
         </div>\`;
       }
-      return \`<div class="ck-card">
-        <div class="ck-sec-head" style="margin-bottom:8px;"><h2>Campaign safety</h2><span class="hint">Reactivation</span></div>
-        <div class="ck-health" style="margin-bottom:12px;">\${pills.join("")}</div>
+      return \`<div class="ck-health" style="margin-bottom:12px;">\${pills.join("")}</div>
         <div class="ck-rows">
           <div class="ck-row"><span class="name">Waves released</span><span class="val">\${ckNum(stats.released.length)} of \${ckNum(stats.waves.length)}</span></div>
           <div class="ck-row"><span class="name">Emails sent</span><span class="val">\${ckNum(sent)}</span></div>
@@ -26387,25 +26381,21 @@ function htmlShell() {
         </div>
         \${riskMeter}
         <div class="ck-meter-note">Next: \${esc(v.nextRecommendedAction || "nothing right now.")}</div>
-        <div class="ck-linkbtns ck-details-toggle"><button class="ck-linkbtn" type="button" onclick="ckToggleCampaignDetails()">\${detailsShown ? "Hide campaign details" : "View campaign details"}</button></div>
-      </div>\`;
+        <div class="ck-linkbtns ck-details-toggle"><button class="ck-linkbtn" type="button" onclick="ckToggleCampaignDetails()">\${detailsShown ? "Hide campaign details" : "View campaign details"}</button></div>\`;
     }
+    // Campaign details is itself a nested dashboard grid: charts are grid cells with
+    // size spans, not hand-built left/right columns.
     function ckCampaignDetailsHtml(v) {
-      return \`<section class="ck-section" id="ck-campaign-details">
+      return \`<div id="ck-campaign-details">
         <div class="ck-sec-head"><h2>Campaign details</h2><span class="hint">Reactivation, all waves combined</span></div>
-        \${ckKpiRowHtml(v)}
-        <div class="ck-chart-row" style="margin-top:16px;">
-          \${ckWaveChartHtml(v)}
-          <div style="display:grid; gap:16px; align-content:start;">
-            \${ckLandedHtml(v)}
-            \${ckSafetyHtml(v)}
-          </div>
+        <div class="ck-dash-grid">
+          <div class="ck-module size-full">\${ckKpiRowHtml(v)}</div>
+          <div class="ck-module size-wide">\${ckWaveChartHtml(v)}</div>
+          <div class="ck-module size-third">\${ckLandedHtml(v)}</div>
+          <div class="ck-module size-third">\${ckSafetyHtml(v)}</div>
+          <div class="ck-module size-wide">\${ckClicksHtml(v)}</div>
         </div>
-        <div class="ck-chart-row rev" style="margin-top:16px;">
-          \${ckClicksHtml(v)}
-          <div></div>
-        </div>
-      </section>\`;
+      </div>\`;
     }
 
     function todayAtLegalEaseHtml() {
@@ -26423,25 +26413,12 @@ function htmlShell() {
         ? "$" + Number(money.gross || 0).toLocaleString("en-US", { maximumFractionDigits: 2 })
         : "Not connected yet";
       const detailsShown = ckCampaignDetailsShown(v);
-
-      const needsRogerBody = needsRoger.length
-        ? \`<div style="display:grid; gap:14px;">\${needsRoger.map(todayNeedsRogerCardHtml).join("")}</div>\`
-        : '<div class="ck-card"><div class="ck-empty"><b style="color:var(--ck-teal);">Nothing needs you right now.</b> Decisions appear here the moment one is waiting.</div></div>';
-
-      const watchlistBody = watchlist.length
-        ? \`<div class="ck-rows">\${watchlist.map(item => \`<div class="ck-lrow warned"><span class="txt"><span class="t">\${esc(item.title)}</span><span class="s">\${esc(item.summary || "")}</span></span></div>\`).join("")}</div>\`
-        : '<div class="ck-empty">Nothing trending toward a problem.</div>';
-
-      const meetingsBody = meetings.length
-        ? \`<div class="ck-rows">\${meetings.map(m => ckListRowHtml("calendar", m.title, m.recommendation || "Review the prep notes.", "", "small")).join("")}</div>\`
-        : '<div class="ck-empty">No meetings need prep. Briefs arrive from your calendar.</div>';
-
-      const draftsBody = drafts.length
-        ? \`<div class="ck-rows">\${drafts.map(d => ckListRowHtml("doc", d.title, friendlyAgentName(d.sourceEngine), "", "small")).join("")}</div>\`
-        : '<div class="ck-empty">Nothing drafted right now.</div>';
-
-      return \`<section class="operator-v31 today-cockpit"><div class="ck-sheet">
-        <div class="ck-topbar">
+      const ctx = {
+        s, v, money, stuck, partners, meetings, drafts, watchlist, monitors, needsRoger,
+        detailsShown, grossLabel,
+        gm: s ? (s.goodMorning || {}) : {}
+      };
+      const headerHtml = \`<div class="ck-topbar">
           <div>
             <div class="ck-eyebrow">Today at LegalEase</div>
             <h1>\${esc(ckGreeting())}, Roger</h1>
@@ -26453,88 +26430,155 @@ function htmlShell() {
             <button class="ck-run-btn" type="button" onclick="location.hash='daily-run'">Open Daily Run <span class="count">\${esc(String(needsRoger.length))}</span></button>
           </div>
         </div>
-        \${ckHeaderPillsHtml(v, needsRoger.length, watchlist.length, monitors.length)}
-
-        <section class="ck-section">
-          <div class="ck-sec-head"><h2>Company scoreboard</h2><span class="hint">The whole business first. Campaign details live further down.</span></div>
-          \${ckScoreboardHtml()}
-          \${ckFunnelStripHtml()}
-        </section>
-
-        <section class="ck-section">
-          <div class="ck-panel-grid">
-            <div>
-              <div class="ck-sec-head" style="margin-bottom:14px;"><h2>Needs Roger</h2></div>
-              \${needsRogerBody}
-            </div>
-            <div class="ck-card">
-              <h2>People stuck</h2>
-              <div style="margin-top:6px;">
-                \${ckPeopleStuckVizHtml(s, stuck)}
-              </div>
-            </div>
-            <div class="ck-card">
-              <h2>Money</h2>
-              <div class="ck-rows" style="margin-top:14px;">
-                \${ckListRowHtml("dollar", "Collected", money.stripeConnected ? (money.sinceLabel ? "Stripe, since " + money.sinceLabel : "Stripe") : "Appears when payments connect", grossLabel, money.stripeConnected ? "" : "small")}
-              </div>
-              \${ckMoneyVizHtml(money)}
-              \${ckMoneyCountersHtml(money)}
-            </div>
-          </div>
-        </section>
-
-        <section class="ck-section">
-          <div class="ck-panel-grid">
-            <div class="ck-card">
-              <h2>Partners and prospects</h2>
-              <div class="ck-rows" style="margin-top:14px;">
-                \${ckListRowHtml("check", "Live partners", "Active now", s ? ckNum(partners.live) : "...", s && partners.live > 0 ? "good" : "")}
-                \${ckListRowHtml("search", "Prospects waiting for review", "Found by the prospect finder", s ? ckNum(partners.prospectsPendingReview) : "...", s && partners.prospectsPendingReview > 0 ? "warn" : "")}
-                \${ckListRowHtml("calendar", "Follow ups due", "This week", s ? ckNum(partners.followupsDue) : "...", "")}
-              </div>
-              <div class="ck-linkbtns">
-                <button class="ck-linkbtn" type="button" onclick="location.hash='partners'">Open Partners</button>
-                <button class="ck-linkbtn" type="button" onclick="location.hash='prospects'">Open Prospects</button>
-              </div>
-            </div>
-            \${ckCampaignSafetyHtml(v, detailsShown)}
-            \${ckSystemHealthHtml(v)}
-          </div>
-        </section>
-
-        \${detailsShown ? ckCampaignDetailsHtml(v) : ""}
-
-        <section class="ck-section">
-          \${ckAgentsHtml(monitors)}
-        </section>
-
-        <section class="ck-section">
-          <div class="ck-panel-grid">
-            \${ckSocialPulseHtml()}
-            \${ckInboxPulseHtml()}
-            <div class="ck-card">
-              <div class="ck-sec-head" style="margin-bottom:6px;"><h2>Watchlist</h2><span class="hint">\${watchlist.length ? watchlist.length + " to keep an eye on" : "All quiet"}</span></div>
-              \${ckWatchStatusHtml(v)}
-              \${watchlistBody}
-            </div>
-          </div>
-        </section>
-
-        <section class="ck-section">
-          <div class="ck-panel-grid">
-            <div class="ck-card">
-              <div class="ck-sec-head" style="margin-bottom:6px;"><h2>Meetings</h2><span class="hint">\${meetings.length ? meetings.length + " coming up" : ""}</span></div>
-              \${meetingsBody}
-            </div>
-            <div class="ck-card">
-              <div class="ck-sec-head" style="margin-bottom:6px;"><h2>Drafts ready</h2><span class="hint">\${drafts.length ? drafts.length + " waiting" : ""}</span></div>
-              \${draftsBody}
-            </div>
-          </div>
-        </section>
-      </div></section>\`;
+        \${ckHeaderPillsHtml(v, needsRoger.length, watchlist.length, monitors.length)}\`;
+      return ckDashboardShellHtml(headerHtml, ctx);
     }
+
+    // ---- Dashboard layout primitives -------------------------------------------------
+    // DashboardShell > DashboardSection > DashboardGrid > ModuleCard. The page is built
+    // from CK_DASHBOARD_MODULES (a registry with layout metadata), never hand-placed
+    // cards. Modules size to content; empty and not-connected states stay compact.
+    function ckModuleCard(module, ctx) {
+      let status = "ready";
+      let body = "";
+      try {
+        status = typeof module.status === "function" ? (module.status(ctx) || "ready") : (module.status || "ready");
+        if (status === "hidden") return "";
+        if (status === "ready") body = module.render ? (module.render(ctx) || "") : "";
+      } catch (error) {
+        console.error("Dashboard module failed: " + module.id, error);
+        status = "error";
+        body = "";
+      }
+      if (!body) {
+        if (status === "error") body = '<div class="ck-empty">This module hit an error. The rest of the page is unaffected.</div>';
+        else if (status === "not_connected") body = \`<div class="ck-empty">\${esc(module.notConnectedText || "Not connected yet.")}</div>\`;
+        else if (status === "empty") body = \`<div class="ck-empty">\${esc(module.emptyText || "No data yet.")}</div>\`;
+        else return "";
+      }
+      const styleVars = [
+        module.minHeight ? \`--mod-min:\${Number(module.minHeight)}px\` : "",
+        module.maxHeight ? \`--mod-max:\${Number(module.maxHeight)}px\` : ""
+      ].filter(Boolean).join("; ");
+      const hint = typeof module.hint === "function" ? module.hint(ctx) : module.hint;
+      const head = module.title
+        ? \`<div class="ck-sec-head" style="margin-bottom:8px;"><h2>\${esc(module.title)}</h2>\${hint ? \`<span class="hint">\${esc(hint)}</span>\` : ""}</div>\`
+        : "";
+      const inner = \`\${head}<div class="ck-module-body\${module.maxHeight ? " scroll" : ""}">\${body}</div>\`;
+      return \`<article class="ck-module size-\${module.size || "third"} status-\${status}" id="ckm-\${module.id}"\${styleVars ? \` style="\${styleVars}"\` : ""}>\${module.frameless ? inner : \`<div class="ck-card">\${inner}</div>\`}</article>\`;
+    }
+    function ckDashboardGridHtml(modules, ctx) {
+      const cells = modules.slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map(m => ckModuleCard(m, ctx)).join("");
+      return cells ? \`<div class="ck-dash-grid">\${cells}</div>\` : "";
+    }
+    function ckDashboardSectionHtml(section, ctx) {
+      const grid = ckDashboardGridHtml(CK_DASHBOARD_MODULES.filter(m => m.section === section.id), ctx);
+      if (!grid) return "";
+      const head = section.title
+        ? \`<div class="ck-sec-head"><h2>\${esc(section.title)}</h2>\${section.hint ? \`<span class="hint">\${esc(section.hint)}</span>\` : ""}</div>\`
+        : "";
+      return \`<section class="ck-dash-section" id="cks-\${section.id}">\${head}\${grid}</section>\`;
+    }
+    function ckDashboardShellHtml(headerHtml, ctx) {
+      return \`<section class="operator-v31 today-cockpit"><div class="ck-sheet">\${headerHtml}\${CK_DASHBOARD_SECTIONS.map(section => ckDashboardSectionHtml(section, ctx)).join("")}</div></section>\`;
+    }
+
+    // ---- Module body helpers used only by the registry --------------------------------
+    function ckNeedsRogerModuleHtml(ctx) {
+      return ctx.needsRoger.length
+        ? \`<div class="ck-approve-grid">\${ctx.needsRoger.map(todayNeedsRogerCardHtml).join("")}</div>\`
+        : "";
+    }
+    function ckMoneyModuleHtml(ctx) {
+      const money = ctx.money;
+      return \`<div class="ck-rows">
+          \${ckListRowHtml("dollar", "Collected", money.stripeConnected ? (money.sinceLabel ? "Stripe, since " + money.sinceLabel : "Stripe") : "Appears when payments connect", ctx.grossLabel, money.stripeConnected ? "" : "small")}
+        </div>
+        \${ckMoneyVizHtml(money)}
+        \${ckMoneyCountersHtml(money)}\`;
+    }
+    function ckPartnersModuleHtml(ctx) {
+      const s = ctx.s;
+      const partners = ctx.partners;
+      return \`<div class="ck-rows">
+          \${ckListRowHtml("check", "Live partners", "Active now", s ? ckNum(partners.live) : "...", s && partners.live > 0 ? "good" : "")}
+          \${ckListRowHtml("search", "Prospects waiting for review", "Found by the prospect finder", s ? ckNum(partners.prospectsPendingReview) : "...", s && partners.prospectsPendingReview > 0 ? "warn" : "")}
+          \${ckListRowHtml("calendar", "Follow ups due", "This week", s ? ckNum(partners.followupsDue) : "...", "")}
+        </div>
+        <div class="ck-linkbtns">
+          <button class="ck-linkbtn" type="button" onclick="location.hash='partners'">Open Partners</button>
+          <button class="ck-linkbtn" type="button" onclick="location.hash='prospects'">Open Prospects</button>
+        </div>\`;
+    }
+    function ckWatchlistModuleHtml(ctx) {
+      const items = ctx.watchlist.length
+        ? \`<div class="ck-rows">\${ctx.watchlist.map(item => \`<div class="ck-lrow warned"><span class="txt"><span class="t">\${esc(item.title)}</span><span class="s">\${esc(item.summary || "")}</span></span></div>\`).join("")}</div>\`
+        : '<div class="ck-empty">Nothing trending toward a problem.</div>';
+      return \`\${ckWatchStatusHtml(ctx.v)}\${items}\`;
+    }
+    function ckMeetingsModuleHtml(ctx) {
+      return \`<div class="ck-rows">\${ctx.meetings.map(m => ckListRowHtml("calendar", m.title, m.recommendation || "Review the prep notes.", "", "small")).join("")}</div>\`;
+    }
+    function ckDraftsModuleHtml(ctx) {
+      return \`<div class="ck-rows">\${ctx.drafts.map(d => ckListRowHtml("doc", d.title, friendlyAgentName(d.sourceEngine), "", "small")).join("")}</div>\`;
+    }
+
+    // ---- Module registry ---------------------------------------------------------------
+    // Every dashboard module declares its layout metadata here: id, title, size
+    // (full=12 / wide=8 / half=6 / third=4 / quarter=3 columns), order, optional
+    // minHeight/maxHeight, and a data status (ready / empty / not_connected / error /
+    // hidden). The grid packs modules densely; sections collapse when nothing renders.
+    const CK_DASHBOARD_SECTIONS = [
+      { id: "scoreboard", title: "Company scoreboard", hint: "The whole business first. Campaign details live further down." },
+      { id: "decisions", title: "Needs Roger", hint: "Only decisions that need you. Everything else runs on its own." },
+      { id: "operations" }
+    ];
+    const CK_DASHBOARD_MODULES = [
+      { id: "company-kpis", section: "scoreboard", size: "full", order: 10, frameless: true,
+        render: () => ckScoreboardHtml() },
+      { id: "conversion-funnel", section: "scoreboard", size: "full", order: 20, title: "Conversion funnel",
+        hint: (ctx) => ctx.gm.funnelConnected ? "From the product funnel" : "Product funnel not wired yet",
+        render: () => ckFunnelStripHtml() },
+      { id: "needs-roger", section: "decisions", size: "full", order: 10, frameless: true,
+        status: (ctx) => ctx.needsRoger.length ? "ready" : "empty",
+        emptyText: "Nothing needs you right now. Decisions appear here the moment one is waiting.",
+        render: (ctx) => ckNeedsRogerModuleHtml(ctx) },
+      { id: "people-stuck", section: "operations", size: "third", order: 10, title: "People stuck",
+        render: (ctx) => ckPeopleStuckVizHtml(ctx.s, ctx.stuck) },
+      { id: "money", section: "operations", size: "third", order: 20, title: "Money",
+        render: (ctx) => ckMoneyModuleHtml(ctx) },
+      { id: "partners", section: "operations", size: "third", order: 30, title: "Partners and prospects",
+        render: (ctx) => ckPartnersModuleHtml(ctx) },
+      { id: "campaign-safety", section: "operations", size: "third", order: 40, title: "Campaign safety", hint: "Reactivation",
+        status: (ctx) => ctx.v ? "ready" : "not_connected",
+        notConnectedText: "Campaign numbers are not available with this sign-in yet.",
+        render: (ctx) => ckCampaignSafetyHtml(ctx.v, ctx.detailsShown) },
+      { id: "system-health", section: "operations", size: "third", order: 50, title: "System health", hint: "Details live on App Status.",
+        render: (ctx) => ckSystemHealthHtml(ctx.v) },
+      { id: "social-pulse", section: "operations", size: "third", order: 60, title: "Social pulse", hint: "Content pipeline",
+        render: () => ckSocialPulseHtml() },
+      { id: "campaign-details", section: "operations", size: "full", order: 70, frameless: true,
+        status: (ctx) => ctx.detailsShown ? "ready" : "hidden",
+        render: (ctx) => ckCampaignDetailsHtml(ctx.v) },
+      { id: "agents", section: "operations", size: "full", order: 80, title: "Running automatically", hint: "Quiet unless something needs you",
+        render: (ctx) => ckAgentsHtml(ctx.monitors) },
+      { id: "inbox", section: "operations", size: "half", order: 90, title: "Comments and messages", hint: "What needs a reply",
+        render: () => ckInboxPulseHtml() },
+      { id: "watchlist", section: "operations", size: "half", order: 100, title: "Watchlist",
+        hint: (ctx) => ctx.watchlist.length ? ctx.watchlist.length + " to keep an eye on" : "All quiet",
+        maxHeight: 420,
+        render: (ctx) => ckWatchlistModuleHtml(ctx) },
+      { id: "meetings", section: "operations", size: "half", order: 110, title: "Meetings",
+        hint: (ctx) => ctx.meetings.length ? ctx.meetings.length + " coming up" : "",
+        status: (ctx) => ctx.meetings.length ? "ready" : "empty",
+        emptyText: "No meetings need prep. Briefs arrive from your calendar.",
+        render: (ctx) => ckMeetingsModuleHtml(ctx) },
+      { id: "drafts", section: "operations", size: "half", order: 120, title: "Drafts ready",
+        hint: (ctx) => ctx.drafts.length ? ctx.drafts.length + " waiting" : "",
+        status: (ctx) => ctx.drafts.length ? "ready" : "empty",
+        emptyText: "Nothing drafted right now.",
+        render: (ctx) => ckDraftsModuleHtml(ctx) }
+    ];
 
     function commandCenterOverviewHtml(posts) {
       const dailyRunBookendCompatibility = "\${dailyRunTodayPanelHtml()}";

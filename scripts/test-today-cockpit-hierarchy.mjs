@@ -32,10 +32,34 @@ const summaryFn = sliceFunction("ckSummaryLineHtml");
 const scoreboardFn = sliceFunction("ckScoreboardHtml");
 const safetyModuleFn = sliceFunction("ckCampaignSafetyHtml");
 
+// The module registry: everything between the registry const and its closing bracket.
+const registryStart = source.indexOf("const CK_DASHBOARD_MODULES = [");
+assert(registryStart >= 0, "dashboard module registry should exist");
+const registry = source.slice(registryStart, source.indexOf("\n    ];", registryStart));
+const moduleIndex = (id) => {
+  const at = registry.indexOf(`id: "${id}"`);
+  assert(at >= 0, `registry should declare module ${id}`);
+  return at;
+};
+
 check("Today at LegalEase renders through the cockpit page", () => {
   assert(source.includes("function todayAtLegalEaseHtml()"), "today renderer exists");
   assert(source.includes("Today at LegalEase"), "page keeps its name");
-  assert(today.includes("today-cockpit"), "cockpit skin class present");
+  assert(source.includes("ckDashboardShellHtml(headerHtml, ctx)"), "page is built by the dashboard shell");
+});
+
+check("the dashboard is a modular grid system, not hand-placed cards", () => {
+  assert(source.includes("function ckDashboardShellHtml("), "DashboardShell primitive exists");
+  assert(source.includes("function ckDashboardSectionHtml("), "DashboardSection primitive exists");
+  assert(source.includes("function ckDashboardGridHtml("), "DashboardGrid primitive exists");
+  assert(source.includes("function ckModuleCard("), "ModuleCard primitive exists");
+  assert(source.includes("grid-template-columns:repeat(12,minmax(0,1fr))"), "12-column CSS grid");
+  assert(source.includes("grid-auto-flow:dense"), "dense flow fills holes");
+  for (const rule of [".ck-module.size-full { grid-column:span 12; }", ".ck-module.size-wide { grid-column:span 8; }", ".ck-module.size-half { grid-column:span 6; }", ".ck-module.size-third { grid-column:span 4; }", ".ck-module.size-quarter { grid-column:span 3; }"]) {
+    assert(source.includes(rule), `size rule present: ${rule}`);
+  }
+  assert(!source.includes("ck-panel-grid"), "the old hand-rolled row wrapper is gone");
+  assert(!source.includes("ck-chart-row"), "the old hard-coded chart columns are gone");
 });
 
 check("the opening summary is company-wide, not campaign-first", () => {
@@ -48,21 +72,19 @@ check("the opening summary is company-wide, not campaign-first", () => {
   assert(summaryFn.indexOf("stripeConnected") < summaryFn.indexOf("campaignClause"), "revenue evaluated before the campaign clause");
 });
 
-check("company scoreboard sits above any campaign module in source order", () => {
-  const scoreboard = today.indexOf("ckScoreboardHtml()");
-  const campaignSafety = today.indexOf("ckCampaignSafetyHtml(");
-  const campaignDetails = today.indexOf("ckCampaignDetailsHtml(");
-  assert(scoreboard >= 0, "scoreboard rendered");
-  assert(campaignSafety > scoreboard, "campaign safety module comes after the scoreboard");
-  assert(campaignDetails > campaignSafety, "campaign charts come after the safety module");
+check("company scoreboard sits above any campaign module in registry order", () => {
+  const sections = source.slice(source.indexOf("const CK_DASHBOARD_SECTIONS"), registryStart);
+  assert(sections.indexOf('"scoreboard"') < sections.indexOf('"operations"'), "scoreboard section comes before operations");
+  assert(moduleIndex("company-kpis") < moduleIndex("campaign-safety"), "company KPIs registered before campaign safety");
+  assert(moduleIndex("campaign-safety") < moduleIndex("campaign-details"), "campaign charts come after the safety module");
+  assert(registry.includes('section: "scoreboard", size: "full", order: 10'), "scoreboard KPIs lead the scoreboard section");
 });
 
 check("revenue, web visits, accounts, screenings appear before campaign metrics", () => {
   for (const label of ["Revenue", "Web visits", "Accounts created", "Screenings started", "Reached checkout"]) {
     assert(scoreboardFn.includes(`"${label}"`), `scoreboard has ${label}`);
   }
-  assert(today.indexOf("ckScoreboardHtml()") < today.indexOf("Campaign safety") || today.indexOf("Campaign safety") === -1,
-    "scoreboard precedes campaign safety copy");
+  assert(moduleIndex("conversion-funnel") < moduleIndex("campaign-safety"), "growth modules precede campaign safety");
 });
 
 check("Campaign at a glance no longer leads the page", () => {
@@ -70,7 +92,7 @@ check("Campaign at a glance no longer leads the page", () => {
 });
 
 check("campaign charts are conditional behind the details toggle or risk", () => {
-  assert(today.includes("detailsShown ? ckCampaignDetailsHtml(v)"), "details render only when shown");
+  assert(registry.includes('ctx.detailsShown ? "ready" : "hidden"'), "details module hidden unless shown");
   assert(source.includes("ckCampaignDetailsOverride === null ? ckCampaignRisk(view) : ckCampaignDetailsOverride"),
     "risk opens details by default; the operator toggle always wins");
   assert(safetyModuleFn.includes("View campaign details"), "safety module carries the toggle");
@@ -127,11 +149,14 @@ check("card visualizations stay honest about their sources", () => {
 });
 
 check("the dashboard carries visual modules for growth, social, and inbox", () => {
-  assert(today.includes("ckFunnelStripHtml()"), "conversion funnel strip rendered with the scoreboard");
-  assert(today.includes("ckSocialPulseHtml()"), "social pulse module rendered");
-  assert(today.includes("ckInboxPulseHtml()"), "comments and messages module rendered");
-  assert(today.includes("ckWatchStatusHtml(v)"), "watchlist source-status dots rendered");
-  assert(today.indexOf("ckFunnelStripHtml()") < today.indexOf("ckCampaignDetailsHtml("), "growth funnel stays above campaign details");
+  for (const id of ["conversion-funnel", "social-pulse", "inbox", "watchlist", "people-stuck", "money"]) {
+    moduleIndex(id);
+  }
+  assert(registry.includes("ckFunnelStripHtml()"), "conversion funnel strip rendered from the registry");
+  assert(registry.includes("ckSocialPulseHtml()"), "social pulse module rendered from the registry");
+  assert(registry.includes("ckInboxPulseHtml()"), "comments and messages module rendered from the registry");
+  assert(sliceFunction("ckWatchlistModuleHtml").includes("ckWatchStatusHtml(ctx.v)"), "watchlist carries the source-status dots");
+  assert(moduleIndex("conversion-funnel") < moduleIndex("campaign-details"), "growth funnel stays above campaign details");
 });
 
 check("social and inbox modules are honest, never fabricated", () => {
