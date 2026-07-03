@@ -14,6 +14,8 @@ import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES
 import { reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
 import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
+import { buildVersionDrift, createVersionDriftCache } from "./version-truth.mjs";
+import { buildSafetyPosture } from "./safety-posture.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
@@ -846,6 +848,10 @@ function safeRuntimeBuildTime() {
   ];
   return candidates.map(item => String(item || "").trim()).find(Boolean) || "unknown";
 }
+
+// One cached drift lookup per 5 minutes, however many dashboard badges ask (GitHub's
+// unauthenticated API allows 60 req/hr/IP).
+const versionDriftCache = createVersionDriftCache();
 
 async function safeVersionPayload() {
   const hostingConfig = storageRuntimeConfig();
@@ -15049,6 +15055,8 @@ function htmlShell() {
     .command-dot.warn { background:var(--warn); }
     .command-dot.stop { background:var(--stop); }
     .command-footer { color:#8693a1; font-size:12px; line-height:1.4; padding:13px 18px; background:#fafcfb; border-top:1px solid var(--line); display:flex; align-items:center; gap:8px; }
+    .deploy-truth-inline { display:flex; align-items:center; gap:10px; font-size:12px; line-height:1.4; color:#5b6771; padding:10px 14px; margin:10px 0 0; background:#fafcfb; border:1px solid var(--line); border-radius:10px; }
+    .deploy-truth-inline a { margin-left:auto; white-space:nowrap; }
     .command-footer svg { width:13px; height:13px; flex:none; }
     .command-empty { text-align:center; color:#8693a1; padding:30px 18px; }
     .command-empty b { display:block; color:var(--muted); font-size:14px; margin-bottom:3px; }
@@ -16036,6 +16044,10 @@ function htmlShell() {
     let state = null;
     let supabaseHealth = null;
     let backups = [];
+    // Trust-layer globals (audit §15): null means "not verified yet" — render helpers must
+    // show an Unverified state, never fall back to a hardcoded "Off"/"current" claim.
+    let safetyPosture = null;
+    let versionTruth = null;
     let safeBootActive = false;
     let fullStateLoaded = false;
     let stateFetchDiagnostics = null;
@@ -17617,10 +17629,14 @@ function htmlShell() {
       loadFullStateInBackground();
       Promise.all([
         optionalBootApi("/api/health/supabase", { timeoutMs: 2500 }),
-        optionalBootApi("/api/backups", { timeoutMs: 2500 })
+        optionalBootApi("/api/backups", { timeoutMs: 2500 }),
+        optionalBootApi("/api/safety/posture", { timeoutMs: 2500 }),
+        optionalBootApi("/api/version/drift", { timeoutMs: 6000 })
       ]).then(results => {
         if (results[0].status === "fulfilled") supabaseHealth = results[0].value;
         if (results[1].status === "fulfilled") backups = results[1].value.backups || [];
+        if (results[2].status === "fulfilled") safetyPosture = results[2].value;
+        if (results[3].status === "fulfilled") versionTruth = results[3].value;
         try {
           window.__LE_BOOT.stage = "secondary-render";
           render();
@@ -23814,6 +23830,60 @@ function htmlShell() {
       </section>\`;
     }
 
+    // ---- Trust layer (audit §15 item 2): safety labels derived from REAL gate state --------
+    // safetyPosture (fetched at boot from /api/safety/posture) is computed server-side from the
+    // same autopilot + live-send gate functions the send paths consult. These helpers are the
+    // only source for email/social safety labels; while the posture has not loaded the claim is
+    // UNVERIFIED — never a hardcoded "Off".
+    function emailPostureRow() {
+      if (!safetyPosture || !safetyPosture.email) return ["Email sending: Unverified", "Not checked"];
+      return [safetyPosture.email.label, safetyPosture.email.tone === "ok" ? "Protected" : "CHECK GATES"];
+    }
+    function socialPostureRow() {
+      if (!safetyPosture || !safetyPosture.social) return ["Live social posting: Unverified", "Not checked"];
+      return [safetyPosture.social.label, safetyPosture.social.tone === "ok" ? "Protected" : "CHECK GATES"];
+    }
+    function emailPostureLabel() { return emailPostureRow()[0]; }
+    function socialPostureLabel() { return socialPostureRow()[0]; }
+    function emailPostureDetail() {
+      return (safetyPosture && safetyPosture.email && safetyPosture.email.detail)
+        || "Gate state not loaded yet — treat email sending as unverified, not off.";
+    }
+
+    // ---- Trust layer (audit §15 item 1): deploy/version truth ------------------------------
+    // versionTruth (fetched at boot from /api/version/drift) compares the running commit to
+    // GitHub main so promote-vs-build drift is visible on screen instead of guessed.
+    function versionTruthBadgeTone() {
+      if (!versionTruth) return "warn";
+      if (versionTruth.severity === "ok") return "good";
+      if (versionTruth.severity === "alert") return "danger";
+      return "warn";
+    }
+    function versionTruthHeadline() {
+      if (!versionTruth) return "Deploy status unverified — version drift has not loaded (sign in and refresh).";
+      return versionTruth.message || "Deploy status unverified.";
+    }
+    function versionTruthPanelHtml() {
+      const runtimeCommit = String(state?.runtime?.commitHash || "");
+      const rows = versionTruth ? [
+        ["Running commit:", versionTruth.runningCommitShort + (versionTruth.deployedAt && versionTruth.deployedAt !== "unknown" ? " · deployed " + (formatDateTime(versionTruth.deployedAt) || versionTruth.deployedAt) : "")],
+        ["Latest main:", versionTruth.mainCommitShort + (versionTruth.mainCommitAt && versionTruth.mainCommitAt !== "unknown" ? " · " + (formatDateTime(versionTruth.mainCommitAt) || versionTruth.mainCommitAt) : "")],
+        ["Repo:", versionTruth.repo + " (" + versionTruth.branch + ")"],
+        ["Checked:", formatDateTime(versionTruth.checkedAt) || versionTruth.checkedAt || "unknown"]
+      ] : [
+        ["Running commit:", runtimeCommit ? runtimeCommit.slice(0, 7) : "unknown"],
+        ["Latest main:", "not checked"]
+      ];
+      return \`<section class="support-card" id="deploy-truth">
+        <div class="simple-panel-head"><h2>Deploy Truth</h2><span class="badge \${versionTruthBadgeTone()}">\${esc(versionTruth ? (versionTruth.status || "unknown") : "unverified")}</span></div>
+        <p class="\${!versionTruth || versionTruth.severity !== "ok" ? "" : "muted"}">\${esc(versionTruthHeadline())}</p>
+        <div class="support-status-list">\${rows.map(([label, value]) => \`<div class="support-status-row"><strong>\${esc(label)}</strong><span>\${esc(value)}</span></div>\`).join("")}</div>
+      </section>\`;
+    }
+    function versionTruthInlineHtml() {
+      return \`<div class="deploy-truth-inline"><span class="badge \${versionTruthBadgeTone()}">deploy</span> <span>\${esc(versionTruthHeadline())}</span> <a href="#app-status">Details</a></div>\`;
+    }
+
     function osHealthPageHtml(pageClass) {
       const health = cockpitOsHealthRecord();
       const hardening = health.auth_hardening || {};
@@ -23826,8 +23896,8 @@ function htmlShell() {
       const appStatusLinkedInPosting = state.runtime?.liveLinkedInPostingEnabled ? "Ready behind approval" : "Off";
       const statusRows = [
         ["Publishing: Off", "Protected"],
-        ["Email sending: Off", "Protected"],
-        ["Live social posting: Off", "Protected"],
+        emailPostureRow(),
+        socialPostureRow(),
         ["Calendar writes: Off", "Protected"],
         ["External actions: Off", "Protected"],
         ["Owner access: Protected", "Owner only"],
@@ -23837,13 +23907,13 @@ function htmlShell() {
         ["Calendar:", "Not connected / read-only planned"],
         ["Calendar readiness:", "Calendar reads can help Today understand your day. Calendar writes are off."],
         ["Email:", "Not connected / draft-only planned"],
-        ["Email readiness:", "Email drafts can be prepared for review. Email sending is off."],
+        ["Email readiness:", "Email drafts can be prepared for review. " + emailPostureDetail()],
         ["LinkedIn:", appStatusLinkedInConnection],
         ["LinkedIn posting:", appStatusLinkedInPosting],
         ["LinkedIn setup:", state.runtime?.liveLinkedInPostingEnabled ? "Approved posts only. No automatic posting." : "LinkedIn posting is installed but disabled."],
         ["Twitter / X:", "Not connected / approval workflow ready"],
         ["Social accounts:", "Not connected"],
-        ["Live social posting:", "Off"],
+        ["Live social posting:", socialPostureLabel().replace("Live social posting: ", "")],
         ["External actions:", "Off"]
       ];
       return \`<section id="os-health" class="\${pageClass("os-health")} support-workspace lee-bubble-safe-space">
@@ -23864,6 +23934,8 @@ function htmlShell() {
           <h2>Command Center is protected</h2>
           <div class="support-status-list">\${statusRows.map(([label, value]) => \`<div class="support-status-row"><strong>\${esc(label)}</strong><span>\${esc(value)}</span></div>\`).join("")}</div>
         </section>
+
+        \${versionTruthPanelHtml()}
 
         <details class="support-card support-details">
           <summary>Show advanced details</summary>
@@ -24841,6 +24913,7 @@ function htmlShell() {
           </div>
           \${todayPulseHtml()}
           \${todayOperatingPulseHtml()}
+          \${versionTruthInlineHtml()}
           <div class="command-cols">
             <div>
               <div class="command-panel">
@@ -26287,7 +26360,7 @@ function htmlShell() {
           <span>Internal-only scoring</span>
           <span>Behavioral scoring deferred</span>
           <span>Saved views are filters, not actions</span>
-          <span>Email sending: Off</span>
+          <span>\${esc(emailPostureLabel())}</span>
           <span>Calendar writes: Off</span>
           <span>External actions: Off</span>
         </div>
@@ -26319,7 +26392,7 @@ function htmlShell() {
         <div class="campaign-preview-metrics">\${metrics.map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
         <div class="campaign-preview-metrics">\${savedViews.slice(0, 4).map(view => \`<article class="campaign-preview-metric"><strong>\${esc(String(view.count || 0))}</strong><span>\${esc(view.label)}</span></article>\`).join("")}</div>
         <div class="campaign-safety-lines">
-          <span>Email sending: Off</span>
+          <span>\${esc(emailPostureLabel())}</span>
           <span>Calendar writes: Off</span>
           <span>External outreach actions: Off</span>
           <span>Queue task generation: Active</span>
@@ -26350,7 +26423,7 @@ function htmlShell() {
         <button type="button" onclick="location.hash='sources'">Open Sources</button>
         <details>
           <summary>Status</summary>
-          <p class="muted">RCAP foundation: Active · Queue task generation: Active · Suppression latch: Active · Approval engine: Active · Internal-only scoring: Active · Behavioral scoring deferred · Email open/click tracking: Off · Page tracking: Off · Saved views are filters, not actions · Open RCAP tasks: \${esc(String(tasks.filter(task => !/completed|skipped|parked/i.test(String(task.status || ""))).length))} · Saved views: \${esc(String(savedViews.length))} · Email sending: Off · Calendar writes: Off · Outreach automation: Off · External actions: Off</p>
+          <p class="muted">RCAP foundation: Active · Queue task generation: Active · Suppression latch: Active · Approval engine: Active · Internal-only scoring: Active · Behavioral scoring deferred · Email open/click tracking: Off · Page tracking: Off · Saved views are filters, not actions · Open RCAP tasks: \${esc(String(tasks.filter(task => !/completed|skipped|parked/i.test(String(task.status || ""))).length))} · Saved views: \${esc(String(savedViews.length))} · \${esc(emailPostureLabel())} · Calendar writes: Off · Outreach automation: Off · External actions: Off</p>
           <p class="muted">Deferred behavioral signals: \${esc(deferred)}.</p>
         </details>
       </div>\`;
@@ -27863,11 +27936,11 @@ function htmlShell() {
         ["RCAP Program", "Shortcut to the Record Clearing Access Program review workspace.", [["Open RCAP Program", "rcap", "primary"]]]
       ];
       const safetyRows = [
-        "Publishing: Off",
-        "Email sending: Off",
-        "Live social posting: Off",
-        "Calendar writes: Off",
-        "External actions: Off"
+        ["Publishing: Off", "Protected"],
+        emailPostureRow(),
+        socialPostureRow(),
+        ["Calendar writes: Off", "Protected"],
+        ["External actions: Off", "Protected"]
       ];
       const moreImageGenerationStatus = state.runtime?.openAIConfigured ? "Ready" : "Needs setup";
       const moreImageGenerationSafety = state.runtime?.openAIConfigured ? "Server-side only" : "Request saved";
@@ -27988,7 +28061,7 @@ function htmlShell() {
         <section class="more-card">
           <div class="more-card-head"><div><h2>Safety Switches</h2><small>Visible state only; no enable controls yet</small></div><span class="more-pill">Protected</span></div>
           <div class="more-safety-list">
-            \${["Live social posting: Off", "Email sending: Off", "Calendar writes: Off", "External actions: Off", "Connected dashboards: Off"].map(row => \`<div class="more-safety-row"><strong>\${esc(row)}</strong><span>Protected</span></div>\`).join("")}
+            \${[socialPostureRow(), emailPostureRow(), ["Calendar writes: Off", "Protected"], ["External actions: Off", "Protected"], ["Connected dashboards: Off", "Protected"]].map(([row, pill]) => \`<div class="more-safety-row"><strong>\${esc(row)}</strong><span>\${esc(pill)}</span></div>\`).join("")}
           </div>
           <div class="more-card-actions"><button type="button" onclick="toast('Safety reviewed. Live actions remain off.')">Review Safety</button><button class="primary" type="button" onclick="location.hash='app-status'">Open App Status</button></div>
         </section>
@@ -28001,7 +28074,7 @@ function htmlShell() {
         <div class="more-bottom-grid">
           <section class="more-card">
             <div class="more-card-head"><div><h2>System Safety</h2><small>Calm status for what stays offline</small></div></div>
-            <div class="more-safety-list">\${safetyRows.map(row => \`<div class="more-safety-row"><strong>\${esc(row)}</strong><span>Protected</span></div>\`).join("")}</div>
+            <div class="more-safety-list">\${safetyRows.map(([row, pill]) => \`<div class="more-safety-row"><strong>\${esc(row)}</strong><span>\${esc(pill)}</span></div>\`).join("")}</div>
           </section>
 
           <section class="more-card">
@@ -29845,7 +29918,7 @@ function htmlShell() {
             \${checklist.map(item => \`<div class="metric-row"><span>\${esc(item)}</span><span class="badge info">Check</span></div>\`).join("")}
           </div>
           \${missing}
-          <p class="muted"><strong>Current LinkedIn state:</strong> \${esc(setupStatus)}<br><strong>Safety:</strong> Approved posts only. Live social posting: Off.</p>
+          <p class="muted"><strong>Current LinkedIn state:</strong> \${esc(setupStatus)}<br><strong>Safety:</strong> Approved posts only. \${esc(socialPostureLabel())}.</p>
           <div class="dialog-actions">
             <button onclick="closePublishDialog()">Close</button>
             <button class="primary" onclick="connectLinkedIn()">Connect LinkedIn</button>
@@ -31874,6 +31947,33 @@ async function handleRequest(request, response) {
 
 	  if (url.pathname === "/api/version" && request.method === "GET") {
     sendJson(response, await safeVersionPayload());
+    return;
+  }
+
+  // Deploy/version truth (second trust PR, audit §15 item 1): running commit vs GitHub main,
+  // so promote-vs-build drift is visible on screen instead of guessed. Read-gated (session
+  // cookie); the only external contact is a GET to the public GitHub API, cached 5 minutes.
+  if (url.pathname === "/api/version/drift" && request.method === "GET") {
+    const drift = await versionDriftCache.get(() => buildVersionDrift({
+      env: process.env,
+      fetcher: globalThis.fetch,
+      runningCommit: safeRuntimeCommitHash(),
+      deployedAt: safeRuntimeBuildTime()
+    }));
+    sendJson(response, drift);
+    return;
+  }
+
+  // TRUE safety posture behind the UI labels (audit §15 item 2): derived from the same gate
+  // functions the send paths consult (autopilotEnabled + live-send env flags) — the screen
+  // can no longer say "Off" unless the gates actually are.
+  if (url.pathname === "/api/safety/posture" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, buildSafetyPosture({
+      state: currentState,
+      env: process.env,
+      socialLiveGates: platforms.map((platform) => liveGateSummary(platform))
+    }));
     return;
   }
 

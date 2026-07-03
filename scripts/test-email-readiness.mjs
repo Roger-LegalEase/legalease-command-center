@@ -70,11 +70,15 @@ for (const disabled of [
 for (const required of [
   "Email:",
   "Email readiness:",
-  "Email drafts can be prepared for review. Email sending is off.",
-  "Email sending: Off"
+  '"Email drafts can be prepared for review. " + emailPostureDetail()',
+  "emailPostureRow()"
 ]) {
   assert(appStatus.includes(required), `App Status should include ${required}`);
 }
+
+// Trust layer: the App Status email claims derive from /api/safety/posture with an honest
+// Unverified fallback — never a hardcoded "Email sending: Off".
+assert(source.includes('"Email sending: Unverified"'), "Email posture fallback must be Unverified, not a hardcoded Off");
 
 for (const route of [
   'url.pathname === "/api/email/status"',

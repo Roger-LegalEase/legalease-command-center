@@ -35,8 +35,8 @@ for (const required of [
   "Check whether the Command Center is healthy, protected, and safe to use.",
   "Command Center is protected",
   "Publishing: Off",
-  "Email sending: Off",
-  "Live social posting: Off",
+  "emailPostureRow()",
+  "socialPostureRow()",
   "Calendar writes: Off",
   "External actions: Off",
   "Owner access: Protected",
@@ -66,6 +66,11 @@ for (const required of [
 ]) {
   assert(recovery.includes(required), `Recovery Mode should include ${required}`);
 }
+
+// Trust layer: safety labels are DERIVED from /api/safety/posture; when the posture has not
+// loaded the UI must say Unverified — a hardcoded "Off" claim is the bug this guards against.
+assert(source.includes('"Email sending: Unverified"'), "Email posture fallback must be Unverified, not a hardcoded Off");
+assert(source.includes('"Live social posting: Unverified"'), "Social posture fallback must be Unverified, not a hardcoded Off");
 
 assert(!/details[^>]*open/i.test(appStatus), "App Status advanced details should be collapsed by default");
 assert(!/details[^>]*open/i.test(recovery), "Recovery advanced details should be collapsed by default");

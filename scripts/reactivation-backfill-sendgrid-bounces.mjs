@@ -460,7 +460,7 @@ async function main() {
   }
 
   console.log("\nDONE: production reactivation metrics moved from SendGrid hard events.");
-  console.log("Note: this proves the webhook processing/store/status path. Cryptographic SendGrid signature verification is not currently enforced by the app handler.");
+  console.log("Note: this proves the webhook processing/store/status path. The webhook enforces SendGrid signature verification (fail closed) once SENDGRID_WEBHOOK_PUBLIC_KEY is set — this script replays UNSIGNED events, so run any backfill BEFORE arming that key.");
 }
 
 main().catch((error) => {
