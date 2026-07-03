@@ -20,6 +20,7 @@ import { wakeSnoozedQueueItems, transitionQueueItem } from "./company-memory.mjs
 import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID, buildTodaySummary, projectCompanyMemory } from "./company-memory-projector.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { previewIntake, confirmIntake, INTAKE_TYPES, INTAKE_ACTIONS } from "./intake.mjs";
+import { buildCampaignCommandView, previewWaveRelease, proposeWaveRelease, executeApprovedWaveRelease, pauseCampaign, proposeCampaignResume, executeApprovedResume } from "./campaign-command.mjs";
 import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
@@ -17038,6 +17039,147 @@ function htmlShell() {
     window.intakeImportConfirm = intakeImportConfirm;
     window.intakeImportCancel = intakeImportCancel;
 
+    // Campaign command — preview / propose / run-approved controls for the reactivation
+    // campaign. Everything read-only until an approval exists; nothing here sends email or
+    // changes a sending switch.
+    function campaignActionTarget() {
+      const target = document.getElementById("campaign-command-action");
+      if (target) target.style.display = "block";
+      return target;
+    }
+    async function loadCampaignCommand() {
+      const target = document.getElementById("campaign-command-result");
+      if (target) target.innerHTML = "<strong>Loading campaign controls...</strong>";
+      let view;
+      try { view = await api("/api/campaign/command"); }
+      catch (error) { if (target) target.innerHTML = "<strong>Could not load campaign controls.</strong> " + esc(error.message || ""); return; }
+      const waves = (view.waves || []).map(function(w){
+        const btn = w.released ? "" : " <button type=\\"button\\" onclick=\\"campaignWavePreview(" + Number(w.wave) + ")\\">Preview release</button>";
+        return "<li>" + esc(String(w.plain)) + btn + "</li>";
+      }).join("");
+      const lines = [
+        "<strong>" + esc(String(view.statusPlain || "")) + "</strong>",
+        esc(String((view.gates && view.gates.plain) || "")),
+        "Sending window: " + esc(String(view.sendWindowPlain || "")),
+        esc(String(view.dueNowPlain || "")),
+        esc(String((view.thresholds && view.thresholds.plain) || "")),
+        esc(String((view.telemetry && view.telemetry.plain) || "")),
+        "<em>Next: " + esc(String(view.nextRecommendedAction || "")) + "</em>"
+      ];
+      const controls = "<div class=\\"card-actions\\">" +
+        (String(view.status) === "paused"
+          ? "<button class=\\"primary\\" type=\\"button\\" onclick=\\"campaignResumePropose()\\">Propose resume (asks your approval)</button>"
+          : "<button type=\\"button\\" onclick=\\"campaignPause()\\">Pause campaign now</button>") +
+        "</div>";
+      if (target) target.innerHTML = lines.join("<br>") +
+        "<br><br><strong>Waves</strong><ul>" + waves + "</ul>" + controls +
+        "<br><em>" + esc(String(view.warning || "")) + "</em>";
+    }
+    async function campaignWavePreview(wave) {
+      const target = campaignActionTarget();
+      if (target) target.innerHTML = "<strong>Preview wave " + esc(String(wave)) + "...</strong> Nothing is released or sent by previewing.";
+      let preview;
+      try {
+        preview = await api("/api/campaign/wave-release/preview", { method:"POST", body: JSON.stringify({ wave: wave }) });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Preview failed.</strong> " + esc(error.message || "");
+        return;
+      }
+      const lines = ["<strong>" + esc(String(preview.headline || "")) + "</strong>"]
+        .concat((preview.lines || []).map(function(l){ return esc(String(l)); }));
+      lines.push("<strong>Approving does:</strong> " + esc(String(preview.whatApprovalDoes || "")));
+      lines.push("<strong>Approving does not:</strong> " + esc(String(preview.whatApprovalDoesNot || "")));
+      const propose = preview.alreadyReleased ? "" :
+        "<br><div class=\\"card-actions\\"><button class=\\"primary\\" type=\\"button\\" onclick=\\"campaignWavePropose(" + Number(wave) + ")\\">Send to Queue for approval</button></div>";
+      if (target) target.innerHTML = lines.join("<br>") + propose;
+      toast("Preview ready. Nothing was released or sent.");
+    }
+    async function campaignWavePropose(wave) {
+      const target = campaignActionTarget();
+      const dateInput = document.getElementById("campaign-release-date");
+      const scheduledFor = dateInput && dateInput.value ? String(dateInput.value) : "";
+      let result;
+      try {
+        result = await api("/api/campaign/wave-release/propose", { method:"POST", body: JSON.stringify({ wave: wave, scheduledFor: scheduledFor }) });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Could not send to Queue.</strong> " + esc(error.message || "");
+        return;
+      }
+      if (target) target.innerHTML = "<strong>On the Queue for your approval.</strong> Approve it on the Queue or Today page, then come back and press Run approved release." +
+        (scheduledFor ? "<br>Planned for " + esc(scheduledFor) + " — it will refuse to run before then." : "") +
+        "<br><div class=\\"card-actions\\"><button class=\\"primary\\" type=\\"button\\" onclick=\\"campaignWaveExecute('" + esc(String(result.approvalId)) + "')\\">Run approved release</button> <button type=\\"button\\" onclick=\\"location.hash='queue'\\">Open Queue</button></div>";
+      toast("Sent to Queue. Nothing was released or sent.");
+    }
+    async function campaignWaveExecute(approvalId) {
+      const target = campaignActionTarget();
+      if (target) target.innerHTML = "<strong>Checking approval...</strong>";
+      let result;
+      try {
+        result = await api("/api/campaign/wave-release/execute", { method:"POST", body: JSON.stringify({ approvalId: approvalId }) });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Not run:</strong> " + esc(error.message || "The release was not approved yet.") +
+          "<br><div class=\\"card-actions\\"><button type=\\"button\\" onclick=\\"location.hash='queue'\\">Open Queue</button> <button type=\\"button\\" onclick=\\"campaignWaveExecute('" + esc(String(approvalId)) + "')\\">Try again</button></div>";
+        return;
+      }
+      const checks = ((result.verified && result.verified.checks) || []).map(function(c){
+        return "<li>" + (c.ok ? "Checked: " : "Needs a look: ") + esc(String(c.note)) + "</li>";
+      }).join("");
+      if (target) target.innerHTML = "<strong>" + esc(String(result.headline || "Done.")) + "</strong>" +
+        (checks ? "<br><strong>Verified</strong><ul>" + checks + "</ul>" : "") +
+        "<br><em>" + esc(String(result.warning || "")) + "</em>";
+      loadCampaignCommand();
+      toast("Wave released. Sending stays off until you turn it on.");
+    }
+    async function campaignPause() {
+      const target = campaignActionTarget();
+      const reasonInput = document.getElementById("campaign-pause-reason");
+      const reason = reasonInput && reasonInput.value ? String(reasonInput.value) : "";
+      let result;
+      try {
+        result = await api("/api/campaign/pause", { method:"POST", body: JSON.stringify({ reason: reason }) });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Could not pause.</strong> " + esc(error.message || "");
+        return;
+      }
+      if (target) target.innerHTML = "<strong>" + esc(String(result.headline || "Campaign paused.")) + "</strong>";
+      loadCampaignCommand();
+      toast("Campaign paused. Nothing sends while paused.");
+    }
+    async function campaignResumePropose() {
+      const target = campaignActionTarget();
+      let result;
+      try {
+        result = await api("/api/campaign/resume/propose", { method:"POST", body: JSON.stringify({}) });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Could not propose the resume.</strong> " + esc(error.message || "");
+        return;
+      }
+      if (target) target.innerHTML = "<strong>Resume is on the Queue for your approval.</strong> Approve it there, then press Run approved resume." +
+        "<br><div class=\\"card-actions\\"><button class=\\"primary\\" type=\\"button\\" onclick=\\"campaignResumeExecute('" + esc(String(result.approvalId)) + "')\\">Run approved resume</button> <button type=\\"button\\" onclick=\\"location.hash='queue'\\">Open Queue</button></div>";
+      toast("Sent to Queue. Still paused until you approve and run it.");
+    }
+    async function campaignResumeExecute(approvalId) {
+      const target = campaignActionTarget();
+      let result;
+      try {
+        result = await api("/api/campaign/resume/execute", { method:"POST", body: JSON.stringify({ approvalId: approvalId }) });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Not run:</strong> " + esc(error.message || "The resume was not approved yet.") +
+          "<br><div class=\\"card-actions\\"><button type=\\"button\\" onclick=\\"location.hash='queue'\\">Open Queue</button> <button type=\\"button\\" onclick=\\"campaignResumeExecute('" + esc(String(approvalId)) + "')\\">Try again</button></div>";
+        return;
+      }
+      if (target) target.innerHTML = "<strong>" + esc(String(result.headline || "Campaign resumed.")) + "</strong>";
+      loadCampaignCommand();
+      toast("Campaign resumed. Sending stays off until you turn it on.");
+    }
+    window.loadCampaignCommand = loadCampaignCommand;
+    window.campaignWavePreview = campaignWavePreview;
+    window.campaignWavePropose = campaignWavePropose;
+    window.campaignWaveExecute = campaignWaveExecute;
+    window.campaignPause = campaignPause;
+    window.campaignResumePropose = campaignResumePropose;
+    window.campaignResumeExecute = campaignResumeExecute;
+
     // Consumer / Expungement.ai list import — real preview + confirm against the internal endpoints.
     // Preview never writes; confirm stages contacts into reactivationContacts. Nothing sends.
     let consumerImportPending = null;
@@ -25288,6 +25430,17 @@ function htmlShell() {
         <div class="panel hero-panel"><div><div class="eyebrow">Review-only control surface</div><h1 class="big-title">Campaigns</h1><p class="muted">RCAP outreach, RCAP prospect lists, consumer reactivation, consumer waves, and social/content campaigns. No campaign will send without approval and live-send gates.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='queue'">Prepare approval items</button><button onclick="location.hash='upload'">Upload a list</button></div></div>
         <div class="campaign-safety-lines"><span>\${gates ? "Live gates need review" : "Sending is off"}</span><span>Dry run only</span><span>Waiting for approval</span><span>Suppressed contacts will not receive email</span><span>No campaign sends directly</span></div>
         <div class="campaign-preview-metrics">\${[[summary.total,"campaign/list rows"],[summary.waiting,"waiting for approval"],[summary.ready,"ready to approve"],[summary.scheduled,"scheduled/due"],[summary.blocked,"paused/blocked"]].map(([value,label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
+        <section class="growth-card">
+          <div class="growth-card-head"><h2>Reactivation campaign controls</h2><small>Preview first, approve on the Queue, then run — no shell commands</small></div>
+          <p class="muted">See exactly who would be lined up, which email they start with, when it would go, what is blocked, and what approval does and does not do. Releasing a wave never turns sending on.</p>
+          <div class="card-actions">
+            <button class="primary" type="button" onclick="loadCampaignCommand()">Load campaign controls</button>
+            <label class="inline-filter">Planned release date (optional)<input type="date" id="campaign-release-date"></label>
+            <label class="inline-filter">Pause reason (optional)<input type="text" id="campaign-pause-reason" placeholder="e.g. reviewing bounce numbers"></label>
+          </div>
+          <div id="campaign-command-result" class="campaign-import-status">Load the campaign controls to see status, waves, safety limits, and delivery feedback. Read-only until you approve something on the Queue.</div>
+          <div id="campaign-command-action" class="campaign-import-status" style="display:none"></div>
+        </section>
         <section class="growth-card"><div class="growth-card-head"><h2>Campaign status</h2><small>Existing engines</small></div>
           <div class="queue-review-list">\${rows.slice(0, 80).map(row => \`<article class="queue-review-item"><div class="queue-review-item-main"><div class="queue-review-kicker"><span class="queue-type-line">\${esc(row.type)} · \${esc(operatorSourceLabel(row.source))}</span><span class="badge \${row.blocked ? "warn" : row.ready ? "good" : "info"}">\${esc(row.status)}</span></div><h3>\${esc(row.title)}</h3><p>\${esc(row.nextAction)}</p><p class="muted">\${row.scheduled ? "Scheduled/due: " + esc(formatDateTime(row.scheduled) || row.scheduled) : "No schedule recorded."}</p></div><div class="queue-review-actions"><button type="button" onclick="location.hash='queue'">Review</button></div></article>\`).join("") || '<div class="empty">No campaign records found yet.</div>'}</div>
           <details><summary>View technical details</summary><p class="muted">This display reads outreachCampaigns, outreachLists, outreachAttempts, reactivationCampaign, reactivationContacts, campaigns, and posts. It does not rebuild SendGrid, outreach, reactivation, or posting.</p></details>
@@ -33680,6 +33833,181 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not import this list." }, 400);
+    }
+    return;
+  }
+
+  // ---- Campaign command — Milestone 2: campaigns controllable without a terminal -----------
+  // View + previews are read-only. Propose writes ONLY a requested Approval + Queue item +
+  // Event. Execute performs the release/resume ONLY with an approved Approval, re-checking
+  // safety, and persists via SCOPED collection writes. Nothing here sends an email or changes
+  // a live-send/autopilot gate.
+  if (url.pathname === "/api/campaign/command" && request.method === "GET") {
+    try {
+      const currentState = await store.readState();
+      sendJson(response, buildCampaignCommandView(currentState, { env: process.env }));
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not build the campaign view." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/campaign/wave-release/preview" && request.method === "POST") {
+    try {
+      const payload = await readJson(request);
+      const currentState = await store.readState();
+      sendJson(response, previewWaveRelease(currentState, payload?.wave, { env: process.env }));
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not preview this wave release." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/campaign/wave-release/propose" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const payload = await readJson(request);
+      const currentState = await store.readState();
+      const result = proposeWaveRelease(currentState, payload?.wave, {
+        scheduledFor: payload?.scheduledFor,
+        actor: accessDecision.actor?.id || accessDecision.actor?.role || "owner",
+        env: process.env,
+        now: new Date().toISOString()
+      });
+      if (!result.ok) { sendJson(response, { error: result.error }, 400); return; }
+      await store.writeCollections({
+        queueItems: result.state.queueItems,
+        approvals: result.state.approvals,
+        companyEvents: result.state.companyEvents
+      });
+      sendJson(response, { ok: true, approvalId: result.approvalId, queueItemId: result.queueItemId, preview: result.preview });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not propose this wave release." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/campaign/wave-release/execute" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const payload = await readJson(request);
+      const currentState = await store.readState();
+      const result = executeApprovedWaveRelease(currentState, {
+        approvalId: payload?.approvalId,
+        actor: accessDecision.actor?.id || accessDecision.actor?.role || "owner",
+        env: process.env,
+        now: new Date().toISOString()
+      });
+      if (!result.ok) {
+        // Persist the blocked-attempt event, then refuse.
+        await store.writeCollections({ companyEvents: result.state.companyEvents });
+        sendJson(response, { error: result.error }, 400);
+        return;
+      }
+      await store.writeCollections({
+        reactivationContacts: result.state.reactivationContacts,
+        reactivationCampaign: result.state.reactivationCampaign,
+        queueItems: result.state.queueItems,
+        approvals: result.state.approvals,
+        companyEvents: result.state.companyEvents
+      });
+      sendJson(response, { ok: true, wave: result.wave, enrolled: result.enrolled, headline: result.headline, verified: result.verified, warning: result.warning });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not run this wave release." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/campaign/pause" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const payload = await readJson(request);
+      const currentState = await store.readState();
+      const result = pauseCampaign(currentState, {
+        reason: payload?.reason,
+        actor: accessDecision.actor?.id || accessDecision.actor?.role || "owner",
+        now: new Date().toISOString()
+      });
+      if (!result.ok) { sendJson(response, { error: result.error }, 400); return; }
+      await store.writeCollections({
+        reactivationCampaign: result.state.reactivationCampaign,
+        approvals: result.state.approvals,
+        companyEvents: result.state.companyEvents
+      });
+      sendJson(response, { ok: true, headline: result.headline, warning: result.warning });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not pause the campaign." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/campaign/resume/propose" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const currentState = await store.readState();
+      const result = proposeCampaignResume(currentState, {
+        actor: accessDecision.actor?.id || accessDecision.actor?.role || "owner",
+        env: process.env,
+        now: new Date().toISOString()
+      });
+      if (!result.ok) { sendJson(response, { error: result.error }, 400); return; }
+      await store.writeCollections({
+        queueItems: result.state.queueItems,
+        approvals: result.state.approvals,
+        companyEvents: result.state.companyEvents
+      });
+      sendJson(response, { ok: true, approvalId: result.approvalId, queueItemId: result.queueItemId });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not propose the resume." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/campaign/resume/execute" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const payload = await readJson(request);
+      const currentState = await store.readState();
+      const result = executeApprovedResume(currentState, {
+        approvalId: payload?.approvalId,
+        actor: accessDecision.actor?.id || accessDecision.actor?.role || "owner",
+        env: process.env,
+        now: new Date().toISOString()
+      });
+      if (!result.ok) {
+        await store.writeCollections({ companyEvents: result.state.companyEvents });
+        sendJson(response, { error: result.error }, 400);
+        return;
+      }
+      await store.writeCollections({
+        reactivationCampaign: result.state.reactivationCampaign,
+        queueItems: result.state.queueItems,
+        approvals: result.state.approvals,
+        companyEvents: result.state.companyEvents
+      });
+      sendJson(response, { ok: true, headline: result.headline, warning: result.warning });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not resume the campaign." }, 400);
     }
     return;
   }
