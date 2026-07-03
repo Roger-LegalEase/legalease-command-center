@@ -249,6 +249,55 @@ check("generic row parsing keeps only identity fields", () => {
   assert.deepEqual(Object.keys(rows[0]).sort(), ["domain", "email", "name", "organization"]);
 });
 
+check("re-confirming the same file later does NOT flood the Queue (content-derived import id)", () => {
+  const first = confirmIntake({}, PROSPECT_CSV, { ...OPTS, intakeType: "rcap_prospects", afterAction: "review_only", now: "2026-07-03T12:00:00.000Z" });
+  const second = confirmIntake(first.state, PROSPECT_CSV, { ...OPTS, intakeType: "rcap_prospects", afterAction: "review_only", now: "2026-07-04T09:00:00.000Z" });
+  const open = second.state.queueItems.filter((q) => q.status === "needs_roger");
+  assert.equal(open.length, 1, "identical re-import must refresh the same queue item, not add another");
+  assert.equal(first.importId, second.importId, "same content must map to the same import id");
+});
+
+check("a dismissed review item stays dismissed when the same file is imported again", () => {
+  const first = confirmIntake({}, PROSPECT_CSV, { ...OPTS, intakeType: "rcap_prospects", afterAction: "review_only" });
+  const dismissed = {
+    ...first.state,
+    queueItems: first.state.queueItems.map((q) => ({ ...q, status: "dismissed" }))
+  };
+  const again = confirmIntake(dismissed, PROSPECT_CSV, { ...OPTS, intakeType: "rcap_prospects", afterAction: "review_only", now: "2026-07-05T09:00:00.000Z" });
+  assert.equal(again.state.queueItems.filter((q) => q.status !== "dismissed").length, 0, "dismissed item must not resurrect");
+});
+
+check("suppress writes the authoritative suppression ledger, not just Company Memory", () => {
+  const result = confirmIntake({}, PROSPECT_CSV, { ...OPTS, intakeType: "rcap_prospects", afterAction: "suppress" });
+  const ledger = result.state.outreachSuppressions || [];
+  assert.equal(ledger.length, 2, "each suppressed person lands in outreachSuppressions");
+  const emails = ledger.map((s) => s.email).sort();
+  assert.deepEqual(emails, ["ann@acmelegal.org", "bo@waco.gov"]);
+  for (const s of ledger) assert.equal(s.source, "list_intake");
+});
+
+check("follow-ups and outreach approvals are skipped honestly when nothing was written", () => {
+  const noEmails = "name,organization\nAnn,Acme";
+  const follow = confirmIntake({}, noEmails, { ...OPTS, intakeType: "rcap_prospects", afterAction: "create_followups" });
+  assert.equal((follow.state.queueItems || []).length, 0, "no follow-up item for zero imported people");
+  assert(follow.lines.some((l) => /nobody to follow up/i.test(l)));
+  const draft = confirmIntake({}, noEmails, { ...OPTS, intakeType: "rcap_prospects", afterAction: "draft_outreach" });
+  assert.equal(draft.approvalRequested, null, "no approval request for zero imported people");
+});
+
+check("Stripe-style charge columns do not trip the criminal-record warning", () => {
+  const warnings = detectSensitiveHeaders(["charge_id", "amount", "invoice", "charge_amount"]);
+  assert.equal(warnings.length, 0, "charge_id/charge_amount are billing columns, not record details");
+  assert.equal(detectSensitiveHeaders(["charges"]).length, 1, "a bare charges column still warns");
+});
+
+check("sensitive values never transit the consumer preview sample rows", () => {
+  const csv = "email,first_name,ssn\nc1@example.org,Cy,123-45-6789";
+  const preview = previewIntake({}, csv, { ...OPTS, intakeType: "consumer", afterAction: "hold_for_campaign" });
+  const dump = JSON.stringify(preview);
+  assert(!dump.includes("123-45-6789"), "raw SSN leaked into the preview response");
+});
+
 check("contact ids stay canonical with Company Memory", () => {
   const result = confirmIntake({}, "email,name\nsame@example.org,Sam", { ...OPTS, intakeType: "partner_contacts", afterAction: "add_to_contacts" });
   assert.equal(result.state.companyContacts[0].contact_id, companyContactId("same@example.org"));

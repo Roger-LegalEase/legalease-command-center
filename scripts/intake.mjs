@@ -25,7 +25,8 @@ import {
 import {
   previewExpungementSync, confirmExpungementSync, csvToLifecycleRecords
 } from "./expungement-lifecycle-sync.mjs";
-import { normalizeEmail, isBadDomain } from "./outreach-os.mjs";
+import { normalizeEmail, isBadDomain, recordSuppression } from "./outreach-os.mjs";
+import { contactIdForEmail } from "./reactivation-os.mjs";
 import {
   emitQueueItem, emitCompanyEvent, recordAgentRun,
   upsertCompanyContact, upsertCompanyOrganization, upsertApprovals, createApproval,
@@ -169,7 +170,9 @@ const SENSITIVE_HEADER_RULES = [
   { pattern: /ssn|socialsecurity/, note: "Social Security numbers" },
   { pattern: /^dob$|dateofbirth|birthdate|birthday/, note: "dates of birth" },
   { pattern: /casenumber|caseno\b|casenum|caseid|docket/, note: "case or docket numbers" },
-  { pattern: /charge|offense|offence|conviction|arrest|felony|misdemeanor|disposition|sentence/, note: "criminal record details" },
+  // "^charges?$" (not a bare "charge" substring) so Stripe-style columns like charge_id /
+  // chargeamount on revenue workbooks do not trip a criminal-record warning.
+  { pattern: /^charges?$|offense|offence|conviction|arrest|felony|misdemeanor|disposition|sentence/, note: "criminal record details" },
   { pattern: /^address|homeaddress|streetaddress|street\b|zipcode|postalcode/, note: "home addresses" },
   { pattern: /driverslicense|licensenumber|passport/, note: "license or ID numbers" }
 ];
@@ -184,7 +187,7 @@ export function detectSensitiveHeaders(headers = []) {
         warnings.push({
           header: clean(header),
           note: rule.note,
-          message: `This file includes ${rule.note} ("${clean(header)}"). Sensitive details are never imported — only name, email, and organization are kept.`
+          message: `This file includes ${rule.note} ("${clean(header)}"). Sensitive details are never imported.`
         });
         break;
       }
@@ -341,7 +344,8 @@ export function previewIntake(state = {}, csvText = "", opts = {}) {
   if (inspection.detection.type !== intakeType && inspection.detection.confidence === "strong") {
     warnings.push(`This file looks more like "${inspection.detection.label}" — ${inspection.detection.reason}. Double-check the list type before importing.`);
   }
-  for (const s of inspection.sensitive) warnings.push(s.message);
+  const minimizationNote = def.route === "memory" ? " Only name, email, and organization are kept." : "";
+  for (const s of inspection.sensitive) warnings.push(s.message + minimizationNote);
   if (!inspection.hasEmailColumn && def.route !== "review") {
     warnings.push("No email column was found, so people in this file cannot be matched or added to Contacts.");
   }
@@ -352,6 +356,21 @@ export function previewIntake(state = {}, csvText = "", opts = {}) {
     routed = previewConsumerImport(state, csvText, { sourceNote, listType: CONSUMER_LIST_TYPE });
   } else if (intakeType === "expungement_lifecycle" && afterAction === "hold_for_campaign") {
     routed = previewExpungementSync(state, csvToLifecycleRecords(csvText), { sourceNote });
+  }
+  // Sensitive values must not transit the preview response either: drop flagged columns from any
+  // delegated sample rows (the delegated previews mask emails but pass other columns through).
+  if (routed && Array.isArray(routed.sampleRows) && inspection.sensitive.length) {
+    const flagged = new Set(inspection.sensitive.map((s) => normalizeHeaderKey(s.header)));
+    routed = {
+      ...routed,
+      sampleRows: routed.sampleRows.map((row) => {
+        const out = {};
+        for (const [key, value] of Object.entries(row || {})) {
+          if (!flagged.has(normalizeHeaderKey(key))) out[key] = value;
+        }
+        return out;
+      })
+    };
   }
 
   const lines = [
@@ -398,7 +417,11 @@ export function confirmIntake(state = {}, csvText = "", opts = {}) {
   const { intakeType, def, afterAction, sourceNote, fileName } = resolveInputs(csvText, opts);
   const now = clean(opts.now) || new Date().toISOString();
   const actor = clean(opts.actor) || "owner";
-  const importId = clean(opts.importId) || `intake-${crypto.randomBytes(6).toString("hex")}`;
+  // Content-derived import id: re-confirming the SAME file with the same type and action maps to
+  // the SAME id, so queue-item ids stay stable and identical re-imports refresh instead of
+  // flooding the Queue (and a dismissed review item stays dismissed).
+  const importId = clean(opts.importId) ||
+    `intake-${crypto.createHash("sha256").update([intakeType, afterAction, csvText].join("|")).digest("hex").slice(0, 12)}`;
   const nowFn = () => now;
   const inspection = inspectCsv(csvText, fileName);
   const startedAt = now;
@@ -460,6 +483,15 @@ export function confirmIntake(state = {}, csvText = "", opts = {}) {
       if (isNew) counts.added++; else counts.merged++;
     }
     nextState = { ...nextState, companyContacts: contacts, companyOrganizations: organizations };
+    if (afterAction === "suppress") {
+      // The authoritative block: send-eligibility checks the suppression ledger (isSuppressed),
+      // not companyContacts — write both so a person already in a send lane is also stopped.
+      for (const email of seenEmails) {
+        nextState = recordSuppression(nextState, {
+          contactId: contactIdForEmail(email), email, reason: "manually_suppressed", source: "list_intake"
+        }, now);
+      }
+    }
     writesPerformed++;
     if (afterAction === "suppress") {
       resultLines.push(`${counts.suppressed} people marked do-not-contact. That mark is sticky — nothing will ever be sent to them.`);
@@ -471,7 +503,9 @@ export function confirmIntake(state = {}, csvText = "", opts = {}) {
   }
 
   // --- Review trail: Queue items for anything that needs Roger -------------------------------
-  const peopleCount = counts.added + counts.merged || inspection.rowCount;
+  const people = (n) => `${n} ${n === 1 ? "person" : "people"}`;
+  // Only people actually written to Contacts count — never the raw row count.
+  const peopleCount = counts.added + counts.merged;
   if (afterAction === "review_only") {
     nextState = emitQueueItem(nextState, {
       type: def.queueType,
@@ -485,41 +519,49 @@ export function confirmIntake(state = {}, csvText = "", opts = {}) {
     }, { now: nowFn });
   }
   if (afterAction === "create_followups") {
-    nextState = emitQueueItem(nextState, {
-      type: def.queueType,
-      sourceEngine: INTAKE_AGENT_ID,
-      sourceRef: { collection: "companyEvents", itemId: importId },
-      status: "needs_roger",
-      title: `Plan follow-ups for ${peopleCount} imported ${def.label.toLowerCase()}`,
-      summary: `${peopleCount} people from "${fileName}" are in Contacts and waiting on a follow-up plan.`,
-      recommendation: "Decide who gets a follow-up and when. Nothing is scheduled until you say so.",
-      metadata: { importId, intakeType, fileName }
-    }, { now: nowFn });
+    if (peopleCount > 0) {
+      nextState = emitQueueItem(nextState, {
+        type: def.queueType,
+        sourceEngine: INTAKE_AGENT_ID,
+        sourceRef: { collection: "companyEvents", itemId: importId },
+        status: "needs_roger",
+        title: `Plan follow-ups for ${people(peopleCount)} from ${fileName}`,
+        summary: `${people(peopleCount)} from "${fileName}" are in Contacts and waiting on a follow-up plan.`,
+        recommendation: "Decide who gets a follow-up and when. Nothing is scheduled until you say so.",
+        metadata: { importId, intakeType, fileName }
+      }, { now: nowFn });
+    } else {
+      resultLines.push("No usable emails were found, so there is nobody to follow up with yet.");
+    }
   }
   let approvalRequested = null;
   if (afterAction === "draft_outreach") {
-    const approval = createApproval({
-      actionType: "draft_outreach",
-      preview: `Draft outreach for ${peopleCount} people imported from "${fileName}" (${def.label}). Drafts are written for your review only — nothing sends.`,
-      riskLevel: "caution",
-      state: "requested",
-      requested_at: now
-    }, { now: nowFn });
-    nextState = { ...nextState, approvals: upsertApprovals(nextState.approvals, [approval], { now: nowFn }) };
-    approvalRequested = approval.id;
-    nextState = emitQueueItem(nextState, {
-      type: def.queueType,
-      sourceEngine: INTAKE_AGENT_ID,
-      sourceRef: { collection: "approvals", itemId: approval.id },
-      title: `Approve outreach drafting for ${peopleCount} imported people`,
-      summary: `People from "${fileName}" are in Contacts. Outreach drafts will only be written after you approve — and even then nothing sends without a separate approval.`,
-      recommendation: "Approve to let drafts be written for your review, or dismiss to leave these contacts as-is.",
-      requiresApproval: true,
-      riskLevel: "caution",
-      approvalId: approval.id,
-      metadata: { importId, intakeType, fileName }
-    }, { now: nowFn });
-    resultLines.push("An approval request was created for outreach drafting. Nothing is drafted or sent until you approve.");
+    if (peopleCount > 0) {
+      const approval = createApproval({
+        actionType: "draft_outreach",
+        preview: `Draft outreach for ${people(peopleCount)} imported from "${fileName}" (${def.label}). Drafts are written for your review only — nothing sends.`,
+        riskLevel: "caution",
+        state: "requested",
+        requested_at: now
+      }, { now: nowFn });
+      nextState = { ...nextState, approvals: upsertApprovals(nextState.approvals, [approval], { now: nowFn }) };
+      approvalRequested = approval.id;
+      nextState = emitQueueItem(nextState, {
+        type: def.queueType,
+        sourceEngine: INTAKE_AGENT_ID,
+        sourceRef: { collection: "approvals", itemId: approval.id },
+        title: `Approve outreach drafting for ${people(peopleCount)} from ${fileName}`,
+        summary: `People from "${fileName}" are in Contacts. Outreach drafts will only be written after you approve — and even then nothing sends without a separate approval.`,
+        recommendation: "Approve to let drafts be written for your review, or dismiss to leave these contacts as-is.",
+        requiresApproval: true,
+        riskLevel: "caution",
+        approvalId: approval.id,
+        metadata: { importId, intakeType, fileName }
+      }, { now: nowFn });
+      resultLines.push("An approval request was created for outreach drafting. Nothing is drafted or sent until you approve.");
+    } else {
+      resultLines.push("No usable emails were found, so no outreach approval was requested.");
+    }
   }
   if (inspection.sensitive.length && afterAction !== "review_only") {
     nextState = emitQueueItem(nextState, {
@@ -528,7 +570,7 @@ export function confirmIntake(state = {}, csvText = "", opts = {}) {
       sourceRef: { collection: "companyEvents", itemId: importId },
       status: "needs_roger",
       title: `Imported list had sensitive columns: ${fileName}`,
-      summary: `The upload included ${inspection.sensitive.map((s) => s.note).join(", ")}. Those details were NOT imported — only name, email, and organization were kept. Consider deleting the original file from shared drives.`,
+      summary: `The upload included ${inspection.sensitive.map((s) => s.note).join(", ")}. Those details were NOT imported. Consider deleting the original file from shared drives.`,
       recommendation: "Confirm the original file is stored somewhere safe or deleted.",
       metadata: { importId, intakeType, fileName },
       priority: 30
