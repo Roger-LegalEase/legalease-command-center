@@ -49,9 +49,10 @@ assert(upload.includes("What kind of list is this?"), "Upload flow should ask fo
 assert(upload.includes("Where did this list come from?"), "Upload flow should require source note.");
 assert(upload.includes('name="listType" required'), "Upload flow should require list type.");
 assert(upload.includes('name="sourceNote" required'), "Upload flow should require source note.");
-for (const type of ["Consumer / Expungement.ai list", "RCAP prospect list", "Social content calendar", "RCAP revenue workbook"]) {
+for (const type of ["People who used Expungement.ai", "People stuck at checkout / reactivation list", "RCAP prospects", "Partner contacts", "Social content calendar", "Revenue workbook", "Support list", "Something else / not sure"]) {
   assert(upload.includes(type), `Upload flow should include ${type}`);
 }
+assert(upload.includes("What should happen after import?"), "Upload flow should ask what happens after import.");
 for (const check of ["missing emails", "invalid emails", "duplicates", "suppressed/unsubscribed/bounced/do-not-contact"]) {
   assert(source.includes(check), `Upload flow should explain ${check}`);
 }
