@@ -17015,7 +17015,7 @@ function htmlShell() {
       ];
       if (target) target.innerHTML = lines.join("<br>") +
         (sample ? "<br><br><strong>Sample rows</strong><ul>" + sample + "</ul>" : "") +
-        "<br><div class=\"card-actions\"><button class=\"primary\" type=\"button\" onclick=\"consumerListImportConfirm()\">Import contacts</button> <button type=\"button\" onclick=\"consumerListImportCancel()\">Cancel</button></div>";
+        "<br><div class=\\"card-actions\\"><button class=\\"primary\\" type=\\"button\\" onclick=\\"consumerListImportConfirm()\\">Import contacts</button> <button type=\\"button\\" onclick=\\"consumerListImportCancel()\\">Cancel</button></div>";
       toast("Preview ready. Nothing was saved or sent.");
     }
     async function consumerListImportConfirm() {
@@ -17116,7 +17116,7 @@ function htmlShell() {
       ];
       if (target) target.innerHTML = lines.join("<br>") +
         (sample ? "<br><br><strong>Sample contacts</strong><ul>" + sample + "</ul>" : "") +
-        "<br><div class=\"card-actions\"><button class=\"primary\" type=\"button\" onclick=\"expungementSyncConfirm()\">Import held contacts</button> <button type=\"button\" onclick=\"expungementSyncCancel()\">Cancel</button></div>";
+        "<br><div class=\\"card-actions\\"><button class=\\"primary\\" type=\\"button\\" onclick=\\"expungementSyncConfirm()\\">Import held contacts</button> <button type=\\"button\\" onclick=\\"expungementSyncCancel()\\">Cancel</button></div>";
       toast("Preview ready. Nothing was saved or sent.");
     }
     async function expungementSyncConfirm() {
@@ -17200,18 +17200,18 @@ function htmlShell() {
         [c.totalLifecycleContacts, "lifecycle contacts"], [c.heldReactivation, "held for review"],
         [c.staged, "staged"], [c.enrolled, "enrolled"], [c.excludedSuppressed, "excluded / suppressed"],
         [c.deleted, "deleted / erasure"], [c.revokedConsent, "revoked consent"]
-      ].map(function(pair){ return "<article class=\"campaign-preview-metric\"><strong>" + esc(String(pair[0] || 0)) + "</strong><span>" + esc(pair[1]) + "</span></article>"; }).join("");
+      ].map(function(pair){ return "<article class=\\"campaign-preview-metric\\"><strong>" + esc(String(pair[0] || 0)) + "</strong><span>" + esc(pair[1]) + "</span></article>"; }).join("");
       const byStage = data.lifecycleByStage || {};
       const stageLine = Object.keys(byStage).filter(function(k){ return byStage[k] > 0; }).map(function(k){ return esc(k) + ": " + esc(String(byStage[k])); }).join(" &middot; ") || "none";
       const dispositionOptions = [["keep_held","Keep held"],["approved_for_later","Approve for later"],["needs_more_info","Needs more info"],["suppress","Suppress / do not contact"],["exclude_paid_customer","Exclude paid customer"]];
       const heldRows = (data.heldRows || []).filter(function(r){ return heldReviewStageMatch(r.lifecycle_stage, f); }).map(function(r, i){
         const cid = String(r.contact_id || "");
         const selId = "disp-status-" + i, noteId = "disp-note-" + i;
-        const opts = dispositionOptions.map(function(o){ return "<option value=\"" + esc(o[0]) + "\"" + (r.review_status === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("");
-        const controls = cid && !r.enrolled ? ("<div class=\"held-disposition\">"
-          + "<select id=\"" + selId + "\">" + opts + "</select> "
-          + "<input id=\"" + noteId + "\" placeholder=\"Review note (optional)\" value=\"" + esc(String(r.review_note || "")) + "\"> "
-          + "<button type=\"button\" onclick=\"applyHeldContactDisposition('" + esc(cid) + "','" + selId + "','" + noteId + "')\">Apply</button>"
+        const opts = dispositionOptions.map(function(o){ return "<option value=\\"" + esc(o[0]) + "\\"" + (r.review_status === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("");
+        const controls = cid && !r.enrolled ? ("<div class=\\"held-disposition\\">"
+          + "<select id=\\"" + selId + "\\">" + opts + "</select> "
+          + "<input id=\\"" + noteId + "\\" placeholder=\\"Review note (optional)\\" value=\\"" + esc(String(r.review_note || "")) + "\\"> "
+          + "<button type=\\"button\\" onclick=\\"applyHeldContactDisposition('" + esc(cid) + "','" + selId + "','" + noteId + "')\\">Apply</button>"
           + "</div>") : "";
         return "<li>" + esc(String(r.masked_email)) + (r.first_name ? " (" + esc(String(r.first_name)) + ")" : "")
           + " &middot; " + esc(String(r.lifecycle_stage || r.source_note || "held"))
@@ -17231,13 +17231,13 @@ function htmlShell() {
       }).join("");
       const events = (data.recentEvents || []).map(function(e){ return "<li>" + esc(String(e.masked_email)) + " &middot; " + esc(String(e.stage)) + (e.created_at ? " &middot; " + esc(String(e.created_at)) : "") + "</li>"; }).join("");
       target.innerHTML = "<strong>Held contacts &amp; Expungement.ai lifecycle</strong> &middot; <em>Nothing sends from this page. Held contacts are blocked from campaigns until intentionally released.</em>"
-        + "<div class=\"campaign-preview-metrics\">" + cards + "</div>"
-        + "<p class=\"muted\">Lifecycle by stage: " + stageLine + "</p>"
+        + "<div class=\\"campaign-preview-metrics\\">" + cards + "</div>"
+        + "<p class=\\"muted\\">Lifecycle by stage: " + stageLine + "</p>"
         + "<strong>Held contacts (" + esc(String((data.heldRows || []).length)) + ")</strong>"
-        + "<p class=\"muted\">This does not release contacts. Nothing sends from this action.</p>"
-        + (heldRows ? "<ul>" + heldRows + "</ul>" : "<p class=\"muted\">No held contacts for this filter.</p>")
+        + "<p class=\\"muted\\">This does not release contacts. Nothing sends from this action.</p>"
+        + (heldRows ? "<ul>" + heldRows + "</ul>" : "<p class=\\"muted\\">No held contacts for this filter.</p>")
         + "<strong>Expungement.ai lifecycle (" + esc(String((data.lifecycleRows || []).length)) + ")</strong>"
-        + (lifeRows ? "<ul>" + lifeRows + "</ul>" : "<p class=\"muted\">No lifecycle contacts for this filter.</p>")
+        + (lifeRows ? "<ul>" + lifeRows + "</ul>" : "<p class=\\"muted\\">No lifecycle contacts for this filter.</p>")
         + (events ? "<details><summary>Recent lifecycle events</summary><ul>" + events + "</ul></details>" : "");
     }
     async function applyHeldContactDisposition(contactId, statusFieldId, noteFieldId) {
