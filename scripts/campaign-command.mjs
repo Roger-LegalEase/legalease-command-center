@@ -35,7 +35,7 @@ import {
 const clean = (v = "") => String(v ?? "").trim();
 const lower = (v = "") => clean(v).toLowerCase();
 const list = (v) => (Array.isArray(v) ? v : []);
-const people = (n) => `${n} ${n === 1 ? "person" : "people"}`;
+const people = (n) => `${Number(n || 0).toLocaleString("en-US")} ${n === 1 ? "person" : "people"}`;
 const listJoin = (arr) => {
   const a = list(arr).map(String);
   return a.length <= 1 ? (a[0] ?? "") : `${a.slice(0, -1).join(", ")} and ${a[a.length - 1]}`;
@@ -121,6 +121,10 @@ function thresholdFacts(state, config) {
   const pct = (v, digits = 1) => `${(v * 100).toFixed(digits)}%`;
   return {
     ...evaluated,
+    // Limit values as numbers so the UI can draw honest "how close to auto-pause" meters
+    // instead of restating them from copy. Display-only; evaluation stays server-side.
+    limits: { ...t },
+    minSampleSize: config.minSampleSize,
     plain: evaluated.tripped
       ? `A safety limit tripped: ${plainSafetyReasons(evaluated.reasons)}. The campaign pauses itself and nothing more sends until you decide.`
       : evaluated.belowSample
@@ -331,7 +335,7 @@ export function proposeWaveRelease(state = {}, waveNumber, { scheduledFor = "", 
     type: "campaign",
     sourceEngine: CAMPAIGN_COMMAND_SOURCE,
     sourceRef: { collection: "reactivationCampaign", itemId: refId },
-    title: `Approve wave ${preview.wave} release — ${people(preview.eligible)}`,
+    title: `Approve wave ${preview.wave} release for ${people(preview.eligible)}`,
     summary: `${preview.whatApprovalDoes}${scheduleLine} ${preview.gates.sendingOn ? "Sending is ON, so emails would begin in the next window." : "Sending is off, so nobody gets an email until you turn sending on."}`,
     recommendation: `${preview.whatApprovalDoesNot}`,
     requiresApproval: true,
