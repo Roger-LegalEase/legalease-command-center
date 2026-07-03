@@ -117,6 +117,15 @@ check("the background wash is teal-tinted, not the old green", () => {
   assert(source.includes('classList.toggle("ck-wash"'), "wash toggles with the Today view");
 });
 
+check("card visualizations stay honest about their sources", () => {
+  const moneyViz = sliceFunction("ckMoneyVizHtml");
+  assert(moneyViz.includes("Revenue chart appears when payments connect"), "money chart has a no-source placeholder");
+  assert(moneyViz.includes("money.daily"), "money chart draws only from the real per-day breakdown");
+  const stuckViz = sliceFunction("ckPeopleStuckVizHtml");
+  assert(stuckViz.includes("Nobody is stuck right now"), "people-stuck bars have an honest all-zero state");
+  assert(stuckViz.includes("ck-meter steel"), "people-stuck bars use the neutral steel tone, not alert orange");
+});
+
 check("#daily-run still renders and the Daily Run button remains", () => {
   assert(today.includes("location.hash='daily-run'"), "Open Daily Run button present");
   assert(source.includes("function todaySinglePaneHtml"), "daily-run pane renderer exists");

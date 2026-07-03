@@ -632,7 +632,11 @@ export function buildTodaySummary(state = {}, { env = process.env, now = () => n
       stripeConnected: Boolean(stripe && stripe.available),
       gross: stripe && stripe.available ? Number(stripe.gross) || 0 : null,
       sinceLabel: stripe ? clean(stripe.sinceLabel) : "",
+      since: stripe && stripe.available ? clean(stripe.since) : "",
       currency: stripe ? clean(stripe.currency) || "usd" : "usd",
+      // Display-only per-day breakdown of the same charges behind `gross` (when the
+      // source provides it) so the UI can draw an honest daily chart, never a fake one.
+      daily: stripe && stripe.available && stripe.dailyGross && typeof stripe.dailyGross === "object" ? stripe.dailyGross : null,
       note: stripe && stripe.available ? "" : "Money numbers appear when the payment source is connected."
     },
     peopleStuck: {

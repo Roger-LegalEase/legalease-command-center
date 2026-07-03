@@ -11828,6 +11828,9 @@ async function fetchStripeRevenueSnapshot() {
     let currency = "";
     let after = "";
     let pages = 0;
+    // Display-only per-day aggregation of the same charges that make up the total,
+    // so the Money card can draw an honest daily chart. No extra API calls.
+    const dailyMinorUnits = {};
     while (true) {
       // created[gte] makes Stripe return only on/after-cutoff charges; the local
       // check below is a defensive double-guard so legacy charges can never count.
@@ -11848,8 +11851,11 @@ async function fetchStripeRevenueSnapshot() {
           return { ...base, available: false, configured: true, error: "Stripe returned test-mode data for a live key." };
         }
         if (charge && charge.paid && charge.status === "succeeded" && Number(charge.created) >= cutoffUnix) {
-          totalMinorUnits += Number(charge.amount_captured ?? charge.amount ?? 0);
+          const minor = Number(charge.amount_captured ?? charge.amount ?? 0);
+          totalMinorUnits += minor;
           if (!currency) currency = charge.currency || "";
+          const day = new Date(Number(charge.created) * 1000).toISOString().slice(0, 10);
+          dailyMinorUnits[day] = (dailyMinorUnits[day] || 0) + minor;
         }
       }
       if (!data || !data.has_more || !data.data?.length) break;
@@ -11864,7 +11870,8 @@ async function fetchStripeRevenueSnapshot() {
       gross: Math.round(totalMinorUnits) / 100,
       since: STRIPE_REVENUE_CUTOFF_ISO,
       sinceLabel,
-      currency: currency || "usd"
+      currency: currency || "usd",
+      dailyGross: Object.fromEntries(Object.entries(dailyMinorUnits).map(([day, minor]) => [day, Math.round(minor) / 100]))
     };
   } catch (error) {
     const aborted = error && (error.name === "AbortError" || error.aborted);
@@ -15208,7 +15215,13 @@ function htmlShell() {
     .ck-meter.teal .track { background:#DCEEEB; } .ck-meter.teal .fill { background:var(--ck-teal); }
     .ck-meter.orange .track { background:#FBE9DA; } .ck-meter.orange .fill { background:var(--ck-orange-deep); }
     .ck-meter.crit .track { background:#F8DFCE; } .ck-meter.crit .fill { background:var(--ck-crit); }
+    .ck-meter.steel .track { background:#E9ECF7; } .ck-meter.steel .fill { background:var(--ck-steel); }
+    .ck-meter .sub { font-size:13px; color:var(--ck-muted); margin-top:4px; }
     .ck-meter-note { font-size:13.5px; color:var(--ck-muted); margin-top:10px; }
+    .ck-viz-empty { display:grid; place-items:center; gap:6px; text-align:center; background:var(--ck-tint); border-radius:12px; padding:24px 16px; color:var(--ck-muted); font-size:14.5px; margin-top:14px; min-height:120px; }
+    .ck-viz-empty svg { width:20px; height:20px; }
+    .ck-minibar-caption { display:flex; justify-content:space-between; gap:10px; font-size:13.5px; color:var(--ck-muted); margin-top:6px; }
+    .ck-minibar-caption b { color:var(--ck-ink); font-weight:650; }
     .ck-agents { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; margin-top:12px; }
     .ck-agent { background:var(--ck-tint); border-radius:12px; padding:16px; }
     .ck-agent .row1 { display:flex; justify-content:space-between; align-items:center; gap:8px; }
@@ -15217,7 +15230,7 @@ function htmlShell() {
     .ck-agent .stripe { height:6px; border-radius:999px; background:var(--ck-teal); }
     .ck-agent .stripe.warn { background:var(--ck-orange-deep); }
     .ck-agent .stripe.off { background:#DDE3E9; }
-    .ck-panel-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
+    .ck-panel-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; align-items:start; }
     .ck-health { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
     .ck-health .ck-pill { font-size:14.5px; }
     .ck-empty { color:var(--ck-muted); font-size:15px; padding:8px 0; }
@@ -25859,6 +25872,69 @@ function htmlShell() {
       const norm = raw / mag;
       return (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10) * mag;
     }
+    // People stuck as scaled bars: the label row IS the value readout, the bar under it
+    // shows relative size against the largest category. Steel blue = business data, not alert.
+    function ckPeopleStuckVizHtml(s, stuck) {
+      if (!s) return '<div class="ck-empty">Loading.</div>';
+      const rows = [
+        ["Abandoned screenings", "Started but did not finish", Number(stuck.abandonedScreenings) || 0],
+        ["Checkout abandoned", "Reached payment, did not pay", Number(stuck.checkoutAbandoned) || 0],
+        ["Held for your review", "Kept out of the campaign until you clear them", Number(stuck.heldContacts) || 0],
+        ["Do-not-contact list", "Never emailed", Number(stuck.suppressedContacts) || 0]
+      ];
+      const max = Math.max.apply(null, rows.map(r => r[2]).concat([0]));
+      if (max === 0) {
+        return \`<div class="ck-viz-empty">\${CK_ICONS.check}<div><b style="color:var(--ck-teal);">Nobody is stuck right now.</b><br>This fills in as people move through screening and checkout.</div></div>\`;
+      }
+      return rows.map(([label, sub, value]) => \`<div class="ck-meter steel">
+        <div class="line"><span class="lab">\${esc(label)}</span><span class="num">\${ckNum(value)}</span></div>
+        <div class="track"><div class="fill" style="width:\${max ? Math.max(value / max * 100, value > 0 ? 4 : 0).toFixed(0) : 0}%;"></div></div>
+        <div class="sub">\${esc(sub)}</div>
+      </div>\`).join("");
+    }
+    // Money: an honest last-30-days daily chart from the same Stripe charges behind the
+    // total. No source, no chart: a quiet placeholder, never invented numbers.
+    function ckMoneyVizHtml(money) {
+      if (!money.stripeConnected) {
+        return \`<div class="ck-viz-empty">\${CK_ICONS.dollar}<div>Revenue chart appears when payments connect.</div></div>\`;
+      }
+      const byDay = money.daily;
+      if (!byDay || !Object.keys(byDay).length) {
+        return '<div class="ck-meter-note">A daily revenue chart appears after the next payment sync.</div>';
+      }
+      const todayUtc = new Date();
+      const days = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(todayUtc.getTime() - i * 86400000).toISOString().slice(0, 10);
+        if (!money.since || d >= money.since) days.push([d, Number(byDay[d]) || 0]);
+      }
+      if (!days.length) return '<div class="ck-meter-note">A daily revenue chart appears after the next payment sync.</div>';
+      const max = Math.max.apply(null, days.map(d => d[1]).concat([1]));
+      const W = 320, H = 112, base = 104, plotH = 78;
+      const slot = W / days.length;
+      const barW = Math.max(3, Math.min(9, Math.floor(slot * 0.62)));
+      let peakIdx = 0;
+      days.forEach((d, i) => { if (d[1] > days[peakIdx][1]) peakIdx = i; });
+      const bars = days.map(([day, amount], i) => {
+        const h = amount > 0 ? Math.max(amount / max * plotH, 3) : 1.5;
+        const x = slot * i + (slot - barW) / 2;
+        const label = i === peakIdx && amount > 0
+          ? \`<text x="\${(slot * i + slot / 2).toFixed(1)}" y="\${(base - h - 5).toFixed(1)}" fill="#4E5A6E" font-size="11" font-weight="700" text-anchor="middle">$\${ckNum(Math.round(amount))}</text>\`
+          : "";
+        return \`<rect x="\${x.toFixed(1)}" y="\${(base - h).toFixed(1)}" width="\${barW}" height="\${h.toFixed(1)}" rx="2" fill="\${amount > 0 ? "#0C7D75" : "#E2E7EC"}"><title>\${esc(day)}: $\${ckNum(amount)}</title></rect>\${label}\`;
+      }).join("");
+      const dayLabel = (d) => {
+        const [, m, dd] = d.split("-");
+        return Number(m) + "/" + Number(dd);
+      };
+      return \`<div class="ck-plot" style="margin-top:14px;">
+        <svg viewBox="0 0 \${W} \${H}" role="img" aria-label="Daily collected revenue, last \${days.length} days.">
+          <line x1="0" y1="\${base}" x2="\${W}" y2="\${base}" stroke="#E7EAF0" stroke-width="1"/>
+          \${bars}
+        </svg>
+      </div>
+      <div class="ck-minibar-caption"><span>\${esc(dayLabel(days[0][0]))}</span><b>Collected by day</b><span>\${esc(dayLabel(days[days.length - 1][0]))}</span></div>\`;
+    }
     function ckWaveTip(idx) {
       const wrap = document.getElementById("ck-waveplot");
       if (!wrap) return;
@@ -26214,11 +26290,8 @@ function htmlShell() {
             </div>
             <div class="ck-card">
               <h2>People stuck</h2>
-              <div class="ck-rows" style="margin-top:14px;">
-                \${ckListRowHtml("clock", "Abandoned screenings", "Started but did not finish", s ? ckNum(stuck.abandonedScreenings) : "...", s && stuck.abandonedScreenings > 0 ? "warn" : "")}
-                \${ckListRowHtml("cart", "Checkout abandoned", "Reached payment, did not pay", s ? ckNum(stuck.checkoutAbandoned) : "...", s && stuck.checkoutAbandoned > 0 ? "warn" : "")}
-                \${ckListRowHtml("lock", "Held for your review", "Kept out of the campaign until you clear them", s ? ckNum(stuck.heldContacts) : "...", "")}
-                \${ckListRowHtml("minus", "Do-not-contact list", "Never emailed", s ? ckNum(stuck.suppressedContacts) : "...", "")}
+              <div style="margin-top:6px;">
+                \${ckPeopleStuckVizHtml(s, stuck)}
               </div>
             </div>
             <div class="ck-card">
@@ -26228,6 +26301,7 @@ function htmlShell() {
                 \${ckListRowHtml("fail", "Failed payments", money.stripeConnected ? "Reported by Stripe" : "Appears when payments connect", money.stripeConnected ? "None reported" : "Waiting", "small")}
                 \${ckListRowHtml("users", "Partner revenue", "Not booked from a real source yet", "Waiting", "small")}
               </div>
+              \${ckMoneyVizHtml(money)}
               \${money.note ? \`<div class="ck-meter-note">\${esc(money.note)}</div>\` : ""}
             </div>
           </div>
