@@ -15220,8 +15220,33 @@ function htmlShell() {
     .ck-meter-note { font-size:13.5px; color:var(--ck-muted); margin-top:10px; }
     .ck-viz-empty { display:grid; place-items:center; gap:6px; text-align:center; background:var(--ck-tint); border-radius:12px; padding:24px 16px; color:var(--ck-muted); font-size:14.5px; margin-top:14px; min-height:120px; }
     .ck-viz-empty svg { width:20px; height:20px; }
+    .ck-viz-empty.slim { min-height:64px; padding:14px 16px; }
     .ck-minibar-caption { display:flex; justify-content:space-between; gap:10px; font-size:13.5px; color:var(--ck-muted); margin-top:6px; }
     .ck-minibar-caption b { color:var(--ck-ink); font-weight:650; }
+    .ck-counters { display:grid; grid-template-columns:repeat(auto-fit,minmax(108px,1fr)); gap:8px; margin-top:12px; }
+    .ck-counter { background:var(--ck-tint); border-radius:10px; padding:10px 12px; min-width:0; }
+    .ck-counter .n { font-size:22px; font-weight:700; color:var(--ck-ink); line-height:1.1; }
+    .ck-counter .n.na { font-size:13.5px; color:var(--ck-muted); font-weight:600; line-height:1.3; }
+    .ck-counter .l { font-size:12.5px; color:var(--ck-muted); margin-top:3px; line-height:1.25; }
+    .ck-counter.alert { background:var(--ck-orange-tint); } .ck-counter.alert .n { color:var(--ck-orange-text); }
+    .ck-counter.good .n { color:var(--ck-teal); }
+    .ck-splitbar { display:flex; height:14px; border-radius:8px; overflow:hidden; gap:2px; margin:12px 0 6px; }
+    .ck-splitbar div { border-radius:3px; }
+    .ck-status-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px 14px; margin:10px 0 12px; }
+    .ck-status { display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ck-ink2); min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ck-status .d { width:9px; height:9px; border-radius:50%; flex:none; }
+    .ck-status .d.teal { background:var(--ck-teal); }
+    .ck-status .d.orange { background:var(--ck-orange-deep); }
+    .ck-status .d.navy { background:var(--ck-ink); }
+    .ck-status .d.gray { background:#C3CAD3; }
+    .ck-status b { color:var(--ck-ink); font-weight:650; }
+    .ck-funnel { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-top:8px; }
+    .ck-fstep .n { font-size:22px; font-weight:700; color:var(--ck-ink); line-height:1.1; }
+    .ck-fstep .n.na { font-size:13.5px; color:var(--ck-muted); font-weight:600; }
+    .ck-fstep .l { font-size:12.5px; color:var(--ck-muted); margin:3px 0 7px; line-height:1.25; }
+    .ck-fstep .bar { height:10px; border-radius:999px; background:#EAEDF2; overflow:hidden; }
+    .ck-fstep .bar i { display:block; height:100%; border-radius:999px; }
+    @media (max-width:860px) { .ck-funnel { grid-template-columns:repeat(2,minmax(0,1fr)); } }
     .ck-agents { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; margin-top:12px; }
     .ck-agent { background:var(--ck-tint); border-radius:12px; padding:16px; }
     .ck-agent .row1 { display:flex; justify-content:space-between; align-items:center; gap:8px; }
@@ -25884,7 +25909,7 @@ function htmlShell() {
       ];
       const max = Math.max.apply(null, rows.map(r => r[2]).concat([0]));
       if (max === 0) {
-        return \`<div class="ck-viz-empty">\${CK_ICONS.check}<div><b style="color:var(--ck-teal);">Nobody is stuck right now.</b><br>This fills in as people move through screening and checkout.</div></div>\`;
+        return \`<div class="ck-viz-empty">\${CK_ICONS.check}<div><b style="color:var(--ck-teal);">Nobody is stuck right now.</b></div></div>\`;
       }
       return rows.map(([label, sub, value]) => \`<div class="ck-meter steel">
         <div class="line"><span class="lab">\${esc(label)}</span><span class="num">\${ckNum(value)}</span></div>
@@ -25934,6 +25959,144 @@ function htmlShell() {
         </svg>
       </div>
       <div class="ck-minibar-caption"><span>\${esc(dayLabel(days[0][0]))}</span><b>Collected by day</b><span>\${esc(dayLabel(days[days.length - 1][0]))}</span></div>\`;
+    }
+    function ckAgo(iso) {
+      const t = Date.parse(iso || "");
+      if (!Number.isFinite(t)) return "";
+      const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+      if (mins < 60) return mins + "m ago";
+      if (mins < 60 * 24) return Math.round(mins / 60) + "h ago";
+      return Math.round(mins / 1440) + "d ago";
+    }
+    function ckCounterHtml(value, label, cls) {
+      const isNa = typeof value !== "number" && String(value).charAt(0) !== "$";
+      return \`<div class="ck-counter \${cls || ""}"><div class="n \${isNa ? "na" : ""}">\${typeof value === "number" ? ckNum(value) : esc(String(value))}</div><div class="l">\${esc(label)}</div></div>\`;
+    }
+    // Compact conversion funnel: real product-funnel steps where a source exists,
+    // "Not wired" where none does (completed-screening has no source yet).
+    function ckFunnelStripHtml() {
+      const s = todaySummary;
+      const gm = s ? (s.goodMorning || {}) : {};
+      const stuck = s ? (s.peopleStuck || {}) : {};
+      const wired = Boolean(gm.funnelConnected);
+      const steps = [
+        ["Started screening", wired ? Number(gm.screeningsStarted) || 0 : null, "teal4"],
+        ["Completed screening", null, "teal3"],
+        ["Reached checkout", wired ? Number(gm.checkouts) || 0 : null, "teal2"],
+        ["Paid", gm.signupsConnected ? Number(gm.paid) || 0 : null, "teal1"],
+        ["Held for review", s ? Number(stuck.heldContacts) || 0 : null, "steel"]
+      ];
+      const fillColor = { teal4: "#7CC6BF", teal3: "#4FB0A7", teal2: "#22948A", teal1: "#0C7D75", steel: "#3040BF" };
+      const max = Math.max.apply(null, steps.map(x => (typeof x[1] === "number" ? x[1] : 0)).concat([1]));
+      const cells = steps.map(([label, value, tone]) => {
+        const na = typeof value !== "number";
+        const pct = na ? 0 : Math.max(value / max * 100, value > 0 ? 5 : 0);
+        return \`<div class="ck-fstep">
+          <div class="n \${na ? "na" : ""}">\${na ? "Not wired yet" : ckNum(value)}</div>
+          <div class="l">\${esc(label)}</div>
+          <div class="bar"><i style="width:\${pct.toFixed(0)}%; background:\${fillColor[tone]};"></i></div>
+        </div>\`;
+      }).join("");
+      return \`<div class="ck-card" style="margin-top:16px;">
+        <div class="ck-sec-head" style="margin-bottom:2px;"><h2>Conversion funnel</h2><span class="hint">\${wired ? "From the product funnel" : "Product funnel not wired yet"}</span></div>
+        <div class="ck-funnel">\${cells}</div>
+      </div>\`;
+    }
+    // Money extras: consumer/partner split, month-to-date, honest not-wired counters,
+    // and the real last Stripe sync time from the served snapshot.
+    function ckMoneyCountersHtml(money) {
+      if (!money.stripeConnected) return "";
+      const byDay = money.daily || {};
+      const monthKey = new Date().toISOString().slice(0, 7);
+      const mtd = Object.entries(byDay).reduce((sum, [day, amount]) => sum + (day.slice(0, 7) === monthKey ? Number(amount) || 0 : 0), 0);
+      const fetchedAt = (state && state.stripeRevenue && state.stripeRevenue.fetchedAt) || "";
+      const gross = Number(money.gross) || 0;
+      const split = \`<div class="ck-splitbar" aria-hidden="true">
+          \${gross > 0 ? '<div style="flex:1; background:var(--ck-teal);"></div>' : '<div style="flex:1; background:#E2E7EC;"></div>'}
+        </div>
+        <div class="ck-minibar-caption"><span><b>Consumer</b> $\${ckNum(gross)}</span><span>Partner: not booked yet</span></div>\`;
+      return \`\${split}
+      <div class="ck-counters">
+        \${ckCounterHtml("$" + ckNum(Math.round(mtd)), "Collected this month", "good")}
+        \${ckCounterHtml("Not wired yet", "Failed payments", "")}
+        \${ckCounterHtml("Not wired yet", "Refunds", "")}
+        \${ckCounterHtml(fetchedAt ? "Synced " + ckAgo(fetchedAt) : "Sync time unavailable", "Stripe sync", "")}
+      </div>\`;
+    }
+    // Social pulse: real channel connection dots (state.socialAccounts) and the real
+    // content pipeline (state.posts). Followers/engagement have no source: honest line.
+    function ckSocialPulseHtml() {
+      const accounts = Array.isArray(state.socialAccounts) ? state.socialAccounts : [];
+      const channels = [["linkedin", "LinkedIn"], ["x", "X"], ["facebook", "Facebook"], ["instagram", "Instagram"], ["threads", "Threads"]];
+      const connectedOf = (platform) => accounts.some(a =>
+        String(a.platform || "").toLowerCase() === platform && (a.connected || a.status === "connected" || a.hasStoredToken));
+      const dots = channels.map(([id, label]) => {
+        const on = connectedOf(id);
+        return \`<div class="ck-status"><span class="d \${on ? "teal" : "gray"}"></span>\${esc(label)} <b>\${on ? "connected" : "not wired"}</b></div>\`;
+      }).join("");
+      const posts = Array.isArray(state.posts) ? state.posts : [];
+      const byStatus = (statuses) => posts.filter(p => statuses.includes(p.status)).length;
+      const rows = [
+        ["Needs approval", byStatus(["draft", "needs_review"]), "orange"],
+        ["Approved", byStatus(["approved"]), "teal"],
+        ["Scheduled", byStatus(["scheduled"]), "teal"],
+        ["Posted", posts.filter(p => p.status === "posted" || p.manuallyPostedAt).length, "steel"]
+      ];
+      const maxRow = Math.max.apply(null, rows.map(r => r[1]).concat([1]));
+      const bars = rows.map(([label, value, tone]) => \`<div class="ck-meter \${tone}" style="margin-top:10px;">
+        <div class="line"><span class="lab">\${esc(label)}</span><span class="num">\${ckNum(value)}</span></div>
+        <div class="track"><div class="fill" style="width:\${Math.max(value / maxRow * 100, value > 0 ? 4 : 0).toFixed(0)}%;"></div></div>
+      </div>\`).join("");
+      return \`<div class="ck-card">
+        <div class="ck-sec-head" style="margin-bottom:4px;"><h2>Social pulse</h2><span class="hint">Content pipeline</span></div>
+        <div class="ck-status-grid">\${dots}</div>
+        \${bars}
+        <div class="ck-meter-note">Followers and engagement appear when a social account connects.</div>
+      </div>\`;
+    }
+    // Comments & messages: real growth-inbox / support / partner counters; social
+    // comments and DMs have no connected source yet.
+    function ckInboxPulseHtml() {
+      const gm = todaySummary ? (todaySummary.goodMorning || {}) : {};
+      const partners = todaySummary ? (todaySummary.partners || {}) : {};
+      const inbox = Array.isArray(state.growthInbox) ? state.growthInbox : null;
+      const openInbox = inbox ? inbox.filter(i => !["converted", "ignored"].includes(i.status)).length : null;
+      return \`<div class="ck-card">
+        <div class="ck-sec-head" style="margin-bottom:4px;"><h2>Comments and messages</h2><span class="hint">What needs a reply</span></div>
+        <div class="ck-counters">
+          \${ckCounterHtml(openInbox === null ? "Loading" : openInbox, "Inbox items open", openInbox > 0 ? "alert" : "good")}
+          \${ckCounterHtml(todaySummary ? Number(gm.supportOpen) || 0 : "Loading", "Support requests", (Number(gm.supportOpen) || 0) > 0 ? "alert" : "good")}
+          \${ckCounterHtml(todaySummary ? Number(partners.followupsDue) || 0 : "Loading", "Partner follow ups", (Number(partners.followupsDue) || 0) > 0 ? "alert" : "good")}
+          \${ckCounterHtml("Not connected yet", "Social comments and DMs", "")}
+        </div>
+      </div>\`;
+    }
+    // Watchlist source-status dots: teal healthy, orange alert, navy stable, gray not wired.
+    function ckWatchStatusHtml(v) {
+      const rows = [];
+      const dot = (tone, label, word) => \`<div class="ck-status"><span class="d \${tone}"></span>\${esc(label)} <b>\${esc(word)}</b></div>\`;
+      rows.push(!versionTruth ? dot("gray", "Production", "unverified")
+        : versionTruth.severity === "ok" ? dot("navy", "Production", "current")
+        : versionTruth.severity === "alert" ? dot("orange", "Production", "behind")
+        : dot("gray", "Production", "checking"));
+      rows.push(!safetyPosture || !safetyPosture.email ? dot("gray", "Email", "unverified")
+        : safetyPosture.email.tone === "ok" ? dot("navy", "Email sending", "off")
+        : dot("orange", "Email sending", "check gates"));
+      if (v && v.rates && v.rates.sent > 0) {
+        rows.push(v.telemetry && v.telemetry.trusted ? dot("teal", "Delivery", "reports flowing") : dot("orange", "Delivery", "reports missing"));
+      } else {
+        rows.push(dot("gray", "Delivery", "no sends yet"));
+      }
+      const money = todaySummary ? (todaySummary.money || {}) : {};
+      rows.push(money.stripeConnected ? dot("teal", "Stripe", "connected") : dot("gray", "Stripe", "not wired"));
+      const accounts = Array.isArray(state.socialAccounts) ? state.socialAccounts : [];
+      const socialOn = accounts.some(a => a.platform !== "google_workspace" && (a.connected || a.status === "connected" || a.hasStoredToken));
+      rows.push(socialOn ? dot("teal", "Social", "connected") : dot("gray", "Social", "not wired"));
+      rows.push(dot("gray", "Web traffic", "not wired"));
+      const google = accounts.find(a => a.platform === "google_workspace") || {};
+      const gmailOn = Boolean(google.connected || google.status === "connected" || google.hasStoredToken || google.accountName);
+      rows.push(gmailOn ? dot("teal", "Gmail", "connected") : dot("gray", "Gmail", "not wired"));
+      return \`<div class="ck-status-grid">\${rows.join("")}</div>\`;
     }
     function ckWaveTip(idx) {
       const wrap = document.getElementById("ck-waveplot");
@@ -26027,7 +26190,7 @@ function htmlShell() {
       const sent = rates.sent || 0;
       let body;
       if (!sent) {
-        body = '<div class="ck-empty">No emails have been sent yet, so there is nothing to report here. This fills in as sending starts.</div>';
+        body = '<div class="ck-empty">No sends yet. This fills in when sending starts.</div>';
       } else {
         const delivered = rates.delivered || 0;
         const bounced = rates.hardBounces || 0;
@@ -26198,8 +26361,22 @@ function htmlShell() {
         ? '<span class="ck-pill teal"><span class="ck-dot"></span>Receiving delivery reports</span>'
         : '<span class="ck-pill crit"><span class="ck-dot"></span>Delivery reports need attention</span>');
       const deliveryLine = sent > 0
-        ? \`\${ckPct((rates.delivered || 0) / sent)} delivered &middot; \${ckNum(rates.hardBounces)} bounced &middot; \${ckNum(rates.unsubs)} unsubscribed\`
+        ? \`\${ckPct((rates.delivered || 0) / sent)} delivered &middot; \${ckNum(rates.clicks)} clicks &middot; \${ckNum(rates.hardBounces)} bounced &middot; \${ckNum(rates.unsubs)} unsubs\`
         : "No emails have been sent yet.";
+      let riskMeter = "";
+      if (sent > 0 && v.thresholds && v.thresholds.limits && v.thresholds.rates) {
+        const t = v.thresholds;
+        const util = Math.max(
+          t.limits.hard_bounce > 0 ? (t.rates.hard_bounce || 0) / t.limits.hard_bounce : 0,
+          t.limits.spam_complaint > 0 ? (t.rates.spam_complaint || 0) / t.limits.spam_complaint : 0,
+          t.limits.unsubscribe > 0 ? (t.rates.unsubscribe || 0) / t.limits.unsubscribe : 0
+        ) * 100;
+        const tone = t.tripped || util >= 100 ? "crit" : util >= 60 ? "orange" : "teal";
+        riskMeter = \`<div class="ck-meter \${tone}" style="margin-top:12px;">
+          <div class="line"><span class="lab">Distance to auto-pause</span><span class="num">\${Math.min(util, 100).toFixed(0)}% of the way</span></div>
+          <div class="track"><div class="fill" style="width:\${Math.min(util, 100).toFixed(0)}%;"></div></div>
+        </div>\`;
+      }
       return \`<div class="ck-card">
         <div class="ck-sec-head" style="margin-bottom:8px;"><h2>Campaign safety</h2><span class="hint">Reactivation</span></div>
         <div class="ck-health" style="margin-bottom:12px;">\${pills.join("")}</div>
@@ -26208,6 +26385,7 @@ function htmlShell() {
           <div class="ck-row"><span class="name">Emails sent</span><span class="val">\${ckNum(sent)}</span></div>
           <div class="ck-row"><span class="name">Delivery</span><span class="val" style="font-size:14px;">\${deliveryLine}</span></div>
         </div>
+        \${riskMeter}
         <div class="ck-meter-note">Next: \${esc(v.nextRecommendedAction || "nothing right now.")}</div>
         <div class="ck-linkbtns ck-details-toggle"><button class="ck-linkbtn" type="button" onclick="ckToggleCampaignDetails()">\${detailsShown ? "Hide campaign details" : "View campaign details"}</button></div>
       </div>\`;
@@ -26252,15 +26430,15 @@ function htmlShell() {
 
       const watchlistBody = watchlist.length
         ? \`<div class="ck-rows">\${watchlist.map(item => \`<div class="ck-lrow warned"><span class="txt"><span class="t">\${esc(item.title)}</span><span class="s">\${esc(item.summary || "")}</span></span></div>\`).join("")}</div>\`
-        : '<div class="ck-empty">Nothing is trending toward a problem. Email delivery, data saving, and campaign safety are all watched.</div>';
+        : '<div class="ck-empty">Nothing trending toward a problem.</div>';
 
       const meetingsBody = meetings.length
         ? \`<div class="ck-rows">\${meetings.map(m => ckListRowHtml("calendar", m.title, m.recommendation || "Review the prep notes.", "", "small")).join("")}</div>\`
-        : '<div class="ck-empty">No meetings need preparation. Briefs appear here from your calendar connection.</div>';
+        : '<div class="ck-empty">No meetings need prep. Briefs arrive from your calendar.</div>';
 
       const draftsBody = drafts.length
         ? \`<div class="ck-rows">\${drafts.map(d => ckListRowHtml("doc", d.title, friendlyAgentName(d.sourceEngine), "", "small")).join("")}</div>\`
-        : '<div class="ck-empty">Nothing is drafted right now. Drafts land here for your review. Nothing sends itself.</div>';
+        : '<div class="ck-empty">Nothing drafted right now.</div>';
 
       return \`<section class="operator-v31 today-cockpit"><div class="ck-sheet">
         <div class="ck-topbar">
@@ -26280,6 +26458,7 @@ function htmlShell() {
         <section class="ck-section">
           <div class="ck-sec-head"><h2>Company scoreboard</h2><span class="hint">The whole business first. Campaign details live further down.</span></div>
           \${ckScoreboardHtml()}
+          \${ckFunnelStripHtml()}
         </section>
 
         <section class="ck-section">
@@ -26298,11 +26477,9 @@ function htmlShell() {
               <h2>Money</h2>
               <div class="ck-rows" style="margin-top:14px;">
                 \${ckListRowHtml("dollar", "Collected", money.stripeConnected ? (money.sinceLabel ? "Stripe, since " + money.sinceLabel : "Stripe") : "Appears when payments connect", grossLabel, money.stripeConnected ? "" : "small")}
-                \${ckListRowHtml("fail", "Failed payments", money.stripeConnected ? "Reported by Stripe" : "Appears when payments connect", money.stripeConnected ? "None reported" : "Waiting", "small")}
-                \${ckListRowHtml("users", "Partner revenue", "Not booked from a real source yet", "Waiting", "small")}
               </div>
               \${ckMoneyVizHtml(money)}
-              \${money.note ? \`<div class="ck-meter-note">\${esc(money.note)}</div>\` : ""}
+              \${ckMoneyCountersHtml(money)}
             </div>
           </div>
         </section>
@@ -26334,10 +26511,18 @@ function htmlShell() {
 
         <section class="ck-section">
           <div class="ck-panel-grid">
+            \${ckSocialPulseHtml()}
+            \${ckInboxPulseHtml()}
             <div class="ck-card">
               <div class="ck-sec-head" style="margin-bottom:6px;"><h2>Watchlist</h2><span class="hint">\${watchlist.length ? watchlist.length + " to keep an eye on" : "All quiet"}</span></div>
+              \${ckWatchStatusHtml(v)}
               \${watchlistBody}
             </div>
+          </div>
+        </section>
+
+        <section class="ck-section">
+          <div class="ck-panel-grid">
             <div class="ck-card">
               <div class="ck-sec-head" style="margin-bottom:6px;"><h2>Meetings</h2><span class="hint">\${meetings.length ? meetings.length + " coming up" : ""}</span></div>
               \${meetingsBody}

@@ -126,6 +126,34 @@ check("card visualizations stay honest about their sources", () => {
   assert(stuckViz.includes("ck-meter steel"), "people-stuck bars use the neutral steel tone, not alert orange");
 });
 
+check("the dashboard carries visual modules for growth, social, and inbox", () => {
+  assert(today.includes("ckFunnelStripHtml()"), "conversion funnel strip rendered with the scoreboard");
+  assert(today.includes("ckSocialPulseHtml()"), "social pulse module rendered");
+  assert(today.includes("ckInboxPulseHtml()"), "comments and messages module rendered");
+  assert(today.includes("ckWatchStatusHtml(v)"), "watchlist source-status dots rendered");
+  assert(today.indexOf("ckFunnelStripHtml()") < today.indexOf("ckCampaignDetailsHtml("), "growth funnel stays above campaign details");
+});
+
+check("social and inbox modules are honest, never fabricated", () => {
+  const social = sliceFunction("ckSocialPulseHtml");
+  assert(social.includes("state.socialAccounts") && social.includes("state.posts"), "social pulse reads only real state");
+  assert(social.includes("Followers and engagement appear when a social account connects"), "no follower numbers are invented");
+  assert(!/followers?\s*[:=]\s*\d/i.test(social), "no hardcoded follower counts");
+  const inbox = sliceFunction("ckInboxPulseHtml");
+  assert(inbox.includes("state.growthInbox"), "inbox counter reads the real growth inbox");
+  assert(inbox.includes("Not connected yet"), "social comments/DMs use the honest not-connected state");
+  const watch = sliceFunction("ckWatchStatusHtml");
+  assert(watch.includes('"Web traffic", "not wired"'), "traffic is explicitly not wired");
+  assert(watch.includes("safetyPosture"), "watch dots derive from the real safety posture");
+});
+
+check("money extras stay honest about unfetched numbers", () => {
+  const counters = sliceFunction("ckMoneyCountersHtml");
+  assert(counters.includes('"Not wired yet", "Failed payments"'), "failed payments is not-wired, not a fake zero");
+  assert(counters.includes('"Not wired yet", "Refunds"'), "refunds is not-wired, not a fake zero");
+  assert(counters.includes("stripeRevenue.fetchedAt"), "sync time comes from the real snapshot");
+});
+
 check("#daily-run still renders and the Daily Run button remains", () => {
   assert(today.includes("location.hash='daily-run'"), "Open Daily Run button present");
   assert(source.includes("function todaySinglePaneHtml"), "daily-run pane renderer exists");
