@@ -15143,6 +15143,9 @@ function htmlShell() {
     .ck-approve .from { font-size:13px; font-weight:650; text-transform:uppercase; letter-spacing:.06em; color:var(--ck-muted); }
     .ck-approve p { margin:0 0 8px; color:var(--ck-ink2); font-size:16px; }
     .ck-why { background:var(--ck-tint); border-radius:12px; padding:10px 14px; font-size:15px; color:var(--ck-ink2); margin:12px 0 16px; }
+    .ck-due { font-size:13.5px; font-weight:650; color:var(--ck-ink2); margin:2px 0 6px; }
+    .ck-due.overdue { color:var(--ck-crit); }
+    a.ck-btn { text-decoration:none; display:inline-flex; align-items:center; }
     .ck-why b { color:var(--ck-ink); }
     .ck-actions { display:flex; flex-wrap:wrap; gap:10px; }
     .ck-btn { font:inherit; font-weight:650; font-size:16px; border-radius:12px; border:1px solid var(--ck-line); padding:12px 18px; background:#fff; color:var(--ck-ink); cursor:pointer; min-height:48px; }
@@ -16252,6 +16255,10 @@ function htmlShell() {
     // Read-only campaign command view for the cockpit charts. Same null contract: the
     // campaign sections render a quiet "numbers not available" state, never sample data.
     let campaignCommandView = null;
+    // Full company queue for the Decisions page (GET /api/queue). null = not loaded yet;
+    // loaded lazily the first time the page opens, refreshed after every decision.
+    let companyQueue = null;
+    let companyQueueLoading = false;
     let safeBootActive = false;
     let fullStateLoaded = false;
     let stateFetchDiagnostics = null;
@@ -25720,27 +25727,118 @@ function htmlShell() {
         } else if (action === "dismiss") {
           await api("/api/queue/transition", { method: "POST", body: JSON.stringify({ id, status: "dismissed" }) });
           toast("Dismissed.");
+        } else if (action === "complete") {
+          await api("/api/queue/transition", { method: "POST", body: JSON.stringify({ id, status: "completed" }) });
+          toast("Marked complete.");
         }
         todaySummary = await api("/api/today/summary");
         try { campaignCommandView = await api("/api/campaign/command"); } catch (refreshError) { /* keep the last good view */ }
+        if (companyQueue) { try { companyQueue = await api("/api/queue"); } catch (refreshError) { /* keep the last good list */ } }
       } catch (error) {
         toast("That decision did not save. Try again.");
       }
       render();
     }
 
+    async function loadDecisionsQueue() {
+      if (companyQueueLoading) return;
+      companyQueueLoading = true;
+      try { companyQueue = await api("/api/queue"); }
+      catch (error) { companyQueue = { error: error.message || "Could not load the queue." }; }
+      companyQueueLoading = false;
+      render();
+    }
+
+    // ---- Decisions page: the full company queue with plain controls. Read + decide only;
+    // approving records an Approval, it never performs the underlying action. ----
+    function decisionsItemCardHtml(item) {
+      const risk = item.riskLevel === "dangerous" ? ["danger", "High risk"] : item.riskLevel === "caution" ? ["warn", "Caution"] : ["good", "Safe"];
+      const canApprove = item.requiresApproval && ["needs_roger", "new", "drafted"].includes(item.status);
+      const open = !["dismissed", "completed"].includes(item.status);
+      const dueLine = item.dueAt ? \`<p class="muted">Due \${esc(String(item.dueAt).slice(0, 10))}</p>\` : "";
+      return \`<article class="queue-review-item">
+        <div class="queue-review-item-main">
+          <div class="queue-review-kicker"><span class="queue-type-line">\${esc(friendlyAgentName(item.sourceEngine))} &middot; \${esc(item.type)}</span><span class="badge \${risk[0]}">\${esc(risk[1])}</span><span class="badge info">\${esc(String(item.status).replace(/_/g, " "))}</span></div>
+          <h3>\${esc(item.title)}</h3>
+          \${dueLine}
+          \${item.summary ? \`<p>\${esc(item.summary)}</p>\` : ""}
+          \${item.recommendation ? \`<p class="muted"><strong>Recommended:</strong> \${esc(item.recommendation)}</p>\` : ""}
+        </div>
+        <div class="queue-review-actions">
+          \${canApprove ? \`<button class="primary" type="button" onclick="decideQueueItem('\${esc(item.id)}','approve')">Approve</button>\` : ""}
+          \${open ? \`<button type="button" onclick="decideQueueItem('\${esc(item.id)}','snooze')">Snooze</button>\` : ""}
+          \${open && !item.requiresApproval ? \`<button type="button" onclick="decideQueueItem('\${esc(item.id)}','complete')">Mark complete</button>\` : ""}
+          \${open ? \`<button type="button" onclick="decideQueueItem('\${esc(item.id)}','dismiss')">Dismiss</button>\` : ""}
+          \${ckOpenControlHtml(item.sourceLink, "button-link")}
+        </div>
+      </article>\`;
+    }
+    function decisionsGroupHtml(title, items, emptyText) {
+      return \`<section class="growth-card">
+        <div class="growth-card-head"><h2>\${esc(title)}</h2><small>\${esc(String(items.length))} item\${items.length === 1 ? "" : "s"}</small></div>
+        <div class="queue-review-list">\${items.map(decisionsItemCardHtml).join("") || \`<div class="empty">\${esc(emptyText)}</div>\`}</div>
+      </section>\`;
+    }
+    function decisionsPageHtml(pageClass) {
+      let body;
+      if (!companyQueue) {
+        body = '<div class="panel"><p class="muted">Loading your decisions. Numbers appear only from real records.</p></div>';
+      } else if (companyQueue.error) {
+        body = \`<div class="panel"><p class="muted">Could not load the queue: \${esc(companyQueue.error)} <button type="button" onclick="loadDecisionsQueue()">Try again</button></p></div>\`;
+      } else {
+        const items = Array.isArray(companyQueue.items) ? companyQueue.items : [];
+        const needsYou = items.filter(i => ["needs_roger", "new"].includes(i.status));
+        const inMotion = items.filter(i => ["drafted", "approved", "scheduled", "blocked"].includes(i.status));
+        const snoozed = items.filter(i => i.status === "snoozed");
+        const decided = items.filter(i => ["dismissed", "completed"].includes(i.status)).slice(0, 10);
+        body = decisionsGroupHtml("Needs you", needsYou, "Nothing needs a decision right now.")
+          + decisionsGroupHtml("In motion", inMotion, "Nothing is approved, scheduled, or blocked.")
+          + decisionsGroupHtml("Snoozed", snoozed, "Nothing is snoozed.")
+          + decisionsGroupHtml("Recently decided", decided, "No recent decisions.");
+      }
+      const counts = companyQueue && companyQueue.counts ? companyQueue.counts : null;
+      return \`<section id="decisions" class="\${pageClass("decisions")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel"><div><div class="eyebrow">Every decision in one place</div><h1 class="big-title">Decisions</h1><p class="muted">Everything waiting on you, from every helper. Approving records your decision; the action itself still runs only through its safety gates. Nothing sends or publishes from this page.</p></div>
+        <div class="card-actions"><button type="button" onclick="loadDecisionsQueue()">Refresh</button><button type="button" onclick="location.hash='today'">Back to Today</button></div></div>
+        \${counts ? \`<div class="campaign-preview-metrics">\${[[counts.needsRoger, "need you"], [counts.open, "open in total"], [counts.snoozed, "snoozed"], [counts.blocked, "blocked"]].map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>\` : ""}
+        \${body}
+      </section>\`;
+    }
+
+    // The "Open" control: an in-app page hash or a vetted https link, nothing else.
+    // Server-side normalizeSourceLink already rejects unsafe targets; this trusts only its shape.
+    function ckOpenControlHtml(link, cls) {
+      if (!link || !link.target) return "";
+      if (link.kind === "external" && /^https:\\/\\//i.test(String(link.target))) {
+        return \`<a class="\${cls || "ck-btn"}" href="\${esc(link.target)}" target="_blank" rel="noopener noreferrer">Open</a>\`;
+      }
+      if (link.kind === "page") {
+        const page = String(link.target).replace(/^#/, "").replace(/[^a-z0-9-]/gi, "");
+        return page ? \`<button class="\${cls || "ck-btn"}" type="button" onclick="location.hash='\${page}'">Open</button>\` : "";
+      }
+      return "";
+    }
+    function ckDueLineHtml(item) {
+      if (!item.dueAt) return "";
+      const due = String(item.dueAt).slice(0, 10);
+      const today = new Date().toISOString().slice(0, 10);
+      const overdue = due < today;
+      return \`<div class="ck-due \${overdue ? "overdue" : ""}">\${overdue ? "Was due" : "Due"} \${esc(due)}</div>\`;
+    }
     function todayNeedsRogerCardHtml(item) {
       const risk = item.riskLevel === "dangerous" ? ["bad", "High risk"] : item.riskLevel === "caution" ? ["warn", "Caution"] : ["ok", "Safe"];
       return \`<article class="ck-card ck-approve">
         <span class="risk ck-chip \${risk[0]}">\${esc(risk[1])}</span>
         <div class="from">\${esc(friendlyAgentName(item.sourceEngine))}</div>
         <h3>\${esc(item.title)}</h3>
+        \${ckDueLineHtml(item)}
         \${item.recommendation ? \`<p>\${esc(item.recommendation)}</p>\` : ""}
         \${item.summary ? \`<div class="ck-why"><b>Why this matters:</b> \${esc(item.summary)}</div>\` : ""}
         <div class="ck-actions">
           \${item.requiresApproval ? \`<button class="ck-btn primary" type="button" onclick="decideQueueItem('\${esc(item.id)}','approve')">Approve</button>\` : ""}
           <button class="ck-btn" type="button" onclick="decideQueueItem('\${esc(item.id)}','snooze')">Snooze</button>
           <button class="ck-btn" type="button" onclick="decideQueueItem('\${esc(item.id)}','dismiss')">Dismiss</button>
+          \${ckOpenControlHtml(item.sourceLink)}
         </div>
       </article>\`;
     }
@@ -26485,9 +26583,10 @@ function htmlShell() {
 
     // ---- Module body helpers used only by the registry --------------------------------
     function ckNeedsRogerModuleHtml(ctx) {
+      const seeAll = '<div class="ck-linkbtns" style="margin-top:14px;"><button class="ck-linkbtn" type="button" onclick="location.hash=\\'decisions\\'">See all decisions</button></div>';
       return ctx.needsRoger.length
-        ? \`<div class="ck-approve-grid">\${ctx.needsRoger.map(todayNeedsRogerCardHtml).join("")}</div>\`
-        : "";
+        ? \`<div class="ck-approve-grid">\${ctx.needsRoger.map(todayNeedsRogerCardHtml).join("")}</div>\${seeAll}\`
+        : \`<div class="ck-card"><div class="ck-empty"><b style="color:var(--ck-teal);">Nothing needs you right now.</b> Decisions appear here the moment one is waiting.</div>\${seeAll}</div>\`;
     }
     function ckMoneyModuleHtml(ctx) {
       const money = ctx.money;
@@ -26540,8 +26639,6 @@ function htmlShell() {
         hint: (ctx) => ctx.gm.funnelConnected ? "From the product funnel" : "Product funnel not wired yet",
         render: () => ckFunnelStripHtml() },
       { id: "needs-roger", section: "decisions", size: "full", order: 10, frameless: true,
-        status: (ctx) => ctx.needsRoger.length ? "ready" : "empty",
-        emptyText: "Nothing needs you right now. Decisions appear here the moment one is waiting.",
         render: (ctx) => ckNeedsRogerModuleHtml(ctx) },
       { id: "people-stuck", section: "operations", size: "third", order: 10, title: "People stuck",
         render: (ctx) => ckPeopleStuckVizHtml(ctx.s, ctx.stuck) },
@@ -29455,10 +29552,11 @@ function htmlShell() {
       const requestedPage = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#cockpit")).replace("#", "");
       const routeAliases = { overview:"today", command:"growth", "le-e":"lee", partner:"partners", "partner-hub":"partners", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", health:"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings", replies:"growth-inbox", "inbox-replies":"growth-inbox", lists:"contacts", contact:"contacts", people:"contacts", "upload-list":"upload", "list-upload":"upload", import:"upload", "import-list":"upload", campaign:"campaigns", "campaign-control":"campaigns", "campaigns-control":"campaigns", prospect:"prospects", prospects:"prospects", "rcap-prospects":"prospects", "rcap-pipeline":"prospects", money:"revenue", payments:"revenue", stripe:"revenue", calendar:"meetings", meeting:"meetings", "meeting-prep":"meetings", "support-inbox":"support", "partner-pages-review":"pages", "page-review":"pages", "co-branded-pages":"pages", system:"os-health" };
       const normalizedPage = routeAliases[requestedPage] || requestedPage;
-      const knownPages = ["cockpit", "upload", "contacts", "prospects", "revenue", "meetings", "support", "pages", "today", "overview", "daily-run", "focus", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
+      const knownPages = ["cockpit", "upload", "contacts", "prospects", "revenue", "meetings", "support", "pages", "today", "overview", "daily-run", "focus", "decisions", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "today";
       currentPageId = pageId;
       document.body.classList.toggle("ck-wash", ["today", "overview"].includes(pageId));
+      if (pageId === "decisions" && !companyQueue && !companyQueueLoading) loadDecisionsQueue();
       const canonicalHash = pageId === "overview" ? "today" : pageId === "partner-hub" ? "partners" : pageId;
       if (location.hash !== "#" + canonicalHash && !pathRoute) history.replaceState(null, "", "#" + canonicalHash);
       if (pageId === "safe-mode") {
@@ -29523,6 +29621,7 @@ function htmlShell() {
         \${safeRenderModule("milestones", () => milestonesPageHtml(pageClass))}
         \${safeRenderModule("partners", () => partnersPageHtml(pageClass))}
         \${safeRenderModule("campaigns", () => pageId === "campaigns" ? campaignsControlPageHtml(pageClass) : "")}
+        \${safeRenderModule("decisions", () => pageId === "decisions" ? decisionsPageHtml(pageClass) : "")}
         \${safeRenderModule("funnel", () => funnelPageHtml(pageClass))}
         \${safeRenderModule("content-bank", () => contentBankPageHtml(pageClass))}
         \${safeRenderModule("autonomy", () => pageId === "autonomy" ? autonomyPageHtml(pageClass) : "")}
@@ -33368,7 +33467,8 @@ async function handleRequest(request, response) {
       sendJson(response, { error: result.error }, 400);
       return;
     }
-    await store.writeCollections({ queueItems: result.state.queueItems, approvals: result.state.approvals });
+    // companyEvents included: every decision leaves its audit event (Phase 18B).
+    await store.writeCollections({ queueItems: result.state.queueItems, approvals: result.state.approvals, companyEvents: result.state.companyEvents });
     sendJson(response, { ok: true, item: result.item, approvalId: result.approvalId });
     return;
   }
@@ -33392,7 +33492,8 @@ async function handleRequest(request, response) {
       sendJson(response, { error: result.error }, 400);
       return;
     }
-    await store.writeCollections({ queueItems: result.state.queueItems, approvals: result.state.approvals });
+    // companyEvents included: snooze/dismiss/complete decisions are audited too (Phase 18B).
+    await store.writeCollections({ queueItems: result.state.queueItems, approvals: result.state.approvals, companyEvents: result.state.companyEvents });
     sendJson(response, { ok: true, item: result.item });
     return;
   }

@@ -63,6 +63,7 @@ function queueFromApprovalQueue(state) {
         riskLevel: /high|dangerous/i.test(String(item.risk || item.riskLevel)) ? "dangerous" : "caution",
         priority: 20,
         relatedContact: clean(item.contact_id),
+        sourceLink: { kind: "page", target: "#queue" },
         metadata: { sourceType: clean(item.type), sourceStatus: clean(item.status) }
       });
     });
@@ -84,6 +85,7 @@ function queueFromAutonomyActions(state) {
       requiresApproval: true,
       riskLevel: /high/i.test(String(a.riskLevel)) ? "dangerous" : "caution",
       priority: 30,
+      sourceLink: { kind: "page", target: "#autonomy" },
       metadata: { sourceStatus: clean(a.status) }
     }));
 }
@@ -102,7 +104,8 @@ function queueFromLeeProposals(state) {
       recommendation: "Review Le-E's suggestion and apply or dismiss it.",
       requiresApproval: true,
       riskLevel: /high/i.test(String(p.riskLevel)) ? "dangerous" : "caution",
-      priority: 35
+      priority: 35,
+      sourceLink: { kind: "page", target: "#lee" }
     }));
 }
 
@@ -117,6 +120,7 @@ function queueFromSupportIssues(state) {
       summary: clean(issue.summary || issue.description) || "Someone asked for help.",
       recommendation: "Read the request and draft a reply for review.",
       priority: 25,
+      sourceLink: { kind: "page", target: "#support" },
       metadata: { sourceStatus: clean(issue.status) }
     }));
 }
@@ -135,6 +139,8 @@ function queueFromTasks(state) {
       summary: clean(task.blocker_reason || task.description) || "This task is blocked or high priority.",
       recommendation: clean(task.nextAction) || "Unblock or reprioritize this task.",
       priority: task.status === "blocked" ? 30 : 45,
+      dueAt: clean(task.dueDate || task.due_at),
+      sourceLink: { kind: "page", target: "#tasks" },
       metadata: { sourceStatus: clean(task.status), sourcePriority: clean(task.priority) }
     }));
 }
@@ -154,6 +160,7 @@ function queueFromRcapRevenueTasks(state) {
       recommendation: "Open the RCAP revenue desk and work the task.",
       priority: 40,
       relatedOrganization: clean(t.linked_account_id),
+      sourceLink: { kind: "page", target: "#revenue" },
       metadata: { sourceStatus: clean(t.status), taskType: clean(t.task_type) }
     }));
 }
@@ -174,7 +181,8 @@ function queueFromCampaignSafety(state) {
       recommendation: "Review the bounce and complaint numbers before resuming anything.",
       requiresApproval: true,
       riskLevel: "dangerous",
-      priority: 5
+      priority: 5,
+      sourceLink: { kind: "page", target: "#campaigns" }
     }));
   }
   // reactivationCampaignOf exposes camelCase pausedReason — the snake_case field never exists.
@@ -188,7 +196,8 @@ function queueFromCampaignSafety(state) {
       recommendation: "Decide whether to keep it paused or resume.",
       requiresApproval: true,
       riskLevel: "caution",
-      priority: 10
+      priority: 10,
+      sourceLink: { kind: "page", target: "#campaigns" }
     }));
   }
   return items;
@@ -208,7 +217,8 @@ function queueFromWebhookHealth(state, env) {
     summary: clean(summary.warning),
     recommendation: "Check the email provider connection so delivery results keep flowing.",
     riskLevel: "caution",
-    priority: 15
+    priority: 15,
+    sourceLink: { kind: "page", target: "#app-status" }
   })];
 }
 
@@ -225,6 +235,7 @@ function queueFromProspects(state) {
     requiresApproval: true,
     riskLevel: "safe",
     priority: 40,
+    sourceLink: { kind: "page", target: "#prospects" },
     metadata: { pendingCount: pending.length }
   })];
 }
@@ -244,6 +255,8 @@ function queueFromGoogleInsights(state) {
       recommendation: clean(i.suggestedNextAction) || "Review the prep notes before the meeting.",
       priority: 35,
       relatedContact: "",
+      dueAt: clean(i.meetingDate || i.dueAt),
+      sourceLink: { kind: "page", target: "#meetings" },
       metadata: { insightType: clean(i.insightType) }
     }));
 }

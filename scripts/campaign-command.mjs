@@ -341,6 +341,8 @@ export function proposeWaveRelease(state = {}, waveNumber, { scheduledFor = "", 
     requiresApproval: true,
     riskLevel: preview.riskLevel,
     priority: 15,
+    dueAt: schedule ? `${schedule}T00:00:00.000Z` : "",
+    sourceLink: { kind: "page", target: "#campaigns" },
     metadata: { wave: preview.wave, scheduledFor: schedule, eligible: preview.eligible, proposedBy: actor, proposedAt: nowIso }
   }, { now: nowFn });
   // Reuse the still-pending approval when updating an active proposal, so the Queue's approve
@@ -514,6 +516,7 @@ export function proposeCampaignResume(state = {}, { actor = "owner", env = proce
     requiresApproval: true,
     riskLevel: gates.sendingOn ? "dangerous" : "caution",
     priority: 10,
+    sourceLink: { kind: "page", target: "#campaigns" },
     metadata: { proposedBy: actor, proposedAt: nowIso, pausedReason: config.pausedReason }
   }, { now: nowFn });
   const approval = createApproval({

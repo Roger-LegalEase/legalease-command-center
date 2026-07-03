@@ -105,6 +105,26 @@ export function stableMemoryId(prefix = "qi", parts = []) {
   return `${prefix}-${hash}`;
 }
 
+// Shared source-of-truth data statuses. Engines and UI modules describe a data source with
+// exactly one of these — never a fake number standing in for a real one.
+export const DATA_STATUSES = [
+  "connected", "not_connected", "needs_attention", "loading", "error", "no_data", "draft", "needs_approval"
+];
+
+// A queue item's "Open" target. Two kinds only: an in-app page hash, or an https link.
+// Anything else (javascript:, http:, free text) is rejected so a projected item can never
+// smuggle an unsafe link into the operator's click path.
+export function normalizeSourceLink(input) {
+  if (!input || typeof input !== "object") return null;
+  const target = clean(input.target);
+  if (!target) return null;
+  if (input.kind === "external") {
+    return /^https:\/\/[^\s]+$/i.test(target) ? { kind: "external", target } : null;
+  }
+  const page = target.replace(/^#/, "");
+  return /^[a-z0-9-]+$/i.test(page) ? { kind: "page", target: `#${page}` } : null;
+}
+
 // Build a valid Queue Item. Throws on missing plain-English essentials — a queue item that
 // cannot say what it is and why it matters must not exist.
 export function createQueueItem(input = {}, { now = () => new Date().toISOString() } = {}) {
@@ -136,6 +156,14 @@ export function createQueueItem(input = {}, { now = () => new Date().toISOString
     relatedContact: clean(input.relatedContact) || "",
     relatedOrganization: clean(input.relatedOrganization) || "",
     relatedEvent: clean(input.relatedEvent) || "",
+    // When the work is due (optional, ISO). Distinct from snoozedUntil, which is a decision.
+    dueAt: clean(input.dueAt) || "",
+    // Where "Open" goes: an in-app page or a vetted https link. Null when there is nowhere to go.
+    sourceLink: normalizeSourceLink(input.sourceLink),
+    // Unified optional entity pointer for display ("who/what this is about").
+    related: input.related && clean(input.related.id)
+      ? { kind: clean(input.related.kind) || "record", id: clean(input.related.id), label: clean(input.related.label) || "" }
+      : null,
     snoozedUntil: clean(input.snoozedUntil) || "",
     decidedBy: clean(input.decidedBy) || "",
     decidedAt: clean(input.decidedAt) || "",
@@ -159,6 +187,9 @@ export function upsertQueueItems(existing = [], incoming = [], { now = () => new
         summary: item.summary || prior.summary,
         recommendation: item.recommendation || prior.recommendation,
         priority: item.priority ?? prior.priority,
+        dueAt: item.dueAt || prior.dueAt || "",
+        sourceLink: item.sourceLink || prior.sourceLink || null,
+        related: item.related || prior.related || null,
         metadata: { ...prior.metadata, ...item.metadata },
         status: rogerDecided ? prior.status : item.status,
         updatedAt: now()
@@ -211,19 +242,36 @@ export function transitionQueueItem(state = {}, { id = "", status = "", actor = 
   }
 
   const at = now();
+  const decisionStatuses = ["approved", "dismissed", "completed", "snoozed"];
   const updated = items.map((i) => i.id === id ? {
     ...i,
     status,
     approvalId,
     snoozedUntil: status === "snoozed" ? (clean(snoozedUntil) || "") : "",
-    decidedBy: ["approved", "dismissed", "completed", "snoozed"].includes(status) ? (actor || "owner") : i.decidedBy,
-    decidedAt: ["approved", "dismissed", "completed", "snoozed"].includes(status) ? at : i.decidedAt,
+    decidedBy: decisionStatuses.includes(status) ? (actor || "owner") : i.decidedBy,
+    decidedAt: decisionStatuses.includes(status) ? at : i.decidedAt,
     metadata: note ? { ...i.metadata, lastNote: clean(note) } : i.metadata,
     updatedAt: at
   } : i);
 
+  // Audit trail: every decision leaves a company event. The event is the durable record of
+  // who decided what and when — the queue item's own fields can be refreshed by projections.
+  let companyEvents = state.companyEvents;
+  if (decisionStatuses.includes(status)) {
+    const verb = status === "approved" ? "approved" : status === "dismissed" ? "dismissed" : status === "completed" ? "marked complete" : "snoozed";
+    companyEvents = appendCompanyEvents(companyEvents, [{
+      source: "queue",
+      type: "queue_decision",
+      risk: "info",
+      summary: `${actor || "owner"} ${verb} "${item.title}"${status === "snoozed" && clean(snoozedUntil) ? ` until ${clean(snoozedUntil)}` : ""}${clean(note) ? `. Note: ${clean(note)}` : ""}.`,
+      contact_id: item.relatedContact || "",
+      occurred_at: at,
+      sourceRef: { collection: "queueItems", itemId: item.id }
+    }], { now });
+  }
+
   return {
-    state: { ...state, queueItems: updated, approvals },
+    state: { ...state, queueItems: updated, approvals, companyEvents },
     ok: true,
     item: updated.find((i) => i.id === id),
     approvalId
