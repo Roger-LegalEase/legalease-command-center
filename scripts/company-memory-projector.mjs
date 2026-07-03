@@ -27,6 +27,7 @@ import {
   upsertCompanyOrganization
 } from "./company-memory.mjs";
 import { campaignRates, evaluateThresholds, reactivationCampaignOf } from "./reactivation-os.mjs";
+import { plainSafetyReasons } from "./campaign-command.mjs";
 import { sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
 
 export const COMPANY_MEMORY_ENGINE_ID = "company-memory";
@@ -169,7 +170,7 @@ function queueFromCampaignSafety(state) {
       sourceEngine: "reactivation-sequencer",
       sourceRef: { collection: "reactivationCampaign", itemId: "thresholds" },
       title: "Reactivation campaign paused itself — safety limit reached",
-      summary: `The campaign stopped because a safety limit tripped: ${list(thresholds.reasons).join("; ") || "see campaign safety"}. Nothing more sends until you decide.`,
+      summary: `The campaign stopped because a safety limit tripped: ${plainSafetyReasons(thresholds.reasons) || "see campaign safety"}. Nothing more sends until you decide.`,
       recommendation: "Review the bounce and complaint numbers before resuming anything.",
       requiresApproval: true,
       riskLevel: "dangerous",

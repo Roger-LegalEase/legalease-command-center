@@ -17067,7 +17067,7 @@ function htmlShell() {
         "<em>Next: " + esc(String(view.nextRecommendedAction || "")) + "</em>"
       ];
       const controls = "<div class=\\"card-actions\\">" +
-        (String(view.status) === "paused"
+        (String(view.status).toLowerCase() === "paused"
           ? "<button class=\\"primary\\" type=\\"button\\" onclick=\\"campaignResumePropose()\\">Propose resume (asks your approval)</button>"
           : "<button type=\\"button\\" onclick=\\"campaignPause()\\">Pause campaign now</button>") +
         "</div>";
@@ -17128,7 +17128,7 @@ function htmlShell() {
         (checks ? "<br><strong>Verified</strong><ul>" + checks + "</ul>" : "") +
         "<br><em>" + esc(String(result.warning || "")) + "</em>";
       loadCampaignCommand();
-      toast("Wave released. Sending stays off until you turn it on.");
+      toast(String(result.headline || "Wave released."));
     }
     async function campaignPause() {
       const target = campaignActionTarget();
@@ -17170,7 +17170,7 @@ function htmlShell() {
       }
       if (target) target.innerHTML = "<strong>" + esc(String(result.headline || "Campaign resumed.")) + "</strong>";
       loadCampaignCommand();
-      toast("Campaign resumed. Sending stays off until you turn it on.");
+      toast(String(result.headline || "Campaign resumed."));
     }
     window.loadCampaignCommand = loadCampaignCommand;
     window.campaignWavePreview = campaignWavePreview;

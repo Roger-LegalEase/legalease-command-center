@@ -29,13 +29,33 @@ import { sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
 import { autopilotEnabled } from "./heartbeat.mjs";
 import {
   createQueueItem, upsertQueueItems, createApproval, upsertApprovals,
-  emitQueueItem, emitCompanyEvent
+  emitCompanyEvent, QUEUE_TERMINAL_STATUSES
 } from "./company-memory.mjs";
 
 const clean = (v = "") => String(v ?? "").trim();
 const lower = (v = "") => clean(v).toLowerCase();
 const list = (v) => (Array.isArray(v) ? v : []);
 const people = (n) => `${n} ${n === 1 ? "person" : "people"}`;
+const listJoin = (arr) => {
+  const a = list(arr).map(String);
+  return a.length <= 1 ? (a[0] ?? "") : `${a.slice(0, -1).join(", ")} and ${a[a.length - 1]}`;
+};
+
+// Calendar date (YYYY-MM-DD) in Eastern time — the app's operating timezone. Planned release
+// dates compare against this, not UTC, so "planned for July 10" means July 10 in ET.
+function etDateOf(iso) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date(iso));
+}
+
+// Threshold reasons come from the engine as machine tokens ("hard_bounce 2.30% >= 2.00%").
+// Translate them before they reach any operator-facing surface.
+export function plainSafetyReasons(reasons = []) {
+  return list(reasons).map((r) => String(r)
+    .replace(/hard_bounce/g, "hard bounces at")
+    .replace(/spam_complaint/g, "spam complaints at")
+    .replace(/unsubscribe(?!s)/g, "unsubscribes at")
+    .replace(/>=/g, "— the limit is")).join("; ");
+}
 
 export const CAMPAIGN_COMMAND_SOURCE = "campaign-command";
 export const RELEASE_ACTION_TYPE = "release_wave";
@@ -102,7 +122,7 @@ function thresholdFacts(state, config) {
   return {
     ...evaluated,
     plain: evaluated.tripped
-      ? `A safety limit tripped: ${evaluated.reasons.join("; ")}. The campaign pauses itself and nothing more sends until you decide.`
+      ? `A safety limit tripped: ${plainSafetyReasons(evaluated.reasons)}. The campaign pauses itself and nothing more sends until you decide.`
       : evaluated.belowSample
         ? `Safety limits arm after ${config.minSampleSize} sends (so far: ${evaluated.rates.sent}). They auto-pause the campaign at ${pct(t.hard_bounce)} hard bounces, ${pct(t.spam_complaint, 2)} spam complaints, or ${pct(t.unsubscribe)} unsubscribes.`
         : `Within safety limits. Auto-pause trips at ${pct(t.hard_bounce)} hard bounces, ${pct(t.spam_complaint, 2)} spam complaints, or ${pct(t.unsubscribe)} unsubscribes.`
@@ -128,7 +148,7 @@ function campaignStatusPlain(config, gates) {
     return `Paused${config.pausedReason ? ` — ${config.pausedReason}` : ""}. Nothing sends while paused.`;
   }
   if (!config.releasedWaves.length) return "Staged — no waves released, nobody enrolled, nothing sending.";
-  const waves = config.releasedWaves.join(" and ");
+  const waves = listJoin(config.releasedWaves);
   return gates.sendingOn
     ? `Running — wave ${waves} released and sending inside the daily window.`
     : `Armed but quiet — wave ${waves} released, sending is off, so no email goes out.`;
@@ -189,9 +209,12 @@ export function buildCampaignCommandView(state = {}, { env = process.env, now = 
     telemetry,
     rates,
     dueNow: dueObservation ? dueObservation.due : 0,
-    dueNowPlain: gates.sendingOn
-      ? `${people(dueObservation ? dueObservation.due : 0)} are due an email in the current window.`
-      : `If sending were turned on right now, ${people(dueObservation ? dueObservation.due : 0)} would be due an email. It is off, so nobody gets one.`,
+    dueNowPlain: (() => {
+      const n = dueObservation ? dueObservation.due : 0;
+      return gates.sendingOn
+        ? `${people(n)} ${n === 1 ? "is" : "are"} due an email in the current window.`
+        : `If sending were turned on right now, ${people(n)} would be due an email. It is off, so nobody gets one.`;
+    })(),
     nextRecommendedAction: lower(config.status) === "paused"
       ? "The campaign is paused. Review the safety numbers, then propose a resume if you want it back on."
       : thresholds.tripped
@@ -227,10 +250,10 @@ export function previewWaveRelease(state = {}, waveNumber, { env = process.env, 
   const who = `${people(facts.eligibleOnRelease)} would be lined up for wave ${wave}. Not included: ${facts.held} held for review, ${facts.suppressed} blocked (unsubscribed, bounced, complained, or do-not-contact), ${facts.enrolled} already in the campaign.`;
   const which = `They start with email 1 of 5, then days ${config.cadenceDays.join(", ")} after release — but only while sending is on.`;
   const when = gates.sendingOn
-    ? `Sending is ON, so emails would start in the next window (${sendWindowPlain(config.caps)}) and this wave would take about ${sendingDays || 1} sending day(s).`
+    ? `Sending is ON, so emails would start in the next window (${sendWindowPlain(config.caps)}) and this wave would take about ${sendingDays} sending day${sendingDays === 1 ? "" : "s"}.`
     : `Sending is OFF. Releasing arms the wave and starts the schedule clock, but no email goes to anyone until sending is turned on, on purpose, elsewhere.`;
   const releasedCaution = config.releasedWaves.length
-    ? `Heads up: wave ${config.releasedWaves.join(" and ")} ${config.releasedWaves.length === 1 ? "is" : "are"} already released — when sending turns on, their next follow-up emails go out too, not just this wave.`
+    ? `Heads up: wave ${listJoin(config.releasedWaves)} ${config.releasedWaves.length === 1 ? "is" : "are"} already released — when sending turns on, their next follow-up emails go out too, not just this wave.`
     : "";
 
   return {
@@ -258,8 +281,13 @@ export function previewWaveRelease(state = {}, waveNumber, { env = process.env, 
   };
 }
 
-// Propose a wave release (optionally for a planned date). Writes the requested Approval, the
-// needs-Roger Queue item, and an Event — never releases.
+// Propose a wave release (optionally for a planned ET date, YYYY-MM-DD). Writes the requested
+// Approval, the needs-Roger Queue item, and an Event — never releases.
+//
+// One pending proposal per wave: re-proposing while the earlier one is still waiting UPDATES it
+// (same approval, new date); once it is approved, re-proposing is refused (so a planned date can
+// never be silently cleared out from under an approved release); once dismissed or completed, a
+// FRESH proposal is created (a dismissed proposal is not a dead-end).
 export function proposeWaveRelease(state = {}, waveNumber, { scheduledFor = "", actor = "owner", env = process.env, now = new Date() } = {}) {
   const nowIso = typeof now === "string" ? now : now.toISOString();
   const nowFn = () => nowIso;
@@ -267,13 +295,42 @@ export function proposeWaveRelease(state = {}, waveNumber, { scheduledFor = "", 
   if (preview.alreadyReleased) {
     return { ok: false, error: `Wave ${preview.wave} is already released — nothing to propose.`, state };
   }
+  if (preview.eligible === 0) {
+    return { ok: false, error: `No one in wave ${preview.wave} is eligible right now (${preview.held} held, ${preview.blocked} blocked) — there is nothing to release.`, state };
+  }
   const schedule = clean(scheduledFor);
-  const scheduleLine = schedule ? ` Planned for ${schedule}.` : "";
-  // Deterministic queue-item id (wave-scoped) so duplicate proposals refresh, not multiply.
+  if (schedule && !/^\d{4}-\d{2}-\d{2}$/.test(schedule)) {
+    return { ok: false, error: "The planned date must look like 2026-07-10 (year-month-day).", state };
+  }
+
+  // Existing proposals for this wave.
+  const waveItems = list(state.queueItems).filter((q) =>
+    q.sourceEngine === CAMPAIGN_COMMAND_SOURCE && Number(q.metadata?.wave) === preview.wave);
+  const active = waveItems.find((q) => !QUEUE_TERMINAL_STATUSES.includes(q.status));
+  if (active) {
+    const linked = list(state.approvals).find((a) => a.id === active.approvalId);
+    if (linked && ["approved", "executed"].includes(linked.state)) {
+      return {
+        ok: false,
+        error: linked.state === "approved"
+          ? `Wave ${preview.wave} already has an approved release waiting to run${active.metadata?.scheduledFor ? ` (planned for ${active.metadata.scheduledFor})` : ""}. Run it or dismiss it — its plan cannot be changed by proposing again.`
+          : `Wave ${preview.wave} already ran.`,
+        state,
+        approvalId: linked.id,
+        queueItemId: active.id
+      };
+    }
+  }
+  // A dismissed/completed earlier proposal must not block a fresh one — give the new item its
+  // own identity (generation suffix feeds the id hash).
+  const generation = waveItems.filter((q) => QUEUE_TERMINAL_STATUSES.includes(q.status)).length;
+  const refId = generation && !active ? `release-wave-${preview.wave}-r${generation + 1}` : `release-wave-${preview.wave}`;
+
+  const scheduleLine = schedule ? ` Planned for ${schedule} (Eastern).` : "";
   const item = createQueueItem({
     type: "campaign",
     sourceEngine: CAMPAIGN_COMMAND_SOURCE,
-    sourceRef: { collection: "reactivationCampaign", itemId: `release-wave-${preview.wave}` },
+    sourceRef: { collection: "reactivationCampaign", itemId: refId },
     title: `Approve wave ${preview.wave} release — ${people(preview.eligible)}`,
     summary: `${preview.whatApprovalDoes}${scheduleLine} ${preview.gates.sendingOn ? "Sending is ON, so emails would begin in the next window." : "Sending is off, so nobody gets an email until you turn sending on."}`,
     recommendation: `${preview.whatApprovalDoesNot}`,
@@ -282,27 +339,38 @@ export function proposeWaveRelease(state = {}, waveNumber, { scheduledFor = "", 
     priority: 15,
     metadata: { wave: preview.wave, scheduledFor: schedule, eligible: preview.eligible, proposedBy: actor, proposedAt: nowIso }
   }, { now: nowFn });
+  // Reuse the still-pending approval when updating an active proposal, so the Queue's approve
+  // button and our run button always point at the same record.
+  const existingApprovalId = active ? clean(active.approvalId) : "";
   const approval = createApproval({
+    id: existingApprovalId,
     actionType: RELEASE_ACTION_TYPE,
-    queueItemId: item.id,
+    queueItemId: active ? active.id : item.id,
     preview: `Release wave ${preview.wave}: ${people(preview.eligible)} lined up.${scheduleLine} ${preview.whatApprovalDoesNot}`,
     riskLevel: preview.riskLevel,
     state: "requested",
     requested_at: nowIso
   }, { now: nowFn });
+  const queueItemId = active ? active.id : item.id;
   let nextState = {
     ...state,
     approvals: upsertApprovals(state.approvals, [approval], { now: nowFn }),
-    queueItems: upsertQueueItems(state.queueItems, [{ ...item, approvalId: approval.id }], { now: nowFn })
+    queueItems: upsertQueueItems(state.queueItems, [{ ...item, id: queueItemId, approvalId: approval.id }], { now: nowFn })
+  };
+  // The metadata merge keeps old keys; force the schedule to THIS proposal's value (or none).
+  nextState = {
+    ...nextState,
+    queueItems: list(nextState.queueItems).map((q) =>
+      q.id === queueItemId ? { ...q, metadata: { ...q.metadata, scheduledFor: schedule } } : q)
   };
   nextState = emitCompanyEvent(nextState, {
     source: CAMPAIGN_COMMAND_SOURCE,
     type: "campaign_release_proposed",
     occurred_at: nowIso,
-    summary: `Wave ${preview.wave} release proposed (${people(preview.eligible)}${schedule ? `, planned for ${schedule}` : ""}). Waiting for approval; nothing released.`,
+    summary: `Wave ${preview.wave} release proposed (${people(preview.eligible)}${schedule ? `, planned for ${schedule} Eastern` : ""}). Waiting for approval; nothing released.`,
     risk: "watch"
   }, { now: nowFn });
-  return { ok: true, state: nextState, approvalId: approval.id, queueItemId: item.id, preview };
+  return { ok: true, state: nextState, approvalId: approval.id, queueItemId, preview };
 }
 
 // Execute a wave release — ONLY with a matching APPROVED approval, and only after re-checking
@@ -332,13 +400,13 @@ export function executeApprovedWaveRelease(state = {}, { approvalId = "", actor 
   const wave = Number(item?.metadata?.wave);
   if (!item || !Number.isFinite(wave)) return blocked("The approval is missing its wave details. Propose the release again.");
   const schedule = clean(item.metadata?.scheduledFor);
-  if (schedule && nowIso < schedule) return blocked(`This release is planned for ${schedule} — it is not that time yet.`);
+  if (schedule && etDateOf(nowIso) < schedule) return blocked(`This release is planned for ${schedule} (Eastern) — it is not that day yet.`);
 
   const config = reactivationCampaignOf(state);
   if (config.releasedWaves.map(Number).includes(wave)) return blocked(`Wave ${wave} is already released.`);
   if (lower(config.status) === "paused") return blocked(`The campaign is paused${config.pausedReason ? ` (${config.pausedReason})` : ""}. Resume it before releasing more people.`);
   const thresholds = evaluateThresholds(state, config);
-  if (thresholds.tripped) return blocked(`A safety limit tripped: ${thresholds.reasons.join("; ")}. Review before releasing more people.`);
+  if (thresholds.tripped) return blocked(`A safety limit tripped: ${plainSafetyReasons(thresholds.reasons)}. Review before releasing more people.`);
 
   // The actual release — the existing engine does the work; held/suppressed people stay out.
   const released = releaseWave(state, wave, { now: nowIso });
@@ -428,7 +496,7 @@ export function proposeCampaignResume(state = {}, { actor = "owner", env = proce
   const gates = gateFacts(state, env);
   const thresholds = thresholdFacts(state, config);
   const caution = config.releasedWaves.length
-    ? ` Wave ${config.releasedWaves.join(" and ")} ${config.releasedWaves.length === 1 ? "is" : "are"} already released — with sending on, their next follow-up emails resume too.`
+    ? ` Wave ${listJoin(config.releasedWaves)} ${config.releasedWaves.length === 1 ? "is" : "are"} already released — with sending on, their next follow-up emails resume too.`
     : "";
   const item = createQueueItem({
     type: "campaign",
@@ -489,7 +557,7 @@ export function executeApprovedResume(state = {}, { approvalId = "", actor = "ow
   const config = reactivationCampaignOf(state);
   if (lower(config.status) !== "paused") return blocked("The campaign is not paused.");
   const thresholds = evaluateThresholds(state, config);
-  if (thresholds.tripped) return blocked(`A safety limit is still tripped: ${thresholds.reasons.join("; ")}. Fix the numbers before resuming.`);
+  if (thresholds.tripped) return blocked(`A safety limit is still tripped: ${plainSafetyReasons(thresholds.reasons)}. Fix the numbers before resuming.`);
 
   const gates = gateFacts(state, env);
   let nextState = {

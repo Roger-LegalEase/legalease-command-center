@@ -171,7 +171,8 @@ check("execute is idempotent — a second run refuses instead of double-releasin
 });
 
 check("a date-scheduled release refuses to run before its planned date", () => {
-  const prop = proposeWaveRelease(baseState(), 3, { env: ENV, now: NOW, scheduledFor: "2026-07-10T13:00:00.000Z" });
+  const prop = proposeWaveRelease(baseState(), 3, { env: ENV, now: NOW, scheduledFor: "2026-07-10" });
+  assert.equal(prop.ok, true);
   const approved = {
     ...prop.state,
     approvals: prop.state.approvals.map((a) => a.id === prop.approvalId ? { ...a, state: "approved" } : a)
@@ -270,6 +271,84 @@ check("telemetry is honest: blind warning when sends happened but no webhook dat
   const quiet = buildCampaignCommandView(baseState(), { env: ENV, now: new Date(NOW) });
   assert.equal(quiet.telemetry.trusted, true);
   assert(/expected/i.test(quiet.telemetry.plain));
+});
+
+check("re-proposing cannot clear an approved release's planned date (schedule bypass fixed)", () => {
+  const prop = proposeWaveRelease(baseState(), 3, { env: ENV, now: NOW, scheduledFor: "2026-09-01" });
+  const approved = {
+    ...prop.state,
+    approvals: prop.state.approvals.map((a) => a.id === prop.approvalId ? { ...a, state: "approved" } : a)
+  };
+  const again = proposeWaveRelease(approved, 3, { env: ENV, now: "2026-07-04T09:00:00.000Z" });
+  assert.equal(again.ok, false, "re-propose after approval must be refused");
+  assert(/planned for 2026-09-01/i.test(again.error));
+  const early = executeApprovedWaveRelease(approved, { approvalId: prop.approvalId, env: ENV, now: "2026-07-04T09:00:00.000Z" });
+  assert.equal(early.ok, false, "the original schedule must still hold");
+});
+
+check("re-proposing while still pending reuses the same approval and updates the date", () => {
+  const first = proposeWaveRelease(baseState(), 3, { env: ENV, now: NOW, scheduledFor: "2026-09-01" });
+  const second = proposeWaveRelease(first.state, 3, { env: ENV, now: "2026-07-04T09:00:00.000Z" });
+  assert.equal(second.ok, true);
+  assert.equal(second.approvalId, first.approvalId, "pending proposal must reuse the approval");
+  assert.equal(second.queueItemId, first.queueItemId);
+  const item = second.state.queueItems.find((q) => q.id === second.queueItemId);
+  assert.equal(item.metadata.scheduledFor, "", "the newest proposal's (empty) date wins");
+  assert.equal(second.state.approvals.filter((a) => a.action_type === RELEASE_ACTION_TYPE).length, 1, "no dangling second approval");
+});
+
+check("a dismissed proposal is not a dead-end — a fresh one can be made and approved", () => {
+  const first = proposeWaveRelease(baseState(), 3, { env: ENV, now: NOW });
+  const dismissed = transitionQueueItem(first.state, { id: first.queueItemId, status: "dismissed", actor: "roger", now: () => NOW });
+  assert.equal(dismissed.ok, true);
+  const second = proposeWaveRelease(dismissed.state, 3, { env: ENV, now: "2026-07-04T09:00:00.000Z" });
+  assert.equal(second.ok, true);
+  assert.notEqual(second.queueItemId, first.queueItemId, "fresh proposal must be a new queue item");
+  const item = second.state.queueItems.find((q) => q.id === second.queueItemId);
+  assert.equal(item.status, "needs_roger");
+  const old = second.state.queueItems.find((q) => q.id === first.queueItemId);
+  assert.equal(old.status, "dismissed", "the dismissed one stays dismissed");
+});
+
+check("a wave with nobody eligible cannot be proposed", () => {
+  const empty = baseState();
+  empty.reactivationContacts = empty.reactivationContacts.map((c) =>
+    Number(c.wave) === 3 ? { ...c, campaign_hold: true } : c);
+  const result = proposeWaveRelease(empty, 3, { env: ENV, now: NOW });
+  assert.equal(result.ok, false);
+  assert(/nothing to release/i.test(result.error));
+});
+
+check("a malformed planned date is refused in plain English", () => {
+  const result = proposeWaveRelease(baseState(), 3, { env: ENV, now: NOW, scheduledFor: "next tuesday" });
+  assert.equal(result.ok, false);
+  assert(/year-month-day/i.test(result.error));
+});
+
+check("planned dates compare in Eastern time, not UTC", () => {
+  // 2026-07-10T02:00Z is still July 9 in ET — the release must refuse.
+  const prop = proposeWaveRelease(baseState(), 3, { env: ENV, now: NOW, scheduledFor: "2026-07-10" });
+  const approved = {
+    ...prop.state,
+    approvals: prop.state.approvals.map((a) => a.id === prop.approvalId ? { ...a, state: "approved" } : a)
+  };
+  const utcEarly = executeApprovedWaveRelease(approved, { approvalId: prop.approvalId, env: ENV, now: "2026-07-10T02:00:00.000Z" });
+  assert.equal(utcEarly.ok, false, "UTC-midnight must not unlock an ET-planned date");
+  const etDay = executeApprovedWaveRelease(approved, { approvalId: prop.approvalId, env: ENV, now: "2026-07-10T12:00:00.000Z" });
+  assert.equal(etDay.ok, true);
+});
+
+check("safety-limit copy has no machine tokens anywhere it surfaces", () => {
+  const tripped = baseState({
+    reactivationAttempts: Array.from({ length: 120 }, (_, i) => ({ status: "sent", contact_id: `s${i}`, to: `s${i}@x.org` })),
+    reactivationEvents: Array.from({ length: 10 }, (_, i) => ({ type: "bounce", contact_id: `s${i}` }))
+  });
+  const view = buildCampaignCommandView(tripped, { env: ENV, now: new Date(NOW) });
+  const { exec } = approveAndExecute(tripped, 3);
+  for (const text of [view.thresholds.plain, exec.error]) {
+    assert(!/hard_bounce|spam_complaint|>=/.test(String(text)), `machine tokens leaked: ${text}`);
+    assert(/hard bounces/.test(String(view.thresholds.plain)));
+  }
 });
 
 check("the REAL approval path — Queue approve then execute — works end to end", () => {
