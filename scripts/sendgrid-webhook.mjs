@@ -160,9 +160,9 @@ export function sendgridWebhookHealthSummary(health = {}, { env = process.env, s
     : "not_configured";
   let warning = "";
   if (!h.last_received_at && sent > 0) {
-    warning = `Webhook batches have never been received despite ${sent} sends — delivery telemetry and the auto-pause monitor are blind. Check the SendGrid Event Webhook URL and recent write errors.`;
+    warning = `Webhook batches have never been received despite ${sent} sends. Delivery telemetry and the auto-pause monitor are blind. Check the SendGrid Event Webhook URL and recent write errors.`;
   } else if (totalEvents === 0 && sent > 0) {
-    warning = `Webhook batches arrive but no events have been recorded despite ${sent} sends — check for write failures.`;
+    warning = `Webhook batches arrive but no events have been recorded despite ${sent} sends. Check for write failures.`;
   } else if (h.last_error_at && (!h.last_ok_at || h.last_error_at > h.last_ok_at)) {
     warning = `The most recent webhook batch failed: ${h.last_error || "unknown error"}.`;
   }
