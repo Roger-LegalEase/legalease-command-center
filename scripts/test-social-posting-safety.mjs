@@ -24,7 +24,7 @@ const appStatus = functionBlock("osHealthPageHtml");
 const visibleUi = [production, queue, twitterXQueue, more, appStatus].join("\n");
 
 for (const required of [
-  "Live social posting: Off",
+  "socialPostureRow()",
   "Live social posting is off",
   "Outbox does not execute actions in this pass.",
   "Social post",
@@ -58,6 +58,10 @@ for (const forbidden of [
 assert(!production.includes("OAuth"), "Production normal UI should not mention OAuth");
 assert(!queue.includes("OAuth"), "LinkedIn Approval Queue should not mention OAuth");
 assert(!more.includes("Connect OAuth"), "More should not expose OAuth connection controls");
+// Trust layer: the social posting claim derives from /api/safety/posture; the only literal
+// fallback allowed is the honest Unverified state.
+assert(source.includes('"Live social posting: Unverified"'), "Social posture fallback must be Unverified, not a hardcoded Off");
+
 assert(!source.includes("ENABLE_LIVE_LINKEDIN_POSTING === \"true\" &&"), "LinkedIn live posting should not be enabled by this pass");
 assert(source.includes("liveGatesCount:0"), "Safe fallback state should keep liveGatesCount at 0");
 

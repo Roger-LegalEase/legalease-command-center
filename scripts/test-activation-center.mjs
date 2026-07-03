@@ -64,8 +64,8 @@ assert(!more.includes("Next setup step:</strong> Prepare"), "Generic activation 
 assert(more.includes("Safety state:"), "LinkedIn activation card should show the approved connector safety state");
 
 for (const safety of [
-  "Live social posting: Off",
-  "Email sending: Off",
+  "socialPostureRow()",
+  "emailPostureRow()",
   "Calendar writes: Off",
   "External actions: Off",
   "Connected dashboards: Off",
