@@ -17,6 +17,7 @@ import { buildCodebaseHealthEngine, CODEBASE_HEALTH_ENGINE_ID } from "./codebase
 import { buildEngagementGrowthEngine, ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
 import { buildAllOperatingLoopEngines, OPERATING_LOOP_ENGINE_IDS } from "./operating-loops.mjs";
 import { buildReactivationEngine, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
+import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID } from "./company-memory-projector.mjs";
 
 export function buildHeartbeatRegistry(deps = {}) {
   const engines = [];
@@ -130,9 +131,14 @@ export function buildHeartbeatRegistry(deps = {}) {
   // Always registered so the autopilot toggle surfaces; safe by construction (four gates).
   engines.push(buildReactivationEngine({ runReactivationSend: deps.runReactivationSend }));
 
+  // Phase 1 company-memory projector (plan()-only, NO act()). Runs LAST on purpose: it reads
+  // what every engine above recorded this tick and refreshes the shared Queue/Contacts/Events/
+  // AgentRuns memory. Structurally cannot send, publish, release, or deploy.
+  engines.push(buildCompanyMemoryEngine());
+
   return engines;
 }
 
 // Stable list of registered engine ids (for surfacing autopilot toggles in the UI even
 // when an engine hasn't run yet). Mirrors buildHeartbeatRegistry's ids.
-export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID, ENGAGEMENT_GROWTH_ENGINE_ID, ...OPERATING_LOOP_ENGINE_IDS, REACTIVATION_ENGINE_ID];
+export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID, ENGAGEMENT_GROWTH_ENGINE_ID, ...OPERATING_LOOP_ENGINE_IDS, REACTIVATION_ENGINE_ID, COMPANY_MEMORY_ENGINE_ID];
