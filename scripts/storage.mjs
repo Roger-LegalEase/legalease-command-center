@@ -595,12 +595,12 @@ export class SupabaseCoreStore extends JsonStore {
       coreStateCollections.filter((collection) => state[collection] !== undefined)
     );
     if (presentCollections.size) {
-      const keep = new Set(rows.map((row) => row.collection + " " + row.item_id));
+      const keep = new Set(rows.map((row) => row.collection + "\0" + row.item_id));
       // Must page too: a truncated read here would hide orphans past row 1000, leaving stale
       // rows to accumulate (and, before the readState fix, could resurrect deleted items).
       const existing = (await supabaseFetchAllRows("collection,item_id")) || [];
       const orphans = existing.filter(
-        (row) => presentCollections.has(row.collection) && !keep.has(row.collection + " " + row.item_id)
+        (row) => presentCollections.has(row.collection) && !keep.has(row.collection + "\0" + row.item_id)
       );
       for (let i = 0; i < orphans.length; i += 25) {
         await Promise.all(orphans.slice(i, i + 25).map((row) =>
