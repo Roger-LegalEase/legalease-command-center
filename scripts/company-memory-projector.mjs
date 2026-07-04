@@ -27,6 +27,7 @@ import {
   upsertCompanyOrganization
 } from "./company-memory.mjs";
 import { campaignRates, evaluateThresholds, reactivationCampaignOf } from "./reactivation-os.mjs";
+import { autonomyLevelFor } from "./autonomy-levels.mjs";
 import { plainSafetyReasons } from "./campaign-command.mjs";
 import { sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
 
@@ -616,6 +617,20 @@ export function buildTodaySummary(state = {}, { env = process.env, now = () => n
   const drafts = queue.filter((i) => i.status === "drafted");
   const recentRuns = list(projected.agentRuns).slice(0, 20);
   const monitors = [...new Set(recentRuns.map((r) => r.agent))].slice(0, 10);
+  // Phase 18C: each running helper's declared autonomy ceiling (plain English) and its
+  // latest prepared-work records, so the cockpit can show what agents did and may do.
+  const agentDirectory = monitors.map((id) => autonomyLevelFor(id));
+  const recentAgentRuns = recentRuns.slice(0, 8).map((r) => ({
+    agent: r.agent,
+    status: clean(r.status) || "success",
+    started_at: clean(r.started_at),
+    purpose: clean(r.purpose),
+    output: clean(r.output_summary),
+    risk: clean(r.risk) || "safe",
+    approvalRequired: Boolean(r.approval_required),
+    queueItemId: clean(r.queue_item_id),
+    finalAction: clean(r.final_action)
+  }));
 
   return {
     generatedAt: now(),
@@ -640,6 +655,8 @@ export function buildTodaySummary(state = {}, { env = process.env, now = () => n
       watchlist: watchlist.length
     },
     runningAutomatically: monitors,
+    agentDirectory,
+    recentAgentRuns,
     watchlist: watchlist.slice(0, 8),
     money: {
       stripeConnected: Boolean(stripe && stripe.available),

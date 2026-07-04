@@ -29,7 +29,7 @@ import { sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
 import { autopilotEnabled } from "./heartbeat.mjs";
 import {
   createQueueItem, upsertQueueItems, createApproval, upsertApprovals,
-  emitCompanyEvent, QUEUE_TERMINAL_STATUSES
+  emitCompanyEvent, recordAgentRun, QUEUE_TERMINAL_STATUSES
 } from "./company-memory.mjs";
 
 const clean = (v = "") => String(v ?? "").trim();
@@ -376,6 +376,21 @@ export function proposeWaveRelease(state = {}, waveNumber, { scheduledFor = "", 
     summary: `Wave ${preview.wave} release proposed (${people(preview.eligible)}${schedule ? `, planned for ${schedule} Eastern` : ""}). Waiting for approval; nothing released.`,
     risk: "watch"
   }, { now: nowFn });
+  nextState = recordAgentRun(nextState, {
+    agent: CAMPAIGN_COMMAND_SOURCE,
+    trigger: "operator",
+    purpose: `Prepare the wave ${preview.wave} release for approval`,
+    input_summary: `${people(preview.eligible)} eligible, ${preview.held} held, ${preview.blocked} blocked${schedule ? `, planned for ${schedule}` : ""}`,
+    output_summary: `Approval request lined up for wave ${preview.wave}. Nothing released or sent.`,
+    risk: preview.riskLevel,
+    recommended_next_step: "Approve it on the Decisions page, then run the approved release.",
+    approval_required: true,
+    queue_item_id: queueItemId,
+    approval_id: approval.id,
+    actions_proposed: 1,
+    started_at: nowIso,
+    ended_at: nowIso
+  }, { now: nowFn });
   return { ok: true, state: nextState, approvalId: approval.id, queueItemId, preview };
 }
 
@@ -438,6 +453,23 @@ export function executeApprovedWaveRelease(state = {}, { approvalId = "", actor 
     risk: gates.sendingOn ? "needs_roger" : "info"
   }, { now: nowFn });
 
+  nextState = recordAgentRun(nextState, {
+    agent: CAMPAIGN_COMMAND_SOURCE,
+    trigger: "operator",
+    purpose: `Run the approved wave ${wave} release`,
+    input_summary: `Approval ${approval.id} for wave ${wave}, executed by ${actor}`,
+    output_summary: `Wave ${wave} released: ${people(released.enrolled)} lined up. ${gates.sendingOn ? "Sending is on." : "Sending is off. No one was emailed."}`,
+    risk: gates.sendingOn ? "caution" : "safe",
+    approval_required: true,
+    queue_item_id: clean(approval.queue_item_id),
+    approval_id: approval.id,
+    reviewed_by: actor,
+    reviewed_at: nowIso,
+    final_action: `Released wave ${wave} (${people(released.enrolled)} enrolled).`,
+    writes_performed: 1,
+    started_at: nowIso,
+    ended_at: nowIso
+  }, { now: nowFn });
   return {
     ok: true,
     state: nextState,
@@ -489,6 +521,20 @@ export function pauseCampaign(state = {}, { reason = "", actor = "owner", now = 
     summary: `Reactivation campaign paused by ${actor}: ${pausedReason}. Nothing sends while paused.`,
     risk: "watch"
   }, { now: nowFn });
+  nextState = recordAgentRun(nextState, {
+    agent: CAMPAIGN_COMMAND_SOURCE,
+    trigger: "operator",
+    purpose: "Pause the reactivation campaign",
+    input_summary: `Paused by ${actor}: ${pausedReason}`,
+    output_summary: "Campaign paused. Nothing sends while paused.",
+    risk: "safe",
+    reviewed_by: actor,
+    reviewed_at: nowIso,
+    final_action: "Paused the campaign.",
+    writes_performed: 1,
+    started_at: nowIso,
+    ended_at: nowIso
+  }, { now: nowFn });
   return { ok: true, state: nextState, headline: "Campaign paused. Nothing sends while paused.", warning: CAMPAIGN_COMMAND_WARNING };
 }
 
@@ -539,6 +585,21 @@ export function proposeCampaignResume(state = {}, { actor = "owner", env = proce
     summary: "Resuming the reactivation campaign was proposed. Waiting for approval; still paused.",
     risk: "watch"
   }, { now: nowFn });
+  nextState = recordAgentRun(nextState, {
+    agent: CAMPAIGN_COMMAND_SOURCE,
+    trigger: "operator",
+    purpose: "Prepare the campaign resume for approval",
+    input_summary: `Proposed by ${actor}. Campaign paused: ${config.pausedReason || "operator pause"}`,
+    output_summary: "Approval request lined up to resume the campaign. Still paused.",
+    risk: "caution",
+    recommended_next_step: "Approve it on the Decisions page, then run the approved resume.",
+    approval_required: true,
+    queue_item_id: item.id,
+    approval_id: approval.id,
+    actions_proposed: 1,
+    started_at: nowIso,
+    ended_at: nowIso
+  }, { now: nowFn });
   return { ok: true, state: nextState, approvalId: approval.id, queueItemId: item.id };
 }
 
@@ -588,6 +649,23 @@ export function executeApprovedResume(state = {}, { approvalId = "", actor = "ow
     occurred_at: nowIso,
     summary: `Reactivation campaign resumed by ${actor}. ${gates.sendingOn ? "Sending is on. Emails resume in the next window." : "Sending is off. Nobody gets an email until it is turned on."}`,
     risk: gates.sendingOn ? "needs_roger" : "info"
+  }, { now: nowFn });
+  nextState = recordAgentRun(nextState, {
+    agent: CAMPAIGN_COMMAND_SOURCE,
+    trigger: "operator",
+    purpose: "Run the approved campaign resume",
+    input_summary: `Approval ${approval.id}, executed by ${actor}`,
+    output_summary: `Campaign resumed. ${gates.sendingOn ? "Sending is on." : "Sending remains off."}`,
+    risk: gates.sendingOn ? "caution" : "safe",
+    approval_required: true,
+    queue_item_id: clean(approval.queue_item_id),
+    approval_id: approval.id,
+    reviewed_by: actor,
+    reviewed_at: nowIso,
+    final_action: "Resumed the campaign.",
+    writes_performed: 1,
+    started_at: nowIso,
+    ended_at: nowIso
   }, { now: nowFn });
   return {
     ok: true,

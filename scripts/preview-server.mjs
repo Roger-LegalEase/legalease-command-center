@@ -25707,7 +25707,10 @@ function htmlShell() {
       "email-telemetry": "Email delivery monitor",
       "storage-monitor": "Data safety monitor",
       "calendar-reader": "Calendar reader",
-      "operations-assistant": "Operations assistant"
+      "operations-assistant": "Operations assistant",
+      "campaign-command": "Campaign command",
+      "autonomy-cycle": "Operations assistant",
+      "heartbeat": "Scheduled check-ins"
     };
     function friendlyAgentName(id = "") {
       if (FRIENDLY_AGENT_NAMES[id]) return FRIENDLY_AGENT_NAMES[id];
@@ -26380,15 +26383,39 @@ function htmlShell() {
         <div class="ck-meter-note">Counted from email link clicks. Open tracking is not collected.</div>
       </div>\`;
     }
+    // Plain-English autonomy ceiling per level, kept short for the card chip.
+    const CK_LEVEL_CHIPS = { 0: "Watch only", 1: "Drafts only", 2: "Asks first", 3: "Runs approved work", 4: "Housekeeping" };
     function ckAgentsHtml(monitors) {
+      const s = todaySummary || {};
+      const directory = new Map((s.agentDirectory || []).map(a => [a.engineId, a]));
+      const lastRun = new Map();
+      for (const r of (s.recentAgentRuns || [])) if (!lastRun.has(r.agent)) lastRun.set(r.agent, r);
       const cards = monitors.length
-        ? monitors.map(id => \`<div class="ck-agent">
-            <div class="row1"><h4>\${esc(friendlyAgentName(id))}</h4><span class="ck-chip ok">Running safely</span></div>
-            <div class="when">Watching and reporting</div>
+        ? monitors.map(id => {
+            const d = directory.get(id);
+            const run = lastRun.get(id);
+            const chip = d ? CK_LEVEL_CHIPS[d.level] || "Asks first" : "Running safely";
+            const line = d ? d.plain : "Watching and reporting";
+            const runLine = run && (run.finalAction || run.purpose)
+              ? \`<div class="when" style="margin-top:6px;">Last: \${esc(run.finalAction || run.purpose)}</div>\`
+              : "";
+            return \`<div class="ck-agent">
+            <div class="row1"><h4>\${esc(friendlyAgentName(id))}</h4><span class="ck-chip \${d && d.level >= 3 ? "warn" : "ok"}">\${esc(chip)}</span></div>
+            <div class="when">\${esc(line)}</div>
+            \${runLine}
             <div class="stripe"></div>
-          </div>\`).join("")
+          </div>\`;
+          }).join("")
         : '<div class="ck-empty">Helpers report here after their next check-in.</div>';
+      const activity = (s.recentAgentRuns || []).slice(0, 5).map(r => {
+        const sub = r.finalAction || (r.approvalRequired ? "Waiting for your approval" : "");
+        return \`<div class="ck-lrow">
+          <span class="txt"><span class="t">\${esc(friendlyAgentName(r.agent))}: \${esc(r.purpose || r.output || "run recorded")}</span>\${sub ? \`<span class="s">\${esc(sub)}</span>\` : ""}</span>
+          \${r.queueItemId ? '<button class="ck-linkbtn" type="button" onclick="location.hash=\\'decisions\\'">Open</button>' : ""}
+        </div>\`;
+      }).join("");
       return \`<div class="ck-agents" style="margin-top:0;">\${cards}</div>
+        \${activity ? \`<div class="ck-sec-head" style="margin:16px 0 8px;"><h2 style="font-size:16px;">Agent activity</h2><span class="hint">What helpers prepared, and what happened</span></div><div class="ck-rows">\${activity}</div>\` : ""}
         <div class="ck-footnote">\${CK_ICONS.shield} Helpers watch and prepare. They never send, publish, or spend without your approval.</div>\`;
     }
     function ckSystemHealthHtml(v) {
@@ -34907,7 +34934,8 @@ async function handleRequest(request, response) {
       await store.writeCollections({
         queueItems: result.state.queueItems,
         approvals: result.state.approvals,
-        companyEvents: result.state.companyEvents
+        companyEvents: result.state.companyEvents,
+        agentRuns: result.state.agentRuns
       });
       sendJson(response, { ok: true, approvalId: result.approvalId, queueItemId: result.queueItemId, preview: result.preview });
     } catch (error) {
@@ -34942,7 +34970,8 @@ async function handleRequest(request, response) {
         reactivationCampaign: result.state.reactivationCampaign,
         queueItems: result.state.queueItems,
         approvals: result.state.approvals,
-        companyEvents: result.state.companyEvents
+        companyEvents: result.state.companyEvents,
+        agentRuns: result.state.agentRuns
       });
       sendJson(response, { ok: true, wave: result.wave, enrolled: result.enrolled, headline: result.headline, verified: result.verified, warning: result.warning });
     } catch (error) {
@@ -34969,7 +34998,8 @@ async function handleRequest(request, response) {
       await store.writeCollections({
         reactivationCampaign: result.state.reactivationCampaign,
         approvals: result.state.approvals,
-        companyEvents: result.state.companyEvents
+        companyEvents: result.state.companyEvents,
+        agentRuns: result.state.agentRuns
       });
       sendJson(response, { ok: true, headline: result.headline, warning: result.warning });
     } catch (error) {
@@ -34995,7 +35025,8 @@ async function handleRequest(request, response) {
       await store.writeCollections({
         queueItems: result.state.queueItems,
         approvals: result.state.approvals,
-        companyEvents: result.state.companyEvents
+        companyEvents: result.state.companyEvents,
+        agentRuns: result.state.agentRuns
       });
       sendJson(response, { ok: true, approvalId: result.approvalId, queueItemId: result.queueItemId });
     } catch (error) {
@@ -35028,6 +35059,7 @@ async function handleRequest(request, response) {
         reactivationCampaign: result.state.reactivationCampaign,
         queueItems: result.state.queueItems,
         approvals: result.state.approvals,
+        agentRuns: result.state.agentRuns,
         companyEvents: result.state.companyEvents
       });
       sendJson(response, { ok: true, headline: result.headline, warning: result.warning });
