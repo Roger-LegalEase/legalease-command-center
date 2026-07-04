@@ -18,6 +18,7 @@ import { buildVersionDrift, createVersionDriftCache } from "./version-truth.mjs"
 import { buildSafetyPosture } from "./safety-posture.mjs";
 import { wakeSnoozedQueueItems, transitionQueueItem, emitCompanyEvent, recordAgentRun } from "./company-memory.mjs";
 import { normalizeSupportIssue, prepareSupportDraftReply, transitionSupportIssue, upsertSupportIssues } from "./support-desk.mjs";
+import { buildOutreachLaneView, previewHeldRelease, confirmHeldRelease, buildDeliverabilityWarnings } from "./campaign-brain.mjs";
 import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID, buildTodaySummary, projectCompanyMemory } from "./company-memory-projector.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { previewIntake, confirmIntake, INTAKE_TYPES, INTAKE_ACTIONS } from "./intake.mjs";
@@ -17378,6 +17379,59 @@ function htmlShell() {
       loadCampaignCommand();
       toast(String(result.headline || "Campaign resumed."));
     }
+    // ---- Campaign brain (Phase 18E): outreach lanes, held release, deliverability ----
+    let campaignBrainHeldRows = [];
+    async function loadCampaignBrain() {
+      const target = document.getElementById("campaign-brain-result");
+      if (target) target.innerHTML = "<strong>Loading the campaign brain...</strong>";
+      let view;
+      try { view = await api("/api/campaign/brain"); }
+      catch (error) { if (target) target.innerHTML = "<strong>Could not load the campaign brain.</strong> " + esc(error.message || ""); return; }
+      const outreach = view.outreach || {};
+      const held = view.held || {};
+      const deliverability = view.deliverability || {};
+      campaignBrainHeldRows = held.rows || [];
+      const laneHtml = (outreach.lanes || []).map(function(lane){
+        const items = (lane.items || []).slice(0, 5).map(function(it){
+          return "<li>" + esc(String(it.subject || it.title || "Message")) + " to " + esc(String(it.to || "")) +
+            (it.step ? " (email " + esc(String(it.step)) + " of the sequence)" : "") +
+            (it.reject_reason ? ". Stopped: " + esc(String(it.reject_reason)) : "") + "</li>";
+        }).join("");
+        return "<strong>" + esc(String(lane.title)) + ": " + esc(String(lane.count)) + "</strong>" + (items ? "<ul>" + items + "</ul>" : "");
+      }).join("<br>");
+      const warningsHtml = (deliverability.warnings || []).length
+        ? "<ul>" + deliverability.warnings.map(function(w){ return "<li><strong>" + (w.severity === "critical" ? "Stop:" : "Watch:") + "</strong> " + esc(String(w.plain)) + "</li>"; }).join("") + "</ul>"
+        : "<br>" + esc(String(deliverability.plain || ""));
+      const heldRows = campaignBrainHeldRows.slice(0, 10).map(function(r){
+        return "<li>" + esc(String(r.first_name || "Someone")) + " " + esc(String(r.masked_email || "")) + (r.review_note ? ". Note: " + esc(String(r.review_note)) : "") + "</li>";
+      }).join("");
+      const releaseButton = held.counts && held.counts.releasable > 0 && held.targetWave !== null
+        ? "<div class=\\"card-actions\\"><button class=\\"primary\\" type=\\"button\\" onclick=\\"heldReleaseConfirm()\\">Release " + esc(String(held.counts.releasable)) + " into wave " + esc(String(held.targetWave)) + " (no enroll, no send)</button></div>"
+        : "";
+      if (target) target.innerHTML =
+        "<strong>Partner outreach pipeline</strong><br>" + esc(String(outreach.plain || "")) + "<br><br>" + laneHtml +
+        "<br><strong>Held for review</strong><br>" + esc(String(held.headline || "")) +
+        (heldRows ? "<ul>" + heldRows + "</ul>" : "<br>") +
+        esc(String(held.whatConfirmDoes || "")) + "<br>" + esc(String(held.whatConfirmDoesNot || "")) + releaseButton +
+        "<br><strong>Deliverability</strong>" + warningsHtml +
+        "<br><br><em>" + esc(String(outreach.warning || "")) + "</em>";
+    }
+    async function heldReleaseConfirm() {
+      const target = document.getElementById("campaign-brain-result");
+      const ids = campaignBrainHeldRows.map(function(r){ return r.contact_id; }).filter(Boolean);
+      if (!ids.length) { toast("Nothing to release."); return; }
+      let result;
+      try {
+        result = await api("/api/campaign/held-release/confirm", { method: "POST", body: JSON.stringify({ contactIds: ids }) });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Not released:</strong> " + esc(error.message || "") + " Load the campaign brain again to retry.";
+        return;
+      }
+      toast(String(result.plain || "Released. Nobody enrolled, nothing sent."));
+      loadCampaignBrain();
+    }
+    window.loadCampaignBrain = loadCampaignBrain;
+    window.heldReleaseConfirm = heldReleaseConfirm;
     window.loadCampaignCommand = loadCampaignCommand;
     window.campaignWavePreview = campaignWavePreview;
     window.campaignWavePropose = campaignWavePropose;
@@ -25648,6 +25702,12 @@ function htmlShell() {
           </div>
           <div id="campaign-command-result" class="campaign-import-status">Load the campaign controls to see status, waves, safety limits, and delivery feedback. Read-only until you approve something on the Queue.</div>
           <div id="campaign-command-action" class="campaign-import-status" style="display:none"></div>
+        </section>
+        <section class="growth-card">
+          <div class="growth-card-head"><h2>Campaign brain</h2><small>Partner outreach lanes, held contacts, and deliverability in one honest view</small></div>
+          <p class="muted">Read-only, plus one careful action: releasing approved-for-later held contacts into the next unreleased wave. Releasing lines people up only. Enrolling still needs a wave approval, and nothing sends from here.</p>
+          <div class="card-actions"><button class="primary" type="button" onclick="loadCampaignBrain()">Load campaign brain</button><button type="button" onclick="location.hash='upload'">Review held contacts</button></div>
+          <div id="campaign-brain-result" class="campaign-import-status">Load to see the partner outreach pipeline, held-for-review contacts, and deliverability warnings.</div>
         </section>
         <section class="growth-card"><div class="growth-card-head"><h2>Campaign status</h2><small>Existing engines</small></div>
           <div class="queue-review-list">\${rows.slice(0, 80).map(row => \`<article class="queue-review-item"><div class="queue-review-item-main"><div class="queue-review-kicker"><span class="queue-type-line">\${esc(row.type)} · \${esc(operatorSourceLabel(row.source))}</span><span class="badge \${row.blocked ? "warn" : row.ready ? "good" : "info"}">\${esc(row.status)}</span></div><h3>\${esc(row.title)}</h3><p>\${esc(row.nextAction)}</p><p class="muted">\${row.scheduled ? "Scheduled/due: " + esc(formatDateTime(row.scheduled) || row.scheduled) : "No schedule recorded."}</p></div><div class="queue-review-actions"><button type="button" onclick="location.hash='queue'">Review</button></div></article>\`).join("") || '<div class="empty">No campaign records found yet.</div>'}</div>
@@ -34990,6 +35050,71 @@ async function handleRequest(request, response) {
       sendJson(response, buildCampaignCommandView(currentState, { env: process.env }));
     } catch (error) {
       sendJson(response, { error: error.message || "Could not build the campaign view." }, 400);
+    }
+    return;
+  }
+
+  // ---- Campaign brain (Phase 18E) ------------------------------------------------------------
+  // Read-only lanes + deliverability, and ONE gated write: releasing approved-for-later held
+  // contacts into the next UNRELEASED wave. Never enrolls, never releases a wave, never sends.
+  if (url.pathname === "/api/campaign/brain" && request.method === "GET") {
+    try {
+      const currentState = await store.readState();
+      sendJson(response, {
+        ok: true,
+        outreach: buildOutreachLaneView(currentState, { env: process.env }),
+        held: previewHeldRelease(currentState),
+        deliverability: buildDeliverabilityWarnings(currentState, { env: process.env })
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not build the campaign brain view." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/campaign/held-release/confirm" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const payload = await readJson(request);
+      const actor = accessDecision.actor?.label || accessDecision.actor?.role || "owner";
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const confirmed = confirmHeldRelease(currentState, {
+          contactIds: payload?.contactIds || payload?.contact_ids,
+          actor,
+          now: new Date().toISOString()
+        });
+        if (!confirmed.ok) return confirmed;
+        let nextState = emitCompanyEvent(confirmed.state, {
+          source: "campaign-command",
+          type: "held_contacts_released",
+          risk: "watch",
+          summary: `${actor} released ${confirmed.released} held contact${confirmed.released === 1 ? "" : "s"} into wave ${confirmed.wave}. Nobody is enrolled and nothing was sent.`
+        });
+        nextState = recordAgentRun(nextState, {
+          agent: "campaign-command",
+          trigger: "operator",
+          purpose: `Release ${confirmed.released} approved-for-later held contact${confirmed.released === 1 ? "" : "s"} into wave ${confirmed.wave}`,
+          output_summary: "Hold cleared and wave assigned. Nobody enrolled, nothing sent.",
+          risk: "caution",
+          approval_required: false,
+          recommended_next_step: `Preview the wave ${confirmed.wave} release when you are ready; enrolling still needs your approval.`
+        });
+        await store.writeCollections({
+          reactivationContacts: nextState.reactivationContacts,
+          companyEvents: nextState.companyEvents,
+          agentRuns: nextState.agentRuns
+        });
+        return { ok: true, released: confirmed.released, wave: confirmed.wave, noSend: true, plain: confirmed.plain };
+      });
+      if (!result.ok) { sendJson(response, { error: result.error, rejected: result.rejected || [] }, 400); return; }
+      sendJson(response, result);
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not release the selected contacts.", rejected: [] }, 400);
     }
     return;
   }
