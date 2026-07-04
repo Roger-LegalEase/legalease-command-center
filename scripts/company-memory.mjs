@@ -487,7 +487,18 @@ export function createAgentRun(input = {}, { now = () => new Date().toISOString(
     status: clean(input.status) || "success",
     started_at: clean(input.started_at) || now(),
     ended_at: clean(input.ended_at) || now(),
-    duration_ms: Number(input.duration_ms) || 0
+    duration_ms: Number(input.duration_ms) || 0,
+    // Review layer (Phase 18C): what the run was for, how risky its output is, what should
+    // happen next, and — once a human looked at it — who reviewed it and what finally happened.
+    purpose: clean(input.purpose),
+    risk: QUEUE_RISK_LEVELS.includes(input.risk) ? input.risk : "safe",
+    recommended_next_step: clean(input.recommended_next_step),
+    approval_required: Boolean(input.approval_required),
+    queue_item_id: clean(input.queue_item_id),
+    approval_id: clean(input.approval_id),
+    reviewed_at: clean(input.reviewed_at),
+    reviewed_by: clean(input.reviewed_by),
+    final_action: clean(input.final_action)
   };
 }
 
