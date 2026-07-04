@@ -29,6 +29,7 @@ import {
 import { campaignRates, evaluateThresholds, reactivationCampaignOf } from "./reactivation-os.mjs";
 import { autonomyLevelFor } from "./autonomy-levels.mjs";
 import { plainSafetyReasons } from "./campaign-command.mjs";
+import { deliverabilityUtilization, DELIVERABILITY_WARNING_THRESHOLD } from "./campaign-brain.mjs";
 import { sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
 
 export const COMPANY_MEMORY_ENGINE_ID = "company-memory";
@@ -197,6 +198,24 @@ function queueFromCampaignSafety(state) {
       priority: 5,
       sourceLink: { kind: "page", target: "#campaigns" }
     }));
+  }
+  // Phase 18E: warn BEFORE the trip. Same utilization math as the cockpit meter and the
+  // campaign-brain deliverability view, so the numbers can never disagree.
+  if (!thresholds.tripped && !thresholds.belowSample) {
+    const worst = deliverabilityUtilization(thresholds.rates, campaign.thresholds);
+    if (worst.utilization >= DELIVERABILITY_WARNING_THRESHOLD) {
+      items.push(createQueueItem({
+        type: "campaign",
+        sourceEngine: "reactivation-sequencer",
+        sourceRef: { collection: "reactivationCampaign", itemId: "deliverability_warning" },
+        title: "Reactivation campaign is drifting toward its safety limit",
+        summary: `The worst deliverability metric is ${Math.round(worst.utilization * 100)}% of the way to the auto-pause limit. Nothing has tripped yet.`,
+        recommendation: "Open the campaign page and read the deliverability warnings before releasing more people.",
+        riskLevel: "caution",
+        priority: 12,
+        sourceLink: { kind: "page", target: "#campaigns" }
+      }));
+    }
   }
   // reactivationCampaignOf exposes camelCase pausedReason — the snake_case field never exists.
   if (lower(campaign.status) === "paused" && clean(campaign.pausedReason)) {
