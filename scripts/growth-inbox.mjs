@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { normalizeSupportIssue } from "./support-desk.mjs";
 
 const sourceTypeRules = [
   ["compliance_concern", /\b(compliance|legal advice|guarantee|guaranteed|eligib|court|attorney|privacy|complaint|risk|claim)\b/i],
@@ -310,13 +311,15 @@ function conversionRecord(item = {}, destination = "task", options = {}) {
     };
   }
   if (destination === "support_issue") {
+    // Canonical support shape (support-desk.mjs, Phase 18D): re-classifies the text so
+    // urgency and legal-advice sensitivity are always present. Legacy fields survive.
     return {
       collection: "supportIssues",
-      record: {
+      record: normalizeSupportIssue({
         id: `support-${item.id}`,
         title,
         source: "growth_inbox",
-        category: item.sourceType === "compliance_concern" ? "legal advice risk" : "partner question",
+        category: item.sourceType === "compliance_concern" ? "legal advice risk" : "",
         severity: item.riskLevel === "high" ? "High" : "Medium",
         riskLevel: item.riskLevel || "medium",
         legalSensitivity: item.riskLevel === "high" ? "human_review_required" : "review",
@@ -325,7 +328,7 @@ function conversionRecord(item = {}, destination = "task", options = {}) {
         status: "open",
         history: [{ action: "created_from_growth_inbox", at: now }],
         ...base
-      }
+      }, { now: () => now })
     };
   }
   if (destination === "evidence_pack_note") {

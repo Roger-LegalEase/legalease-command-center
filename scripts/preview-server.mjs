@@ -16,7 +16,8 @@ import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from
 import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
 import { buildVersionDrift, createVersionDriftCache } from "./version-truth.mjs";
 import { buildSafetyPosture } from "./safety-posture.mjs";
-import { wakeSnoozedQueueItems, transitionQueueItem } from "./company-memory.mjs";
+import { wakeSnoozedQueueItems, transitionQueueItem, emitCompanyEvent, recordAgentRun } from "./company-memory.mjs";
+import { normalizeSupportIssue, prepareSupportDraftReply, transitionSupportIssue, upsertSupportIssues } from "./support-desk.mjs";
 import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID, buildTodaySummary, projectCompanyMemory } from "./company-memory-projector.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { previewIntake, confirmIntake, INTAKE_TYPES, INTAKE_ACTIONS } from "./intake.mjs";
@@ -15143,6 +15144,7 @@ function htmlShell() {
     .ck-approve .from { font-size:13px; font-weight:650; text-transform:uppercase; letter-spacing:.06em; color:var(--ck-muted); }
     .ck-approve p { margin:0 0 8px; color:var(--ck-ink2); font-size:16px; }
     .ck-why { background:var(--ck-tint); border-radius:12px; padding:10px 14px; font-size:15px; color:var(--ck-ink2); margin:12px 0 16px; }
+    .support-draft { white-space:pre-wrap; background:#F6F9FA; border-radius:10px; padding:12px 14px; font-size:14.5px; line-height:1.5; max-height:240px; overflow:auto; margin-top:8px; }
     .ck-due { font-size:13.5px; font-weight:650; color:var(--ck-ink2); margin:2px 0 6px; }
     .ck-due.overdue { color:var(--ck-crit); }
     a.ck-btn { text-decoration:none; display:inline-flex; align-items:center; }
@@ -25673,9 +25675,97 @@ function htmlShell() {
       return \`<section id="meetings" class="\${pageClass("meetings")} command-page section-page lee-bubble-safe-space"><div class="panel hero-panel"><div><div class="eyebrow">Read-only prep</div><h1 class="big-title">Meetings</h1><p class="muted">Meeting briefs come from existing Google read-only Calendar/Gmail signals and tasks. Open Google for full context when body/detail is unavailable.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='settings'">Google connection</button></div></div><div class="queue-review-list">\${briefs.map(brief => \`<article class="queue-review-item"><div class="queue-review-item-main"><div class="queue-review-kicker"><span class="queue-type-line">\${esc(brief.source)} · confidence \${esc(brief.confidence)}</span><span class="badge info">Meeting brief ready</span></div><h3>\${esc(brief.title)}</h3><p>\${esc(formatDateTime(brief.date) || brief.date || "Time not provided")} · \${esc(brief.attendees)} · \${esc(brief.organization)}</p><p><strong>Why it matters:</strong> \${esc(brief.why)}</p><p><strong>Suggested agenda:</strong> \${esc(brief.agenda)}</p><p class="muted"><strong>Missing info:</strong> \${esc(brief.missing)}</p></div><div class="queue-review-actions"><button type="button" onclick="location.hash='tasks'">Create prep task</button></div></article>\`).join("") || '<div class="empty">No meeting prep signals found. Connect Google Calendar read-only or add a prep task.</div>'}</div></section>\`;
     }
 
+    // ---- Support desk (Phase 18D): triage, honest drafts, no sending -------------------------
+    async function supportPrepareDraft(id) {
+      await cooAction(async () => {
+        const result = await api("/api/support/" + encodeURIComponent(id) + "/draft", { method: "POST", body: "{}" });
+        state = result.state;
+        render();
+        return result.message || "Draft ready. Nothing was sent.";
+      }, "Could not prepare the draft.");
+    }
+    async function supportTransition(id, status) {
+      await cooAction(async () => {
+        const result = await api("/api/support/" + encodeURIComponent(id) + "/transition", { method: "POST", body: JSON.stringify({ status }) });
+        state = result.state;
+        render();
+        return result.message || "Updated.";
+      }, "Could not update the support issue.");
+    }
+    function supportCopyReply(id) {
+      const issue = list(state.supportIssues).find(i => i.id === id);
+      if (!issue || !issue.draft_reply) { toast("No draft to copy yet."); return; }
+      navigator.clipboard.writeText(issue.draft_reply).then(
+        () => toast("Draft copied. Edit it in your reply before sending."),
+        () => toast("Could not copy automatically. Select the draft text and copy it.")
+      );
+    }
+    async function supportIntake(event) {
+      event.preventDefault();
+      const payload = formObject(event.target);
+      await cooAction(async () => {
+        const result = await api("/api/support/intake", { method: "POST", body: JSON.stringify(payload) });
+        state = result.state;
+        render();
+        return result.message || "Support request logged.";
+      }, "Could not log the support request.");
+    }
+    function supportIssueCardHtml(issue) {
+      const chips = [];
+      if (issue.upl_sensitive) chips.push('<span class="badge danger">May ask for legal advice</span>');
+      if (issue.urgency === "urgent") chips.push('<span class="badge warn">Urgent</span>');
+      chips.push(\`<span class="badge info">\${esc(issue.status || "open")}</span>\`);
+      const reasons = issue.upl_sensitive && list(issue.upl_reasons).length
+        ? \`<p class="muted">Flagged because it \${list(issue.upl_reasons).map(esc).join("; ")}. Read it and reply personally; no draft is prepared.</p>\`
+        : "";
+      const draft = issue.draft_reply
+        ? \`<details open><summary>Draft reply (nothing sent)</summary><pre class="support-draft">\${esc(issue.draft_reply)}</pre></details>\`
+        : "";
+      const open = !["resolved", "closed"].includes(issue.status);
+      return \`<article class="queue-review-item">
+        <div class="queue-review-item-main">
+          <div class="queue-review-kicker"><span class="queue-type-line">\${esc(issue.source || "support")}\${issue.contact_email ? " &middot; " + esc(issue.contact_email) : ""}</span>\${chips.join("")}</div>
+          <h3>\${esc(issue.title)}</h3>
+          \${issue.summary ? \`<p>\${esc(issue.summary)}</p>\` : ""}
+          \${reasons}
+          \${draft}
+        </div>
+        <div class="queue-review-actions">
+          \${open && !issue.upl_sensitive && !issue.draft_reply ? \`<button class="primary" type="button" onclick="supportPrepareDraft('\${esc(issue.id)}')">Prepare draft reply</button>\` : ""}
+          \${issue.draft_reply ? \`<button type="button" onclick="supportCopyReply('\${esc(issue.id)}')">Copy reply</button>\` : ""}
+          \${open && issue.status !== "waiting" ? \`<button type="button" onclick="supportTransition('\${esc(issue.id)}','waiting')">Mark waiting</button>\` : ""}
+          \${open ? \`<button type="button" onclick="supportTransition('\${esc(issue.id)}','resolved')">Mark resolved</button>\` : ""}
+        </div>
+      </article>\`;
+    }
     function supportPageHtml(pageClass) {
-      const items = [...list(state.supportIssues), ...list(state.growthInbox).filter(item => /support|help|issue|complaint/i.test([item.sourceType, item.type, item.category, item.title, item.summary].join(" ")))];
-      return \`<section id="support" class="\${pageClass("support")} support-workspace lee-bubble-safe-space"><section class="support-hero"><div><div class="eyebrow">Support</div><h1>Support</h1><p>\${items.length ? "Possible support items from existing inbox sources." : "Support source is not connected yet."}</p></div><div class="support-actions"><button onclick="location.hash='growth-inbox'">Open Growth Inbox</button></div></section><section class="support-card"><h2>Possible support items</h2><div class="support-status-list">\${items.map(item => \`<div class="support-status-row"><strong>\${esc(item.title || item.summary || "Support item")}</strong><span>\${esc(item.status || item.sourceType || "Review")}</span></div>\`).join("") || '<div class="support-status-row"><strong>Support source is not connected yet.</strong><span>Not connected</span></div>'}</div></section></section>\`;
+      const issues = list(state.supportIssues);
+      const open = issues.filter(i => !["resolved", "closed"].includes(i.status));
+      const attention = open.filter(i => i.upl_sensitive || i.urgency === "urgent");
+      const drafted = open.filter(i => i.status === "drafted" && !i.upl_sensitive);
+      const rest = open.filter(i => !attention.includes(i) && !drafted.includes(i));
+      const recentClosed = issues.filter(i => ["resolved", "closed"].includes(i.status)).slice(0, 5);
+      const inboxCandidates = list(state.growthInbox).filter(item => !["converted", "ignored"].includes(item.status) && /support|help|issue|complaint/i.test([item.sourceType, item.type, item.category, item.title, item.summary].join(" ")));
+      const lane = (title, items, empty) => \`<section class="support-card"><h2>\${esc(title)} <small>\${items.length}</small></h2><div class="queue-review-list">\${items.map(supportIssueCardHtml).join("") || \`<div class="empty">\${esc(empty)}</div>\`}</div></section>\`;
+      return \`<section id="support" class="\${pageClass("support")} support-workspace lee-bubble-safe-space">
+        <section class="support-hero"><div><div class="eyebrow">Support desk</div><h1>Support</h1><p>Read, triage, and prepare replies. Drafts stay inside Command Center; nothing sends from here.</p></div>
+        <div class="support-actions"><button onclick="location.hash='growth-inbox'">Open Growth Inbox</button></div></section>
+        <div class="campaign-preview-metrics">\${[[attention.length, "need you first"], [open.length, "open in total"], [drafted.length, "drafts ready"], [recentClosed.length, "recently resolved"]].map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
+        \${lane("Needs you first", attention, "Nothing urgent or sensitive right now.")}
+        \${lane("Drafts ready to review", drafted, "No drafts waiting. Prepare one from an open request.")}
+        \${lane("Open requests", rest, "No other open requests.")}
+        \${lane("Recently resolved", recentClosed, "Nothing resolved yet.")}
+        <section class="support-card"><h2>Log a support request</h2>
+          <p class="muted">Paste an email or write what happened. It gets triaged for urgency and legal-advice risk.</p>
+          <form onsubmit="supportIntake(event)" class="card-actions" style="flex-direction:column; align-items:stretch; gap:8px;">
+            <input name="title" placeholder="Short title" required>
+            <textarea name="text" rows="4" placeholder="What did they say or ask?" required></textarea>
+            <input name="email" type="email" placeholder="Their email (optional)">
+            <button class="primary" type="submit">Log request</button>
+          </form>
+        </section>
+        \${inboxCandidates.length ? \`<section class="support-card"><h2>Possible support items in your inbox <small>\${inboxCandidates.length}</small></h2><div class="support-status-list">\${inboxCandidates.slice(0, 10).map(item => \`<div class="support-status-row"><strong>\${esc(item.summary || item.rawText || "Inbox item")}</strong><span><button type="button" onclick="location.hash='growth-inbox'">Review and convert</button></span></div>\`).join("")}</div></section>\` : ""}
+      </section>\`;
     }
 
     function pagesPageHtml(pageClass) {
@@ -35502,6 +35592,93 @@ async function handleRequest(request, response) {
       sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update task." }, 400);
+    }
+    return;
+  }
+
+  // ---- Support desk (Phase 18D) --------------------------------------------------------------
+  // Triage + internal drafts only. There is NO send path: a reply leaves the app only when
+  // the operator copies it out. UPL-sensitive messages never get a machine draft.
+  if (url.pathname === "/api/support/intake" && request.method === "POST") {
+    try {
+      const payload = (await readJson(request)) || {};
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const issue = normalizeSupportIssue({
+          title: payload.title,
+          summary: payload.text || payload.summary,
+          contact_email: payload.email,
+          source: "manual"
+        });
+        const supportIssues = upsertSupportIssues(currentState.supportIssues, [issue]);
+        const withEvent = emitCompanyEvent({ ...currentState, supportIssues }, {
+          source: "support-inbox",
+          type: "support_issue_logged",
+          risk: issue.upl_sensitive ? "needs_roger" : "info",
+          summary: `Support request logged: "${issue.title}".${issue.upl_sensitive ? " It may ask for legal advice; read it personally." : ""}`,
+          sourceRef: { collection: "supportIssues", itemId: issue.id }
+        });
+        await store.writeCollections({ supportIssues: withEvent.supportIssues, companyEvents: withEvent.companyEvents });
+        return { state: { ...currentState, supportIssues: withEvent.supportIssues, companyEvents: withEvent.companyEvents }, issue };
+      });
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state), message: result.issue.upl_sensitive ? "Logged. This one may ask for legal advice, so it is flagged for you personally." : "Support request logged." });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not log the support request." }, 400);
+    }
+    return;
+  }
+
+  const supportAction = url.pathname.match(/^\/api\/support\/([^/]+)\/(draft|transition)$/);
+  if (supportAction && request.method === "POST") {
+    try {
+      const id = decodeURIComponent(supportAction[1]);
+      const action = supportAction[2];
+      const payload = (await readJson(request)) || {};
+      const actor = accessDecision.actor?.label || accessDecision.actor?.role || "owner";
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const issues = Array.isArray(currentState.supportIssues) ? currentState.supportIssues : [];
+        if (action === "draft") {
+          const issue = issues.find((i) => i.id === id);
+          if (!issue) return { error: "Support issue not found." };
+          const prepared = prepareSupportDraftReply(issue);
+          if (!prepared.ok) return { error: prepared.error };
+          const supportIssues = issues.map((i) => (i.id === id ? prepared.issue : i));
+          let nextState = emitCompanyEvent({ ...currentState, supportIssues }, {
+            source: "support-inbox",
+            type: "support_draft_prepared",
+            risk: "info",
+            summary: `Draft reply prepared for "${prepared.issue.title}". Nothing was sent.`,
+            sourceRef: { collection: "supportIssues", itemId: id }
+          });
+          nextState = recordAgentRun(nextState, {
+            agent: "support-inbox",
+            trigger: "operator",
+            purpose: `Prepare a draft reply for "${prepared.issue.title}"`,
+            output_summary: "Internal draft prepared for review. Nothing was sent.",
+            risk: "safe",
+            approval_required: true,
+            recommended_next_step: "Review the draft on the Support page, edit it, and copy it into your reply."
+          });
+          await store.writeCollections({ supportIssues: nextState.supportIssues, companyEvents: nextState.companyEvents, agentRuns: nextState.agentRuns });
+          return { state: { ...currentState, supportIssues: nextState.supportIssues, companyEvents: nextState.companyEvents, agentRuns: nextState.agentRuns }, message: "Draft ready. Review and edit it before you use it. Nothing was sent." };
+        }
+        const moved = transitionSupportIssue(issues, { id, status: String(payload.status || ""), actor, note: String(payload.note || "") });
+        if (!moved.ok) return { error: moved.error };
+        const nextState = emitCompanyEvent({ ...currentState, supportIssues: moved.issues }, {
+          source: "support-inbox",
+          type: "support_status_changed",
+          risk: "info",
+          summary: `${actor} marked "${moved.issue.title}" as ${moved.issue.status}.`,
+          sourceRef: { collection: "supportIssues", itemId: id }
+        });
+        await store.writeCollections({ supportIssues: nextState.supportIssues, companyEvents: nextState.companyEvents });
+        return { state: { ...currentState, supportIssues: nextState.supportIssues, companyEvents: nextState.companyEvents }, message: `Marked as ${moved.issue.status}.` };
+      });
+      if (result.error) { sendJson(response, { error: result.error }, 400); return; }
+      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update the support issue." }, 400);
     }
     return;
   }

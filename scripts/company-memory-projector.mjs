@@ -113,17 +113,29 @@ function queueFromLeeProposals(state) {
 function queueFromSupportIssues(state) {
   return list(state.supportIssues)
     .filter((issue) => !/resolved|closed|done|archived|dismissed/i.test(String(issue.status || "")))
-    .map((issue) => createQueueItem({
-      type: "support",
-      sourceEngine: "support-inbox",
-      sourceRef: { collection: "supportIssues", itemId: clean(issue.id) },
-      title: clean(issue.title || issue.summary) || "A support request needs review",
-      summary: clean(issue.summary || issue.description) || "Someone asked for help.",
-      recommendation: "Read the request and draft a reply for review.",
-      priority: 25,
-      sourceLink: { kind: "page", target: "#support" },
-      metadata: { sourceStatus: clean(issue.status) }
-    }));
+    .map((issue) => {
+      // Phase 18D: UPL-sensitive messages are highest risk (Roger reads them personally,
+      // no machine draft); urgent ones jump the line; drafted ones point at the draft.
+      const upl = Boolean(issue.upl_sensitive);
+      const urgent = issue.urgency === "urgent";
+      const drafted = issue.status === "drafted" && clean(issue.draft_reply);
+      return createQueueItem({
+        type: "support",
+        sourceEngine: "support-inbox",
+        sourceRef: { collection: "supportIssues", itemId: clean(issue.id) },
+        title: clean(issue.title || issue.summary) || "A support request needs review",
+        summary: clean(issue.summary || issue.description) || "Someone asked for help.",
+        recommendation: upl
+          ? "Read it yourself before anyone replies. It may ask for legal advice."
+          : drafted
+            ? "A draft reply is ready on the Support page. Review it, then copy it into your reply."
+            : "Read the request and prepare a draft reply on the Support page.",
+        riskLevel: upl ? "dangerous" : urgent ? "caution" : "safe",
+        priority: upl ? 8 : urgent ? 12 : 25,
+        sourceLink: { kind: "page", target: "#support" },
+        metadata: { sourceStatus: clean(issue.status), urgency: clean(issue.urgency), uplSensitive: upl }
+      });
+    });
 }
 
 // tasks-engine records: {id,title,description,status(open|in_progress|waiting|blocked|done|
