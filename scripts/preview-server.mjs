@@ -19,6 +19,7 @@ import { buildSafetyPosture } from "./safety-posture.mjs";
 import { wakeSnoozedQueueItems, transitionQueueItem, emitCompanyEvent, recordAgentRun } from "./company-memory.mjs";
 import { normalizeSupportIssue, prepareSupportDraftReply, transitionSupportIssue, upsertSupportIssues } from "./support-desk.mjs";
 import { buildOutreachLaneView, previewHeldRelease, confirmHeldRelease, buildDeliverabilityWarnings } from "./campaign-brain.mjs";
+import { buildPartnerUsageView, buildOnboardingChecklist, buildPacketCounts } from "./rcap-partner-ops.mjs";
 import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID, buildTodaySummary, projectCompanyMemory } from "./company-memory-projector.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { previewIntake, confirmIntake, INTAKE_TYPES, INTAKE_ACTIONS } from "./intake.mjs";
@@ -17430,6 +17431,37 @@ function htmlShell() {
       toast(String(result.plain || "Released. Nobody enrolled, nothing sent."));
       loadCampaignBrain();
     }
+    // ---- RCAP partner ops (Phase 18F): display-only usage, onboarding, packet counts ----
+    async function loadRcapPartnerOps() {
+      const target = document.getElementById("rcap-partner-ops-result");
+      if (target) target.innerHTML = "<strong>Loading partner ops...</strong>";
+      let view;
+      try { view = await api("/api/rcap/partner-ops"); }
+      catch (error) { if (target) target.innerHTML = "<strong>Could not load partner ops.</strong> " + esc(error.message || ""); return; }
+      const usage = view.usage || {};
+      const onboarding = view.onboarding || {};
+      const packets = view.packets || {};
+      const usageRows = (usage.partners || []).slice(0, 8).map(function(r){
+        const months = (r.months || []).slice(0, 3).map(function(m){ return esc(String(m.month)) + ": " + esc(String(m.observed)); }).join(" · ");
+        return "<li><strong>" + esc(String(r.partnerName)) + "</strong>: " + esc(String(r.observedTotal)) + " usage windows observed" +
+          (r.approvedFunnelTotal ? " (" + esc(String(r.approvedFunnelTotal)) + " approved into the funnel)" : "") +
+          (months ? "<br><small>" + months + "</small>" : "") + "</li>";
+      }).join("");
+      const onboardingRows = (onboarding.partners || []).slice(0, 8).map(function(r){
+        return "<li><strong>" + esc(String(r.partnerName)) + "</strong>: " + esc(String(r.plain)) + "</li>";
+      }).join("");
+      const packetRows = (packets.partners || []).slice(0, 8).map(function(r){
+        return "<li><strong>" + esc(String(r.partnerName)) + "</strong>: " +
+          esc(String(r.observed.generated)) + " generated / " + esc(String(r.observed.completed)) + " completed observed" +
+          (r.funnel.generated || r.funnel.completed ? " (" + esc(String(r.funnel.generated)) + " / " + esc(String(r.funnel.completed)) + " in approved snapshots)" : "") + "</li>";
+      }).join("");
+      if (target) target.innerHTML =
+        "<strong>Partner usage</strong><br>" + esc(String(usage.plain || "")) + (usageRows ? "<ul>" + usageRows + "</ul>" : "<br>") +
+        "<br><strong>Onboarding</strong><br>" + esc(String(onboarding.plain || "")) + (onboardingRows ? "<ul>" + onboardingRows + "</ul>" : "<br>") +
+        "<br><strong>Packets</strong><br>" + esc(String(packets.plain || "")) + (packetRows ? "<ul>" + packetRows + "</ul>" : "<br>") +
+        "<br><em>" + esc(String(usage.note || "")) + "</em>";
+    }
+    window.loadRcapPartnerOps = loadRcapPartnerOps;
     window.loadCampaignBrain = loadCampaignBrain;
     window.heldReleaseConfirm = heldReleaseConfirm;
     window.loadCampaignCommand = loadCampaignCommand;
@@ -28764,6 +28796,12 @@ function htmlShell() {
                 <div class="command-list-row"><span class="command-dot go"></span><div class="text"><b>Approval rules</b><span>Status-only display. Approval still prepares drafts; it does not execute sends or handoffs.</span></div><span class="command-pill go">Review required</span></div>
                 <div class="command-footer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg> Suppression and approval run silently. They only ever pass partner work to your review, or block it and tell you why.</div>
               </div>
+              <div class="command-panel">
+                <div class="command-panel-head"><h2>RCAP partner ops</h2><span class="meta">display only — no caps exist</span></div>
+                <p class="muted">Observed partner usage windows, onboarding progress, and packet counts, straight from inbound events. Nothing here counts down an allowance, blocks a packet, or throttles a partner.</p>
+                <div class="card-actions"><button class="work-button primary" type="button" onclick="loadRcapPartnerOps()">Load partner ops</button></div>
+                <div id="rcap-partner-ops-result" class="campaign-import-status">Load to see usage windows, onboarding checklists, and packet counts. Display only.</div>
+              </div>
             </div>
           </div>
         </div>
@@ -35068,6 +35106,25 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not build the campaign brain view." }, 400);
+    }
+    return;
+  }
+
+  // ---- RCAP partner ops (Phase 18F) ----------------------------------------------------------
+  // Display only: observed partner usage windows, onboarding progress derived from lifecycle
+  // stages, and packet counts from inbound event metrics. There is no cap enforcement in this
+  // system and this endpoint cannot create any — it has no write path.
+  if (url.pathname === "/api/rcap/partner-ops" && request.method === "GET") {
+    try {
+      const currentState = await store.readState();
+      sendJson(response, {
+        ok: true,
+        usage: buildPartnerUsageView(currentState),
+        onboarding: buildOnboardingChecklist(currentState),
+        packets: buildPacketCounts(currentState)
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not build the RCAP partner ops view." }, 400);
     }
     return;
   }
