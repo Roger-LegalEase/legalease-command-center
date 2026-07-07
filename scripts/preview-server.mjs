@@ -21,6 +21,7 @@ import { normalizeSupportIssue, prepareSupportDraftReply, transitionSupportIssue
 import { buildOutreachLaneView, previewHeldRelease, confirmHeldRelease, buildDeliverabilityWarnings } from "./campaign-brain.mjs";
 import { buildPartnerUsageView, buildOnboardingChecklist, buildPacketCounts } from "./rcap-partner-ops.mjs";
 import { buildAlertsView, setAlertStatus, buildAlertCandidates, reconcileAlerts, resolveAlertEmailDecision, buildDailyDigest, alertsConfigOf, ALERTS_ENGINE_ID } from "./alerts-engine.mjs";
+import { buildMeetingBrief, reconcileMeetingBriefs, attachEmailContext, buildMeetingBriefsView, MEETING_BRIEFS_ENGINE_ID } from "./meeting-briefs.mjs";
 import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID, buildTodaySummary, projectCompanyMemory } from "./company-memory-projector.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { previewIntake, confirmIntake, INTAKE_TYPES, INTAKE_ACTIONS } from "./intake.mjs";
@@ -594,6 +595,7 @@ const clientStateArrayCollections = [
   "tasks",
   "supportIssues",
   "alerts",
+  "meetingBriefs",
   "evidencePackNotes",
   "autonomyActions",
   "autonomyDecisions",
@@ -12118,6 +12120,50 @@ async function fetchCalendarReadOnlyEvents(token = "") {
       confidence:"medium"
     };
   });
+}
+
+// Phase 18H — calendar events for meeting briefs (approved Google live-fetch decision).
+// Unlike fetchCalendarReadOnlyEvents (keyword-filtered signals), briefs read the owner's OWN
+// upcoming schedule with attendee emails so company-memory matching works. Read-only scope;
+// returns null when Calendar is not connected so callers can report "not connected" honestly.
+async function fetchCalendarEventsForBriefs() {
+  const token = await googleStoredOrEnvAccessToken("calendar");
+  if (!token) return null;
+  const timeMin = new Date();
+  const timeMax = new Date(timeMin.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const url = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
+  url.searchParams.set("singleEvents", "true");
+  url.searchParams.set("orderBy", "startTime");
+  url.searchParams.set("maxResults", "20");
+  url.searchParams.set("timeMin", timeMin.toISOString());
+  url.searchParams.set("timeMax", timeMax.toISOString());
+  const body = await googleJson(url, token);
+  return (body.items || []).filter((item) => item.status !== "cancelled");
+}
+
+// Phase 18H — per-attendee Gmail thread snippets, ON DEMAND only (never on the heartbeat).
+// Metadata format: subject/date headers plus Google's own short snippet. Never bodies.
+async function fetchGmailSnippetsForAttendee(email = "") {
+  const token = await googleStoredOrEnvAccessToken("gmail");
+  if (!token) return null;
+  const address = String(email || "").trim().toLowerCase();
+  if (!address) return [];
+  const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+  listUrl.searchParams.set("maxResults", "3");
+  listUrl.searchParams.set("q", `(from:${address} OR to:${address}) newer_than:30d`);
+  const messageList = await googleJson(listUrl, token);
+  const snippets = [];
+  for (const item of (messageList.messages || []).slice(0, 3)) {
+    const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(item.id)}`);
+    url.searchParams.set("format", "metadata");
+    url.searchParams.append("metadataHeaders", "Subject");
+    url.searchParams.append("metadataHeaders", "Date");
+    const message = await googleJson(url, token);
+    const headers = message.payload?.headers || [];
+    const header = (name) => headers.find((entry) => String(entry.name).toLowerCase() === name)?.value || "";
+    snippets.push({ with: address, subject: header("subject"), snippet: message.snippet || "", at: header("date") });
+  }
+  return snippets;
 }
 
 function connectorStatusPatch(state = {}, connector = "", patch = {}) {
@@ -25822,9 +25868,52 @@ function htmlShell() {
       return \`<section id="revenue" class="\${pageClass("revenue")} command-page section-page lee-bubble-safe-space"><div class="panel hero-panel"><div><div class="eyebrow">Money</div><h1 class="big-title">Revenue</h1><p class="muted">Uses Stripe, engagement growth, funnel, and RCAP revenue sources only when real data is available. No fake revenue numbers.</p></div><div class="card-actions"><button onclick="location.hash='growth'">Open Growth</button><button onclick="location.hash='settings'">Connections</button></div></div><section class="growth-card"><div class="growth-card-head"><h2>Revenue status</h2><small>\${esc(revenue.stripeStatus)}</small></div><div class="metric-table">\${[["Money collected", revenue.collected || "Stripe is not connected here yet."],["Failed payments", revenue.failedPayments === "" ? "Not wired yet" : revenue.failedPayments],["Consumer revenue", revenue.consumerRevenue || "Not distinguishable yet"],["RCAP partner revenue", revenue.rcapRevenue || "Not booked from a real source yet"],["Next action", revenue.note]].map(([label,value]) => \`<div class="metric-row"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong></div>\`).join("")}</div></section></section>\`;
     }
 
+    // ---- Meeting briefs (Phase 18H) -----------------------------------------------------------
+    async function prepareMeetingBriefs() {
+      await cooAction(async () => {
+        const result = await api("/api/meeting-briefs/prepare", { method: "POST", body: "{}", timeoutMs: 20000 });
+        if (Array.isArray(result.briefs)) { state.meetingBriefs = result.briefs; render(); }
+        toast(result.status === "not_connected" ? (result.message || "Calendar is not connected yet.") : "Briefs ready: " + Number(result.created || 0) + " new from your calendar.");
+      }, "Could not prepare meeting briefs.");
+    }
+
+    async function pullMeetingBriefEmailContext(id) {
+      await cooAction(async () => {
+        const result = await api("/api/meeting-briefs/email-context", { method: "POST", body: JSON.stringify({ briefId: id }), timeoutMs: 30000 });
+        if (Array.isArray(result.briefs)) { state.meetingBriefs = result.briefs; render(); }
+        toast(result.status === "not_connected" ? (result.message || "Gmail is not connected yet.") : Number(result.snippets || 0) + " email snippet(s) pulled. Short previews only, never full messages.");
+      }, "Could not pull email context.");
+    }
+
+    function meetingBriefCardHtml(brief) {
+      const attendees = list(brief.attendees).filter(attendee => !attendee.self);
+      const known = list(brief.known_attendees);
+      const knownByEmail = new Map(known.map(match => [match.email, match]));
+      return \`<article class="queue-review-item">
+        <div class="queue-review-item-main">
+          <div class="queue-review-kicker"><span class="queue-type-line">\${esc(formatDateTime(brief.start_at) || brief.start_at || "Time not set")}\${brief.location ? " &middot; " + esc(brief.location) : ""}</span><span class="badge \${known.length ? "good" : "info"}">\${known.length ? known.length + " known attendee(s)" : "New faces"}</span></div>
+          <h3>\${esc(brief.title)}</h3>
+          <p>\${attendees.length ? attendees.map(attendee => {
+            const match = knownByEmail.get(attendee.email);
+            return esc(match && match.contactName ? match.contactName : attendee.name || attendee.email);
+          }).join(", ") : "No listed attendees besides you."}</p>
+          <p><strong>Talking points:</strong></p>
+          <ul>\${list(brief.talking_points).map(point => \`<li>\${esc(point)}</li>\`).join("")}</ul>
+          \${list(brief.email_context).length ? \`<details open><summary>Recent email context (short previews)</summary><div class="support-status-list">\${list(brief.email_context).map(item => \`<div class="support-status-row"><strong>\${esc(item.subject)}</strong><span>\${esc(item.snippet)}</span></div>\`).join("")}</div></details>\` : ""}
+        </div>
+        <div class="queue-review-actions">
+          <button type="button" onclick="pullMeetingBriefEmailContext('\${esc(brief.id)}')">\${list(brief.email_context).length ? "Refresh email context" : "Pull email context"}</button>
+          <button type="button" onclick="location.hash='tasks'">Create prep task</button>
+        </div>
+      </article>\`;
+    }
+
     function meetingsPageHtml(pageClass) {
       const briefs = meetingBriefs();
-      return \`<section id="meetings" class="\${pageClass("meetings")} command-page section-page lee-bubble-safe-space"><div class="panel hero-panel"><div><div class="eyebrow">Read-only prep</div><h1 class="big-title">Meetings</h1><p class="muted">Meeting briefs come from existing Google read-only Calendar/Gmail signals and tasks. Open Google for full context when body/detail is unavailable.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='settings'">Google connection</button></div></div><div class="queue-review-list">\${briefs.map(brief => \`<article class="queue-review-item"><div class="queue-review-item-main"><div class="queue-review-kicker"><span class="queue-type-line">\${esc(brief.source)} · confidence \${esc(brief.confidence)}</span><span class="badge info">Meeting brief ready</span></div><h3>\${esc(brief.title)}</h3><p>\${esc(formatDateTime(brief.date) || brief.date || "Time not provided")} · \${esc(brief.attendees)} · \${esc(brief.organization)}</p><p><strong>Why it matters:</strong> \${esc(brief.why)}</p><p><strong>Suggested agenda:</strong> \${esc(brief.agenda)}</p><p class="muted"><strong>Missing info:</strong> \${esc(brief.missing)}</p></div><div class="queue-review-actions"><button type="button" onclick="location.hash='tasks'">Create prep task</button></div></article>\`).join("") || '<div class="empty">No meeting prep signals found. Connect Google Calendar read-only or add a prep task.</div>'}</div></section>\`;
+      const prepared = list(state.meetingBriefs);
+      return \`<section id="meetings" class="\${pageClass("meetings")} command-page section-page lee-bubble-safe-space"><div class="panel hero-panel"><div><div class="eyebrow">Read-only prep</div><h1 class="big-title">Meetings</h1><p class="muted">Prepared briefs read your own calendar live when you ask (and daily when the meeting-briefs autopilot is on). Email context is pulled per brief, on demand, as short previews only. Nothing is written back to Google.</p></div><div class="card-actions"><button class="primary" type="button" onclick="prepareMeetingBriefs()">Prepare briefs</button><button onclick="location.hash='settings'">Google connection</button></div></div>
+      <section class="growth-card"><div class="growth-card-head"><h2>Prepared briefs</h2><small>\${prepared.length} on file</small></div><div class="queue-review-list">\${prepared.map(meetingBriefCardHtml).join("") || '<div class="empty">No prepared briefs yet. Press Prepare briefs to read your upcoming calendar.</div>'}</div></section>
+      <section class="growth-card"><div class="growth-card-head"><h2>Prep signals</h2><small>from keyword scan</small></div><div class="queue-review-list">\${briefs.map(brief => \`<article class="queue-review-item"><div class="queue-review-item-main"><div class="queue-review-kicker"><span class="queue-type-line">\${esc(brief.source)} · confidence \${esc(brief.confidence)}</span><span class="badge info">Meeting brief ready</span></div><h3>\${esc(brief.title)}</h3><p>\${esc(formatDateTime(brief.date) || brief.date || "Time not provided")} · \${esc(brief.attendees)} · \${esc(brief.organization)}</p><p><strong>Why it matters:</strong> \${esc(brief.why)}</p><p><strong>Suggested agenda:</strong> \${esc(brief.agenda)}</p><p class="muted"><strong>Missing info:</strong> \${esc(brief.missing)}</p></div><div class="queue-review-actions"><button type="button" onclick="location.hash='tasks'">Create prep task</button></div></article>\`).join("") || '<div class="empty">No meeting prep signals found. Connect Google Calendar read-only or add a prep task.</div>'}</div></section></section>\`;
     }
 
     // ---- Support desk (Phase 18D): triage, honest drafts, no sending -------------------------
@@ -34982,6 +35071,9 @@ async function handleRequest(request, response) {
         // env-locked (ALERTS_EMAIL_TO); gated by the in-app email toggle (default OFF) plus
         // ALERTS_LIVE_SEND plus the alerts engine's autopilot toggle (default OFF).
         runAlertEmailSend,
+        // Phase 18H meeting briefs — read-only Calendar fetch of the owner's own schedule.
+        // Gmail snippets are deliberately NOT injected: email context is on-demand only.
+        fetchCalendarEventsForBriefs,
         // B5 prospect discovery — inert (zero rows) until the live Tier-1 dataset clients are
         // wired and PROSPECT_LIVE_DISCOVERY is flipped. The prospect engine's act() only runs
         // when its autopilot toggle is ON (default OFF), so this is gated twice over.
@@ -35324,6 +35416,88 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not build the RCAP partner ops view." }, 400);
+    }
+    return;
+  }
+
+  // ---- Meeting briefs (Phase 18H) ------------------------------------------------------------
+  // Calendar is read live (read-only) when preparing; Gmail snippets are pulled only when the
+  // owner asks for email context on one brief. Never bodies, never in the background.
+  if (url.pathname === "/api/meeting-briefs" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, { ok: true, ...buildMeetingBriefsView(currentState) });
+    return;
+  }
+
+  if (url.pathname === "/api/meeting-briefs/prepare" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const events = await fetchCalendarEventsForBriefs();
+      if (events === null) {
+        sendJson(response, { ok: true, status: "not_connected", message: "Calendar is not connected yet. Connect Google read-only in Settings first." });
+        return;
+      }
+      await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const now = new Date();
+        const fresh = events.map((event) => buildMeetingBrief(currentState, event, { now })).filter(Boolean);
+        const rec = reconcileMeetingBriefs(currentState.meetingBriefs, fresh, { now });
+        let nextState = { ...currentState, meetingBriefs: rec.briefs };
+        if (rec.created > 0) {
+          nextState = emitCompanyEvent(nextState, { source: MEETING_BRIEFS_ENGINE_ID, type: "meeting_briefs_prepared", risk: "info", summary: `${rec.created} new meeting brief(s) prepared from read-only Calendar. No email was read.` });
+          await store.writeCollections({ meetingBriefs: rec.briefs, companyEvents: nextState.companyEvents });
+        } else {
+          await store.writeCollections({ meetingBriefs: rec.briefs });
+        }
+        sendJson(response, { ok: true, status: "prepared", created: rec.created, ...buildMeetingBriefsView(nextState) });
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not prepare meeting briefs." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/meeting-briefs/email-context" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const body = await readJson(request);
+      const briefId = String(body.briefId || "").trim();
+      const currentState = await store.readState();
+      const brief = (currentState.meetingBriefs || []).find((item) => item.id === briefId);
+      if (!brief) {
+        sendJson(response, { error: "Brief not found. Prepare briefs first." }, 400);
+        return;
+      }
+      const attendees = (brief.attendees || []).filter((attendee) => !attendee.self).slice(0, 5);
+      const snippetsByAttendee = {};
+      let gmailConnected = true;
+      for (const attendee of attendees) {
+        const snippets = await fetchGmailSnippetsForAttendee(attendee.email);
+        if (snippets === null) { gmailConnected = false; break; }
+        snippetsByAttendee[attendee.email] = snippets;
+      }
+      if (!gmailConnected) {
+        sendJson(response, { ok: true, status: "not_connected", message: "Gmail is not connected yet. Connect Google read-only in Settings first." });
+        return;
+      }
+      await serializeStateMutation(async () => {
+        const latest = await store.readState();
+        const enriched = attachEmailContext((latest.meetingBriefs || []).find((item) => item.id === briefId) || brief, snippetsByAttendee, { now: new Date() });
+        const nextBriefs = (latest.meetingBriefs || []).map((item) => (item.id === briefId ? enriched : item));
+        let nextState = emitCompanyEvent({ ...latest, meetingBriefs: nextBriefs }, { source: MEETING_BRIEFS_ENGINE_ID, type: "meeting_brief_email_context", risk: "info", summary: `Email snippets pulled on demand for one meeting brief (${enriched.email_context.length} snippet(s), read-only, no bodies stored).` });
+        await store.writeCollections({ meetingBriefs: nextBriefs, companyEvents: nextState.companyEvents });
+        sendJson(response, { ok: true, status: "enriched", snippets: enriched.email_context.length, ...buildMeetingBriefsView(nextState) });
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not pull email context." }, 400);
     }
     return;
   }

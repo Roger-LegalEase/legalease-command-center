@@ -19,6 +19,7 @@ import { buildAllOperatingLoopEngines, OPERATING_LOOP_ENGINE_IDS } from "./opera
 import { buildReactivationEngine, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID } from "./company-memory-projector.mjs";
 import { buildAlertsEngine, ALERTS_ENGINE_ID } from "./alerts-engine.mjs";
+import { buildMeetingBriefsEngine, MEETING_BRIEFS_ENGINE_ID } from "./meeting-briefs.mjs";
 
 export function buildHeartbeatRegistry(deps = {}) {
   const engines = [];
@@ -139,6 +140,12 @@ export function buildHeartbeatRegistry(deps = {}) {
   // is env-locked: alert email can never reach contacts, customers, or partners.
   engines.push(buildAlertsEngine({ runAlertEmailSend: deps.runAlertEmailSend }));
 
+  // Phase 18H meeting briefs. plan() observes; act() reads the owner's OWN calendar via the
+  // injected read-only deps.fetchCalendarEventsForBriefs and persists brief records. The Gmail
+  // snippet path is deliberately NOT injected here: email context is on-demand only, from the
+  // Meetings page, one brief at a time. Autopilot OFF by default.
+  engines.push(buildMeetingBriefsEngine({ fetchCalendarEventsForBriefs: deps.fetchCalendarEventsForBriefs }));
+
   // Phase 1 company-memory projector (plan()-only, NO act()). Runs LAST on purpose: it reads
   // what every engine above recorded this tick and refreshes the shared Queue/Contacts/Events/
   // AgentRuns memory. Structurally cannot send, publish, release, or deploy.
@@ -149,4 +156,4 @@ export function buildHeartbeatRegistry(deps = {}) {
 
 // Stable list of registered engine ids (for surfacing autopilot toggles in the UI even
 // when an engine hasn't run yet). Mirrors buildHeartbeatRegistry's ids.
-export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID, ENGAGEMENT_GROWTH_ENGINE_ID, ...OPERATING_LOOP_ENGINE_IDS, REACTIVATION_ENGINE_ID, ALERTS_ENGINE_ID, COMPANY_MEMORY_ENGINE_ID];
+export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID, ENGAGEMENT_GROWTH_ENGINE_ID, ...OPERATING_LOOP_ENGINE_IDS, REACTIVATION_ENGINE_ID, ALERTS_ENGINE_ID, MEETING_BRIEFS_ENGINE_ID, COMPANY_MEMORY_ENGINE_ID];

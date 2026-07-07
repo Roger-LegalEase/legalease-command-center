@@ -58,8 +58,11 @@ needs_approval` (exported as `DATA_STATUSES` from company-memory.mjs). No fake m
   Social media / Partner program / Customer support / Revenue and Stripe / Notifications /
   Safety and approvals / Integrations); technical detail behind one disclosure; no
   developer-speak in primary copy.
-- **18H Meeting briefs:** persisted brief model + generator; partly blocked on the same
-  Google live-fetch decision as 18D.
+- **18H Meeting briefs:** persisted brief model + generator. Google live-fetch decision
+  RESOLVED by Roger 2026-07-07: Calendar is read live (read-only, own schedule) on demand
+  and on the daily heartbeat (autopilot default OFF); Gmail is per-attendee thread SNIPPETS
+  only, pulled on demand per brief, never full bodies, never in the background (the engine
+  is structurally calendar-only); no automatic Gmail feed into the support desk.
 - **18I Alert system (approved by Roger 2026-07-07):** internal `alerts` collection raised
   from four source groups (needs-Roger queue items; safety and deliverability; money
   signals; support and partners). In-app Alerts center page with severity lanes and
