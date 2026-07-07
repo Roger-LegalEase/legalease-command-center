@@ -59,7 +59,8 @@ for (const required of [
   "Suppressed, unsubscribed, bounced, and do-not-contact records are not eligible for email.",
   "This Settings page does not expose controls to enable gates.",
   "No caps exist",
-  "does not send email, text, or push alerts yet",
+  "Email alerts go only to Roger at a locked address.",
+  "The switch lives on the Alerts page, not here.",
   "Payments and billing are never changed from this app.",
   "Support replies are drafted for your review only.",
   "Overall status"

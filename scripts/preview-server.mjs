@@ -20,6 +20,7 @@ import { wakeSnoozedQueueItems, transitionQueueItem, emitCompanyEvent, recordAge
 import { normalizeSupportIssue, prepareSupportDraftReply, transitionSupportIssue, upsertSupportIssues } from "./support-desk.mjs";
 import { buildOutreachLaneView, previewHeldRelease, confirmHeldRelease, buildDeliverabilityWarnings } from "./campaign-brain.mjs";
 import { buildPartnerUsageView, buildOnboardingChecklist, buildPacketCounts } from "./rcap-partner-ops.mjs";
+import { buildAlertsView, setAlertStatus, buildAlertCandidates, reconcileAlerts, resolveAlertEmailDecision, buildDailyDigest, alertsConfigOf, ALERTS_ENGINE_ID } from "./alerts-engine.mjs";
 import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID, buildTodaySummary, projectCompanyMemory } from "./company-memory-projector.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { previewIntake, confirmIntake, INTAKE_TYPES, INTAKE_ACTIONS } from "./intake.mjs";
@@ -592,6 +593,7 @@ const clientStateArrayCollections = [
   "events",
   "tasks",
   "supportIssues",
+  "alerts",
   "evidencePackNotes",
   "autonomyActions",
   "autonomyDecisions",
@@ -5259,6 +5261,45 @@ async function runReactivationSend(message, { env = process.env } = {}) {
   if (!resp.ok) {
     const detail = await resp.text().catch(() => "");
     throw new Error(`SendGrid reactivation send failed: ${resp.status} ${String(detail).slice(0, 300)}`);
+  }
+  return {
+    status: "sent",
+    provider: "sendgrid",
+    provider_message_id: resp.headers.get("x-message-id") || ""
+  };
+}
+
+// Phase 18I — owner alert email executor injected into the alerts engine (like runOutreachSend).
+// The recipient is HARD-LOCKED to env ALERTS_EMAIL_TO: this executor aborts on any other
+// address even if a caller constructs its own message, so alert email can never be redirected
+// to a contact, customer, or partner. Not a campaign path: no lists, sequences, or unsubscribe
+// plumbing. The engine's fail-closed decision (in-app toggle default OFF + ALERTS_LIVE_SEND +
+// SendGrid key) runs before this; the re-check here is belt-and-suspenders.
+async function runAlertEmailSend(message, { env = process.env } = {}) {
+  const lockedRecipient = String(env.ALERTS_EMAIL_TO || "").trim();
+  if (!lockedRecipient) return { status: "not_sent", reason: "no_recipient_configured" };
+  if (String(message.to || "").trim().toLowerCase() !== lockedRecipient.toLowerCase()) {
+    return { status: "not_sent", reason: "recipient_not_owner_locked" };
+  }
+  const apiKey = env.SENDGRID_API_KEY;
+  if (!apiKey) return { status: "not_sent", reason: "sendgrid_key_missing" };
+  const payload = {
+    personalizations: [{ to: [{ email: lockedRecipient }] }],
+    from: { email: message.from, name: "LegalEase Command Center" },
+    subject: message.subject,
+    content: [
+      { type: "text/plain", value: message.text },
+      ...(message.html ? [{ type: "text/html", value: message.html }] : [])
+    ]
+  };
+  const resp = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    throw new Error(`SendGrid alert send failed: ${resp.status} ${String(detail).slice(0, 300)}`);
   }
   return {
     status: "sent",
@@ -24242,6 +24283,8 @@ function htmlShell() {
       const outreachCampaignCount = list(state.outreachCampaigns).length;
       const morningBriefSaved = Boolean(savedMorningBriefForToday());
       const autonomyPending = Number(state.autonomySummary?.pendingDecision) || 0;
+      const openAlertCount = list(state.alerts).filter(alert => alert.status === "active" || alert.status === "read").length;
+      const alertEmailOn = state.settings?.alerts?.emailEnabled === true;
       const socialAccountStatus = platform => {
         const account = (state.socialAccounts || []).find(item => item.platform === platform) || {};
         return account.connected ? "Connected" : account.setup?.configured ? "Needs attention" : "Not connected";
@@ -24313,9 +24356,11 @@ function htmlShell() {
         </details>
         <details><summary>Notifications</summary>
           <div class="settings-card-grid" style="margin-top:14px">
-            <div class="panel"><h2>Alerts</h2><p><span class="command-not-wired">not yet wired</span></p><p class="muted">The Command Center does not send email, text, or push alerts yet. Nothing is queued to notify anyone outside this app.</p></div>
-            <div class="panel"><h2>Where updates live today</h2><p class="muted">Updates stay inside the app: the Morning Brief (\${morningBriefSaved ? "saved today" : "not saved yet today"}), the Decisions queue, and on-screen messages while you work.</p></div>
+            <div class="panel"><h2>Alerts center</h2><p><span class="badge \${openAlertCount ? "warn" : "good"}">\${esc(String(openAlertCount))} open</span></p><p class="muted">Signals from decisions waiting, safety and deliverability, money, support, and partners collect in the Alerts center for your review.</p></div>
+            <div class="panel"><h2>Email alerts</h2><p><span class="badge \${alertEmailOn ? "good" : "info"}">\${alertEmailOn ? "On" : "Off"}</span></p><p class="muted">Email alerts go only to Roger at a locked address. Contacts, customers, and partners can never receive them. The switch lives on the Alerts page, not here.</p></div>
+            <div class="panel"><h2>Where updates live today</h2><p class="muted">Updates stay inside the app: the Alerts center, the Morning Brief (\${morningBriefSaved ? "saved today" : "not saved yet today"}), the Decisions queue, and on-screen messages while you work.</p></div>
           </div>
+          <div class="card-actions" style="margin-top:12px"><button type="button" onclick="location.hash='alerts'">Open Alerts</button></div>
         </details>
         <details><summary>Safety and approvals</summary>
           <div class="settings-card-grid" style="margin-top:14px">
@@ -25872,6 +25917,140 @@ function htmlShell() {
           </form>
         </section>
         \${inboxCandidates.length ? \`<section class="support-card"><h2>Possible support items in your inbox <small>\${inboxCandidates.length}</small></h2><div class="support-status-list">\${inboxCandidates.slice(0, 10).map(item => \`<div class="support-status-row"><strong>\${esc(item.summary || item.rawText || "Inbox item")}</strong><span><button type="button" onclick="location.hash='growth-inbox'">Review and convert</button></span></div>\`).join("")}</div></section>\` : ""}
+      </section>\`;
+    }
+
+
+    // ---- Alerts center (Phase 18I) ---------------------------------------------------------
+    // In-app display of internal alert records plus the ONLY control surface for owner alert
+    // email. The email switch here is the in-app half of a fail-closed chain; delivery still
+    // needs the env-locked owner address and the deploy-level arm, and can never reach
+    // contacts, customers, or partners.
+    let alertsView = null;
+
+    function applyAlertsViewResponse(view) {
+      if (!view) return;
+      alertsView = view;
+      if (Array.isArray(view.alerts)) state.alerts = view.alerts;
+      if (view.email) {
+        state.settings = state.settings || {};
+        state.settings.alerts = { ...(state.settings.alerts || {}), emailEnabled: Boolean(view.email.enabled), digestHourEt: view.email.digestHourEt, lastDigestDate: view.email.lastDigestDate };
+      }
+      render();
+    }
+
+    async function loadAlertsStatus() {
+      try {
+        applyAlertsViewResponse(await api("/api/alerts"));
+        toast("Alert status loaded.");
+      } catch (error) {
+        toast("Could not load alerts: " + (error.message || "request failed"));
+      }
+    }
+
+    async function refreshAlerts() {
+      try {
+        const view = await api("/api/alerts/refresh", { method: "POST", body: "{}", timeoutMs: 20000 });
+        applyAlertsViewResponse(view);
+        toast("Alerts refreshed: " + Number(view.created || 0) + " new, " + Number(view.resolved || 0) + " resolved.");
+      } catch (error) {
+        toast("Could not refresh alerts: " + (error.message || "request failed"));
+      }
+    }
+
+    async function setAlertState(id, status) {
+      try {
+        applyAlertsViewResponse(await api("/api/alerts/status", { method: "POST", body: JSON.stringify({ id, status }) }));
+      } catch (error) {
+        toast("Could not update the alert: " + (error.message || "request failed"));
+      }
+    }
+
+    async function toggleAlertEmail() {
+      const next = !(state.settings?.alerts?.emailEnabled === true);
+      try {
+        applyAlertsViewResponse(await api("/api/alerts/config", { method: "POST", body: JSON.stringify({ emailEnabled: next }) }));
+        toast(next ? "Email alerts to you are ON. Delivery still needs the locked address and deploy arm." : "Email alerts are off. Alerts stay in-app only.");
+      } catch (error) {
+        toast("Could not change the email switch: " + (error.message || "request failed"));
+      }
+    }
+
+    async function previewAlertDigest() {
+      const target = document.getElementById("alerts-digest-result");
+      if (target) target.innerHTML = "<strong>Building digest preview...</strong>";
+      try {
+        const digest = await api("/api/alerts/digest-preview", { method: "POST", body: "{}" });
+        if (target) target.innerHTML = "<h3>" + esc(digest.subject || "Digest") + "</h3><pre class='code-block' style='white-space:pre-wrap'>" + esc(digest.text || "") + "</pre><p class='muted'>Preview only. Nothing was sent. Delivery decision right now: " + esc(digest.decision || "unknown") + (digest.decisionReason ? " (" + esc(digest.decisionReason) + ")" : "") + ".</p>";
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Could not build the preview.</strong> " + esc(error.message || "");
+      }
+    }
+
+    async function sendAlertEmailTest() {
+      try {
+        const result = await api("/api/alerts/email-test", { method: "POST", body: "{}", timeoutMs: 20000 });
+        toast(result.status === "sent" ? "Test email sent to your locked address." : "No email went out (" + (result.reason || result.status || "not armed") + "). The gate chain is not fully armed.");
+      } catch (error) {
+        toast("Test failed: " + (error.message || "request failed"));
+      }
+    }
+
+    function alertCardHtml(alert) {
+      const tone = alert.severity === "critical" ? "danger" : alert.severity === "warning" ? "warn" : "info";
+      const isOpen = alert.status === "active" || alert.status === "read";
+      return \`<article class="support-card alert-card">
+        <div class="row"><span class="badge \${tone}">\${esc(alert.severity)}</span><span class="badge info">\${esc(growthLabel(alert.source_group || ""))}</span>\${alert.status === "read" ? '<span class="badge info">read</span>' : ""}\${alert.status === "resolved" ? '<span class="badge good">resolved</span>' : ""}\${alert.status === "dismissed" ? '<span class="badge info">dismissed</span>' : ""}</div>
+        <h3>\${esc(alert.title)}</h3>
+        <p class="muted">\${esc(alert.detail || "")}</p>
+        <div class="card-actions">
+          \${alert.href ? \`<button type="button" onclick="location.hash='\${esc(alert.href)}'">Open</button>\` : ""}
+          \${alert.status === "active" ? \`<button type="button" onclick="setAlertState('\${esc(alert.id)}', 'read')">Mark read</button>\` : ""}
+          \${isOpen ? \`<button type="button" onclick="setAlertState('\${esc(alert.id)}', 'dismissed')">Dismiss</button>\` : ""}
+          \${alert.status === "dismissed" ? \`<button type="button" onclick="setAlertState('\${esc(alert.id)}', 'active')">Reactivate</button>\` : ""}
+        </div>
+      </article>\`;
+    }
+
+    function alertsPageHtml(pageClass) {
+      const alerts = list(state.alerts);
+      const open = alerts.filter(alert => alert.status === "active" || alert.status === "read");
+      const critical = open.filter(alert => alert.severity === "critical");
+      const warning = open.filter(alert => alert.severity === "warning");
+      const info = open.filter(alert => alert.severity === "info");
+      const closed = alerts.filter(alert => alert.status === "resolved" || alert.status === "dismissed").slice(0, 6);
+      const emailOn = state.settings?.alerts?.emailEnabled === true;
+      const emailView = alertsView && alertsView.email ? alertsView.email : null;
+      const digestHour = Number(state.settings?.alerts?.digestHourEt ?? 8);
+      const lane = (title, items, empty) => \`<section class="support-card"><h2>\${esc(title)} <small>\${items.length}</small></h2><div class="queue-review-list">\${items.map(alertCardHtml).join("") || \`<div class="empty">\${esc(empty)}</div>\`}</div></section>\`;
+      return \`<section id="alerts" class="\${pageClass("alerts")} support-workspace lee-bubble-safe-space">
+        <section class="support-hero"><div><div class="eyebrow">Alerts center</div><h1>Alerts</h1><p>Signals that need you, gathered from decisions waiting, safety and deliverability, money, support, and partners. Display and triage only; nothing here acts on its own.</p></div>
+        <div class="support-actions"><button class="primary" type="button" onclick="refreshAlerts()">Refresh alerts</button></div></section>
+        <div class="campaign-preview-metrics">\${[[critical.length, "critical"], [warning.length, "warnings"], [info.length, "info"], [open.length, "open in total"]].map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
+        \${lane("Critical", critical, "No critical alerts. Nothing is on fire.")}
+        \${lane("Warnings", warning, "No warnings right now.")}
+        \${lane("For awareness", info, "Nothing new to note.")}
+        <section class="support-card">
+          <h2>Email alerts to you</h2>
+          <p class="muted">A daily digest around \${esc(String(digestHour))}:00 Eastern plus immediate critical alerts. Email goes only to your locked owner address; contacts, customers, and partners can never receive these.</p>
+          <div class="support-status-list">
+            <div class="support-status-row"><strong>In-app switch</strong><span>\${emailOn ? "On" : "Off (alerts stay in-app)"}</span></div>
+            \${emailView ? \`
+              <div class="support-status-row"><strong>Owner address</strong><span>\${emailView.recipientConfigured ? esc(emailView.recipientMasked) + " (locked)" : "not yet wired"}</span></div>
+              <div class="support-status-row"><strong>Deploy arm</strong><span>\${emailView.liveArmed ? "armed" : "not armed"}</span></div>
+              <div class="support-status-row"><strong>Email provider</strong><span>\${emailView.providerKeyPresent ? "ready" : "not yet wired"}</span></div>
+              <div class="support-status-row"><strong>Delivery decision</strong><span>\${esc(emailView.decision)}\${emailView.decisionReason ? " (" + esc(emailView.decisionReason) + ")" : ""}</span></div>
+            \` : \`<div class="support-status-row"><strong>Delivery status</strong><span>Press Check delivery status for the full gate chain.</span></div>\`}
+          </div>
+          <div class="card-actions">
+            <button class="primary" type="button" onclick="toggleAlertEmail()">\${emailOn ? "Turn email alerts off" : "Turn email alerts on"}</button>
+            <button type="button" onclick="loadAlertsStatus()">Check delivery status</button>
+            <button type="button" onclick="previewAlertDigest()">Preview digest</button>
+            <button type="button" onclick="sendAlertEmailTest()">Send a test to yourself</button>
+          </div>
+          <div id="alerts-digest-result" style="margin-top:12px"></div>
+        </section>
+        \${lane("Recently resolved or dismissed", closed, "Nothing resolved or dismissed yet.")}
       </section>\`;
     }
 
@@ -29780,9 +29959,9 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const pathRoute = String(location.pathname || "/").replace(/^\\/+|\\/+$/g, "");
       const requestedPage = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#cockpit")).replace("#", "");
-      const routeAliases = { overview:"today", command:"growth", "le-e":"lee", partner:"partners", "partner-hub":"partners", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", health:"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings", replies:"growth-inbox", "inbox-replies":"growth-inbox", lists:"contacts", contact:"contacts", people:"contacts", "upload-list":"upload", "list-upload":"upload", import:"upload", "import-list":"upload", campaign:"campaigns", "campaign-control":"campaigns", "campaigns-control":"campaigns", prospect:"prospects", prospects:"prospects", "rcap-prospects":"prospects", "rcap-pipeline":"prospects", money:"revenue", payments:"revenue", stripe:"revenue", calendar:"meetings", meeting:"meetings", "meeting-prep":"meetings", "support-inbox":"support", "partner-pages-review":"pages", "page-review":"pages", "co-branded-pages":"pages", system:"os-health" };
+      const routeAliases = { overview:"today", command:"growth", "le-e":"lee", partner:"partners", "partner-hub":"partners", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", health:"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings", replies:"growth-inbox", "inbox-replies":"growth-inbox", lists:"contacts", contact:"contacts", people:"contacts", "upload-list":"upload", "list-upload":"upload", import:"upload", "import-list":"upload", campaign:"campaigns", "campaign-control":"campaigns", "campaigns-control":"campaigns", prospect:"prospects", prospects:"prospects", "rcap-prospects":"prospects", "rcap-pipeline":"prospects", money:"revenue", payments:"revenue", stripe:"revenue", calendar:"meetings", meeting:"meetings", "meeting-prep":"meetings", "support-inbox":"support", notifications:"alerts", "alert-center":"alerts", "partner-pages-review":"pages", "page-review":"pages", "co-branded-pages":"pages", system:"os-health" };
       const normalizedPage = routeAliases[requestedPage] || requestedPage;
-      const knownPages = ["cockpit", "upload", "contacts", "prospects", "revenue", "meetings", "support", "pages", "today", "overview", "daily-run", "focus", "decisions", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
+      const knownPages = ["cockpit", "upload", "contacts", "prospects", "revenue", "meetings", "support", "alerts", "pages", "today", "overview", "daily-run", "focus", "decisions", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "today";
       currentPageId = pageId;
       document.body.classList.toggle("ck-wash", ["today", "overview"].includes(pageId));
@@ -29816,6 +29995,7 @@ function htmlShell() {
         \${safeRenderModule("revenue", () => pageId === "revenue" ? revenuePageHtml(pageClass) : "")}
         \${safeRenderModule("meetings", () => pageId === "meetings" ? meetingsPageHtml(pageClass) : "")}
         \${safeRenderModule("support", () => pageId === "support" ? supportPageHtml(pageClass) : "")}
+        \${safeRenderModule("alerts", () => pageId === "alerts" ? alertsPageHtml(pageClass) : "")}
         \${safeRenderModule("pages", () => pageId === "pages" ? pagesPageHtml(pageClass) : "")}
         \${safeRenderModule("overview", () => ["today", "overview"].includes(pageId) ? commandCenterOverviewHtml(reviewPosts) : "")}
         \${safeRenderModule("daily-run", () => pageId === "daily-run" ? todaySinglePaneHtml() : "")}
@@ -30028,7 +30208,7 @@ function htmlShell() {
       if (["production", "queue", "posted", "assets", "autonomy"].includes(pageId)) return "production";
       if (["proof", "metrics", "kpis", "evidence-room", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
       if (["lee"].includes(pageId)) return "lee";
-      if (["settings", "more", "data-integrity", "operator-manual", "handoff-contract", "roles", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "automation", "os-health", "smoke-test", "operator-search", "conversation-notes", "safe-mode"].includes(pageId)) return "settings";
+      if (["settings", "alerts", "more", "data-integrity", "operator-manual", "handoff-contract", "roles", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "automation", "os-health", "smoke-test", "operator-search", "conversation-notes", "safe-mode"].includes(pageId)) return "settings";
       return "settings";
     }
 
@@ -34798,6 +34978,10 @@ async function handleRequest(request, response) {
         // The reactivation engine's act() only runs when its autopilot toggle is ON (default OFF)
         // and only for RELEASED waves.
         runReactivationSend,
+        // Phase 18I alert email — owner-only digest and critical breakthroughs. Recipient is
+        // env-locked (ALERTS_EMAIL_TO); gated by the in-app email toggle (default OFF) plus
+        // ALERTS_LIVE_SEND plus the alerts engine's autopilot toggle (default OFF).
+        runAlertEmailSend,
         // B5 prospect discovery — inert (zero rows) until the live Tier-1 dataset clients are
         // wired and PROSPECT_LIVE_DISCOVERY is flipped. The prospect engine's act() only runs
         // when its autopilot toggle is ON (default OFF), so this is gated twice over.
@@ -35140,6 +35324,143 @@ async function handleRequest(request, response) {
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not build the RCAP partner ops view." }, 400);
+    }
+    return;
+  }
+
+  // ---- Alert system (Phase 18I) --------------------------------------------------------------
+  // Internal alerts from four source groups; email goes ONLY to the env-locked owner address
+  // behind stacked off-by-default gates. Config never accepts a recipient.
+  if (url.pathname === "/api/alerts" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, { ok: true, ...buildAlertsView(currentState, { env: process.env }) });
+    return;
+  }
+
+  if (url.pathname === "/api/alerts/refresh" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        // Refresh raises/resolves internal alert records only. It never emails: the digest and
+        // critical breakthroughs run on the heartbeat under the autopilot + email gates.
+        const stripeRevenue = await fetchStripeRevenueSnapshot().catch(() => null);
+        const candidates = buildAlertCandidates(currentState, { env: process.env, now: new Date(), stripeRevenue });
+        const rec = reconcileAlerts(currentState.alerts || [], candidates, { now: new Date() });
+        await store.writeCollections({ alerts: rec.alerts });
+        sendJson(response, { ok: true, created: rec.created, escalated: rec.escalated, resolved: rec.resolved, ...buildAlertsView({ ...currentState, alerts: rec.alerts }, { env: process.env }) });
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not refresh alerts." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/alerts/status" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const body = await readJson(request);
+      await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = setAlertStatus(currentState, { id: String(body.id || ""), status: String(body.status || "") });
+        if (!result.ok) {
+          sendJson(response, { error: result.reason === "not_found" ? "Alert not found." : "Status must be read, dismissed, or active." }, 400);
+          return;
+        }
+        await store.writeCollections({ alerts: result.state.alerts });
+        sendJson(response, { ok: true, ...buildAlertsView(result.state, { env: process.env }) });
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update the alert." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/alerts/config" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const body = await readJson(request);
+      await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const prior = alertsConfigOf(currentState);
+        // The recipient address is env-locked on purpose and is NOT accepted here.
+        const nextConfig = {
+          ...(currentState.settings?.alerts || {}),
+          emailEnabled: body.emailEnabled === undefined ? prior.emailEnabled : body.emailEnabled === true,
+          digestHourEt: body.digestHourEt === undefined ? prior.digestHourEt : Math.min(23, Math.max(0, Number(body.digestHourEt) || 0))
+        };
+        await store.updateSettings({ alerts: nextConfig });
+        let nextState = { ...currentState, settings: { ...(currentState.settings || {}), alerts: nextConfig } };
+        if (nextConfig.emailEnabled !== prior.emailEnabled) {
+          // Gate flips are audited like every other decision in the system.
+          nextState = emitCompanyEvent(nextState, {
+            source: ALERTS_ENGINE_ID,
+            type: "alert_email_gate",
+            risk: "watch",
+            summary: `Alert email to owner turned ${nextConfig.emailEnabled ? "ON" : "OFF"} by ${accessDecision.actor?.label || actorRole}.`
+          });
+          await store.writeCollections({ companyEvents: nextState.companyEvents });
+        }
+        sendJson(response, { ok: true, ...buildAlertsView(nextState, { env: process.env }) });
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update alert settings." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/alerts/digest-preview" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    const currentState = await store.readState();
+    const decision = resolveAlertEmailDecision(currentState, { env: process.env });
+    const digest = buildDailyDigest(currentState, currentState.alerts || [], { env: process.env, recipient: decision.recipient || "", now: new Date() });
+    sendJson(response, { ok: true, decision: decision.status, decisionReason: decision.reason || "", subject: digest.subject, text: digest.text, counts: digest.counts });
+    return;
+  }
+
+  if (url.pathname === "/api/alerts/email-test" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const currentState = await store.readState();
+      const decision = resolveAlertEmailDecision(currentState, { env: process.env });
+      if (decision.status !== "live") {
+        sendJson(response, { ok: true, status: decision.status, reason: decision.reason || "", note: "No email was sent. The gate chain is not fully armed." });
+        return;
+      }
+      const result = await runAlertEmailSend({
+        to: decision.recipient,
+        from: String(process.env.ALERTS_EMAIL_FROM || "roger@legalease.com").trim(),
+        subject: "Alert email test from the LegalEase Command Center",
+        text: "This is a test of owner alert email. It goes only to you. Nothing was sent to contacts, customers, or partners."
+      }, { env: process.env });
+      await serializeStateMutation(async () => {
+        const latest = await store.readState();
+        const withEvent = emitCompanyEvent(latest, { source: ALERTS_ENGINE_ID, type: "alert_email_test", risk: "info", summary: `Alert email test: ${result.status}.` });
+        await store.writeCollections({ companyEvents: withEvent.companyEvents });
+      });
+      sendJson(response, { ok: true, status: result.status, reason: result.reason || "" });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Alert email test failed." }, 400);
     }
     return;
   }
