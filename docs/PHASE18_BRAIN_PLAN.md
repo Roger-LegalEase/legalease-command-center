@@ -60,6 +60,14 @@ needs_approval` (exported as `DATA_STATUSES` from company-memory.mjs). No fake m
   developer-speak in primary copy.
 - **18H Meeting briefs:** persisted brief model + generator; partly blocked on the same
   Google live-fetch decision as 18D.
+- **18I Alert system (approved by Roger 2026-07-07):** internal `alerts` collection raised
+  from four source groups (needs-Roger queue items; safety and deliverability; money
+  signals; support and partners). In-app Alerts center page with severity lanes and
+  read/dismiss. Email delivery to the OWNER'S single locked address only, behind an
+  off-by-default gate toggled on the Alerts page (NOT in Settings — Settings stays
+  display-only); cadence = daily digest plus immediate breakthrough for critical items.
+  Never emails contacts, customers, or partners; never a campaign path. Settings
+  Notifications section becomes a live status display pointing at the Alerts page.
 
 ## Hard guardrails (all phases)
 

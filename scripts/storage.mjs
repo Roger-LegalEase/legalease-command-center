@@ -31,6 +31,7 @@ const coreStateCollections = [
   "events",
   "tasks",
   "supportIssues",
+  "alerts",
   "evidencePackNotes",
   "autonomyActions",
   "autonomyDecisions",
