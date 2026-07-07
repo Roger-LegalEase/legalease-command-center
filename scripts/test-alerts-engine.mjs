@@ -49,6 +49,19 @@ await check("alerts collections are registered in coreStateCollections", () => {
   }
 });
 
+await check("settings persist as a singleton core collection (Supabase toggle bug)", async () => {
+  // The email switch and the once-per-day digest stamp live in state.settings. Without this
+  // registration the Supabase backend silently dropped every settings write: the in-app
+  // toggle reverted and the digest would have re-sent on every hourly tick.
+  const { singletonCollections, coreRecordsFromState } = await import("./storage.mjs");
+  assert(coreStateCollections.includes("settings"), "settings must be in coreStateCollections");
+  assert(singletonCollections.has("settings"), "settings must be a singleton collection");
+  const rows = coreRecordsFromState({ settings: { alerts: { emailEnabled: true, lastDigestDate: "2026-07-07" } } });
+  const row = rows.find((entry) => entry.collection === "settings");
+  assert(row && row.item_id === "singleton", "settings should serialize as one singleton row");
+  assert.equal(row.payload.alerts.emailEnabled, true, "the alert email switch must survive serialization");
+});
+
 await check("email decision fails closed at every layer", () => {
   assert.equal(resolveAlertEmailDecision({}, { env: ENV_READY }).status, "not_sent", "toggle off wins over armed env");
   assert.equal(resolveAlertEmailDecision(enabledState(), { env: {} }).status, "not_sent", "no recipient => not_sent");

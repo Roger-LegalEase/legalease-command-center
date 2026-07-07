@@ -33,6 +33,11 @@ const coreStateCollections = [
   "supportIssues",
   "alerts",
   "meetingBriefs",
+  // Operator settings (singleton). Was NEVER registered, so every settings write (alert email
+  // switch, digest date stamp, daily targets, source feeds) silently failed to persist on the
+  // Supabase backend while working locally on JSON — found live in prod via the 18I alert email
+  // toggle. test-alerts-engine.mjs asserts membership.
+  "settings",
   "evidencePackNotes",
   "autonomyActions",
   "autonomyDecisions",
@@ -133,7 +138,7 @@ const coreStateCollections = [
   "agentRuns",
   "approvals"
 ];
-const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth"]);
+const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth", "settings"]);
 
 function parseBoolean(value = "") {
   return ["true", "1", "yes", "on"].includes(String(value || "").toLowerCase());
