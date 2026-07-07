@@ -315,8 +315,10 @@ await check("server wiring: engine registered, endpoints present, recipient lock
   const executor = server.slice(server.indexOf("async function runAlertEmailSend"), server.indexOf("async function runAlertEmailSend") + 2200);
   assert(executor.includes("ALERTS_EMAIL_TO"), "executor recipient comes from env");
   assert(executor.includes("recipient_not_owner_locked"), "executor aborts on any non-owner recipient");
-  const configEndpoint = server.slice(server.indexOf('"/api/alerts/config"'), server.indexOf('"/api/alerts/digest-preview"'));
+  const configEndpoint = server.slice(server.indexOf('url.pathname === "/api/alerts/config"'), server.indexOf('url.pathname === "/api/alerts/digest-preview"'));
   assert(!/body\.(recipient|emailAddress|to\b)/.test(configEndpoint), "config endpoint must not accept a recipient address");
+  assert(!configEndpoint.includes("store.updateSettings("), "config must use a SCOPED settings write; updateSettings full-state-writes to Supabase and dies on prod-sized data");
+  assert(configEndpoint.includes("writeCollections({ settings:"), "config persists settings via scoped writeCollections");
 });
 
 console.log(`alerts engine tests passed (${passed} checks).`);

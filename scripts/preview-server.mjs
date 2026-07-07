@@ -26058,7 +26058,7 @@ function htmlShell() {
     async function toggleAlertEmail() {
       const next = !(state.settings?.alerts?.emailEnabled === true);
       try {
-        applyAlertsViewResponse(await api("/api/alerts/config", { method: "POST", body: JSON.stringify({ emailEnabled: next }) }));
+        applyAlertsViewResponse(await api("/api/alerts/config", { method: "POST", body: JSON.stringify({ emailEnabled: next }), timeoutMs: 20000 }));
         toast(next ? "Email alerts to you are ON. Delivery still needs the locked address and deploy arm." : "Email alerts are off. Alerts stay in-app only.");
       } catch (error) {
         toast("Could not change the email switch: " + (error.message || "request failed"));
@@ -35575,8 +35575,11 @@ async function handleRequest(request, response) {
           emailEnabled: body.emailEnabled === undefined ? prior.emailEnabled : body.emailEnabled === true,
           digestHourEt: body.digestHourEt === undefined ? prior.digestHourEt : Math.min(23, Math.max(0, Number(body.digestHourEt) || 0))
         };
-        await store.updateSettings({ alerts: nextConfig });
-        let nextState = { ...currentState, settings: { ...(currentState.settings || {}), alerts: nextConfig } };
+        // SCOPED write only. updateSettings would rewrite the ENTIRE state to Supabase (every
+        // collection serialized + orphan-reconciled in one request) — the historically fragile
+        // full-state prod write path, and the reason this toggle appeared dead in production.
+        const nextSettings = { ...(currentState.settings || {}), alerts: nextConfig };
+        let nextState = { ...currentState, settings: nextSettings };
         if (nextConfig.emailEnabled !== prior.emailEnabled) {
           // Gate flips are audited like every other decision in the system.
           nextState = emitCompanyEvent(nextState, {
@@ -35585,7 +35588,9 @@ async function handleRequest(request, response) {
             risk: "watch",
             summary: `Alert email to owner turned ${nextConfig.emailEnabled ? "ON" : "OFF"} by ${accessDecision.actor?.label || actorRole}.`
           });
-          await store.writeCollections({ companyEvents: nextState.companyEvents });
+          await store.writeCollections({ settings: nextSettings, companyEvents: nextState.companyEvents });
+        } else {
+          await store.writeCollections({ settings: nextSettings });
         }
         sendJson(response, { ok: true, ...buildAlertsView(nextState, { env: process.env }) });
       });
