@@ -16,12 +16,12 @@ function functionBlock(name) {
 
 const nav = source.match(/<nav class="top-nav"[\s\S]*?<\/nav>/)?.[0] || "";
 const routeAliases = source.match(/const routeAliases = \{([\s\S]*?)\};/)?.[1] || "";
-const settingsArea = source.match(/<section id="settings"[\s\S]*?\$\{leeBubbleHtml\(\)\}/)?.[0] || "";
+const settingsArea = functionBlock("plainSettingsPageHtml");
 const rcapCard = functionBlock("rcapConnectionCardHtml");
 const rcapHelper = functionBlock("openRcapConnectionChecklist");
 const channelCards = functionBlock("channelCards");
 
-assert(settingsArea.includes("Channels / Integrations"), "Settings should expose Channels / Integrations.");
+assert(settingsArea.includes("<summary>Integrations</summary>"), "Settings should expose an Integrations section.");
 assert(settingsArea.includes("rcapConnectionCardHtml()"), "Settings integrations should render RCAP Connection.");
 assert(settingsArea.includes("channel-readiness-strip"), "Channels should show one section-level safety strip.");
 assert(settingsArea.includes("channel-readiness-list"), "Channels should render as a calm readiness list.");

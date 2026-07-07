@@ -33,7 +33,6 @@ const KNOWN_FAILING = {
   "test-production-hardening-health.mjs": "stale: expects ownerAuthEnabled default that changed",
   "test-proof-workspace.mjs": "stale: asserts old Proof workspace copy",
   "test-queue-workspace.mjs": "stale: asserts old Queue helper copy",
-  "test-rcap-connection-placeholder.mjs": "stale: asserts old Settings Channels/Integrations copy",
   "test-rcap-page-usability.mjs": "stale: asserts old #rcap alias behavior",
   "test-social-workspace.mjs": "stale: asserts removed socialPageHtml block",
   "test-sources-social-calendar-import.mjs": "stale: asserts old six-surface top nav",
