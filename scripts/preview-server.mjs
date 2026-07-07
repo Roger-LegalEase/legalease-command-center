@@ -24195,93 +24195,6 @@ function htmlShell() {
       return \`<div class="operating-memory-grid">\${Object.entries(records).map(([key, item]) => \`<section class="operating-memory-tile"><h3>\${esc(item.name || plainOperatorState(key))}</h3><ul><li><strong>\${esc(plainOperatorState(item.status || "unknown"))}</strong><br><span>\${esc(item.detail || "No detail recorded.")}</span></li></ul></section>\`).join("")}</div>\`;
     }
 
-    function settingsHealthReadoutHtml() {
-      const health = cockpitOsHealthRecord();
-      const integrity = cockpitDataIntegrityRecord();
-      const smoke = buildSmokeTestStatus(state, { commit_hash: state.runtime?.commitHash || "" });
-      const connectors = connectorItems();
-      const liveGates = clientLiveGatesCount(state);
-      const integrityWarnings = (integrity.errors || []).length + (integrity.warnings || []).length + (integrity.duplicate_warnings || []).length + (integrity.missing_field_warnings || []).length;
-      const connectorProblems = connectors.filter(item => !item.configured || item.lastError).length;
-      const socialChannelStatuses = state.runtime?.socialChannelStatuses || {};
-      const socialChannels = [
-        ["LinkedIn", socialChannelStatuses.linkedin || "not yet wired", state.runtime?.livePostingGates?.linkedin?.enabled, "runtime.socialChannelStatuses.linkedin + runtime.livePostingGates.linkedin"],
-        ["Twitter / X", socialChannelStatuses.x || "not yet wired", state.runtime?.livePostingGates?.x?.enabled, "runtime.socialChannelStatuses.x + runtime.livePostingGates.x"],
-        ["Meta", socialChannelStatuses.meta || "not yet wired", state.runtime?.livePostingGates?.facebook?.enabled || state.runtime?.livePostingGates?.instagram?.enabled, "runtime.socialChannelStatuses.meta + runtime live gates"]
-      ];
-      const liveGateRows = ["linkedin", "facebook", "instagram", "x"].map(channel => {
-        const gate = state.runtime?.livePostingGates?.[channel] || {};
-        return {
-          channel,
-          enabled:Boolean(gate.enabled),
-          source:\`state.runtime.livePostingGates.\${channel}\`
-        };
-      });
-      const hostedSupabaseConfirmed = state.persistence === "supabase" && Boolean(supabaseHealth?.connected || health.supabase_db?.ok || health.connection_health?.supabase_db?.ok);
-      const hostedStateStatus = hostedSupabaseConfirmed ? "confirmed" : "not yet wired";
-      const sourceRows = [
-        ["OS Health", health.overall_health || "needs_attention", health.generated_at ? "state.osHealthSnapshots latest record" : "cockpitOsHealthRecord() fallback", health.summary?.next_operator_action || "Open App Status and refresh the snapshot.", /healthy|protected|ready|ok/i.test(String(health.overall_health || "")) ? "go" : "warn"],
-        ["State Integrity", integrity.integrity_status || (integrityWarnings ? "needs_attention" : "pass"), integrity.generated_at ? "state.dataIntegritySnapshots latest record" : "buildDataIntegritySnapshot(state) fallback", integrityWarnings ? integrityWarnings + " warning(s) across integrity checks." : "No integrity findings recorded.", integrityWarnings ? "warn" : "go"],
-        ["Connectors", connectorProblems ? "needs_attention" : "quiet", "connectorItems() from connectorStatus + socialAccounts + env readiness", connectorProblems ? connectorProblems + " connector(s) need setup or review." : "Configured connectors are quiet; external actions remain gated.", connectorProblems ? "warn" : "go"],
-        ["Live Gates", String(liveGates), "state.runtime.livePostingGates", liveGates ? liveGates + " live gate(s) enabled." : "All live publishing gates are off.", liveGates ? "stop" : "go"],
-        ["Hosted Supabase State", hostedStateStatus, "state.persistence + Supabase health", hostedSupabaseConfirmed ? "Hosted Supabase state is connected in this served state." : "Confirm command surfaces against hosted Supabase state at end of build.", hostedSupabaseConfirmed ? "go" : "warn"],
-        ["Smoke Test", smoke.last_status || "not_started", "buildSmokeTestStatus(state)", smoke.warning || (smoke.last_run_timestamp ? "Last run " + formatDateTime(smoke.last_run_timestamp) : "No self-check run recorded yet."), Number(smoke.failed_count || 0) ? "stop" : smoke.last_status === "passed" ? "go" : "warn"]
-      ];
-      const connectorRows = connectors.map(item => ({
-        label:growthLabel(item.connector),
-        status:item.lastError ? "needs review" : item.configured ? item.lastSyncStatus || "configured" : "not yet wired",
-        detail:item.configured ? "Source: state.connectorStatus/defaultConnectorStatus; no external action triggered here." : "not yet wired: connector setup is not confirmed in state.",
-        tone:item.lastError ? "stop" : item.configured ? "go" : "warn"
-      }));
-      return \`<section class="settings-command-surface settings-health-readout">
-        <div class="command-top">
-          <div class="command-heading">
-            <h1>Settings &amp; Health</h1>
-            <p>Health, integrity, connectors, storage, and safety switches in one display-only control surface.</p>
-          </div>
-          <button class="command-run-button" type="button" onclick="refreshOsHealth()">Refresh health <span class="count">\${esc(String(integrityWarnings + connectorProblems + liveGates))}</span></button>
-        </div>
-        <div class="command-pulse">\${sourceRows.map(([label, status, source, detail, tone]) => \`<div class="command-stat">
-          <div class="label"><span class="command-dot \${esc(tone)}"></span>\${esc(label)}</div>
-          <div class="value">\${status === "not yet wired" ? '<span class="command-not-wired">not yet wired</span>' : esc(plainOperatorState(status))}</div>
-          <div class="detail">\${esc(source)} · \${esc(detail)}</div>
-        </div>\`).join("")}</div>
-        <div class="command-cols">
-          <div>
-            <div class="command-panel">
-              <div class="command-panel-head"><h2>Health &amp; Integrity</h2><span class="meta">osHealthSnapshots + dataIntegritySnapshots</span></div>
-              \${sourceRows.slice(0, 2).map(([label, status, source, detail, tone]) => \`<div class="command-list-row"><span class="command-dot \${esc(tone)}"></span><div class="text"><b>\${esc(label)}</b><span>\${esc(source)} · \${esc(detail)}</span></div><div class="value">\${esc(plainOperatorState(status))}</div></div>\`).join("")}
-              <div class="command-list-row"><span class="command-dot \${esc(Number(smoke.failed_count || 0) ? "stop" : smoke.last_status === "passed" ? "go" : "warn")}"></span><div class="text"><b>Self-check</b><span>Source: buildSmokeTestStatus(state). \${esc(smoke.warning || "Manual post-deploy checklist record.")}</span></div><div class="value">\${esc(plainOperatorState(smoke.last_status || "not_started"))}</div></div>
-            </div>
-            <div class="command-panel">
-              <div class="command-panel-head"><h2>Connector Readiness</h2><span class="meta">connectorStatus + socialAccounts</span></div>
-              \${connectorRows.slice(0, 8).map(row => \`<div class="command-list-row"><span class="command-dot \${esc(row.tone)}"></span><div class="text"><b>\${esc(row.label)}</b><span>\${esc(row.detail)}</span></div><div class="value">\${row.status === "not yet wired" ? '<span class="command-not-wired">not yet wired</span>' : esc(plainOperatorState(row.status))}</div></div>\`).join("")}
-            </div>
-          </div>
-          <div>
-            <div class="command-panel">
-              <div class="command-panel-head"><h2>Live Gate Config</h2><span class="meta">display-only safety posture</span></div>
-              \${liveGateRows.map(row => \`<div class="command-list-row"><span class="command-dot \${row.enabled ? "stop" : "go"}"></span><div class="text"><b>\${esc(growthLabel(row.channel))}</b><span>Source: \${esc(row.source)}. Settings shows status only.</span></div><div class="value">\${row.enabled ? "enabled" : "off"}</div></div>\`).join("")}
-              <div class="command-footer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Safety posture is display-only here. This surface does not enable live gates, send email, publish posts, write calendars, activate dashboards, or contact external systems.</div>
-            </div>
-            <div class="command-panel">
-              <div class="command-panel-head"><h2>Connected Accounts</h2><span class="meta">setup helpers</span></div>
-              \${socialChannels.map(([label, status, liveEnabled, source]) => \`<div class="command-list-row"><span class="command-dot \${liveEnabled ? "stop" : /connected|ready/i.test(String(status)) ? "go" : "warn"}"></span><div class="text"><b>\${esc(label)}</b><span>Source: \${esc(source)}. Approval remains required.</span></div><div class="value">\${esc(plainOperatorState(status))}</div></div>\`).join("")}
-              <div class="command-list-row"><span class="command-dot \${hostedSupabaseConfirmed ? "go" : "warn"}"></span><div class="text"><b>Hosted Supabase state</b><span>Source: state.persistence + Supabase health. End-of-build confirmation remains required.</span></div><div class="value">\${hostedSupabaseConfirmed ? "confirmed" : '<span class="command-not-wired">not yet wired</span>'}</div></div>
-            </div>
-          </div>
-        </div>
-        <div class="card-actions" style="margin-top:12px">
-          <button class="primary" type="button" onclick="refreshOsHealth()">Refresh OS Health</button>
-          <button type="button" onclick="refreshDataIntegrity()">Refresh State Integrity</button>
-          <button type="button" onclick="startSmokeTestRun()">Start Smoke Test</button>
-          <button type="button" onclick="location.hash='automation'">Open Connector Inbox</button>
-          <button type="button" onclick="location.hash='os-health'">Open App Status</button>
-          <button type="button" onclick="location.hash='data-integrity'">Open Data Check</button>
-        </div>
-      </section>\`;
-    }
-
     function plainConnectionCardsHtml() {
       const connectors = connectorItems();
       const byKey = key => connectors.find(item => item.connector === key) || {};
@@ -24317,18 +24230,120 @@ function htmlShell() {
     function plainSettingsPageHtml(context = {}) {
       const health = cockpitOsHealthRecord();
       const liveGates = clientLiveGatesCount(state);
+      const emailRow = emailPostureRow();
+      const socialRow = socialPostureRow();
+      const partnerOverview = partnerProgramOverviewClient();
+      const supportIssuesList = list(state.supportIssues);
+      const supportOpen = supportIssuesList.filter(issue => !["resolved", "closed"].includes(issue.status));
+      const supportAttention = supportOpen.filter(issue => issue.upl_sensitive || issue.urgency === "urgent");
+      const supportDrafts = supportOpen.filter(issue => issue.status === "drafted" && !issue.upl_sensitive);
+      const revenue = revenueOperatorSummary();
+      const heldContacts = Number(todaySummary?.peopleStuck?.heldContacts) || 0;
+      const outreachCampaignCount = list(state.outreachCampaigns).length;
+      const morningBriefSaved = Boolean(savedMorningBriefForToday());
+      const autonomyPending = Number(state.autonomySummary?.pendingDecision) || 0;
+      const socialAccountStatus = platform => {
+        const account = (state.socialAccounts || []).find(item => item.platform === platform) || {};
+        return account.connected ? "Connected" : account.setup?.configured ? "Needs attention" : "Not connected";
+      };
+      const statusTone = label => label === "Connected" ? "good" : label === "Needs attention" ? "warn" : "info";
+      const gateConfig = ["linkedin", "facebook", "instagram", "x"].map(channel => ({ channel, enabled:Boolean(state.runtime?.livePostingGates?.[channel]?.enabled) }));
       return \`<section class="settings-command-surface settings-health-readout">
         <div class="command-top">
           <div class="command-heading"><h1>Settings</h1><p>Plain-English setup only. Operational work lives in Cockpit, Contacts, Campaigns, Revenue, Growth, Meetings, Support, Pages, and Health.</p></div>
           <button class="command-run-button" type="button" onclick="location.hash='cockpit'">Back to Cockpit <span class="count">\${esc(String(liveGates))}</span></button>
         </div>
-        <details open><summary>Company Info</summary><div class="settings-card-grid" style="margin-top:14px"><div class="panel"><h2>LegalEase</h2><p class="muted">Company operating dashboard for Roger. Made for internal review and decision-making.</p></div><div class="panel"><h2>Operating rule</h2><p class="muted">Draft/propose only unless Roger approves inside the app. Risky work goes to review/queue first.</p></div></div></details>
-        <details open><summary>Connections</summary><div class="channel-readiness-strip" style="margin-top:12px"><strong>Connection status only:</strong> Connected, Needs attention, or Not connected.</div>\${plainConnectionCardsHtml()}</details>
-        <details><summary>Sending &amp; Posting Rules</summary><div class="settings-card-grid" style="margin-top:14px"><div class="panel"><h2>Sending</h2><p class="muted">No agent auto-sends to a human. Email sending is off unless existing outreach approval gates and live-send gates allow it after Roger approval.</p></div><div class="panel"><h2>Posting</h2><p class="muted">No agent auto-posts to social. Live gates: \${esc(String(liveGates))}. Approved content still routes through review.</p></div><div class="panel"><h2>Pages</h2><p class="muted">No agent auto-publishes partner pages. Page work stays draft/review only.</p></div></div><details><summary>View technical details</summary><p class="muted">Live gate state is read from state.runtime.livePostingGates. This Settings page does not expose controls to enable gates.</p></details></details>
-        <details><summary>Contact &amp; Campaign Rules</summary><div class="settings-card-grid" style="margin-top:14px"><div class="panel"><h2>Contacts</h2><p class="muted">Suppressed, unsubscribed, bounced, and do-not-contact records are not eligible for email. Missing or invalid emails need cleanup first.</p></div><div class="panel"><h2>Campaigns</h2><p class="muted">Campaigns prepare approval items and Queue work only. No campaign sends directly from the new cockpit.</p></div></div><details><summary>View technical details</summary><p class="muted">Display reads outreachContacts, reactivationContacts, rcapRevenueContacts, prospectCandidates, partners, growthInbox, googleInsights, tasks, outreachCampaigns, outreachLists, reactivationCampaign, campaigns, and posts.</p></details></details>
-        <details><summary>Partner Defaults</summary><div class="settings-card-grid" style="margin-top:14px"><div class="panel"><h2>Partner review</h2><p class="muted">Partner pages, dashboards, proposals, and handoffs stay internal until reviewed. Missing logo/contact/scope blocks external use.</p></div><div class="panel"><h2>RCAP defaults</h2><p class="muted">RCAP workbook data creates internal records and review tasks. Outreach automation remains off without approval.</p></div></div></details>
-        <details><summary>Brand Assets</summary><p class="muted">\${state.persistence === "supabase" ? "Operational brand assets used by Final PNG rendering." : "Local Wilma poses, backgrounds, and watermark files used by Final PNG rendering."}</p><div style="margin-top:14px">\${assetsSettingsHtml()}</div></details>
-        <details><summary>System Health Details</summary><div class="settings-card-grid" style="margin-top:14px"><div class="panel"><h2>Overall status</h2><p><span class="badge \${health.overall_health === "healthy" ? "good" : "warn"}">\${esc(plainOperatorState(health.overall_health || "not checked"))}</span></p><p class="muted">\${esc(health.summary?.next_operator_action || "Open Health when something breaks or a connection needs attention.")}</p></div><div class="panel"><h2>OpenAI Images</h2><p><span class="badge \${context.imageStatusTone || "info"}">\${context.imageStatusLabel || "Ready or untested"}</span></p><p class="muted">\${context.imageStatusDetail || "No image details recorded."}</p></div><div class="panel"><h2>Storage</h2><p><span class="badge info">\${state.persistence === "supabase" ? "Supabase" : "local JSON fallback"}</span></p></div><div class="panel"><h2>Database</h2><p><span class="badge \${context.healthTone || "info"}">\${context.schemaStale ? "Schema update needed" : supabaseHealth?.connected ? "Connected" : "Not connected"}</span></p><p class="muted">Connection status only. Raw setup details stay hidden.</p></div></div><details><summary>View technical details</summary><p class="muted">Raw health details stay here. Stack traces, env names, scopes, and API details should remain behind this disclosure.</p><pre class="code-block">\${esc(JSON.stringify({ overall_health:health.overall_health, live_gates_count:liveGates, generated_at:health.generated_at, schema_detail:state.schemaStatus?.detail || "", database_error:supabaseHealth?.error || "" }, null, 2))}</pre></details></details>
+        <details open><summary>Company profile</summary>
+          <div class="settings-card-grid" style="margin-top:14px">
+            <div class="panel"><h2>LegalEase</h2><p class="muted">Company operating dashboard for Roger. Made for internal review and decision-making.</p></div>
+            <div class="panel"><h2>Operating rule</h2><p class="muted">Draft and propose only unless Roger approves inside the app. Risky work goes to review first.</p></div>
+            <div class="panel"><h2>How to read this page</h2><p class="muted">Each section says what it controls and where it stands right now. Nothing on this page changes how the company runs.</p></div>
+          </div>
+          <details style="margin-top:12px"><summary>Brand assets</summary><p class="muted" style="margin-top:10px">\${state.persistence === "supabase" ? "Operational brand assets used for finished post images." : "Local Wilma poses, backgrounds, and watermark files used for finished post images."}</p><div style="margin-top:14px">\${assetsSettingsHtml()}</div></details>
+        </details>
+        <details><summary>Email and campaigns</summary>
+          <div class="settings-card-grid" style="margin-top:14px">
+            <div class="panel"><h2>Email sending</h2><p><span class="badge \${emailRow[1] === "Protected" ? "good" : "warn"}">\${esc(emailRow[0])}</span></p><p class="muted">No agent auto-sends to a human. Email stays off unless Roger approves it inside the app.</p></div>
+            <div class="panel"><h2>Who can be emailed</h2><p class="muted">Suppressed, unsubscribed, bounced, and do-not-contact records are not eligible for email. Missing or invalid emails need cleanup first.</p></div>
+            <div class="panel"><h2>Campaigns</h2><p class="muted">Campaigns prepare approval items and review work only. \${esc(String(outreachCampaignCount))} campaign(s) on file. \${esc(String(heldContacts))} contact(s) held for your review.</p></div>
+          </div>
+          <div class="card-actions" style="margin-top:12px"><button type="button" onclick="location.hash='campaigns'">Open Campaigns</button></div>
+        </details>
+        <details><summary>Social media</summary>
+          <div class="settings-card-grid" style="margin-top:14px">
+            <div class="panel"><h2>Posting safety</h2><p><span class="badge \${socialRow[1] === "Protected" ? "good" : "warn"}">\${esc(socialRow[0])}</span></p><p class="muted">No agent auto-posts to social. Approved content still routes through the Review Desk before anything could go out.</p></div>
+            <div class="panel"><h2>Accounts</h2><div class="metric-table">
+              <div class="metric-row"><span>LinkedIn</span><strong>\${esc(socialAccountStatus("linkedin"))}</strong></div>
+              <div class="metric-row"><span>Facebook</span><strong>\${esc(socialAccountStatus("facebook"))}</strong></div>
+              <div class="metric-row"><span>Instagram</span><strong>\${esc(socialAccountStatus("instagram"))}</strong></div>
+              <div class="metric-row"><span>Twitter / X</span><strong>\${esc(socialAccountStatus("x"))}</strong></div>
+            </div><p class="muted">Connect or test accounts in the Integrations section below.</p></div>
+          </div>
+          <div class="card-actions" style="margin-top:12px"><button type="button" onclick="location.hash='queue'">Open Review Desk</button></div>
+        </details>
+        <details><summary>Partner program</summary>
+          <div class="settings-card-grid" style="margin-top:14px">
+            <div class="panel"><h2>Partner review</h2><p class="muted">No agent auto-publishes partner pages. Partner pages, dashboards, proposals, and handoffs stay internal until reviewed.</p></div>
+            <div class="panel"><h2>Program right now</h2><div class="metric-table">
+              <div class="metric-row"><span>Paid partners</span><strong>\${esc(String(partnerOverview.paid.length))}</strong></div>
+              <div class="metric-row"><span>In onboarding</span><strong>\${esc(String(partnerOverview.onboarding.length))}</strong></div>
+              <div class="metric-row"><span>Proposals to review</span><strong>\${esc(String(partnerOverview.proposalsNeedReview.length))}</strong></div>
+            </div></div>
+            <div class="panel"><h2>RCAP partners</h2><p class="muted">Partner usage, onboarding, and packet counts are shown for awareness only. No caps exist; this app only displays what partners send in.</p></div>
+          </div>
+          <div class="card-actions" style="margin-top:12px"><button type="button" onclick="location.hash='partners'">Open Partners</button></div>
+        </details>
+        <details><summary>Customer support</summary>
+          <div class="settings-card-grid" style="margin-top:14px">
+            <div class="panel"><h2>Support rule</h2><p class="muted">Support replies are drafted for your review only. Nothing sends automatically, and requests that could touch legal advice are flagged for you first.</p></div>
+            <div class="panel"><h2>Support right now</h2><div class="metric-table">
+              <div class="metric-row"><span>Need you first</span><strong>\${esc(String(supportAttention.length))}</strong></div>
+              <div class="metric-row"><span>Open requests</span><strong>\${esc(String(supportOpen.length))}</strong></div>
+              <div class="metric-row"><span>Drafts ready</span><strong>\${esc(String(supportDrafts.length))}</strong></div>
+            </div></div>
+          </div>
+          <div class="card-actions" style="margin-top:12px"><button type="button" onclick="location.hash='support'">Open Support</button></div>
+        </details>
+        <details><summary>Revenue and Stripe</summary>
+          <div class="settings-card-grid" style="margin-top:14px">
+            <div class="panel"><h2>Stripe</h2><p><span class="badge \${statusTone(revenue.stripeStatus)}">\${esc(revenue.stripeStatus)}</span></p><p class="muted">\${esc(revenue.note)} Payments and billing are never changed from this app.</p></div>
+            <div class="panel"><h2>Collected</h2><p>\${revenue.collected ? "<strong>" + esc(revenue.collected) + "</strong>" : '<span class="command-not-wired">not yet wired</span>'}</p><p class="muted">\${revenue.failedPayments === "" ? "Failed payment count is not available yet." : esc(String(revenue.failedPayments)) + " failed payment(s) to review."}</p></div>
+          </div>
+          <div class="card-actions" style="margin-top:12px"><button type="button" onclick="location.hash='revenue'">Open Revenue</button></div>
+        </details>
+        <details><summary>Notifications</summary>
+          <div class="settings-card-grid" style="margin-top:14px">
+            <div class="panel"><h2>Alerts</h2><p><span class="command-not-wired">not yet wired</span></p><p class="muted">The Command Center does not send email, text, or push alerts yet. Nothing is queued to notify anyone outside this app.</p></div>
+            <div class="panel"><h2>Where updates live today</h2><p class="muted">Updates stay inside the app: the Morning Brief (\${morningBriefSaved ? "saved today" : "not saved yet today"}), the Decisions queue, and on-screen messages while you work.</p></div>
+          </div>
+        </details>
+        <details><summary>Safety and approvals</summary>
+          <div class="settings-card-grid" style="margin-top:14px">
+            <div class="panel"><h2>The rule</h2><p class="muted">Nothing external happens without Roger. Work is prepared as drafts and approval requests; risky items wait for an explicit yes. This Settings page does not expose controls to enable gates.</p></div>
+            <div class="panel"><h2>Current posture</h2><div class="metric-table">
+              <div class="metric-row"><span>Email</span><strong>\${esc(emailRow[1])}</strong></div>
+              <div class="metric-row"><span>Social posting</span><strong>\${esc(socialRow[1])}</strong></div>
+              <div class="metric-row"><span>Live posting switches on</span><strong>\${esc(String(liveGates))}</strong></div>
+            </div><p class="muted">\${esc(emailPostureDetail())}</p></div>
+            <div class="panel"><h2>Agent decisions</h2><p class="muted">\${esc(String(autonomyPending))} agent action(s) waiting on your decision. Agents draft and prepare; approval stays with Roger.</p></div>
+          </div>
+          <div class="card-actions" style="margin-top:12px"><button type="button" onclick="location.hash='autonomy'">Open Agent Decisions</button><button type="button" onclick="location.hash='decisions'">Open Decisions Queue</button></div>
+        </details>
+        <details open><summary>Integrations</summary>
+          <div class="channel-readiness-strip" style="margin-top:12px"><strong>Connection status only:</strong> Connected, Needs attention, or Not connected.</div>
+          \${plainConnectionCardsHtml()}
+          <div class="channel-readiness-list" style="margin-top:12px">\${rcapConnectionCardHtml()}</div>
+        </details>
+        <details><summary>View technical details</summary>
+          <div class="settings-card-grid" style="margin-top:14px">
+            <div class="panel"><h2>Overall status</h2><p><span class="badge \${health.overall_health === "healthy" ? "good" : "warn"}">\${esc(plainOperatorState(health.overall_health || "not checked"))}</span></p><p class="muted">\${esc(health.summary?.next_operator_action || "Open App Status and refresh the snapshot.")}</p></div>
+            <div class="panel"><h2>OpenAI Images</h2><p><span class="badge \${context.imageStatusTone || "info"}">\${context.imageStatusLabel || "Ready or untested"}</span></p><p class="muted">\${context.imageStatusDetail || "No image details recorded."}</p></div>
+            <div class="panel"><h2>Storage</h2><p><span class="badge info">\${state.persistence === "supabase" ? "Supabase" : "local JSON fallback"}</span></p></div>
+            <div class="panel"><h2>Database</h2><p><span class="badge \${context.healthTone || "info"}">\${context.schemaStale ? "Schema update needed" : supabaseHealth?.connected ? "Connected" : "Not connected"}</span></p><p class="muted">Connection status only. Raw setup details stay hidden.</p></div>
+          </div>
+          <pre class="code-block">\${esc(JSON.stringify({ overall_health:health.overall_health, live_posting_gates:gateConfig, live_gates_count:liveGates, generated_at:health.generated_at, schema_detail:state.schemaStatus?.detail || "", database_error:supabaseHealth?.error || "" }, null, 2))}</pre>
+          <div class="card-actions" style="margin-top:12px"><button type="button" onclick="refreshOsHealth()">Refresh OS Health</button><button type="button" onclick="refreshDataIntegrity()">Refresh State Integrity</button><button type="button" onclick="location.hash='os-health'">Open App Status</button><button type="button" onclick="location.hash='data-integrity'">Open Data Check</button></div>
+        </details>
       </section>\`;
     }
 
