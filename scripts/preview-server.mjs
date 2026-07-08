@@ -16524,7 +16524,7 @@ function htmlShell() {
               <li>If the issue continues, note the page and button that failed.</li>
             </ol>
             <div class="support-status-list">
-              <div class="support-status-row"><strong>Publishing: Off</strong><span>Protected</span></div>
+              <div class="support-status-row"><strong>\${esc(publishingPostureRow()[0])}</strong><span>\${esc(publishingPostureRow()[1])}</span></div>
               <div class="support-status-row"><strong>External actions: Off</strong><span>Protected</span></div>
             </div>
           </section>
@@ -24549,6 +24549,28 @@ function htmlShell() {
       return (safetyPosture && safetyPosture.email && safetyPosture.email.detail)
         || "Gate state not loaded yet — treat email sending as unverified, not off.";
     }
+    // B2 outreach automation posture (autopilot + OUTREACH_LIVE_SEND), from the same server
+    // derivation. The RCAP status line used to hardcode "Off" here; that literal would have
+    // kept saying Off after the real gates flipped.
+    function outreachAutomationLabel() {
+      const o = safetyPosture && safetyPosture.email && safetyPosture.email.outreach;
+      if (!o) return "Outreach automation: Unverified";
+      if (o.posture === "live") return "Outreach automation: LIVE";
+      if (o.posture === "armed") return "Outreach automation: ARMED (live-send flag on, autopilot off)";
+      return "Outreach automation: Off";
+    }
+    // Publishing posture, framed for the safety lists. Same data as socialPostureRow (the
+    // per-channel live posting gates ARE the publishing gates); unverified until loaded.
+    function publishingPostureRow() {
+      if (!safetyPosture || !safetyPosture.social) return ["Publishing: Unverified", "Not checked"];
+      const on = (safetyPosture.social.enabledChannels || []).length > 0;
+      return [on ? "Publishing: LIVE (" + safetyPosture.social.enabledChannels.join(", ") + ")" : "Publishing: Off",
+        safetyPosture.social.tone === "ok" ? "Protected" : "CHECK GATES"];
+    }
+    function publishingPill() {
+      if (!safetyPosture || !safetyPosture.social) return "Publishing unverified";
+      return (safetyPosture.social.enabledChannels || []).length > 0 ? "Publishing is LIVE" : "Publishing is off";
+    }
 
     // ---- Trust layer (audit §15 item 1): deploy/version truth ------------------------------
     // versionTruth (fetched at boot from /api/version/drift) compares the running commit to
@@ -24595,7 +24617,7 @@ function htmlShell() {
       const appStatusLinkedInConnection = appStatusLinkedInConnected ? "Connected / approval workflow ready" : appStatusLinkedIn.setup?.configured ? "Not connected / approval workflow ready" : "Needs setup / approval workflow ready";
       const appStatusLinkedInPosting = state.runtime?.liveLinkedInPostingEnabled ? "Ready behind approval" : "Off";
       const statusRows = [
-        ["Publishing: Off", "Protected"],
+        publishingPostureRow(),
         emailPostureRow(),
         socialPostureRow(),
         ["Calendar writes: Off", "Protected"],
@@ -25768,7 +25790,7 @@ function htmlShell() {
       const pagesBuilt = list(state.partnerProgramArtifacts).filter(item => /page/i.test([item.key, item.title, item.artifactType].join(" "))).length;
       const cards = [
         { title:"Today / Needs Roger", route:"today", action:"Open Today", value:esc(String(ranked.length)) + " <small>need you</small>", happening:"Daily Run and Queue surfaced the highest consequence work.", needs:ranked[0]?.item?.title || queueItems[0]?.title || "Nothing needs Roger right now.", ready:queueItems.filter(item => /ready/i.test(item.status)).length + " ready item(s).", blocked:queueItems.filter(item => /blocked|failed/i.test(item.status)).length + " blocked item(s).", next:"Start with Today, then clear the Review Queue." },
-        { title:"Inbox & Replies", route:"growth-inbox", action:"Review replies", value:esc(String(list(state.growthInbox).length + list(state.googleInsights).length)) + " <small>signals</small>", happening:"Growth Inbox and Google read-only signals are collected in review.", needs:queueItems.filter(item => /growthInbox|googleInsights/.test(item.source)).length + " item(s) need review.", ready:"Reply drafts can be prepared for review only.", blocked:"Email sending is off.", notConnected:connectorBy("gmail").configured ? "" : "Gmail is not connected.", next:"Review possible replies; no email sends from here." },
+        { title:"Inbox & Replies", route:"growth-inbox", action:"Review replies", value:esc(String(list(state.growthInbox).length + list(state.googleInsights).length)) + " <small>signals</small>", happening:"Growth Inbox and Google read-only signals are collected in review.", needs:queueItems.filter(item => /growthInbox|googleInsights/.test(item.source)).length + " item(s) need review.", ready:"Reply drafts can be prepared for review only.", blocked: emailPostureLabel() + ".", notConnected:connectorBy("gmail").configured ? "" : "Gmail is not connected.", next:"Review possible replies; no email sends from here." },
         { title:"Contacts & Lists", route:"contacts", action:"Review contacts", value:esc(String(contacts.total)) + " <small>known</small>", happening:"Existing outreach, reactivation, RCAP, partner, task, and Google records are unified for display.", needs:contacts.cleanup + " contact(s) need cleanup.", ready:contacts.rcapProspects + " RCAP prospect/contact rows are available.", blocked:contacts.doNotEmail + " should not be emailed.", next:"Upload a list or clean contacts missing email/status." },
         { title:"Campaigns", route:"campaigns", action:"Review campaigns", value:esc(String(campaignStats.total)) + " <small>campaign/list rows</small>", happening:"RCAP outreach, reactivation, social posts, content campaigns, and waves are read together.", needs:campaignStats.waiting + " waiting for approval.", ready:campaignStats.ready + " ready or scheduled.", blocked:campaignStats.blocked + " paused/blocked.", notConnected:campaignStats.dryRunOnly ? "Sending is off / dry run only." : "Live gates need review.", next:"Prepare approval items; never send directly." },
         { title:"RCAP Prospects", route:"prospects", action:"Review prospects", value:esc(String(list(state.prospectCandidates).length)) + " <small>candidates</small>", happening:"Prospect Discovery and RCAP revenue workbook records feed this view.", needs:list(state.prospectCandidates).filter(item => /pending|review/i.test(String(item.status || item.review_state || "pending_review"))).length + " need review.", ready:list(state.prospectCandidates).filter(item => /approved|ready/i.test(String(item.status || item.review_state))).length + " approved/ready.", blocked:"Suppressed contacts will not receive email.", next:"Approve only clean prospects into existing outreach flows." },
@@ -28439,7 +28461,7 @@ function htmlShell() {
         <button type="button" onclick="location.hash='sources'">Open Sources</button>
         <details>
           <summary>Status</summary>
-          <p class="muted">RCAP foundation: Active · Queue task generation: Active · Suppression latch: Active · Approval engine: Active · Internal-only scoring: Active · Behavioral scoring deferred · Email open/click tracking: Off · Page tracking: Off · Saved views are filters, not actions · Open RCAP tasks: \${esc(String(tasks.filter(task => !/completed|skipped|parked/i.test(String(task.status || ""))).length))} · Saved views: \${esc(String(savedViews.length))} · \${esc(emailPostureLabel())} · Calendar writes: Off · Outreach automation: Off · External actions: Off</p>
+          <p class="muted">RCAP foundation: Active · Queue task generation: Active · Suppression latch: Active · Approval engine: Active · Internal-only scoring: Active · Behavioral scoring deferred · Email open/click tracking: Off · Page tracking: Off · Saved views are filters, not actions · Open RCAP tasks: \${esc(String(tasks.filter(task => !/completed|skipped|parked/i.test(String(task.status || ""))).length))} · Saved views: \${esc(String(savedViews.length))} · \${esc(emailPostureLabel())} · \${esc(outreachAutomationLabel())} · Calendar writes: Off · External actions: Off</p>
           <p class="muted">Deferred behavioral signals: \${esc(deferred)}.</p>
         </details>
       </div>\`;
@@ -29958,7 +29980,7 @@ function htmlShell() {
         ["RCAP Program", "Shortcut to the Record Clearing Access Program review workspace.", [["Open RCAP Program", "rcap", "primary"]]]
       ];
       const safetyRows = [
-        ["Publishing: Off", "Protected"],
+        publishingPostureRow(),
         emailPostureRow(),
         socialPostureRow(),
         ["Calendar writes: Off", "Protected"],
@@ -29966,27 +29988,27 @@ function htmlShell() {
       ];
       const moreImageGenerationStatus = state.runtime?.openAIConfigured ? "Ready" : "Needs setup";
       const moreImageGenerationSafety = state.runtime?.openAIConfigured ? "Server-side only" : "Request saved";
+      // Real connection state instead of the old slash-separated every-possible-status strings:
+      // derive from the same socialAccounts signals the Settings connector tiles use.
+      const moreAccountFor = (platform) => (state.socialAccounts || []).find((account) => account.platform === platform) || {};
+      const moreAccountConnected = (platform) => {
+        const account = moreAccountFor(platform);
+        return Boolean(account.connected || account.status === "connected" || account.hasStoredToken || account.accountName);
+      };
+      const moreGoogleConnected = moreAccountConnected("google_workspace");
+      const moreLinkedInConnected = moreAccountConnected("linkedin");
+      const moreTwitterConnected = moreAccountConnected("x") || moreAccountConnected("twitter");
       const activationSections = [
         ["Tasks & Priorities", "Ready", "Today can show priorities, tasks, blockers, decisions, and closeout notes.", "Outside task systems are not connected.", "Use Today to update work internally.", "Manual only"],
-        ["Google Calendar", "Not connected / Read-only connected", "Calendar reads can help Today understand meetings and focus blocks.", "Calendar writes are off.", "Prepare Calendar Connection.", "Read-only. No events or invites."],
-        ["Gmail / Email", "Not connected / Draft-only planned", "Email drafts can be prepared for review.", "Email sending is off.", "Prepare Email Connection.", "No messages sent."],
+        ["Google Calendar", moreGoogleConnected ? "Read-only connected" : "Not connected yet", "Calendar reads can help Today understand meetings and focus blocks.", "Calendar writes are off.", "Prepare Calendar Connection.", "Read-only. No events or invites."],
+        ["Gmail / Email", moreGoogleConnected ? "Read-only connected (drafts stay internal)" : "Not connected yet", "Email drafts can be prepared for review.", emailPostureLabel() + ".", "Prepare Email Connection.", "No messages sent."],
         ["Image Generation", moreImageGenerationStatus, "Server-side image generation can be used when configured.", "Missing setup saves an image request instead.", "Check image readiness.", moreImageGenerationSafety],
-        ["Social Accounts", "LinkedIn: Not connected / Connected / Needs setup", "LinkedIn and Twitter / X approval workflows can prepare posts internally.", "LinkedIn posting is installed but disabled until connection, approval, and the server safety switch are ready.", "Connect LinkedIn. Check LinkedIn Status. Prepare Twitter / X checklist.", "Approved posts only."],
-        ["External Action Outbox", "Draft-only", "Future live actions can be reviewed before execution.", "Outbox does not execute actions in this pass.", "Review drafts and approvals.", "Outbox does not execute."],
+        ["Social Accounts", moreLinkedInConnected ? "LinkedIn connected (posting stays off)" : "Not connected yet", "LinkedIn and Twitter / X approval workflows can prepare posts internally.", "LinkedIn posting is installed but disabled until connection, approval, and the server safety switch are ready.", "Connect LinkedIn. Check LinkedIn Status. Prepare Twitter / X checklist.", "Approved posts only."],
+        ["External Action Outbox", "Empty", "Future live actions can be reviewed before execution.", "The outbox is not built yet; nothing is listed.", "Review drafts and approvals.", "Outbox does not execute."],
         ["Safety Switches", "Protected", "Safety state is visible.", "Enable controls are not available.", "Review Safety or Open App Status.", "Live actions stay off."]
       ];
-      const outboxRows = [
-        ["Social post", "LinkedIn", "LinkedIn post prepared for approval", "Roger", "Today", "Required", "Approved posts only", "Needs approval"],
-        ["Social post", "LinkedIn", "Approved LinkedIn post waiting for final confirmation", "Roger", "Today", "Required", "Approved posts only", "Approved"],
-        ["Social post", "LinkedIn", "LinkedIn post published after final confirmation", "Roger", "Today", "Required", "Approved posts only", "Posted"],
-        ["Social post", "LinkedIn", "LinkedIn post blocked until setup is complete", "Roger", "Today", "Required", "Reason visible before retry", "Blocked"],
-        ["Social post", "Twitter / X", "Twitter / X post prepared for approval", "Roger", "Today", "Required", "Live social posting is off", "Needs approval"],
-        ["Email draft", "Partner follow-up", "Prepared email draft for review", "Roger", "Today", "Yes", "Email sending: Off", "Needs approval"],
-        ["Calendar request", "Internal schedule", "Calendar write request blocked", "Command Center", "Today", "Yes", "Calendar writes: Off", "Blocked"],
-        ["Calendar update", "Internal schedule", "Calendar update request blocked", "Command Center", "Today", "Yes", "Calendar writes: Off", "Blocked"],
-        ["Analytics sync", "Manual results", "Stats stay manual until accounts are connected", "Command Center", "Today", "Yes", "External actions: Off", "Draft"],
-        ["Image request", "Saved post", "Image request saved for review", "Roger", "Today", "Yes", "Server-side image route only", "Completed manually"]
-      ];
+      // Honest-zero: the durable outbox does not exist yet (Phase 14), so this section lists
+      // nothing instead of the fabricated sample records that used to sit here looking real.
       const socialSetupRows = [
         ["LinkedIn", "Connect LinkedIn", "Approval workflow can prepare LinkedIn posts internally.", "LinkedIn connection needs setup if required connection settings or safe account storage are missing.", "Check LinkedIn Status.", "Approved posts only."],
         ["Facebook", "Prepare Facebook"],
@@ -30015,29 +30037,21 @@ function htmlShell() {
       </article>\`;
       const socialSetupHtml = ([platform, label, ready, notReady, nextStep, safety]) => {
         if (platform === "LinkedIn") {
-          return \`<article class="more-utility-card"><h3>LinkedIn</h3><p><strong>Status:</strong> Not connected / Connected / Needs setup<br>\${esc(ready)}</p><details><summary>Connection details</summary><p><strong>Connected state:</strong> Not connected<br><strong>Ready:</strong> \${esc(ready)}<br><strong>Not ready:</strong> \${esc(notReady)}<br><strong>Next setup step:</strong> \${esc(nextStep)}<br><strong>Safety state:</strong> \${esc(safety)}</p></details><div class="more-card-actions"><button type="button" onclick="showLinkedInSetupChecklist()">Prepare LinkedIn</button><button type="button" onclick="connectLinkedIn()">Connect LinkedIn</button><button type="button" onclick="checkLinkedInStatus()">Check LinkedIn Status</button></div></article>\`;
+          const linkedInStatus = moreLinkedInConnected ? "Connected (posting stays off until approval and the server safety switch)" : "Not connected yet";
+          return \`<article class="more-utility-card"><h3>LinkedIn</h3><p><strong>Status:</strong> \${esc(linkedInStatus)}<br>\${esc(ready)}</p><details><summary>Connection details</summary><p><strong>Connected state:</strong> \${esc(moreLinkedInConnected ? "Connected" : "Not connected")}<br><strong>Ready:</strong> \${esc(ready)}<br><strong>Not ready:</strong> \${esc(notReady)}<br><strong>Next setup step:</strong> \${esc(nextStep)}<br><strong>Safety state:</strong> \${esc(safety)}</p></details><div class="more-card-actions"><button type="button" onclick="showLinkedInSetupChecklist()">Prepare LinkedIn</button><button type="button" onclick="connectLinkedIn()">Connect LinkedIn</button><button type="button" onclick="checkLinkedInStatus()">Check LinkedIn Status</button></div></article>\`;
         }
         if (platform === "Twitter / X") {
-          return \`<article class="more-utility-card"><h3>Twitter / X</h3><p><strong>Status:</strong> Not connected<br>\${esc(ready)}</p><details><summary>Connection details</summary><p><strong>Ready:</strong> \${esc(ready)}<br><strong>Not ready:</strong> \${esc(notReady)}<br><strong>Next step:</strong> \${esc(nextStep)}<br><strong>Safety:</strong> \${esc(safety)}</p></details><div class="more-card-actions">\${activationAction(label, "Twitter / X setup checklist opened. No connection starts here.")}</div></article>\`;
+          return \`<article class="more-utility-card"><h3>Twitter / X</h3><p><strong>Status:</strong> \${esc(moreTwitterConnected ? "Connected (posting stays off)" : "Not connected yet")}<br>\${esc(ready)}</p><details><summary>Connection details</summary><p><strong>Ready:</strong> \${esc(ready)}<br><strong>Not ready:</strong> \${esc(notReady)}<br><strong>Next step:</strong> \${esc(nextStep)}<br><strong>Safety:</strong> \${esc(safety)}</p></details><div class="more-card-actions">\${activationAction(label, "Twitter / X setup checklist opened. No connection starts here.")}</div></article>\`;
         }
-        return \`<article class="more-utility-card"><h3>\${esc(platform)}</h3><p><strong>Status:</strong> Not connected<br>Future capabilities: preview, approval, scheduling, posting, analytics.</p><div class="more-card-actions">\${activationAction(label, platform + " setup checklist opened. No connection starts here.")}</div></article>\`;
+        return \`<article class="more-utility-card"><h3>\${esc(platform)}</h3><p><strong>Status:</strong> Not connected yet<br>Future capabilities: preview, approval, scheduling, posting, analytics.</p><div class="more-card-actions">\${activationAction(label, platform + " setup checklist opened. No connection starts here.")}</div></article>\`;
       };
-      const outboxRowHtml = ([type, target, summary, requestedBy, createdAt, approval, notes, status]) => \`<article class="more-utility-card">
-        <h3>\${esc(type)}</h3>
-        <p><strong>Target:</strong> \${esc(target)}<br><strong>Summary:</strong> \${esc(summary)}</p>
-        <span class="more-pill">\${esc(status)}</span>
-        <details>
-          <summary>Review details</summary>
-          <p><strong>Type:</strong> \${esc(type)}<br><strong>Requested by:</strong> \${esc(requestedBy)}<br><strong>Created:</strong> \${esc(createdAt)}<br><strong>Approval:</strong> \${esc(approval)}<br><strong>Safety:</strong> \${esc(notes)}</p>
-        </details>
-      </article>\`;
       return \`<section id="more" class="\${pageClass("more")} more-workspace">
         <section class="more-hero">
           <div>
             <div class="eyebrow">Utility center</div>
             <h1>More</h1>
             <p>Settings, recovery, support tools, and focused work views.</p>
-            <div class="more-pills"><span class="more-pill">Publishing is off</span><span class="more-pill">Protected</span></div>
+            <div class="more-pills"><span class="more-pill">\${esc(publishingPill())}</span><span class="more-pill">\${esc(publishingPostureRow()[1])}</span></div>
           </div>
           <div class="more-actions">
             <button class="primary" type="button" onclick="location.hash='app-status'">Open App Status</button>
@@ -30058,7 +30072,7 @@ function htmlShell() {
           <div class="more-card-actions">
             \${activationAction("Prepare Calendar Connection", "Calendar readiness checklist opened. Calendar writes are off.", "primary")}
             \${activationAction("Check Calendar Readiness", "Calendar readiness checked internally. No calendar service was contacted.")}
-            \${activationAction("Prepare Email Connection", "Email readiness checklist opened. Email sending is off.")}
+            \${activationAction("Prepare Email Connection", "Email readiness checklist opened. This checklist never sends email.")}
             \${activationAction("Check Email Readiness", "Email readiness checked internally. No email service was contacted.")}
           </div>
         </section>
@@ -30074,10 +30088,8 @@ function htmlShell() {
         \${cockpitEmailDraftWorkflowHtml()}
 
         <section class="more-card">
-          <div class="more-card-head"><div><h2>External Action Outbox</h2><small>Every future live action must appear here before execution.</small></div><span class="more-pill">Draft-only</span></div>
-          <p class="muted">Outbox does not execute actions in this pass.</p>
-          <div class="more-pills"><span class="more-pill">Draft</span><span class="more-pill">Needs approval</span><span class="more-pill">Approved</span><span class="more-pill">Blocked</span><span class="more-pill">Completed manually</span></div>
-          <div class="more-utility-grid">\${outboxRows.map(outboxRowHtml).join("")}</div>
+          <div class="more-card-head"><div><h2>External Action Outbox</h2><small>Every future live action must appear here before execution.</small></div><span class="more-pill">Empty</span></div>
+          <p class="muted">Nothing is waiting. The outbox is not built yet; when it exists, every future live action will be listed here for review before execution. Nothing executes from this page.</p>
         </section>
 
         <section class="more-card">
