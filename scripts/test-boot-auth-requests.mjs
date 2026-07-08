@@ -112,7 +112,11 @@ try {
 }
 
 const loadBlock = source.match(/async function load\(\) \{[\s\S]*?Promise\.all\(\[[\s\S]*?\]\)\.then\(results => \{[\s\S]*?\n    \}/)?.[0] || "";
-assert(loadBlock.includes('state = hydrateStatePayload(await api("/api/boot-state"'), "Initial boot fetch should hydrate through shared helper.");
+// The boot fetch goes through fetchBootStateWithRetry (8s try, one 20s retry) — which must
+// itself call the shared api() helper — and still hydrates through hydrateStatePayload.
+assert(loadBlock.includes('state = hydrateStatePayload(await fetchBootStateWithRetry(), "boot-state-fetch")'), "Initial boot fetch should hydrate through shared helper.");
+assert(source.includes('return await api("/api/boot-state", { timeoutMs: 8000 })'), "Boot retry helper should call the shared api helper first at 8s.");
+assert(source.includes('return api("/api/boot-state", { timeoutMs: 20000 })'), "Boot retry helper should retry once at 20s.");
 assert(source.includes('const fullPayload = await api("/api/state", { timeoutMs: 20000 })'), "Full state should lazy-load after first render.");
 assert(loadBlock.includes('optionalBootApi("/api/health/supabase"'), "Startup health fetch should be inventoried and optional.");
 assert(loadBlock.includes('optionalBootApi("/api/backups"'), "Startup backups fetch should be inventoried and optional.");
