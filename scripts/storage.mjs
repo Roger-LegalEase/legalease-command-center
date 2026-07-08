@@ -473,7 +473,7 @@ export class JsonStore {
   async generatePosts(posts) {
     const state = await this.readState();
     state.posts = [...(state.posts || []), ...posts];
-    await this.writeState(state);
+    await this.writeCollections({ posts: state.posts });
     return state;
   }
 
@@ -482,42 +482,42 @@ export class JsonStore {
     state.posts = (state.posts || []).map((post) =>
       post.id === id ? { ...post, ...patch, updatedAt: new Date().toISOString() } : post
     );
-    await this.writeState(state);
+    await this.writeCollections({ posts: state.posts });
     return state;
   }
 
   async addLibraryItem(item) {
     const state = await this.readState();
     state.library = [item, ...(state.library || [])];
-    await this.writeState(state);
+    await this.writeCollections({ library: state.library });
     return state;
   }
 
   async savePostImage(image) {
     const state = await this.readState();
     state.postImages = [image, ...(state.postImages || []).filter((item) => item.id !== image.id)];
-    await this.writeState(state);
+    await this.writeCollections({ postImages: state.postImages });
     return state;
   }
 
   async addBrandAsset(asset) {
     const state = await this.readState();
     state.brandAssets = [asset, ...(state.brandAssets || [])];
-    await this.writeState(state);
+    await this.writeCollections({ brandAssets: state.brandAssets });
     return state;
   }
 
   async addBrandRule(rule) {
     const state = await this.readState();
     state.brandRules = [rule, ...(state.brandRules || [])];
-    await this.writeState(state);
+    await this.writeCollections({ brandRules: state.brandRules });
     return state;
   }
 
   async upsertGenerationProfile(profile) {
     const state = await this.readState();
     state.generationProfiles = [profile, ...(state.generationProfiles || []).filter((item) => item.id !== profile.id)];
-    await this.writeState(state);
+    await this.writeCollections({ generationProfiles: state.generationProfiles });
     return state;
   }
 
@@ -539,14 +539,14 @@ export class JsonStore {
   async addPublishEvent(event) {
     const state = await this.readState();
     state.publishEvents = [event, ...(state.publishEvents || [])].slice(0, 500);
-    await this.writeState(state);
+    await this.writeCollections({ publishEvents: state.publishEvents });
     return state;
   }
 
   async updateSettings(patch) {
     const state = await this.readState();
     state.settings = { ...(state.settings || {}), ...patch };
-    await this.writeState(state);
+    await this.writeCollections({ settings: state.settings });
     return state;
   }
 }

@@ -2160,18 +2160,20 @@ async function callAnthropic({ system = "", prompt = "", maxTokens = 1024 } = {}
 }
 
 async function importContentBankIdeas(payload = {}) {
-  const state = await store.readState();
-  const imported = parseContentBankIdeas(payload.text || payload.input || JSON.stringify(payload.ideas || []));
-  const existing = state.contentBank || [];
-  const existingKeys = new Set(existing.map((item) => `${String(item.title).toLowerCase()}|${String(item.rawIdea).toLowerCase()}`));
-  const deduped = imported.filter((item) => !existingKeys.has(`${String(item.title).toLowerCase()}|${String(item.rawIdea).toLowerCase()}`));
-  const nextState = analyzeOperations({
-    ...state,
-    contentBank: [...existing, ...deduped],
-    generationBatches: state.generationBatches || []
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const imported = parseContentBankIdeas(payload.text || payload.input || JSON.stringify(payload.ideas || []));
+    const existing = state.contentBank || [];
+    const existingKeys = new Set(existing.map((item) => `${String(item.title).toLowerCase()}|${String(item.rawIdea).toLowerCase()}`));
+    const deduped = imported.filter((item) => !existingKeys.has(`${String(item.title).toLowerCase()}|${String(item.rawIdea).toLowerCase()}`));
+    const nextState = analyzeOperations({
+      ...state,
+      contentBank: [...existing, ...deduped],
+      generationBatches: state.generationBatches || []
+    });
+    await writeChangedCollections(state, nextState);
+    return { state: nextState, imported: deduped.length, total: nextState.contentBank.length, ideas: deduped };
   });
-  await store.writeState(nextState);
-  return { state: nextState, imported: deduped.length, total: nextState.contentBank.length, ideas: deduped };
 }
 
 async function generateContentBankDrafts(payload = {}) {
@@ -2233,44 +2235,51 @@ async function generateContentBankDrafts(payload = {}) {
       ...(state.generationBatches || [])
     ]
   });
-  await store.writeState(nextState);
+  // Scoped but NOT serialized: the AI drafting loop above holds network calls, and the
+  // mutation lock must never wait on a model round-trip. The diff-scoped write removes the
+  // full-state clobber; the read happened before the AI calls, matching prior behavior.
+  await writeChangedCollections(state, nextState);
   return { state: nextState, generated: posts.length, posts, mode: requestedMode, fallbackCount: fallbackEvents.length, fallbackEvents };
 }
 
 async function sendContentBankIdeasToQueue(payload = {}) {
-  const state = await store.readState();
-  const selectedIds = new Set(Array.isArray(payload.ids) ? payload.ids : []);
-  if (!selectedIds.size) throw new Error("Select at least one idea.");
-  const posts = (state.contentBank || [])
-    .filter((idea) => selectedIds.has(idea.id))
-    .map((idea) => draftPostFromIdea(idea, (idea.platforms || ["linkedin"])[0]));
-  const now = new Date().toISOString();
-  const nextState = analyzeOperations({
-    ...state,
-    posts: [...(state.posts || []), ...posts],
-    contentBank: (state.contentBank || []).map((idea) =>
-      selectedIds.has(idea.id) ? { ...idea, status: "queued", updatedAt: now, nextBestAction: "Review draft in Queue" } : idea
-    )
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const selectedIds = new Set(Array.isArray(payload.ids) ? payload.ids : []);
+    if (!selectedIds.size) throw new Error("Select at least one idea.");
+    const posts = (state.contentBank || [])
+      .filter((idea) => selectedIds.has(idea.id))
+      .map((idea) => draftPostFromIdea(idea, (idea.platforms || ["linkedin"])[0]));
+    const now = new Date().toISOString();
+    const nextState = analyzeOperations({
+      ...state,
+      posts: [...(state.posts || []), ...posts],
+      contentBank: (state.contentBank || []).map((idea) =>
+        selectedIds.has(idea.id) ? { ...idea, status: "queued", updatedAt: now, nextBestAction: "Review draft in Queue" } : idea
+      )
+    });
+    await writeChangedCollections(state, nextState);
+    return { state: nextState, queued: posts.length, posts };
   });
-  await store.writeState(nextState);
-  return { state: nextState, queued: posts.length, posts };
 }
 
 async function archiveContentBankIdeas(payload = {}) {
-  const state = await store.readState();
-  const selectedIds = new Set(Array.isArray(payload.ids) ? payload.ids : []);
-  if (!selectedIds.size) throw new Error("Select at least one idea.");
-  const now = new Date().toISOString();
-  const nextState = analyzeOperations({
-    ...state,
-    contentBank: (state.contentBank || []).map((idea) =>
-      selectedIds.has(idea.id)
-        ? { ...idea, status: "archived", updatedAt: now, nextBestAction: "Archived" }
-        : idea
-    )
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const selectedIds = new Set(Array.isArray(payload.ids) ? payload.ids : []);
+    if (!selectedIds.size) throw new Error("Select at least one idea.");
+    const now = new Date().toISOString();
+    const nextState = analyzeOperations({
+      ...state,
+      contentBank: (state.contentBank || []).map((idea) =>
+        selectedIds.has(idea.id)
+          ? { ...idea, status: "archived", updatedAt: now, nextBestAction: "Archived" }
+          : idea
+      )
+    });
+    await writeChangedCollections(state, nextState);
+    return { state: nextState, archived: selectedIds.size };
   });
-  await store.writeState(nextState);
-  return { state: nextState, archived: selectedIds.size };
 }
 
 function growthInboxTriagePrompt(item = {}) {
@@ -2457,7 +2466,7 @@ async function rebuildTasksState() {
     const merged = mergeAutomaticTasks(analyzed, automaticTasks);
     const event = taskEvent("tasks_rebuilt", { id: "automatic", title: `${automaticTasks.length} automatic task(s) evaluated`, sourceType: "tasks" }, { automaticCount: automaticTasks.length });
     const nextState = analyzeOperations(appendTaskEvent(merged, event));
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, created: Math.max(0, (nextState.tasks || []).length - (state.tasks || []).length), automaticCount: automaticTasks.length, message: "Tasks rebuilt." };
   });
 }
@@ -2471,7 +2480,7 @@ async function updateTaskRecord(id = "", action = "in_progress", patch = {}) {
     if (internalActions.has(action)) {
       const result = updateTaskInState(state, id, action, patch || {}, { actor: "owner_token" });
       const nextState = analyzeOperations(result.state);
-      await store.writeState(nextState);
+      await writeChangedCollections(state, nextState);
       const messages = {
         in_progress: "Task marked in progress.",
         waiting: "Task marked waiting.",
@@ -2533,7 +2542,7 @@ async function updateTaskRecord(id = "", action = "in_progress", patch = {}) {
     }
     const event = taskEvent(`task_${action.replaceAll("-", "_")}`, updated, { action });
     next = analyzeOperations(appendTaskEvent(next, event));
-    await store.writeState(next);
+    await writeChangedCollections(state, next);
     return { state: next, task: updated, message: action === "done" ? "Task marked done." : action === "dismiss" ? "Task dismissed." : "Task updated." };
   });
 }
@@ -2546,7 +2555,7 @@ async function runLeeChat(payload = {}) {
       now: new Date().toISOString()
     });
     const nextState = analyzeOperations(result.state);
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { ...result, state: nextState };
   });
 }
@@ -2560,7 +2569,7 @@ async function createLeeThreadRecord(payload = {}) {
       leeThreads: [thread, ...(state.leeThreads || [])].slice(0, 100),
       leeMemory: { ...(state.leeMemory || {}), lastThreadId: thread.id, updatedAt: thread.updatedAt }
     };
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, thread, message: "Le-E thread created." };
   });
 }
@@ -2569,7 +2578,7 @@ async function rebuildLeeIndex() {
   return serializeStateMutation(async () => {
     const state = await store.readState();
     const nextState = rebuildLeeIndexState(state, { now: new Date().toISOString() });
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return {
       state: nextState,
       sources: nextState.leeKnowledgeSources || [],
@@ -2586,7 +2595,7 @@ async function updateLeeAction(id = "", action = "approve", payload = {}) {
       ? applyLeeActionProposal(state, id, state, { now: new Date().toISOString() })
       : updateLeeActionProposal(state, id, action, { actor: "Roger", reason: payload?.reason || "", now: new Date().toISOString() });
     const nextState = analyzeOperations(result.state);
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { ...result, state: nextState };
   });
 }
@@ -2602,7 +2611,7 @@ async function createGrowthInboxItem(payload = {}) {
     if (duplicate && !["ignored", "converted"].includes(String(duplicate.status || "").toLowerCase())) {
       const event = growthInboxEvent("growth_inbox_duplicate_blocked", duplicate, { attemptedId: item.id, fingerprint: item.fingerprint }, new Date().toISOString());
       const nextState = analyzeOperations(appendGrowthInboxEvent(state, event));
-      await store.writeState(nextState);
+      await writeChangedCollections(state, nextState);
       return { state: nextState, item: duplicate, duplicate: true, message: "Duplicate signal already exists in Growth Inbox." };
     }
     const event = growthInboxEvent("growth_inbox_item_created", item, { sourceType: item.sourceType });
@@ -2610,7 +2619,7 @@ async function createGrowthInboxItem(payload = {}) {
       ...state,
       growthInbox: [item, ...(state.growthInbox || [])]
     }, event));
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, item, message: "Growth Inbox item added." };
   });
 }
@@ -2632,7 +2641,7 @@ async function triageNewGrowthInboxItems() {
     });
     const event = growthInboxEvent("growth_inbox_batch_triaged", { id: "batch", summary: `${count} Growth Inbox item(s) triaged`, riskLevel: count ? "medium" : "low" }, { count }, now);
     const nextState = analyzeOperations(appendGrowthInboxEvent({ ...state, growthInbox: items }, event));
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, count, message: count ? `${count} Growth Inbox item(s) triaged.` : "No new Growth Inbox items to triage." };
   });
 }
@@ -2665,7 +2674,7 @@ async function triageGrowthInboxRecord(id = "", options = {}) {
       ...state,
       growthInbox: (state.growthInbox || []).map((entry) => entry.id === id ? triaged : entry)
     }, event));
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, item: triaged, aiError, message: aiError ? "Triaged with rule-assisted fallback." : "Growth Inbox item triaged." };
   });
 }
@@ -2682,53 +2691,57 @@ async function convertGrowthInboxRecord(id = "", destination = "task", options =
     };
     next = upsertConvertedGrowthRecord(next, result.convertedRecord);
     next = analyzeOperations(appendGrowthInboxEvent(next, result.event));
-    await store.writeState(next);
+    await writeChangedCollections(state, next);
     return { state: next, item: result.item, convertedRecord: result.convertedRecord, message: result.convertedRecord ? `Converted to ${result.convertedRecord.collection}.` : "Growth Inbox item ignored." };
   });
 }
 
 async function rebuildPriorityState() {
-  const state = await store.readState();
-  const nextState = analyzeOperations(state);
-  await store.writeState(nextState);
-  return { state: nextState, message: "COO priorities rebuilt." };
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const nextState = analyzeOperations(state);
+    await writeChangedCollections(state, nextState);
+    return { state: nextState, message: "COO priorities rebuilt." };
+  });
 }
 
 async function updateApprovalItem(id = "", action = "", patch = {}) {
-  const state = await store.readState();
-  const approval = (state.approvalQueue || analyzeOperations(state).approvalQueue || []).find((item) => item.id === id);
-  if (!approval) throw new Error("Approval item not found.");
-  let next = { ...state };
-  if (approval.type === "post") {
-    const currentPost = (state.posts || []).find((post) => post.id === approval.sourceId) || {};
-    const previousApprovalState = {
-      status: currentPost.status || "",
-      approvalStatus: currentPost.approvalStatus || "",
-      copyReviewed: Boolean(currentPost.copyReviewed),
-      publishErrorSummary: currentPost.publishErrorSummary || "",
-      updatedAt: currentPost.updatedAt || ""
-    };
-    const statusPatch = action === "approve"
-      ? { status: "approved", copyReviewed: true, copyReviewedAt: new Date().toISOString(), approvalStatus: "approved" }
-      : action === "block"
-        ? { status: "blocked_channel_not_connected", publishErrorSummary: patch.reason || "Blocked by operator.", approvalStatus: "blocked" }
-      : action === "send-to-queue"
-          ? { status: "needs_review", approvalStatus: "needs_review", nextBestAction: "Review in Queue" }
-          : { ...patch, approvalStatus: "edited" };
-    next.posts = (state.posts || []).map((post) => post.id === approval.sourceId ? {
-      ...post,
-      ...statusPatch,
-      previousApprovalState,
-      approvalHistory: [
-        { action, previousStatus: previousApprovalState.status, at: new Date().toISOString() },
-        ...(post.approvalHistory || [])
-      ].slice(0, 20),
-      updatedAt: new Date().toISOString()
-    } : post);
-  }
-  next = analyzeOperations(next);
-  await store.writeState(next);
-  return { state: next, message: action === "approve" ? "Approved." : action === "block" ? "Blocked." : "Updated." };
+  return serializeStateMutation(async () => {
+    const state = await store.readState();
+    const approval = (state.approvalQueue || analyzeOperations(state).approvalQueue || []).find((item) => item.id === id);
+    if (!approval) throw new Error("Approval item not found.");
+    let next = { ...state };
+    if (approval.type === "post") {
+      const currentPost = (state.posts || []).find((post) => post.id === approval.sourceId) || {};
+      const previousApprovalState = {
+        status: currentPost.status || "",
+        approvalStatus: currentPost.approvalStatus || "",
+        copyReviewed: Boolean(currentPost.copyReviewed),
+        publishErrorSummary: currentPost.publishErrorSummary || "",
+        updatedAt: currentPost.updatedAt || ""
+      };
+      const statusPatch = action === "approve"
+        ? { status: "approved", copyReviewed: true, copyReviewedAt: new Date().toISOString(), approvalStatus: "approved" }
+        : action === "block"
+          ? { status: "blocked_channel_not_connected", publishErrorSummary: patch.reason || "Blocked by operator.", approvalStatus: "blocked" }
+        : action === "send-to-queue"
+            ? { status: "needs_review", approvalStatus: "needs_review", nextBestAction: "Review in Queue" }
+            : { ...patch, approvalStatus: "edited" };
+      next.posts = (state.posts || []).map((post) => post.id === approval.sourceId ? {
+        ...post,
+        ...statusPatch,
+        previousApprovalState,
+        approvalHistory: [
+          { action, previousStatus: previousApprovalState.status, at: new Date().toISOString() },
+          ...(post.approvalHistory || [])
+        ].slice(0, 20),
+        updatedAt: new Date().toISOString()
+      } : post);
+    }
+    next = analyzeOperations(next);
+    await writeChangedCollections(state, next);
+    return { state: next, message: action === "approve" ? "Approved." : action === "block" ? "Blocked." : "Updated." };
+  });
 }
 
 async function updateApprovalItems(ids = [], action = "", patch = {}) {
@@ -2797,7 +2810,7 @@ async function updateApprovalItems(ids = [], action = "", patch = {}) {
         ...(state.activityEvents || [])
       ].slice(0, 500)
     });
-    await store.writeState(next);
+    await writeChangedCollections(state, next);
     return { state: next, updated: approvals.length, message: `${approvals.length} approval item(s) updated.` };
   });
 }
@@ -2875,7 +2888,7 @@ async function regenerateAIDraftForPost(postId = "") {
         ...(state.activityEvents || [])
       ].slice(0, 500)
     });
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return {
       state: nextState,
       post: updatedPost,
@@ -3056,7 +3069,7 @@ async function uploadPostFinalPngToStorage(postId = "") {
         createdAt: now
       }, ...(state.activityEvents || [])].slice(0, 500)
     });
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return {
       state: nextState,
       post: updatedPost,
@@ -6645,7 +6658,7 @@ async function markLinkedInPublishBlocked(state = {}, post = {}, reason = "") {
       ? { ...item, linkedinOutboxStatus:"Blocked", linkedinPublishBlockedReason:reason, updatedAt:new Date().toISOString() }
       : item);
   }
-  await store.writeState(nextState);
+  await serializeStateMutation(() => writeChangedCollections(state, nextState));
   return nextState;
 }
 
@@ -6699,7 +6712,10 @@ async function publishLinkedInApprovedPost(input = {}) {
       afterValue:{ status:"posted", target:"LinkedIn", approval:"final confirmation" }
     }, ...(state.auditHistory || [])].slice(0, 1000)
   };
-  await store.writeState(nextState);
+  // The LinkedIn publish network call happened above (gated; mock in tests); only the state
+  // write is serialized, diff-scoped to posts + externalActionOutbox + activityEvents +
+  // auditHistory.
+  await serializeStateMutation(() => writeChangedCollections(state, nextState));
   return { ok:true, state:nextState, status:"Posted", result:publishResult, message:"Posted to LinkedIn." };
 }
 
@@ -7938,6 +7954,26 @@ function serializeStateMutation(operation) {
   return next;
 }
 
+// Scoped-write conversion helper (Slice 4 tier 2). Every mutation in this codebase transforms
+// state immutably (spread copies), so a collection changed exactly when its top-level reference
+// changed. Writing only those keys turns a full-state write into a scoped one with zero
+// hand-maintained key lists. ONLY safe for immutable transforms: an in-place mutation keeps the
+// reference and would be silently dropped, so call sites are converted only after verifying the
+// transform is spread-style. Falls back to a full-state write if nothing diffs but the objects
+// differ (belt for an unnoticed in-place mutation upstream).
+async function writeChangedCollections(before = {}, after = {}) {
+  const patch = {};
+  for (const key of Object.keys(after)) {
+    if (after[key] !== before[key]) patch[key] = after[key];
+  }
+  if (Object.keys(patch).length === 0) {
+    if (after !== before) await store.writeState(after);
+    return after;
+  }
+  await store.writeCollections(patch);
+  return after;
+}
+
 async function readJson(request) {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
@@ -7964,7 +8000,7 @@ async function runAutonomyCycle({ executeAutomatic = true } = {}) {
     const operated = analyzeOperations(current);
     const result = runAutonomyCycleOnState(operated, { executeAutomatic });
     const nextState = analyzeOperations(result.state);
-    await store.writeState(nextState);
+    await writeChangedCollections(current, nextState);
     return { ...result, state: nextState };
   });
 }
@@ -8015,7 +8051,7 @@ async function updateAutonomyAction(id = "", action = "", patch = {}) {
       soc2AuditLogs: [audit, ...(state.soc2AuditLogs || [])].slice(0, 1000),
       activityEvents: [activity, ...(state.activityEvents || [])].slice(0, 500)
     };
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, item: updated, message: `Autonomy action ${status}.` };
   });
 }
@@ -11831,7 +11867,7 @@ async function seedSixMonthPlan({ force = false } = {}) {
       sixMonthSeedDataLoadedAt: totalAdded ? seededAt : state.settings?.sixMonthSeedDataLoadedAt || "",
       sixMonthSeedDataSummary: summary
     };
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, summary, totalAdded, message: totalAdded ? `Loaded ${totalAdded} LegalEase six-month seed records.` : "Seed data already present. No records added." };
   });
 }
@@ -12484,7 +12520,7 @@ async function importAutomationEvents(inputEvents = [], connector = "manual_impo
       }, ...(nextState.auditHistory || [])].slice(0, 1000);
       nextState = analyzeOperations(nextState);
     }
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, syncRun, importedCount: result.importedCount, suggestedCount: result.suggestedCount, message: `${result.importedCount} automation events imported; ${result.suggestedCount} suggestions created.` };
   });
 }
@@ -12501,7 +12537,7 @@ async function syncGmailReadOnly() {
       const state = await store.readState();
       const now = new Date().toISOString();
       const nextState = { ...state, connectorStatus: connectorStatusPatch(state, "gmail", { configured:false, enabled:false, lastSyncAt:now, lastSyncStatus:"missing credentials", lastError:"Connect Google with read-only OAuth, or set GMAIL_ACCESS_TOKEN, GOOGLE_GMAIL_ACCESS_TOKEN, or GOOGLE_ACCESS_TOKEN server-side.", recordsImported:0, recordsSuggested:0 }) };
-      await store.writeState(nextState);
+      await writeChangedCollections(state, nextState);
       return { state: nextState, importedCount:0, suggestedCount:0, failedClosed:true, message:"Gmail sync failed closed: connect Google or add a server-side Google access token." };
     });
   }
@@ -12517,7 +12553,7 @@ async function syncCalendarReadOnly() {
       const state = await store.readState();
       const now = new Date().toISOString();
       const nextState = { ...state, connectorStatus: connectorStatusPatch(state, "calendar", { configured:false, enabled:false, lastSyncAt:now, lastSyncStatus:"missing credentials", lastError:"Connect Google with read-only OAuth, or set GOOGLE_CALENDAR_ACCESS_TOKEN, CALENDAR_ACCESS_TOKEN, or GOOGLE_ACCESS_TOKEN server-side.", recordsImported:0, recordsSuggested:0 }) };
-      await store.writeState(nextState);
+      await writeChangedCollections(state, nextState);
       return { state: nextState, importedCount:0, suggestedCount:0, failedClosed:true, message:"Calendar sync failed closed: connect Google or add a server-side Google access token." };
     });
   }
@@ -12578,7 +12614,9 @@ async function runGoogleReadOnlyScan(input = {}) {
       }
     }
     const insights = googleInsightsFromEvents(events, { now }).map((item) => ({ ...item, scannedAt: now }));
-    let nextState = mergeGoogleInsights(await store.readState(), insights, { now });
+    // Diff base is this second read (the state the merge starts from), not startedState.
+    const preWriteState = await store.readState();
+    let nextState = mergeGoogleInsights(preWriteState, insights, { now });
     nextState = {
       ...nextState,
       connectorStatus: ["gmail", "calendar"].reduce((items, connector) => connectorStatusPatch({ ...nextState, connectorStatus: items }, connector, {
@@ -12602,7 +12640,7 @@ async function runGoogleReadOnlyScan(input = {}) {
         createdAt:now
       }, ...(nextState.activityEvents || [])].slice(0, 500)
     };
-    await store.writeState(nextState);
+    await writeChangedCollections(preWriteState, nextState);
     return {
       state: nextState,
       importedEventCount: events.length,
@@ -12647,7 +12685,7 @@ async function updateGoogleInsightAction(insightId = "", action = "", input = {}
       throw new Error("Unsupported Google insight action.");
     }
     nextState = analyzeOperations(nextState);
-    await store.writeState(nextState);
+    await writeChangedCollections(currentState, nextState);
     return { state: nextState, message };
   });
 }
@@ -12868,7 +12906,7 @@ async function disconnectGoogleWorkspace() {
         createdAt: now
       }, ...(state.activityEvents || [])].slice(0, 500)
     });
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, message: "Google Workspace disconnected. Stored tokens removed." };
   });
 }
@@ -13101,7 +13139,7 @@ async function approveAutomationSuggestion(id = "", editedPatch = null) {
     let nextState = applyAutomationSuggestionToState(state, mergedSuggestion);
     nextState.automationSuggestions = (nextState.automationSuggestions || state.automationSuggestions || []).map((item) => item.id === id ? { ...mergedSuggestion, status:"applied", appliedAt:now } : item);
     nextState.automationEvents = (nextState.automationEvents || []).map((event) => event.id === suggestion.eventId ? { ...event, status:"approved", updatedAt:now } : event);
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, suggestion: { ...mergedSuggestion, status:"applied", appliedAt:now }, message: "Automation suggestion applied." };
   });
 }
@@ -13115,7 +13153,7 @@ async function ignoreAutomationSuggestion(id = "") {
       automationSuggestions: (state.automationSuggestions || []).map((item) => item.id === id ? { ...item, status:"ignored", updatedAt:now } : item),
       activityEvents: [{ id:`activity-automation-ignored-${crypto.randomUUID().slice(0, 8)}`, eventType:"Automation ignored", title:`Automation ignored: ${id}`, relatedObjectType:"automation", relatedObjectId:id, createdAt:now }, ...(state.activityEvents || [])].slice(0, 500)
     };
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, message: "Automation suggestion ignored." };
   });
 }
@@ -13128,7 +13166,7 @@ async function editAutomationSuggestion(id = "", proposedChanges = {}) {
       ...state,
       automationSuggestions: (state.automationSuggestions || []).map((item) => item.id === id ? { ...item, proposedChanges: { ...(item.proposedChanges || {}), ...(proposedChanges || {}) }, status:"edited", updatedAt:now } : item)
     };
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, message: "Automation suggestion edited." };
   });
 }
@@ -13498,7 +13536,7 @@ async function upsertGrowthItem(collection, input = {}) {
       activityEvents: [activity, ...(state.activityEvents || [])].slice(0, 500),
       soc2AuditLogs: auditEntry ? [auditEntry, ...(state.soc2AuditLogs || [])].slice(0, 1000) : (state.soc2AuditLogs || [])
     };
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, item, tasks: autoTasks, activity, message: `${titleForGrowthItem(collection, item)} saved.` };
   });
 }
@@ -13657,7 +13695,7 @@ async function savePartnerProgramArtifact(programId = "", artifactType = "propos
       events: [event, ...(state.events || [])].slice(0, 1000),
       activityEvents: [activity, ...(state.activityEvents || [])].slice(0, 500)
     });
-    await store.writeState(next);
+    await writeChangedCollections(state, next);
     return { state: next, program: updatedProgram, artifact: artifactRecord, tasks, files, message: `${artifactRecord.title} generated for review.` };
   });
 }
@@ -13688,7 +13726,7 @@ async function markPartnerProgramProposalSent(programId = "") {
       events: [event, ...(state.events || [])].slice(0, 1000),
       activityEvents: [{ id:event.id.replace(/^event-/, "activity-"), eventType:event.eventType, title:event.title, relatedObjectType:"partnerPrograms", relatedObjectId:program.id, createdAt:now }, ...(state.activityEvents || [])].slice(0, 500)
     });
-    await store.writeState(next);
+    await writeChangedCollections(state, next);
     return { state: next, program, task, message: "Proposal marked sent. Follow-up task created." };
   });
 }
@@ -13712,7 +13750,7 @@ async function verifyPartnerProgramDashboard(programId = "") {
       events: [event, ...(state.events || [])].slice(0, 1000),
       activityEvents: [{ id:event.id.replace(/^event-/, "activity-"), eventType:event.eventType, title:event.title, relatedObjectType:"partnerPrograms", relatedObjectId:program.id, createdAt:now }, ...(state.activityEvents || [])].slice(0, 500)
     });
-    await store.writeState(next);
+    await writeChangedCollections(state, next);
     return { state: next, program, bridge, message: bridge.productionReadinessVerified ? "Partner dashboard readiness verified." : "Partner dashboard readiness has blockers." };
   });
 }
@@ -14089,7 +14127,7 @@ async function exportSoc2MarkdownSnapshot() {
       ...state,
       soc2AuditLogs: [auditEntry, ...(state.soc2AuditLogs || [])].slice(0, 1000)
     };
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, markdown, snapshot, filename, relativePath, generatedAt: now };
   });
 }
@@ -14168,7 +14206,7 @@ async function reviewSoc2Evidence(id = "", input = {}) {
       soc2Evidence: [item, ...evidence.filter((entry) => entry.id !== id)],
       soc2AuditLogs: [...auditEntries, ...(state.soc2AuditLogs || [])].slice(0, 1000)
     };
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, item, auditEntries, message: "Evidence review updated." };
   });
 }
@@ -14272,7 +14310,7 @@ async function generateCampaignKit(campaignId = "") {
       campaigns: (state.campaigns || []).map((item) => item.id === campaign.id ? { ...item, latestCampaignKitPath: relativeDir, latestCampaignKitAt: metadata.generatedAt } : item),
       activityEvents: [{ id: `activity-campaign-kit-${crypto.randomUUID().slice(0, 8)}`, eventType: "Campaign kit generated", title: campaign.campaignName, relatedObjectType: "campaign", relatedObjectId: campaign.id, createdAt: metadata.generatedAt }, ...(state.activityEvents || [])].slice(0, 500)
     };
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, kit, metadata, message: "Campaign kit generated." };
   });
 }
@@ -14363,7 +14401,7 @@ async function exportGrowthReport(reportType = "weekly_internal") {
       reports: [report, ...(state.reports || [])],
       activityEvents: [{ id: `activity-report-${crypto.randomUUID().slice(0, 8)}`, eventType: "Report exported", title: report.reportTitle, relatedObjectType: "report", relatedObjectId: report.id, createdAt: now }, ...(state.activityEvents || [])].slice(0, 500)
     };
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     return { state: nextState, report, message: "Report exported." };
   });
 }
@@ -14653,7 +14691,7 @@ async function exportWeeklyEvidencePack(options = {}) {
       }, ...(state.events || [])].slice(0, 1000),
       activityEvents: [{ id: `activity-report-${crypto.randomUUID().slice(0, 8)}`, eventType: activityTitle, title: "Weekly Evidence Pack", relatedObjectType: "report", relatedObjectId: report.id, createdAt: now }, ...(state.activityEvents || [])].slice(0, 500)
     });
-    await store.writeState(nextState);
+    await writeChangedCollections(state, nextState);
     const message = action === "draft"
       ? "Weekly evidence pack draft generated."
       : action === "save_data_room"
@@ -34194,15 +34232,18 @@ async function handleRequest(request, response) {
         if (!Number.isFinite(parsed) || parsed < 0) throw new Error("Runway inputs must be empty or non-negative numbers.");
         return Math.round(parsed * 100) / 100;
       };
-      const currentState = await store.readState();
-      const runwayInputs = {
-        currentCashBalance: normalizeMoneyInput(input.currentCashBalance),
-        monthlyBurn: normalizeMoneyInput(input.monthlyBurn),
-        updatedAt: new Date().toISOString(),
-        updatedBy: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
-      };
-      const nextState = { ...currentState, runwayInputs };
-      await store.writeState(nextState);
+      const { runwayInputs, nextState } = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const runwayInputs = {
+          currentCashBalance: normalizeMoneyInput(input.currentCashBalance),
+          monthlyBurn: normalizeMoneyInput(input.monthlyBurn),
+          updatedAt: new Date().toISOString(),
+          updatedBy: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
+        };
+        const nextState = { ...currentState, runwayInputs };
+        await writeChangedCollections(currentState, nextState);
+        return { runwayInputs, nextState };
+      });
       sendJson(response, { message:"Runway inputs saved.", runwayInputs, state:withPublicChannelSetup(nextState) });
     } catch (error) {
       sendJson(response, { error:error.message || "Could not save runway inputs." }, 400);
@@ -34219,9 +34260,12 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/daily-run/quick-capture" && request.method === "POST") {
     try {
       const input = await readJson(request);
-      const currentState = await store.readState();
-      const result = createDailyRunQuickCapture(currentState, input, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = createDailyRunQuickCapture(currentState, input, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: result.message,
         item: result.item,
@@ -34239,10 +34283,13 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/daily-run/start" && request.method === "POST") {
     try {
       const body = await readJson(request);
-      const currentState = await store.readState();
-      const result = body.fresh ? startFreshDailyRunSession(dailyRunEngineState(currentState)) : createDailyRunSession(dailyRunEngineState(currentState));
-      const persistedState = { ...currentState, dailyRunSessions: result.state.dailyRunSessions };
-      await store.writeState(persistedState);
+      const { result, persistedState } = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = body.fresh ? startFreshDailyRunSession(dailyRunEngineState(currentState)) : createDailyRunSession(dailyRunEngineState(currentState));
+        const persistedState = { ...currentState, dailyRunSessions: result.state.dailyRunSessions };
+        await writeChangedCollections(currentState, persistedState);
+        return { result, persistedState };
+      });
       sendJson(response, {
         message: body.fresh ? "Fresh Daily Run started. The previous session was abandoned." : "Daily Run started. Snapshot saved.",
         session: result.session,
@@ -34258,11 +34305,14 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/daily-run/resume" && request.method === "POST") {
     try {
       const body = await readJson(request);
-      const currentState = await store.readState();
-      const active = activeDailyRunSession(currentState);
-      const sessionId = body.session_id || active.session?.session_id || "";
-      const result = resumeDailyRunSessionRecord(currentState, sessionId);
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const active = activeDailyRunSession(currentState);
+        const sessionId = body.session_id || active.session?.session_id || "";
+        const result = resumeDailyRunSessionRecord(currentState, sessionId);
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Daily Run resumed. Snapshot preserved.",
         session: result.session,
@@ -34278,11 +34328,14 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/daily-run/end" && request.method === "POST") {
     try {
       const body = await readJson(request);
-      const currentState = await store.readState();
-      const active = activeDailyRunSession(currentState);
-      const sessionId = body.session_id || active.session?.session_id || "";
-      const result = completeDailyRunSession(currentState, sessionId, { publisherSummary: serverList(currentState.dailyRunPublisherRuns)[0] || null });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const active = activeDailyRunSession(currentState);
+        const sessionId = body.session_id || active.session?.session_id || "";
+        const result = completeDailyRunSession(currentState, sessionId, { publisherSummary: serverList(currentState.dailyRunPublisherRuns)[0] || null });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Daily Run completed. Tomorrow's first move is saved.",
         session: result.session,
@@ -34298,11 +34351,14 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/daily-run/abandon" && request.method === "POST") {
     try {
       const body = await readJson(request);
-      const currentState = await store.readState();
-      const active = activeDailyRunSession(currentState);
-      const sessionId = body.session_id || active.session?.session_id || "";
-      const result = markDailyRunSessionAbandoned(currentState, sessionId);
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const active = activeDailyRunSession(currentState);
+        const sessionId = body.session_id || active.session?.session_id || "";
+        const result = markDailyRunSessionAbandoned(currentState, sessionId);
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Daily Run marked abandoned. Work items were not changed.",
         session: result.session,
@@ -34318,11 +34374,14 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/daily-run/park" && request.method === "POST") {
     try {
       const body = await readJson(request);
-      const currentState = await store.readState();
-      const active = activeDailyRunSession(currentState);
-      const sessionId = body.session_id || active.session?.session_id || "";
-      const result = parkDailyRunItem(currentState, sessionId, body.bucket_key || body.bucketKey, body.item_id || body.itemId, body.reason || "");
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const active = activeDailyRunSession(currentState);
+        const sessionId = body.session_id || active.session?.session_id || "";
+        const result = parkDailyRunItem(currentState, sessionId, body.bucket_key || body.bucketKey, body.item_id || body.itemId, body.reason || "");
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Item parked for this Daily Run. It remains visible for later review.",
         session: result.session,
@@ -34338,11 +34397,14 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/daily-run/skip-bucket" && request.method === "POST") {
     try {
       const body = await readJson(request);
-      const currentState = await store.readState();
-      const active = activeDailyRunSession(currentState);
-      const sessionId = body.session_id || active.session?.session_id || "";
-      const result = skipDailyRunBucket(currentState, sessionId, body.bucket_key || body.bucketKey || active.session?.current_bucket_key || "");
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const active = activeDailyRunSession(currentState);
+        const sessionId = body.session_id || active.session?.session_id || "";
+        const result = skipDailyRunBucket(currentState, sessionId, body.bucket_key || body.bucketKey || active.session?.current_bucket_key || "");
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Bucket skipped for this Daily Run. Work items were not changed.",
         session: result.session,
@@ -34358,11 +34420,14 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/daily-run/jump-bucket" && request.method === "POST") {
     try {
       const body = await readJson(request);
-      const currentState = await store.readState();
-      const active = activeDailyRunSession(currentState);
-      const sessionId = body.session_id || active.session?.session_id || "";
-      const result = jumpDailyRunBucket(currentState, sessionId, body.bucket_key || body.bucketKey || "");
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const active = activeDailyRunSession(currentState);
+        const sessionId = body.session_id || active.session?.session_id || "";
+        const result = jumpDailyRunBucket(currentState, sessionId, body.bucket_key || body.bucketKey || "");
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Bucket opened. Session snapshot preserved.",
         session: result.session,
@@ -34378,11 +34443,14 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/daily-run/complete-bucket" && request.method === "POST") {
     try {
       const body = await readJson(request);
-      const currentState = await store.readState();
-      const active = activeDailyRunSession(currentState);
-      const sessionId = body.session_id || active.session?.session_id || "";
-      const result = completeDailyRunBucket(currentState, sessionId, body.bucket_key || body.bucketKey || active.session?.current_bucket_key || "");
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const active = activeDailyRunSession(currentState);
+        const sessionId = body.session_id || active.session?.session_id || "";
+        const result = completeDailyRunBucket(currentState, sessionId, body.bucket_key || body.bucketKey || active.session?.current_bucket_key || "");
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: result.session.current_bucket_key ? "Bucket completed. Next bucket is ready." : "All Daily Run buckets are clear. Return to Today for summary.",
         session: result.session,
@@ -34398,11 +34466,14 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/daily-run/complete-item" && request.method === "POST") {
     try {
       const body = await readJson(request);
-      const currentState = await store.readState();
-      const active = activeDailyRunSession(currentState);
-      const sessionId = body.session_id || active.session?.session_id || "";
-      const result = completeDailyRunItem(currentState, sessionId, body.bucket_key || body.bucketKey || active.session?.current_bucket_key || "", body.item_id || body.itemId || "", body.reason || "");
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const active = activeDailyRunSession(currentState);
+        const sessionId = body.session_id || active.session?.session_id || "";
+        const result = completeDailyRunItem(currentState, sessionId, body.bucket_key || body.bucketKey || active.session?.current_bucket_key || "", body.item_id || body.itemId || "", body.reason || "");
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: result.session.current_bucket_key ? "Item moved forward. Next item or bucket is ready." : "Daily Run bucket work is clear. Return to Today for summary.",
         session: result.session,
@@ -34418,11 +34489,14 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/daily-run/park-bucket" && request.method === "POST") {
     try {
       const body = await readJson(request);
-      const currentState = await store.readState();
-      const active = activeDailyRunSession(currentState);
-      const sessionId = body.session_id || active.session?.session_id || "";
-      const result = parkDailyRunBucket(currentState, sessionId, body.bucket_key || body.bucketKey || active.session?.current_bucket_key || "", body.reason || "");
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const active = activeDailyRunSession(currentState);
+        const sessionId = body.session_id || active.session?.session_id || "";
+        const result = parkDailyRunBucket(currentState, sessionId, body.bucket_key || body.bucketKey || active.session?.current_bucket_key || "", body.reason || "");
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Bucket parked for this Daily Run. Work items stay visible elsewhere.",
         session: result.session,
@@ -34443,9 +34517,12 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/production-activation/rcap/start" && request.method === "POST") {
     try {
-      const currentState = await store.readState();
-      const result = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         ...result.summary,
         activation_status: rcapActivationStatus(result.state),
@@ -34466,20 +34543,23 @@ async function handleRequest(request, response) {
         sendJson(response, { error: bodyRoleDecision.reason, requiredCapabilities: bodyRoleDecision.requiredCapabilities, actor: publicActor(accessDecision.actor) }, 403);
         return;
       }
-      const currentState = await store.readState();
-      const activated = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      const result = transitionRcapReviewArtifact(
-        activated.state,
-        input.artifactKey || input.artifact_key || "",
-        input.review_state || input.reviewState || "",
-        {
-          actor: publicActor(accessDecision.actor)?.role || "owner_token",
-          notes: input.notes || input.review_notes || "",
-          blocker_reason: input.blocker_reason || "",
-          revision_reason: input.revision_reason || ""
-        }
-      );
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const activated = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        const result = transitionRcapReviewArtifact(
+          activated.state,
+          input.artifactKey || input.artifact_key || "",
+          input.review_state || input.reviewState || "",
+          {
+            actor: publicActor(accessDecision.actor)?.role || "owner_token",
+            notes: input.notes || input.review_notes || "",
+            blocker_reason: input.blocker_reason || "",
+            revision_reason: input.revision_reason || ""
+          }
+        );
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "RCAP review state updated. No external action was taken.",
         artifact: result.artifact,
@@ -34495,10 +34575,13 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/production-activation/rcap/handoff-packet" && request.method === "POST") {
     try {
-      const currentState = await store.readState();
-      const activated = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      const result = generateRcapPartnerJourneyHandoffPacket(activated.state, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const activated = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        const result = generateRcapPartnerJourneyHandoffPacket(activated.state, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Internal handoff packet generated. No external system contacted.",
         packet: result.packet,
@@ -34513,10 +34596,13 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/production-activation/rcap/handoff-contract-preview" && request.method === "POST") {
     try {
-      const currentState = await store.readState();
-      const activated = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      const result = generatePartnerJourneyHandoffContractPreview(activated.state, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const activated = ensureRcapProductionActivation(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        const result = generatePartnerJourneyHandoffContractPreview(activated.state, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Handoff contract preview generated. No external system contacted.",
         preview: result.preview,
@@ -34538,9 +34624,12 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/operating-memory/today/save" && request.method === "POST") {
     try {
-      const currentState = await store.readState();
-      const result = saveTodayOperatingMemory(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = saveTodayOperatingMemory(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Operating memory saved. No external action was taken.",
         record: result.record,
@@ -34561,9 +34650,12 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/morning-brief/today/save" && request.method === "POST") {
     try {
-      const currentState = await store.readState();
-      const result = saveMorningBrief(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = saveMorningBrief(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Morning Brief saved. No external action was taken.",
         record: result.record,
@@ -34584,9 +34676,12 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/evening-reflection/today/save" && request.method === "POST") {
     try {
-      const currentState = await store.readState();
-      const result = saveEveningReflection(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = saveEveningReflection(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Evening Reflection saved. No external action was taken.",
         record: result.record,
@@ -34607,9 +34702,12 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/daily-closeout/today/save" && request.method === "POST") {
     try {
-      const currentState = await store.readState();
-      const result = saveDailyCloseout(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = saveDailyCloseout(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Daily Closeout saved. No external action was taken.",
         record: result.record,
@@ -34623,9 +34721,12 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/daily-closeout/tomorrow-plan/generate" && request.method === "POST") {
     try {
-      const currentState = await store.readState();
-      const result = saveDailyCloseout(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = saveDailyCloseout(currentState, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Tomorrow Plan generated internally. No external action was taken.",
         record: result.record,
@@ -34661,18 +34762,22 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/os-health/refresh" && request.method === "POST") {
     try {
-      const currentState = await store.readState();
+      // Supabase health probe is a network call; it stays outside the mutation lock.
       const health = await getSupabaseHealth();
-      const result = saveOsHealthSnapshot(currentState, {
-        actor: publicActor(accessDecision.actor)?.role || "owner_token",
-        endpointInventorySource,
-        supabaseDbConnected: Boolean(health?.db?.ok),
-        supabaseStorageConnected: Boolean(health?.storage?.ok),
-        openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
-        ownerTokenAuthConfigured: authRequiredForEnv(),
-        localFallbackAvailable: true
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = saveOsHealthSnapshot(currentState, {
+          actor: publicActor(accessDecision.actor)?.role || "owner_token",
+          endpointInventorySource,
+          supabaseDbConnected: Boolean(health?.db?.ok),
+          supabaseStorageConnected: Boolean(health?.storage?.ok),
+          openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
+          ownerTokenAuthConfigured: authRequiredForEnv(),
+          localFallbackAvailable: true
+        });
+        await writeChangedCollections(currentState, result.state);
+        return result;
       });
-      await store.writeState(result.state);
       sendJson(response, {
         message: "App Status refreshed. No external action was taken.",
         snapshot: result.snapshot,
@@ -34697,11 +34802,14 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/smoke-test/start" && request.method === "POST") {
     try {
       const body = await readJson(request);
-      const currentState = await store.readState();
-      const result = startSmokeTestRun(currentState, body, {
-        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = startSmokeTestRun(currentState, body, {
+          actor: publicActor(accessDecision.actor)?.role || "owner_token"
+        });
+        await writeChangedCollections(currentState, result.state);
+        return result;
       });
-      await store.writeState(result.state);
       sendJson(response, {
         message: "Self-Check started. No external action was taken.",
         run: result.run,
@@ -34717,11 +34825,14 @@ async function handleRequest(request, response) {
   if (smokeItemMatch && request.method === "POST") {
     try {
       const body = await readJson(request);
-      const currentState = await store.readState();
-      const result = markSmokeTestItem(currentState, decodeURIComponent(smokeItemMatch[1]), body.itemId, body.status, body.notes || "", {
-        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = markSmokeTestItem(currentState, decodeURIComponent(smokeItemMatch[1]), body.itemId, body.status, body.notes || "", {
+          actor: publicActor(accessDecision.actor)?.role || "owner_token"
+        });
+        await writeChangedCollections(currentState, result.state);
+        return result;
       });
-      await store.writeState(result.state);
       sendJson(response, {
         message: "Smoke test item updated internally. No external action was taken.",
         run: result.run,
@@ -34737,11 +34848,14 @@ async function handleRequest(request, response) {
   if (smokeSaveMatch && request.method === "POST") {
     try {
       const body = await readJson(request);
-      const currentState = await store.readState();
-      const result = saveSmokeTestRun(currentState, decodeURIComponent(smokeSaveMatch[1]), body, {
-        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = saveSmokeTestRun(currentState, decodeURIComponent(smokeSaveMatch[1]), body, {
+          actor: publicActor(accessDecision.actor)?.role || "owner_token"
+        });
+        await writeChangedCollections(currentState, result.state);
+        return result;
       });
-      await store.writeState(result.state);
       sendJson(response, {
         message: "Self-Check saved. No external action was taken.",
         run: result.run,
@@ -34756,11 +34870,14 @@ async function handleRequest(request, response) {
   const smokeFinishMatch = url.pathname.match(/^\/api\/smoke-test\/([^/]+)\/finish$/);
   if (smokeFinishMatch && request.method === "POST") {
     try {
-      const currentState = await store.readState();
-      const result = finishSmokeTestRun(currentState, decodeURIComponent(smokeFinishMatch[1]), {
-        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = finishSmokeTestRun(currentState, decodeURIComponent(smokeFinishMatch[1]), {
+          actor: publicActor(accessDecision.actor)?.role || "owner_token"
+        });
+        await writeChangedCollections(currentState, result.state);
+        return result;
       });
-      await store.writeState(result.state);
       sendJson(response, {
         message: "Self-Check finished. No external action was taken.",
         run: result.run,
@@ -34784,11 +34901,14 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/evidence-room/summary" && request.method === "POST") {
     try {
-      const currentState = await store.readState();
-      const result = generateEvidenceSummary(currentState, {
-        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = generateEvidenceSummary(currentState, {
+          actor: publicActor(accessDecision.actor)?.role || "owner_token"
+        });
+        await writeChangedCollections(currentState, result.state);
+        return result;
       });
-      await store.writeState(result.state);
       sendJson(response, {
         message: "Proof Summary generated. No external action was taken.",
         summary: result.summary,
@@ -34810,11 +34930,14 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/data-integrity/refresh" && request.method === "POST") {
     try {
-      const currentState = await store.readState();
-      const result = saveDataIntegritySnapshot(currentState, {
-        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = saveDataIntegritySnapshot(currentState, {
+          actor: publicActor(accessDecision.actor)?.role || "owner_token"
+        });
+        await writeChangedCollections(currentState, result.state);
+        return result;
       });
-      await store.writeState(result.state);
       sendJson(response, {
         message: "Data Check refreshed. No external action was taken.",
         snapshot: result.snapshot,
@@ -34853,11 +34976,14 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/roles/assignments" && request.method === "POST") {
     try {
       const input = await readJson(request);
-      const currentState = await store.readState();
-      const result = applyRoleAssignmentChange(currentState, input, {
-        actor: publicActor(accessDecision.actor)?.role || "owner_token"
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = applyRoleAssignmentChange(currentState, input, {
+          actor: publicActor(accessDecision.actor)?.role || "owner_token"
+        });
+        await writeChangedCollections(currentState, result.state);
+        return result;
       });
-      await store.writeState(result.state);
       sendJson(response, {
         message: "Role assignment updated. No external action was taken.",
         assignment: result.assignment,
@@ -34872,12 +34998,15 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/roles/assignments/deactivate" && request.method === "POST") {
     try {
       const input = await readJson(request);
-      const currentState = await store.readState();
-      const result = applyRoleAssignmentChange(currentState, input, {
-        actor: publicActor(accessDecision.actor)?.role || "owner_token",
-        action: "deactivate"
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = applyRoleAssignmentChange(currentState, input, {
+          actor: publicActor(accessDecision.actor)?.role || "owner_token",
+          action: "deactivate"
+        });
+        await writeChangedCollections(currentState, result.state);
+        return result;
       });
-      await store.writeState(result.state);
       sendJson(response, {
         message: "Role assignment deactivated. No external action was taken.",
         assignment: result.assignment,
@@ -34906,9 +35035,12 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/operator-search/action" && request.method === "POST") {
     try {
       const input = await readJson(request);
-      const currentState = await store.readState();
-      const result = runOperatorSearchAction(currentState, input, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = runOperatorSearchAction(currentState, input, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: result.message || "Command applied internally.",
         route: result.route || "",
@@ -34926,9 +35058,12 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/conversation-notes" && request.method === "POST") {
     try {
       const input = await readJson(request);
-      const currentState = await store.readState();
-      const result = createConversationNote(currentState, input, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = createConversationNote(currentState, input, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: "Captured for review.",
         note: result.note,
@@ -34943,9 +35078,12 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/capture-inbox" && request.method === "POST") {
     try {
       const input = await readJson(request);
-      const currentState = await store.readState();
-      const result = createCaptureInboxItem(currentState, input, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = createCaptureInboxItem(currentState, input, { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       sendJson(response, {
         message: `Captured for review. Le-E classified this as ${result.item.inferred_type}.`,
         item: result.item,
@@ -34961,9 +35099,12 @@ async function handleRequest(request, response) {
   if (captureInboxActionRoute && request.method === "POST") {
     try {
       const [, itemId, action] = captureInboxActionRoute;
-      const currentState = await store.readState();
-      const result = routeCaptureInboxItem(currentState, decodeURIComponent(itemId), decodeURIComponent(action), { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = routeCaptureInboxItem(currentState, decodeURIComponent(itemId), decodeURIComponent(action), { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       const messages = {
         mark_reviewed: "Capture marked reviewed.",
         route_task: "Routed to Task.",
@@ -34989,9 +35130,12 @@ async function handleRequest(request, response) {
   if (conversationNoteActionRoute && request.method === "POST") {
     try {
       const [, noteId, action] = conversationNoteActionRoute;
-      const currentState = await store.readState();
-      const result = updateConversationNoteAction(currentState, decodeURIComponent(noteId), decodeURIComponent(action), { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
-      await store.writeState(result.state);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = updateConversationNoteAction(currentState, decodeURIComponent(noteId), decodeURIComponent(action), { actor: publicActor(accessDecision.actor)?.role || "owner_token" });
+        await writeChangedCollections(currentState, result.state);
+        return result;
+      });
       const messages = {
         mark_reviewed: "Captured for review.",
         apply_morning_brief: "Applied to Morning Brief inputs.",
@@ -35363,14 +35507,16 @@ async function handleRequest(request, response) {
     try {
       const input = await readJson(request);
       const ids = new Set((Array.isArray(input.ids) ? input.ids : [input.id]).filter(Boolean).map(String));
-      const currentState = await store.readState();
-      const queue = serverList(currentState.approvalQueue).map((q) =>
-        (q.type === OUTREACH_QUEUE_TYPE && ids.has(q.id) && String(q.status).toLowerCase() === "queued_for_approval")
-          ? { ...q, status: "approved", approved_at: new Date().toISOString(), approved_by: accessDecision.actor?.label || accessDecision.actor?.role || "operator" }
-          : q
-      );
-      const approvedCount = queue.filter((q) => ids.has(q.id) && q.status === "approved").length;
-      await store.writeState({ ...currentState, approvalQueue: queue });
+      const approvedCount = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const queue = serverList(currentState.approvalQueue).map((q) =>
+          (q.type === OUTREACH_QUEUE_TYPE && ids.has(q.id) && String(q.status).toLowerCase() === "queued_for_approval")
+            ? { ...q, status: "approved", approved_at: new Date().toISOString(), approved_by: accessDecision.actor?.label || accessDecision.actor?.role || "operator" }
+            : q
+        );
+        await store.writeCollections({ approvalQueue: queue });
+        return queue.filter((q) => ids.has(q.id) && q.status === "approved").length;
+      });
       sendJson(response, { ok: true, approved: approvedCount });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not approve outreach messages." }, 400);
@@ -35407,17 +35553,20 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/outreach/config" && request.method === "POST") {
     try {
       const input = await readJson(request);
-      const currentState = await store.readState();
-      const merged = {
-        ...(currentState.outreachConfig || {}),
-        ...(input.postalAddress !== undefined ? { postalAddress: String(input.postalAddress) } : {}),
-        ...(input.fromEmail !== undefined ? { fromEmail: String(input.fromEmail) } : {}),
-        ...(input.fromName !== undefined ? { fromName: String(input.fromName) } : {}),
-        ...(input.replyTo !== undefined ? { replyTo: String(input.replyTo) } : {}),
-        ...(input.sendingDomain !== undefined ? { sendingDomain: String(input.sendingDomain) } : {}),
-        ...(input.caps && typeof input.caps === "object" ? { caps: { ...(currentState.outreachConfig?.caps || {}), ...input.caps } } : {})
-      };
-      await store.writeState({ ...currentState, outreachConfig: merged });
+      const merged = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const next = {
+          ...(currentState.outreachConfig || {}),
+          ...(input.postalAddress !== undefined ? { postalAddress: String(input.postalAddress) } : {}),
+          ...(input.fromEmail !== undefined ? { fromEmail: String(input.fromEmail) } : {}),
+          ...(input.fromName !== undefined ? { fromName: String(input.fromName) } : {}),
+          ...(input.replyTo !== undefined ? { replyTo: String(input.replyTo) } : {}),
+          ...(input.sendingDomain !== undefined ? { sendingDomain: String(input.sendingDomain) } : {}),
+          ...(input.caps && typeof input.caps === "object" ? { caps: { ...(currentState.outreachConfig?.caps || {}), ...input.caps } } : {})
+        };
+        await store.writeCollections({ outreachConfig: next });
+        return next;
+      });
       sendJson(response, { ok: true, outreachConfig: merged });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update outreach config." }, 400);
@@ -35459,16 +35608,19 @@ async function handleRequest(request, response) {
     }
     try {
       const payload = await readJson(request);
-      const currentState = await store.readState();
-      const result = confirmIntake(currentState, payload?.csv ?? payload?.csvText ?? "", {
-        intakeType: payload?.intakeType || payload?.listType,
-        afterAction: payload?.afterAction,
-        sourceNote: payload?.sourceNote,
-        fileName: payload?.fileName,
-        actor: accessDecision.actor?.id || accessDecision.actor?.role || "owner",
-        now: new Date().toISOString()
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const confirmed = confirmIntake(currentState, payload?.csv ?? payload?.csvText ?? "", {
+          intakeType: payload?.intakeType || payload?.listType,
+          afterAction: payload?.afterAction,
+          sourceNote: payload?.sourceNote,
+          fileName: payload?.fileName,
+          actor: accessDecision.actor?.id || accessDecision.actor?.role || "owner",
+          now: new Date().toISOString()
+        });
+        await writeChangedCollections(currentState, confirmed.state);
+        return confirmed;
       });
-      await store.writeState(result.state);
       sendJson(response, {
         ok: true,
         intakeType: result.intakeType,
@@ -36009,13 +36161,16 @@ async function handleRequest(request, response) {
     }
     try {
       const payload = await readJson(request);
-      const currentState = await store.readState();
-      const result = confirmConsumerImport(currentState, payload?.csv ?? payload?.csvText ?? "", {
-        sourceNote: payload?.sourceNote,
-        listType: payload?.listType || CONSUMER_LIST_TYPE,
-        now: new Date().toISOString()
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const confirmed = confirmConsumerImport(currentState, payload?.csv ?? payload?.csvText ?? "", {
+          sourceNote: payload?.sourceNote,
+          listType: payload?.listType || CONSUMER_LIST_TYPE,
+          now: new Date().toISOString()
+        });
+        await writeChangedCollections(currentState, confirmed.state);
+        return confirmed;
       });
-      await store.writeState(result.state);
       sendJson(response, {
         ok: true,
         listType: result.listType,
@@ -36063,11 +36218,15 @@ async function handleRequest(request, response) {
     try {
       const payload = await readJson(request);
       const records = resolveSyncRecords({ records: payload?.records, csvText: payload?.csvText });
-      const result = confirmExpungementSync(await store.readState(), records, {
-        sourceNote: payload?.sourceNote,
-        now: new Date().toISOString()
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const confirmed = confirmExpungementSync(currentState, records, {
+          sourceNote: payload?.sourceNote,
+          now: new Date().toISOString()
+        });
+        await writeChangedCollections(currentState, confirmed.state);
+        return confirmed;
       });
-      await store.writeState(result.state);
       sendJson(response, {
         ok: true,
         sourceNote: result.sourceNote,
@@ -36113,17 +36272,21 @@ async function handleRequest(request, response) {
         sendJson(response, { error: "This action cannot clear the hold, assign a wave, or enroll a contact." }, 400);
         return;
       }
-      const result = applyHeldDisposition(await store.readState(), {
-        contactId: payload?.contactId,
-        contact_id: payload?.contact_id,
-        contactIds: payload?.contactIds,
-        contact_ids: payload?.contact_ids,
-        review_status: payload?.review_status,
-        review_note: payload?.review_note,
-        reviewed_by: accessDecision.actor?.label || accessDecision.actor?.role || "owner",
-        now: new Date().toISOString()
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const applied = applyHeldDisposition(currentState, {
+          contactId: payload?.contactId,
+          contact_id: payload?.contact_id,
+          contactIds: payload?.contactIds,
+          contact_ids: payload?.contact_ids,
+          review_status: payload?.review_status,
+          review_note: payload?.review_note,
+          reviewed_by: accessDecision.actor?.label || accessDecision.actor?.role || "owner",
+          now: new Date().toISOString()
+        });
+        await writeChangedCollections(currentState, applied.state);
+        return applied;
       });
-      await store.writeState(result.state);
       sendJson(response, {
         ok: true,
         review_status: result.review_status,
@@ -36261,24 +36424,27 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/prospects/config" && request.method === "POST") {
     try {
       const input = await readJson(request);
-      const currentState = await store.readState();
-      const sourceIds = new Set(PROSPECT_SOURCES.map((s) => s.id));
-      const merged = {
-        ...(currentState.prospectConfig || {}),
-        ...(input.scope !== undefined ? { scope: String(input.scope) } : {}),
-        ...(Array.isArray(input.states) ? { states: input.states.map(String) } : {}),
-        ...(Array.isArray(input.classifications)
-          ? { classifications: input.classifications.map(normalizeClassification).filter(Boolean) } : {}),
-        ...(Array.isArray(input.enabledSources)
-          ? { enabledSources: input.enabledSources.map(String).filter((id) => sourceIds.has(id)) } : {}),
-        ...(Array.isArray(input.nteePrefixes)
-          ? { nteePrefixes: (() => {
-              const known = new Set(RCAP_NTEE_FILTER.map((e) => e.prefix));
-              return input.nteePrefixes.map((p) => String(p).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3)).filter((p) => known.has(p));
-            })() } : {}),
-        ...(input.maxStagedPerRun !== undefined ? { maxStagedPerRun: Math.max(1, Number(input.maxStagedPerRun) || 0) } : {})
-      };
-      await store.writeState({ ...currentState, prospectConfig: merged });
+      const merged = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const sourceIds = new Set(PROSPECT_SOURCES.map((s) => s.id));
+        const next = {
+          ...(currentState.prospectConfig || {}),
+          ...(input.scope !== undefined ? { scope: String(input.scope) } : {}),
+          ...(Array.isArray(input.states) ? { states: input.states.map(String) } : {}),
+          ...(Array.isArray(input.classifications)
+            ? { classifications: input.classifications.map(normalizeClassification).filter(Boolean) } : {}),
+          ...(Array.isArray(input.enabledSources)
+            ? { enabledSources: input.enabledSources.map(String).filter((id) => sourceIds.has(id)) } : {}),
+          ...(Array.isArray(input.nteePrefixes)
+            ? { nteePrefixes: (() => {
+                const known = new Set(RCAP_NTEE_FILTER.map((e) => e.prefix));
+                return input.nteePrefixes.map((p) => String(p).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3)).filter((p) => known.has(p));
+              })() } : {}),
+          ...(input.maxStagedPerRun !== undefined ? { maxStagedPerRun: Math.max(1, Number(input.maxStagedPerRun) || 0) } : {})
+        };
+        await store.writeCollections({ prospectConfig: next });
+        return next;
+      });
       sendJson(response, { ok: true, prospectConfig: prospectConfigOf({ prospectConfig: merged }) });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update prospect config." }, 400);
@@ -36362,20 +36528,23 @@ async function handleRequest(request, response) {
       const input = await readJson(request);
       const ids = new Set((Array.isArray(input.ids) ? input.ids : [input.id]).filter(Boolean).map(String));
       const overrideClass = input.classification !== undefined ? normalizeClassification(input.classification) : "";
-      const currentState = await store.readState();
-      let approvedCount = 0;
-      const candidates = serverList(currentState.prospectCandidates).map((c) => {
-        if (!ids.has(c.id) || String(c.review_state || "").toLowerCase() !== PROSPECT_REVIEW.PENDING) return c;
-        approvedCount += 1;
-        return {
-          ...c,
-          ...(overrideClass ? { classification: overrideClass } : {}),
-          review_state: PROSPECT_REVIEW.APPROVED,
-          approved_at: new Date().toISOString(),
-          approved_by: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
-        };
+      const approvedCount = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        let approved = 0;
+        const candidates = serverList(currentState.prospectCandidates).map((c) => {
+          if (!ids.has(c.id) || String(c.review_state || "").toLowerCase() !== PROSPECT_REVIEW.PENDING) return c;
+          approved += 1;
+          return {
+            ...c,
+            ...(overrideClass ? { classification: overrideClass } : {}),
+            review_state: PROSPECT_REVIEW.APPROVED,
+            approved_at: new Date().toISOString(),
+            approved_by: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
+          };
+        });
+        await store.writeCollections({ prospectCandidates: candidates });
+        return approved;
       });
-      await store.writeState({ ...currentState, prospectCandidates: candidates });
       sendJson(response, { ok: true, approved: approvedCount });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not approve prospects." }, 400);
@@ -36388,19 +36557,22 @@ async function handleRequest(request, response) {
     try {
       const input = await readJson(request);
       const ids = new Set((Array.isArray(input.ids) ? input.ids : [input.id]).filter(Boolean).map(String));
-      const currentState = await store.readState();
-      let rejectedCount = 0;
-      const candidates = serverList(currentState.prospectCandidates).map((c) => {
-        if (!ids.has(c.id) || String(c.review_state || "").toLowerCase() !== PROSPECT_REVIEW.PENDING) return c;
-        rejectedCount += 1;
-        return {
-          ...c,
-          review_state: PROSPECT_REVIEW.REJECTED,
-          rejected_at: new Date().toISOString(),
-          rejected_by: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
-        };
+      const rejectedCount = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        let rejected = 0;
+        const candidates = serverList(currentState.prospectCandidates).map((c) => {
+          if (!ids.has(c.id) || String(c.review_state || "").toLowerCase() !== PROSPECT_REVIEW.PENDING) return c;
+          rejected += 1;
+          return {
+            ...c,
+            review_state: PROSPECT_REVIEW.REJECTED,
+            rejected_at: new Date().toISOString(),
+            rejected_by: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
+          };
+        });
+        await store.writeCollections({ prospectCandidates: candidates });
+        return rejected;
       });
-      await store.writeState({ ...currentState, prospectCandidates: candidates });
       sendJson(response, { ok: true, rejected: rejectedCount });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not reject prospects." }, 400);
@@ -36967,7 +37139,6 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/email/draft" && request.method === "POST") {
     const payload = await readJson(request);
-    const currentState = await store.readState();
     const result = emailDraftResponse(payload || {});
     const now = new Date().toISOString();
     const draft = {
@@ -36977,11 +37148,15 @@ async function handleRequest(request, response) {
       body: String(payload.body || payload.summary || "").slice(0, 1200),
       safety: result.safety
     };
-    const nextState = analyzeOperations({
-      ...currentState,
-      emailDrafts: [draft, ...(currentState.emailDrafts || [])].slice(0, 100)
+    const nextState = await serializeStateMutation(async () => {
+      const currentState = await store.readState();
+      const next = analyzeOperations({
+        ...currentState,
+        emailDrafts: [draft, ...(currentState.emailDrafts || [])].slice(0, 100)
+      });
+      await writeChangedCollections(currentState, next);
+      return next;
     });
-    await store.writeState(nextState);
     sendJson(response, { ...result, draft, state: withPublicChannelSetup(nextState) });
     return;
   }
@@ -37232,18 +37407,21 @@ async function handleRequest(request, response) {
     }
     try {
       const payload = await readJson(request);
-      const currentState = await store.readState();
-      const now = new Date().toISOString();
-      // RCAP-1 uses skip-on-duplicate as the foundation behavior. Suppression still stays sticky.
-      const result = importRcapRevenueWorkbook(currentState, payload?.workbook || payload || {}, {
-        workbookName: payload?.workbookName || payload?.workbook_name || "RCAP workbook",
-        importedBy: accessDecision.actor?.label || accessDecision.actor?.role || "owner",
-        now
+      const { result, taskResult } = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const now = new Date().toISOString();
+        // RCAP-1 uses skip-on-duplicate as the foundation behavior. Suppression still stays sticky.
+        const imported = importRcapRevenueWorkbook(currentState, payload?.workbook || payload || {}, {
+          workbookName: payload?.workbookName || payload?.workbook_name || "RCAP workbook",
+          importedBy: accessDecision.actor?.label || accessDecision.actor?.role || "owner",
+          now
+        });
+        const tasks = imported.batch.status === "failed"
+          ? { state: imported.state, created: [], summary: rcapRevenueTaskSummary(imported.state) }
+          : generateRcapRevenueQueueTasks(imported.state, { now, owner: accessDecision.actor?.label || accessDecision.actor?.role || "owner" });
+        await writeChangedCollections(currentState, tasks.state);
+        return { result: imported, taskResult: tasks };
       });
-      const taskResult = result.batch.status === "failed"
-        ? { state: result.state, created: [], summary: rcapRevenueTaskSummary(result.state) }
-        : generateRcapRevenueQueueTasks(result.state, { now, owner: accessDecision.actor?.label || accessDecision.actor?.role || "owner" });
-      await store.writeState(taskResult.state);
       sendJson(response, {
         batch: result.batch,
         imported: result.imported,
@@ -38201,7 +38379,10 @@ async function handleRequest(request, response) {
       ...result.state,
       dailyRunPublisherRuns: [summary, ...serverList(result.state.dailyRunPublisherRuns)].slice(0, 20)
     };
-    await store.writeState(stateWithSummary);
+    // Deliberately NOT diff-scoped: the worker's state lineage mixes its own store-method
+    // writes with returned mutations, so no clean before snapshot exists here. Serialized
+    // full-state write preserves behavior while closing the interleave window.
+    await serializeStateMutation(() => store.writeState(stateWithSummary));
     sendJson(response, {
       state: withPublicChannelSetup(stateWithSummary),
       results: result.results,
@@ -38392,28 +38573,30 @@ async function handleRequest(request, response) {
   if (oauthCallback && request.method === "GET") {
     const platform = oauthCallback[1];
     if (platform === "google_workspace") {
+      // PUBLIC route (Google redirects the browser here); same serialization rules as the
+      // /api/google/callback handler above. Error writes go through the scoped store method.
       if (url.searchParams.get("error")) {
-        const state = await store.updateSocialAccount(platform, {
+        const state = await serializeStateMutation(() => store.updateSocialAccount(platform, {
           status:"error",
           displayName:"Google Workspace",
           lastErrorSummary:"Google OAuth provider returned an error.",
           lastError:url.searchParams.get("error_description") || url.searchParams.get("error") || "Google OAuth provider returned an error.",
           lastTestedAt:new Date().toISOString(),
           oauthConfigured:googleOAuthConfigured()
-        });
+        }));
         sendJson(response, { state: withPublicChannelSetup(state), message:"Google OAuth provider returned an error." }, 400);
         return;
       }
       const verified = verifyOAuthState(platform, url.searchParams.get("state"));
       if (!verified.ok) {
-        const state = await store.updateSocialAccount(platform, {
+        const state = await serializeStateMutation(() => store.updateSocialAccount(platform, {
           status:"error",
           displayName:"Google Workspace",
           lastErrorSummary:verified.error,
           lastError:verified.error,
           lastTestedAt:new Date().toISOString(),
           oauthConfigured:googleOAuthConfigured()
-        });
+        }));
         sendJson(response, { state: withPublicChannelSetup(state), message: verified.error }, 400);
         return;
       }
@@ -38422,53 +38605,57 @@ async function handleRequest(request, response) {
         return;
       }
       try {
+        // Network exchanges stay outside the serializer; the state mutation runs inside it.
         const tokenPayload = await exchangeGoogleCode(url.searchParams.get("code"));
         const profile = await fetchGoogleUserInfo(tokenPayload.access_token);
-        const existingAccount = (await store.readState()).socialAccounts?.find((account) => account.platform === platform) || {};
-        const accountName = profile.email || profile.name || "Google account";
-        const tokenExpiresAt = tokenPayload.expires_in ? new Date(Date.now() + Number(tokenPayload.expires_in) * 1000).toISOString() : "";
-        let state = await store.updateSocialAccount(platform, {
-          status:"connected",
-          displayName:"Google Workspace",
-          accountName,
-          accountId:profile.sub || "",
-          externalAccountId:profile.sub || "",
-          accessTokenEncrypted:encryptToken(tokenPayload.access_token || ""),
-          refreshTokenEncrypted:tokenPayload.refresh_token ? encryptToken(tokenPayload.refresh_token) : existingAccount.refreshTokenEncrypted || "",
-          tokenExpiresAt,
-          connectedAt:new Date().toISOString(),
-          lastTestStatus:"connected",
-          lastTestMessage:"Google connected read-only for Gmail and Calendar.",
-          lastErrorSummary:"",
-          lastError:"",
-          lastTestedAt:new Date().toISOString(),
-          oauthConfigured:true,
-          scopes:googleReadOnlyScopes
+        await serializeStateMutation(async () => {
+          const existingAccount = (await store.readState()).socialAccounts?.find((account) => account.platform === platform) || {};
+          const accountName = profile.email || profile.name || "Google account";
+          const tokenExpiresAt = tokenPayload.expires_in ? new Date(Date.now() + Number(tokenPayload.expires_in) * 1000).toISOString() : "";
+          let state = await store.updateSocialAccount(platform, {
+            status:"connected",
+            displayName:"Google Workspace",
+            accountName,
+            accountId:profile.sub || "",
+            externalAccountId:profile.sub || "",
+            accessTokenEncrypted:encryptToken(tokenPayload.access_token || ""),
+            refreshTokenEncrypted:tokenPayload.refresh_token ? encryptToken(tokenPayload.refresh_token) : existingAccount.refreshTokenEncrypted || "",
+            tokenExpiresAt,
+            connectedAt:new Date().toISOString(),
+            lastTestStatus:"connected",
+            lastTestMessage:"Google connected read-only for Gmail and Calendar.",
+            lastErrorSummary:"",
+            lastError:"",
+            lastTestedAt:new Date().toISOString(),
+            oauthConfigured:true,
+            scopes:googleReadOnlyScopes
+          });
+          const withGmailStatus = { ...state, connectorStatus: connectorStatusPatch(state, "gmail", { configured:true, enabled:true, lastSyncStatus:"connected", lastError:"" }) };
+          state = { ...withGmailStatus, connectorStatus: connectorStatusPatch(withGmailStatus, "calendar", { configured:true, enabled:true, lastSyncStatus:"connected", lastError:"" }) };
+          // Scoped: socialAccounts persists via the store method; the connect additionally
+          // changes exactly these three collections.
+          await store.writeCollections({
+            connectorStatus: state.connectorStatus,
+            auditHistory: [{
+              id: `audit-google-connect-${crypto.randomUUID().slice(0, 8)}`,
+              timestamp: new Date().toISOString(),
+              actor: "local_operator",
+              action: "google workspace connected read only",
+              resourceType: "google_workspace",
+              resourceId: profile.sub || "google_workspace",
+              beforeValue: null,
+              afterValue: { accountName, scopes: googleReadOnlyScopes, noOutboundScopes: true }
+            }, ...(state.auditHistory || [])].slice(0, 1000),
+            activityEvents: [{
+              id: `activity-google-connect-${crypto.randomUUID().slice(0, 8)}`,
+              eventType: "Google Workspace connected",
+              title: "Gmail and Calendar read-only connected",
+              relatedObjectType: "google_workspace",
+              relatedObjectId: profile.sub || "google_workspace",
+              createdAt: new Date().toISOString()
+            }, ...(state.activityEvents || [])].slice(0, 500)
+          });
         });
-        const withGmailStatus = { ...state, connectorStatus: connectorStatusPatch(state, "gmail", { configured:true, enabled:true, lastSyncStatus:"connected", lastError:"" }) };
-        state = { ...withGmailStatus, connectorStatus: connectorStatusPatch(withGmailStatus, "calendar", { configured:true, enabled:true, lastSyncStatus:"connected", lastError:"" }) };
-        state = {
-          ...state,
-          auditHistory: [{
-            id: `audit-google-connect-${crypto.randomUUID().slice(0, 8)}`,
-            timestamp: new Date().toISOString(),
-            actor: "local_operator",
-            action: "google workspace connected read only",
-            resourceType: "google_workspace",
-            resourceId: profile.sub || "google_workspace",
-            beforeValue: null,
-            afterValue: { accountName, scopes: googleReadOnlyScopes, noOutboundScopes: true }
-          }, ...(state.auditHistory || [])].slice(0, 1000),
-          activityEvents: [{
-            id: `activity-google-connect-${crypto.randomUUID().slice(0, 8)}`,
-            eventType: "Google Workspace connected",
-            title: "Gmail and Calendar read-only connected",
-            relatedObjectType: "google_workspace",
-            relatedObjectId: profile.sub || "google_workspace",
-            createdAt: new Date().toISOString()
-          }, ...(state.activityEvents || [])].slice(0, 500)
-        };
-        await store.writeState(state);
         response.writeHead(302, { location:"/?v=google-connected#settings" });
         response.end();
       } catch (error) {
