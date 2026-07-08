@@ -38,6 +38,7 @@ function makeStore(initial = {}) {
   return {
     async readState() { return JSON.parse(JSON.stringify(state)); },
     async writeState(next) { state = JSON.parse(JSON.stringify(next)); return state; },
+    async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; return state; },
     snapshot() { return JSON.parse(JSON.stringify(state)); }
   };
 }

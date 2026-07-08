@@ -35350,9 +35350,10 @@ async function handleRequest(request, response) {
         }
       });
       // Serialized against all other state mutations: runHeartbeat reads state at tick start
-      // and writes FULL state at tick end, so a scoped write landing mid-tick (an operator
-      // arming/disarming a campaign, a webhook event) would be silently reverted by the tick's
-      // closing write. Serializing closes that window; mutations queue until the tick finishes.
+      // and writes a diff-scoped patch at tick end, so a scoped write to one of the SAME
+      // collections landing mid-tick (an operator arming/disarming a campaign, a webhook
+      // event) would still be reverted by the tick's closing write. Serializing closes that
+      // window; mutations queue until the tick finishes.
       const result = await serializeStateMutation(() => runHeartbeat({
         store,
         registry,
