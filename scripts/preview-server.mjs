@@ -35268,15 +35268,25 @@ async function handleRequest(request, response) {
       return;
     }
     try {
-      const currentState = await store.readState();
-      const email = verified.payload.email || "";
-      const contactId = verified.payload.contact_id || "";
-      let nextState = recordSuppression(currentState, { contactId, email, reason: "unsubscribed", source: "one_click" });
-      nextState.outreachUnsubscribes = [
-        { id: `outreach-unsub-${Date.now().toString(16)}`, contact_id: contactId, email, campaign_id: verified.payload.campaign_id || "", created_at: new Date().toISOString() },
-        ...serverList(currentState.outreachUnsubscribes)
-      ];
-      await store.writeState(nextState);
+      // Serialized + SCOPED write of exactly the collections this handler changes. This endpoint
+      // is PUBLIC (token-signed, but reachable by any mail client that expands the link), so the
+      // previous full-state writeState here was the same internet-facing clobber surface PR #30
+      // removed from the denial-audit and product-event paths: one unsubscribe carrying a stale
+      // 90-collection snapshot could silently revert unrelated writes landing in its window.
+      await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const email = verified.payload.email || "";
+        const contactId = verified.payload.contact_id || "";
+        const suppressed = recordSuppression(currentState, { contactId, email, reason: "unsubscribed", source: "one_click" });
+        await store.writeCollections({
+          outreachSuppressions: serverList(suppressed.outreachSuppressions),
+          outreachContacts: serverList(suppressed.outreachContacts),
+          outreachUnsubscribes: [
+            { id: `outreach-unsub-${Date.now().toString(16)}`, contact_id: contactId, email, campaign_id: verified.payload.campaign_id || "", created_at: new Date().toISOString() },
+            ...serverList(currentState.outreachUnsubscribes)
+          ]
+        });
+      });
     } catch (error) {
       // Suppression is best-effort idempotent; never surface an error that makes the user
       // think they're still subscribed.
