@@ -8,15 +8,18 @@
 //   - withinSendingWindow() — ET weekday business-hours window.
 //
 // FOUR independent gates stand between this module and a real consumer email:
-//   1. REACTIVATION_LIVE_SEND env flag (default OFF => dry-run, no network send).
-//   2. Engine autopilot toggle (default OFF => act() never runs).
+//   1. Live-send authority: the owner's in-app LIVE MODE record (reactivationCampaign.liveMode,
+//      default OFF) or the legacy REACTIVATION_LIVE_SEND env flag (default OFF). Either arms the
+//      send authority; REACTIVATION_SEND_DISABLED=true is a master kill switch over both.
+//   2. Engine autopilot toggle (default OFF => act() never runs). Live mode flips this together
+//      with the authority record so one owner switch arms/disarms the whole engine.
 //   3. Wave release (a wave's contacts are inert until the operator releases that wave).
 //   4. Stop-threshold monitor (auto-pauses the whole campaign if bounce/complaint/unsub trip).
 // The seed test (Touch 0 to Roger only) renders copy through the SAME assembly path without
 // touching any consumer.
 
 import crypto from "node:crypto";
-import { etParts } from "./heartbeat.mjs";
+import { etParts, autopilotEnabled } from "./heartbeat.mjs";
 import {
   isSuppressed, recordSuppression, normalizeEmail, domainOfEmail, isBadDomain,
   assembleCompliantMessage, validateCompliance, withinSendingWindow,
@@ -47,16 +50,82 @@ const list = (v) => (Array.isArray(v) ? v : []);
 function nowIso() { return new Date().toISOString(); }
 function shortId() { return crypto.randomBytes(5).toString("hex"); }
 
-// The single REACTIVATION_LIVE_SEND gate reader (default OFF). Mirrors outreachLiveSendEnabled.
+// The legacy REACTIVATION_LIVE_SEND env gate reader (default OFF). Mirrors outreachLiveSendEnabled.
+// No longer the ONLY way to arm sending — the owner's in-app live mode (below) is the normal path;
+// this env flag remains as a CLI/emergency override and still defaults OFF.
 export function reactivationLiveSendEnabled(env = process.env) {
   return ["true", "1", "yes", "on"].includes(String((env || {}).REACTIVATION_LIVE_SEND || "").toLowerCase());
+}
+
+// Master kill switch (default OFF/unset). When set, NO reactivation send authority exists —
+// it overrides both the in-app live mode and the REACTIVATION_LIVE_SEND env flag.
+export function reactivationSendKillSwitchOn(env = process.env) {
+  return ["true", "1", "yes", "on"].includes(String((env || {}).REACTIVATION_SEND_DISABLED || "").toLowerCase());
+}
+
+// Owner live-mode record. Lives INSIDE the reactivationCampaign singleton (already registered in
+// coreStateCollections/singletons), so it persists via a SCOPED writeCollections write — never the
+// prod-hostile full-state settings path — and needs no new collection registration.
+export function reactivationLiveModeOf(state = {}) {
+  const lm = ((state || {}).reactivationCampaign || {}).liveMode || {};
+  return {
+    enabled: lm.enabled === true,
+    updatedAt: clean(lm.updatedAt),
+    updatedBy: clean(lm.updatedBy),
+    history: list(lm.history)
+  };
+}
+
+export function reactivationLiveModeEnabled(state = {}) {
+  return reactivationLiveModeOf(state).enabled;
+}
+
+// The live-send AUTHORITY for the reactivation engine: owner live mode OR the legacy env flag,
+// unless the master kill switch is set. This is what the send decision consults; per-contact
+// suppression, wave release, caps, window, and thresholds are enforced in plan()/act() and
+// re-checked in resolveReactivationSendDecision below.
+export function reactivationLiveSendAuthority(state = {}, env = process.env) {
+  if (reactivationSendKillSwitchOn(env)) return false;
+  return reactivationLiveModeEnabled(state) || reactivationLiveSendEnabled(env);
+}
+
+// Pure reducer behind POST /api/reactivation/live-mode. One owner switch sets BOTH gates the
+// heartbeat send path consults: the live-mode authority record AND this engine's autopilot toggle
+// (same {enabled, updatedAt, updatedBy} shape /api/heartbeat/autopilot persists). It touches ONLY
+// reactivationCampaign.liveMode and autopilotSettings[REACTIVATION_ENGINE_ID] — no other engine's
+// toggle, no wave release, no campaign status change, no send. Keeps a bounded audit history.
+export function setReactivationLiveMode(state = {}, { enabled, actor = "owner", now = nowIso() } = {}) {
+  const prior = reactivationLiveModeOf(state);
+  const on = enabled === true;
+  const liveMode = {
+    enabled: on,
+    updatedAt: now,
+    updatedBy: clean(actor) || "owner",
+    history: [{ enabled: on, at: now, by: clean(actor) || "owner" }, ...prior.history].slice(0, 50)
+  };
+  return {
+    state: {
+      ...state,
+      reactivationCampaign: { ...(state.reactivationCampaign || {}), campaignId: REACTIVATION_CAMPAIGN_ID, liveMode },
+      autopilotSettings: {
+        ...(state.autopilotSettings || {}),
+        [REACTIVATION_ENGINE_ID]: { enabled: on, updatedAt: now, updatedBy: clean(actor) || "owner" }
+      }
+    },
+    liveMode,
+    changed: prior.enabled !== on
+  };
 }
 
 // Reactivation send-time gate. This is deliberately separate from B2/RCAP outreach routing:
 // consumer reactivation messages do not carry an RCAP classification and must not be rejected by
 // resolveOutreachSendDecision's nonprofit/court/partner sequence map. "live" only means the caller
 // may perform the SendGrid POST; dry_run/not_sent perform no network send.
-export function resolveReactivationSendDecision(message = {}, { env = process.env } = {}) {
+// When `state` is provided (the heartbeat executor passes it), the owner live mode is the send
+// authority and the campaign-level gates are re-checked at send time (belt-and-suspenders — plan()
+// already enforces them): campaign active, thresholds not tripped, inside the ET send window.
+// Without `state` (legacy CLI callers), only the env flag can authorize — unchanged behavior.
+export function resolveReactivationSendDecision(message = {}, { env = process.env, state = null, now = new Date() } = {}) {
   const compliance = validateCompliance(message);
   if (!compliance.ok) return { status: "not_sent", reason: `compliance:${compliance.errors.join(",")}` };
   const base = {
@@ -65,8 +134,23 @@ export function resolveReactivationSendDecision(message = {}, { env = process.en
     to: clean(message.to),
     subject: clean(message.subject)
   };
-  if (!reactivationLiveSendEnabled(env) || !clean((env || {}).SENDGRID_API_KEY)) {
+  if (reactivationSendKillSwitchOn(env)) {
+    return { status: "dry_run", ...base, liveSend: false, reason: "kill_switch" };
+  }
+  const authority = state ? reactivationLiveSendAuthority(state, env) : reactivationLiveSendEnabled(env);
+  if (!authority || !clean((env || {}).SENDGRID_API_KEY)) {
     return { status: "dry_run", ...base, liveSend: false };
+  }
+  if (state) {
+    const config = reactivationCampaignOf(state);
+    if (lower(config.status) !== "active") {
+      return { status: "not_sent", ...base, liveSend: false, reason: `campaign_${lower(config.status) || "inactive"}` };
+    }
+    const thr = evaluateThresholds(state, config);
+    if (thr.tripped) return { status: "not_sent", ...base, liveSend: false, reason: "threshold_tripped" };
+    if (!withinSendingWindow({ ...config.caps }, etParts(now))) {
+      return { status: "not_sent", ...base, liveSend: false, reason: "outside_window" };
+    }
   }
   return { status: "live", ...base, liveSend: true };
 }
@@ -611,10 +695,12 @@ export async function actReactivation(state = {}, ctx = {}) {
     if (!compliance.ok) { results.push({ contact_id: contact.contact_id, status: "not_sent", reason: `compliance:${compliance.errors.join(",")}` }); continue; }
 
     // DELEGATED SEND. No dep, or dry-run => record an attempt, perform NO network send.
+    // The current state is passed through so the executor's send decision can honor the owner
+    // live-mode authority and re-check the campaign-level gates at send time.
     let sendOutcome = { status: "dry_run", provider: "none" };
     if (typeof ctx.runReactivationSend === "function") {
       try {
-        const r = (await ctx.runReactivationSend(message, { env })) || {};
+        const r = (await ctx.runReactivationSend(message, { env, state: next, now: ctx.now || new Date() })) || {};
         if (lower(r.status) === "not_sent") { results.push({ contact_id: contact.contact_id, status: "not_sent", reason: r.reason || "not_sent" }); continue; }
         sendOutcome = { status: lower(r.status) === "sent" ? "sent" : (r.status || "dry_run"), provider: r.provider || "unknown", provider_message_id: r.provider_message_id || "" };
       } catch (error) {
@@ -640,6 +726,78 @@ export async function actReactivation(state = {}, ctx = {}) {
     results.push({ contact_id: contact.contact_id, status: sendOutcome.status, wave: contact.wave, step });
   }
   return { state: next, results };
+}
+
+// ---------------------------------------------------------------------------
+// 8. LIVE STATUS — the owner-facing truth view behind the Run/Stop control. Read-only derivation
+//    over the SAME gate readers the send path consults (posture-honesty rule: the label on screen
+//    and the behavior of the machine cannot disagree).
+// ---------------------------------------------------------------------------
+export const REACTIVATION_STATUS_COPY = Object.freeze({
+  off: "Off — no emails will send.",
+  armed: "Armed — will send during 8am–5pm ET heartbeat windows.",
+  running: "Running — heartbeat is sending eligible reactivation emails.",
+  stoppedThreshold: "Stopped by safety threshold.",
+  outsideWindow: "Paused — outside send window."
+});
+
+const THRESHOLD_REASON_PATTERN = /hard_bounce|spam_complaint|unsubscribe/;
+
+export function buildReactivationLiveStatus(state = {}, { env = process.env, now = new Date() } = {}) {
+  const config = reactivationCampaignOf(state);
+  const thr = evaluateThresholds(state, config);
+  const rates = thr.rates;
+  const parts = etParts(now);
+  const withinWindow = withinSendingWindow({ ...config.caps }, parts);
+  const liveMode = reactivationLiveModeOf(state);
+  const autopilot = autopilotEnabled(state, REACTIVATION_ENGINE_ID, env);
+  const authority = reactivationLiveSendAuthority(state, env);
+  const sendgridKeyPresent = Boolean(clean((env || {}).SENDGRID_API_KEY));
+  // "armed" = every gate the owner controls is open; only the clock (window) and the safety
+  // monitor decide from here. Sends additionally require released waves + eligible contacts.
+  const armed = authority && autopilot && sendgridKeyPresent;
+  const thresholdStopped = thr.tripped
+    || (lower(config.status) === "paused" && THRESHOLD_REASON_PATTERN.test(config.pausedReason || ""));
+
+  let statusCopy;
+  if (thresholdStopped) statusCopy = REACTIVATION_STATUS_COPY.stoppedThreshold;
+  else if (authority && autopilot && !sendgridKeyPresent) statusCopy = "Armed — but no SendGrid key is configured, so no emails can send.";
+  else if (!armed) statusCopy = REACTIVATION_STATUS_COPY.off;
+  else if (lower(config.status) === "paused") statusCopy = `Paused — ${config.pausedReason || "campaign paused"}.`;
+  else if (lower(config.status) !== "active") statusCopy = REACTIVATION_STATUS_COPY.armed;
+  else if (withinWindow) statusCopy = REACTIVATION_STATUS_COPY.running;
+  else statusCopy = REACTIVATION_STATUS_COPY.outsideWindow;
+
+  const latestIso = (values) => values.filter(Boolean).sort().slice(-1)[0] || "";
+  return {
+    liveMode: { enabled: liveMode.enabled, updatedAt: liveMode.updatedAt, updatedBy: liveMode.updatedBy },
+    reactivationAutopilotEnabled: autopilot,
+    reactivationLiveSendEnabled: authority,
+    liveSendEnvFlag: reactivationLiveSendEnabled(env),
+    killSwitchOn: reactivationSendKillSwitchOn(env),
+    sendgridKeyPresent,
+    armed,
+    campaignStatus: config.status,
+    pausedReason: config.pausedReason || "",
+    releasedWaves: config.releasedWaves,
+    thresholdTripped: thr.tripped,
+    thresholdReasons: thr.reasons,
+    sent: rates.sent,
+    hardBounceRate: rates.hard_bounce,
+    hardBounces: rates.hardBounces,
+    complaints: rates.complaints,
+    unsubscribes: rates.unsubs,
+    lastHeartbeatAt: latestIso(list(state.heartbeatRuns).map((r) => r.ranAt)),
+    lastSendAttemptAt: latestIso(list(state.reactivationAttempts).map((a) => a.created_at)),
+    sendWindowET: {
+      startHourET: config.caps.windowStartHourET,
+      endHourET: config.caps.windowEndHourET,
+      weekdaysOnly: config.caps.weekdaysOnly !== false,
+      plain: `Weekdays ${config.caps.windowStartHourET}:00–${config.caps.windowEndHourET}:00 ET`
+    },
+    withinWindow,
+    statusCopy
+  };
 }
 
 // ---------------------------------------------------------------------------

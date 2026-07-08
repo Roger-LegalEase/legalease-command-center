@@ -11,7 +11,7 @@ import { runHeartbeat, autopilotEnabled } from "./heartbeat.mjs";
 import { buildHeartbeatRegistry, HEARTBEAT_ENGINE_IDS } from "./heartbeat-engines.mjs";
 import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_QUEUE_TYPE, OUTREACH_ENGINE_ID, resolveOutreachSendDecision, outreachLiveSendEnabled } from "./outreach-os.mjs";
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
-import { reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
+import { reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, buildReactivationLiveStatus, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
 import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
 import { buildVersionDrift, createVersionDriftCache } from "./version-truth.mjs";
@@ -25,7 +25,7 @@ import { buildMeetingBrief, reconcileMeetingBriefs, attachEmailContext, buildMee
 import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID, buildTodaySummary, projectCompanyMemory } from "./company-memory-projector.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { previewIntake, confirmIntake, INTAKE_TYPES, INTAKE_ACTIONS } from "./intake.mjs";
-import { buildCampaignCommandView, previewWaveRelease, proposeWaveRelease, executeApprovedWaveRelease, pauseCampaign, proposeCampaignResume, executeApprovedResume } from "./campaign-command.mjs";
+import { buildCampaignCommandView, previewWaveRelease, proposeWaveRelease, executeApprovedWaveRelease, pauseCampaign, proposeCampaignResume, executeApprovedResume, applyReactivationLiveMode } from "./campaign-command.mjs";
 import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FILTER, activeNteeSet } from "./prospect-datasets.mjs";
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
@@ -5238,9 +5238,11 @@ async function runOutreachSend(message, { env = process.env } = {}) {
 }
 
 // MVP reactivation send executor. It uses the same compliant SendGrid payload shape as B2, but it
-// is gated by REACTIVATION_LIVE_SEND and intentionally bypasses B2's RCAP classification router.
-async function runReactivationSend(message, { env = process.env } = {}) {
-  const decision = resolveReactivationSendDecision(message, { env });
+// is gated by the reactivation live-send authority (owner live mode OR REACTIVATION_LIVE_SEND)
+// and intentionally bypasses B2's RCAP classification router. The heartbeat act() passes the
+// current state so the decision honors live mode and re-checks campaign gates at send time.
+async function runReactivationSend(message, { env = process.env, state = null, now = new Date() } = {}) {
+  const decision = resolveReactivationSendDecision(message, { env, state, now });
   if (decision.status !== "live") return decision;
 
   const apiKey = env.SENDGRID_API_KEY;
@@ -17352,16 +17354,22 @@ function htmlShell() {
         const btn = w.released ? "" : " <button type=\\"button\\" onclick=\\"campaignWavePreview(" + Number(w.wave) + ")\\">Preview release</button>";
         return "<li>" + esc(String(w.plain)) + btn + "</li>";
       }).join("");
+      const live = view.live || {};
+      const liveOn = Boolean(live.liveMode && live.liveMode.enabled);
       const lines = [
         "<strong>" + esc(String(view.statusPlain || "")) + "</strong>",
         esc(String((view.gates && view.gates.plain) || "")),
+        "<strong>Reactivation sending: " + esc(String(live.statusCopy || "Unverified — could not read the sending gates.")) + "</strong>",
         "Sending window: " + esc(String(view.sendWindowPlain || "")),
         esc(String(view.dueNowPlain || "")),
         esc(String((view.thresholds && view.thresholds.plain) || "")),
         esc(String((view.telemetry && view.telemetry.plain) || "")),
         "<em>Next: " + esc(String(view.nextRecommendedAction || "")) + "</em>"
       ];
-      const controls = "<div class=\\"card-actions\\">" +
+      const liveButton = liveOn
+        ? "<button type=\\"button\\" onclick=\\"reactivationStopCampaign()\\">Stop Reactivation Campaign</button>"
+        : "<button class=\\"primary\\" type=\\"button\\" onclick=\\"reactivationRunCampaignConfirm()\\">Run Reactivation Campaign</button>";
+      const controls = "<div class=\\"card-actions\\">" + liveButton + " " +
         (String(view.status).toLowerCase() === "paused"
           ? "<button class=\\"primary\\" type=\\"button\\" onclick=\\"campaignResumePropose()\\">Propose resume (asks your approval)</button>"
           : "<button type=\\"button\\" onclick=\\"campaignPause()\\">Pause campaign now</button>") +
@@ -17452,6 +17460,34 @@ function htmlShell() {
       if (target) target.innerHTML = "<strong>Resume is on the Queue for your approval.</strong> Approve it there, then press Run approved resume." +
         "<br><div class=\\"card-actions\\"><button class=\\"primary\\" type=\\"button\\" onclick=\\"campaignResumeExecute('" + esc(String(result.approvalId)) + "')\\">Run approved resume</button> <button type=\\"button\\" onclick=\\"location.hash='queue'\\">Open Queue</button></div>";
       toast("Sent to Queue. Still paused until you approve and run it.");
+    }
+    // Owner Run/Stop switch for reactivation sending (POST /api/reactivation/live-mode).
+    // Run is two-step (explicit confirm button); Stop is immediate because it reduces risk.
+    // Neither sends an email here: the hourly heartbeat is the only send path, and it still
+    // enforces the weekday 8am-5pm ET window, per-hour and per-day caps, suppression, wave
+    // release, and the auto-pause safety thresholds.
+    function reactivationRunCampaignConfirm() {
+      const target = campaignActionTarget();
+      if (target) target.innerHTML = "<strong>Run the reactivation campaign?</strong>" +
+        "<br>Turning this on lets the hourly heartbeat send eligible reactivation emails during weekday 8am-5pm ET windows only, within the per-hour and per-day caps, until you press Stop or a safety threshold pauses it." +
+        "<br>Nothing sends right now by pressing this; the next in-window heartbeat does the sending." +
+        "<br><div class=\\"card-actions\\"><button class=\\"primary\\" type=\\"button\\" onclick=\\"reactivationLiveModeApply(true)\\">Yes, run the campaign</button> <button type=\\"button\\" onclick=\\"loadCampaignCommand()\\">Cancel</button></div>";
+    }
+    function reactivationStopCampaign() { reactivationLiveModeApply(false); }
+    async function reactivationLiveModeApply(enabled) {
+      const target = campaignActionTarget();
+      if (target) target.innerHTML = "<strong>" + (enabled ? "Turning reactivation sending on..." : "Turning reactivation sending off...") + "</strong>";
+      let result;
+      try {
+        result = await api("/api/reactivation/live-mode", { method:"POST", body: JSON.stringify({ enabled: enabled === true }), timeoutMs: 20000 });
+      } catch (error) {
+        if (target) target.innerHTML = "<strong>Could not change reactivation sending.</strong> " + esc(error.message || "") + " The gates were not verified as changed - load the campaign controls again to see the real state.";
+        return;
+      }
+      if (target) target.innerHTML = "<strong>Reactivation sending: " + esc(String(result.statusCopy || "")) + "</strong>" +
+        (enabled ? "<br>No email was sent by this switch. The next weekday 8am-5pm ET heartbeat sends eligible emails, up to the caps." : "<br>No further reactivation emails will send.");
+      loadCampaignCommand();
+      toast("Reactivation sending: " + String(result.statusCopy || (enabled ? "armed" : "off")));
     }
     async function campaignResumeExecute(approvalId) {
       const target = campaignActionTarget();
@@ -17558,6 +17594,9 @@ function htmlShell() {
     window.campaignPause = campaignPause;
     window.campaignResumePropose = campaignResumePropose;
     window.campaignResumeExecute = campaignResumeExecute;
+    window.reactivationRunCampaignConfirm = reactivationRunCampaignConfirm;
+    window.reactivationStopCampaign = reactivationStopCampaign;
+    window.reactivationLiveModeApply = reactivationLiveModeApply;
 
     // Consumer / Expungement.ai list import — real preview + confirm against the internal endpoints.
     // Preview never writes; confirm stages contacts into reactivationContacts. Nothing sends.
@@ -36071,8 +36110,44 @@ async function handleRequest(request, response) {
       // the auto-pause threshold monitor — can be trusted. Carries a plain-English warning when
       // sends exist but no events were ever recorded.
       webhook: sendgridWebhookHealthSummary(currentState[SENDGRID_WEBHOOK_HEALTH_COLLECTION], { env: process.env, sent: rates.sent }),
-      writeHealth: typeof store.writeHealth === "function" ? store.writeHealth() : null
+      writeHealth: typeof store.writeHealth === "function" ? store.writeHealth() : null,
+      // Owner live-mode truth view: liveMode record, combined send authority, window, armed
+      // state, lastHeartbeatAt/lastSendAttemptAt, and the plain-English statusCopy. Note the
+      // top-level liveSendFlag above stays the raw env flag; live.reactivationLiveSendEnabled
+      // is the FULL authority (live mode OR env flag, minus kill switch).
+      live: buildReactivationLiveStatus(currentState, { env: process.env })
     });
+    return;
+  }
+
+  // Owner Run/Stop switch for reactivation sending. Arms/disarms the reactivation engine ONLY
+  // (live-mode record + reactivation autopilot together, scoped writes, audited). It never sends:
+  // the hourly heartbeat remains the only send path and still enforces the ET window, caps,
+  // suppression, wave release, and stop-thresholds. B2 outreach, social, and every other engine
+  // are untouched.
+  if (url.pathname === "/api/reactivation/live-mode" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const body = await readJson(request);
+      if (typeof body.enabled !== "boolean") {
+        sendJson(response, { error: "Body must include enabled: true or false." }, 400);
+        return;
+      }
+      await serializeStateMutation(async () => {
+        const result = await applyReactivationLiveMode(store, {
+          enabled: body.enabled,
+          actorLabel: accessDecision.actor?.label || actorRole,
+          env: process.env
+        });
+        sendJson(response, result);
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update reactivation live mode." }, 400);
+    }
     return;
   }
 

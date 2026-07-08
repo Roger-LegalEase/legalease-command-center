@@ -16,7 +16,10 @@
 // This module never sends anything and never flips a gate. Read-only derivation.
 
 import { autopilotEnabled } from "./heartbeat.mjs";
-import { reactivationLiveSendEnabled, reactivationCampaignOf, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
+import {
+  reactivationLiveSendEnabled, reactivationLiveSendAuthority, reactivationLiveModeEnabled,
+  reactivationCampaignOf, REACTIVATION_ENGINE_ID
+} from "./reactivation-os.mjs";
 import { outreachLiveSendEnabled, OUTREACH_ENGINE_ID } from "./outreach-os.mjs";
 
 function engineEmailPosture({ autopilot, liveSendFlag }) {
@@ -40,7 +43,12 @@ export function buildSafetyPosture({ state = {}, env = process.env, socialLiveGa
   const reactivation = {
     engineId: REACTIVATION_ENGINE_ID,
     autopilotEnabled: autopilotEnabled(state, REACTIVATION_ENGINE_ID, env),
-    liveSendFlag: reactivationLiveSendEnabled(env),
+    // The full send AUTHORITY (owner live mode OR the legacy env flag, minus the kill switch) —
+    // the same reader the send decision consults. If EITHER path could authorize a send, the
+    // posture must say so; a comforting env-only "off" would lie once live mode exists.
+    liveSendFlag: reactivationLiveSendAuthority(state, env),
+    liveSendEnvFlag: reactivationLiveSendEnabled(env),
+    liveMode: reactivationLiveModeEnabled(state),
     campaignStatus: String(reactivationCampaignOf(state).status || "unknown")
   };
   reactivation.posture = engineEmailPosture({ autopilot: reactivation.autopilotEnabled, liveSendFlag: reactivation.liveSendFlag });

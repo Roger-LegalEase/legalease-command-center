@@ -14,11 +14,17 @@
 //   PAUSE    — the one immediate action (it reduces risk). Audited with an executed Approval.
 //
 // HARD RULES: nothing here sends an email, enrolls a held or suppressed contact, flips
-// REACTIVATION_LIVE_SEND / OUTREACH_LIVE_SEND, or changes an autopilot toggle. Releasing a wave
-// arms it; sending stays off until Roger turns sending on elsewhere, on purpose.
+// REACTIVATION_LIVE_SEND / OUTREACH_LIVE_SEND, or changes another engine's autopilot toggle.
+// Releasing a wave arms it; sending stays off until Roger turns sending on, on purpose.
+// The ONE deliberate exception: applyReactivationLiveMode below IS the owner's "turn sending on"
+// switch for the reactivation engine only (POST /api/reactivation/live-mode, owner/admin-gated).
+// It flips the reactivation live-mode record + reactivation autopilot together, via SCOPED
+// writes, with a company-event audit trail — and still never sends an email itself.
 
 import {
-  reactivationCampaignOf, reactivationLiveSendEnabled, evaluateThresholds, waveMetrics,
+  reactivationCampaignOf, reactivationLiveSendEnabled, reactivationLiveSendAuthority,
+  reactivationLiveModeEnabled, setReactivationLiveMode, buildReactivationLiveStatus,
+  evaluateThresholds, waveMetrics,
   campaignRates, releaseWave, contactOnHold, planReactivation, REACTIVATION_ENGINE_ID
 } from "./reactivation-os.mjs";
 import { isSuppressed } from "./outreach-os.mjs";
@@ -99,12 +105,15 @@ function waveBreakdown(state, config) {
 }
 
 function gateFacts(state, env) {
-  const liveSend = reactivationLiveSendEnabled(env);
+  // liveSend = the full send AUTHORITY (owner live mode OR legacy env flag, minus kill switch),
+  // the same reader the send decision consults — not just the env flag.
+  const liveSend = reactivationLiveSendAuthority(state, env);
+  const liveMode = reactivationLiveModeEnabled(state);
   const autopilot = autopilotEnabled(state, REACTIVATION_ENGINE_ID, env);
   const sendgridKey = Boolean(clean((env || {}).SENDGRID_API_KEY));
   const sendingOn = liveSend && autopilot && sendgridKey;
   return {
-    liveSend, autopilot, sendgridKey, sendingOn,
+    liveSend, liveMode, autopilot, sendgridKey, sendingOn,
     plain: sendingOn
       ? "Sending is ON. Released people receive emails inside the weekday window."
       : "Sending is OFF. Nothing goes out to anyone, even for released waves."
@@ -199,6 +208,9 @@ export function buildCampaignCommandView(state = {}, { env = process.env, now = 
     releasedWaves: config.releasedWaves,
     statusPlain: campaignStatusPlain(config, gates),
     gates,
+    // Owner Run/Stop control state (live mode, window, threshold, statusCopy) — same derivation
+    // the /api/reactivation/live-mode response uses, so the campaign page renders one truth.
+    live: buildReactivationLiveStatus(state, { env, now }),
     sendWindowPlain: sendWindowPlain(config.caps),
     waves: waves.map((w) => ({
       ...w,
@@ -228,6 +240,42 @@ export function buildCampaignCommandView(state = {}, { env = process.env, now = 
           : "No action needed. Everything releasable is released or empty.",
     warning: CAMPAIGN_COMMAND_WARNING
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// 1b. LIVE MODE — the owner Run/Stop switch for reactivation sending. This is the ONE gate-flip
+//     control (see HARD RULES above). It arms/disarms the reactivation engine ONLY:
+//       - writes reactivationCampaign.liveMode + autopilotSettings[reactivation] together
+//       - SCOPED writeCollections only — never the full-state write path (prod lesson, PR #27)
+//       - audited via a company event
+//       - never sends: the hourly heartbeat remains the only send path, and it still enforces
+//         the ET window, perTickMax/day caps, suppression, wave release, and stop-thresholds.
+// ---------------------------------------------------------------------------------------------
+
+export async function applyReactivationLiveMode(store, { enabled, actorLabel = "owner", env = process.env, now = new Date() } = {}) {
+  if (typeof enabled !== "boolean") throw new Error("Live mode requires enabled: true or false.");
+  const nowIso = now.toISOString();
+  const currentState = await store.readState();
+  const { state: mutated, changed } = setReactivationLiveMode(currentState, { enabled, actor: actorLabel, now: nowIso });
+  let nextState = mutated;
+  if (changed) {
+    nextState = emitCompanyEvent(nextState, {
+      source: CAMPAIGN_COMMAND_SOURCE,
+      type: "reactivation_live_mode",
+      risk: "watch",
+      summary: enabled
+        ? `Reactivation campaign live mode turned ON by ${actorLabel}. The hourly heartbeat may now send eligible reactivation emails inside the weekday 8am–5pm ET window, within caps and safety thresholds.`
+        : `Reactivation campaign live mode turned OFF by ${actorLabel}. No reactivation emails will send.`
+    });
+  }
+  // SCOPED write only: exactly the collections this control owns. reactivationCampaign and
+  // autopilotSettings are registered singletons; companyEvents carries the audit trail.
+  await store.writeCollections({
+    reactivationCampaign: nextState.reactivationCampaign,
+    autopilotSettings: nextState.autopilotSettings,
+    ...(changed ? { companyEvents: nextState.companyEvents } : {})
+  });
+  return { ok: true, changed, ...buildReactivationLiveStatus(nextState, { env, now }) };
 }
 
 // ---------------------------------------------------------------------------------------------
