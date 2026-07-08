@@ -123,6 +123,30 @@ function sliceBetween(startMarker, endMarker) {
   ok("store.updateSocialAccount: scoped to socialAccounts (reachable from the public callback)");
 }
 
+// ---- Tier-2 sweep pin: the full-state write count can never silently grow -------------------
+{
+  const count = (src.match(/store\.writeState\(/g) || []).length;
+  // Allowlist: (1) writeChangedCollections' own in-place-mutation fallback, (2) the
+  // /api/publishing/run summary write (worker state lineage has no clean before snapshot;
+  // serialized full-state, documented in the handler).
+  assert(count <= 2, `preview-server full-state writeState count must stay at 2 or fewer (found ${count})`);
+  assert(src.includes("if (after !== before) await store.writeState(after);"), "allowlisted site 1: the diff helper fallback");
+  assert(src.includes("serializeStateMutation(() => store.writeState(stateWithSummary))"), "allowlisted site 2: publishing run summary, serialized");
+  ok(`tier-2 sweep pinned: ${count} full-state writes remain in preview-server, both allowlisted`);
+}
+
+{
+  const storageSrc = readFileSync(new URL("./storage.mjs", import.meta.url), "utf8");
+  // Every store convenience method writes only its own collection now; the only writeState
+  // calls left in storage.mjs are the two writeCollections implementations themselves. The
+  // region runs through the END of the JsonStore class so updateSettings (the last method,
+  // and the one that broke prod in #27) is inside the pin.
+  const methodRegion = storageSrc.slice(storageSrc.indexOf("async generatePosts"), storageSrc.indexOf("export class SupabaseCoreStore"));
+  assert(methodRegion.includes("async updateSettings"), "pin region reaches updateSettings");
+  assert(!methodRegion.includes("this.writeState("), "no store convenience method performs a full-state write");
+  ok("store convenience methods (posts through updateSettings): all scoped, region pinned to class end");
+}
+
 // ---- 6. Live behavior against a spawned server -------------------------------------------------
 const port = Number(process.env.TEST_SCOPED_WRITE_PORT || 3971);
 const dataDir = mkdtempSync(path.join(tmpdir(), "scoped-write-test-"));
