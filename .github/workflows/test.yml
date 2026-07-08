@@ -1,0 +1,24 @@
+# The canonical gate, automated. Until 2026-07-08 this repo had NO CI — the gate was a human
+# running `npm run check && npm test` in a clean worktree before every merge (a dirty checkout
+# with .env.local leaks env into spawned test servers and 401s the auth suites; CI's clean
+# environment matches the clean-worktree behavior by construction).
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
