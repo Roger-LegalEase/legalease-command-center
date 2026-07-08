@@ -144,7 +144,45 @@ const coreStateCollections = [
   "companyOrganizations",
   "companyEvents",
   "agentRuns",
-  "approvals"
+  "approvals",
+  // Slice 4 registration backlog (2026-07-08). Every collection below is WRITTEN by the app
+  // but was never registered, so on the Supabase backend each write was silently dropped and
+  // the data vanished on the next read — the same trap as "settings" above. All are
+  // list-shaped; every writer stamps a stable per-item id (verified against the index-keyed
+  // row shredding that destroyed reactivationContacts). assetBundles is deliberately NOT
+  // registered: it is seed/read-only with no write site anywhere.
+  // test-registration-backlog.mjs asserts membership.
+  // -- JsonStore convenience methods (addLibraryItem, addBrandAsset, addBrandRule,
+  //    upsertGenerationProfile, addPublishEvent, savePostImage):
+  "library",
+  "brandAssets",
+  "brandRules",
+  "generationProfiles",
+  "publishEvents",
+  // postImages payloads are compacted in coreRecordsFromState (data: URIs stripped, same as
+  // the local-file path) so registering it cannot push megabyte image rows to Supabase.
+  "postImages",
+  // -- upsertGrowthItem computed-key writes (growthCollections set in preview-server.mjs):
+  "milestones",
+  "complianceItems",
+  "soc2AccessReviews",
+  "soc2Changes",
+  "soc2Vendors",
+  "soc2Incidents",
+  "soc2Evidence",
+  "soc2Policies",
+  "soc2ControlOwners",
+  "soc2TypeIChecklist",
+  // -- direct route/engine writes in preview-server.mjs, google-workspace.mjs, and
+  //    partner-journey-handoff-contract.mjs:
+  "campaignKits",
+  "emailDrafts",
+  "externalActionOutbox",
+  "generationBatches",
+  "syncRuns",
+  "googleInsights",
+  "dailyRunPublisherRuns",
+  "handoffContractPreviews"
 ];
 const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth", "settings"]);
 
@@ -257,7 +295,11 @@ function coreRecordsFromState(state = {}) {
     const value = state[collection];
     if (value === undefined || value === null) continue;
     if (Array.isArray(value)) {
-      value.forEach((item, index) => addRow({ collection, item_id: coreRecordId(collection, item, index), payload: item || {}, updated_at: new Date().toISOString() }));
+      // postImages parity with the local-file path (writeStateNow): strip data: URI payloads
+      // before they become Supabase rows. Without this, registering postImages would upload
+      // full base64 images on every write that includes the collection.
+      const items = collection === "postImages" ? value.map(compactPostImageForLocal) : value;
+      items.forEach((item, index) => addRow({ collection, item_id: coreRecordId(collection, item, index), payload: item || {}, updated_at: new Date().toISOString() }));
     } else if (typeof value === "object") {
       addRow({ collection, item_id: "singleton", payload: value, updated_at: new Date().toISOString() });
     }
