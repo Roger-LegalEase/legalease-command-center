@@ -99,6 +99,30 @@ function sliceBetween(startMarker, endMarker) {
   ok("/api/outreach/unsubscribe: serialized + scoped write of exactly the three collections it changes");
 }
 
+{
+  // The Google OAuth callback is PUBLIC (Google redirects the browser to it); a bot GET with
+  // ?error= or a garbage state reaches its error writes, so every write must be serialized
+  // and scoped: connect success writes exactly connectorStatus+auditHistory+activityEvents
+  // (socialAccounts persists via the store method), error paths write via updateSocialAccount.
+  const body = sliceBetween('if (url.pathname === "/api/google/callback"', '"/api/google/status"');
+  const serializedCount = (body.match(/serializeStateMutation\(/g) || []).length;
+  assert(serializedCount >= 4, `all four google-callback write paths are serialized (found ${serializedCount})`);
+  for (const key of ["connectorStatus:", "auditHistory:", "activityEvents:"]) {
+    assert(body.includes(key), `scoped google-connect write carries ${key}`);
+  }
+  assert(!body.includes("store.writeState("), "no full-state write remains in the public google callback");
+  ok("/api/google/callback: serialized + scoped on all four public write paths");
+}
+
+{
+  const storageSrc = readFileSync(new URL("./storage.mjs", import.meta.url), "utf8");
+  const start = storageSrc.indexOf("async updateSocialAccount");
+  const body = storageSrc.slice(start, storageSrc.indexOf("\n  }", start));
+  assert(body.includes("writeCollections({ socialAccounts"), "updateSocialAccount writes only socialAccounts");
+  assert(!body.includes("this.writeState("), "updateSocialAccount no longer performs a full-state write");
+  ok("store.updateSocialAccount: scoped to socialAccounts (reachable from the public callback)");
+}
+
 // ---- 6. Live behavior against a spawned server -------------------------------------------------
 const port = Number(process.env.TEST_SCOPED_WRITE_PORT || 3971);
 const dataDir = mkdtempSync(path.join(tmpdir(), "scoped-write-test-"));
@@ -243,6 +267,22 @@ try {
     const badResp = await fetch(`${base}/api/outreach/unsubscribe?token=not-a-real-token`);
     assert.equal(badResp.status, 400, "malformed unsubscribe token is rejected");
     ok("live: malformed unsubscribe token stays rejected (fail closed)");
+  }
+
+  // 6f. Bot-style GET on the public Google callback: writes an error status via the scoped
+  // store method and every earlier-written collection survives.
+  const gcbResp = await fetch(`${base}/api/google/callback?error=access_denied`, { redirect: "manual" });
+  assert.equal(gcbResp.status, 302, `google callback error path redirects (got ${gcbResp.status})`);
+  await wait(800);
+  {
+    const persisted = await readDataFile();
+    const google = (persisted.socialAccounts || []).find((account) => account.platform === "google_workspace");
+    assert(google, "google_workspace account status persisted");
+    assert.equal(google.status, "error", "error status recorded");
+    assert((persisted.outreachSuppressions || []).some((entry) => entry.email === "scoped-test@example.com"), "unsubscribe suppression survived the callback write");
+    assert.equal(persisted.autopilotSettings?.["reactivation-sequencer"]?.enabled, true, "autopilot setting survived the callback write");
+    assert((persisted.soc2AuditLogs || []).some((entry) => entry.action === "access denied"), "audit log survived the callback write");
+    ok("live: public google-callback error write is scoped; earlier collections survive");
   }
 } finally {
   child.kill("SIGTERM");

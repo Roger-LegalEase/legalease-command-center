@@ -37024,9 +37024,13 @@ async function handleRequest(request, response) {
   }
 
   if (url.pathname === "/api/google/callback" && request.method === "GET") {
+    // PUBLIC endpoint (Google redirects the browser here), so every write below must be
+    // serialized and scoped. A bot GET with ?error= or a garbage state reaches the error
+    // writes; pre-fix these were unserialized full-state writes on an internet-facing path,
+    // the exact clobber shape PR #30 removed elsewhere.
     if (url.searchParams.get("error")) {
       const safeError = safeGoogleError(url.searchParams.get("error_description") || url.searchParams.get("error"));
-      await store.updateSocialAccount("google_workspace", {
+      await serializeStateMutation(() => store.updateSocialAccount("google_workspace", {
         status:"error",
         displayName:"Google Workspace",
         lastErrorSummary:safeError,
@@ -37035,20 +37039,20 @@ async function handleRequest(request, response) {
         lastTestMessage:safeError,
         lastTestedAt:new Date().toISOString(),
         oauthConfigured:googleOAuthConfigured()
-      });
+      }));
       sendGoogleSettingsRedirect(response, safeError);
       return;
     }
     const verified = verifyOwnerStartedOAuthState("google_workspace", url.searchParams.get("state"));
     if (!verified.ok) {
-      await store.updateSocialAccount("google_workspace", {
+      await serializeStateMutation(() => store.updateSocialAccount("google_workspace", {
         status:"error",
         displayName:"Google Workspace",
         lastErrorSummary:verified.error,
         lastError:verified.error,
         lastTestedAt:new Date().toISOString(),
         oauthConfigured:googleOAuthConfigured()
-      });
+      }));
       sendGoogleSettingsRedirect(response, "Google connection expired. Try again from Settings.");
       return;
     }
@@ -37057,57 +37061,62 @@ async function handleRequest(request, response) {
       return;
     }
     try {
+      // Network exchanges stay OUTSIDE the serializer (never hold the mutation lock across
+      // Google round-trips); the state mutation below runs inside it.
       const tokenPayload = await exchangeGoogleCode(url.searchParams.get("code"));
       const profile = await fetchGoogleUserInfo(tokenPayload.access_token);
-      const existingAccount = (await store.readState()).socialAccounts?.find((account) => account.platform === "google_workspace") || {};
-      const accountName = profile.email || profile.name || "Google account";
-      const tokenExpiresAt = tokenPayload.expires_in ? new Date(Date.now() + Number(tokenPayload.expires_in) * 1000).toISOString() : "";
-      let state = await store.updateSocialAccount("google_workspace", {
-        status:"connected",
-        displayName:"Google Workspace",
-        accountName,
-        accountId:profile.sub || "",
-        externalAccountId:profile.sub || "",
-        accessTokenEncrypted:encryptToken(tokenPayload.access_token || ""),
-        refreshTokenEncrypted:tokenPayload.refresh_token ? encryptToken(tokenPayload.refresh_token) : existingAccount.refreshTokenEncrypted || "",
-        tokenExpiresAt,
-        connectedAt:new Date().toISOString(),
-        lastTestStatus:"connected",
-        lastTestMessage:"Google connected read-only for Gmail and Calendar.",
-        lastErrorSummary:"",
-        lastError:"",
-        lastTestedAt:new Date().toISOString(),
-        oauthConfigured:true,
-        scopes:googleReadOnlyScopes
+      await serializeStateMutation(async () => {
+        const existingAccount = (await store.readState()).socialAccounts?.find((account) => account.platform === "google_workspace") || {};
+        const accountName = profile.email || profile.name || "Google account";
+        const tokenExpiresAt = tokenPayload.expires_in ? new Date(Date.now() + Number(tokenPayload.expires_in) * 1000).toISOString() : "";
+        let state = await store.updateSocialAccount("google_workspace", {
+          status:"connected",
+          displayName:"Google Workspace",
+          accountName,
+          accountId:profile.sub || "",
+          externalAccountId:profile.sub || "",
+          accessTokenEncrypted:encryptToken(tokenPayload.access_token || ""),
+          refreshTokenEncrypted:tokenPayload.refresh_token ? encryptToken(tokenPayload.refresh_token) : existingAccount.refreshTokenEncrypted || "",
+          tokenExpiresAt,
+          connectedAt:new Date().toISOString(),
+          lastTestStatus:"connected",
+          lastTestMessage:"Google connected read-only for Gmail and Calendar.",
+          lastErrorSummary:"",
+          lastError:"",
+          lastTestedAt:new Date().toISOString(),
+          oauthConfigured:true,
+          scopes:googleReadOnlyScopes
+        });
+        const withGmailStatus = { ...state, connectorStatus: connectorStatusPatch(state, "gmail", { configured:true, enabled:true, lastSyncStatus:"connected", lastError:"" }) };
+        state = { ...withGmailStatus, connectorStatus: connectorStatusPatch(withGmailStatus, "calendar", { configured:true, enabled:true, lastSyncStatus:"connected", lastError:"" }) };
+        // Scoped: socialAccounts was persisted by updateSocialAccount above; the connect
+        // additionally changes exactly these three collections and nothing else.
+        await store.writeCollections({
+          connectorStatus: state.connectorStatus,
+          auditHistory: [{
+            id: `audit-google-connect-${crypto.randomUUID().slice(0, 8)}`,
+            timestamp: new Date().toISOString(),
+            actor: verified.payload?.startedByActor || "owner",
+            action: "google workspace connected read only",
+            resourceType: "google_workspace",
+            resourceId: profile.sub || "google_workspace",
+            beforeValue: null,
+            afterValue: { accountName, scopes: googleReadOnlyScopes.filter(scope => /readonly|openid|email|profile/i.test(scope)), noOutboundScopes: true }
+          }, ...(state.auditHistory || [])].slice(0, 1000),
+          activityEvents: [{
+            id: `activity-google-connect-${crypto.randomUUID().slice(0, 8)}`,
+            eventType: "Google Workspace connected",
+            title: "Gmail and Calendar read-only connected",
+            relatedObjectType: "google_workspace",
+            relatedObjectId: profile.sub || "google_workspace",
+            createdAt: new Date().toISOString()
+          }, ...(state.activityEvents || [])].slice(0, 500)
+        });
       });
-      const withGmailStatus = { ...state, connectorStatus: connectorStatusPatch(state, "gmail", { configured:true, enabled:true, lastSyncStatus:"connected", lastError:"" }) };
-      state = { ...withGmailStatus, connectorStatus: connectorStatusPatch(withGmailStatus, "calendar", { configured:true, enabled:true, lastSyncStatus:"connected", lastError:"" }) };
-      state = {
-        ...state,
-        auditHistory: [{
-          id: `audit-google-connect-${crypto.randomUUID().slice(0, 8)}`,
-          timestamp: new Date().toISOString(),
-          actor: verified.payload?.startedByActor || "owner",
-          action: "google workspace connected read only",
-          resourceType: "google_workspace",
-          resourceId: profile.sub || "google_workspace",
-          beforeValue: null,
-          afterValue: { accountName, scopes: googleReadOnlyScopes.filter(scope => /readonly|openid|email|profile/i.test(scope)), noOutboundScopes: true }
-        }, ...(state.auditHistory || [])].slice(0, 1000),
-        activityEvents: [{
-          id: `activity-google-connect-${crypto.randomUUID().slice(0, 8)}`,
-          eventType: "Google Workspace connected",
-          title: "Gmail and Calendar read-only connected",
-          relatedObjectType: "google_workspace",
-          relatedObjectId: profile.sub || "google_workspace",
-          createdAt: new Date().toISOString()
-        }, ...(state.activityEvents || [])].slice(0, 500)
-      };
-      await store.writeState(state);
       sendGoogleSettingsRedirect(response, "Google connected. Email sending and calendar writes remain off.");
     } catch (error) {
       const safeError = safeGoogleError(error);
-      await store.updateSocialAccount("google_workspace", {
+      await serializeStateMutation(() => store.updateSocialAccount("google_workspace", {
         status:"error",
         displayName:"Google Workspace",
         lastErrorSummary:safeError,
@@ -37116,7 +37125,7 @@ async function handleRequest(request, response) {
         lastTestMessage:safeError,
         lastTestedAt:new Date().toISOString(),
         oauthConfigured:googleOAuthConfigured()
-      });
+      }));
       sendGoogleSettingsRedirect(response, safeError);
     }
     return;
