@@ -529,7 +529,10 @@ export class JsonStore {
       { id: `channel-${platform}`, platform };
     const account = { ...existing, ...patch, platform, updatedAt: new Date().toISOString() };
     state.socialAccounts = [account, ...(state.socialAccounts || []).filter((item) => item.platform !== platform)];
-    await this.writeState(state);
+    // Scoped: this method is reachable from the PUBLIC Google OAuth callback (any bot GET with
+    // ?error= writes an error status), so a full-state write here carried the same clobber
+    // exposure as the PR #30 denial-storm path. Only socialAccounts changes; only it is written.
+    await this.writeCollections({ socialAccounts: state.socialAccounts });
     return state;
   }
 
