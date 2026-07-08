@@ -596,7 +596,18 @@ export function planReactivation(state = {}, ctx = {}) {
   const withinWindow = withinSendingWindow({ ...caps, weekdaysOnly: caps.weekdaysOnly }, parts);
   const due = [];
 
+  // One proposal per PERSON, no matter how many contact records share a contact_id or an
+  // email. Duplicate records reached prod (the 2026-07-08 storage shredding) and each dup of
+  // a due contact became one more live send of the same touch — the planner is the last line
+  // where a duplicate can be stopped before it reaches SendGrid.
+  const seenIdentities = new Set();
   for (const contact of list(state.reactivationContacts)) {
+    const idKey = clean(contact.contact_id);
+    const emailKey = normalizeEmail(contact.email);
+    if (!idKey && !emailKey) continue; // keyless record — nothing sendable, nothing to dedupe
+    if ((idKey && seenIdentities.has(idKey)) || (emailKey && seenIdentities.has(emailKey))) continue;
+    if (idKey) seenIdentities.add(idKey);
+    if (emailKey) seenIdentities.add(emailKey);
     if (!releasable.has(Number(contact.wave))) continue;
     if (contactOnHold(contact)) continue; // explicit campaign hold — not eligible for sends
     if (!contact.enrolled_at) continue;

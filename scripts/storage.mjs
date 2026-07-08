@@ -240,7 +240,12 @@ async function supabaseFetchAllRows(selectColumns) {
 
 function coreRecordId(collection, item, index = 0) {
   if (singletonCollections.has(collection)) return "singleton";
-  return String(item?.id || item?.postId || item?.title || item?.name || collection + "-" + index);
+  // contact_id must come before the index fallback: contact records carry no `id`, and
+  // index-based row keys are position-dependent — two concurrent full-state writes with
+  // different orderings interleave rows, duplicating some records and overwriting others
+  // (this shredded reactivationContacts to 537 distinct emails across 3,838 rows on
+  // 2026-07-08). A stable per-record key makes concurrent writes converge instead.
+  return String(item?.id || item?.contact_id || item?.postId || item?.title || item?.name || collection + "-" + index);
 }
 
 function coreRecordsFromState(state = {}) {
