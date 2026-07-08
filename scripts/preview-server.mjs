@@ -17356,7 +17356,9 @@ function htmlShell() {
       }).join("");
       const live = view.live || {};
       const liveOn = Boolean(live.liveMode && live.liveMode.enabled);
+      const signature = String((view.telemetry && view.telemetry.signatureVerification) || "unknown");
       const lines = [
+        "<em>" + esc(String(view.workflowPlain || "")) + "</em>",
         "<strong>" + esc(String(view.statusPlain || "")) + "</strong>",
         esc(String((view.gates && view.gates.plain) || "")),
         "<strong>Reactivation sending: " + esc(String(live.statusCopy || "Unverified — could not read the sending gates.")) + "</strong>",
@@ -17364,8 +17366,12 @@ function htmlShell() {
         esc(String(view.dueNowPlain || "")),
         esc(String((view.thresholds && view.thresholds.plain) || "")),
         esc(String((view.telemetry && view.telemetry.plain) || "")),
+        "Sender identity verification: " + esc(signature === "enforced" ? "enforced (signed delivery feedback)" : signature),
         "<em>Next: " + esc(String(view.nextRecommendedAction || "")) + "</em>"
       ];
+      const waveNotes =
+        (view.waveRecommendation ? "<em>" + esc(String(view.waveRecommendation)) + "</em><br>" : "") +
+        (view.legacyUnattributedPlain ? esc(String(view.legacyUnattributedPlain)) + "<br>" : "");
       const liveButton = liveOn
         ? "<button type=\\"button\\" onclick=\\"reactivationStopCampaign()\\">Stop Reactivation Campaign</button>"
         : "<button class=\\"primary\\" type=\\"button\\" onclick=\\"reactivationRunCampaignConfirm()\\">Run Reactivation Campaign</button>";
@@ -17375,7 +17381,7 @@ function htmlShell() {
           : "<button type=\\"button\\" onclick=\\"campaignPause()\\">Pause campaign now</button>") +
         "</div>";
       if (target) target.innerHTML = lines.join("<br>") +
-        "<br><br><strong>Waves</strong><ul>" + waves + "</ul>" + controls +
+        "<br><br><strong>Waves</strong><ul>" + waves + "</ul>" + waveNotes + controls +
         "<br><em>" + esc(String(view.warning || "")) + "</em>";
     }
     async function campaignWavePreview(wave) {
@@ -17409,7 +17415,7 @@ function htmlShell() {
         return;
       }
       if (target) target.innerHTML = "<strong>On the Queue for your approval.</strong> Approve it on the Queue or Today page, then come back and press Run approved release." +
-        (scheduledFor ? "<br>Planned for " + esc(scheduledFor) + " — it will refuse to run before then." : "") +
+        (scheduledFor ? "<br>Internal planning date " + esc(scheduledFor) + " — the release refuses to run before that date. This does not schedule sending." : "") +
         "<br><div class=\\"card-actions\\"><button class=\\"primary\\" type=\\"button\\" onclick=\\"campaignWaveExecute('" + esc(String(result.approvalId)) + "')\\">Run approved release</button> <button type=\\"button\\" onclick=\\"location.hash='queue'\\">Open Queue</button></div>";
       toast("Sent to Queue. Nothing was released or sent.");
     }
@@ -25881,11 +25887,11 @@ function htmlShell() {
         <div class="campaign-safety-lines"><span>\${gates ? "Live gates need review" : "Sending is off"}</span><span>Dry run only</span><span>Waiting for approval</span><span>Suppressed contacts will not receive email</span><span>No campaign sends directly</span></div>
         <div class="campaign-preview-metrics">\${[[summary.total,"campaign/list rows"],[summary.waiting,"waiting for approval"],[summary.ready,"ready to approve"],[summary.scheduled,"scheduled/due"],[summary.blocked,"paused/blocked"]].map(([value,label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
         <section class="growth-card">
-          <div class="growth-card-head"><h2>Reactivation campaign controls</h2><small>Preview first, approve on the Queue, then run — no shell commands</small></div>
-          <p class="muted">See exactly who would be lined up, which email they start with, when it would go, what is blocked, and what approval does and does not do. Releasing a wave never turns sending on.</p>
+          <div class="growth-card-head"><h2>Reactivation campaign controls</h2><small>Preview → approve on the Queue → run → monitor → stop. No shell commands needed.</small></div>
+          <p class="muted">See exactly who would be lined up, which email they start with, when it would go, what is blocked, and what approval does and does not do. Releasing a wave never turns sending on; sending only starts when you press Run Reactivation Campaign below. This page controls the consumer reactivation campaign only — B2 partner outreach and social posting are separate and are not changed here.</p>
           <div class="card-actions">
             <button class="primary" type="button" onclick="loadCampaignCommand()">Load campaign controls</button>
-            <label class="inline-filter">Planned release date (optional)<input type="date" id="campaign-release-date"></label>
+            <label class="inline-filter">Internal planning date (optional) — this does not schedule sending<input type="date" id="campaign-release-date"></label>
             <label class="inline-filter">Pause reason (optional)<input type="text" id="campaign-pause-reason" placeholder="e.g. reviewing bounce numbers"></label>
           </div>
           <div id="campaign-command-result" class="campaign-import-status">Load the campaign controls to see status, waves, safety limits, and delivery feedback. Read-only until you approve something on the Queue.</div>

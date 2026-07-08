@@ -3,12 +3,17 @@
 // held/suppressed protection, pause/resume flow, threshold + telemetry honesty, no gate changes,
 // no sends, no jargon.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   buildCampaignCommandView, previewWaveRelease, proposeWaveRelease, executeApprovedWaveRelease,
-  pauseCampaign, proposeCampaignResume, executeApprovedResume,
-  RELEASE_ACTION_TYPE, RESUME_ACTION_TYPE, CAMPAIGN_COMMAND_WARNING
+  pauseCampaign, proposeCampaignResume, executeApprovedResume, applyReactivationLiveMode,
+  RELEASE_ACTION_TYPE, RESUME_ACTION_TYPE, CAMPAIGN_COMMAND_WARNING, CAMPAIGN_WORKFLOW_PLAIN
 } from "./campaign-command.mjs";
-import { reactivationCampaignOf } from "./reactivation-os.mjs";
+import {
+  reactivationCampaignOf, releaseWave, reactivationLiveSendAuthority, REACTIVATION_ENGINE_ID
+} from "./reactivation-os.mjs";
+import { autopilotEnabled } from "./heartbeat.mjs";
+import { buildSafetyPosture } from "./safety-posture.mjs";
 import { transitionQueueItem } from "./company-memory.mjs";
 import { coreStateCollections } from "./storage.mjs";
 
@@ -370,9 +375,9 @@ check("all collections campaign command writes are registered for persistence", 
 });
 
 check("user-facing campaign copy carries no engineering jargon", () => {
-  const surfaces = [CAMPAIGN_COMMAND_WARNING];
+  const surfaces = [CAMPAIGN_COMMAND_WARNING, CAMPAIGN_WORKFLOW_PLAIN];
   const view = buildCampaignCommandView(baseState(), { env: ENV, now: new Date(NOW) });
-  surfaces.push(view.statusPlain, view.dueNowPlain, view.nextRecommendedAction, view.thresholds.plain, view.telemetry.plain, view.sendWindowPlain);
+  surfaces.push(view.statusPlain, view.dueNowPlain, view.nextRecommendedAction, view.thresholds.plain, view.telemetry.plain, view.sendWindowPlain, view.waveRecommendation, view.legacyUnattributedPlain);
   for (const w of view.waves) surfaces.push(w.plain);
   const preview = previewWaveRelease(baseState(), 3, { env: ENV, now: new Date(NOW) });
   surfaces.push(preview.headline, ...preview.lines, preview.whatApprovalDoes, preview.whatApprovalDoesNot);
@@ -381,6 +386,129 @@ check("user-facing campaign copy carries no engineering jargon", () => {
   for (const field of surfaces) {
     assert(!/\b(heartbeat|mutex|registry|lease|reducer|endpoint|payload|upsert|autopilot|env var|gate state)\b|act\(\)|JSON/i.test(String(field)), `jargon leaked into: ${field}`);
   }
+});
+
+// ---- Operator-clarity page checks (preview → approve → run → monitor → stop) ------------------
+
+function memStore(initial) {
+  let state = initial;
+  const calls = { writeState: 0, writeCollections: [] };
+  return {
+    calls,
+    async readState() { return state; },
+    async writeState(next) { calls.writeState += 1; state = next; },
+    async writeCollections(patch) { calls.writeCollections.push(Object.keys(patch).sort()); state = { ...state, ...patch }; },
+    get state() { return state; }
+  };
+}
+
+async function checkAsync(name, fn) {
+  await fn();
+  passed++;
+  console.log(`  ✓ ${name}`);
+}
+
+const OUT_WINDOW_NOW = new Date("2026-07-03T02:00:00Z"); // Thu 22:00 ET — weekday, after hours
+
+check("releasing a wave never enables sending", () => {
+  const rel = releaseWave(baseState(), 3, { now: NOW });
+  assert.equal(reactivationLiveSendAuthority(rel.state, ENV), false, "release must not grant send authority");
+  assert.equal(autopilotEnabled(rel.state, REACTIVATION_ENGINE_ID, ENV), false, "release must not flip autopilot");
+  const view = buildCampaignCommandView(rel.state, { env: ENV, now: new Date(NOW) });
+  assert.equal(view.gates.sendingOn, false);
+  assert(/sending is off/i.test(view.gates.plain));
+});
+
+check("outside the window, the due message explains the window — never a false empty queue", () => {
+  const view = buildCampaignCommandView(baseState(), { env: ENV, now: OUT_WINDOW_NOW });
+  assert.equal(view.windowOpenNow, false);
+  assert(/Because it is outside the weekday 8am–5pm ET sending window, 0 emails would send right now\./.test(view.dueNowPlain), view.dueNowPlain);
+  assert(view.dueEligible >= 1, "contact c1 is due — the queue is NOT empty");
+  assert(/queued/.test(view.dueNowPlain), "eligible count surfaces so the queue never looks empty");
+});
+
+check("inside the window with sending off, the real due count shows (no false 0)", () => {
+  const view = buildCampaignCommandView(baseState(), { env: ENV, now: new Date(NOW) });
+  assert.equal(view.windowOpenNow, true);
+  assert(view.dueEligible >= 1);
+  assert(view.dueNowPlain.includes(String(view.dueEligible)), "the eligible count is in the message");
+  assert(/Run Reactivation Campaign/.test(view.dueNowPlain), "message points at the Run control");
+  assert(!/outside the weekday/.test(view.dueNowPlain));
+});
+
+check("inside the window with sending on, the message shows who is due this hour", () => {
+  const view = buildCampaignCommandView(sendingOnState(), { env: ENV_SENDING_ON, now: new Date(NOW) });
+  assert(/due an email in this hour's send/.test(view.dueNowPlain), view.dueNowPlain);
+  assert(!/outside the weekday/.test(view.dueNowPlain));
+});
+
+check("waves 3 and 4 stay unreleased in the view; recommendation says run wave 2 first", () => {
+  const view = buildCampaignCommandView(baseState(), { env: ENV, now: new Date(NOW) });
+  assert.deepEqual(view.releasedWaves, [1, 2]);
+  for (const w of view.waves.filter((w) => Number(w.wave) >= 3)) assert.equal(w.released, false, `wave ${w.wave} must stay unreleased`);
+  assert.equal(view.waveRecommendation, "Recommendation: run Wave 2 before releasing Wave 3.");
+});
+
+check("legacy/unattributed prior sends surface when totals exceed the wave display (display-only)", () => {
+  const state = baseState({
+    reactivationContacts: [
+      ...baseState().reactivationContacts,
+      { contact_id: "cx", email: "x@gmail.com", wave: null }
+    ],
+    reactivationAttempts: [
+      { id: "a1", contact_id: "cx", to: "x@gmail.com", status: "sent", sent_date: "2026-06-30", created_at: "2026-06-30T15:00:00Z" },
+      { id: "a2", contact_id: "c1", to: "a@gmail.com", status: "sent", sent_date: "2026-06-30", created_at: "2026-06-30T15:00:00Z" }
+    ]
+  });
+  const view = buildCampaignCommandView(state, { env: ENV, now: new Date(NOW) });
+  assert.equal(view.legacyUnattributedSent, 1);
+  assert(/Legacy\/unattributed prior sends: 1\./.test(view.legacyUnattributedPlain));
+  assert(/included in total safety metrics but are not assigned to the current wave display/.test(view.legacyUnattributedPlain));
+  const clean = buildCampaignCommandView(baseState(), { env: ENV, now: new Date(NOW) });
+  assert.equal(clean.legacyUnattributedSent, 0);
+  assert.equal(clean.legacyUnattributedPlain, "");
+});
+
+check("normal operation needs no shell commands: run/stop/release/approve all live in the page", () => {
+  const src = readFileSync(new URL("./preview-server.mjs", import.meta.url), "utf8");
+  for (const marker of [
+    "/api/reactivation/live-mode",          // the live-mode control endpoint
+    "Run Reactivation Campaign",            // first-class Run button
+    "Stop Reactivation Campaign",           // first-class Stop button
+    "reactivationRunCampaignConfirm",       // Run is two-step
+    "reactivationLiveModeApply",            // both buttons drive the SAME live-mode control
+    "campaignWaveExecute",                  // approved release runs from the page
+    "Internal planning date",               // renamed from Planned release date
+    "This does not schedule sending",       // planning date disclaimer (static label lowercased variant below)
+    "Sender identity verification"          // signature status line
+  ]) {
+    assert(src.includes(marker), `missing UI marker: ${marker}`);
+  }
+  assert(src.includes("this does not schedule sending") || src.includes("This does not schedule sending"));
+  assert(!src.includes("Planned release date"), "old label is gone");
+  const runFn = src.slice(src.indexOf("async function reactivationLiveModeApply"), src.indexOf("async function reactivationLiveModeApply") + 800);
+  assert(runFn.includes('api("/api/reactivation/live-mode"'), "Run/Stop call the existing live-mode endpoint");
+  assert(!CAMPAIGN_COMMAND_WARNING.includes("somewhere else"), "vague 'somewhere else' copy replaced");
+  assert(/Run Reactivation Campaign/.test(CAMPAIGN_COMMAND_WARNING), "warning names the real control");
+});
+
+await checkAsync("Run uses the live-mode control; Stop disables it; B2 outreach and social stay untouched", async () => {
+  const store = memStore(baseState());
+  const run = await applyReactivationLiveMode(store, { enabled: true, actorLabel: "roger", env: ENV, now: new Date(NOW) });
+  assert.equal(run.liveMode.enabled, true, "Run turns live mode on");
+  assert.equal(reactivationLiveSendAuthority(store.state, ENV), true);
+  assert.equal(store.calls.writeState, 0, "control never uses the full-state write path");
+  const postureOn = buildSafetyPosture({ state: store.state, env: {} });
+  assert.equal(postureOn.email.outreach.posture, "off", "B2 outreach posture unchanged");
+  assert.equal(postureOn.email.outreach.autopilotEnabled, false, "B2 autopilot unchanged");
+  assert.equal(postureOn.social.posture, "off", "social posting unchanged");
+  assert.equal(store.state.autopilotSettings["outreach-sequencer"], undefined, "no B2 toggle written");
+  assert.deepEqual(reactivationCampaignOf(store.state).releasedWaves, [1, 2], "Run releases no waves");
+  const stop = await applyReactivationLiveMode(store, { enabled: false, actorLabel: "roger", env: ENV, now: new Date(NOW) });
+  assert.equal(stop.liveMode.enabled, false, "Stop turns live mode off");
+  assert.equal(reactivationLiveSendAuthority(store.state, ENV), false);
+  const postureOff = buildSafetyPosture({ state: store.state, env: {} });
+  assert.equal(postureOff.email.posture, "off");
 });
 
 console.log(`\nAll ${passed} campaign-command checks passed.`);
