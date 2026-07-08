@@ -195,8 +195,9 @@ _(Queried live from prod this session.)_
 ---
 
 ## 8. Testing & CI
+- **CI (GitHub Actions, added 2026-07-08):** `.github/workflows/test.yml` runs `npm run check` + `npm test` on every PR and push to main. CI's clean environment matches the clean-worktree gate by construction.
 - `npm run check` — `node --check` syntax gate across ~115 files (fast).
-- `npm test` — ~75 test files (known to halt on `test-soc2-export` 401 in this Codespace — env-auth, pre-existing).
+- `npm test` — ~80 test files. In a DIRTY local checkout, `.env.local` leaks into spawned test servers and 401s the auth suites (e.g. `test-soc2-export`) — run the chain in a clean worktree (or rely on CI), not in the working checkout.
 - `npm run verify` — check + test + `npm audit`.
 - 134 total `test-*.mjs` covering auth/security, all Track B engines, RCAP/partner, daily rituals, social connectors, UI/layout, persistence (incl. supabase pagination & reconcile), Le-E, Google, tasks.
 
