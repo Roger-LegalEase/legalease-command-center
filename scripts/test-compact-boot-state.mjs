@@ -126,7 +126,8 @@ try {
 assert(source.includes('if (url.pathname === "/api/boot-state" && request.method === "GET")'), "Boot-state endpoint should exist.");
 assert(source.includes("buildCompactBootState"), "Compact boot-state builder should exist.");
 assert(source.includes("heavyCollectionsDeferred:true"), "Boot state should mark heavy collections deferred.");
-assert(source.includes('state = hydrateStatePayload(await api("/api/boot-state"'), "Initial client boot should hydrate from /api/boot-state.");
+// Boot hydration goes through fetchBootStateWithRetry, whose only data source is /api/boot-state.
+assert(source.includes('state = hydrateStatePayload(await fetchBootStateWithRetry(), "boot-state-fetch")'), "Initial client boot should hydrate from /api/boot-state.");
 assert(source.includes('const fullPayload = await api("/api/state", { timeoutMs: 20000 })'), "Full state should lazy-load from /api/state.");
 assert(!/showRenderFailure\(formatStateFetchError\(error\), "state-fetch"\)/.test(source), "Full state failures should not use fatal state-fetch render failure.");
 assert(source.includes("showSafeBootShell(formatStateFetchError(error), \"boot-state-fetch\", error)"), "Boot-state failures should use safe shell.");

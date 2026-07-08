@@ -117,6 +117,9 @@ export function permissionForRequest(method = "GET", pathname = "/") {
   if (/\/api\/soc2\/evidence\/|\/api\/growth\/upsert/.test(pathname) && /compliance|soc2/i.test(pathname)) return "compliance_review";
   if (pathname === "/api/heartbeat/autopilot") return "admin";
   if (pathname === "/api/heartbeat/tick") return "write";
+  // Reactivation live mode — the owner Run/Stop switch that arms real consumer email sending.
+  // Admin permission at the role layer PLUS an owner/admin guard inside the handler.
+  if (pathname === "/api/reactivation/live-mode") return "admin";
   // B2 outreach: approving queued messages needs the approve permission; all other
   // outreach mutations (config, enroll, manual send) are admin-only.
   if (pathname === "/api/outreach/approve") return "approve";

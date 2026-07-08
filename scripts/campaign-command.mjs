@@ -14,11 +14,17 @@
 //   PAUSE    — the one immediate action (it reduces risk). Audited with an executed Approval.
 //
 // HARD RULES: nothing here sends an email, enrolls a held or suppressed contact, flips
-// REACTIVATION_LIVE_SEND / OUTREACH_LIVE_SEND, or changes an autopilot toggle. Releasing a wave
-// arms it; sending stays off until Roger turns sending on elsewhere, on purpose.
+// REACTIVATION_LIVE_SEND / OUTREACH_LIVE_SEND, or changes another engine's autopilot toggle.
+// Releasing a wave arms it; sending stays off until Roger turns sending on, on purpose.
+// The ONE deliberate exception: applyReactivationLiveMode below IS the owner's "turn sending on"
+// switch for the reactivation engine only (POST /api/reactivation/live-mode, owner/admin-gated).
+// It flips the reactivation live-mode record + reactivation autopilot together, via SCOPED
+// writes, with a company-event audit trail — and still never sends an email itself.
 
 import {
-  reactivationCampaignOf, reactivationLiveSendEnabled, evaluateThresholds, waveMetrics,
+  reactivationCampaignOf, reactivationLiveSendEnabled, reactivationLiveSendAuthority,
+  reactivationLiveModeEnabled, setReactivationLiveMode, buildReactivationLiveStatus,
+  evaluateThresholds, waveMetrics,
   campaignRates, releaseWave, contactOnHold, planReactivation, REACTIVATION_ENGINE_ID
 } from "./reactivation-os.mjs";
 import { isSuppressed } from "./outreach-os.mjs";
@@ -61,7 +67,9 @@ export const CAMPAIGN_COMMAND_SOURCE = "campaign-command";
 export const RELEASE_ACTION_TYPE = "release_wave";
 export const RESUME_ACTION_TYPE = "resume_campaign";
 export const CAMPAIGN_COMMAND_WARNING =
-  "Nothing on this page sends email or changes a sending switch. Releasing a wave only lines people up; sending stays off until you turn it on, on purpose, somewhere else.";
+  "Releasing a wave never turns sending on. Emails go out only while Run Reactivation Campaign is on, and only during weekday 8am-5pm Eastern sending hours.";
+export const CAMPAIGN_WORKFLOW_PLAIN =
+  "Preview first → approve the release on the Queue → run the campaign → monitor the numbers → stop.";
 
 // ---------------------------------------------------------------------------------------------
 // Shared campaign facts (gates, waves, thresholds, telemetry) — read-only.
@@ -99,12 +107,15 @@ function waveBreakdown(state, config) {
 }
 
 function gateFacts(state, env) {
-  const liveSend = reactivationLiveSendEnabled(env);
+  // liveSend = the full send AUTHORITY (owner live mode OR legacy env flag, minus kill switch),
+  // the same reader the send decision consults — not just the env flag.
+  const liveSend = reactivationLiveSendAuthority(state, env);
+  const liveMode = reactivationLiveModeEnabled(state);
   const autopilot = autopilotEnabled(state, REACTIVATION_ENGINE_ID, env);
   const sendgridKey = Boolean(clean((env || {}).SENDGRID_API_KEY));
   const sendingOn = liveSend && autopilot && sendgridKey;
   return {
-    liveSend, autopilot, sendgridKey, sendingOn,
+    liveSend, liveMode, autopilot, sendgridKey, sendingOn,
     plain: sendingOn
       ? "Sending is ON. Released people receive emails inside the weekday window."
       : "Sending is OFF. Nothing goes out to anyone, even for released waves."
@@ -170,9 +181,52 @@ export function buildCampaignCommandView(state = {}, { env = process.env, now = 
   const telemetry = telemetryFacts(state, env);
   const metrics = waveMetrics(state);
   const rates = campaignRates(state);
+  // Owner Run/Stop control state (live mode, window, threshold, statusCopy) — same derivation
+  // the /api/reactivation/live-mode response uses, so the campaign page renders one truth.
+  const live = buildReactivationLiveStatus(state, { env, now });
   // What would happen on the next automatic pass if sending were on (pure dry look).
   const plan = planReactivation(state, { env, now });
   const dueObservation = plan.observations.find((o) => o.type === "due_sends");
+  // Outside the window the planner still counts who is due (it just proposes nothing), so the
+  // page can say WHY zero would send instead of implying the queue is empty.
+  const outsideWindowObservation = plan.observations.find((o) => o.type === "outside_window");
+  const pausedObservation = plan.observations.find((o) => o.type === "campaign_paused");
+  const trippedObservation = plan.observations.find((o) => o.type === "threshold_tripped");
+  const dueEligible = outsideWindowObservation
+    ? Number(outsideWindowObservation.due || 0)
+    : (dueObservation ? Number(dueObservation.due || 0) : 0);
+
+  let dueNowPlain;
+  if (pausedObservation) {
+    dueNowPlain = "The campaign is paused, so nothing sends and nobody is due.";
+  } else if (trippedObservation) {
+    dueNowPlain = "A safety limit tripped, so nothing sends until you review it.";
+  } else if (!live.withinWindow) {
+    dueNowPlain = "Because it is outside the weekday 8am–5pm ET sending window, 0 emails would send right now."
+      + (dueEligible > 0
+        ? ` ${people(dueEligible)} ${dueEligible === 1 ? "is" : "are"} queued and eligible when the window opens.`
+        : " Nobody is queued for the next window yet.");
+  } else if (!gates.sendingOn) {
+    dueNowPlain = `${people(dueEligible)} would get an email in this window if you press Run Reactivation Campaign. Sending is off, so nobody gets one until you do.`;
+  } else {
+    dueNowPlain = `${people(dueEligible)} ${dueEligible === 1 ? "is" : "are"} due an email in this hour's send.`;
+  }
+
+  // Wave-attribution diagnostic (display-only, never affects eligibility): sends recorded before
+  // wave attribution existed roll up under wave 0 in waveMetrics and would otherwise silently
+  // vanish from the per-wave display while still counting in the total safety rates.
+  const attributedSent = config.waves.reduce((sum, w) => sum + ((metrics[Number(w.wave)] || {}).sent || 0), 0);
+  const legacyUnattributedSent = Math.max(0, (rates.sent || 0) - attributedSent);
+  const legacyUnattributedPlain = legacyUnattributedSent > 0
+    ? `Legacy/unattributed prior sends: ${legacyUnattributedSent}. These are included in total safety metrics but are not assigned to the current wave display.`
+    : "";
+
+  const releasedNums = config.releasedWaves.map(Number);
+  const highestReleased = releasedNums.length ? Math.max(...releasedNums) : 0;
+  const nextUnreleasedWave = config.waves.map((w) => Number(w.wave)).filter((w) => !releasedNums.includes(w)).sort((a, b) => a - b)[0] || null;
+  const waveRecommendation = highestReleased && nextUnreleasedWave
+    ? `Recommendation: run Wave ${highestReleased} before releasing Wave ${nextUnreleasedWave}.`
+    : "";
 
   const sequences = REACTIVATION_SEQUENCE_IDS.map((id) => ({
     id,
@@ -199,6 +253,8 @@ export function buildCampaignCommandView(state = {}, { env = process.env, now = 
     releasedWaves: config.releasedWaves,
     statusPlain: campaignStatusPlain(config, gates),
     gates,
+    live,
+    workflowPlain: CAMPAIGN_WORKFLOW_PLAIN,
     sendWindowPlain: sendWindowPlain(config.caps),
     waves: waves.map((w) => ({
       ...w,
@@ -213,12 +269,12 @@ export function buildCampaignCommandView(state = {}, { env = process.env, now = 
     telemetry,
     rates,
     dueNow: dueObservation ? dueObservation.due : 0,
-    dueNowPlain: (() => {
-      const n = dueObservation ? dueObservation.due : 0;
-      return gates.sendingOn
-        ? `${people(n)} ${n === 1 ? "is" : "are"} due an email in the current window.`
-        : `If sending were turned on right now, ${people(n)} would be due an email. It is off, so nobody gets one.`;
-    })(),
+    dueEligible,
+    windowOpenNow: live.withinWindow,
+    dueNowPlain,
+    waveRecommendation,
+    legacyUnattributedSent,
+    legacyUnattributedPlain,
     nextRecommendedAction: lower(config.status) === "paused"
       ? "The campaign is paused. Review the safety numbers, then propose a resume if you want it back on."
       : thresholds.tripped
@@ -228,6 +284,42 @@ export function buildCampaignCommandView(state = {}, { env = process.env, now = 
           : "No action needed. Everything releasable is released or empty.",
     warning: CAMPAIGN_COMMAND_WARNING
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// 1b. LIVE MODE — the owner Run/Stop switch for reactivation sending. This is the ONE gate-flip
+//     control (see HARD RULES above). It arms/disarms the reactivation engine ONLY:
+//       - writes reactivationCampaign.liveMode + autopilotSettings[reactivation] together
+//       - SCOPED writeCollections only — never the full-state write path (prod lesson, PR #27)
+//       - audited via a company event
+//       - never sends: the hourly heartbeat remains the only send path, and it still enforces
+//         the ET window, perTickMax/day caps, suppression, wave release, and stop-thresholds.
+// ---------------------------------------------------------------------------------------------
+
+export async function applyReactivationLiveMode(store, { enabled, actorLabel = "owner", env = process.env, now = new Date() } = {}) {
+  if (typeof enabled !== "boolean") throw new Error("Live mode requires enabled: true or false.");
+  const nowIso = now.toISOString();
+  const currentState = await store.readState();
+  const { state: mutated, changed } = setReactivationLiveMode(currentState, { enabled, actor: actorLabel, now: nowIso });
+  let nextState = mutated;
+  if (changed) {
+    nextState = emitCompanyEvent(nextState, {
+      source: CAMPAIGN_COMMAND_SOURCE,
+      type: "reactivation_live_mode",
+      risk: "watch",
+      summary: enabled
+        ? `Reactivation campaign live mode turned ON by ${actorLabel}. The hourly heartbeat may now send eligible reactivation emails inside the weekday 8am–5pm ET window, within caps and safety thresholds.`
+        : `Reactivation campaign live mode turned OFF by ${actorLabel}. No reactivation emails will send.`
+    });
+  }
+  // SCOPED write only: exactly the collections this control owns. reactivationCampaign and
+  // autopilotSettings are registered singletons; companyEvents carries the audit trail.
+  await store.writeCollections({
+    reactivationCampaign: nextState.reactivationCampaign,
+    autopilotSettings: nextState.autopilotSettings,
+    ...(changed ? { companyEvents: nextState.companyEvents } : {})
+  });
+  return { ok: true, changed, ...buildReactivationLiveStatus(nextState, { env, now }) };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -255,7 +347,7 @@ export function previewWaveRelease(state = {}, waveNumber, { env = process.env, 
   const which = `They start with email 1 of 5, then days ${config.cadenceDays.join(", ")} after release, but only while sending is on.`;
   const when = gates.sendingOn
     ? `Sending is ON, so emails would start in the next window (${sendWindowPlain(config.caps)}) and this wave would take about ${sendingDays} sending day${sendingDays === 1 ? "" : "s"}.`
-    : `Sending is OFF. Releasing arms the wave and starts the schedule clock, but no email goes to anyone until sending is turned on, on purpose, elsewhere.`;
+    : `Sending is OFF. Releasing arms the wave and starts the schedule clock, but no email goes to anyone until you press Run Reactivation Campaign on the campaign controls page.`;
   const releasedCaution = config.releasedWaves.length
     ? `Heads up: wave ${listJoin(config.releasedWaves)} ${config.releasedWaves.length === 1 ? "is" : "are"} already released. When sending turns on, their next follow-up emails go out too, not just this wave.`
     : "";
