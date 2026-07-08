@@ -22,6 +22,8 @@ function makeStore(initial = {}) {
     writes: 0,
     async readState() { return JSON.parse(JSON.stringify(state)); },
     async writeState(next) { state = JSON.parse(JSON.stringify(next)); this.writes += 1; return state; },
+    // Mirrors the real stores' merge semantics (JsonStore merges the patch into full state).
+    async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; this.writes += 1; return state; },
     snapshot() { return JSON.parse(JSON.stringify(state)); }
   };
 }
@@ -75,6 +77,21 @@ async function testTogglesOffNothingActs() {
   ok("toggles off: heartbeat fires, plan() writes proposals, ZERO act()/side effects");
 }
 
+// ---- 1b. steady-state lease release (JSON backend regression guard) --------------------------
+// After the first tick the stored lease is the literal null. A pure reference diff would see
+// null !== null as false, omit the release, and leave the mid-tick claim persisted, wrongly
+// skipping the next tick for a full TTL. The closing patch must release unconditionally.
+{
+  const store = makeStore({ heartbeatLease: null });
+  const engine = makeEngine({ id: "test-engine" });
+  const first = await runHeartbeat({ store, registry: [engine], env: {}, now: HOURLY_NOW, runId: "steady-1" });
+  assert.equal(first.ok, true, "steady-state tick runs");
+  assert.equal(store.snapshot().heartbeatLease, null, "lease released when the stored lease was already null");
+  const second = await runHeartbeat({ store, registry: [engine], env: {}, now: new Date(HOURLY_NOW.getTime() + 60 * 1000), runId: "steady-2" });
+  assert.equal(second.skipped === "leased", false, "a follow-up tick within the TTL is not skipped by a phantom lease");
+  ok("steady-state: lease releases unconditionally; no phantom lease skips the next tick");
+}
+
 // ---- 2. toggle ON = act() runs (the gate works both ways) ----------------
 async function testToggleOnActs() {
   const store = makeStore({ autopilotSettings: { "test-engine": { enabled: true } } });
@@ -118,7 +135,8 @@ async function testOverlappingTickMutex() {
       if (reads === 1) { firstReadStarted(); await new Promise(r => setTimeout(r, 30)); }
       return JSON.parse(JSON.stringify(state));
     },
-    async writeState(next) { state = JSON.parse(JSON.stringify(next)); this.writes += 1; }
+    async writeState(next) { state = JSON.parse(JSON.stringify(next)); this.writes += 1; },
+    async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; this.writes += 1; }
   };
   const engine = makeEngine({ id: "test-engine" });
   const p1 = runHeartbeat({ store, registry: [engine], env: {}, now: HOURLY_NOW, runId: "run-1" });

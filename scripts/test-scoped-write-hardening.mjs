@@ -147,6 +147,28 @@ function sliceBetween(startMarker, endMarker) {
   ok("store convenience methods (posts through updateSettings): all scoped, region pinned to class end");
 }
 
+// ---- Tier-3: heartbeat + reactivation CLI write mechanics ------------------------------------
+{
+  const hb = readFileSync(new URL("./heartbeat.mjs", import.meta.url), "utf8");
+  assert(hb.includes("writeCollections({ heartbeatLease: lease })"), "lease claim is a one-key scoped write");
+  const fullWrites = (hb.match(/store\.writeState\(/g) || []).length;
+  assert.equal(fullWrites, 0, `heartbeat performs zero full-state writes; found ${fullWrites}`);
+  // The unconditional release guards the JSON-backend steady state where the stored lease is
+  // the literal null: a pure reference diff would omit the release and leave the mid-tick
+  // claim persisted, wrongly skipping the next tick for a full TTL.
+  assert(hb.includes("patch.heartbeatLease = null;"), "closing patch always releases the lease");
+  ok("heartbeat tick: lease claim scoped; closing write diff-scoped with unconditional lease release");
+}
+
+{
+  for (const file of ["reactivation-import.mjs", "reactivation-release-wave.mjs", "reactivation-fire-touch1-wave1.mjs"]) {
+    const cli = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
+    assert(!cli.includes("store.writeState("), `${file}: no partial-snapshot full-state write (JSON wipe hazard)`);
+    assert(cli.includes("store.writeCollections(writeState)"), `${file}: scoped write of the reactivation collections`);
+  }
+  ok("reactivation CLI scripts: partial snapshots write via writeCollections (backend-safe)");
+}
+
 // ---- 6. Live behavior against a spawned server -------------------------------------------------
 const port = Number(process.env.TEST_SCOPED_WRITE_PORT || 3971);
 const dataDir = mkdtempSync(path.join(tmpdir(), "scoped-write-test-"));

@@ -154,7 +154,10 @@ async function main() {
       imported_at: new Date().toISOString()
     }
   };
-  await store.writeState(writeState);
+  // writeCollections instead of writeState: identical scoped behavior on Supabase (only the
+  // collections present reconcile) and SAFE on the JSON backend, where a partial writeState
+  // would have replaced the whole file with just these collections (latent wipe hazard).
+  await store.writeCollections(writeState);
 
   console.log("\nSTAGED (reactivation collections only — no other prod data touched).");
   console.log("Import summary  :", imported.summary);

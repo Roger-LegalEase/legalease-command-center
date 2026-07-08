@@ -102,6 +102,9 @@ export async function runHeartbeat(options = {}) {
 
   try {
     let state = await store.readState();
+    // Snapshot for the closing diff-scoped write: engines thread state immutably
+    // (state = planResult.state), so a collection changed exactly when its reference did.
+    const initialState = state;
 
     // Layer 3: lease guard (cross-restart / duplicate cron delivery). force overrides.
     const existingLease = state.heartbeatLease || null;
@@ -117,7 +120,8 @@ export async function runHeartbeat(options = {}) {
       expiresAt: new Date(now.getTime() + leaseTtlMs).toISOString()
     };
     state = { ...state, heartbeatLease: lease };
-    await store.writeState(state);
+    // Scoped: the lease claim changes exactly one singleton.
+    await store.writeCollections({ heartbeatLease: lease });
 
     const engineResults = [];
     for (const engine of registry) {
@@ -198,7 +202,20 @@ export async function runHeartbeat(options = {}) {
       heartbeatRuns: [...ledgerEntries, ...carried].slice(0, 500),
       heartbeatLease: null
     };
-    await store.writeState(state);
+    // Diff-scoped closing write: persists exactly the collections the tick's engines changed
+    // (every engine returns spread-copied state, so changed collections have new references;
+    // verified across the full registry, and heartbeatRuns is always reassigned so the patch
+    // is never empty).
+    const patch = {};
+    for (const key of Object.keys(state)) {
+      if (state[key] !== initialState[key]) patch[key] = state[key];
+    }
+    // The tick ALWAYS claims the lease mid-run, so it must ALWAYS release it. When the stored
+    // lease was already the literal null (JSON backend steady state after the first tick),
+    // null !== null is false and the diff alone would leave the mid-tick claim persisted,
+    // wrongly skipping the next tick for a full TTL.
+    patch.heartbeatLease = null;
+    await store.writeCollections(patch);
 
     return {
       ok: true,
