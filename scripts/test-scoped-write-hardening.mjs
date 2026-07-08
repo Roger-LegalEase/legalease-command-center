@@ -27,6 +27,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { coreStateCollections, singletonCollections } from "./storage.mjs";
+import { signUnsubscribeToken } from "./outreach-os.mjs";
 
 let passed = 0;
 function ok(name) { console.log("  ✓ " + name); passed += 1; }
@@ -87,6 +88,17 @@ function sliceBetween(startMarker, endMarker) {
   ok("/api/heartbeat/tick: serialized so mid-tick scoped writes cannot be clobbered");
 }
 
+{
+  const body = sliceBetween('url.pathname === "/api/outreach/unsubscribe"', '"/api/outreach/webhooks/sendgrid"');
+  assert(body.includes("serializeStateMutation"), "unsubscribe mutation is serialized");
+  assert(body.includes("store.writeCollections({"), "unsubscribe write is scoped");
+  for (const key of ["outreachSuppressions:", "outreachContacts:", "outreachUnsubscribes:"]) {
+    assert(body.includes(key), `scoped unsubscribe write carries ${key}`);
+  }
+  assert(!body.includes("store.writeState("), "no full-state write remains in the public unsubscribe path");
+  ok("/api/outreach/unsubscribe: serialized + scoped write of exactly the three collections it changes");
+}
+
 // ---- 6. Live behavior against a spawned server -------------------------------------------------
 const port = Number(process.env.TEST_SCOPED_WRITE_PORT || 3971);
 const dataDir = mkdtempSync(path.join(tmpdir(), "scoped-write-test-"));
@@ -106,7 +118,8 @@ const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
     PRODUCT_EVENT_WEBHOOK_SECRET: PRODUCT_SECRET,
     LEGALEASE_OS_EVENTS_SECRET: "",
     COMMAND_CENTER_DATA_PATH: dataPath,
-    COMMAND_CENTER_SEED_DISABLED: "true"
+    COMMAND_CENTER_SEED_DISABLED: "true",
+    OUTREACH_SIGNING_SECRET: "test-unsub-signing-secret-0123456789"
   },
   stdio: ["ignore", "pipe", "pipe"]
 });
@@ -202,6 +215,34 @@ try {
     assert((persisted.automationEvents || []).length > 0, "product events survived the toggle write");
     assert((persisted.soc2AuditLogs || []).some((entry) => entry.action === "access denied"), "audit log survived the toggle write");
     ok("live: autopilot toggle persists via scoped write; earlier collections survive");
+  }
+
+  // 6e. Public one-click unsubscribe persists suppression via a scoped write, and everything
+  // written before it survives (the pre-fix full-state write could have reverted all of it).
+  const unsubToken = signUnsubscribeToken(
+    { contact_id: "scoped-test-contact", email: "scoped-test@example.com", campaign_id: "scoped-test-campaign" },
+    { OUTREACH_SIGNING_SECRET: "test-unsub-signing-secret-0123456789" }
+  );
+  const unsubResp = await fetch(`${base}/api/outreach/unsubscribe?token=${encodeURIComponent(unsubToken)}`);
+  assert.equal(unsubResp.status, 200, `unsubscribe page renders (got ${unsubResp.status})`);
+  assert((await unsubResp.text()).includes("unsubscribed"), "unsubscribe confirmation copy renders");
+  await wait(800);
+  {
+    const persisted = await readDataFile();
+    const supp = (persisted.outreachSuppressions || []).find((entry) => entry.email === "scoped-test@example.com");
+    assert(supp, "suppression entry persisted");
+    assert.equal(supp.reason, "unsubscribed", "suppression reason recorded");
+    assert.equal(supp.source, "one_click", "suppression source recorded");
+    assert((persisted.outreachUnsubscribes || []).some((entry) => entry.email === "scoped-test@example.com"), "unsubscribe ledger entry persisted");
+    assert.equal(persisted.autopilotSettings?.["reactivation-sequencer"]?.enabled, true, "autopilot setting survived the unsubscribe write");
+    assert((persisted.automationEvents || []).length > 0, "product events survived the unsubscribe write");
+    assert((persisted.soc2AuditLogs || []).some((entry) => entry.action === "access denied"), "audit log survived the unsubscribe write");
+    ok("live: public unsubscribe persists via scoped write; earlier collections survive");
+  }
+  {
+    const badResp = await fetch(`${base}/api/outreach/unsubscribe?token=not-a-real-token`);
+    assert.equal(badResp.status, 400, "malformed unsubscribe token is rejected");
+    ok("live: malformed unsubscribe token stays rejected (fail closed)");
   }
 } finally {
   child.kill("SIGTERM");
