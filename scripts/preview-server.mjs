@@ -8437,10 +8437,30 @@ function sendPublicLegalPage(response, kind = "privacy", options = {}) {
   response.end(sanitizeOutboundText(publicLegalPageHtml(kind)));
 }
 
+// Denial-audit dedup window. The prod URL is public, so scanners/bots generate a constant
+// stream of anonymous denials; before 2026-07-08 EVERY one triggered a full-state Supabase
+// write outside the mutation serializer. Measured on prod: 857 of the 1,000 capped audit
+// entries were denials (789 anonymous hits on "/"), drowning real audit evidence out of the
+// cap, interleaving the log out of timestamp order, and racing/clobbering legitimate scoped
+// writes (it reverted the reactivation live-mode arm on campaign day). One entry per
+// (actor, path, reason) per window is strictly better SOC 2 evidence than a bot firehose.
+const ACCESS_DENIAL_DEDUP_MS = 30000;
+const recentAccessDenials = new Map();
+function shouldLogAccessDenial(key = "", nowMs = 0, ledger = recentAccessDenials, windowMs = ACCESS_DENIAL_DEDUP_MS) {
+  const last = ledger.get(key);
+  if (typeof last === "number" && nowMs - last < windowMs) return false;
+  ledger.set(key, nowMs);
+  if (ledger.size > 500) {
+    for (const [k, t] of ledger) { if (nowMs - t >= windowMs) ledger.delete(k); }
+  }
+  return true;
+}
+
 async function logAccessDecision(decision = {}, url = {}) {
   if (decision.ok) return;
   try {
-    const state = await store.readState();
+    const dedupKey = `${decision.actor?.id || "anonymous"}|${url.pathname || ""}|${decision.reason || ""}`;
+    if (!shouldLogAccessDenial(dedupKey, Date.now())) return;
     const now = new Date().toISOString();
     const audit = {
       id: "soc2-audit-access-" + crypto.randomUUID().slice(0, 10),
@@ -8459,7 +8479,12 @@ async function logAccessDecision(decision = {}, url = {}) {
       ip: "request",
       userAgent: "preview-server"
     };
-    await store.writeState({ ...state, soc2AuditLogs: [audit, ...(state.soc2AuditLogs || [])].slice(0, 1000) });
+    // Serialized + SCOPED: only the soc2AuditLogs collection is written. The old full-state
+    // writeState here rewrote (and orphan-reconciled) every collection per denied request.
+    await serializeStateMutation(async () => {
+      const state = await store.readState();
+      await store.writeCollections({ soc2AuditLogs: [audit, ...(state.soc2AuditLogs || [])].slice(0, 1000) });
+    });
   } catch {
     // Authorization logging should never make the protected route available.
   }
@@ -13001,7 +13026,18 @@ async function receiveProductEvent(payload = {}, request, rawBody = "") {
         createdAt:now
       }, ...(state.activityEvents || [])].slice(0, 500)
     };
-    await store.writeState(nextState);
+    // SCOPED write: exactly the four collections this handler changes. This endpoint is PUBLIC
+    // (signed) and fires per product event — the old full-state writeState here rewrote every
+    // collection (thousands of rows + orphan reconcile) per event, congesting the mutation queue
+    // and racing operator writes. Requires all four collections registered in
+    // coreStateCollections (automationEvents/automationSuggestions/connectorStatus were not,
+    // so product events silently never persisted on Supabase — fixed together with this).
+    await store.writeCollections({
+      automationEvents: nextState.automationEvents,
+      automationSuggestions: nextState.automationSuggestions,
+      connectorStatus: nextState.connectorStatus,
+      activityEvents: nextState.activityEvents
+    });
     return { state: nextState, event, importedCount: result.importedCount, suggestedCount: result.suggestedCount + (result.importedCount && suggestion ? 1 : 0), message: result.importedCount ? "Product event accepted." : "Product event already imported." };
   });
 }
@@ -35157,13 +35193,17 @@ async function handleRequest(request, response) {
           };
         }
       });
-      const result = await runHeartbeat({
+      // Serialized against all other state mutations: runHeartbeat reads state at tick start
+      // and writes FULL state at tick end, so a scoped write landing mid-tick (an operator
+      // arming/disarming a campaign, a webhook event) would be silently reverted by the tick's
+      // closing write. Serializing closes that window; mutations queue until the tick finishes.
+      const result = await serializeStateMutation(() => runHeartbeat({
         store,
         registry,
         env: process.env,
         force: payload && payload.force === true,
         actor: accessDecision.actor?.role || "cron"
-      });
+      }));
       sendJson(response, result);
     } catch (error) {
       sendJson(response, { error: error.message || "Heartbeat tick failed." }, 500);
@@ -35194,16 +35234,21 @@ async function handleRequest(request, response) {
         return;
       }
       const enabled = input.enabled === true;
-      const currentState = await store.readState();
-      const settings = { ...(currentState.autopilotSettings || {}) };
-      settings[engineId] = {
-        enabled,
-        updatedAt: new Date().toISOString(),
-        updatedBy: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
-      };
-      const nextState = { ...currentState, autopilotSettings: settings };
-      await store.writeState(nextState);
-      sendJson(response, { engineId, enabled, autopilotSettings: settings, state: withPublicChannelSetup(nextState) });
+      // Serialized + SCOPED: an autopilot flip touches ONE singleton. The old full-state
+      // writeState here was the same prod-hostile pattern as the alerts toggle (PR #27) and
+      // could clobber concurrent scoped writes (e.g. the reactivation live-mode record).
+      await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const settings = { ...(currentState.autopilotSettings || {}) };
+        settings[engineId] = {
+          enabled,
+          updatedAt: new Date().toISOString(),
+          updatedBy: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
+        };
+        const nextState = { ...currentState, autopilotSettings: settings };
+        await store.writeCollections({ autopilotSettings: settings });
+        sendJson(response, { engineId, enabled, autopilotSettings: settings, state: withPublicChannelSetup(nextState) });
+      });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update autopilot toggle." }, 400);
     }
