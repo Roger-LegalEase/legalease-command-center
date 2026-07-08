@@ -18161,6 +18161,17 @@ function htmlShell() {
       return true;
     }
 
+    async function fetchBootStateWithRetry() {
+      // Boot-state does a full storage read on the server; the first request after a
+      // deploy or restart routinely runs past a short budget on production data. One
+      // patient retry keeps a slow start from landing the operator in Recovery Mode.
+      try {
+        return await api("/api/boot-state", { timeoutMs: 8000 });
+      } catch (error) {
+        if (error.status === 401 || error.status === 403) throw error;
+        return api("/api/boot-state", { timeoutMs: 20000 });
+      }
+    }
     async function load() {
       if (String(location.hash || "").replace("#", "") === "safe-mode") {
         renderSafeBootShell({
@@ -18180,7 +18191,7 @@ function htmlShell() {
       window.__LE_BOOT.stage = "state-fetch";
       try {
         window.__LE_BOOT.stage = "boot-state-fetch";
-        state = hydrateStatePayload(await api("/api/boot-state", { timeoutMs: 5000 }), "boot-state-fetch");
+        state = hydrateStatePayload(await fetchBootStateWithRetry(), "boot-state-fetch");
         safeBootActive = false;
         fullStateLoaded = false;
         bootStateDiagnostics = { status:"loaded", endpoint:"/api/boot-state", loadedAt:new Date().toISOString(), heavyCollectionsDeferred:Boolean(state.heavyCollectionsDeferred) };
@@ -18203,7 +18214,7 @@ function htmlShell() {
           errorMessage:error.message || "Boot state failed.",
           statusCode:error.status || "unknown",
           contentType:error.contentType || "unknown",
-          timeoutMs:error.timeoutMs || 5000,
+          timeoutMs:error.timeoutMs || 20000,
           aborted:Boolean(error.aborted || error.name === "AbortError"),
           authTokenPresent:Boolean(error.authTokenPresent || authSessionPresent()),
           checkedAt:new Date().toISOString()
