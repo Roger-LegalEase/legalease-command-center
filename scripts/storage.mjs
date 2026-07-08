@@ -43,6 +43,14 @@ const coreStateCollections = [
   "autonomyDecisions",
   "autonomyRuns",
   "activityEvents",
+  // Product-event capture (receiveProductEvent / importAutomationEvents in preview-server.mjs).
+  // These were NEVER registered, so on the Supabase backend every product funnel event, funnel
+  // suggestion, and connector sync stamp was silently dropped on write and vanished on the next
+  // read (the same trap that killed state.settings — see the "settings" note above). Registered
+  // 2026-07-08; test-scoped-write-hardening.mjs asserts membership.
+  "automationEvents",
+  "automationSuggestions",
+  "connectorStatus",
   "reports",
   "funnelSnapshots",
   "captureInbox",
