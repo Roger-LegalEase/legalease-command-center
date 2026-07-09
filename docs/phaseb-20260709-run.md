@@ -663,6 +663,22 @@ rejection. Phase 2 handoff prompt for the Expungement.ai repo:
 docs/expungement-ai-product-events-prompt.md. Clean-worktree EXIT:0 at
 e0beedb; tests scripts/test-scoreboard-wiring.mjs (8 checks).
 
+### Scoreboard time-to-data fix (PRs #46, ~23:29Z, verified live)
+
+Roger's fresh load still showed Not wired yet after PR #45: the summary
+endpoint needed 4-8s (a full state read was ~14 SEQUENTIAL Supabase page
+fetches plus projection) against a 6s boot timeout, so data landed only via
+the retry 10-20s after load. Fix: supabaseFetchAllRows now learns the exact
+total from page one (count=exact) and fetches remaining pages CONCURRENTLY
+(sequential fallback without a count header); the summary and campaign boot
+fetches got 20s budgets and paint independently so the fast health probes
+keep their 6s render bound. Verifier MERGE-SAFE (exhaustive offset-coverage
+simulation, zero dup or gap; three LOWs, the decoupling prescription
+applied); clean-worktree EXIT:0 at c3fe28e. Measured after deploy 8b65a85:
+summary 2.3-2.7s warm, 6.0s on the first post-restart call; real numbers
+confirmed (Stripe 1000 gross, 19 registered, 6 partners, funnel honest
+zero); writeHealth clean; B1 active not tripped; 23:00Z tick clean.
+
 ### B2 outreach claim-before-send (code change, verifier PASSED above)
 
 Mirrors PR #40 exactly for the cold-outreach path: new append-only
