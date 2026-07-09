@@ -119,6 +119,13 @@ const coreStateCollections = [
   "reactivationAttempts",
   "reactivationEvents",
   "reactivationCampaign",
+  // Reactivation send-claims safety ledger (Phase B PR 1, 2026-07-09). One row per
+  // (campaign, contact, step), written via claimCollectionItems BEFORE any live SendGrid call.
+  // The unique (collection, item_id) key makes the insert the atomic idempotency test: a
+  // concurrent or repeated invocation loses the insert and skips the send. Rows are never
+  // deleted (failed sends mark the claim failed); see appendOnlyCollections below.
+  // test-reactivation-claims.mjs asserts membership.
+  "reactivationSendClaims",
   // RCAP revenue/workbook import foundation. MUST stay in sync with rcap-revenue-os.mjs, or
   // workbook accounts/contacts/deal seeds/tasks silently fail to persist to Supabase.
   "rcapRevenueAccounts",
@@ -185,6 +192,12 @@ const coreStateCollections = [
   "handoffContractPreviews"
 ];
 const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth", "settings"]);
+// Append-only safety ledgers: rows are inserted via claimCollectionItems and updated in place,
+// NEVER bulk-reconciled away. Excluding them from the snapshot orphan-delete pass means a stale
+// in-memory snapshot (the exact mechanism that shredded reactivationContacts on 2026-07-08) can
+// never erase a claim that another invocation inserted directly. Deleting a claim would re-open
+// the duplicate-send window it exists to close.
+const appendOnlyCollections = new Set(["reactivationSendClaims"]);
 
 function parseBoolean(value = "") {
   return ["true", "1", "yes", "on"].includes(String(value || "").toLowerCase());
@@ -591,6 +604,42 @@ export class JsonStore {
     await this.writeCollections({ settings: state.settings });
     return state;
   }
+
+  // Atomic claim: insert each item ONLY if no row with its id already exists in `collection`,
+  // and report which items were inserted vs skipped. This is the idempotency primitive under
+  // the reactivation send path — a claim must be durable BEFORE the SendGrid call, and a
+  // second invocation racing on the same (campaign, contact, step) must lose the insert and
+  // skip the send. JSON flavor: the whole read-check-append-write runs on the store's write
+  // queue, so two in-process callers cannot both observe "absent". (Cross-process atomicity
+  // is the Supabase backend's unique-key job; the JSON backend is local/dev single-process.)
+  async claimCollectionItems(collection, items = []) {
+    const claim = async () => {
+      const state = await this.readState();
+      const current = Array.isArray(state[collection]) ? state[collection] : [];
+      const existingIds = new Set(current.map((item, index) => coreRecordId(collection, item, index)));
+      const inserted = [];
+      const skipped = [];
+      for (const item of items) {
+        const itemId = coreRecordId(collection, item, current.length + inserted.length);
+        if (existingIds.has(itemId)) { skipped.push(item); continue; }
+        existingIds.add(itemId);
+        inserted.push(item);
+      }
+      if (inserted.length) {
+        try {
+          await this.writeStateNow({ ...state, [collection]: [...inserted, ...current] });
+        } catch (error) {
+          this.recordWriteOutcome(error);
+          throw error;
+        }
+      }
+      return { inserted, skipped };
+    };
+    const result = this.writeQueue.then(claim, claim);
+    // Keep the queue itself always-resolved so one failed claim cannot poison later writes.
+    this.writeQueue = result.then(() => undefined, () => undefined);
+    return result;
+  }
 }
 
 
@@ -656,8 +705,13 @@ export class SupabaseCoreStore extends JsonStore {
     // is no longer part of the snapshot. This stops regenerated ids and removed items from
     // accumulating as orphan duplicates. Collections absent from the snapshot are left
     // untouched, so a partial state write can never mass-delete persisted data.
+    // Append-only ledgers are additionally excluded: their rows can be inserted by a
+    // concurrent claimCollectionItems call that this snapshot has never seen, so
+    // reconciling them against the snapshot would delete live claims.
     const presentCollections = new Set(
-      coreStateCollections.filter((collection) => state[collection] !== undefined)
+      coreStateCollections.filter(
+        (collection) => state[collection] !== undefined && !appendOnlyCollections.has(collection)
+      )
     );
     if (presentCollections.size) {
       const keep = new Set(rows.map((row) => row.collection + "\0" + row.item_id));
@@ -677,6 +731,39 @@ export class SupabaseCoreStore extends JsonStore {
           )
         ));
       }
+    }
+  }
+
+  // Atomic claim, Supabase flavor: a single conditional INSERT with
+  // `on_conflict=(collection,item_id)` + `Prefer: resolution=ignore-duplicates` — PostgREST
+  // turns that into INSERT ... ON CONFLICT DO NOTHING RETURNING, so the database's unique key
+  // is the atomicity test and the response contains ONLY the rows this caller actually won.
+  // Works across processes and restarts, which the in-memory serialization (PR #30) cannot.
+  // Errors are recorded in writeHealth and rethrown: a claim that cannot be made durable must
+  // fail CLOSED (the caller must not send).
+  async claimCollectionItems(collection, items = []) {
+    const now = new Date().toISOString();
+    const rows = items.map((item) => ({
+      collection,
+      item_id: coreRecordId(collection, item, 0),
+      payload: item || {},
+      updated_at: now
+    }));
+    if (!rows.length) return { inserted: [], skipped: [] };
+    try {
+      const returned = await supabaseRestRequest(
+        supabaseRecordsTable + "?on_conflict=collection,item_id&select=item_id",
+        { method: "POST", body: rows, prefer: "resolution=ignore-duplicates,return=representation" }
+      );
+      const insertedIds = new Set((Array.isArray(returned) ? returned : []).map((row) => row.item_id));
+      const inserted = items.filter((item, index) => insertedIds.has(rows[index].item_id));
+      const skipped = items.filter((item, index) => !insertedIds.has(rows[index].item_id));
+      this.lastError = "";
+      this.recordWriteOutcome();
+      return { inserted, skipped };
+    } catch (error) {
+      this.recordWriteOutcome(error);
+      throw error;
     }
   }
 }
@@ -700,4 +787,4 @@ export function storageRuntimeConfig() {
   };
 }
 
-export { coreStateCollections, singletonCollections, coreRecordsFromState, supabaseRestRequest };
+export { coreStateCollections, singletonCollections, appendOnlyCollections, coreRecordsFromState, supabaseRestRequest };

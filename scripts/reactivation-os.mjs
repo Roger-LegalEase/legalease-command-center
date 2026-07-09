@@ -37,12 +37,21 @@ import {
 export const REACTIVATION_COLLECTIONS = [
   "reactivationContacts",
   "reactivationAttempts",
-  "reactivationEvents"      // delivered / bounce / spamreport / click / unsubscribe (from SendGrid webhook)
+  "reactivationEvents",     // delivered / bounce / spamreport / click / unsubscribe (from SendGrid webhook)
+  "reactivationSendClaims"  // append-only safety ledger: one atomic claim per (campaign, contact, step)
 ];
 export const REACTIVATION_SINGLETON_COLLECTIONS = ["reactivationCampaign"];
 
 export const REACTIVATION_ENGINE_ID = "reactivation-sequencer";
 export const REACTIVATION_CAMPAIGN_ID = "mvp-reactivation";
+export const REACTIVATION_CLAIMS_COLLECTION = "reactivationSendClaims";
+
+// Deterministic claim id — THE unique key. One claim per (campaign, contact, step) for the
+// lifetime of the campaign: the Supabase (collection, item_id) unique index makes inserting
+// this id an atomic mutual-exclusion test across processes, restarts, and lost ledgers.
+export function reactivationClaimId(campaignId = REACTIVATION_CAMPAIGN_ID, contactId = "", stepNumber = 0) {
+  return `react-claim-${clean(campaignId)}-${clean(contactId)}-step-${Number(stepNumber)}`;
+}
 
 const clean = (v = "") => String(v ?? "").trim();
 const lower = (v = "") => clean(v).toLowerCase();
@@ -655,11 +664,27 @@ function stratifyDueByProvider(due = []) {
 // act(): runs ONLY when autopilot is ON. Sends due touches for released waves, re-checking
 // suppression + thresholds + caps + compliance at send time. Live send delegated to
 // ctx.runReactivationSend (the server injects runOutreachSend); absent/dry-run => NO network send.
+//
+// IDEMPOTENCY (Phase B PR 1, incident 2026-07-08): every LIVE send is preceded by an atomic,
+// durable claim of (campaign, contact, step) in reactivationSendClaims via
+// ctx.claimReactivationSends (the server injects store.claimCollectionItems). The claim's
+// deterministic id is a database unique key, so a concurrent invocation, a repeated tick, or a
+// tick replanning over a lost attempt ledger loses the insert and SKIPS the send. Claims are
+// never deleted: a failed or timed-out send marks the claim failed/unconfirmed and surfaces in
+// the status view for operator decision — it is never silently re-enqueued.
 export async function actReactivation(state = {}, ctx = {}) {
   const env = ctx.env || process.env;
-  const parts = ctx.etParts || etParts(ctx.now || new Date());
+  // ONE clock for the whole tick. The pre-claim decision and the executor's send-time re-check
+  // must see the same instant, or a window/threshold boundary crossed between the two could let
+  // the executor go live on a (contact, step) the pre-decision declined to claim.
+  const now = ctx.now || new Date();
+  const parts = ctx.etParts || etParts(now);
   const config = reactivationCampaignOf(state);
-  let next = { ...state, reactivationAttempts: list(state.reactivationAttempts).slice() };
+  let next = {
+    ...state,
+    reactivationAttempts: list(state.reactivationAttempts).slice(),
+    [REACTIVATION_CLAIMS_COLLECTION]: list(state[REACTIVATION_CLAIMS_COLLECTION]).slice()
+  };
   const results = [];
 
   // Auto-pause BEFORE sending if thresholds trip.
@@ -671,7 +696,25 @@ export async function actReactivation(state = {}, ctx = {}) {
   if (config.status === "paused") return { state: next, results: [{ status: "paused", reason: config.pausedReason }] };
 
   const plan = planReactivation(next, ctx);
+  // Existing claims (any status) index — one (contact, step) claim means one send, ever.
+  const claimsById = new Map(
+    list(next[REACTIVATION_CLAIMS_COLLECTION]).map((c) => [clean(c.id), c])
+  );
+  const markClaim = (claimId, patch) => {
+    next[REACTIVATION_CLAIMS_COLLECTION] = list(next[REACTIVATION_CLAIMS_COLLECTION]).map((c) =>
+      clean(c.id) === claimId ? { ...c, ...patch } : c);
+    claimsById.set(claimId, { ...claimsById.get(claimId), ...patch });
+  };
+  // In-tick person-level dedupe — defense in depth UNDER the planner's dedupe (PR #33): even if
+  // shredded duplicate rows ever reach the proposals again, one person gets one send per tick.
+  const processedIdentities = new Set();
   for (const { contact, step } of plan.proposals) {
+    const identityKeys = [clean(contact.contact_id), normalizeEmail(contact.email)].filter(Boolean);
+    if (identityKeys.some((key) => processedIdentities.has(key))) {
+      results.push({ contact_id: contact.contact_id, status: "skipped", reason: "duplicate_contact_in_tick" });
+      continue;
+    }
+    for (const key of identityKeys) processedIdentities.add(key);
     // Re-check hold + suppression + pause at SEND time (planReactivation already excludes these;
     // this is belt-and-suspenders so a held contact can never reach a live send).
     if (contactOnHold(contact) || contactPaused(contact) || isSuppressed(contact, { state: next }).suppressed) {
@@ -705,19 +748,94 @@ export async function actReactivation(state = {}, ctx = {}) {
     const compliance = validateCompliance(message);
     if (!compliance.ok) { results.push({ contact_id: contact.contact_id, status: "not_sent", reason: `compliance:${compliance.errors.join(",")}` }); continue; }
 
+    // ---- ATOMIC CLAIM BEFORE ANY LIVE SEND (the idempotency boundary) ---------------------
+    // Pre-resolve the SAME decision the executor will make. Only a decision that would reach
+    // SendGrid (liveSend) requires the durable claim; dry-run and gate-closed paths perform no
+    // network send, so claiming there would burn permanent claims on closed gates.
+    const decision = resolveReactivationSendDecision(
+      { ...message, touch: step },
+      { env, state: next, now }
+    );
+    const claimId = reactivationClaimId(REACTIVATION_CAMPAIGN_ID, contact.contact_id, step);
+    const liveSendIntended = decision.liveSend === true && typeof ctx.runReactivationSend === "function";
+    let claimed = false;
+    if (liveSendIntended) {
+      // An existing claim in ANY state (claimed / sent / failed) blocks the send: sent means
+      // done, claimed means an unconfirmed in-flight or lost-outcome send (operator decision,
+      // never auto-retry), failed means a real failure awaiting operator decision.
+      if (claimsById.has(claimId)) {
+        results.push({ contact_id: contact.contact_id, status: "skipped", reason: "already_claimed", claim_id: claimId });
+        continue;
+      }
+      if (typeof ctx.claimReactivationSends !== "function") {
+        // Fail CLOSED: a live-send-capable invocation without a durable claim path must not send.
+        results.push({ contact_id: contact.contact_id, status: "not_sent", reason: "no_claim_path" });
+        continue;
+      }
+      const claim = {
+        id: claimId,
+        campaign_id: REACTIVATION_CAMPAIGN_ID,
+        contact_id: contact.contact_id,
+        step_number: step,
+        wave: contact.wave,
+        to: message.to,
+        status: "claimed",
+        reason: "",
+        provider: "",
+        provider_message_id: "",
+        claimed_at: nowIso(),
+        resolved_at: "",
+        run_id: clean(ctx.runId),
+        claimed_by: clean(ctx.actor) || "heartbeat"
+      };
+      let claimOutcome;
+      try {
+        claimOutcome = (await ctx.claimReactivationSends([claim])) || {};
+      } catch (error) {
+        // Claim not durable => no send. The safety ledger IS the permission to send.
+        results.push({ contact_id: contact.contact_id, status: "error", reason: `claim_write_failed:${String(error.message || error)}` });
+        continue;
+      }
+      if (!list(claimOutcome.inserted).some((c) => clean(c.id) === claimId)) {
+        // A concurrent invocation won the unique-key insert. Skip silently, log the skip.
+        results.push({ contact_id: contact.contact_id, status: "skipped", reason: "already_claimed_concurrent", claim_id: claimId });
+        continue;
+      }
+      claimed = true;
+      claimsById.set(claimId, claim);
+      next[REACTIVATION_CLAIMS_COLLECTION] = [claim, ...list(next[REACTIVATION_CLAIMS_COLLECTION])];
+    }
+
     // DELEGATED SEND. No dep, or dry-run => record an attempt, perform NO network send.
     // The current state is passed through so the executor's send decision can honor the owner
     // live-mode authority and re-check the campaign-level gates at send time.
     let sendOutcome = { status: "dry_run", provider: "none" };
     if (typeof ctx.runReactivationSend === "function") {
       try {
-        const r = (await ctx.runReactivationSend(message, { env, state: next, now: ctx.now || new Date() })) || {};
-        if (lower(r.status) === "not_sent") { results.push({ contact_id: contact.contact_id, status: "not_sent", reason: r.reason || "not_sent" }); continue; }
+        const r = (await ctx.runReactivationSend(message, { env, state: next, now })) || {};
+        if (lower(r.status) === "not_sent") {
+          // The executor's own re-check declined after we claimed (racing gate change). The
+          // claim is marked failed and KEPT: operator decision, never silent re-enqueue.
+          if (claimed) markClaim(claimId, { status: "failed", reason: `declined:${r.reason || "not_sent"}`, resolved_at: nowIso() });
+          results.push({ contact_id: contact.contact_id, status: "not_sent", reason: r.reason || "not_sent" });
+          continue;
+        }
         sendOutcome = { status: lower(r.status) === "sent" ? "sent" : (r.status || "dry_run"), provider: r.provider || "unknown", provider_message_id: r.provider_message_id || "" };
       } catch (error) {
+        // Transport failure or timeout: the claim stays, marked failed, and is NEVER deleted or
+        // silently re-enqueued — the next tick sees the claim and skips this (contact, step).
+        if (claimed) markClaim(claimId, { status: "failed", reason: String(error.message || error), resolved_at: nowIso() });
         results.push({ contact_id: contact.contact_id, status: "error", reason: String(error.message || error) });
         continue;
       }
+    }
+    if (claimed) {
+      markClaim(claimId, {
+        status: sendOutcome.status,
+        provider: sendOutcome.provider,
+        provider_message_id: sendOutcome.provider_message_id || "",
+        resolved_at: nowIso()
+      });
     }
 
     const attempt = {
@@ -780,6 +898,22 @@ export function buildReactivationLiveStatus(state = {}, { env = process.env, now
   else statusCopy = REACTIVATION_STATUS_COPY.outsideWindow;
 
   const latestIso = (values) => values.filter(Boolean).sort().slice(-1)[0] || "";
+  // Send-claim ledger summary. "Unconfirmed" = still status "claimed" past the grace window:
+  // a send whose outcome was never recorded (crash/timeout between claim and outcome). These
+  // are OPERATOR decisions — the engine will never auto-retry or delete them.
+  const claims = list(state[REACTIVATION_CLAIMS_COLLECTION]);
+  const nowMs = now.getTime();
+  const CLAIM_UNCONFIRMED_GRACE_MS = 15 * 60 * 1000;
+  const claimCounts = { total: claims.length, claimed: 0, sent: 0, dry_run: 0, failed: 0 };
+  const unconfirmed = [];
+  for (const c of claims) {
+    const s = lower(c.status);
+    if (claimCounts[s] !== undefined) claimCounts[s] += 1;
+    const claimedMs = Date.parse(c.claimed_at || "");
+    if (s === "claimed" && !Number.isNaN(claimedMs) && nowMs - claimedMs > CLAIM_UNCONFIRMED_GRACE_MS) {
+      unconfirmed.push({ id: c.id, contact_id: c.contact_id, step_number: c.step_number, to: c.to, claimed_at: c.claimed_at });
+    }
+  }
   return {
     liveMode: { enabled: liveMode.enabled, updatedAt: liveMode.updatedAt, updatedBy: liveMode.updatedBy },
     reactivationAutopilotEnabled: autopilot,
@@ -800,6 +934,7 @@ export function buildReactivationLiveStatus(state = {}, { env = process.env, now
     unsubscribes: rates.unsubs,
     lastHeartbeatAt: latestIso(list(state.heartbeatRuns).map((r) => r.ranAt)),
     lastSendAttemptAt: latestIso(list(state.reactivationAttempts).map((a) => a.created_at)),
+    sendClaims: { ...claimCounts, unconfirmed: unconfirmed.slice(0, 50), unconfirmedCount: unconfirmed.length },
     sendWindowET: {
       startHourET: config.caps.windowStartHourET,
       endHourET: config.caps.windowEndHourET,
@@ -820,7 +955,13 @@ export function buildReactivationEngine(deps = {}) {
     cadence: "hourly",
     plan(state, ctx) { return planReactivation(state, ctx); },
     async act(state, ctx) {
-      return actReactivation(state, { ...ctx, runReactivationSend: deps.runReactivationSend });
+      return actReactivation(state, {
+        ...ctx,
+        runReactivationSend: deps.runReactivationSend,
+        // Durable atomic claim path (store.claimCollectionItems). Without it, act() fails
+        // CLOSED for live sends: no claim, no SendGrid call.
+        claimReactivationSends: deps.claimReactivationSends
+      });
     }
   };
 }
