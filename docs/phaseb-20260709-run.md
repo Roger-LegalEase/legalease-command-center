@@ -86,6 +86,58 @@ claims, Supabase conditional-insert wire shape plus outage fail-closed,
 reconcile-delete exclusion, JsonStore contract. Wired into `npm test` and
 `npm run check`.
 
+### Gates (all from this session)
+
+- Targeted suites at eb181ea: claims 11/11, reactivation-os 13, live-mode 10,
+  dedupe 6, copy 26, scoped-write-hardening 19, registration-backlog 5,
+  heartbeat 10. All pass.
+- Clean-worktree CI gate: fresh `git worktree` at eb181ea (no `.env.local`),
+  full `npm run check` then `npm test`, `EXIT:0`, 86 suite-pass lines, chain is
+  `&&`-sequenced so no pipe-masked failure is possible.
+
+### Verifier findings and resolutions (fresh-context subagent, verdict MERGE-SAFE)
+
+1. MAJOR: `reactivation-fire-touch1-wave1.mjs` remains an unclaimed live-send
+   path (attempts-ledger idempotency only, closing-write-after-send, no pause
+   check, no row dedupe). Pre-existing, manual, double-gated. Resolution:
+   this is PR 2's bypass-interlock scope; PR 2 will interlock it against the
+   enabled scheduler, route it through the claim primitive or disable it, and
+   write a companyEvents audit record per invocation. Not a reason to hold
+   PR 1; nothing invokes it while paused.
+2. MAJOR (operational): claims protect only post-deploy sends; the 146
+   unreconciled 15:00 recipients would be claimed-then-resent on unpause.
+   Resolution: known and by design of the phase plan; the pause is the guard
+   and PR 3 closes it. No unpause under any circumstances this run.
+3. MINOR: the tick's closing write still upserts the whole claims collection,
+   so a stale snapshot from a second instance could regress a claim's status
+   payload (never delete it; skip logic is existence-based, so no resend), and
+   at full campaign scale that is a prod-hostile full-collection write.
+   Resolution: PR 2 makes per-send scoped writes the system of record and
+   drops the claims collection from the closing snapshot.
+4. MINOR: `appendOnlyCollections` cannot protect the JSON backend (whole-file
+   rewrite). Dev-only; prod is Supabase. Accepted with rationale.
+5. MINOR: failed claims are re-proposed by the planner every tick and consume
+   per-tick budget slots as skips; a full-batch transport outage could stall
+   the campaign at zero sends (safe direction). Resolution: unconfirmed and
+   failed claims surface in the status view now; PR 2 adds the alerting that
+   makes a degraded tick loud. Operator resolution stays manual by design.
+6. MINOR: a contact row with empty `contact_id` would share one claim id and
+   block other keyless contacts (fail-closed, never duplicates); both import
+   paths derive `contact_id` from the normalized email, so unreachable in
+   practice. Accepted with rationale.
+7. NOTE: no chunking in the claim primitive (engine claims one row per call
+   today). Accepted; revisit if a batch caller ever appears.
+8. NOTE: claim timestamps use wall clock while decisions use the hoisted
+   `ctx.now`; cosmetic skew only. Accepted.
+
+Verifier per-category conclusions: heartbeat send path has no unclaimed live
+route; the only delete path in the codebase (reconcile pass) now excludes
+claims; the PostgREST conditional-insert semantics and the (collection,
+item_id) unique key are real; claim ids are stable against the 2026-07-08
+shred shape (identical contact_ids, row-key instability); tests drive real
+code against a semantics-faithful stub; no gate, pause, threshold, or wave
+semantics change anywhere in the diff.
+
 ## PR 2: per-send durable writes, write-failure alerting, bypass interlock (not started)
 
 ## PR 3: ledger reconciliation (not started)
