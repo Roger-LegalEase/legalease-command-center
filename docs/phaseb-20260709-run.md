@@ -138,6 +138,111 @@ shred shape (identical contact_ids, row-key instability); tests drive real
 code against a semantics-faithful stub; no gate, pause, threshold, or wave
 semantics change anywhere in the diff.
 
-## PR 2: per-send durable writes, write-failure alerting, bypass interlock (not started)
+## Priority change 2026-07-09 (Roger's direct order)
 
-## PR 3: ledger reconciliation (not started)
+The campaign goes live this run. New sequence: reconcile the ledger, prove zero
+duplicate risk via the plan-only gate, then clear the pause. Roger explicitly
+authorized the unpause and live-send activation in the ordering prompt, subject
+only to the duplicate-proof gate. PR 2 is parked and resumes after go-live.
+Step 1 outcome: no PR 2 work-in-progress existed anywhere (clean tree, no
+branch), so there was nothing to commit or park.
+
+## PR 1 post-deploy verification (c187127, auto-deploy)
+
+Auto-deploy is on: prod served c187127 without a manual promote. Verified this
+session (~10:30Z):
+
+| Check | Result | Evidence |
+|---|---|---|
+| `/api/version` | PASS | `commit: c187127b...`, production, supabase connected |
+| Commit gate | PASS | `prod-commit-gate.mjs --required c187127`: ancestor rule PASS |
+| writeHealth | PASS | `lastWriteOkAt: 2026-07-09T10:09:03.787Z`, zero failed writes |
+| Heartbeat | PASS | 0 non-success recent runs; latest 10:00:06Z |
+| Pause intact | PASS | paused, `hard_bounce 7.12% >= 6.00%`, liveSendFlag false |
+| Claims surface | PASS | `/api/reactivation/status` now exposes `sendClaims` (all zeros, correct: no live sends since deploy) |
+
+Also observed for Step 4 planning: `liveMode.enabled` has been true since
+2026-07-08T09:58Z and sequencer autopilot is on, so CLEARING THE PAUSE IS THE
+GO-LIVE TRIGGER. Nothing gets cleared until the gate passes.
+
+## PR 3: ledger reconciliation from the final SendGrid export
+
+Script: `scripts/reconcile-20260708-sendgrid-ledger.mjs` (plan/apply, apply
+needs `--yes-write-prod`). Pure data reconciliation: conditional inserts plus
+per-row scoped PATCHes, zero deletes possible, campaign singleton and contact
+rows untouched, idempotent re-run. Settled incident facts are hardcoded abort
+guards; any mismatch stops before a single write. Full row-level diff (every
+row inserted or annotated, byte-identical to what apply writes):
+`docs/phaseb-20260709-reconciliation-diff.json`.
+
+Computed from prod plus the export this session, all guards passing:
+
+- 146 attempt inserts for the lost 15:00Z batch: real recv/full message ids,
+  real processed timestamps, touch identity computed per contact (117 step 1,
+  29 step 2, matching the incident report), ids `react-attempt-recon2-<contact>`,
+  `source: sendgrid-reconciliation`.
+- 95 patches on the synthetic 12:00Z rows: real message ids added (they had
+  none); the 33 duplicate-affected recipients annotated
+  `duplicate_copies_processed`/`duplicate_copies_delivered` with a one-counted-
+  touch note; the one divergence found is dcalmesejr@gmai.com, which the export
+  shows as a 12:00:26Z SendGrid drop (never processed), corrected from `sent`
+  to `dropped` (address already suppressed, so no resend exposure). Step
+  numbers in the synthetic rows validated correct against June touches (21
+  June-touched 12:00 recipients all already step 2).
+- 427 claim backfills into reactivationSendClaims using the exact live-path
+  `reactivationClaimId` format: 426 `sent` (186 June, 94 12:00, 146 15:00),
+  1 `failed` (the drop). The PR 1 safety ledger now also blocks every
+  historical (contact, step) at the claim level, independent of the attempts
+  ledger.
+- 2 mandatory suppression inserts found missing: topcarrier16@icloud.com
+  (hard-bounced/blocked 07-08, no suppression row existed) and
+  ybrewer@holmescc.edu (unsubscribed 15:02:28Z per the unsubscribe ledger, no
+  suppression row existed; legal requirement). All other bounced addresses,
+  lanceaskinssr@icloud.comm, and dcalmesejr@gmai.com verified already
+  suppressed. No other list changes.
+- 1 suppression annotation: jaime.berrios@introba.com gets the recovered
+  first-unsubscribe evidence (clicks 12:00:56Z to 12:01:08Z from both duplicate
+  copies; ledger row lost with the closing write; honored via 16:10Z re-clicks).
+
+Tests: `scripts/test-reconcile-20260708.mjs` (6 checks: touch identity,
+duplicate annotation, drop correction, claim id format and uniqueness,
+suppression minimality, idempotent apply with zero deletes and campaign/contact
+untouchability). Wired into `npm test` and `npm run check`.
+
+### Pre-merge gate simulation (local, this session)
+
+Post-reconciliation state simulated locally (prod rows plus the computed diff,
+campaign status simulated active), `planReactivation` at 2026-07-09T16:00Z:
+
+- proposals: 150 (budget), due: 733
+- proposals hitting the 15:00 cohort: 0
+- proposals hitting the 12:00 cohort: 0
+- proposals colliding with an existing claim: 0
+- proposals to suppressed emails: 0
+- step mix: 119 step 1 (fresh contacts), 31 step 2 (June-only contacts, last
+  touched 2026-06-29, correct cadence)
+
+Expected post-reconciliation hard_bounce rate: 20/426 = 4.69%, below the 6%
+threshold, so the monitor will not re-trip on unpause. The real gate runs
+against prod after merge, deploy, and apply.
+
+### Verifier verdict (fresh-context subagent, independent recomputation)
+
+DIFF-MATCHES-EXPORT, zero discrepancies in all seven categories, script safe
+to apply. The verifier wrote its own CSV parser and verifier, recomputed every
+class from the raw export plus the prod snapshots, confirmed the committed
+diff is byte-identical to the branch copy (sha256 vs `git show HEAD:`), and
+confirmed: 146 inserts bijective with the 15:00Z processed events with
+recomputed steps 117/29 matching per row; 95 patches with first-copy message
+ids verified per row against sorted timestamps and exactly 33 duplicate
+annotations matching recomputed processed/delivered counts; 427 claims
+one-to-one with the post-reconciliation ledger in the exact live-path id
+format; exactly 2 mandatory suppression inserts and no other list changes;
+the jaime annotation's cited clicks real (14 click events 12:00:56Z to
+12:01:08Z from both duplicate copies); all 146 previously unledgered
+recipients double-blocked (attempt row plus claim row) after apply; the
+script incapable of deletes, campaign writes, contact writes, or sends. One
+LOW observation: after a successful apply, a full CLI re-run aborts at the
+settled-fact guards (fail-closed) rather than passing as a clean no-op; the
+write layer itself is idempotent and tested. Clean-worktree gate at f301671:
+EXIT:0, 87 suites.
