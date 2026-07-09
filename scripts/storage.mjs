@@ -482,8 +482,11 @@ export class JsonStore {
   }
 
   async writeState(state) {
-    this.writeQueue = this.writeQueue.then(() => this.writeStateNow(state));
-    return this.writeQueue;
+    // Re-arm on failure: the caller must see the rejection, but the QUEUE must not
+    // stay rejected, or one failed write would brick every later write until restart.
+    const next = this.writeQueue.then(() => this.writeStateNow(state));
+    this.writeQueue = next.catch(() => {});
+    return next;
   }
 
   // Scoped write: persist ONLY the collections in `patch`, leaving everything else untouched.
@@ -531,14 +534,20 @@ export class JsonStore {
   }
 
   async generatePosts(posts) {
-    const state = await this.readState();
+    // Shallow copy: readState can return a graph SHARED with concurrent readers
+    // (single-flight). This mutator assigns top-level keys; the copy keeps that
+    // private so reference-diff closing writes (heartbeat) stay honest.
+    const state = { ...(await this.readState()) };
     state.posts = [...(state.posts || []), ...posts];
     await this.writeCollections({ posts: state.posts });
     return state;
   }
 
   async updatePost(id, patch) {
-    const state = await this.readState();
+    // Shallow copy: readState can return a graph SHARED with concurrent readers
+    // (single-flight). This mutator assigns top-level keys; the copy keeps that
+    // private so reference-diff closing writes (heartbeat) stay honest.
+    const state = { ...(await this.readState()) };
     state.posts = (state.posts || []).map((post) =>
       post.id === id ? { ...post, ...patch, updatedAt: new Date().toISOString() } : post
     );
@@ -547,42 +556,60 @@ export class JsonStore {
   }
 
   async addLibraryItem(item) {
-    const state = await this.readState();
+    // Shallow copy: readState can return a graph SHARED with concurrent readers
+    // (single-flight). This mutator assigns top-level keys; the copy keeps that
+    // private so reference-diff closing writes (heartbeat) stay honest.
+    const state = { ...(await this.readState()) };
     state.library = [item, ...(state.library || [])];
     await this.writeCollections({ library: state.library });
     return state;
   }
 
   async savePostImage(image) {
-    const state = await this.readState();
+    // Shallow copy: readState can return a graph SHARED with concurrent readers
+    // (single-flight). This mutator assigns top-level keys; the copy keeps that
+    // private so reference-diff closing writes (heartbeat) stay honest.
+    const state = { ...(await this.readState()) };
     state.postImages = [image, ...(state.postImages || []).filter((item) => item.id !== image.id)];
     await this.writeCollections({ postImages: state.postImages });
     return state;
   }
 
   async addBrandAsset(asset) {
-    const state = await this.readState();
+    // Shallow copy: readState can return a graph SHARED with concurrent readers
+    // (single-flight). This mutator assigns top-level keys; the copy keeps that
+    // private so reference-diff closing writes (heartbeat) stay honest.
+    const state = { ...(await this.readState()) };
     state.brandAssets = [asset, ...(state.brandAssets || [])];
     await this.writeCollections({ brandAssets: state.brandAssets });
     return state;
   }
 
   async addBrandRule(rule) {
-    const state = await this.readState();
+    // Shallow copy: readState can return a graph SHARED with concurrent readers
+    // (single-flight). This mutator assigns top-level keys; the copy keeps that
+    // private so reference-diff closing writes (heartbeat) stay honest.
+    const state = { ...(await this.readState()) };
     state.brandRules = [rule, ...(state.brandRules || [])];
     await this.writeCollections({ brandRules: state.brandRules });
     return state;
   }
 
   async upsertGenerationProfile(profile) {
-    const state = await this.readState();
+    // Shallow copy: readState can return a graph SHARED with concurrent readers
+    // (single-flight). This mutator assigns top-level keys; the copy keeps that
+    // private so reference-diff closing writes (heartbeat) stay honest.
+    const state = { ...(await this.readState()) };
     state.generationProfiles = [profile, ...(state.generationProfiles || []).filter((item) => item.id !== profile.id)];
     await this.writeCollections({ generationProfiles: state.generationProfiles });
     return state;
   }
 
   async updateSocialAccount(platform, patch) {
-    const state = await this.readState();
+    // Shallow copy: readState can return a graph SHARED with concurrent readers
+    // (single-flight). This mutator assigns top-level keys; the copy keeps that
+    // private so reference-diff closing writes (heartbeat) stay honest.
+    const state = { ...(await this.readState()) };
     const existing =
       (state.socialAccounts || []).find((account) => account.platform === platform) ||
       (this.initialState.socialAccounts || []).find((account) => account.platform === platform) ||
@@ -597,14 +624,20 @@ export class JsonStore {
   }
 
   async addPublishEvent(event) {
-    const state = await this.readState();
+    // Shallow copy: readState can return a graph SHARED with concurrent readers
+    // (single-flight). This mutator assigns top-level keys; the copy keeps that
+    // private so reference-diff closing writes (heartbeat) stay honest.
+    const state = { ...(await this.readState()) };
     state.publishEvents = [event, ...(state.publishEvents || [])].slice(0, 500);
     await this.writeCollections({ publishEvents: state.publishEvents });
     return state;
   }
 
   async updateSettings(patch) {
-    const state = await this.readState();
+    // Shallow copy: readState can return a graph SHARED with concurrent readers
+    // (single-flight). This mutator assigns top-level keys; the copy keeps that
+    // private so reference-diff closing writes (heartbeat) stay honest.
+    const state = { ...(await this.readState()) };
     state.settings = { ...(state.settings || {}), ...patch };
     await this.writeCollections({ settings: state.settings });
     return state;
@@ -708,8 +741,11 @@ export class SupabaseCoreStore extends JsonStore {
   }
 
   async writeState(state) {
-    this.writeQueue = this.writeQueue.then(() => this.writeStateNow(state));
-    return this.writeQueue;
+    // Re-arm on failure: the caller must see the rejection, but the QUEUE must not
+    // stay rejected, or one failed write would brick every later write until restart.
+    const next = this.writeQueue.then(() => this.writeStateNow(state));
+    this.writeQueue = next.catch(() => {});
+    return next;
   }
 
   // Scoped write, Supabase flavor: writeStateNow already only upserts + reconciles collections

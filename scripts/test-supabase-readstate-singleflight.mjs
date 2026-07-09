@@ -157,4 +157,29 @@ const store = new SupabaseCoreStore({ posts: [], library: [] });
   ok("failed read clears the slot; the next read retries and recovers");
 }
 
+// ---- 5b. one failed write must not brick the write queue ----------------------------------
+{
+  // Test 3c above already rejected one write. If the queue stayed rejected, every write
+  // from here on would fail without executing (the pre-existing poisoning defect): one
+  // transient Supabase error would brick all persistence until a restart.
+  await store.writeCollections({ posts: [{ id: "p-9", title: "after-failure" }] });
+  ok("write queue re-arms after a failed write; later writes execute normally");
+}
+
+// ---- 6. convenience mutators never mutate the shared graph ---------------------------------
+{
+  let release;
+  gate = new Promise((r) => { release = r; });
+  const readerPromise = store.readState();          // reader in flight
+  const mutatorJoin = store.updatePost("p-1", { title: "mutated" }); // joins the same read
+  release(); gate = null;
+  const reader = await readerPromise;
+  const beforeTitles = (reader.posts || []).map((p) => p.title).join(",");
+  await mutatorJoin;
+  const afterTitles = (reader.posts || []).map((p) => p.title).join(",");
+  assert.equal(afterTitles, beforeTitles,
+    "updatePost must shallow-copy: a concurrent reader's shared graph must never change under it");
+  ok("convenience mutators shallow-copy: shared reader graphs stay untouched");
+}
+
 console.log(`\nAll ${passed} single-flight readState checks passed.`);
