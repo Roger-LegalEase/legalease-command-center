@@ -18375,8 +18375,11 @@ function htmlShell() {
         optionalBootApi("/api/backups", { timeoutMs: 2500 }),
         optionalBootApi("/api/safety/posture", { timeoutMs: 2500 }),
         optionalBootApi("/api/version/drift", { timeoutMs: 6000 }),
-        optionalBootApi("/api/today/summary", { timeoutMs: 6000 }),
-        optionalBootApi("/api/campaign/command", { timeoutMs: 6000 })
+        // Same 20s budget as the /api/state background load: these two endpoints do a
+        // full state read + projection and routinely need 4-8s on prod, so a 6s
+        // timeout made the scoreboard's boot fetch lose the race more often than not.
+        optionalBootApi("/api/today/summary", { timeoutMs: 20000 }),
+        optionalBootApi("/api/campaign/command", { timeoutMs: 20000 })
       ]).then(results => {
         if (results[0].status === "fulfilled") supabaseHealth = results[0].value;
         if (results[1].status === "fulfilled") backups = results[1].value.backups || [];

@@ -264,7 +264,19 @@ async function supabaseRestRequest(pathname, options = {}) {
     const detail = typeof data === "string" ? data : data?.message || data?.error || response.statusText;
     throw new Error("Supabase DB " + response.status + ": " + detail);
   }
+  if (options.withContentRange) {
+    const contentRange = response.headers && typeof response.headers.get === "function"
+      ? (response.headers.get("content-range") || "")
+      : "";
+    return { data, contentRange };
+  }
   return data;
+}
+
+// "0-999/13593" => 13593. NaN when the server sent no exact count.
+function contentRangeTotal(value = "") {
+  const match = String(value || "").match(/\/(\d+)\s*$/);
+  return match ? Number(match[1]) : NaN;
 }
 
 // PostgREST caps EVERY response at a fixed row count (Supabase default 1000), no matter what
@@ -277,17 +289,38 @@ const SUPABASE_PAGE_SIZE = 1000;
 
 async function supabaseFetchAllRows(selectColumns) {
   const base = supabaseRecordsTable + "?select=" + selectColumns + "&order=collection.asc,item_id.asc";
-  const all = [];
-  let offset = 0;
-  let pageSize = 0;
-  // The server's effective cap is whatever the first request returns; once a page comes back
-  // smaller than that cap we've reached the end. The hard page ceiling is a runaway guard in
-  // case a server ever ignored offset (it would otherwise loop forever).
+  // First page asks for the exact total (Prefer: count=exact => Content-Range
+  // "0-999/13593"); the REMAINING pages are then fetched CONCURRENTLY. The old
+  // sequential loop put a pages-times-round-trip latency floor under every state
+  // read (~3s at 14 pages), which starved the dashboard's boot fetches. Torn-read
+  // exposure against concurrent writes is unchanged: the sequential loop had the
+  // same window, just slower.
+  const first = await supabaseRestRequest(
+    base + "&limit=" + SUPABASE_PAGE_SIZE + "&offset=0",
+    { prefer: "count=exact", withContentRange: true }
+  );
+  const firstRows = Array.isArray(first.data) ? first.data : [];
+  if (!firstRows.length) return [];
+  const pageSize = firstRows.length;
+  const total = contentRangeTotal(first.contentRange);
+  if (Number.isFinite(total)) {
+    if (total <= pageSize) return firstRows;
+    const offsets = [];
+    for (let o = pageSize; o < total; o += pageSize) offsets.push(o);
+    const pages = await Promise.all(offsets.map((o) =>
+      supabaseRestRequest(base + "&limit=" + pageSize + "&offset=" + o)
+    ));
+    return firstRows.concat(...pages.map((p) => (Array.isArray(p) ? p : [])));
+  }
+  // No exact count from the server: legacy sequential paging. The effective cap is
+  // whatever the first request returned; a short page proves the end. The hard page
+  // ceiling is a runaway guard in case a server ever ignored offset.
+  const all = [...firstRows];
+  let offset = pageSize;
   for (let page = 0; page < 100000; page += 1) {
     const rows = (await supabaseRestRequest(base + "&limit=" + SUPABASE_PAGE_SIZE + "&offset=" + offset)) || [];
     if (!rows.length) break;
     all.push(...rows);
-    if (pageSize === 0) pageSize = rows.length;
     if (rows.length < pageSize) break;
     offset += rows.length;
   }
