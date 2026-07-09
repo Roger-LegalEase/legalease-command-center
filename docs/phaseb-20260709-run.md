@@ -597,13 +597,71 @@ CNAME  s2._domainkey.outreach.legalease.com    s2.domainkey.u109986732.wl233.sen
 ".legalease.com", i.e. em2725.outreach / s1._domainkey.outreach /
 s2._domainkey.outreach.)
 
-After Roger confirms the records are added: POST /api/outreach/domain-auth
-{"action":"validate"} until valid true (a passing validate writes its own
-audit event), then POST /api/outreach/config to move fromEmail to the
-authenticated subdomain identity, then the send gates flip per the
-activation sequence above (OUTREACH_LIVE_SEND env is Roger's, autopilot is
-the audited API flip). LAWRENCE HOLD stands: nothing from
-second_chance_employer (sequence D) gets approved before sign-off.
+Historical note: the paragraph that followed here ("After Roger confirms the
+records are added...") is superseded by the evening continuation below. The
+records were added the same day, validate returned valid true, and the
+Lawrence hold on sequence D was released by his sign-off.
+
+## Evening continuation: OOM incident, Lawrence release, B2 arm/disarm, scoreboard
+
+### Production OOM crash loop found and fixed (Roger's priority order ~20:40Z)
+
+Render logs (API access via Roger's key) showed 10 heap-OOM crashes on
+2026-07-09: a boot crash-loop 12:01 to 12:23Z (5 crashes), then one per
+hourly tick 13:01 through 16:01Z. Every crashed tick lost its closing write;
+the 12:00Z crash is the one the morning section documents. Claims prevented
+all duplicate sends. Root cause: concurrent full-state reads (tick + SendGrid
+webhook bursts + UI polls) each built a ~13k-row object graph against the
+~256MB default Node heap of the 512MB instance (total state is only 6.7MB
+serialized; the amplification was per-reader copies).
+
+Fix, two parts. (1) NODE_OPTIONS=--max-old-space-size=384 on the web service
+(Render env, ~20:47Z); first tick on the raised heap (21:00Z) clean. (2) PR
+#44 (main 4015d47): single-flight readState with write-generation
+invalidation, per-process fallback parse, plus two verifier-prescribed
+hardenings folded in pre-merge: the ten JsonStore convenience mutators now
+shallow-copy the shared graph, and both store write queues re-arm after a
+rejected write (pre-existing defect: one failed Supabase write bricked every
+later write until restart). Verifier MERGE-SAFE; clean-worktree EXIT:0;
+post-deploy ancestor gate PASS, writeHealth clean, B1 untouched
+(active, thresholds 0.06/0.001/0.025, not tripped).
+
+### B2 armed, then deliberately disarmed pending the memory fix
+
+DNS validated ~20:26Z: all three CNAMEs valid, SendGrid domain
+outreach.legalease.com valid true (audit ev-6583af690606e1e1, endpoint
+create audit ev-cd2f65bd644ec8ec). Lawrence signed off on sequence D (relayed
+by Roger ~20:20Z; audit ev-lawrence-signoff-seqd-20260709): all four
+sequences approved. Flags set via Render API (audits ev-b5-flag-on-20260709,
+ev-b2-livesend-on-20260709): PROSPECT_LIVE_DISCOVERY=true and
+OUTREACH_LIVE_SEND=true, both verified live via the status endpoints.
+outreachConfig moved to the authenticated identity
+(roger@outreach.legalease.com, replyTo roger@legalease.com, sendingDomain
+outreach.legalease.com). outreach-sequencer autopilot enabled 20:34:21Z
+(audit ev-b2-autopilot-on-20260709), then DISARMED 20:44:54Z on Roger's
+memory-fix-first order as a hard guard. Re-arm criterion: a clean tick on the
+deployed single-flight fix. B5 note: prod discovery first runs at the next
+6am ET daily tick; a forced tick was rejected because it would also run the
+live B1 sequencer off-cadence.
+
+### Scoreboard Phase 1 (Roger's go, all three phases)
+
+Pre-check: zero product events ever received (no automationEvents rows, no
+rejects in a week of logs); three demo funnel rows found RESURRECTED in prod
+Supabase (demo-funnel-civic/goodwill/recordshield), flushed at deploy per the
+honest-zero rule. Built on branch command-center-scoreboard-phase1: summary
+endpoint attaches live Stripe + signups snapshots via a shared 60s cache;
+client boot retries the summary fetch (the null-todaySummary bug behind every
+Not wired yet and the Live partners Loading); funnel aggregates across all
+funnelSnapshots rows with the product-event keys; funnel METRIC events
+auto-apply on receipt (Roger's decision; approval gate stays for actions);
+Web visits wired to landing_page_viewed. Verifier MERGE-SAFE; its findings
+folded in pre-merge: /api/events/product response scoped to the event outcome
+(the full-state echo would have handed consumer PII to the emitter-secret
+holder), initialState no longer seeds funnel numbers, cache clears on
+rejection. Phase 2 handoff prompt for the Expungement.ai repo:
+docs/expungement-ai-product-events-prompt.md. Clean-worktree EXIT:0 at
+e0beedb; tests scripts/test-scoreboard-wiring.mjs (8 checks).
 
 ### B2 outreach claim-before-send (code change, verifier PASSED above)
 

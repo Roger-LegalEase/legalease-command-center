@@ -621,9 +621,26 @@ export function buildCompanyMemoryEngine() {
 // Today at LegalEase summary (server-side aggregate the page consumes in one call)
 // ---------------------------------------------------------------------------------------------
 
-function latestFunnelSnapshot(state) {
-  const snapshots = list(state.funnelSnapshots);
-  return snapshots[0] && typeof snapshots[0] === "object" ? snapshots[0] : {};
+// Aggregate the conversion funnel across ALL funnelSnapshots rows. Product events
+// auto-apply one row per event (each carrying a single metric increment), so reading
+// only snapshots[0] showed whichever metric happened to arrive last and zero for the
+// rest. Each metric accepts the product-event key (the only key the ingest writes)
+// plus the legacy aggregate-row spellings; a row is counted once per metric via the
+// first key it carries, so a mixed-spelling row can never double-count.
+function aggregateFunnelMetrics(state) {
+  const rows = list(state.funnelSnapshots).filter((row) => row && typeof row === "object");
+  const sumFirst = (keys) => rows.reduce((total, row) => {
+    for (const key of keys) {
+      if (row[key] !== undefined) return total + (Number(row[key]) || 0);
+    }
+    return total;
+  }, 0);
+  return {
+    connected: rows.some((row) => clean(row.id || row.capturedAt || row.created_at || row.createdAt)),
+    screeningsStarted: sumFirst(["expungementIntakeStarted", "screenings_started", "screeningsStarted"]),
+    checkouts: sumFirst(["paymentStarted", "checkouts", "checkout_started"]),
+    webVisits: sumFirst(["landingPageVisits", "landing_page_visits"])
+  };
 }
 
 export function buildTodaySummary(state = {}, { env = process.env, now = () => new Date().toISOString() } = {}) {
@@ -639,7 +656,7 @@ export function buildTodaySummary(state = {}, { env = process.env, now = () => n
     && i.status !== "snoozed");
 
   const campaign = reactivationCampaignOf(state);
-  const funnel = latestFunnelSnapshot(state);
+  const funnel = aggregateFunnelMetrics(state);
   const suppressed = suppressedEmailSet(state).size;
   const held = list(state.reactivationContacts).filter((c) => Boolean(c.campaign_hold)).length;
   const stripe = state.stripeRevenue && typeof state.stripeRevenue === "object" ? state.stripeRevenue : null;
@@ -667,11 +684,12 @@ export function buildTodaySummary(state = {}, { env = process.env, now = () => n
     generatedAt: now(),
     goodMorning: {
       // Honest-zero convention: only claim what a real source recorded.
-      screeningsStarted: Number(funnel.screenings_started ?? funnel.screeningsStarted) || 0,
-      checkouts: Number(funnel.checkouts ?? funnel.checkout_started) || 0,
+      screeningsStarted: funnel.screeningsStarted,
+      checkouts: funnel.checkouts,
+      webVisits: funnel.webVisits,
       paid: signups && signups.available ? Number(signups.paid) || 0 : 0,
       registered: signups && signups.available ? Number(signups.registered) || 0 : 0,
-      funnelConnected: Boolean(clean(funnel.id || funnel.capturedAt || funnel.created_at)),
+      funnelConnected: funnel.connected,
       signupsConnected: Boolean(signups && signups.available),
       supportOpen: list(state.supportIssues).filter((i) => !/resolved|closed|done|archived/i.test(String(i.status || ""))).length,
       partnerFollowups: open.filter((i) => i.type === "partner_followup" || i.type === "prospect_followup").length,
