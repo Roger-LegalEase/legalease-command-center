@@ -653,14 +653,49 @@ export class SupabaseCoreStore extends JsonStore {
     super(initialState);
     this.kind = "supabase";
     this.lastError = "";
+    // Single-flight read state (2026-07-09 OOM fix). Every readState builds a full
+    // ~13k-row object graph; during a send tick the heartbeat, SendGrid webhook bursts,
+    // and UI polls each built their OWN concurrent copy, and the sum blew the default
+    // ~256MB heap (10 OOM crashes on 2026-07-09, one per hourly tick during send hours).
+    // Concurrent readers now share ONE in-flight fetch and ONE returned graph. Safe by
+    // the codebase-wide invariant that state transforms are immutable spread-copies
+    // (writeChangedCollections already depends on exactly that invariant to diff by
+    // reference), so readers never mutate the shared graph in place.
+    this._readInFlight = null;
+    this._readInFlightGen = -1;
+    // Write generation: bumped after EVERY durable mutation (full/scoped writes and
+    // claim inserts). A reader may only JOIN an in-flight read that started at the
+    // current generation; after a write lands, the next readState starts fresh. Without
+    // this, a serialized mutation could read a graph fetched BEFORE the previous
+    // mutation's write and compute on stale state (lost update).
+    this._writeGen = 0;
+    // The JsonStore fallback layer parses the on-disk seed/data file (~590KB) on every
+    // read. Under the supabase backend that file is static deploy content (all writes go
+    // to Supabase), so it is parsed once per process and reused.
+    this._fallbackCache = null;
   }
 
   async readState() {
-    let fallback = { ...this.initialState };
-    try {
-      if (existsSync(this.dataPath) || existsSync(this.seedPath)) fallback = await super.readState();
-    } catch {
-      fallback = { ...this.initialState };
+    if (this._readInFlight && this._readInFlightGen === this._writeGen) return this._readInFlight;
+    const promise = this._readStateFresh().finally(() => {
+      if (this._readInFlight === promise) this._readInFlight = null;
+    });
+    this._readInFlight = promise;
+    this._readInFlightGen = this._writeGen;
+    return promise;
+  }
+
+  async _readStateFresh() {
+    let fallback = this._fallbackCache;
+    if (!fallback) {
+      try {
+        fallback = (existsSync(this.dataPath) || existsSync(this.seedPath))
+          ? await super.readState()
+          : { ...this.initialState };
+      } catch {
+        fallback = { ...this.initialState };
+      }
+      this._fallbackCache = fallback;
     }
     try {
       const rows = await supabaseFetchAllRows("collection,item_id,payload,updated_at");
@@ -692,6 +727,11 @@ export class SupabaseCoreStore extends JsonStore {
     } catch (error) {
       this.recordWriteOutcome(error);
       throw error;
+    } finally {
+      // Invalidate in-flight read sharing even on failure: a partial write (upsert
+      // succeeded, reconcile failed) may have changed rows, so the safe direction is
+      // a fresh read.
+      this._writeGen += 1;
     }
   }
 
@@ -769,6 +809,10 @@ export class SupabaseCoreStore extends JsonStore {
     } catch (error) {
       this.recordWriteOutcome(error);
       throw error;
+    } finally {
+      // Claims are durable mutations too: never let a post-claim reader join a
+      // pre-claim in-flight read.
+      this._writeGen += 1;
     }
   }
 }
