@@ -35319,6 +35319,10 @@ async function handleRequest(request, response) {
         // BEFORE each live reactivation send. The store's unique (collection, item_id) key makes
         // the insert the cross-process idempotency test; the engine fails closed without it.
         claimReactivationSends: (claims) => store.claimCollectionItems("reactivationSendClaims", claims),
+        // B2 activation run (2026-07-09): the same claim-before-send boundary for cold outreach.
+        // Every live outreach send atomically claims (campaign, contact, step) in
+        // outreachSendClaims first; the engine fails closed without this path.
+        claimOutreachSends: (claims) => store.claimCollectionItems("outreachSendClaims", claims),
         // Phase 18I alert email — owner-only digest and critical breakthroughs. Recipient is
         // env-locked (ALERTS_EMAIL_TO); gated by the in-app email toggle (default OFF) plus
         // ALERTS_LIVE_SEND plus the alerts engine's autopilot toggle (default OFF).
@@ -35549,7 +35553,14 @@ async function handleRequest(request, response) {
       dryRun: serverList(currentState.outreachAttempts).filter((a) => a.status === "dry_run").length,
       suppressions: serverList(currentState.outreachSuppressions).length,
       unsubscribes: serverList(currentState.outreachUnsubscribes).length,
-      bounces: serverList(currentState.outreachBounces).length
+      bounces: serverList(currentState.outreachBounces).length,
+      // Claim-before-send safety ledger (mirrors reactivation sendClaims).
+      sendClaims: serverList(currentState.outreachSendClaims).reduce((m, c) => {
+        const s = String(c.status || "").toLowerCase();
+        m.total += 1;
+        if (m[s] !== undefined) m[s] += 1;
+        return m;
+      }, { total: 0, claimed: 0, sent: 0, dry_run: 0, failed: 0 })
     });
     return;
   }

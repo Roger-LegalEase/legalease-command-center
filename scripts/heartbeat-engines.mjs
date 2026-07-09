@@ -82,7 +82,10 @@ export function buildHeartbeatRegistry(deps = {}) {
   // only when autopilot is ON (default OFF). The live send is delegated to deps.runOutreachSend
   // (injected by the server); with no dep, or in dry-run, act() records attempts but performs
   // NO network send. Always registered so the autopilot toggle surfaces; safe by construction.
-  engines.push(buildOutreachEngine({ runOutreachSend: deps.runOutreachSend }));
+  // deps.claimOutreachSends is the durable atomic claim path (store.claimCollectionItems on
+  // outreachSendClaims) — REQUIRED for any live send: without it the engine fails closed and
+  // records not_sent/no_claim_path instead of calling SendGrid unclaimed.
+  engines.push(buildOutreachEngine({ runOutreachSend: deps.runOutreachSend, claimOutreachSends: deps.claimOutreachSends }));
 
   // B5 prospect discovery (Tier-1 datasets only, NO send path). plan() classifies/dedups/scores
   // staged findings with no network; act() does once/day discovery (behind the inert

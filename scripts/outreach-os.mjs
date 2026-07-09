@@ -47,10 +47,21 @@ export const OUTREACH_COLLECTIONS = [
   "outreachReplies",
   "outreachBounces",
   "outreachSuppressions",
-  "outreachUnsubscribes"
+  "outreachUnsubscribes",
+  "outreachSendClaims"   // append-only safety ledger: one atomic claim per (campaign, contact, step)
 ];
 // Singleton (single-object) collection: outreach config (postal address, caps, identity).
 export const OUTREACH_SINGLETON_COLLECTIONS = ["outreachConfig"];
+
+export const OUTREACH_CLAIMS_COLLECTION = "outreachSendClaims";
+
+// Deterministic claim id — THE unique key, mirroring reactivationClaimId (PR #40). One claim
+// per (campaign, contact, step) forever: the Supabase (collection, item_id) unique index makes
+// inserting this id an atomic mutual-exclusion test across processes, restarts, and lost
+// ledgers. A cold-outreach touch is sent at most once, no matter what the queue replays.
+export function outreachClaimId(campaignId = "", contactId = "", stepNumber = 0) {
+  return `outreach-claim-${clean(campaignId) || "none"}-${clean(contactId)}-step-${Number(stepNumber)}`;
+}
 
 // Conservative defaults (§6). Overridable via outreachConfig.caps.
 export const DEFAULT_OUTREACH_CAPS = {
@@ -618,13 +629,27 @@ export function planOutreach(state = {}, ctx = {}) {
 // act(): runs ONLY when autopilot is ON (the heartbeat gates this). Sends ONLY messages that
 // are approved AND (re-checked) unsuppressed + compliant + within caps. The live network
 // send is delegated to ctx.runOutreachSend; absent/dry-run => NO real send.
+// IDEMPOTENCY (activation run 2026-07-09, mirrors PR #40 for B1): every LIVE send is preceded
+// by an atomic durable claim of (campaign, contact, step) in outreachSendClaims via
+// ctx.claimOutreachSends (the server injects store.claimCollectionItems). A repeated tick, a
+// concurrent invocation, a duplicate queue item, or a queue replaying over a lost attempts
+// ledger loses the unique-key insert and SKIPS the send. Claims are never deleted: a failed
+// send marks the claim failed and REJECTS the queue item (no silent retry; re-touching that
+// contact-step is an operator decision), and a live-send-capable invocation without a claim
+// path sends nothing.
 export async function actOutreach(state = {}, ctx = {}) {
   const env = ctx.env || process.env;
-  const parts = ctx.etParts || etParts(ctx.now || new Date());
+  const now = ctx.now || new Date();
+  const parts = ctx.etParts || etParts(now);
   const config = outreachConfigOf(state);
   const caps = config.caps;
 
-  let next = { ...state, approvalQueue: list(state.approvalQueue).slice(), outreachAttempts: list(state.outreachAttempts).slice() };
+  let next = {
+    ...state,
+    approvalQueue: list(state.approvalQueue).slice(),
+    outreachAttempts: list(state.outreachAttempts).slice(),
+    [OUTREACH_CLAIMS_COLLECTION]: list(state[OUTREACH_CLAIMS_COLLECTION]).slice()
+  };
   const results = [];
   const tally = todaysSendTally(state, parts);
 
@@ -632,9 +657,26 @@ export async function actOutreach(state = {}, ctx = {}) {
   const contactsById = new Map(list(state.outreachContacts).map((c) => [clean(c.contact_id), c]));
   const orgById = new Map(list(state.outreachOrganizations).map((o) => [clean(o.account_id || o.organization_id || o.id), o]));
 
+  // Existing claims (any status) index — one (contact, step) claim means one send, ever.
+  const claimsById = new Map(list(next[OUTREACH_CLAIMS_COLLECTION]).map((c) => [clean(c.id), c]));
+  const markClaim = (claimId, patch) => {
+    next[OUTREACH_CLAIMS_COLLECTION] = list(next[OUTREACH_CLAIMS_COLLECTION]).map((c) =>
+      clean(c.id) === claimId ? { ...c, ...patch } : c);
+    claimsById.set(claimId, { ...claimsById.get(claimId), ...patch });
+  };
+  // In-tick person-level dedupe: two approved queue items for one person yield one send.
+  const processedIdentities = new Set();
+
   for (const item of approved) {
     const contact = contactsById.get(clean(item.contact_id)) || { email: item.to, contact_id: item.contact_id };
     const org = orgById.get(clean(contact.linked_account_id)) || {};
+
+    const identityKeys = [clean(item.contact_id), normalizeEmail(item.to)].filter(Boolean);
+    if (identityKeys.some((key) => processedIdentities.has(key))) {
+      results.push({ contact_id: item.contact_id, status: "skipped", reason: "duplicate_contact_in_tick" });
+      continue;
+    }
+    for (const key of identityKeys) processedIdentities.add(key);
 
     // Re-check suppression at SEND time (status can change between queue and send).
     const supp = isSuppressed(contact, { state, org });
@@ -664,6 +706,64 @@ export async function actOutreach(state = {}, ctx = {}) {
       continue; // leave approved; a later in-window tick can send it
     }
 
+    // ---- ATOMIC CLAIM BEFORE ANY LIVE SEND (the idempotency boundary, mirrors PR #40) -----
+    // Pre-resolve the SAME decision the executor will make. Only a decision that would reach
+    // SendGrid (liveSend) requires the durable claim; dry-run and fail-closed paths perform
+    // no network send, so claiming there would burn permanent claims on closed gates.
+    const decision = resolveOutreachSendDecision(item.message || {}, { env });
+    const claimId = outreachClaimId(item.campaign_id, item.contact_id, item.step_number);
+    const liveSendIntended = decision.liveSend === true && typeof ctx.runOutreachSend === "function";
+    let claimed = false;
+    if (liveSendIntended) {
+      // An existing claim in ANY state (claimed / sent / failed) blocks the send. A lingering
+      // approved queue item for an already-claimed (contact, step) is a duplicate: reject it
+      // so it stops replaying every tick, and log the skip.
+      if (claimsById.has(claimId)) {
+        markQueue(next, item.id, "rejected", { reject_reason: `already_claimed:${claimId}` });
+        results.push({ contact_id: item.contact_id, status: "skipped", reason: "already_claimed", claim_id: claimId });
+        continue;
+      }
+      if (typeof ctx.claimOutreachSends !== "function") {
+        // Fail CLOSED: a live-send-capable invocation without a durable claim path must not
+        // send. The item stays approved; a correctly wired tick can send it.
+        results.push({ contact_id: item.contact_id, status: "not_sent", reason: "no_claim_path" });
+        continue;
+      }
+      const claim = {
+        id: claimId,
+        campaign_id: item.campaign_id,
+        contact_id: item.contact_id,
+        step_number: item.step_number,
+        classification: item.classification || "",
+        to: item.to,
+        status: "claimed",
+        reason: "",
+        provider: "",
+        provider_message_id: "",
+        claimed_at: nowIso(),
+        resolved_at: "",
+        run_id: clean(ctx.runId),
+        claimed_by: clean(ctx.actor) || "heartbeat"
+      };
+      let claimOutcome;
+      try {
+        claimOutcome = (await ctx.claimOutreachSends([claim])) || {};
+      } catch (error) {
+        // Claim not durable => no send. The item stays approved; nothing happened.
+        results.push({ contact_id: item.contact_id, status: "error", reason: `claim_write_failed:${String(error.message || error)}` });
+        continue;
+      }
+      if (!list(claimOutcome.inserted).some((c) => clean(c.id) === claimId)) {
+        // A concurrent invocation won the unique-key insert; it owns the send and the queue
+        // transition. Skip silently, log the skip, touch nothing.
+        results.push({ contact_id: item.contact_id, status: "skipped", reason: "already_claimed_concurrent", claim_id: claimId });
+        continue;
+      }
+      claimed = true;
+      claimsById.set(claimId, claim);
+      next[OUTREACH_CLAIMS_COLLECTION] = [claim, ...list(next[OUTREACH_CLAIMS_COLLECTION])];
+    }
+
     // DELEGATED SEND. No dep, or dry-run => record an attempt, perform NO network send.
     let sendOutcome = { status: "dry_run", provider: "none" };
     if (typeof ctx.runOutreachSend === "function") {
@@ -671,16 +771,33 @@ export async function actOutreach(state = {}, ctx = {}) {
         const r = (await ctx.runOutreachSend(item.message, { env })) || {};
         // The send executor can itself fail closed (routing/compliance) — honor it, don't record a send.
         if (lower(r.status) === "not_sent") {
+          if (claimed) markClaim(claimId, { status: "failed", reason: `declined:${r.reason || "not_sent"}`, resolved_at: nowIso() });
           markQueue(next, item.id, "rejected", { reject_reason: `routing:${r.reason || "not_sent"}` });
           results.push({ contact_id: item.contact_id, status: "not_sent", reason: r.reason || "not_sent" });
           continue;
         }
         sendOutcome = { status: lower(r.status) === "sent" ? "sent" : (r.status || "dry_run"), provider: r.provider || "unknown", provider_message_id: r.provider_message_id || "" };
       } catch (error) {
-        markQueue(next, item.id, "approved", {}); // leave for retry
+        // Transport failure or timeout. The OLD behavior left the item approved "for retry",
+        // which silently re-enqueued a possibly-delivered send (the July 8 defect shape). Now:
+        // the claim stays FAILED forever and the queue item is REJECTED with the reason; if the
+        // touch should still go out, that is an operator decision on a fresh queue item, and
+        // the claim ledger will still block the same (contact, step) from double-sending.
+        if (claimed) {
+          markClaim(claimId, { status: "failed", reason: String(error.message || error), resolved_at: nowIso() });
+          markQueue(next, item.id, "rejected", { reject_reason: `send_error:${String(error.message || error).slice(0, 200)}` });
+        }
         results.push({ contact_id: item.contact_id, status: "error", reason: String(error.message || error) });
         continue;
       }
+    }
+    if (claimed) {
+      markClaim(claimId, {
+        status: sendOutcome.status,
+        provider: sendOutcome.provider,
+        provider_message_id: sendOutcome.provider_message_id || "",
+        resolved_at: nowIso()
+      });
     }
 
     const attempt = {
@@ -730,7 +847,9 @@ export function buildOutreachEngine(deps = {}) {
     },
     async act(state, ctx) {
       // ctx.runOutreachSend injected by the server; absent => dry-run (no network send).
-      return actOutreach(state, { ...ctx, runOutreachSend: deps.runOutreachSend });
+      // ctx.claimOutreachSends is the durable atomic claim path; without it, act() fails
+      // CLOSED for live sends: no claim, no SendGrid call.
+      return actOutreach(state, { ...ctx, runOutreachSend: deps.runOutreachSend, claimOutreachSends: deps.claimOutreachSends });
     }
   };
 }
