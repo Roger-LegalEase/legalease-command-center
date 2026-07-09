@@ -35315,6 +35315,10 @@ async function handleRequest(request, response) {
         // The reactivation engine's act() only runs when its autopilot toggle is ON (default OFF)
         // and only for RELEASED waves.
         runReactivationSend,
+        // Phase B PR 1 (incident 2026-07-08): durable atomic claim of (campaign, contact, step)
+        // BEFORE each live reactivation send. The store's unique (collection, item_id) key makes
+        // the insert the cross-process idempotency test; the engine fails closed without it.
+        claimReactivationSends: (claims) => store.claimCollectionItems("reactivationSendClaims", claims),
         // Phase 18I alert email — owner-only digest and critical breakthroughs. Recipient is
         // env-locked (ALERTS_EMAIL_TO); gated by the in-app email toggle (default OFF) plus
         // ALERTS_LIVE_SEND plus the alerts engine's autopilot toggle (default OFF).

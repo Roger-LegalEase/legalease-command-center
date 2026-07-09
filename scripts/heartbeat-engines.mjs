@@ -131,7 +131,13 @@ export function buildHeartbeatRegistry(deps = {}) {
   // with no dep, or with REACTIVATION_LIVE_SEND off, act() records dry-run attempts and performs
   // NO network send.
   // Always registered so the autopilot toggle surfaces; safe by construction (four gates).
-  engines.push(buildReactivationEngine({ runReactivationSend: deps.runReactivationSend }));
+  // deps.claimReactivationSends is the durable atomic claim path (store.claimCollectionItems on
+  // reactivationSendClaims) — REQUIRED for any live send: without it the engine fails closed and
+  // records not_sent/no_claim_path instead of calling SendGrid unclaimed.
+  engines.push(buildReactivationEngine({
+    runReactivationSend: deps.runReactivationSend,
+    claimReactivationSends: deps.claimReactivationSends
+  }));
 
   // Phase 18I alert system. plan() observes candidate alerts only; act() raises internal alert
   // records and, ONLY behind the fail-closed email decision (in-app toggle default OFF +

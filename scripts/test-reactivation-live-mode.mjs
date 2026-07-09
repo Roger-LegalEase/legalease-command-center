@@ -99,9 +99,29 @@ function makeOutreachSpy() {
   return { calls, run: async (message) => { calls.push(message.to); return { status: "sent", provider: "test" }; } };
 }
 
-function registryWith(spy, outreachSpy) {
+// Durable-claim mock (Phase B PR 1): the engine fails CLOSED for live sends without a claim
+// path, so the test registry injects one exactly like the server injects
+// store.claimCollectionItems. Atomic check+insert per call, same inserted/skipped contract.
+function memClaims() {
+  const rows = new Map();
+  return {
+    rows,
+    fn: async (claims) => {
+      const inserted = [];
+      const skipped = [];
+      for (const claim of claims) {
+        if (rows.has(claim.id)) { skipped.push(claim); continue; }
+        rows.set(claim.id, { ...claim });
+        inserted.push(claim);
+      }
+      return { inserted, skipped };
+    }
+  };
+}
+
+function registryWith(spy, outreachSpy, claims = memClaims()) {
   return [
-    buildReactivationEngine({ runReactivationSend: spy.run }),
+    buildReactivationEngine({ runReactivationSend: spy.run, claimReactivationSends: claims.fn }),
     buildOutreachEngine({ runOutreachSend: outreachSpy.run })
   ];
 }
