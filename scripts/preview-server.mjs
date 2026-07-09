@@ -14,6 +14,7 @@ import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES
 import { reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, buildReactivationLiveStatus, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
 import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
+import { runDomainAuthAction, DEFAULT_OUTREACH_AUTH_DOMAIN } from "./sendgrid-domain-auth.mjs";
 import { buildVersionDrift, createVersionDriftCache } from "./version-truth.mjs";
 import { buildSafetyPosture } from "./safety-posture.mjs";
 import { wakeSnoozedQueueItems, transitionQueueItem, emitCompanyEvent, recordAgentRun } from "./company-memory.mjs";
@@ -35586,6 +35587,42 @@ async function handleRequest(request, response) {
       sendJson(response, { ok: true, outreachConfig: merged });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update outreach config." }, 400);
+    }
+    return;
+  }
+
+  // B2 domain authentication — admin drives SendGrid domain auth for the dedicated outreach
+  // subdomain from the server, the only place SENDGRID_API_KEY exists (never handled by hand).
+  // Scoped to the v3/whitelabel/domains API via sendgrid-domain-auth.mjs; cannot send mail and
+  // never exposes the key. Admin-gated by the /api/outreach/ POST rule in access-control.
+  // create and a passing validate are audited to companyEvents; status is read-only.
+  if (url.pathname === "/api/outreach/domain-auth" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const result = await runDomainAuthAction({
+        action: input.action,
+        domain: input.domain || DEFAULT_OUTREACH_AUTH_DOMAIN,
+        env: process.env
+      });
+      const audited = (result.action === "create" && result.created === true)
+        || (result.action === "validate" && result.valid === true);
+      if (audited) {
+        await serializeStateMutation(async () => {
+          const currentState = await store.readState();
+          const nextState = emitCompanyEvent(currentState, {
+            source: OUTREACH_ENGINE_ID,
+            type: "outreach_domain_auth",
+            risk: "watch",
+            summary: result.action === "create"
+              ? `SendGrid domain authentication created for ${result.domainAuth?.domain} by ${accessDecision.actor?.label || accessDecision.actor?.role || "operator"}; DNS records issued, not yet validated.`
+              : `SendGrid domain authentication VALIDATED for ${result.domainAuth?.domain} by ${accessDecision.actor?.label || accessDecision.actor?.role || "operator"}.`
+          });
+          await store.writeCollections({ companyEvents: nextState.companyEvents });
+        });
+      }
+      sendJson(response, { ok: true, ...result });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Domain auth action failed." }, 400);
     }
     return;
   }

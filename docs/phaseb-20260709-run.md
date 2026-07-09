@@ -448,6 +448,89 @@ should pull web service logs for 12:00:30Z to 12:02Z. Rate impact:
 denominator-conservative (missing attempts UNDERSTATE sent count, so the
 computed bounce rate is higher than true; safe direction).
 
+## Activation run continuation (fresh session, 2026-07-09 ~18:30Z onward)
+
+Per protocol every carried-over claim was re-audited against a tool result from
+this session before further action:
+
+- Prod `/api/version`: `commit 2dcc28c` (main tip), production, supabase
+  connected (18:20Z). The claims branch `a344216` is pushed but NOT in main.
+- B5 `/api/prospects/status`: `autopilotEnabled: true`,
+  `liveDiscoveryWired: true`, `liveDiscoveryFlag: false`. The morning flip
+  holds; the env var remains Roger's Render action. Nothing re-flipped.
+- Social `/api/channels`: all five platforms still `setup_required`, zero
+  client credentials, zero stored tokens, every posting gate off. OAuth
+  verification remains impossible; no gate flipped, no test post queueable.
+- Outreach `/api/outreach/status`: autopilot false, liveSendFlag false,
+  `sendgridKeyPresent: true` (prod holds the key), postal + from set, caps
+  25/2/10 window 8-17 ET weekdays, queued 0 approved 0 sent 0, suppressions
+  88, unsubscribes 37, bounces 28. Zero targets, so activation stays inert
+  until B5 approvals promote orgs.
+- `.env.local` unchanged since Jun 26: still no SENDGRID_API_KEY locally.
+
+Two precision corrections to the morning session's social section, from a
+full code re-read this session:
+
+1. "B6 does not exist in HEARTBEAT_ENGINE_IDS" was imprecise. A
+   `publishing-run` engine DOES exist in the registry; what it can do is
+   publish ONLY posts a human already moved to approved or scheduled through
+   the Review Desk, and only with the per-channel env live gate on and a
+   connected account at publish time (triple-gated, autopilot default OFF).
+   What was never built is autonomous authoring or approval. The assertion
+   that no path posts without a human approval in between stands.
+2. `POST /api/posts/:id/publish-now` (human-triggered, admin-gated) calls
+   publishReadiness with `requireLiveGate: false`, so this ONE manual
+   endpoint bypasses the ENABLE_LIVE_* env gate. It still requires an
+   approved or scheduled post, a finalized image, and a connected account
+   with a decryptable token, so it is inert today (no accounts exist). Noted
+   as a hardening item, not an activation blocker.
+
+Also noted for later hardening (not blocking, reported): outreach
+suppression's isExistingRelationship covers partners and pilots but does NOT
+cross-check reactivationContacts, so a B1 consumer address that somehow
+entered the B2B target list would not be suppressed by that rule alone; and
+SendGrid webhook events never confirm outreach claims to `sent` (same
+reconciliation gap B1 has, PR 2 scope).
+
+### DNS unblock: server-side domain-auth driver (code change, this session)
+
+The morning session declared the DNS records blocked because the CNAME
+values are account-specific and SENDGRID_API_KEY exists only in prod. This
+session closed that gap in the authorized direction: the server itself now
+drives SendGrid domain authentication, so the key never leaves prod and
+Roger's manual surface stays exactly one action (paste records at the DNS
+provider).
+
+New module `scripts/sendgrid-domain-auth.mjs` + endpoint
+`POST /api/outreach/domain-auth` (admin-gated by the existing
+/api/outreach/ POST rule):
+
+- Actions: `status` (read-only), `create` (idempotent: returns the existing
+  record if one exists; otherwise creates the authenticated domain with
+  `automatic_security: true, default: false` so B1's default sending domain
+  can never be displaced), `validate` (per-record DNS verdicts, repeatable).
+- Default domain `outreach.legalease.com` (the dedicated cold-send
+  subdomain); domain input validated as a bare hostname before any network
+  contact.
+- Scoped to the v3/whitelabel/domains API only: cannot send mail, is not a
+  general SendGrid proxy, never returns or logs the key. Missing key fails
+  closed before network.
+- create and passing validate emit a companyEvents audit record (scoped
+  write, alerts-gate pattern).
+- Tests: `scripts/test-sendgrid-domain-auth.mjs` (8 checks: pre-network
+  input rejection, fail-closed on missing key, exact isolation payload,
+  idempotent create, read-only status, validate targeting and
+  refusal-before-create, key-never-leaks including provider error paths,
+  sparse-payload mapping). Wired into npm test and npm run check.
+
+Activation sequence once merged and deployed (auto-deploy): call
+`{"action":"create"}` against prod, surface the three CNAME records to
+Roger, he installs them and replies done; then `{"action":"validate"}` until
+`valid: true`; then POST /api/outreach/config sets fromEmail to the
+authenticated subdomain identity, and only then do the send gates flip
+(OUTREACH_LIVE_SEND is Roger's Render env action; outreach-sequencer
+autopilot is the API flip with its companyEvents audit).
+
 ### B2 outreach claim-before-send (code change, PR pending verifier)
 
 Mirrors PR #40 exactly for the cold-outreach path: new append-only
