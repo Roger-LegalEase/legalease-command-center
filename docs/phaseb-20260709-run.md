@@ -566,6 +566,45 @@ Also catalogued by the verifier: the CLI scripts outreach-test-send.mjs
 seed/fire scripts bypass claim ledgers but are unreachable from the server
 and unchanged by this diff; interlocking them stays PR 2 scope.
 
+### PR #42 merged + post-deploy verification (75e4c38, ~19:19Z, all PASS)
+
+Auto-deploy served the merge commit without manual promotion. Verified this
+session: commit gate ancestor PASS at 75e4c38; /api/outreach/status now
+exposes the sendClaims rollup (all zeros, correct: no live outreach sends
+have ever happened); writeHealth clean (lastWriteOkAt 19:14:08Z, zero
+failures); heartbeat 50/50 recentRuns success (newest 19:00:07Z); B1
+untouched check: campaignStatus active, thresholdTripped false, thresholds
+exactly hard_bounce 0.06 / spam 0.001 / unsub 0.025, sequencer autopilot
+still on. The claim-before-send stop condition for B2 is CLOSED in
+production.
+
+### DNS records issued for outreach.legalease.com (Roger's one manual action)
+
+POST /api/outreach/domain-auth {"action":"status"} confirmed no existing
+record, then {"action":"create"} created SendGrid authenticated domain id
+31807150 (automatic security, default false). companyEvents audit
+ev-cd2f65bd644ec8ec confirmed written. Add these three CNAME records at the
+DNS provider for legalease.com:
+
+```
+Type   Host                                    Value
+CNAME  em2725.outreach.legalease.com           u109986732.wl233.sendgrid.net
+CNAME  s1._domainkey.outreach.legalease.com    s1.domainkey.u109986732.wl233.sendgrid.net
+CNAME  s2._domainkey.outreach.legalease.com    s2.domainkey.u109986732.wl233.sendgrid.net
+```
+
+(If the DNS provider auto-appends the zone, enter only the host part left of
+".legalease.com", i.e. em2725.outreach / s1._domainkey.outreach /
+s2._domainkey.outreach.)
+
+After Roger confirms the records are added: POST /api/outreach/domain-auth
+{"action":"validate"} until valid true (a passing validate writes its own
+audit event), then POST /api/outreach/config to move fromEmail to the
+authenticated subdomain identity, then the send gates flip per the
+activation sequence above (OUTREACH_LIVE_SEND env is Roger's, autopilot is
+the audited API flip). LAWRENCE HOLD stands: nothing from
+second_chance_employer (sequence D) gets approved before sign-off.
+
 ### B2 outreach claim-before-send (code change, verifier PASSED above)
 
 Mirrors PR #40 exactly for the cold-outreach path: new append-only
