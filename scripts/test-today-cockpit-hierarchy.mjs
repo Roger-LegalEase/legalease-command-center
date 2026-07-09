@@ -99,11 +99,14 @@ check("campaign charts are conditional behind the details toggle or risk", () =>
 });
 
 check("missing traffic/account data uses honest not-wired language, no fake metrics", () => {
-  assert(scoreboardFn.includes('"Web visits", "search", false'), "web visits is explicitly not wired (no source exists)");
+  // Web visits is now source-aware: it reads landing_page_viewed product events and
+  // connects ONLY behind the same funnelConnected flag as the other funnel tiles.
+  assert(scoreboardFn.includes('"Web visits", "search", Boolean(gm.funnelConnected)'), "web visits is source-aware, gated on the product funnel");
+  assert(scoreboardFn.includes("gm.webVisits"), "web visits reads the aggregated landing_page_viewed count");
   assert(source.includes("Not wired yet"), "not-wired label present");
   assert(scoreboardFn.includes("signupsConnected"), "accounts card is source-aware");
   assert(scoreboardFn.includes("funnelConnected"), "screenings card is source-aware");
-  assert(!/ckScoreCardHtml\("Web visits"[^)]*true/.test(scoreboardFn), "web visits never claims a live value");
+  assert(!/ckScoreCardHtml\("Web visits"[^)]*,\s*true/.test(scoreboardFn), "web visits never hardcodes a connected state");
 });
 
 check("derived safety posture is used with Unverified fallback", () => {

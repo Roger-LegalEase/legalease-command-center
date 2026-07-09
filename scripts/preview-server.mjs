@@ -12011,6 +12011,28 @@ async function fetchStripeRevenueSnapshot() {
 // visible status.
 const SIGNUPS_METRICS_URL = "https://expungement.ai/api/metrics/signups";
 
+// 60-second server-side cache for the live Stripe + signups snapshots (Roger's call,
+// 2026-07-09). Both /api/state and /api/today/summary attach them; before this, the
+// summary endpoint attached NEITHER (it read stored state only, and nothing persists
+// these snapshots), so the scoreboard showed "Not wired yet" for Revenue and Accounts
+// created even with Stripe fully live, while the connector tiles (fed by /api/state's
+// fresh fetch) correctly showed connected. The fetchers fail SOFT (available:false),
+// so a cached failure clears the cache slot and the next request retries.
+let liveMetricsCache = { at: 0, promise: null };
+function fetchLiveMetricsSnapshots() {
+  const nowMs = Date.now();
+  if (liveMetricsCache.promise && nowMs - liveMetricsCache.at < 60000) return liveMetricsCache.promise;
+  const promise = Promise.all([fetchStripeRevenueSnapshot(), fetchSignupsSnapshot()]).then(([stripeRevenue, signups]) => {
+    if ((stripeRevenue && stripeRevenue.available === false) || (signups && signups.available === false)) {
+      // Do not pin an outage for a whole minute; keep honest unavailability per request.
+      if (liveMetricsCache.promise === promise) liveMetricsCache = { at: 0, promise: null };
+    }
+    return [stripeRevenue, signups];
+  });
+  liveMetricsCache = { at: nowMs, promise };
+  return promise;
+}
+
 async function fetchSignupsSnapshot() {
   const base = { source: "expungement_signups", fetchedAt: new Date().toISOString() };
   const key = process.env.COMMAND_CENTER_API_KEY || "";
@@ -13033,19 +13055,35 @@ async function receiveProductEvent(payload = {}, request, rawBody = "") {
       revenue: payload.eventType === "payment_completed" ? amount / (amount > 1000 ? 100 : 1) : 0,
       notes: `Captured from product event ${payload.eventType}.`
     } : null;
-    const suggestion = funnelPatch ? automationSuggestion("automation-suggestion-product-funnel", event, {
-      suggestionType: "update_funnel_snapshot",
-      title: `Update funnel: ${payload.eventType}`,
-      explanation: "A signed product event can update RecordShield/Expungement.ai conversion proof after approval.",
-      relatedEntityType: campaign ? "campaign" : "funnel",
-      relatedEntityId: campaign?.id || "",
-      confidence: campaign || partner ? "high" : "medium",
-      proposedChanges: funnelPatch
-    }) : null;
+    // Funnel metric events AUTO-APPLY (Roger's decision 2026-07-09): they are metrics,
+    // not actions, so the approval gate does not hold them. The suggestion record is
+    // still created for the audit surface, born status "applied" with an auto-applied
+    // explanation; the approval gate stays for every suggestionType that ACTS
+    // (create_partner, create_task, update_campaign, ...). Dedupe is upstream: the
+    // patch applies only when the event itself was freshly imported (importedCount),
+    // so a replayed sourceEventId can never double-count a metric.
+    const suggestion = funnelPatch ? {
+      ...automationSuggestion("automation-suggestion-product-funnel", event, {
+        suggestionType: "update_funnel_snapshot",
+        title: `Update funnel: ${payload.eventType}`,
+        explanation: "Signed product metric event; auto-applied to the conversion funnel (metrics are not actions).",
+        relatedEntityType: campaign ? "campaign" : "funnel",
+        relatedEntityId: campaign?.id || "",
+        confidence: campaign || partner ? "high" : "medium",
+        proposedChanges: funnelPatch
+      }),
+      status: "applied",
+      appliedAt: now
+    } : null;
     const existingSuggestionKeys = new Set(result.suggestions.map((item) => `${item.eventId}:${item.suggestionType}:${item.title}`));
-    if (result.importedCount && suggestion && !existingSuggestionKeys.has(`${suggestion.eventId}:${suggestion.suggestionType}:${suggestion.title}`)) result.suggestions = [suggestion, ...result.suggestions];
+    const autoApplied = Boolean(result.importedCount && suggestion && !existingSuggestionKeys.has(`${suggestion.eventId}:${suggestion.suggestionType}:${suggestion.title}`));
+    if (autoApplied) result.suggestions = [suggestion, ...result.suggestions];
+    const nextFunnelSnapshots = autoApplied
+      ? [{ ...funnelPatch, createdAt: now, updatedAt: now }, ...(state.funnelSnapshots || [])]
+      : (state.funnelSnapshots || []);
     const nextState = {
       ...state,
+      funnelSnapshots: nextFunnelSnapshots,
       automationEvents: result.events,
       automationSuggestions: result.suggestions,
       connectorStatus: defaultConnectorStatus(state).map((item) => ["website", "recordshield", "expungement_ai"].includes(item.connector) && item.connector === source ? {
@@ -13075,9 +13113,11 @@ async function receiveProductEvent(payload = {}, request, rawBody = "") {
       automationEvents: nextState.automationEvents,
       automationSuggestions: nextState.automationSuggestions,
       connectorStatus: nextState.connectorStatus,
-      activityEvents: nextState.activityEvents
+      activityEvents: nextState.activityEvents,
+      // Auto-applied funnel metrics persist with the same scoped write.
+      ...(autoApplied ? { funnelSnapshots: nextState.funnelSnapshots } : {})
     });
-    return { state: nextState, event, importedCount: result.importedCount, suggestedCount: result.suggestedCount + (result.importedCount && suggestion ? 1 : 0), message: result.importedCount ? "Product event accepted." : "Product event already imported." };
+    return { state: nextState, event, importedCount: result.importedCount, suggestedCount: result.suggestedCount + (result.importedCount && suggestion ? 1 : 0), autoApplied, message: result.importedCount ? (autoApplied ? "Product event accepted; funnel metric applied." : "Product event accepted.") : "Product event already imported." };
   });
 }
 
@@ -18365,7 +18405,27 @@ function htmlShell() {
           console.error(renderError);
           showRenderFailure(renderError.message || "Secondary render failed.", "secondary-render");
         }
+        // The scoreboard, funnel, and Live partners all read todaySummary and render
+        // "Not wired yet" / "Loading" while it is null. One 6s boot attempt with no
+        // retry left the whole page stuck that way on any slow first load, so retry
+        // with backoff until it lands (bounded; each attempt gets a longer timeout).
+        if (!todaySummary) retryTodaySummary(0);
       });
+    }
+
+    function retryTodaySummary(attempt) {
+      if (todaySummary || attempt >= 5) return;
+      setTimeout(() => {
+        if (todaySummary) return;
+        optionalBootApi("/api/today/summary", { timeoutMs: 15000 }).then((result) => {
+          if (result.status === "fulfilled") {
+            todaySummary = result.value;
+            try { render(); } catch (renderError) { console.error(renderError); }
+          } else {
+            retryTodaySummary(attempt + 1);
+          }
+        });
+      }, attempt === 0 ? 3000 : 6000 * attempt);
     }
 
     function counts() {
@@ -26553,7 +26613,7 @@ function htmlShell() {
       const partners = s ? (s.partners || {}) : {};
       return \`<div class="ck-kpis ck-kpis-score" id="ck-scoreboard">
         \${ckScoreCardHtml("Revenue", "dollar", Boolean(money.stripeConnected), "$" + ckNum(money.gross), money.stripeConnected ? (money.sinceLabel ? "Stripe, since " + money.sinceLabel : "From Stripe") : "Connect payments to see money here")}
-        \${ckScoreCardHtml("Web visits", "search", false, "", "Traffic source not connected")}
+        \${ckScoreCardHtml("Web visits", "search", Boolean(gm.funnelConnected), ckNum(gm.webVisits), gm.funnelConnected ? "Landing page views from product events" : "Product connection not live yet")}
         \${ckScoreCardHtml("Accounts created", "users", Boolean(gm.signupsConnected), ckNum(gm.registered), gm.signupsConnected ? ckNum(gm.paid) + " paid" : "Signup source not connected")}
         \${ckScoreCardHtml("Screenings started", "clock", Boolean(gm.funnelConnected), ckNum(gm.screeningsStarted), gm.funnelConnected ? "From the product funnel" : "Product connection not live yet")}
         \${ckScoreCardHtml("Reached checkout", "cart", Boolean(gm.funnelConnected), ckNum(gm.checkouts), gm.funnelConnected ? ckNum(gm.paid) + " paid so far" : "Product connection not live yet")}
@@ -34064,7 +34124,11 @@ async function handleRequest(request, response) {
   // domain ledgers — reading the page never writes anything.
   if (url.pathname === "/api/today/summary" && request.method === "GET") {
     const currentState = await store.readState();
-    sendJson(response, buildTodaySummary(currentState, { env: process.env }));
+    // Attach the live Stripe + signups snapshots (60s cache) exactly as /api/state
+    // does, so the scoreboard's Revenue and Accounts created tiles read real source
+    // data instead of permanently missing keys. Read-only: nothing is persisted.
+    const [stripeRevenue, signups] = await fetchLiveMetricsSnapshots();
+    sendJson(response, buildTodaySummary({ ...currentState, stripeRevenue, signups }, { env: process.env }));
     return;
   }
 
@@ -34206,14 +34270,10 @@ async function handleRequest(request, response) {
 
 	  if (url.pathname === "/api/state" && request.method === "GET") {
     const fullState = withPublicChannelSetup(await store.readState());
-    // Live revenue and signups are fetched fresh server-side on every full-state
-    // load so the Revenue and Users boxes always reflect real source data (or a
-    // clear unavailable state), and new charges/signups appear automatically with
-    // no further code change. Fetched in parallel so neither blocks the other.
-    [fullState.stripeRevenue, fullState.signups] = await Promise.all([
-      fetchStripeRevenueSnapshot(),
-      fetchSignupsSnapshot()
-    ]);
+    // Live revenue and signups are fetched server-side (60s cache, shared with
+    // /api/today/summary) so the Revenue and Users boxes always reflect real source
+    // data (or a clear unavailable state) without doubling external calls per load.
+    [fullState.stripeRevenue, fullState.signups] = await fetchLiveMetricsSnapshots();
     // B1: resolved autopilot toggles (persisted autopilotSettings + env seed; default OFF)
     // so the UI can show each engine's gate without re-deriving the resolution rules.
     fullState.autopilot = HEARTBEAT_ENGINE_IDS.map((engineId) => ({
