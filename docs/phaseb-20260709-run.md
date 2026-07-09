@@ -531,7 +531,42 @@ authenticated subdomain identity, and only then do the send gates flip
 (OUTREACH_LIVE_SEND is Roger's Render env action; outreach-sequencer
 autopilot is the API flip with its companyEvents audit).
 
-### B2 outreach claim-before-send (code change, PR pending verifier)
+### Pre-merge gates for this branch (both PASS, this session ~18:50Z)
+
+Clean-worktree CI gate: fresh git worktree at a0c98c5 (no .env.local), full
+`npm run check` then `npm test`, EXIT:0, 89 suite-pass lines (87 at f301671
+plus the two new suites), &&-sequenced so no pipe-masked failure is possible.
+
+Verifier verdict (fresh-context adversarial subagent): MERGE-SAFE, zero
+MAJOR findings. The verifier attempted to refute that the diff closes the
+July 8 defect shape for outreach and failed on all four elements
+(record-after-send, closing-write-only ledger, retry-on-error, full-state
+clobber); confirmed no server send path bypasses the claim ledger (single
+runOutreachSend injection point, approve endpoint only flips queue status);
+confirmed the domain-auth endpoint resolves to admin in access-control rule
+order, never echoes the key, and cannot be steered off the fixed SendGrid
+host; confirmed package.json chains intact and reactivation untouched
+(test-reactivation-claims 11/11 on the branch). Four MINORs, accepted with
+rationale:
+
+1. Stale closing-write upsert can regress a claim's status payload (never
+   delete it; skip logic is existence-based, so no resend). Exact parity
+   with merged B1 PR #40; PR 2 scope.
+2. Degenerate claim inputs (empty contact_id, missing step_number) collapse
+   ids and fail toward MISSED sends, never duplicates; planOutreach
+   populates both fields. Same shape accepted in PR #40.
+3. No HTTP-level auth test for the new endpoint; admin resolution verified
+   by rule-order reading. Tech debt noted.
+4. companyEvents audit write is scoped but shares the pre-existing
+   emitCompanyEvent read-modify-write pattern (not append-only). Known
+   pattern across every audit route; single-writer in practice.
+
+Also catalogued by the verifier: the CLI scripts outreach-test-send.mjs
+(hard-locked recipient, explicit confirm flag) and the two reactivation
+seed/fire scripts bypass claim ledgers but are unreachable from the server
+and unchanged by this diff; interlocking them stays PR 2 scope.
+
+### B2 outreach claim-before-send (code change, verifier PASSED above)
 
 Mirrors PR #40 exactly for the cold-outreach path: new append-only
 `outreachSendClaims` collection (registered in coreStateCollections,
