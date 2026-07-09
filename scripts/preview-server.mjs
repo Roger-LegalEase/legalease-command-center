@@ -7888,30 +7888,12 @@ const initialState = {
       notes: "Attach approved non-UPL memo."
     }
   ],
-  funnelSnapshots: [
-    {
-      id: "funnel-rs-community-pa",
-      partnerId: "partner-reentry-coalition",
-      campaignId: "campaign-recordshield-community",
-      state: "PA",
-      source: "partner",
-      dateRange: "2026-05",
-      landingPageVisits: 210,
-      recordShieldStarts: 17,
-      recordShieldCompletions: 11,
-      resultsViewed: 9,
-      cleanupCtaClicked: 5,
-      expungementIntakeStarted: 4,
-      paymentStarted: 1,
-      paymentCompleted: 0,
-      packetGenerated: 0,
-      packetCompleted: 0,
-      petitionFiled: 0,
-      outcomeKnown: 0,
-      revenue: 0,
-      usersNeedingFollowUp: 5
-    }
-  ],
+  // HONEST-ZERO: never seed funnel numbers. The scoreboard aggregates every
+  // funnelSnapshots row as real product counts, so a demo row here would render
+  // as fabricated metrics on any deploy whose data/seed files go missing
+  // (initialState is the last fallback layer). Real rows arrive only from
+  // signed product events, approved suggestions, or the manual form.
+  funnelSnapshots: [],
   partnerPrograms: defaultPartnerProgramSeeds({ now: "2026-05-26T00:00:00.000Z" }),
   partnerProgramArtifacts: [],
   reports: [],
@@ -12030,6 +12012,11 @@ function fetchLiveMetricsSnapshots() {
     return [stripeRevenue, signups];
   });
   liveMetricsCache = { at: nowMs, promise };
+  // Belt for a future throw-path in either fetcher (both currently fail soft):
+  // never pin a rejected promise in the cache for the 60s window.
+  promise.catch(() => {
+    if (liveMetricsCache.promise === promise) liveMetricsCache = { at: 0, promise: null };
+  });
   return promise;
 }
 
@@ -37553,7 +37540,17 @@ async function handleRequest(request, response) {
     try {
       const { payload, rawBody } = await readJsonWithRawBody(request);
       const result = await receiveProductEvent(payload || {}, request, rawBody);
-      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) }, result.importedCount ? 202 : 200);
+      // Minimal response, outcome only. The full-state echo this endpoint used to
+      // return handed the entire company state (consumer contact PII included) to
+      // any holder of the emitter secret; with the secret moving into the product
+      // repo for Phase 2, the response is scoped to what the emitter needs.
+      sendJson(response, {
+        ok: true,
+        importedCount: result.importedCount,
+        suggestedCount: result.suggestedCount,
+        autoApplied: Boolean(result.autoApplied),
+        message: result.message
+      }, result.importedCount ? 202 : 200);
     } catch (error) {
       const message = error.message || "Product event rejected.";
       sendJson(response, { error: message }, /secret|signature|configured/i.test(message) ? 401 : 400);
