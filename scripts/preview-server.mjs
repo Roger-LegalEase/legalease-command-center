@@ -14,6 +14,7 @@ import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES
 import { reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, buildReactivationLiveStatus, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
 import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
+import { runDomainAuthAction, DEFAULT_OUTREACH_AUTH_DOMAIN } from "./sendgrid-domain-auth.mjs";
 import { buildVersionDrift, createVersionDriftCache } from "./version-truth.mjs";
 import { buildSafetyPosture } from "./safety-posture.mjs";
 import { wakeSnoozedQueueItems, transitionQueueItem, emitCompanyEvent, recordAgentRun } from "./company-memory.mjs";
@@ -35319,6 +35320,10 @@ async function handleRequest(request, response) {
         // BEFORE each live reactivation send. The store's unique (collection, item_id) key makes
         // the insert the cross-process idempotency test; the engine fails closed without it.
         claimReactivationSends: (claims) => store.claimCollectionItems("reactivationSendClaims", claims),
+        // B2 activation run (2026-07-09): the same claim-before-send boundary for cold outreach.
+        // Every live outreach send atomically claims (campaign, contact, step) in
+        // outreachSendClaims first; the engine fails closed without this path.
+        claimOutreachSends: (claims) => store.claimCollectionItems("outreachSendClaims", claims),
         // Phase 18I alert email — owner-only digest and critical breakthroughs. Recipient is
         // env-locked (ALERTS_EMAIL_TO); gated by the in-app email toggle (default OFF) plus
         // ALERTS_LIVE_SEND plus the alerts engine's autopilot toggle (default OFF).
@@ -35549,7 +35554,14 @@ async function handleRequest(request, response) {
       dryRun: serverList(currentState.outreachAttempts).filter((a) => a.status === "dry_run").length,
       suppressions: serverList(currentState.outreachSuppressions).length,
       unsubscribes: serverList(currentState.outreachUnsubscribes).length,
-      bounces: serverList(currentState.outreachBounces).length
+      bounces: serverList(currentState.outreachBounces).length,
+      // Claim-before-send safety ledger (mirrors reactivation sendClaims).
+      sendClaims: serverList(currentState.outreachSendClaims).reduce((m, c) => {
+        const s = String(c.status || "").toLowerCase();
+        m.total += 1;
+        if (m[s] !== undefined) m[s] += 1;
+        return m;
+      }, { total: 0, claimed: 0, sent: 0, dry_run: 0, failed: 0 })
     });
     return;
   }
@@ -35575,6 +35587,42 @@ async function handleRequest(request, response) {
       sendJson(response, { ok: true, outreachConfig: merged });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update outreach config." }, 400);
+    }
+    return;
+  }
+
+  // B2 domain authentication — admin drives SendGrid domain auth for the dedicated outreach
+  // subdomain from the server, the only place SENDGRID_API_KEY exists (never handled by hand).
+  // Scoped to the v3/whitelabel/domains API via sendgrid-domain-auth.mjs; cannot send mail and
+  // never exposes the key. Admin-gated by the /api/outreach/ POST rule in access-control.
+  // create and a passing validate are audited to companyEvents; status is read-only.
+  if (url.pathname === "/api/outreach/domain-auth" && request.method === "POST") {
+    try {
+      const input = await readJson(request);
+      const result = await runDomainAuthAction({
+        action: input.action,
+        domain: input.domain || DEFAULT_OUTREACH_AUTH_DOMAIN,
+        env: process.env
+      });
+      const audited = (result.action === "create" && result.created === true)
+        || (result.action === "validate" && result.valid === true);
+      if (audited) {
+        await serializeStateMutation(async () => {
+          const currentState = await store.readState();
+          const nextState = emitCompanyEvent(currentState, {
+            source: OUTREACH_ENGINE_ID,
+            type: "outreach_domain_auth",
+            risk: "watch",
+            summary: result.action === "create"
+              ? `SendGrid domain authentication created for ${result.domainAuth?.domain} by ${accessDecision.actor?.label || accessDecision.actor?.role || "operator"}; DNS records issued, not yet validated.`
+              : `SendGrid domain authentication VALIDATED for ${result.domainAuth?.domain} by ${accessDecision.actor?.label || accessDecision.actor?.role || "operator"}.`
+          });
+          await store.writeCollections({ companyEvents: nextState.companyEvents });
+        });
+      }
+      sendJson(response, { ok: true, ...result });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Domain auth action failed." }, 400);
     }
     return;
   }

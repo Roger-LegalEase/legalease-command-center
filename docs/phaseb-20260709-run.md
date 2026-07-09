@@ -226,6 +226,54 @@ Expected post-reconciliation hard_bounce rate: 20/426 = 4.69%, below the 6%
 threshold, so the monitor will not re-trip on unpause. The real gate runs
 against prod after merge, deploy, and apply.
 
+### Apply evidence (prod, 2026-07-09 ~10:52Z)
+
+Merged as PR #41 (main 2dcc28c), auto-deploy confirmed live 10:51:41Z, commit
+gate ancestor PASS, writeHealth clean. Apply run: 146 attempts inserted, 427
+claims inserted, 95 attempts patched, 1 suppression patched, apply-time plan
+byte-identical to the committed diff. Incident during apply: the 2 suppression
+inserts were clobbered minutes later by a concurrent SendGrid webhook batch
+(delayed 07-08 events retried after the deploy restart; its read-modify-write
+of outreachSuppressions had read state before the inserts landed and its
+snapshot reconcile-deleted them). Attempts, claims, and patches were untouched
+(claims are append-only protected; the webhook write does not carry attempts).
+Both suppression rows re-inserted 11:0xZ and confirmed stable; full
+verify-after-write re-run: 427 attempts, 427 claims, 45 suppressions, every
+planned row present and correct. LESSON for PR 2: direct-to-DB writes into
+server-written non-append-only collections race the server's scoped writes;
+suppression writes need the same append-only or claim-style protection.
+
+### Step 3: the duplicate-proof gate (PASS, real prod state)
+
+Fresh prod pull post-apply; `planReactivation` run on the exact post-unpause
+state (real rows, only `status: active` simulated) at every remaining
+in-window tick time today:
+
+| Tick (UTC) | Proposals | Touch 1 to 15:00 cohort | Any step to 15:00 cohort | Any step to 12:00 cohort | Claim collisions | Suppressed leakage |
+|---|---|---|---|---|---|---|
+| 12:00 | 150 | 0 | 0 | 0 | 0 | 0 |
+| 16:00 | 150 | 0 | 0 | 0 | 0 | 0 |
+| 20:00 | 150 | 0 | 0 | 0 | 0 | 0 |
+
+The 138 previously unledgered recipients (and the rest of both cohorts) are
+double-blocked: attempt row (planner) plus claim row (send path). Every
+proposal is a fresh (contact, step) that must claim-before-send through the
+deployed PR 1 path; the engine fails closed without the claim ledger.
+Thresholds on the reconciled ledger: hard_bounce 20/426 = 4.69% < 6%, not
+tripped (spam 0, unsub 0). GATE PASSES. Proceeding to go-live per the order.
+
+### Step 4: go-live (executed 2026-07-09T11:08:59Z, authorized by Roger's order)
+
+Scoped PATCH of the reactivationCampaign singleton only: `status: active`,
+`pausedReason` cleared, audit fields `unpaused_at`/`unpaused_by`/`unpause_note`
+recorded on the singleton, plus a companyEvents audit record
+(`ev-phaseb-golive-20260709`). Thresholds, caps, window, waves, and every
+other setting untouched; the 6% hard_bounce threshold stays exactly as Roger
+set it. liveMode was already enabled (owner action 2026-07-08T09:58Z), so the
+pause clear was the go-live trigger as planned. Verified through the owner
+status endpoint: active, not tripped (4.69%), armed true, sendClaims total
+427, outside window at 11:09Z (07:09 ET). First live tick: 12:00Z (08:00 ET).
+
 ### Verifier verdict (fresh-context subagent, independent recomputation)
 
 DIFF-MATCHES-EXPORT, zero discrepancies in all seven categories, script safe
@@ -246,3 +294,288 @@ LOW observation: after a successful apply, a full CLI re-run aborts at the
 settled-fact guards (fail-closed) rather than passing as a clean no-op; the
 write layer itself is idempotent and tested. Clean-worktree gate at f301671:
 EXIT:0, 87 suites.
+
+## Activation run (Roger's order, 2026-07-09 ~11:30Z onward)
+
+Order: everything connected and operational; authorized flips are scoped and
+listed; B1 reactivation settings, gates, threshold, and window are untouched
+by this run.
+
+Architectural fact governing the whole run: PROSPECT_LIVE_DISCOVERY, every
+ENABLE_LIVE_*_POSTING gate, and OUTREACH_LIVE_SEND are read from process.env
+ONLY. They are Render dashboard environment variables; no API or state write
+can flip them, and this environment has no Render credential. The autopilot
+toggles ARE state-backed and were executed where authorized. So "flip" splits
+into: my part (autopilot, verification, readiness, audits) done now, and
+Roger's part (env vars in Render) listed explicitly below.
+
+### B5 prospect discovery
+
+- Autopilot for `prospect-discovery` enabled 11:37:15Z via
+  /api/heartbeat/autopilot (owner token), companyEvents audit
+  `ev-b5-autopilot-on-20260709`. Prod status confirms `autopilotEnabled: true`,
+  `liveDiscoveryWired: true`, `liveDiscoveryFlag: false` (env still off).
+- Validation run (local, flag on, real loaders): 200 candidates fetched and
+  staged from IRS BMF in 1.8s; all 200 `review_state: pending_review`
+  (56 legal_aid, 144 nonprofit); zero candidates carry an email (structurally
+  unsendable); zero auto-approved or promoted. Nothing auto-promotes: only
+  POST /api/prospects/approve writes approval, human-only.
+- ROGER ACTION: set `PROSPECT_LIVE_DISCOVERY=true` in the Render dashboard for
+  legalease-command-center-prod. With autopilot already on, discovery runs at
+  the next daily tick after the env change, no further action needed.
+
+### Social posting
+
+- Prod truth via /api/channels: every platform (LinkedIn, X, Facebook,
+  Instagram, Threads) is `setup_required` with NO client credentials in the
+  prod environment (LinkedIn missing LINKEDIN_CLIENT_ID/SECRET/REDIRECT_URI;
+  X missing X_CLIENT_ID/SECRET/REDIRECT_URI; Meta missing
+  META_CLIENT_ID/SECRET/REDIRECT_URI), no stored OAuth tokens, all posting
+  gates off.
+- Consequence: OAuth verification is impossible on every platform (there is
+  no credential to verify), so ZERO posting gates were flipped and the test
+  post cannot be queued against a connected channel. App-approval status is
+  NOT determinable from the codebase or config: no app ids exist anywhere in
+  the repo or prod env. No status is being fabricated.
+- Adapter dry-run proof: test-linkedin-oauth-safety, test-linkedin-oauth-
+  callback, test-meta-connector, and test-scheduled-publishing all pass.
+  Three ORPHANED suites (test-linkedin-readiness, test-linkedin-approval-queue,
+  test-social-posting-safety) fail identically in a clean worktree and are not
+  wired into npm test or check: stale assertions against older UI copy, noted
+  as tech debt, not activation-relevant.
+- No-autonomous-posting assertion (verified in code, not assumed): the only
+  posting-adjacent engine is `publishing-run`, whose act() publishes ONLY
+  posts a human already moved to approved or scheduled through the Review
+  Desk (preview-server.mjs:1716 blocks everything else), blocks
+  complianceRisk high, and still requires the per-channel env live gate plus
+  a connected account at publish time. B6 (autonomous social autopilot) does
+  not exist in HEARTBEAT_ENGINE_IDS. There is no path from content generation
+  to a network post without a human approval in between.
+- ROGER ACTIONS (per platform, in the developer portals, then Render env):
+  LinkedIn: developer app + "Share on LinkedIn" / w_member_social product
+  access, then LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET,
+  LINKEDIN_REDIRECT_URI. Meta: developer app + pages_manage_posts (and
+  instagram_content_publish for IG) through App Review, then META_CLIENT_ID,
+  META_CLIENT_SECRET, META_REDIRECT_URI. X: developer project/app with OAuth2
+  PKCE, then X_CLIENT_ID, X_CLIENT_SECRET, X_REDIRECT_URI. After env vars
+  land: connect accounts via Settings connector tiles (OAuth flow), and only
+  then flip ENABLE_LIVE_<PLATFORM>_POSTING=true per platform. The queued test
+  post through the Review Desk happens as soon as the first platform verifies.
+
+### B2 outreach readiness
+
+- STOP CONDITION CONFIRMED, reported before any activation: the outreach send
+  path has NO claim-before-send. actOutreach (outreach-os.mjs:621-700) sends
+  from approved queue items with zero claim ledger, records attempts only in
+  memory for the tick's closing write, and on transport error re-marks the
+  queue item `approved` "for retry", which is a silent re-enqueue on timeout:
+  a timed-out send that actually reached SendGrid re-sends next tick. This is
+  the July 8 defect shape on a colder audience. Fix in flight as a code PR
+  (outreachSendClaims mirroring PR 1) with full verifier ceremony; B2 does
+  not activate before that PR is deployed, in addition to the DNS gate.
+- Sequences and CAN-SPAM: all 8 classifications route fail-closed into 4
+  code-defined sequences (verified-reporting, clinic-extension,
+  government-accountability, employer-pathway); do-not-enroll and unmapped
+  classifications cannot be queued or sent. Rendered touch 1 for every
+  classification: compliance PASS, Dover DE postal present, unsubscribe text
+  present, List-Unsubscribe header present.
+- UPL review per standing rule: sequences A/B/C are operational copy
+  (workflow, intake, reporting for the org's own legal work), no hold needed.
+  SEQUENCE D (employer-pathway, classification second_chance_employer) IS
+  UPL-ADJACENT and flagged for Lawrence's sign-off: all five touches promise
+  record-clearing outcomes to non-legal recipients ("clearing the record
+  itself, which can open up roles, licensing, and advancement", "a safe,
+  guided record-clearing path", "help people clear the records that block
+  advancement"). Touches 1, 2, 3, 5 are the substantive flags; touch 4
+  references the pathway mildly. Nothing from second_chance_employer should
+  be approved in the queue until sign-off.
+- Target list state: outreachContacts 0, outreachOrganizations 0,
+  outreachAttempts 0, approved outreach queue items 0 (the 13 approvalQueue
+  rows are posts and reports, not outreach). B2 activation will produce
+  zero-send ticks until B5 approvals promote orgs and contacts with emails
+  are added. Suppression checks verified present at both plan time and send
+  time (isSuppressed at outreach-os.mjs:640 and in planOutreach).
+- Caps and window verified in code: capCheck enforces the ET window first
+  (outreach-os.mjs:485), then per-day, per-domain, per-classification caps
+  from DEFAULT_OUTREACH_CAPS merged with outreachConfig.caps; applied at plan
+  (line 591) and re-checked at send (line 661).
+- Dry-run tick on real prod state (simulated in-window 12:00 ET): 0 proposals,
+  0 act results, 0 attempts, nothing sent (no transport injected).
+- From-address isolation: outreachConfig.fromEmail currently defaults to
+  roger@legalease.com, the SAME domain as B1 (reputation 97). Plan: SendGrid
+  domain authentication on the dedicated subdomain outreach.legalease.com,
+  then set outreachConfig.fromEmail to the subdomain via
+  POST /api/outreach/config at activation time (changing it before domain
+  auth would fail DMARC).
+- DNS records: BLOCKED on SendGrid API access. The authenticated-domain CNAME
+  values are account-specific (SendGrid generates them); SENDGRID_API_KEY
+  exists only in the prod Render env, not in this Codespace, and no server
+  endpoint proxies the SendGrid config API. Roger has two options, either
+  unblocks the records: (a) add SENDGRID_API_KEY to .env.local here and I
+  drive domain authentication via the SendGrid API end to end, outputting the
+  exact records; or (b) SendGrid dashboard: Settings -> Sender Authentication
+  -> Authenticate Your Domain -> domain outreach.legalease.com -> copy the
+  three CNAME records into DNS. After records resolve, I verify via API (a)
+  or Roger confirms validation in the dashboard (b), then gates flip.
+
+### B1 first live tick (12:00Z): claims held the line through a mid-tick crash
+
+Timeline reconstructed from prod (this session): lease claimed by cron
+12:00:06.641Z; 111 claims minted 12:00:16.728Z to 12:00:58.446Z (one per send,
+inserted BEFORE each SendGrid call); claims stopped at 111 of a 150 budget;
+the web service crashed around 12:01 (one status probe returned an HTML error
+page; the service answered normally minutes later); NO heartbeatRuns record
+for 12:00Z exists and the lease was never released, so the tick died mid-run
+and its closing write never happened. writeHealth after restart: clean
+(successful write 12:09:29Z, zero failures), so the crash was process death,
+not Supabase.
+
+What the claims system did: every one of the 111 (contact, step) pairs holds
+a durable claim row, so the 13:00Z tick will SKIP all 111 (already_claimed)
+and continue with fresh contacts. Yesterday this exact crash produced the
+duplicate-send incident; today it produces zero duplicate risk.
+
+Evidence sends really went out: SendGrid webhook events with 12:0xZ
+timestamps arrived (5 delivered, 3 clicks, 1 open at check time and rising).
+
+Cost (the known PR 2 gap, now demonstrated in production): the claimed-to-sent
+transitions and the 111 attempt rows were in memory only and are lost. Those
+claims will surface as `unconfirmed` in the status view after the 15-minute
+grace. Follow-ups: (a) per-send durable transitions (PR 2, next), (b) a small
+claims-plus-webhook reconciliation to restore the 111 attempt rows (same
+ceremony as PR 3), (c) crash cause needs Render logs (no access here): Roger
+should pull web service logs for 12:00:30Z to 12:02Z. Rate impact:
+denominator-conservative (missing attempts UNDERSTATE sent count, so the
+computed bounce rate is higher than true; safe direction).
+
+## Activation run continuation (fresh session, 2026-07-09 ~18:30Z onward)
+
+Per protocol every carried-over claim was re-audited against a tool result from
+this session before further action:
+
+- Prod `/api/version`: `commit 2dcc28c` (main tip), production, supabase
+  connected (18:20Z). The claims branch `a344216` is pushed but NOT in main.
+- B5 `/api/prospects/status`: `autopilotEnabled: true`,
+  `liveDiscoveryWired: true`, `liveDiscoveryFlag: false`. The morning flip
+  holds; the env var remains Roger's Render action. Nothing re-flipped.
+- Social `/api/channels`: all five platforms still `setup_required`, zero
+  client credentials, zero stored tokens, every posting gate off. OAuth
+  verification remains impossible; no gate flipped, no test post queueable.
+- Outreach `/api/outreach/status`: autopilot false, liveSendFlag false,
+  `sendgridKeyPresent: true` (prod holds the key), postal + from set, caps
+  25/2/10 window 8-17 ET weekdays, queued 0 approved 0 sent 0, suppressions
+  88, unsubscribes 37, bounces 28. Zero targets, so activation stays inert
+  until B5 approvals promote orgs.
+- `.env.local` unchanged since Jun 26: still no SENDGRID_API_KEY locally.
+
+Two precision corrections to the morning session's social section, from a
+full code re-read this session:
+
+1. "B6 does not exist in HEARTBEAT_ENGINE_IDS" was imprecise. A
+   `publishing-run` engine DOES exist in the registry; what it can do is
+   publish ONLY posts a human already moved to approved or scheduled through
+   the Review Desk, and only with the per-channel env live gate on and a
+   connected account at publish time (triple-gated, autopilot default OFF).
+   What was never built is autonomous authoring or approval. The assertion
+   that no path posts without a human approval in between stands.
+2. `POST /api/posts/:id/publish-now` (human-triggered, admin-gated) calls
+   publishReadiness with `requireLiveGate: false`, so this ONE manual
+   endpoint bypasses the ENABLE_LIVE_* env gate. It still requires an
+   approved or scheduled post, a finalized image, and a connected account
+   with a decryptable token, so it is inert today (no accounts exist). Noted
+   as a hardening item, not an activation blocker.
+
+Also noted for later hardening (not blocking, reported): outreach
+suppression's isExistingRelationship covers partners and pilots but does NOT
+cross-check reactivationContacts, so a B1 consumer address that somehow
+entered the B2B target list would not be suppressed by that rule alone; and
+SendGrid webhook events never confirm outreach claims to `sent` (same
+reconciliation gap B1 has, PR 2 scope).
+
+### DNS unblock: server-side domain-auth driver (code change, this session)
+
+The morning session declared the DNS records blocked because the CNAME
+values are account-specific and SENDGRID_API_KEY exists only in prod. This
+session closed that gap in the authorized direction: the server itself now
+drives SendGrid domain authentication, so the key never leaves prod and
+Roger's manual surface stays exactly one action (paste records at the DNS
+provider).
+
+New module `scripts/sendgrid-domain-auth.mjs` + endpoint
+`POST /api/outreach/domain-auth` (admin-gated by the existing
+/api/outreach/ POST rule):
+
+- Actions: `status` (read-only), `create` (idempotent: returns the existing
+  record if one exists; otherwise creates the authenticated domain with
+  `automatic_security: true, default: false` so B1's default sending domain
+  can never be displaced), `validate` (per-record DNS verdicts, repeatable).
+- Default domain `outreach.legalease.com` (the dedicated cold-send
+  subdomain); domain input validated as a bare hostname before any network
+  contact.
+- Scoped to the v3/whitelabel/domains API only: cannot send mail, is not a
+  general SendGrid proxy, never returns or logs the key. Missing key fails
+  closed before network.
+- create and passing validate emit a companyEvents audit record (scoped
+  write, alerts-gate pattern).
+- Tests: `scripts/test-sendgrid-domain-auth.mjs` (8 checks: pre-network
+  input rejection, fail-closed on missing key, exact isolation payload,
+  idempotent create, read-only status, validate targeting and
+  refusal-before-create, key-never-leaks including provider error paths,
+  sparse-payload mapping). Wired into npm test and npm run check.
+
+Activation sequence once merged and deployed (auto-deploy): call
+`{"action":"create"}` against prod, surface the three CNAME records to
+Roger, he installs them and replies done; then `{"action":"validate"}` until
+`valid: true`; then POST /api/outreach/config sets fromEmail to the
+authenticated subdomain identity, and only then do the send gates flip
+(OUTREACH_LIVE_SEND is Roger's Render env action; outreach-sequencer
+autopilot is the API flip with its companyEvents audit).
+
+### Pre-merge gates for this branch (both PASS, this session ~18:50Z)
+
+Clean-worktree CI gate: fresh git worktree at a0c98c5 (no .env.local), full
+`npm run check` then `npm test`, EXIT:0, 89 suite-pass lines (87 at f301671
+plus the two new suites), &&-sequenced so no pipe-masked failure is possible.
+
+Verifier verdict (fresh-context adversarial subagent): MERGE-SAFE, zero
+MAJOR findings. The verifier attempted to refute that the diff closes the
+July 8 defect shape for outreach and failed on all four elements
+(record-after-send, closing-write-only ledger, retry-on-error, full-state
+clobber); confirmed no server send path bypasses the claim ledger (single
+runOutreachSend injection point, approve endpoint only flips queue status);
+confirmed the domain-auth endpoint resolves to admin in access-control rule
+order, never echoes the key, and cannot be steered off the fixed SendGrid
+host; confirmed package.json chains intact and reactivation untouched
+(test-reactivation-claims 11/11 on the branch). Four MINORs, accepted with
+rationale:
+
+1. Stale closing-write upsert can regress a claim's status payload (never
+   delete it; skip logic is existence-based, so no resend). Exact parity
+   with merged B1 PR #40; PR 2 scope.
+2. Degenerate claim inputs (empty contact_id, missing step_number) collapse
+   ids and fail toward MISSED sends, never duplicates; planOutreach
+   populates both fields. Same shape accepted in PR #40.
+3. No HTTP-level auth test for the new endpoint; admin resolution verified
+   by rule-order reading. Tech debt noted.
+4. companyEvents audit write is scoped but shares the pre-existing
+   emitCompanyEvent read-modify-write pattern (not append-only). Known
+   pattern across every audit route; single-writer in practice.
+
+Also catalogued by the verifier: the CLI scripts outreach-test-send.mjs
+(hard-locked recipient, explicit confirm flag) and the two reactivation
+seed/fire scripts bypass claim ledgers but are unreachable from the server
+and unchanged by this diff; interlocking them stays PR 2 scope.
+
+### B2 outreach claim-before-send (code change, verifier PASSED above)
+
+Mirrors PR #40 exactly for the cold-outreach path: new append-only
+`outreachSendClaims` collection (registered in coreStateCollections,
+OUTREACH_COLLECTIONS, appendOnlyCollections); deterministic claim id
+`outreach-claim-<campaign>-<contact>-step-<n>`; atomic claim before any live
+send; existing claim in any state skips AND rejects the duplicate queue item
+so it stops replaying; no claim path or claim-write failure fails closed;
+transport failure marks the claim failed and REJECTS the queue item,
+replacing the old leave-approved silent retry (a timed-out send that actually
+delivered can never re-send); in-tick person dedupe; dry-run burns zero
+claims; claims summary added to /api/outreach/status. Tests:
+scripts/test-outreach-claims.mjs (8 checks) wired into npm test and check.

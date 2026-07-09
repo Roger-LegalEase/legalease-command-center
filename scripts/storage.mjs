@@ -94,6 +94,11 @@ const coreStateCollections = [
   "outreachSuppressions",
   "outreachUnsubscribes",
   "outreachConfig",
+  // B2 outreach send-claims safety ledger (activation run, 2026-07-09). Mirrors
+  // reactivationSendClaims: one row per (campaign, contact, step), written via
+  // claimCollectionItems BEFORE any live SendGrid call; append-only (see
+  // appendOnlyCollections below); test-outreach-claims.mjs asserts membership.
+  "outreachSendClaims",
   // B5 prospect discovery. MUST stay in sync with PROSPECT_COLLECTIONS /
   // PROSPECT_SINGLETON_COLLECTIONS in prospect-discovery.mjs, or they silently fail to
   // persist to Supabase (the B1/B2 trap). test-prospect-discovery.mjs asserts membership.
@@ -197,7 +202,7 @@ const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth",
 // in-memory snapshot (the exact mechanism that shredded reactivationContacts on 2026-07-08) can
 // never erase a claim that another invocation inserted directly. Deleting a claim would re-open
 // the duplicate-send window it exists to close.
-const appendOnlyCollections = new Set(["reactivationSendClaims"]);
+const appendOnlyCollections = new Set(["reactivationSendClaims", "outreachSendClaims"]);
 
 function parseBoolean(value = "") {
   return ["true", "1", "yes", "on"].includes(String(value || "").toLowerCase());
