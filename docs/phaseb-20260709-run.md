@@ -225,3 +225,24 @@ campaign status simulated active), `planReactivation` at 2026-07-09T16:00Z:
 Expected post-reconciliation hard_bounce rate: 20/426 = 4.69%, below the 6%
 threshold, so the monitor will not re-trip on unpause. The real gate runs
 against prod after merge, deploy, and apply.
+
+### Verifier verdict (fresh-context subagent, independent recomputation)
+
+DIFF-MATCHES-EXPORT, zero discrepancies in all seven categories, script safe
+to apply. The verifier wrote its own CSV parser and verifier, recomputed every
+class from the raw export plus the prod snapshots, confirmed the committed
+diff is byte-identical to the branch copy (sha256 vs `git show HEAD:`), and
+confirmed: 146 inserts bijective with the 15:00Z processed events with
+recomputed steps 117/29 matching per row; 95 patches with first-copy message
+ids verified per row against sorted timestamps and exactly 33 duplicate
+annotations matching recomputed processed/delivered counts; 427 claims
+one-to-one with the post-reconciliation ledger in the exact live-path id
+format; exactly 2 mandatory suppression inserts and no other list changes;
+the jaime annotation's cited clicks real (14 click events 12:00:56Z to
+12:01:08Z from both duplicate copies); all 146 previously unledgered
+recipients double-blocked (attempt row plus claim row) after apply; the
+script incapable of deletes, campaign writes, contact writes, or sends. One
+LOW observation: after a successful apply, a full CLI re-run aborts at the
+settled-fact guards (fail-closed) rather than passing as a clean no-op; the
+write layer itself is idempotent and tested. Clean-worktree gate at f301671:
+EXIT:0, 87 suites.
