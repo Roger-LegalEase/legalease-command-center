@@ -18370,20 +18370,18 @@ function htmlShell() {
         return;
       }
       loadFullStateInBackground();
+      // Fast probes render together (bounded at 6s); the two SLOW endpoints below get
+      // their own handlers so the health badges never wait on a full state read.
       Promise.all([
         optionalBootApi("/api/health/supabase", { timeoutMs: 2500 }),
         optionalBootApi("/api/backups", { timeoutMs: 2500 }),
         optionalBootApi("/api/safety/posture", { timeoutMs: 2500 }),
-        optionalBootApi("/api/version/drift", { timeoutMs: 6000 }),
-        optionalBootApi("/api/today/summary", { timeoutMs: 6000 }),
-        optionalBootApi("/api/campaign/command", { timeoutMs: 6000 })
+        optionalBootApi("/api/version/drift", { timeoutMs: 6000 })
       ]).then(results => {
         if (results[0].status === "fulfilled") supabaseHealth = results[0].value;
         if (results[1].status === "fulfilled") backups = results[1].value.backups || [];
         if (results[2].status === "fulfilled") safetyPosture = results[2].value;
         if (results[3].status === "fulfilled") versionTruth = results[3].value;
-        if (results[4].status === "fulfilled") todaySummary = results[4].value;
-        if (results[5].status === "fulfilled") campaignCommandView = results[5].value;
         try {
           window.__LE_BOOT.stage = "secondary-render";
           render();
@@ -18392,11 +18390,25 @@ function htmlShell() {
           console.error(renderError);
           showRenderFailure(renderError.message || "Secondary render failed.", "secondary-render");
         }
-        // The scoreboard, funnel, and Live partners all read todaySummary and render
-        // "Not wired yet" / "Loading" while it is null. One 6s boot attempt with no
-        // retry left the whole page stuck that way on any slow first load, so retry
-        // with backoff until it lands (bounded; each attempt gets a longer timeout).
-        if (!todaySummary) retryTodaySummary(0);
+      });
+      // The scoreboard, funnel, and Live partners read todaySummary and show
+      // "Not wired yet" / "Loading" while it is null. These endpoints do a full
+      // state read + projection (4-8s on prod), so they get the same 20s budget as
+      // the /api/state background load and paint independently the moment they land;
+      // on failure the bounded backoff retry takes over.
+      optionalBootApi("/api/today/summary", { timeoutMs: 20000 }).then(result => {
+        if (result.status === "fulfilled") {
+          todaySummary = result.value;
+          try { render(); } catch (renderError) { console.error(renderError); }
+        } else {
+          retryTodaySummary(0);
+        }
+      });
+      optionalBootApi("/api/campaign/command", { timeoutMs: 20000 }).then(result => {
+        if (result.status === "fulfilled") {
+          campaignCommandView = result.value;
+          try { render(); } catch (renderError) { console.error(renderError); }
+        }
       });
     }
 

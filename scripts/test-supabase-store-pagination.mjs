@@ -62,6 +62,7 @@ const TOTAL = TABLE_ROWS.length;
 
 // ---- fake PostgREST: honors order=collection.asc,item_id.asc + limit + offset, caps at 1000 ----
 let fetchCalls = 0;
+let emitContentRange = false;
 let lastPostRows = [];
 let deleteCalls = [];
 const realFetch = globalThis.fetch;
@@ -114,6 +115,15 @@ globalThis.fetch = async (url, options = {}) => {
     ok: true,
     status: 200,
     statusText: "OK",
+    // Real PostgREST sends Content-Range; with Prefer: count=exact the total is exact.
+    // emitContentRange=false models older/fake servers, exercising the sequential fallback.
+    headers: {
+      get(name) {
+        if (!emitContentRange || String(name).toLowerCase() !== "content-range") return null;
+        const upper = Math.max(offset, offset + projected.length - 1);
+        return `${offset}-${upper}/${sorted.length}`;
+      }
+    },
     async text() { return JSON.stringify(projected); }
   };
 };
@@ -174,6 +184,24 @@ async function run() {
   assert.equal(onFirstPage, 0, `${tailCollection} falls entirely in the truncated tail (invisible without paging)`);
   assert.equal(state[tailCollection].length, SEED_COUNTS[tailCollection], `${tailCollection} is nonetheless fully hydrated WITH paging`);
   ok(`without paging, ${wouldHaveDropped} rows (incl. all ${tailCollection}) would silently vanish — paging recovers them`);
+
+  // 6b. Count-aware PARALLEL paging: with Content-Range present (real Supabase), the read
+  // learns the exact total from page one and fetches the remaining pages concurrently.
+  // Hydration must be byte-identical to the sequential path: full counts, no dupes.
+  emitContentRange = true;
+  const callsBefore = fetchCalls;
+  const parallelState = await store.readState();
+  const parallelReadCalls = fetchCalls - callsBefore;
+  assert.equal(parallelState.persistence, "supabase", "parallel path hydrates via supabase");
+  let parallelTotal = 0;
+  for (const [collection, count] of Object.entries(SEED_COUNTS)) {
+    assert.equal(parallelState[collection].length, count, `${collection}: parallel path expected ${count}, got ${parallelState[collection]?.length}`);
+    parallelTotal += parallelState[collection].length;
+  }
+  assert.equal(parallelTotal, TOTAL, `parallel path hydrated ${parallelTotal}/${TOTAL}`);
+  assert.equal(parallelReadCalls, Math.ceil(TOTAL / SERVER_CAP), `exactly ceil(total/cap) requests (${parallelReadCalls})`);
+  emitContentRange = false;
+  ok(`count-aware parallel paging hydrates row-exact in ${parallelReadCalls} requests`);
 
   // 7. Duplicate item ids in a snapshot must not make a single Supabase upsert batch contain the
   // same (collection,item_id) twice. Postgres rejects that with:
