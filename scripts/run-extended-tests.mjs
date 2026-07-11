@@ -34,6 +34,7 @@ const KNOWN_FAILING = {
   "test-proof-workspace.mjs": "stale: asserts old Proof workspace copy",
   "test-queue-workspace.mjs": "stale: asserts old Queue helper copy",
   "test-rcap-page-usability.mjs": "stale: asserts old #rcap alias behavior",
+  "test-social-posting-safety.mjs": "stale: asserts old hardcoded 'Live social posting is off' copy replaced by live safety-posture labels",
   "test-social-workspace.mjs": "stale: asserts removed socialPageHtml block",
   "test-sources-social-calendar-import.mjs": "stale: asserts old six-surface top nav",
   "test-today-email-followups.mjs": "stale: asserts old Proof evidence types",
