@@ -1934,7 +1934,7 @@ function draftPostFromIdea(idea = {}, platform = "linkedin") {
   const body = safePlatform === "x"
     ? String(idea.rawIdea || idea.title || "").slice(0, 180)
     : idea.rawIdea || `Explain: ${idea.title}`;
-  return {
+  const draft = {
     id: `post-${slugify(idea.title)}-${safePlatform}-${crypto.randomUUID().slice(0, 8)}`,
     title: idea.title,
     platform: safePlatform,
@@ -1986,6 +1986,10 @@ function draftPostFromIdea(idea = {}, platform = "linkedin") {
     approvalStatus: "needs_review",
     nextBestAction: "Review copy"
   };
+  // Guidelines gate report stamped at creation so the Review Desk shows hard fails
+  // immediately; enforcement happens at approve/schedule.
+  draft.guidelinesGate = socialGuidelinesGate(draft);
+  return draft;
 }
 
 function contentDraftPrompt(idea = {}, platform = "linkedin") {
@@ -2060,7 +2064,7 @@ function normalizeAIHashtags(values = []) {
 function applyAIDraftToPost(post = {}, ai = {}, meta = {}) {
   const highRisk = post.complianceRisk === "high";
   const saferBody = highRisk && ai.complianceRewrite ? ai.complianceRewrite : ai.body;
-  return {
+  const next = {
     ...post,
     hook: String(ai.hook || post.hook || post.title).trim(),
     body: String(saferBody || post.body || "").trim(),
@@ -2080,6 +2084,9 @@ function applyAIDraftToPost(post = {}, ai = {}, meta = {}) {
     status: "needs_review",
     nextBestAction: highRisk ? "Review compliance rewrite" : "Review AI draft"
   };
+  // Re-stamp the guidelines gate after AI copy lands on the post.
+  next.guidelinesGate = socialGuidelinesGate(next);
+  return next;
 }
 
 async function draftPostFromIdeaWithAI(idea = {}, platform = "linkedin") {
@@ -2714,6 +2721,14 @@ async function updateApprovalItem(id = "", action = "", patch = {}) {
     let next = { ...state };
     if (approval.type === "post") {
       const currentPost = (state.posts || []).find((post) => post.id === approval.sourceId) || {};
+      if (action === "approve") {
+        // Guidelines hard-fail gate (§2 voice, §3 dignity): a violating post can be edited
+        // or culled, but it can never be approved.
+        const guidelinesGate = socialGuidelinesGate(currentPost);
+        if (!guidelinesGate.passed) {
+          throw new Error(`Guidelines hard fail - cannot approve "${currentPost.title || approval.sourceId}": ${guidelinesGate.hardFails.map((item) => item.detail).join(" | ")}`);
+        }
+      }
       const previousApprovalState = {
         status: currentPost.status || "",
         approvalStatus: currentPost.approvalStatus || "",
@@ -2756,9 +2771,19 @@ async function updateApprovalItems(ids = [], action = "", patch = {}) {
     const now = new Date().toISOString();
     const postPatches = new Map();
     const reportPatches = new Map();
+    const guidelinesBlocked = [];
     for (const approval of approvals) {
       if (approval.type === "post") {
         const currentPost = (state.posts || []).find((post) => post.id === approval.sourceId) || {};
+        if (action === "approve") {
+          // Guidelines hard-fail gate (§2 voice, §3 dignity): failing posts are skipped,
+          // the rest of the batch still approves, and the blocks are reported back.
+          const guidelinesGate = socialGuidelinesGate(currentPost);
+          if (!guidelinesGate.passed) {
+            guidelinesBlocked.push(`"${currentPost.title || approval.sourceId}": ${guidelinesGate.hardFails.map((item) => item.detail).join(" | ")}`);
+            continue;
+          }
+        }
         const previousApprovalState = {
           status: currentPost.status || "",
           approvalStatus: currentPost.approvalStatus || "",
@@ -2803,7 +2828,7 @@ async function updateApprovalItems(ids = [], action = "", patch = {}) {
         {
           id: `activity-approval-batch-${crypto.randomUUID().slice(0, 8)}`,
           eventType: "Approval batch updated",
-          title: `${approvals.length} approval item(s) ${action.replaceAll("-", " ")}`,
+          title: `${approvals.length - guidelinesBlocked.length} approval item(s) ${action.replaceAll("-", " ")}${guidelinesBlocked.length ? `, ${guidelinesBlocked.length} blocked by guidelines` : ""}`,
           relatedObjectType: "approval_queue",
           relatedObjectId: "batch",
           createdAt: now
@@ -2812,7 +2837,11 @@ async function updateApprovalItems(ids = [], action = "", patch = {}) {
       ].slice(0, 500)
     });
     await writeChangedCollections(state, next);
-    return { state: next, updated: approvals.length, message: `${approvals.length} approval item(s) updated.` };
+    const updatedCount = approvals.length - guidelinesBlocked.length;
+    const message = guidelinesBlocked.length
+      ? `${updatedCount} approval item(s) updated. ${guidelinesBlocked.length} blocked by guidelines hard fails: ${guidelinesBlocked.join(" || ")}`
+      : `${approvals.length} approval item(s) updated.`;
+    return { state: next, updated: updatedCount, guidelinesBlocked, message };
   });
 }
 
@@ -5163,6 +5192,12 @@ async function schedulePostForPublishing(postId, { scheduledFor, targetChannels,
     targetChannels: channels,
     timezone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York"
   };
+  // Guidelines hard-fail gate (§2 voice, §3 dignity): scheduling is the last transition
+  // before publishing, so a violating post can never reach the publisher.
+  const guidelinesGate = socialGuidelinesGate(candidate);
+  if (!guidelinesGate.passed) {
+    throw new Error(`Guidelines hard fail - cannot schedule: ${guidelinesGate.hardFails.map((item) => item.detail).join(" | ")}`);
+  }
   const readiness = publishReadiness(state, candidate);
   const status = readiness.ok
     ? "scheduled"
@@ -9465,7 +9500,7 @@ function generateDraft(input, platform) {
   });
   const qualityLabel = scoring.label;
 
-  return {
+  const draft = {
     id: crypto.randomUUID(),
     title: titleFromTopic(topic),
     platform,
@@ -9504,6 +9539,9 @@ function generateDraft(input, platform) {
     engagementRate: 0,
     createdAt: new Date().toISOString()
   };
+  // Guidelines gate report stamped at creation; enforcement happens at approve/schedule.
+  draft.guidelinesGate = socialGuidelinesGate(draft);
+  return draft;
 }
 
 function sourceAutomationInputs(state) {
@@ -10424,7 +10462,24 @@ function imageSizeForAspectRatio(aspectRatio) {
   return "1024x1024";
 }
 
+function isBrandMarkReferenceAsset(asset = {}) {
+  const type = String(asset.assetType || "").toLowerCase();
+  const text = [asset.name, asset.fileUrl, asset.filePath, ...(asset.tags || [])]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return (
+    type === "wilma_reference" ||
+    type.includes("logo") ||
+    type.includes("wordmark") ||
+    /\blogo\b|wordmark|brand[ -]?mark|\bwilma\b/.test(text)
+  );
+}
+
 async function generateOpenAICreativeImage(prompt, aspectRatio, referenceAssets = []) {
+  // Social media guidelines hard rule: Wilma, logos, and wordmarks are never sent to the
+  // image model as generation references. They composite from the asset library only.
+  referenceAssets = referenceAssets.filter((asset) => !isBrandMarkReferenceAsset(asset));
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     const details = openAIErrorDetails({ message: "OPENAI_API_KEY is missing.", route: "openai_image_generation" });
@@ -10659,6 +10714,379 @@ function validateGeneratedImageStyle({ prompt, generationMode, context, creative
       : `Needs regeneration: ${warnings[0] || gate.message}`
   };
 }
+
+// GUIDELINES_GATE_BLOCK_START — voice (§2) and dignity (§3) hard fails per
+// docs/legalease-social-media-guidelines.md. HARD FAIL semantics: a violation blocks the
+// post from advancing past review (approve/schedule); it never deletes or hides a draft.
+// Every function in this block is pure (no store/env access) so tests can vm-load it.
+function guidelinesNormalizeCopy(value = "") {
+  // Curly apostrophes normalize to ASCII so negation lookbehinds ("can't guarantee")
+  // match real copy, which routinely ships with typographic quotes.
+  return String(value || "").replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim();
+}
+
+// Every copy surface the guidelines cover: "any copy, any caption, any overlay" —
+// title, hook, body, CTA, hashtags, overlay fields, and per-channel adaptations.
+function guidelinesCopySurfaces(post = {}) {
+  const surfaces = [
+    ["title", post.title],
+    ["hook", post.hook],
+    ["body", post.body],
+    ["cta", post.cta],
+    ["hashtags", (post.hashtags || []).join(" ")],
+    ["overlayText", post.overlayText || post.overlay_text],
+    ["overlayHeadline", post.overlayHeadline],
+    ["overlaySupport", post.overlaySupport],
+    ["wilmaImageWorkflow.overlayText", post.wilmaImageWorkflow?.overlayText]
+  ];
+  for (const [channel, adaptation] of Object.entries(post.channelAdaptations || {})) {
+    if (!adaptation || typeof adaptation !== "object") continue;
+    for (const key of ["hook", "body", "cta"]) {
+      if (adaptation[key]) surfaces.push([`channelAdaptations.${channel}.${key}`, adaptation[key]]);
+    }
+  }
+  return surfaces
+    .map(([field, text]) => [field, guidelinesNormalizeCopy(text)])
+    .filter(([, text]) => Boolean(text));
+}
+
+const GUIDELINES_AI_PHRASE_PATTERNS = [
+  { pattern: /excited to announce/i, label: '"excited to announce"' },
+  { pattern: /thrilled to share/i, label: '"thrilled to share"' },
+  { pattern: /\bgame.chang/i, label: '"game-changer"' },
+  { pattern: /\brevolutioni[sz]/i, label: '"revolutionize"' },
+  { pattern: /\bunlock/i, label: '"unlock"' },
+  { pattern: /\bempower/i, label: '"empower"' },
+  { pattern: /\bdelv(e|es|ed|ing)\b/i, label: '"delve"' },
+  { pattern: /\blandscapes?\b/i, label: '"landscape"' },
+  // "journey" is banned as metaphor. A mechanical check cannot read intent, so every use
+  // fails; a literal use gets rewritten or Roger overrides by editing the copy.
+  { pattern: /\bjourneys?\b/i, label: '"journey" (banned as metaphor)' },
+  { pattern: /we('| a)re just getting started/i, label: '"we\'re just getting started"' }
+];
+
+const GUIDELINES_OUTCOME_PROMISE_PATTERNS = [
+  // "guarantee" is allowed only in explicit negations ("no guarantees", "we cannot guarantee").
+  { pattern: /(?<!no )(?<!not )(?<!cannot )(?<!can't )(?<!never )guarantee[ds]?\b/i, label: "guarantee language" },
+  { pattern: /\bwill (clear|erase|wipe|expunge|seal)\b/i, label: "promised record outcome" },
+  { pattern: /\brecord will (disappear|be (cleared|erased|sealed|gone))\b/i, label: "promised record outcome" },
+  { pattern: /\byou (qualify|are eligible|'re eligible)\b/i, label: "eligibility promise" },
+  { pattern: /\binstant approval\b/i, label: "instant approval promise" },
+  { pattern: /\bthe court will approve\b/i, label: "court outcome promise" },
+  { pattern: /\bthis will get you (a job|housing|hired)\b/i, label: "employment/housing outcome promise" }
+];
+
+// UPL sensitivity: statute citations or specific-situation directives require Lawrence
+// Blackmon's sign-off (post.lawrenceSignoffAt) BEFORE the post can advance to Roger's queue.
+const GUIDELINES_UPL_PATTERNS = [
+  { pattern: /§/, label: "statute citation (§)" },
+  { pattern: /\bILCS\b/, label: "statute citation (ILCS)" },
+  { pattern: /\bU\.?S\.?C\.?\s*§?\s*\d/, label: "statute citation (USC)" },
+  { pattern: /\bstatutes?\b/i, label: "statute reference" },
+  { pattern: /\bpenal code\b/i, label: "penal code reference" },
+  { pattern: /\byou (should|must|need to) (file|petition|plead)\b/i, label: "specific-situation legal directive" }
+];
+
+const GUIDELINES_DIGNITY_LANGUAGE_PATTERNS = [
+  { pattern: /\bex[- ]?cons?\b/i, label: '"ex-con" — use "people with records"' },
+  { pattern: /\bex[- ]?offenders?\b/i, label: '"ex-offender" — use "people with records"' },
+  { pattern: /\bfelons?\b/i, label: '"felon" — use "someone with a felony record"' },
+  { pattern: /\boffenders?\b/i, label: '"offender" — use person-first language' },
+  { pattern: /\bconvicts\b|\ba convict\b/i, label: '"convict" (as a noun) — use person-first language' },
+  { pattern: /\bcriminals\b/i, label: '"criminals" — use person-first language' },
+  { pattern: /\ba criminal\b(?! (records?|history|background|charges?|case|conviction|justice|law|defense))/i, label: '"a criminal" as a label for a person' }
+];
+
+const GUIDELINES_BEFORE_AFTER_PATTERNS = [
+  { pattern: /\bbefore (and|&) after\b/i, label: '"before and after" framing of a customer\'s past' },
+  { pattern: /\bbefore\/after\b/i, label: '"before/after" framing of a customer\'s past' }
+];
+
+// §3 imagery bans (checked in copy AND image prompts) + §6 stock-photo clichés (prompts).
+const GUIDELINES_BANNED_IMAGERY_PATTERNS = [
+  { pattern: /handcuffs?/i, label: "handcuffs" },
+  { pattern: /jail (bars?|cells?)/i, label: "jail bars/cell" },
+  { pattern: /prison (bars?|cells?)/i, label: "prison bars/cell" },
+  { pattern: /behind bars/i, label: "behind-bars imagery" },
+  { pattern: /mug ?shots?/i, label: "mugshot" },
+  { pattern: /crime scenes?/i, label: "crime-scene imagery" },
+  { pattern: /courtroom drama/i, label: "courtroom-drama imagery" },
+  { pattern: /police tape/i, label: "police tape" },
+  { pattern: /barbed wire/i, label: "barbed wire" },
+  { pattern: /orange jumpsuits?/i, label: "orange jumpsuit" }
+];
+
+const GUIDELINES_STOCK_CLICHE_PATTERNS = [
+  { pattern: /gavels?/i, label: "gavel" },
+  { pattern: /scales? of justice/i, label: "scales of justice" },
+  { pattern: /handshakes?|shaking hands/i, label: "handshake-in-suits cliché" },
+  { pattern: /diverse team/i, label: "generic diverse-team imagery" },
+  { pattern: /stock photo/i, label: "stock photo" }
+];
+
+// Fabricated-number rule (§2): every number must trace to a verified source. Mechanically:
+// any numeric token outside the whitelist requires post.verifiedNumberSources (a non-empty
+// array naming the Command Center source or Roger-approved document for the numbers).
+// Whitelisted: the documented $50 flat fee, plain years, and 24/7.
+function guidelinesUntracedNumbers(text = "") {
+  const stripped = String(text || "")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/[#@][\w-]+/g, " ");
+  const tokens = stripped.match(/\$?\d[\d,.:%/]*/g) || [];
+  return tokens
+    .map((token) => token.replace(/[.,:]+$/, ""))
+    .filter((token) => !/^\$50$/.test(token) && !/^(19|20)\d{2}$/.test(token) && !/^24\/7$/.test(token));
+}
+
+function guidelinesImagePromptFindings(promptText = "") {
+  // Prompts legitimately NAME banned imagery inside negations ("Avoid: ... no handcuffs,
+  // no mugshots"). Only positively-requested imagery is a violation, so segments that
+  // carry a negation cue are excluded before scanning.
+  const positiveSegments = String(promptText || "")
+    .split(/[.;\n]/)
+    .map((segment) => guidelinesNormalizeCopy(segment))
+    .filter(Boolean)
+    .filter((segment) => !/\b(no|not|never|avoid|without|don'?t|do not|prevent[s]?|banned|exclude[sd]?)\b/i.test(segment));
+  if (!positiveSegments.length) return [];
+  const text = positiveSegments.join(". ");
+  const findings = [];
+  for (const { pattern, label } of GUIDELINES_BANNED_IMAGERY_PATTERNS) {
+    if (pattern.test(text)) findings.push({ rule: "dignity_imagery", detail: `Image prompt asks for banned imagery: ${label} (guidelines §3).` });
+  }
+  for (const { pattern, label } of GUIDELINES_STOCK_CLICHE_PATTERNS) {
+    if (pattern.test(text)) findings.push({ rule: "stock_cliche", detail: `Image prompt asks for a stock-photo cliché: ${label} (guidelines §6).` });
+  }
+  return findings;
+}
+
+function socialGuidelinesGate(post = {}) {
+  const hardFails = [];
+  const surfaces = guidelinesCopySurfaces(post);
+  let uplHits = [];
+  let untracedNumbers = [];
+  for (const [field, text] of surfaces) {
+    if (/—/.test(text)) {
+      hardFails.push({ rule: "voice_em_dash", field, detail: `Em-dash in ${field} (guidelines §2: no em-dashes anywhere).` });
+    }
+    for (const { pattern, label } of GUIDELINES_AI_PHRASE_PATTERNS) {
+      if (pattern.test(text)) hardFails.push({ rule: "voice_ai_phrase", field, detail: `AI-sounding construction ${label} in ${field} (guidelines §2).` });
+    }
+    for (const { pattern, label } of GUIDELINES_OUTCOME_PROMISE_PATTERNS) {
+      if (pattern.test(text)) hardFails.push({ rule: "voice_outcome_promise", field, detail: `Outcome promise (${label}) in ${field} (guidelines §2: scope, never escalate).` });
+    }
+    for (const { pattern, label } of GUIDELINES_DIGNITY_LANGUAGE_PATTERNS) {
+      if (pattern.test(text)) hardFails.push({ rule: "dignity_language", field, detail: `Person-first language violation in ${field}: ${label} (guidelines §3).` });
+    }
+    for (const { pattern, label } of GUIDELINES_BEFORE_AFTER_PATTERNS) {
+      if (pattern.test(text)) hardFails.push({ rule: "dignity_framing", field, detail: `${label} in ${field} (guidelines §3).` });
+    }
+    for (const { pattern, label } of GUIDELINES_BANNED_IMAGERY_PATTERNS) {
+      if (pattern.test(text)) hardFails.push({ rule: "dignity_imagery", field, detail: `Banned imagery reference in ${field}: ${label} (guidelines §3).` });
+    }
+    uplHits = uplHits.concat(
+      GUIDELINES_UPL_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(({ label }) => `${label} in ${field}`)
+    );
+    untracedNumbers = untracedNumbers.concat(guidelinesUntracedNumbers(text).map((token) => `"${token}" in ${field}`));
+  }
+  if (uplHits.length && !(post.lawrenceSignoffAt || post.lawrenceSignoff === true)) {
+    hardFails.push({
+      rule: "voice_upl_signoff",
+      field: "post",
+      detail: `UPL-sensitive content (${[...new Set(uplHits)].join("; ")}) requires Lawrence Blackmon's sign-off before it advances (guidelines §2). Record it as lawrenceSignoffAt on the post.`
+    });
+  }
+  const numbersTraced = Array.isArray(post.verifiedNumberSources) && post.verifiedNumberSources.length > 0;
+  if (untracedNumbers.length && !numbersTraced) {
+    hardFails.push({
+      rule: "voice_untraced_number",
+      field: "post",
+      detail: `Numbers without a verified source: ${[...new Set(untracedNumbers)].join("; ")} (guidelines §2). Add verifiedNumberSources tracing every number, or remove them.`
+    });
+  }
+  return {
+    passed: hardFails.length === 0,
+    hardFails,
+    ruleSource: "docs/legalease-social-media-guidelines.md §2-§3",
+    checkedAt: new Date().toISOString()
+  };
+}
+// GUIDELINES_GATE_BLOCK_END
+
+// RENDER_QA_BLOCK_START — render QA per docs/legalease-social-media-guidelines.md §6.
+// Every function in this block is pure (no store/env access) so tests can vm-load it.
+function collapseWhitespaceForQa(value = "") {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+const RENDER_QA_STOCK_FALLBACK_COPY = [
+  "Make second chances easier to understand.",
+  "LegalEase"
+];
+
+// The copy pool is everything Roger approved on the post. Overlay text is legitimate only
+// if it comes out of this pool character for character (case-insensitive: the compositor
+// upcases headlines deliberately).
+function approvedCopyPoolForPost(post = {}) {
+  return [
+    post.overlayText, post.overlay_text, post.overlayKicker, post.overlayHeadline, post.overlaySupport,
+    post.wilmaImageWorkflow?.overlayText,
+    post.headline, post.hook, post.caption, post.body, post.title, post.cta,
+    post.contentBucket, post.contentFormat,
+    ...RENDER_QA_STOCK_FALLBACK_COPY
+  ].filter(Boolean).map(collapseWhitespaceForQa);
+}
+
+function overlaySegmentMatchesApprovedCopy(segment, pool) {
+  const text = collapseWhitespaceForQa(segment).replace(/\.\.\.$/, "").trim();
+  if (!text) return true;
+  const lower = text.toLowerCase();
+  return pool.some((entry) => entry.toLowerCase().includes(lower));
+}
+
+const OVERLAY_CORRUPTION_PATTERNS = [
+  { pattern: /�/, label: "unicode replacement character (broken encoding)" },
+  { pattern: /\$\{/, label: "unrendered template placeholder" },
+  { pattern: /\\[nrtsdwb]/, label: "literal backslash escape leaked into copy" },
+  { pattern: /\b(undefined|NaN|\[object Object\])\b/, label: "serialized runtime value in copy" },
+  // eslint-disable-next-line no-control-regex
+  { pattern: /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/, label: "control character" }
+];
+
+function overlayCorruptionFindings(segment = "") {
+  const text = String(segment || "");
+  return OVERLAY_CORRUPTION_PATTERNS
+    .filter((item) => item.pattern.test(text))
+    .map((item) => item.label);
+}
+
+// Spelling gate: overlay copy is composited verbatim from approved captions, so spelling
+// correctness is inherited from approval. What this catches is render corruption — words
+// that no longer appear in the approved copy (the regex-escape outage class that shipped
+// captions with every "s" eaten) and letter-mangled tokens.
+function overlaySpellingFindings(segment, pool) {
+  const text = collapseWhitespaceForQa(segment).replace(/\.\.\.$/, "");
+  if (!text) return [];
+  const poolText = ` ${pool.join(" ").toLowerCase()} `;
+  const findings = [];
+  for (const rawWord of text.split(" ")) {
+    const word = rawWord.replace(/^[^a-zA-Z0-9$.']+|[^a-zA-Z0-9$.']+$/g, "");
+    if (!word || !/[a-zA-Z]/.test(word)) continue;
+    const lower = word.toLowerCase();
+    if (!poolText.includes(lower)) {
+      findings.push(`"${word}" does not appear in the approved copy`);
+      continue;
+    }
+    if (word.length >= 4 && !/[aeiouyAEIOUY]/.test(word)) {
+      findings.push(`"${word}" looks letter-mangled (no vowels)`);
+    }
+  }
+  return findings;
+}
+
+function renderQaForGeneratedImage({
+  post = {},
+  context = {},
+  promptUsed = "",
+  generationMode = "",
+  openAIResult = {},
+  quoteCard = null,
+  referenceAssetsSent = []
+} = {}) {
+  const hardFails = [];
+  const pool = approvedCopyPoolForPost(post);
+  const overlay = { mode: "text", kicker: "", headline: "", support: "" };
+  const overlaySource = quoteCard?.textRendered || null;
+  if (overlaySource) {
+    overlay.kicker = overlaySource.kicker || "";
+    overlay.headline = overlaySource.headline || "";
+    overlay.support = overlaySource.support || "";
+  } else {
+    const serverOverlay = overlayTextForPostServer(post);
+    overlay.mode = serverOverlay.mode;
+    overlay.kicker = serverOverlay.kicker || "";
+    overlay.headline = serverOverlay.headline || "";
+    overlay.support = serverOverlay.support || "";
+  }
+  if (overlay.mode !== "none") {
+    for (const [part, segment] of [["kicker", overlay.kicker], ["headline", overlay.headline], ["support", overlay.support]]) {
+      if (!overlaySegmentMatchesApprovedCopy(segment, pool)) {
+        hardFails.push({
+          rule: "overlay_verbatim",
+          detail: `Overlay ${part} does not match the approved caption character for character: "${collapseWhitespaceForQa(segment).slice(0, 120)}"`
+        });
+      }
+      for (const label of overlayCorruptionFindings(segment)) {
+        hardFails.push({ rule: "overlay_corruption", detail: `Overlay ${part}: ${label}` });
+      }
+      for (const finding of overlaySpellingFindings(segment, pool)) {
+        hardFails.push({ rule: "spelling", detail: `Overlay ${part}: ${finding}` });
+      }
+    }
+    // §6 QA item 4 (legible at thumbnail size), mechanical proxy: past these lengths the
+    // composited type is unreadable at platform thumbnail size regardless of styling.
+    const headlineLength = collapseWhitespaceForQa(overlay.headline).length;
+    if (headlineLength > 90) {
+      hardFails.push({ rule: "legibility", detail: `Overlay headline is ${headlineLength} characters; it cannot stay legible at thumbnail size (max 90). Shorten the overlay.` });
+    }
+    const supportLength = collapseWhitespaceForQa(overlay.support).length;
+    if (supportLength > 220) {
+      hardFails.push({ rule: "legibility", detail: `Overlay support line is ${supportLength} characters; it cannot stay legible at thumbnail size (max 220). Shorten the overlay.` });
+    }
+  }
+  const promptText = String(promptUsed || "").toLowerCase();
+  const isGeneratedMode = /^openai_(image|background)/.test(String(generationMode || ""));
+  if (isGeneratedMode) {
+    if (!/text-free|no readable text|zero readable text/.test(promptText)) {
+      hardFails.push({ rule: "asset_integrity", detail: "Generation prompt is missing the text-free lock." });
+    }
+    if (!/no logos|no .*logos|zero .*logos|do not render.*logo|no wordmarks/.test(promptText)) {
+      hardFails.push({ rule: "asset_integrity", detail: "Generation prompt is missing the no-logo/no-wordmark lock." });
+    }
+    if (context.usesWilma && !/do not draw wilma/.test(promptText)) {
+      hardFails.push({ rule: "asset_integrity", detail: "Wilma post generated without the do-not-draw-Wilma prompt lock." });
+    }
+    // Dignity imagery + stock clichés (§3/§6) are pre-blocked before generation; this
+    // re-check keeps the QA verdict honest if a render slipped through another path.
+    for (const finding of guidelinesImagePromptFindings(promptUsed)) {
+      hardFails.push(finding);
+    }
+    // §6 QA item 5 (colors within the brand palette), mechanical proxy: generated
+    // backgrounds must carry the palette lock in the prompt. (Quote cards are palette-
+    // correct by construction; pixel-level verification of AI output is not attempted.)
+    if (!/deep navy|legalease palette|brand palette/.test(promptText)) {
+      hardFails.push({ rule: "palette", detail: "Generation prompt is missing the brand-palette lock (restrained LegalEase palette). Colors cannot be trusted to stay in palette." });
+    }
+  }
+  const brandMarksSent = (referenceAssetsSent || []).filter((asset) => isBrandMarkReferenceAsset(asset));
+  if (brandMarksSent.length) {
+    hardFails.push({
+      rule: "asset_integrity",
+      detail: `Brand-mark assets were sent to the image model as generation references: ${brandMarksSent.map((asset) => asset.name || asset.assetType).join(", ")}`
+    });
+  }
+  if (context.usesWilma && openAIResult.imageUrl && isGeneratedMode && !openAIResult.compositedWilma) {
+    hardFails.push({
+      rule: "asset_integrity",
+      detail: "Wilma post rendered without compositing the canonical Wilma asset. Guidelines: if the real asset cannot be composited, the image does not ship."
+    });
+  }
+  if (String(context.visualBucket || "") === "Quote card" && openAIResult.imageUrl && isGeneratedMode) {
+    hardFails.push({
+      rule: "asset_integrity",
+      detail: "Quote cards must be typographic composites (typography + palette + real logo), never AI-generated images."
+    });
+  }
+  if (String(generationMode || "").startsWith("typographic_quote_card") && quoteCard && !quoteCard.logoIncluded) {
+    hardFails.push({ rule: "asset_integrity", detail: "Quote card rendered without the real logo asset file." });
+  }
+  return {
+    passed: hardFails.length === 0,
+    hardFails,
+    ruleSource: "docs/legalease-social-media-guidelines.md §6",
+    checkedAt: new Date().toISOString()
+  };
+}
+// RENDER_QA_BLOCK_END
 
 function stricterPosterPrompt(prompt) {
   return `${prompt}
@@ -11070,6 +11498,48 @@ function escapeSvg(value = "") {
   return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[char]);
 }
 
+// Social media guidelines §6: quote cards are composited from real assets, never generated.
+// Typography + brand palette + the real logo file, with the guided-path spine as the accent.
+// No OpenAI call happens on this path.
+function typographicQuoteCardDataUrl(post, context = {}) {
+  const { width, height } = finalDimensionsForImage({ aspectRatio: context.aspectRatio });
+  const overlay = overlayTextForPostServer(post);
+  const scale = width / 1200;
+  const margin = Math.round(width * 0.1);
+  const navy = designSystem.colors?.legalBlue || "#020D66";
+  const orange = designSystem.colors?.horizonOrange || "#F04800";
+  const seafoam = designSystem.colors?.skylineBlue || "#B7D6D7";
+  const paper = designSystem.colors?.paperWhite || "#F8F7F3";
+  const logoAsset = (context.logoReferenceAssets || [])[0] || null;
+  const logoUri = assetDataUri(logoAsset?.filePath || "assets/brand/logos/legalease-mark-white.png");
+  const quoteText = collapseWhitespaceForQa(overlay.headline || post.hook || post.title || "");
+  const quoteLines = wrapSvgText(quoteText, width > height ? 26 : 20, 5);
+  const quoteSize = Math.round((quoteLines.length > 3 ? 58 : 72) * scale);
+  const quoteLineHeight = Math.round(quoteSize * 1.18);
+  const supportLines = wrapSvgText(collapseWhitespaceForQa(overlay.support || ""), width > height ? 56 : 44, 2);
+  const kicker = collapseWhitespaceForQa(overlay.kicker || "LegalEase");
+  const quoteTop = Math.round(height * 0.3);
+  const supportTop = quoteTop + quoteLines.length * quoteLineHeight + Math.round(52 * scale);
+  const logoWidth = Math.round(width * 0.16);
+  const logoHeight = Math.round(logoWidth * 0.55);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+    <rect width="${width}" height="${height}" fill="${navy}"/>
+    <path d="M${Math.round(width * 0.04)} ${Math.round(height * 0.9)} C ${Math.round(width * 0.3)} ${Math.round(height * 0.86)}, ${Math.round(width * 0.62)} ${Math.round(height * 0.96)}, ${Math.round(width * 0.97)} ${Math.round(height * 0.88)}" fill="none" stroke="${orange}" stroke-width="${Math.max(5, Math.round(width * 0.006))}" stroke-linecap="round" opacity=".9"/>
+    <circle cx="${Math.round(width * 0.97)}" cy="${Math.round(height * 0.88)}" r="${Math.round(width * 0.011)}" fill="${orange}"/>
+    <rect x="${margin}" y="${Math.round(height * 0.19)}" width="${Math.round(width * 0.09)}" height="${Math.round(8 * scale)}" fill="${orange}"/>
+    <text x="${margin}" y="${Math.round(height * 0.165)}" font-family="Sora,DM Sans,Arial,sans-serif" font-size="${Math.round(20 * scale)}" font-weight="700" letter-spacing="${Math.round(4 * scale)}" fill="${seafoam}">${escapeSvg(kicker.toUpperCase())}</text>
+    <text x="${margin}" y="${quoteTop}" font-family="Sora,DM Sans,Arial,sans-serif" font-size="${quoteSize}" font-weight="800" fill="${paper}">${svgLineTspans(quoteLines, margin, quoteTop, quoteLineHeight)}</text>
+    ${supportLines.length ? `<text x="${margin}" y="${supportTop}" font-family="DM Mono,Menlo,monospace" font-size="${Math.round(21 * scale)}" font-weight="500" fill="${seafoam}">${svgLineTspans(supportLines, margin, supportTop, Math.round(30 * scale))}</text>` : ""}
+    ${logoUri ? `<image href="${logoUri}" x="${margin}" y="${height - logoHeight - Math.round(height * 0.055)}" width="${logoWidth}" height="${logoHeight}" preserveAspectRatio="xMidYMid meet"/>` : ""}
+  </svg>`;
+  return {
+    dataUrl: logoUri ? `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}` : null,
+    logoIncluded: Boolean(logoUri),
+    error: logoUri ? null : "Quote card blocked: real logo asset file is missing. Guidelines require the real logo file, never a generated substitute.",
+    textRendered: { kicker, headline: quoteText, support: collapseWhitespaceForQa(overlay.support || "") }
+  };
+}
+
 async function generateImageForPost(postId, overrides = {}) {
   const state = await store.readState();
   const post = state.posts.find((item) => item.id === postId);
@@ -11090,32 +11560,57 @@ async function generateImageForPost(postId, overrides = {}) {
   const wilmaBlocked = context.usesWilma && !context.wilmaReferenceAssets.length;
   const logoBlocked = false;
   const lockedReferenceAssets = [];
-  let promptUsed = creativePlan.prompt;
-  let openAIResult = logoBlocked
-      ? { imageUrl: null, error: "Logo generation blocked: approved LegalEase logo asset missing." }
-      : await generateOpenAICreativeImage(promptUsed, context.aspectRatio, lockedReferenceAssets);
-  if (openAIResult.imageUrl && context.usesWilma && !wilmaBlocked) {
-    try {
-      openAIResult = {
-        imageUrl: await compositeCanonicalWilmaPanel(openAIResult.imageUrl, context),
-        error: null,
-        compositedWilma: true
-      };
-    } catch (error) {
-      openAIResult = { imageUrl: null, error: safeShortError(error.message || "Wilma compositing failed.") };
+  const isQuoteCard = String(context.visualBucket || "") === "Quote card";
+  // Guidelines hard rule: the image model is never asked to draw Wilma. The explicit
+  // background-only lock is appended whenever Wilma will be composited afterwards.
+  let promptUsed = context.usesWilma ? wilmaBackgroundOnlyPrompt(creativePlan.prompt) : creativePlan.prompt;
+  let quoteCard = null;
+  let openAIResult;
+  let generationMode;
+  let styleGate;
+  if (isQuoteCard) {
+    // Guidelines: quote cards are typography + palette + real logo, composited locally.
+    // The OpenAI pipeline is never invoked for them.
+    quoteCard = typographicQuoteCardDataUrl(post, context);
+    openAIResult = quoteCard.dataUrl
+      ? { imageUrl: quoteCard.dataUrl, error: null, typographicQuoteCard: true }
+      : { imageUrl: null, error: quoteCard.error };
+    if (openAIResult.imageUrl && context.usesWilma && wilmaBlocked) {
+      openAIResult = { imageUrl: null, error: "Wilma quote card blocked: canonical Wilma asset missing. Composite the real asset or the image does not ship." };
+    } else if (openAIResult.imageUrl && context.usesWilma) {
+      try {
+        openAIResult = {
+          imageUrl: await compositeCanonicalWilmaPanel(openAIResult.imageUrl, context),
+          error: null,
+          compositedWilma: true,
+          typographicQuoteCard: true
+        };
+      } catch (error) {
+        openAIResult = { imageUrl: null, error: safeShortError(error.message || "Wilma compositing failed.") };
+      }
     }
-  }
-  let generationMode = generationModeForResult(openAIResult, context, wilmaBlocked);
-  let styleGate = validateGeneratedImageStyle({
-    prompt: promptUsed,
-    generationMode,
-    context,
-    creativePlan,
-    openAIResult
-  });
-  if (openAIResult.imageUrl && !styleGate.passed) {
-    promptUsed = stricterPosterPrompt(promptUsed);
-    openAIResult = await generateOpenAICreativeImage(promptUsed, context.aspectRatio, lockedReferenceAssets);
+    generationMode = openAIResult.imageUrl
+      ? (openAIResult.compositedWilma ? "typographic_quote_card_with_wilma" : "typographic_quote_card")
+      : "typographic_quote_card_blocked";
+    styleGate = {
+      passed: Boolean(openAIResult.imageUrl),
+      label: openAIResult.imageUrl ? "Typographic quote card" : "Quote card blocked",
+      missing: [],
+      banned: [],
+      warnings: [],
+      message: openAIResult.imageUrl
+        ? "Quote card composited from typography, brand palette, and the real logo asset. No AI image generation used."
+        : openAIResult.error || "Quote card could not be composited."
+    };
+  } else {
+    // Dignity/imagery hard fails (§3 + §6 clichés) are checked BEFORE any generation call:
+    // a prompt that asks for banned imagery never reaches the image model.
+    const promptGuidelineFindings = guidelinesImagePromptFindings(promptUsed);
+    openAIResult = promptGuidelineFindings.length
+      ? { imageUrl: null, error: `Image blocked by guidelines before generation: ${promptGuidelineFindings.map((item) => item.detail).join(" | ")}` }
+      : logoBlocked
+        ? { imageUrl: null, error: "Logo generation blocked: approved LegalEase logo asset missing." }
+        : await generateOpenAICreativeImage(promptUsed, context.aspectRatio, lockedReferenceAssets);
     if (openAIResult.imageUrl && context.usesWilma && !wilmaBlocked) {
       try {
         openAIResult = {
@@ -11135,6 +11630,29 @@ async function generateImageForPost(postId, overrides = {}) {
       creativePlan,
       openAIResult
     });
+    if (openAIResult.imageUrl && !styleGate.passed) {
+      promptUsed = stricterPosterPrompt(promptUsed);
+      openAIResult = await generateOpenAICreativeImage(promptUsed, context.aspectRatio, lockedReferenceAssets);
+      if (openAIResult.imageUrl && context.usesWilma && !wilmaBlocked) {
+        try {
+          openAIResult = {
+            imageUrl: await compositeCanonicalWilmaPanel(openAIResult.imageUrl, context),
+            error: null,
+            compositedWilma: true
+          };
+        } catch (error) {
+          openAIResult = { imageUrl: null, error: safeShortError(error.message || "Wilma compositing failed.") };
+        }
+      }
+      generationMode = generationModeForResult(openAIResult, context, wilmaBlocked);
+      styleGate = validateGeneratedImageStyle({
+        prompt: promptUsed,
+        generationMode,
+        context,
+        creativePlan,
+        openAIResult
+      });
+    }
   }
   const fallbackImageUrl = localBrandedPlaceholderDataUrl(post, context, versionNumber);
   const allowLocalFallback = process.env.ALLOW_LOCAL_IMAGE_FALLBACK === "true";
@@ -11162,6 +11680,21 @@ async function generateImageForPost(postId, overrides = {}) {
   const rateLimitRetryAt = openAIResult.rateLimited
     ? new Date(Date.now() + rateLimitRetryAfterSeconds * 1000).toISOString()
     : "";
+  // Render QA (guidelines §6) runs on every successful render. A QA hard fail is loud:
+  // the image is kept for inspection but stored as qa_failed, never as a usable draft.
+  const renderQa = renderQaForGeneratedImage({
+    post,
+    context,
+    promptUsed,
+    generationMode,
+    openAIResult,
+    quoteCard,
+    referenceAssetsSent: lockedReferenceAssets
+  });
+  const renderQaFailed = generatedAndPassed && !renderQa.passed;
+  if (renderQaFailed) {
+    generationError = `Render QA failed: ${renderQa.hardFails.map((item) => item.detail).join(" | ")}`;
+  }
   const image = {
     id: crypto.randomUUID(),
     postId,
@@ -11228,7 +11761,8 @@ async function generateImageForPost(postId, overrides = {}) {
     watermarkLogoAssetId: "23232323-2323-4232-8232-232323232323",
     versionNumber,
     imageVersion: versionNumber,
-    generationStatus: generatedAndPassed ? "generated" : "failed",
+    generationStatus: renderQaFailed ? "qa_failed" : generatedAndPassed ? "generated" : "failed",
+    renderQa,
     imageStatus: generationMode,
     promptVersion: creativePlan.promptVersion || imagePromptVersion,
     promptUsed,
@@ -11280,6 +11814,21 @@ async function generateImageForPost(postId, overrides = {}) {
   };
   await store.updatePost(postId, routedPatch);
   const nextState = await store.savePostImage(image);
+  if (renderQaFailed) {
+    return {
+      image,
+      state: nextState,
+      ok: false,
+      error: {
+        ok: false,
+        errorCode: "RENDER_QA_FAILED",
+        safeMessage: generationError,
+        hardFails: renderQa.hardFails,
+        timestamp: new Date().toISOString()
+      },
+      message: generationError
+    };
+  }
   return {
     image,
     state: nextState,
@@ -18605,7 +19154,7 @@ function htmlShell() {
     function queueOverlayText(post = {}) {
       const explicit = String(post.overlayText || post.overlay_text || "").trim();
       if (explicit) return explicit;
-      const fallback = String(post.headline || post.hook || post.caption || post.body || post.title || "").replace(/\s+/g, " ").trim();
+      const fallback = String(post.headline || post.hook || post.caption || post.body || post.title || "").replace(/\\s+/g, " ").trim();
       return fallback.length > 86 ? fallback.slice(0, 83).trim() + "..." : fallback;
     }
 
@@ -18621,13 +19170,19 @@ function htmlShell() {
 
     function queueImageStatusKey(post = {}, image = null) {
       if (post.imageStatus === "ready" || post.queueImageDraft?.imageStatus === "ready" || post.imageReadyAt) return "ready";
-      if (post.imageStatus === "draft_generated" || post.queueImageDraft || image?.generationStatus === "generated") return "draft_generated";
-      if (post.imageStatus === "prompt_ready" || post.imagePrompt || post.image_prompt) return "prompt_ready";
+      // QA failure is LOUD: a render that fails guidelines QA must never read as a draft.
+      if (post.imageStatus === "qa_failed" || image?.generationStatus === "qa_failed" || image?.renderQa?.passed === false) return "qa_failed";
+      // Render failure is LOUD: a failed render must never read as a generated draft.
+      if (post.imageStatus === "render_failed" || image?.generationStatus === "failed") return "render_failed";
+      // "Draft Generated" only when a rendered image actually exists — a status flag or
+      // queueImageDraft metadata alone (the old prompt-only flow) is just a prompt.
+      if (image?.generationStatus === "generated" && image?.imageUrl) return "draft_generated";
+      if (post.imageStatus === "prompt_ready" || post.imagePrompt || post.image_prompt || post.imageStatus === "draft_generated" || post.queueImageDraft) return "prompt_ready";
       return "needed";
     }
 
     function queueImageStatusLabel(post = {}, image = null) {
-      const labels = { needed:"Needed", prompt_ready:"Prompt Ready", draft_generated:"Draft Generated", ready:"Ready" };
+      const labels = { needed:"Needed", prompt_ready:"Prompt Ready", draft_generated:"Draft Generated", ready:"Ready", render_failed:"Render failed", qa_failed:"QA failed" };
       return labels[queueImageStatusKey(post, image)] || "Needed";
     }
 
@@ -18660,6 +19215,8 @@ function htmlShell() {
       if (post.status === "deleted" || post.deletedAt) return "Status: Deleted";
       if (post.scheduledFor || post.scheduled_at || post.status === "scheduled") return "Status: Scheduled";
       if (post.status === "approved" || post.approved_at) return "Status: Approved";
+      if (queueImageStatusKey(post, image) === "qa_failed") return "Status: QA Failed";
+      if (queueImageStatusKey(post, image) === "render_failed") return "Status: Render Failed";
       if (post.copyReviewed || post.copyReviewedAt) return "Status: Reviewed";
       if (["draft", "needs_review"].includes(post.status)) return "Status: Needs Review";
       if (queueImageStatusKey(post, image) === "ready") return "Status: Image Ready";
@@ -18676,6 +19233,33 @@ function htmlShell() {
     }
 
     function queueImageDraftPreviewHtml(post = {}) {
+      const image = imageForPost(post.id);
+      const statusKey = queueImageStatusKey(post, image);
+      if (statusKey === "qa_failed") {
+        const failures = (image?.renderQa?.hardFails || post.queueImageDraft?.qaFailures || [])
+          .map(item => typeof item === "string" ? item : [item.rule, item.detail].filter(Boolean).join(": "));
+        return \`<div class="queue-image-draft-preview">
+          <span class="badge danger">QA failed</span>
+          \${image?.imageUrl ? \`<img src="\${esc(image.imageUrl)}" alt="Render that failed QA, kept for inspection" style="max-width:100%;border-radius:10px;opacity:.7" loading="lazy">\` : ""}
+          \${failures.length ? \`<ul>\${failures.map(item => \`<li>\${esc(item)}</li>\`).join("")}</ul>\` : \`<p>Render QA failed.</p>\`}
+          <small>This render did not pass the social media guidelines QA (docs/legalease-social-media-guidelines.md §6). It cannot be marked ready. Fix the copy or assets, then Generate Image again. Nothing was posted.</small>
+        </div>\`;
+      }
+      if (statusKey === "render_failed") {
+        const reason = image?.generationError || post.queueImageDraft?.error || "Image render failed.";
+        return \`<div class="queue-image-draft-preview">
+          <span class="badge danger">Render failed</span>
+          <p>\${esc(reason)}</p>
+          <small>Fix the cause above, then use Generate Image again. Nothing was posted.</small>
+        </div>\`;
+      }
+      if (image?.imageUrl && (statusKey === "draft_generated" || statusKey === "ready")) {
+        return \`<div class="queue-image-draft-preview">
+          <span class="badge info">\${esc(queueImageStatusLabel(post, image))}</span>
+          <img src="\${esc(image.imageUrl)}" alt="Rendered draft creative" style="max-width:100%;border-radius:10px" loading="lazy">
+          <p>\${esc(queueOverlayText(post) || "Add overlay text before final creative.")}</p>
+        </div>\`;
+      }
       const draft = post.queueImageDraft || {};
       const status = draft.status || "Image draft needed";
       return \`<div class="queue-image-draft-preview">
@@ -18703,7 +19287,7 @@ function htmlShell() {
           <label>Edit Image Prompt<textarea name="imagePrompt" rows="4">\${esc(prompt)}</textarea></label>
           <div class="card-actions quiet-actions">
             <button type="submit">Save Image Prompt</button>
-            <button type="button" onclick="generateQueueImageDraft('\${post.id}')">Generate Image</button>
+            <button type="button" \${generatingImages.has(post.id) ? "disabled" : ""} onclick="generateQueueImageDraft('\${post.id}')">\${generatingImages.has(post.id) ? "Rendering..." : "Generate Image"}</button>
             <button type="button" onclick="markQueueImageReady('\${post.id}')">Mark Image Ready</button>
           </div>
         </form>
@@ -18809,7 +19393,7 @@ function htmlShell() {
 
     function rcapClientAccountNeedsHumanApproval(account = {}, contact = {}) {
       const text = [account.priority_tier, contact.title, contact.decision_role, contact.source_confidence].join(" ");
-      return /tier\s*1|executive director|\be\.?d\.?\b|\bceo\b|chief executive|board chair|board president|funder|foundation officer|senior|chief|president|founder|principal|partner|low|medium/i.test(text)
+      return /tier\\s*1|executive director|\\be\\.?d\\.?\\b|\\bceo\\b|chief executive|board chair|board president|funder|foundation officer|senior|chief|president|founder|principal|partner|low|medium/i.test(text)
         || !rcapClientContactVerified(contact);
     }
 
@@ -19247,7 +19831,7 @@ function htmlShell() {
         </div>
         <div class="queue-review-actions">
           <button class="primary" type="button" onclick="\${item.actionJs}">\${esc(item.action)}</button>
-          \${item.queuePostId ? \`<button type="button" onclick="generateQueueImageDraft('\${item.queuePostId}')">Generate Image</button><button type="button" onclick="\${item.actionJs}">Preview</button><button type="button" onclick="markCopyReviewed('\${item.queuePostId}')">Mark Reviewed</button>\` : ""}
+          \${item.queuePostId ? \`<button type="button" \${generatingImages.has(item.queuePostId) ? "disabled" : ""} onclick="generateQueueImageDraft('\${item.queuePostId}')">\${generatingImages.has(item.queuePostId) ? "Rendering..." : "Generate Image"}</button><button type="button" onclick="\${item.actionJs}">Preview</button><button type="button" onclick="markCopyReviewed('\${item.queuePostId}')">Mark Reviewed</button>\` : ""}
           \${item.queuePostId ? \`<button type="button" onclick="openQueueDeleteDialog('\${item.queuePostId}')">\${esc(item.deleteLabel || "Delete")}</button>\` : ""}
         </div>
         <details id="queue-row-\${esc(item.id)}" class="queue-review-details">
@@ -22587,8 +23171,8 @@ function htmlShell() {
 
     function cockpitFollowUpTitle(thread = {}) {
       const raw = String(thread.name || "Follow-up").trim();
-      if (/^smoke test task:\s*confirm founder-simple ui$/i.test(raw)) return "Confirm founder-simple UI";
-      const partnerProof = raw.match(/^Add partner proof note:\s*(.+)$/i);
+      if (/^smoke test task:\\s*confirm founder-simple ui$/i.test(raw)) return "Confirm founder-simple UI";
+      const partnerProof = raw.match(/^Add partner proof note:\\s*(.+)$/i);
       if (partnerProof) return partnerProof[1].trim() + " proof note";
       return todayFounderCopy(raw);
     }
@@ -23425,7 +24009,7 @@ function htmlShell() {
     }
 
     function normalizeRecordStatus(value = "") {
-      return String(value || "not_recorded").toLowerCase().replace(/\s+/g, "_");
+      return String(value || "not_recorded").toLowerCase().replace(/\\s+/g, "_");
     }
 
     function daysBetweenDates(leftValue = "", rightValue = "") {
@@ -26391,8 +26975,8 @@ function htmlShell() {
     };
     function friendlyAgentName(id = "") {
       if (FRIENDLY_AGENT_NAMES[id]) return FRIENDLY_AGENT_NAMES[id];
-      if (/^loop-/.test(id)) return id.replace(/^loop-/, "").replace(/-/g, " ").replace(/^\w/, c => c.toUpperCase()) + " monitor";
-      return id.replace(/-/g, " ").replace(/^\w/, c => c.toUpperCase());
+      if (/^loop-/.test(id)) return id.replace(/^loop-/, "").replace(/-/g, " ").replace(/^\\w/, c => c.toUpperCase()) + " monitor";
+      return id.replace(/-/g, " ").replace(/^\\w/, c => c.toUpperCase());
     }
 
     async function decideQueueItem(id, action) {
@@ -28025,7 +28609,7 @@ function htmlShell() {
         rcapPartnerContacts:contacts.filter(c => /rcap revenue|outreach/i.test(c.source)).length,
         partners:contacts.filter(c => c.source === "partners").length,
         doNotEmail:contacts.filter(c => c.suppressed).length,
-        cleanup:contacts.filter(c => !c.email || !/.+@.+\..+/.test(c.email) || c.suppressed).length,
+        cleanup:contacts.filter(c => !c.email || !/.+@.+\\..+/.test(c.email) || c.suppressed).length,
         recentImports:list(state.rcapRevenueImportBatches).length + list(state.prospectDiscoveryRuns).length
       };
     }
@@ -32982,30 +33566,78 @@ function htmlShell() {
         toast("Queue item not found.");
         return;
       }
-      const prompt = queueImagePromptForPost(post);
-      const draft = {
-        status:"Image draft needed",
-        headline:post.headline || post.title || "",
-        overlayText:queueOverlayText(post),
-        platform:post.platform || "",
-        imageDirection:queueImageDirection(post),
-        prompt,
-        createdAt:new Date().toISOString()
-      };
-      const result = await api("/api/posts/update", {
-        method:"POST",
-        body:JSON.stringify({
-          id,
-          patch:{
-            imagePrompt:prompt,
-            imageStatus:"draft_generated",
-            queueImageDraft:draft
-          }
-        })
-      });
-      state = result.state;
+      // This button RENDERS — it calls the same /api/images/generate pipeline as the
+      // production pages. The old version only saved a prompt + "draft_generated" flag,
+      // which implied an image existed when nothing was ever rendered.
+      generatingImages.add(id);
       render();
-      toast("Image draft prepared. Nothing was posted.");
+      toast("Rendering image...");
+      const prompt = queueImagePromptForPost(post);
+      let patch;
+      try {
+        const result = await api("/api/images/generate", { method:"POST", body:JSON.stringify({ postId:id }), timeoutMs:120000 });
+        if (result.state) state = result.state;
+        if (result.image) {
+          state.postImages = [
+            result.image,
+            ...(state.postImages || []).filter(image => image.id !== result.image.id && image.postId !== id)
+          ];
+        }
+        const image = result.image || imageForPost(id);
+        const rendered = image?.generationStatus === "generated" && image?.imageUrl;
+        const qaFailed = image?.generationStatus === "qa_failed";
+        patch = rendered
+          ? { imagePrompt:prompt, imageStatus:"draft_generated", queueImageDraft:{
+              status:"Draft rendered",
+              headline:post.headline || post.title || "",
+              overlayText:queueOverlayText(post),
+              platform:post.platform || "",
+              imageDirection:queueImageDirection(post),
+              prompt,
+              imageUrl:image.imageUrl,
+              renderedAt:new Date().toISOString()
+            } }
+          : qaFailed
+          ? { imagePrompt:prompt, imageStatus:"qa_failed", queueImageDraft:{
+              status:"QA failed",
+              qaFailures:(image?.renderQa?.hardFails || []).map(item => [item.rule, item.detail].filter(Boolean).join(": ")),
+              error:image?.generationError || "Render QA failed.",
+              overlayText:queueOverlayText(post),
+              prompt,
+              imageUrl:image?.imageUrl || "",
+              failedAt:new Date().toISOString()
+            } }
+          : { imagePrompt:prompt, imageStatus:"render_failed", queueImageDraft:{
+              status:"Render failed",
+              error:image?.generationError || result.error || result.message || "Image render failed.",
+              overlayText:queueOverlayText(post),
+              prompt,
+              failedAt:new Date().toISOString()
+            } };
+        toast(rendered
+          ? "Image rendered. Review the draft below. Nothing was posted."
+          : qaFailed
+          ? "QA failed: " + (image?.generationError || "the render did not pass guidelines QA")
+          : "Render failed: " + (image?.generationError || result.error || result.message || "unknown error"));
+      } catch (error) {
+        console.error(error);
+        patch = { imageStatus:"render_failed", queueImageDraft:{
+          status:"Render failed",
+          error:String(error?.message || "Image render request failed."),
+          failedAt:new Date().toISOString()
+        } };
+        toast("Render failed: " + String(error?.message || "request error"));
+      }
+      try {
+        const updated = await api("/api/posts/update", { method:"POST", body:JSON.stringify({ id, patch }) });
+        state = updated.state;
+      } catch (error) {
+        console.error(error);
+        toast("Could not save the render result to the post.");
+      } finally {
+        generatingImages.delete(id);
+        render();
+      }
     }
 
     async function markQueueImageReady(id) {
@@ -38558,6 +39190,28 @@ async function handleRequest(request, response) {
       const post = currentState.posts.find((item) => item.id === id);
       if (post && !post.copyReviewed) {
         sendJson(response, { error: "Review copy before approving this post." }, 400);
+        return;
+      }
+      if (post) {
+        // Guidelines hard-fail gate (§2 voice, §3 dignity) on the direct-approve path.
+        // Gate the post as patched, so an edit that fixes the violation approves cleanly.
+        const guidelinesGate = socialGuidelinesGate({ ...post, ...patch });
+        if (!guidelinesGate.passed) {
+          sendJson(response, {
+            error: `Guidelines hard fail - cannot approve: ${guidelinesGate.hardFails.map((item) => item.detail).join(" | ")}`,
+            guidelinesHardFails: guidelinesGate.hardFails
+          }, 400);
+          return;
+        }
+      }
+    }
+    if (patch?.imageStatus === "ready") {
+      // Guidelines §6: render QA is enforced before "image ready". A QA-failed render can
+      // never be promoted to ready; it has to be fixed and re-rendered.
+      const currentState = await store.readState();
+      const latestImage = imageForPostFromState(currentState, id);
+      if (latestImage && (latestImage.generationStatus === "qa_failed" || latestImage.renderQa?.passed === false)) {
+        sendJson(response, { error: "Render QA failed for the latest image. Fix the QA failures and re-render before marking the image ready." }, 400);
         return;
       }
     }

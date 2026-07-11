@@ -42,6 +42,14 @@ for (let i = 0; i < lines.length; i++) {
   if (/"[^"]*(?<!\\)\\n[^"]*"|'[^']*(?<!\\)\\n[^']*'/.test(lines[i])) {
     badEscapes.push(`htmlShell+${i + 1} (\\n in client string): ${lines[i].trim().slice(0, 100)}`);
   }
+  // Regex character-class escapes (\s \d \w \b ...) written with a single backslash are
+  // consumed by the template: the browser receives /s+/ instead of /\s+/ — a regex that
+  // still PARSES (so the live-parse layer passes) but silently eats literal characters.
+  // Regression: the Review Desk overlay text stripped every "s" from captions because
+  // queueOverlayText shipped .replace(/s+/g, " "). Write \\s to emit \s for the browser.
+  if (/(?<!\\)\\[sSdDwWbB](?![a-zA-Z])/.test(lines[i])) {
+    badEscapes.push(`htmlShell+${i + 1} (template-consumed regex escape): ${lines[i].trim().slice(0, 100)}`);
+  }
 }
 assert.equal(badEscapes.length, 0,
   `Client code inside the shell template uses single-backslash escapes the template will consume.\nWrite \\\\" to emit \\" for the browser.\n${badEscapes.join("\n")}`);
