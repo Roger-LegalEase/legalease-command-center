@@ -39,7 +39,10 @@ const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
     STORAGE_BACKEND:"json",
     COMMAND_CENTER_DATA_PATH:dataPath,
     COMMAND_CENTER_SEED_PATH:seedPath,
-    NODE_DISABLE_COMPILE_CACHE:"1"
+    NODE_DISABLE_COMPILE_CACHE:"1",
+    // Le-E must never reach a real model from a test run (.env.local leaks into spawned servers).
+    ANTHROPIC_API_KEY:"",
+    OPENAI_API_KEY:""
   },
   stdio: ["ignore", "pipe", "pipe"]
 });
@@ -87,6 +90,7 @@ try {
   const leeStatusJson = await leeStatus.json();
   assert.equal(leeStatusJson.status.safeModeActive, true);
   assert.equal(leeStatusJson.status.liveGatesCount, 0);
+  assert.equal(leeStatusJson.status.modelConfigured, false, "test server must not see a real model key");
 
   const leeChat = await fetch(`${baseUrl}/api/lee/chat`, {
     method:"POST",
@@ -95,8 +99,17 @@ try {
   });
   assert.equal(leeChat.status, 200, "Le-E chat should work with correct owner token");
   const leeChatJson = await leeChat.json();
-  assert.match(leeChatJson.assistant.content, /What matters/i);
+  assert.equal(leeChatJson.messages.length, 2, "chat returns the user/assistant delta");
+  assert.match(leeChatJson.messages[1].content, /no model key is configured/i, "no-key fallback is honest, never a canned fake answer");
+  assert.ok(!leeChatJson.state, "chat response must not echo the full state");
   assert.ok(!JSON.stringify(leeChatJson).includes(ownerToken), "Le-E responses must not expose owner token");
+
+  const leeChatNoToken = await fetch(`${baseUrl}/api/lee/chat`, {
+    method:"POST",
+    headers:{ "content-type":"application/json" },
+    body:JSON.stringify({ message:"hello" })
+  });
+  assert.equal(leeChatNoToken.status, 401, "Le-E chat must reject anonymous callers");
 
   const diagnosticsCorrect = await fetch(`${baseUrl}/api/auth/diagnostics`, {
     headers:{ authorization:"Bearer " + ownerToken }
