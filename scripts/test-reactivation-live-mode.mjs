@@ -270,7 +270,7 @@ console.log("Reactivation live-mode tests");
   tripped.reactivationEvents = Array.from({ length: 7 }, (_, i) => ({
     id: `e${i}`, contact_id: `react-live-${i}`, email: `person${i}@gmail.com`, type: "bounce", created_at: "2026-06-30T16:00:00Z"
   }));
-  assert.equal(evaluateThresholds(tripped).tripped, true, "fixture trips the hard-bounce threshold");
+  assert.equal(evaluateThresholds(tripped, undefined, { now: IN_WINDOW }).tripped, true, "fixture trips the hard-bounce threshold");
   const store = memStore(tripped);
   await runHeartbeat({ store, registry: registryWith(spy, outreachSpy), env: ENV, now: IN_WINDOW });
   assert.equal(spy.calls.length, 0, "zero send attempts after a threshold trip");

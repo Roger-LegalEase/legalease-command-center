@@ -225,6 +225,85 @@ ok("per-contact pause signals (replied/...) stop the cadence");
   assert(pausedAct.results.some((r) => r.status === "paused"), "act reports the pause");
   ok("stop-thresholds trip + auto-pause; below min-sample never trips");
 
+  // ---- 7b. Rolling threshold basis: distinct identities, aging, self-heal, bounded override ----
+  {
+    const NOW = new Date("2026-07-13T14:00:00Z");
+    const daysAgo = (n) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000).toISOString();
+    const sends = (n, agedDays) => Array.from({ length: n }, (_, i) => ({
+      status: "sent", contact_id: `s${agedDays}-${i}`, created_at: daysAgo(agedDays)
+    }));
+    const spamFrom = (email, n, agedDays) => Array.from({ length: n }, (_, i) => ({
+      id: `sp-${email}-${i}`, type: "spamreport", email, created_at: daysAgo(agedDays)
+    }));
+    const cfg = reactivationCampaignOf({});
+
+    // Duplicate webhook rows from ONE complainant count once: 3 events, 1 person, 2000 recent
+    // sends => 0.05% < 0.100%, NOT tripped — under event-counting this was 0.15% and tripped.
+    const dup = evaluateThresholds({
+      reactivationAttempts: sends(2000, 2),
+      reactivationEvents: spamFrom("dup@example.com", 3, 2)
+    }, cfg, { now: NOW });
+    assert.equal(dup.rates.complaints, 1, "3 spamreport events from one email count as 1 complainant");
+    assert.equal(dup.tripped, false, "1 distinct complainant / 2000 sends = 0.05% does not trip 0.100%");
+
+    // Same person twice at exactly the limit still trips: 1/1000 = 0.100% >= 0.100%.
+    const edge = evaluateThresholds({
+      reactivationAttempts: sends(1000, 2),
+      reactivationEvents: spamFrom("edge@example.com", 2, 2)
+    }, cfg, { now: NOW });
+    assert.equal(edge.tripped, true, "exactly 0.100% still trips (>= comparison unchanged)");
+
+    // Aging: the SAME complaint outside the 14-day window no longer gates the campaign.
+    const aged = evaluateThresholds({
+      reactivationAttempts: sends(557, 2),
+      reactivationEvents: spamFrom("old@example.com", 2, 20)
+    }, cfg, { now: NOW });
+    assert.equal(aged.rates.complaints, 0, "a 20-day-old complaint is outside the 14-day window");
+    assert.equal(aged.tripped, false, "aged-out complaint no longer trips");
+    const recent = evaluateThresholds({
+      reactivationAttempts: sends(557, 2),
+      reactivationEvents: spamFrom("new@example.com", 2, 2)
+    }, cfg, { now: NOW });
+    assert.equal(recent.tripped, true, "a recent complaint still trips at 1/557 = 0.18% (prod shape)");
+
+    // Self-heal: when the sends age out too, the window is below sample => no trip, no deadlock.
+    const healed = evaluateThresholds({
+      reactivationAttempts: sends(557, 20),
+      reactivationEvents: spamFrom("old@example.com", 2, 20)
+    }, cfg, { now: NOW });
+    assert.equal(healed.belowSample, true, "aged-out sends drop the window below min sample");
+    assert.equal(healed.tripped, false, "below-sample window never trips — the deadlock is gone");
+
+    // hard_bounce and unsubscribe share the identical rolling+distinct basis.
+    const bounceEvents = (email, n, aged) => Array.from({ length: n }, (_, i) => ({ id: `b-${email}-${i}`, type: "bounce", email, created_at: daysAgo(aged) }));
+    const bAged = evaluateThresholds({ reactivationAttempts: sends(500, 2), reactivationEvents: bounceEvents("b@example.com", 30, 20) }, cfg, { now: NOW });
+    assert.equal(bAged.rates.hardBounces, 0, "aged bounces leave the window");
+    const bDup = evaluateThresholds({ reactivationAttempts: sends(500, 2), reactivationEvents: bounceEvents("b@example.com", 30, 2) }, cfg, { now: NOW });
+    assert.equal(bDup.rates.hardBounces, 1, "30 bounce events from one email = 1 distinct bouncer");
+    const uDup = evaluateThresholds({ reactivationAttempts: sends(500, 2), reactivationEvents: Array.from({ length: 40 }, (_, i) => ({ id: `u${i}`, type: "unsubscribe", email: "u@example.com", created_at: daysAgo(2) })) }, cfg, { now: NOW });
+    assert.equal(uDup.rates.unsubs, 1, "unsubscribe events dedupe by identity too");
+
+    // Undated rows count as IN window: a data gap widens the gate, never hides a complaint.
+    const undated = evaluateThresholds({
+      reactivationAttempts: sends(557, 2),
+      reactivationEvents: [{ id: "nd", type: "spamreport", email: "nodate@example.com" }]
+    }, cfg, { now: NOW });
+    assert.equal(undated.rates.complaints, 1, "an undated complaint still counts");
+    assert.equal(undated.tripped, true, "an undated complaint still gates");
+
+    // Bounded override: honored only until expiresAt, then base thresholds re-apply on their own.
+    const trippedShape = { reactivationAttempts: sends(557, 2), reactivationEvents: spamFrom("x@example.com", 1, 2) };
+    const withOverride = (expiresAt) => reactivationCampaignOf({ reactivationCampaign: { thresholdOverride: { spam_complaint: 0.0025, expiresAt } } });
+    assert.equal(evaluateThresholds(trippedShape, withOverride(daysAgo(-5)), { now: NOW }).tripped, false, "active override (0.25%) clears 0.18%");
+    assert.equal(evaluateThresholds(trippedShape, withOverride(daysAgo(-5)), { now: NOW }).overrideActive, true, "override reported while active");
+    assert.equal(evaluateThresholds(trippedShape, withOverride(daysAgo(1)), { now: NOW }).tripped, true, "expired override auto-reverts to 0.100%");
+    // An override with NO expiry is ignored outright — open-ended bumps are not a thing.
+    const openEnded = reactivationCampaignOf({ reactivationCampaign: { thresholdOverride: { spam_complaint: 0.5 } } });
+    assert.equal(evaluateThresholds(trippedShape, openEnded, { now: NOW }).tripped, true, "override without expiresAt is ignored");
+
+    ok("rolling threshold basis: distinct people, aging, below-sample self-heal, bounded override only");
+  }
+
   // ---- 9. applyReactivationEvent: hard signals suppress + pause; metrics -----
   const evState = rel.state;
   const target = evState.reactivationContacts.find((c) => c.wave === 1);
