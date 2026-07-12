@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const server = readFileSync(join(here, "preview-server.mjs"), "utf8");
 
-assert.match(server, /href="#le-e" data-nav-section="lee">Le-E<\/a>/, "Le-E assistant should be exposed as a top nav item.");
+// Phase N: Le-E left the top nav but must stay reachable everywhere (Roger requirement):
+// the persistent bubble renders on every page and the chat page is indexed under More.
+assert.match(server, /\$\{leeBubbleHtml\(\)\}/, "Le-E bubble should render on every page.");
+assert.match(server, /\["Le-E chat page", "lee"\]/, "Le-E chat page should be indexed in the More directory.");
 assert.match(server, /function leePageHtml\(pageClass\)/, "Le-E route should render a chat page.");
 assert.match(server, /function leeBubbleHtml\(\)/, "Le-E should render a persistent chat bubble.");
 assert.match(server, /class="lee-bubble-wrap"/, "Le-E v3.1 pill wrapper should be present.");

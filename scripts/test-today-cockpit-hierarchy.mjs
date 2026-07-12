@@ -182,9 +182,10 @@ check("money extras stay honest about unfetched numbers", () => {
   assert(counters.includes("stripeRevenue.fetchedAt"), "sync time comes from the real snapshot");
 });
 
-check("#daily-run still renders and the Daily Run button remains", () => {
-  assert(today.includes("location.hash='daily-run'"), "Open Daily Run button present");
-  assert(source.includes("function todaySinglePaneHtml"), "daily-run pane renderer exists");
+check("header primary action works the queue; #daily-run still renders", () => {
+  assert(today.includes("location.hash='decisions'"), "Work the queue button present (Phase N primary action)");
+  assert(today.includes("Work the queue"), "primary action is labelled in plain language");
+  assert(source.includes("function todaySinglePaneHtml"), "daily-run pane renderer exists (page still reachable via More)");
 });
 
 console.log(`\ntest-today-cockpit-hierarchy: all ${passed} checks passed.`);

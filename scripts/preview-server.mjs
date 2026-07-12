@@ -15893,6 +15893,18 @@ function htmlShell() {
     .ck-sheet h3 { color:var(--ck-ink); }
     .ck-eyebrow { font-size:13px; font-weight:750; letter-spacing:.08em; text-transform:uppercase; color:var(--ck-muted); margin-bottom:6px; }
     .ck-sub { color:var(--ck-ink2); font-size:16px; margin:6px 0 0; max-width:68ch; }
+    .ck-truth { font-size:14px; font-weight:800; margin:8px 0 0; display:flex; align-items:center; gap:10px; }
+    .ck-truth.ok { color:var(--ck-good); }
+    .ck-truth.bad { color:var(--ck-bad); }
+    .ck-truth button { min-height:26px; font-size:11px; padding:0 9px; }
+    .ck-overnight-row { display:flex; align-items:center; gap:8px; width:100%; text-align:left; background:none; border:0; border-top:1px solid var(--ck-line, #e2e8e6); padding:9px 2px; font:inherit; font-size:14px; color:var(--ck-ink, inherit); cursor:pointer; }
+    .ck-overnight-row:first-child { border-top:0; }
+    .ck-overnight-row:hover { color:var(--ck-teal); }
+    .ck-overnight-row .go { margin-left:auto; color:var(--ck-teal); font-weight:850; font-size:12px; white-space:nowrap; }
+    .more-dir-groups { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:18px; }
+    .more-dir-group h3 { margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+    .more-dir-links { display:flex; flex-direction:column; gap:6px; }
+    .more-dir-link { text-align:left; justify-content:flex-start; font-weight:750; }
     .ck-sub b { color:var(--ck-ink); font-weight:650; }
     .ck-topbar { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; justify-content:space-between; }
     .ck-topbar .ck-when { text-align:right; }
@@ -16973,16 +16985,18 @@ function htmlShell() {
 <body>
   <div class="shell">
     <header class="app-topbar">
-      <a class="brand-lockup" href="#cockpit"><span>LegalEase</span><strong>Command Center</strong></a>
+      <a class="brand-lockup" href="#today"><span>LegalEase</span><strong>Command Center</strong></a>
+      <!-- Operator-mode navigation (usability overhaul Phase N, approved 2026-07-12): six
+           items shaped around Roger's actual day. Every legacy hash still resolves via
+           routeAliases; everything not in this bar lives under More. Le-E stays reachable
+           everywhere through the floating bubble on every page (leeBubbleHtml). -->
       <nav class="top-nav" aria-label="Primary">
-        <a class="nav-top-link" href="#cockpit" data-nav-section="cockpit">Cockpit</a>
         <a class="nav-top-link" href="#today" data-nav-section="today">Today</a>
-        <a class="nav-top-link" href="#growth" data-nav-section="growth">Growth</a>
-        <a class="nav-top-link" href="#partners" data-nav-section="partners">Partners</a>
-        <a class="nav-top-link" href="#production" data-nav-section="production">Production</a>
-        <a class="nav-top-link" href="#proof" data-nav-section="proof">Proof</a>
-        <a class="nav-top-link" href="#settings" data-nav-section="settings">Settings &amp; Health</a>
-        <a class="nav-top-link" href="#le-e" data-nav-section="lee">Le-E</a>
+        <a class="nav-top-link" href="#decisions" data-nav-section="queue">Queue</a>
+        <a class="nav-top-link" href="#campaigns" data-nav-section="campaigns">Campaigns</a>
+        <a class="nav-top-link" href="#queue" data-nav-section="review-desk">Review Desk</a>
+        <a class="nav-top-link" href="#reports" data-nav-section="reports">Reports</a>
+        <a class="nav-top-link" href="#more" data-nav-section="more">More</a>
       </nav>
     </header>
     <div>
@@ -27208,6 +27222,28 @@ function htmlShell() {
         : \`Campaign sending is \${v && v.gates && v.gates.sendingOn ? "on" : "off"}\${versionTruth && versionTruth.severity === "ok" ? " and production is current" : ""}.\`;
       return \`<p class="ck-sub">\${bits.join("; ")}. \${campaignClause}</p>\`;
     }
+    // One sentence of system truth at the top of Today (Phase N). Honest by construction:
+    // green only when the checked signals are actually good; anything unverified says so;
+    // a problem becomes one plain sentence plus the single button that opens it.
+    function ckSystemTruthLineHtml(ctx) {
+      const issues = [];
+      if (supabaseHealth && supabaseHealth.configured && !supabaseHealth.connected) issues.push(["The data store connection is down.", "os-health"]);
+      if (versionTruth && versionTruth.severity === "alert") issues.push(["Production is running old code.", "os-health"]);
+      if ((ctx.v && ctx.v.thresholds && ctx.v.thresholds.tripped) || (ctx.gm && ctx.gm.campaignSafe === false)) issues.push(["A campaign safety limit tripped.", "campaigns"]);
+      if (issues.length) {
+        const first = issues[0];
+        return \`<p class="ck-truth bad">\${esc(first[0])} <button type="button" onclick="location.hash='\${esc(first[1])}'">Open it</button>\${issues.length > 1 ? \`<span>+ \${issues.length - 1} more on the watchlist</span>\` : ""}</p>\`;
+      }
+      if (!todaySummary || !supabaseHealth) return '<p class="ck-truth">Checking systems...</p>';
+      const lastHeartbeat = (state && Array.isArray(state.heartbeatRuns) && state.heartbeatRuns[0]) || null;
+      const heartbeatStamp = lastHeartbeat ? String(lastHeartbeat.finishedAt || lastHeartbeat.finished_at || lastHeartbeat.startedAt || lastHeartbeat.started_at || "") : "";
+      let heartbeatNote = "";
+      if (heartbeatStamp) {
+        const parsed = new Date(heartbeatStamp);
+        if (!Number.isNaN(parsed.getTime())) heartbeatNote = " Heartbeat ran at " + parsed.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) + ".";
+      }
+      return \`<p class="ck-truth ok">All systems normal.\${esc(heartbeatNote)} Nothing is on fire.</p>\`;
+    }
     function ckDeployNoteHtml() {
       if (!versionTruth) return '<div class="s">Deploy state unverified</div>';
       if (versionTruth.severity === "ok") return '<div class="s">Production is current</div>';
@@ -27856,12 +27892,13 @@ function htmlShell() {
           <div>
             <div class="ck-eyebrow">Today at LegalEase</div>
             <h1>\${esc(ckGreeting())}, Roger</h1>
+            \${ckSystemTruthLineHtml(ctx)}
             \${ckSummaryLineHtml(v, needsRoger.length)}
           </div>
           <div class="ck-when">
             <div class="d">\${esc(cockpitLongDate())}</div>
             \${ckDeployNoteHtml()}
-            <button class="ck-run-btn" type="button" onclick="location.hash='daily-run'">Open Daily Run <span class="count">\${esc(String(needsRoger.length))}</span></button>
+            <button class="ck-run-btn" type="button" onclick="location.hash='decisions'">Work the queue <span class="count">\${esc(String(needsRoger.length))}</span></button>
           </div>
         </div>
         \${ckHeaderPillsHtml(v, needsRoger.length, watchlist.length, monitors.length)}\`;
@@ -27919,9 +27956,11 @@ function htmlShell() {
 
     // ---- Module body helpers used only by the registry --------------------------------
     function ckNeedsRogerModuleHtml(ctx) {
-      const seeAll = '<div class="ck-linkbtns" style="margin-top:14px;"><button class="ck-linkbtn" type="button" onclick="location.hash=\\'decisions\\'">See all decisions</button></div>';
+      // Phase N: top 3 inline, one primary action for the rest. The full stack lives on the
+      // Queue page (#decisions) — including prospect approvals, which gate B2 sends.
+      const seeAll = \`<div class="ck-linkbtns" style="margin-top:14px;"><button class="ck-linkbtn" type="button" onclick="location.hash='decisions'">Work the queue\${ctx.needsRoger.length > 3 ? " (" + (ctx.needsRoger.length - 3) + " more)" : ""}</button></div>\`;
       return ctx.needsRoger.length
-        ? \`<div class="ck-approve-grid">\${ctx.needsRoger.map(todayNeedsRogerCardHtml).join("")}</div>\${seeAll}\`
+        ? \`<div class="ck-approve-grid">\${ctx.needsRoger.slice(0, 3).map(todayNeedsRogerCardHtml).join("")}</div>\${seeAll}\`
         : \`<div class="ck-card"><div class="ck-empty"><b style="color:var(--ck-teal);">Nothing needs you right now.</b> Decisions appear here the moment one is waiting.</div>\${seeAll}</div>\`;
     }
     function ckMoneyModuleHtml(ctx) {
@@ -27958,17 +27997,67 @@ function htmlShell() {
       return \`<div class="ck-rows">\${ctx.drafts.map(d => ckListRowHtml("doc", d.title, friendlyAgentName(d.sourceEngine), "", "small")).join("")}</div>\`;
     }
 
+    // ---- Phase N Today modules: Overnight + Your outputs -------------------------------
+    // Overnight: plain sentences about what actually arrived while Roger was away, each one
+    // a link that lands on the thing it describes. Honest by construction: a line only
+    // renders when a real record with a timestamp (or a live summary count) backs it.
+    function ckWithin24h(stamp) {
+      const t = new Date(String(stamp || "")).getTime();
+      return Number.isFinite(t) && Date.now() - t < 86400000 && Date.now() - t > -60000;
+    }
+    function ckOvernightRow(sentence, hash) {
+      return \`<button class="ck-overnight-row" type="button" onclick="location.hash='\${esc(hash)}'"><span>\${esc(sentence)}</span><span class="go">Open</span></button>\`;
+    }
+    function ckOvernightModuleHtml(ctx) {
+      const rows = [];
+      const freshDecisions = ctx.needsRoger.filter(item => ckWithin24h(item.createdAt)).length;
+      if (freshDecisions) rows.push(ckOvernightRow(freshDecisions + (freshDecisions === 1 ? " new decision arrived and needs you." : " new decisions arrived and need you."), "decisions"));
+      if (ctx.drafts.length) rows.push(ckOvernightRow(ctx.drafts.length + (ctx.drafts.length === 1 ? " social draft is ready for review." : " social drafts are ready for review."), "queue"));
+      const freshReplies = (state.growthInbox || []).filter(item => ckWithin24h(item.createdAt || item.receivedAt)).length;
+      if (freshReplies) rows.push(ckOvernightRow(freshReplies + (freshReplies === 1 ? " reply came in." : " replies came in."), "growth-inbox"));
+      const freshPosted = (state.posts || []).filter(post => ["posted", "manually_posted"].includes(String(post.status || "")) && ckWithin24h(post.postedAt || post.updatedAt)).length;
+      if (freshPosted) rows.push(ckOvernightRow(freshPosted + (freshPosted === 1 ? " post went out." : " posts went out."), "posted"));
+      const freshReport = (state.reports || []).find(report => ckWithin24h(report.createdAt || report.generatedAt));
+      if (freshReport) rows.push(ckOvernightRow('The report "' + String(freshReport.title || "Weekly report").slice(0, 60) + '" was generated.', "reports"));
+      const briefToday = (state.morningBriefs || []).find(brief => ckWithin24h(brief.createdAt || brief.date));
+      if (briefToday) rows.push(ckOvernightRow("Your morning brief is ready.", "morning-brief"));
+      if (!rows.length) return '<div class="ck-card"><div class="ck-empty">A quiet night. Nothing new arrived while you were away.</div></div>';
+      return \`<div class="ck-card"><div class="ck-module-body">\${rows.join("")}</div></div>\`;
+    }
+    // Your outputs: everything the system produced recently, one click to the artifact
+    // surface (Phase O upgrades these to direct deep links).
+    function ckOutputsModuleHtml(ctx) {
+      const rows = [];
+      ctx.drafts.slice(0, 3).forEach(d => rows.push(ckOvernightRow('Draft: "' + String(d.title || "Untitled").slice(0, 60) + '"', "queue")));
+      const latestReport = (state.reports || [])[0];
+      if (latestReport) rows.push(ckOvernightRow('Report: "' + String(latestReport.title || "Weekly report").slice(0, 60) + '"', "reports"));
+      const latestBrief = (state.morningBriefs || [])[0];
+      if (latestBrief && ckWithin24h(latestBrief.createdAt || latestBrief.date)) rows.push(ckOvernightRow("Today's morning brief", "morning-brief"));
+      const recentPosts = (state.posts || []).filter(post => ["posted", "manually_posted"].includes(String(post.status || "")) && ckWithin24h(post.postedAt || post.updatedAt));
+      if (recentPosts.length) rows.push(ckOvernightRow(recentPosts.length + (recentPosts.length === 1 ? " post published in the last day" : " posts published in the last day"), "posted"));
+      if (!rows.length) return '<div class="ck-card"><div class="ck-empty">No new outputs yet today. Drafts, reports, and briefs appear here as the system produces them.</div></div>';
+      return \`<div class="ck-card"><div class="ck-module-body">\${rows.join("")}</div></div>\`;
+    }
+
     // ---- Module registry ---------------------------------------------------------------
     // Every dashboard module declares its layout metadata here: id, title, size
     // (full=12 / wide=8 / half=6 / third=4 / quarter=3 columns), order, optional
     // minHeight/maxHeight, and a data status (ready / empty / not_connected / error /
     // hidden). The grid packs modules densely; sections collapse when nothing renders.
     const CK_DASHBOARD_SECTIONS = [
-      { id: "scoreboard", title: "Company scoreboard", hint: "The whole business first. Campaign details live further down." },
+      // Phase N order = the order of Roger's morning: what arrived, what needs him, what got
+      // produced — then the scoreboard and the operational detail.
+      { id: "overnight", title: "Overnight", hint: "What happened while you were away. Every line opens the thing itself." },
       { id: "decisions", title: "Needs Roger", hint: "Only decisions that need you. Everything else runs on its own." },
+      { id: "outputs", title: "Your outputs", hint: "What the system produced in the last day." },
+      { id: "scoreboard", title: "Company scoreboard", hint: "The whole business first. Campaign details live further down." },
       { id: "operations" }
     ];
     const CK_DASHBOARD_MODULES = [
+      { id: "overnight", section: "overnight", size: "full", order: 10, frameless: true,
+        render: (ctx) => ckOvernightModuleHtml(ctx) },
+      { id: "outputs", section: "outputs", size: "full", order: 10, frameless: true,
+        render: (ctx) => ckOutputsModuleHtml(ctx) },
       { id: "company-kpis", section: "scoreboard", size: "full", order: 10, frameless: true,
         render: () => ckScoreboardHtml() },
       { id: "conversion-funnel", section: "scoreboard", size: "full", order: 20, title: "Conversion funnel",
@@ -30690,6 +30779,38 @@ function htmlShell() {
       </section>\`;
     }
 
+    // Phase N: the single grouped, searchable index of every page that is no longer in the
+    // six-item top nav. Nothing was deleted — every legacy hash still resolves — this is
+    // where you find it. The filter is plain substring matching on label + group.
+    const MORE_DIRECTORY_GROUPS = [
+      ["Daily rituals", [["Focus mode", "focus"], ["Daily Run", "daily-run"], ["Morning Brief", "morning-brief"], ["Evening Reflection", "evening-reflection"], ["Daily Closeout", "daily-closeout"], ["Tasks", "tasks"], ["Capture Inbox", "capture-inbox"]]],
+      ["Le-E assistant", [["Le-E chat page", "lee"]]],
+      ["Growth", [["Growth workspace", "growth"], ["Reply Inbox", "growth-inbox"], ["Content Bank", "content-bank"], ["Audience Sources", "sources"], ["Funnel", "funnel"], ["Upload a list", "upload"], ["Contacts", "contacts"], ["Revenue", "revenue"]]],
+      ["Partners", [["Partner hub", "partner-hub"], ["Partners & revenue", "partners"], ["Programs", "partner-programs"], ["Partner pages", "partner-pages"], ["Dashboards", "partner-dashboards"], ["Partner reports", "partner-reports"], ["Proposals", "partner-proposals"], ["RCAP workspace", "rcap"], ["Pilots", "pilots"], ["Milestones", "milestones"], ["Prospects", "prospects"]]],
+      ["Production", [["Production pipeline", "production"], ["Posted archive", "posted"], ["Asset library", "assets"], ["Autonomy", "autonomy"], ["Connector inbox", "automation"], ["Co-branded page review", "pages"]]],
+      ["Proof & compliance", [["Proof workspace", "proof"], ["Evidence Room", "evidence-room"], ["Data Room", "dataroom"], ["Metrics", "metrics"], ["SOC 2", "soc2"], ["Incidents", "soc2-incidents"]]],
+      ["People & inboxes", [["Meetings", "meetings"], ["Support", "support"], ["Alerts", "alerts"], ["Conversation notes", "conversation-notes"], ["Operating memory", "operating-memory"]]],
+      ["System", [["Settings", "settings"], ["OS Health / App Status", "os-health"], ["Data Integrity", "data-integrity"], ["Smoke Test", "smoke-test"], ["Operator Search", "operator-search"], ["Operator Manual", "operator-manual"], ["Team Roles", "roles"], ["Handoff contract", "handoff-contract"], ["Safe Mode", "safe-mode"]]]
+    ];
+    function filterMoreDirectory(query) {
+      const q = String(query || "").toLowerCase().trim();
+      document.querySelectorAll("#more-directory .more-dir-link").forEach(link => {
+        const hay = (link.getAttribute("data-search") || "").toLowerCase();
+        link.style.display = !q || hay.indexOf(q) !== -1 ? "" : "none";
+      });
+      document.querySelectorAll("#more-directory .more-dir-group").forEach(group => {
+        const visible = [...group.querySelectorAll(".more-dir-link")].some(link => link.style.display !== "none");
+        group.style.display = visible ? "" : "none";
+      });
+    }
+    function moreDirectoryHtml() {
+      return \`<section class="more-card" id="more-directory">
+        <h2>Find anything</h2>
+        <input type="search" placeholder="Type to filter: campaigns, SOC 2, prospects..." oninput="filterMoreDirectory(this.value)" style="width:100%; margin:10px 0 14px; border:1px solid var(--line); border-radius:8px; min-height:38px; padding:0 12px; font:inherit;">
+        <div class="more-dir-groups">\${MORE_DIRECTORY_GROUPS.map(([group, links]) => \`<div class="more-dir-group"><h3>\${esc(group)}</h3><div class="more-dir-links">\${links.map(([label, hash]) => \`<button class="more-dir-link" type="button" data-search="\${esc(group + " " + label)}" onclick="location.hash='\${esc(hash)}'">\${esc(label)}</button>\`).join("")}</div></div>\`).join("")}</div>
+      </section>\`;
+    }
+
     function moreWorkspaceHtml(pageClass) {
       const summaryCards = [
         ["App Status", "Protected", "Check whether the app is healthy."],
@@ -30780,7 +30901,7 @@ function htmlShell() {
           <div>
             <div class="eyebrow">Utility center</div>
             <h1>More</h1>
-            <p>Settings, recovery, support tools, and focused work views.</p>
+            <p>Everything that is not Today, Queue, Campaigns, Review Desk, or Reports lives here. Old links keep working.</p>
             <div class="more-pills"><span class="more-pill">\${esc(publishingPill())}</span><span class="more-pill">\${esc(publishingPostureRow()[1])}</span></div>
           </div>
           <div class="more-actions">
@@ -30789,6 +30910,8 @@ function htmlShell() {
             <button type="button" onclick="location.hash='guide'">Open Guide</button>
           </div>
         </section>
+
+        \${moreDirectoryHtml()}
 
         <section class="more-card">
           <div class="more-card-head"><div><h2>Utility Summary</h2><small>Support tools without mixing them into daily work</small></div></div>
@@ -30882,7 +31005,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const pathRoute = String(location.pathname || "/").replace(/^\\/+|\\/+$/g, "");
       const requestedPage = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#cockpit")).replace("#", "");
-      const routeAliases = { overview:"today", command:"growth", "le-e":"lee", partner:"partners", "partner-hub":"partners", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", health:"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings", replies:"growth-inbox", "inbox-replies":"growth-inbox", lists:"contacts", contact:"contacts", people:"contacts", "upload-list":"upload", "list-upload":"upload", import:"upload", "import-list":"upload", campaign:"campaigns", "campaign-control":"campaigns", "campaigns-control":"campaigns", prospect:"prospects", prospects:"prospects", "rcap-prospects":"prospects", "rcap-pipeline":"prospects", money:"revenue", payments:"revenue", stripe:"revenue", calendar:"meetings", meeting:"meetings", "meeting-prep":"meetings", "support-inbox":"support", notifications:"alerts", "alert-center":"alerts", "partner-pages-review":"pages", "page-review":"pages", "co-branded-pages":"pages", system:"os-health" };
+      const routeAliases = { overview:"today", cockpit:"today", command:"growth", "le-e":"lee", partner:"partners", "partner-hub":"partners", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", health:"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings", replies:"growth-inbox", "inbox-replies":"growth-inbox", lists:"contacts", contact:"contacts", people:"contacts", "upload-list":"upload", "list-upload":"upload", import:"upload", "import-list":"upload", campaign:"campaigns", "campaign-control":"campaigns", "campaigns-control":"campaigns", prospect:"prospects", prospects:"prospects", "rcap-prospects":"prospects", "rcap-pipeline":"prospects", money:"revenue", payments:"revenue", stripe:"revenue", calendar:"meetings", meeting:"meetings", "meeting-prep":"meetings", "support-inbox":"support", notifications:"alerts", "alert-center":"alerts", "partner-pages-review":"pages", "page-review":"pages", "co-branded-pages":"pages", system:"os-health" };
       const normalizedPage = routeAliases[requestedPage] || requestedPage;
       const knownPages = ["cockpit", "upload", "contacts", "prospects", "revenue", "meetings", "support", "alerts", "pages", "today", "overview", "daily-run", "focus", "decisions", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "today";
@@ -31124,15 +31247,14 @@ function htmlShell() {
     }
 
     function navSectionForPage(pageId = "today") {
-      if (pageId === "cockpit") return "cockpit";
-      if (["today", "overview", "focus", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout"].includes(pageId)) return "today";
-      if (["growth", "growth-inbox", "capture-inbox", "campaigns", "funnel", "content-bank", "sources"].includes(pageId)) return "growth";
-      if (["partner-hub", "partners", "partner-programs", "partner-pages", "partner-dashboards", "partner-proposals", "partner-reports", "production-activation-rcap", "pilots"].includes(pageId)) return "partners";
-      if (["production", "queue", "posted", "assets", "autonomy"].includes(pageId)) return "production";
-      if (["proof", "metrics", "kpis", "evidence-room", "reports", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "proof";
-      if (["lee"].includes(pageId)) return "lee";
-      if (["settings", "alerts", "more", "data-integrity", "operator-manual", "handoff-contract", "roles", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "automation", "os-health", "smoke-test", "operator-search", "conversation-notes", "safe-mode"].includes(pageId)) return "settings";
-      return "settings";
+      // Six operator-mode sections (Phase N). Every page maps to exactly one top-nav item so
+      // the active state always lands somewhere; anything not named here highlights More.
+      if (["today", "overview", "cockpit", "focus", "daily-run", "morning-brief", "evening-reflection", "daily-closeout"].includes(pageId)) return "today";
+      if (["decisions", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "prospects", "support", "alerts", "meetings", "growth-inbox", "capture-inbox"].includes(pageId)) return "queue";
+      if (["campaigns", "funnel", "sources", "upload", "contacts", "revenue"].includes(pageId)) return "campaigns";
+      if (["queue", "posted", "assets", "content-bank", "production", "autonomy", "pages"].includes(pageId)) return "review-desk";
+      if (["reports", "proof", "metrics", "kpis", "evidence-room", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "reports";
+      return "more";
     }
 
     function closeNavMenus(event) {
