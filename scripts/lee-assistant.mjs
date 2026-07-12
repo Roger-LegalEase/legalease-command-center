@@ -363,7 +363,7 @@ export function createLeeThread(input = {}, options = {}) {
   };
 }
 
-const LEE_NO_KEY_REPLY = "I can't give you a real answer yet: no model key is configured on this server. Ask the operator to set ANTHROPIC_API_KEY (or OPENAI_API_KEY) on Render. Your message is saved, and I'll have the full conversation when a key is live.";
+const LEE_NO_KEY_REPLY = "I can't give you a real answer yet: no model key is configured on this server. Ask the operator to set the OpenAI API key on Render. Your message is saved, and I'll have the full conversation when a key is live.";
 const LEE_VOICE_FAIL_REPLY = "I drafted an answer but it broke the voice rules, so I'm not showing it. Ask me again in a different way.";
 
 export async function runLeeAssistant(state = {}, input = {}, ctx = {}) {
@@ -473,33 +473,13 @@ export function buildLeeStatus(state = {}, options = {}) {
   };
 }
 
-// ---- real model callers (fetch injected for tests) -------------------------------------------------
-function anthropicCaller(env, fetcher) {
-  const model = env.ANTHROPIC_DRAFT_MODEL || env.ANTHROPIC_MODEL || "claude-opus-4-8";
-  return Object.assign(async ({ system, messages, maxTokens = 700 }) => {
-      try {
-        const response = await fetcher("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "x-api-key": env.ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
-          },
-          body: JSON.stringify({ model, max_tokens: maxTokens, system, messages })
-        });
-        const data = await response.json().catch(() => null);
-        if (!response.ok) return { ok: false, error: `Anthropic status ${response.status}` };
-        if (data?.stop_reason === "refusal") return { ok: false, error: "model declined the request" };
-        const body = (data?.content || []).filter((block) => block.type === "text").map((block) => block.text).join("").trim();
-        return body ? { ok: true, text: body } : { ok: false, error: "empty model reply" };
-      } catch (error) {
-        return { ok: false, error: error.message || "Anthropic request failed" };
-      }
-  }, { provider: "anthropic", model });
-}
-
+// ---- real model caller (fetch injected for tests) -------------------------------------------------
+// Le-E uses its own model default rather than OPENAI_DRAFT_MODEL so the social-drafts model
+// choice never silently changes what answers Roger. gpt-5.6-terra is OpenAI's current balanced
+// tier (GA 2026-07-09), the right class for grounded plain-sentence answers over a small digest;
+// LEE_OPENAI_MODEL overrides it without a code change.
 function openAICaller(env, fetcher) {
-  const model = env.OPENAI_DRAFT_MODEL || env.OPENAI_MODEL || "gpt-5.2";
+  const model = env.LEE_OPENAI_MODEL || "gpt-5.6-terra";
   return Object.assign(async ({ system, messages, maxTokens = 700 }) => {
       try {
         const input = [{ role: "system", content: system }, ...messages];
@@ -518,20 +498,9 @@ function openAICaller(env, fetcher) {
   }, { provider: "openai", model });
 }
 
-// Provider choice with runtime fallback: prefer Anthropic when its key is set, but if a call
-// fails (billing, outage, bad key) and an OpenAI key is also configured, retry there in the
-// same turn instead of showing Roger an error. Returns null when no key is configured at all,
-// which the assistant reports honestly rather than faking an answer.
+// Le-E talks to OpenAI (Roger's call, 2026-07-12), reusing the same OPENAI_API_KEY that already
+// powers drafts, triage, and image generation. Returns null when the key is missing, which the
+// assistant reports honestly rather than faking an answer.
 export function buildLeeModelCaller(env = process.env, fetcher = globalThis.fetch) {
-  const callers = [];
-  if (env.ANTHROPIC_API_KEY) callers.push(anthropicCaller(env, fetcher));
-  if (env.OPENAI_API_KEY) callers.push(openAICaller(env, fetcher));
-  if (!callers.length) return null;
-  if (callers.length === 1) return callers[0];
-  return Object.assign(async (request) => {
-    const first = await callers[0](request);
-    if (first?.ok) return first;
-    const second = await callers[1](request);
-    return second?.ok ? second : first;
-  }, { provider: callers.map((caller) => caller.provider).join("+"), model: callers[0].model });
+  return env.OPENAI_API_KEY ? openAICaller(env, fetcher) : null;
 }

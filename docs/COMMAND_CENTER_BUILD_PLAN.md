@@ -88,7 +88,7 @@ Eight nav sections (all server-rendered, hash-routed, ~80 sub-pages):
 | **Production** | Queue review desk, posted, assets, autonomy, automation inbox | 🟢 |
 | **Proof** | Metrics, evidence-room, reports, data room, SOC 2 suite (access/audit/changes/vendors/incidents/evidence/policies) | 🟢 |
 | **Settings & Health** | Settings, data-integrity, operator-manual, handoff-contract, roles, tasks, os-health, smoke-test, operator-search, connector tiles | 🟢 |
-| **Le-E** | Real assistant (v2, 2026-07-12): one plain conversation, owner-only persisted history, model-backed answers grounded in a capped PII-scrubbed state digest (`lee-assistant.mjs`), propose-only via `automationSuggestions` (legacy `leeActionProposals` lane migrated). Needs `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`; honest no-key fallback otherwise. | 🟢 |
+| **Le-E** | Real assistant (v2, 2026-07-12): one plain conversation, owner-only persisted history, model-backed answers grounded in a capped PII-scrubbed state digest (`lee-assistant.mjs`), propose-only via `automationSuggestions` (legacy `leeActionProposals` lane migrated). OpenAI-backed (default `gpt-5.6-terra`, override via `LEE_OPENAI_MODEL`); reuses the shared `OPENAI_API_KEY`; honest no-key fallback otherwise. | 🟢 |
 
 Honest-zero UX: wherever a real data source is absent, the UI shows a "not yet wired" badge rather than fabricating numbers (e.g. Revenue refuses fake figures; image gen falls back to branded placeholders when OpenAI image API absent).
 

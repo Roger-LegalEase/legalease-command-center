@@ -203,29 +203,32 @@ const state = {
 // ---- model caller wiring -------------------------------------------------------------------------------
 {
   assert.equal(buildLeeModelCaller({}), null, "no key means no caller (honest fallback path)");
-  const anthropicOnly = buildLeeModelCaller({ ANTHROPIC_API_KEY: "k" }, async () => ({ ok: true, json: async () => ({ content: [{ type: "text", text: "hi" }] }) }));
-  assert.equal(anthropicOnly.provider, "anthropic");
-  const openaiOnly = buildLeeModelCaller({ OPENAI_API_KEY: "k" }, async () => ({ ok: true, json: async () => ({ output_text: "hi" }) }));
-  assert.equal(openaiOnly.provider, "openai");
+  assert.equal(buildLeeModelCaller({ ANTHROPIC_API_KEY: "k" }), null, "Le-E is OpenAI-backed; an Anthropic key alone configures nothing");
 
-  // Runtime fallback: Anthropic billing failure falls through to OpenAI in the same turn.
-  const urls = [];
-  const fetcher = async (url) => {
-    urls.push(url);
-    if (url.includes("anthropic")) return { ok: false, status: 400, json: async () => ({}) };
-    return { ok: true, json: async () => ({ output_text: "hello from fallback" }) };
+  // The real call: OpenAI Responses API, Le-E's own model default (never the drafts model).
+  const calls = [];
+  const fetcher = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body), auth: options.headers.authorization });
+    return { ok: true, json: async () => ({ output_text: "hello from openai" }) };
   };
-  const both = buildLeeModelCaller({ ANTHROPIC_API_KEY: "a", OPENAI_API_KEY: "b" }, fetcher);
-  assert.equal(both.provider, "anthropic+openai");
-  const result = await both({ system: "s", messages: [{ role: "user", content: "hi" }] });
+  const caller = buildLeeModelCaller({ OPENAI_API_KEY: "k", OPENAI_DRAFT_MODEL: "drafts-model-must-not-leak" }, fetcher);
+  assert.equal(caller.provider, "openai");
+  assert.equal(caller.model, "gpt-5.6-terra", "default is the current balanced GPT-5.6 tier");
+  const result = await caller({ system: "s", messages: [{ role: "user", content: "hi" }] });
   assert.equal(result.ok, true);
-  assert.equal(result.text, "hello from fallback");
-  assert.equal(urls.length, 2, "second provider tried after the first failed");
+  assert.equal(result.text, "hello from openai");
+  assert.equal(calls[0].url, "https://api.openai.com/v1/responses");
+  assert.equal(calls[0].body.model, "gpt-5.6-terra", "OPENAI_DRAFT_MODEL must not override Le-E's model");
+  assert.equal(calls[0].auth, "Bearer k");
+
+  // Dedicated override, so the model can be bumped on Render without a deploy.
+  const overridden = buildLeeModelCaller({ OPENAI_API_KEY: "k", LEE_OPENAI_MODEL: "gpt-5.6-sol" }, fetcher);
+  assert.equal(overridden.model, "gpt-5.6-sol");
 }
 
 // ---- status ---------------------------------------------------------------------------------------------
 {
-  const status = buildLeeStatus({ ...state, leeActionProposals: [{ id: "x", status: "proposed" }] }, { modelConfigured: true, provider: "anthropic" });
+  const status = buildLeeStatus({ ...state, leeActionProposals: [{ id: "x", status: "proposed" }] }, { modelConfigured: true, provider: "openai" });
   assert.equal(status.safeModeActive, true);
   assert.equal(status.liveGatesCount, 0);
   assert.equal(status.legacyProposalsUnresolved, 1);
