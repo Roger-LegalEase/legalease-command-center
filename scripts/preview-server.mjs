@@ -23,7 +23,7 @@ import { buildOutreachLaneView, previewHeldRelease, confirmHeldRelease, buildDel
 import { buildPartnerUsageView, buildOnboardingChecklist, buildPacketCounts } from "./rcap-partner-ops.mjs";
 import { buildAlertsView, setAlertStatus, buildAlertCandidates, reconcileAlerts, resolveAlertEmailDecision, buildDailyDigest, alertsConfigOf, ALERTS_ENGINE_ID } from "./alerts-engine.mjs";
 import { buildMeetingBrief, reconcileMeetingBriefs, attachEmailContext, buildMeetingBriefsView, MEETING_BRIEFS_ENGINE_ID } from "./meeting-briefs.mjs";
-import { INBOX_ENGINE_ID, INBOX_ALLOWED_MAILBOX, INBOX_SCAN_MESSAGE_CAP, planInboxIntelligence, recordInboxActivationAudit, inboxConfigOf } from "./inbox-intelligence.mjs";
+import { INBOX_ENGINE_ID, INBOX_ALLOWED_MAILBOX, INBOX_SCAN_MESSAGE_CAP, planInboxIntelligence, recordInboxActivationAudit, inboxConfigOf, prepareInboxDraftReply } from "./inbox-intelligence.mjs";
 import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID, buildTodaySummary, projectCompanyMemory } from "./company-memory-projector.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { previewIntake, confirmIntake, INTAKE_TYPES, INTAKE_ACTIONS } from "./intake.mjs";
@@ -27446,12 +27446,29 @@ function htmlShell() {
           const post = (state.posts || []).find(p => p.id === record.sourceId);
           body = artifactPostPreviewHtml(post) + \`<div class="card-actions"><button class="primary" type="button" onclick="location.hash='queue'">Review this in the Review Desk</button></div>\`;
         } else if (collection === "inboxSignals") {
-          // I2: the inbox signal artifact — the plain sentence, the redacted evidence lines,
-          // and the jump to the real thread in Gmail. Nothing here sends; the draft flow
-          // (I3) prepares internal drafts only.
+          // I2/I3: the inbox signal artifact — the plain sentence, the redacted evidence
+          // lines, the jump to the real thread in Gmail, and the draft workspace. Drafts
+          // are internal; the ONLY exit is the clipboard. Nothing here can send.
           const gmailLink = record.threadId
             ? \`<a class="button-link primary" href="https://mail.google.com/mail/u/0/#all/\${encodeURIComponent(String(record.threadId))}" target="_blank" rel="noopener noreferrer">Open the thread in Gmail</a>\`
             : "";
+          const signalDraft = (state.emailDrafts || []).find(d => d.signalId === record.id && d.status !== "Dismissed") || null;
+          const draftArea = record.uplSensitive
+            ? \`<p class="muted"><strong>No draft is prepared for this one.</strong> It may ask for legal advice; read it in Gmail and reply personally.\${record.lawrenceFlaggedAt ? " Lawrence has been flagged." : ""}</p>\`
+            : signalDraft
+              ? \`<form class="mini-form" onsubmit="saveInboxDraft(event,'\${esc(signalDraft.id)}')">
+                  <label>Reply draft (internal - nothing sends)<textarea name="body" rows="8">\${esc(signalDraft.body || "")}</textarea></label>
+                  <div class="card-actions">
+                    <button class="primary" type="submit">Save</button>
+                    <button type="button" onclick="assistInboxDraft('\${esc(signalDraft.id)}')">AI assist</button>
+                    <button type="button" onclick="copyInboxDraft('\${esc(signalDraft.id)}')">Copy reply</button>
+                    <button type="button" onclick="setInboxDraftStatus('\${esc(signalDraft.id)}','Approved to send manually')">Approve</button>
+                    <button type="button" onclick="setInboxDraftStatus('\${esc(signalDraft.id)}','Sent manually')">Mark sent manually</button>
+                    <button type="button" onclick="setInboxDraftStatus('\${esc(signalDraft.id)}','Dismissed')">Dismiss draft</button>
+                  </div>
+                  <p class="muted">Status: \${esc(signalDraft.status || "Needs review")}\${signalDraft.aiAssisted ? " - AI assisted, review the voice" : ""}. You send it yourself from Gmail; the app cannot.</p>
+                </form>\`
+              : \`<div class="card-actions"><button class="primary" type="button" onclick="prepareInboxDraft('\${esc(record.id)}')">Prepare draft</button></div>\`;
           body = \`<p style="font-size:16px; font-weight:750">\${esc(record.summary || "Inbox signal")}</p>
             \${record.uplSensitive ? '<p class="muted"><strong>Careful:</strong> this thread may be asking for legal advice. UPL rules apply; loop in Lawrence before answering the legal part.</p>' : ""}
             \${(record.evidence || []).length ? \`<div class="metric-table">\${record.evidence.map(line => \`<div class="metric-row"><span>they wrote</span><strong>\${esc(line)}</strong></div>\`).join("")}</div>\` : ""}
@@ -27461,7 +27478,8 @@ function htmlShell() {
               \${record.dueAt ? \`<div class="metric-row"><span>You promised by</span><strong>\${esc(String(record.dueAt).slice(0, 10))}</strong></div>\` : ""}
               <div class="metric-row"><span>Privacy</span><strong>Evidence lines are redacted; the full email stays in Gmail, not here.</strong></div>
             </div>
-            <div class="card-actions" style="margin-top:12px">\${gmailLink}</div>\`;
+            <div class="card-actions" style="margin-top:12px">\${gmailLink}</div>
+            <div style="margin-top:14px">\${draftArea}</div>\`;
         } else if (collection === "reports") {
           const path = record.markdownPath || record.textPath || "";
           body = \`<div class="metric-table">\${artifactFieldRows(record)}</div>
@@ -33943,6 +33961,57 @@ function htmlShell() {
       }, "Could not download the report file.");
     }
 
+    // ---- I3 inbox draft actions (internal drafts; the app cannot send) ----------------------
+    function applyInboxDraftLocally(draft) {
+      if (!draft || !state) return;
+      const drafts = (state.emailDrafts || []).filter(d => d.id !== draft.id);
+      state.emailDrafts = [draft, ...drafts];
+      render();
+    }
+    async function prepareInboxDraft(signalId) {
+      await safeAction(async () => {
+        const result = await api("/api/inbox/signals/draft", { method:"POST", body:JSON.stringify({ signalId }) });
+        if (state && Array.isArray(state.inboxSignals)) {
+          state.inboxSignals = state.inboxSignals.map(s => s.id === signalId ? { ...s, draftId: result.draft.id } : s);
+        }
+        applyInboxDraftLocally(result.draft);
+        toast(result.message || "Draft ready. Nothing was sent.");
+      }, "Could not prepare the draft.");
+    }
+    async function saveInboxDraft(event, id) {
+      event.preventDefault();
+      const bodyText = String(new FormData(event.target).get("body") || "");
+      await safeAction(async () => {
+        const result = await api("/api/inbox/drafts/update", { method:"POST", body:JSON.stringify({ id, body: bodyText }) });
+        applyInboxDraftLocally(result.draft);
+        toast("Draft saved. Nothing was sent.");
+      }, "Could not save the draft.");
+    }
+    async function setInboxDraftStatus(id, status) {
+      await safeAction(async () => {
+        const result = await api("/api/inbox/drafts/update", { method:"POST", body:JSON.stringify({ id, status }) });
+        applyInboxDraftLocally(result.draft);
+        toast(status === "Sent manually" ? "Marked sent. You sent it yourself; the app cannot." : "Draft " + status.toLowerCase() + ".");
+      }, "Could not update the draft.");
+    }
+    async function assistInboxDraft(id) {
+      await safeAction(async () => {
+        const result = await api("/api/inbox/drafts/assist", { method:"POST", body:JSON.stringify({ id }), timeoutMs: 30000 });
+        applyInboxDraftLocally(result.draft);
+        toast(result.message || "Assist applied - review the voice.");
+      }, "Assist failed. The skeleton draft is untouched.");
+    }
+    async function copyInboxDraft(id) {
+      const draft = (state.emailDrafts || []).find(d => d.id === id);
+      if (!draft) { toast("Draft not found."); return; }
+      try {
+        await navigator.clipboard.writeText(String(draft.body || ""));
+        toast("Copied. Paste it into Gmail and send it yourself.");
+      } catch {
+        toast("Could not reach the clipboard. Select the text and copy manually.");
+      }
+    }
+
     async function rebuildPriorities() {
       return cooAction(async () => {
         const result = await api("/api/priority/rebuild", { method:"POST" });
@@ -36922,6 +36991,120 @@ async function handleRequest(request, response) {
       sendJson(response, { ok: true, observations: result.observations, lastScan: { at: result.config.lastScanAt, status: result.config.lastScanStatus, count: result.config.lastScanCount, truncated: result.config.lastScanTruncated, backfillCompletedAt: result.config.backfillCompletedAt } });
     } catch (error) {
       sendJson(response, { error: error.message || "Inbox scan failed." }, 500);
+    }
+    return;
+  }
+
+  // ---- I3 inbox reply drafts: prepared, edited, approved — NEVER sent ---------------------
+  // Skeleton by default (Roger's voice is Roger's); AI assist is a separate explicit call.
+  // UPL-sensitive threads get NO draft and flag Lawrence. There is no send route: the only
+  // exit is the clipboard on the signal page.
+  if (url.pathname === "/api/inbox/signals/draft" && request.method === "POST") {
+    if (!["owner", "admin"].includes(String(accessDecision.actor?.role || ""))) {
+      sendJson(response, { error: "Only the owner can prepare inbox drafts." }, 403);
+      return;
+    }
+    try {
+      const body = (await readJson(request)) || {};
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const signals = Array.isArray(currentState.inboxSignals) ? currentState.inboxSignals : [];
+        const signal = signals.find((s) => s.id === String(body.signalId || ""));
+        if (!signal) return { error: "Signal not found.", statusCode: 404 };
+        const now = new Date().toISOString();
+        const prepared = prepareInboxDraftReply(signal, { now });
+        if (!prepared.ok) {
+          // UPL refusal: record the Lawrence flag on the signal so the card shows it.
+          if (prepared.flagLawrence && !signal.lawrenceFlaggedAt) {
+            const nextSignals = signals.map((s) => s.id === signal.id ? { ...s, lawrenceFlaggedAt: now, updatedAt: now } : s);
+            await store.writeCollections({ inboxSignals: nextSignals });
+          }
+          return { error: prepared.error, flagLawrence: Boolean(prepared.flagLawrence), statusCode: 400 };
+        }
+        const existing = (currentState.emailDrafts || []).find((d) => d.signalId === signal.id && d.status !== "Dismissed");
+        if (existing) return { draft: existing, message: "A draft for this thread already exists. Edit it below." };
+        const emailDrafts = [prepared.draft, ...(currentState.emailDrafts || [])].slice(0, 100);
+        const nextSignals = signals.map((s) => s.id === signal.id ? { ...s, draftId: prepared.draft.id, updatedAt: now } : s);
+        await store.writeCollections({ emailDrafts, inboxSignals: nextSignals });
+        return { draft: prepared.draft, message: "Draft ready. Edit it, then copy it into your reply. Nothing was sent." };
+      });
+      if (result.error) { sendJson(response, { error: result.error, flagLawrence: result.flagLawrence }, result.statusCode || 400); return; }
+      sendJson(response, { ok: true, draft: result.draft, message: result.message, liveGatesCount: 0 });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not prepare the draft." }, 500);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/inbox/drafts/update" && request.method === "POST") {
+    if (!["owner", "admin"].includes(String(accessDecision.actor?.role || ""))) {
+      sendJson(response, { error: "Only the owner can edit inbox drafts." }, 403);
+      return;
+    }
+    try {
+      const input = (await readJson(request)) || {};
+      const allowedStatuses = ["Needs review", "Approved to send manually", "Sent manually", "Dismissed"];
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const drafts = Array.isArray(currentState.emailDrafts) ? currentState.emailDrafts : [];
+        const draft = drafts.find((d) => d.id === String(input.id || ""));
+        if (!draft) return { error: "Draft not found.", statusCode: 404 };
+        const patch = { updatedAt: new Date().toISOString() };
+        if (typeof input.body === "string") patch.body = input.body.slice(0, 4000);
+        if (input.status !== undefined) {
+          if (!allowedStatuses.includes(String(input.status))) return { error: "Unknown draft status.", statusCode: 400 };
+          patch.status = String(input.status);
+        }
+        const emailDrafts = drafts.map((d) => d.id === draft.id ? { ...d, ...patch } : d);
+        await store.writeCollections({ emailDrafts });
+        return { draft: { ...draft, ...patch } };
+      });
+      if (result.error) { sendJson(response, { error: result.error }, result.statusCode || 400); return; }
+      sendJson(response, { ok: true, draft: result.draft, message: "Draft updated. Nothing was sent.", liveGatesCount: 0 });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not update the draft." }, 500);
+    }
+    return;
+  }
+
+  // AI assist — EXPLICIT, per-draft, never automatic (Roger: outbound voice is his; assist
+  // stays one click away). Context sent to the model is the skeleton + the signal's plain
+  // sentence + already-REDACTED evidence lines — never raw email content.
+  if (url.pathname === "/api/inbox/drafts/assist" && request.method === "POST") {
+    if (!["owner", "admin"].includes(String(accessDecision.actor?.role || ""))) {
+      sendJson(response, { error: "Only the owner can use draft assist." }, 403);
+      return;
+    }
+    if (!process.env.OPENAI_API_KEY) {
+      sendJson(response, { error: "OPENAI_API_KEY is not configured; the skeleton draft still works." }, 400);
+      return;
+    }
+    try {
+      const input = (await readJson(request)) || {};
+      const currentState = await store.readState();
+      const draft = (currentState.emailDrafts || []).find((d) => d.id === String(input.id || ""));
+      if (!draft) { sendJson(response, { error: "Draft not found." }, 404); return; }
+      const signal = (currentState.inboxSignals || []).find((s) => s.id === draft.signalId) || {};
+      const env = openAIDraftEnvStatus();
+      const prompt = "Rewrite this reply draft in a warm, direct, plain-spoken founder voice. Keep it under 120 words, keep every bracketed [slot] exactly as-is for the human to fill, never promise legal outcomes, never give legal advice.\n\nContext (redacted): " + String(signal.summary || "") + "\n" + (signal.evidence || []).join("\n") + "\n\nDraft:\n" + String(draft.body || "");
+      const aiResponse = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: env.openaiDraftModel, input: prompt, max_output_tokens: 500 })
+      });
+      const data = await aiResponse.json().catch(() => null);
+      if (!aiResponse.ok) { sendJson(response, { error: "Assist failed (status " + aiResponse.status + "). The skeleton draft is untouched." }, 502); return; }
+      const text = String(data?.output_text || data?.output?.map?.((o) => o?.content?.map?.((c) => c?.text || "").join("") || "").join("") || "").trim();
+      if (!text) { sendJson(response, { error: "Assist returned nothing usable. The skeleton draft is untouched." }, 502); return; }
+      const result = await serializeStateMutation(async () => {
+        const freshState = await store.readState();
+        const emailDrafts = (freshState.emailDrafts || []).map((d) => d.id === draft.id ? { ...d, body: text.slice(0, 4000), aiAssisted: true, updatedAt: new Date().toISOString() } : d);
+        await store.writeCollections({ emailDrafts });
+        return emailDrafts.find((d) => d.id === draft.id);
+      });
+      sendJson(response, { ok: true, draft: result, message: "Assist applied. Review it - your voice, your call. Nothing was sent.", liveGatesCount: 0 });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Assist failed." }, 500);
     }
     return;
   }

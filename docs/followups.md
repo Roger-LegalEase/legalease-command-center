@@ -27,9 +27,10 @@ Running list of deferred work. Add items here instead of leaving them implicit.
 - **Extended (non-gate) test suite has drifted further since the 2026-07-03 quarantine
   pass** (queued 2026-07-11). Six more extended tests fail at origin/main in a clean
   worktree - `test-activation-center`, `test-app-status-recovery`,
-  `test-email-draft-safety`, `test-email-readiness`, `test-external-action-outbox`,
-  `test-more-workspace` - all pre-existing, none env-dependent (clean worktree has no
-  `.env.local`). The npm-test CI gate is unaffected and green. Needs the same
+  `test-external-action-outbox`, `test-more-workspace` - all pre-existing, none
+  env-dependent (clean worktree has no `.env.local`). (`test-email-draft-safety` and
+  `test-email-readiness` were in this list and were FIXED 2026-07-12 during inbox I3:
+  stale display-truth assertions updated to the derived posture chain; both green.) The npm-test CI gate is unaffected and green. Needs the same
   fix-the-assertion-or-quarantine pass as the 2026-07-03 batch.
 
 _No open UI / layout follow-ups._
