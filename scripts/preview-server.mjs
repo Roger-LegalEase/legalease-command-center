@@ -9600,10 +9600,10 @@ async function runSourceAutomation() {
     sourceFeedName: input.sourceFeedName
   }));
   await store.generatePosts(posts);
-  for (const post of posts) {
-    const result = await generateImageForPost(post.id);
-    state = result.state;
-  }
+  // Phase S: renders route through the gated, capped auto-render path (text gates first,
+  // AUTO_RENDER_DAILY_CAP) instead of the old unconditional per-post loop.
+  const renderedState = await autoRenderNewPosts(posts);
+  if (renderedState) state = renderedState;
   state = await store.updateSettings({
     lastSourceAutomationAt: new Date().toISOString(),
     lastSourceAutomationCount: posts.length
@@ -11538,6 +11538,54 @@ function typographicQuoteCardDataUrl(post, context = {}) {
     error: logoUri ? null : "Quote card blocked: real logo asset file is missing. Guidelines require the real logo file, never a generated substitute.",
     textRendered: { kicker, headline: quoteText, support: collapseWhitespaceForQa(overlay.support || "") }
   };
+}
+
+// ---- Phase S auto-render (approved 2026-07-12, with Roger's two conditions) -----------------
+// The wizard hides the pipeline: a draft should ARRIVE rendered and gated, so the operator's
+// only decisions are Approve and Fix. Renders auto-fire for freshly generated drafts, but:
+//   1. ONLY after the text gates pass — a draft with guidelines hard-fails never spends
+//      OpenAI credits; it goes to the wizard's "Needs a fix" state as text first.
+//   2. Under a daily cap (AUTO_RENDER_DAILY_CAP, default 12, persisted in the settings
+//      singleton via a scoped write) so a bulk import can never turn into an unbounded
+//      render bill. Manual "Generate Image" clicks are NOT capped — they are explicit.
+// Render QA, the style gate, and the guidelines gate themselves are untouched.
+const AUTO_RENDER_DAILY_CAP = () => {
+  const parsed = Number(process.env.AUTO_RENDER_DAILY_CAP || 12);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 12;
+};
+async function claimAutoRenderBudget() {
+  const state = await store.readState();
+  const settings = state.settings || {};
+  const today = new Date().toISOString().slice(0, 10);
+  const usage = settings.autoRenderUsage && settings.autoRenderUsage.date === today
+    ? settings.autoRenderUsage
+    : { date: today, count: 0 };
+  if (usage.count >= AUTO_RENDER_DAILY_CAP()) return false;
+  await store.updateSettings({ autoRenderUsage: { date: today, count: usage.count + 1 } });
+  return true;
+}
+// Renders each just-created post that qualifies; returns the latest state (or null if it
+// never rendered anything). Failures mark the post's image record failed (inside
+// generateImageForPost) and never abort the batch.
+async function autoRenderNewPosts(posts = []) {
+  if (!process.env.OPENAI_API_KEY) return null;
+  let latestState = null;
+  for (const post of posts) {
+    if (!post || !post.id) continue;
+    const gate = post.guidelinesGate || socialGuidelinesGate(post);
+    if (gate && Array.isArray(gate.hardFails) && gate.hardFails.length) continue; // condition 1
+    if (!(await claimAutoRenderBudget())) {
+      console.warn("Auto-render daily cap reached (" + AUTO_RENDER_DAILY_CAP() + "); remaining drafts stay text-only until tomorrow or a manual render.");
+      break; // condition 2
+    }
+    try {
+      const result = await generateImageForPost(post.id, { trigger: "auto_render" });
+      latestState = result.state || latestState;
+    } catch (error) {
+      console.error("Auto-render failed for post " + post.id + ": " + (error.message || error));
+    }
+  }
+  return latestState;
 }
 
 async function generateImageForPost(postId, overrides = {}) {
@@ -15905,6 +15953,21 @@ function htmlShell() {
     .more-dir-group h3 { margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
     .more-dir-links { display:flex; flex-direction:column; gap:6px; }
     .more-dir-link { text-align:left; justify-content:flex-start; font-weight:750; }
+    .wizard-shell { max-width:720px; margin:0 auto; }
+    .wizard-status { font-size:15px; font-weight:850; margin:12px 0 4px; }
+    .wizard-status.ready { color:var(--ck-good, #0C7D75); }
+    .wizard-status.fix { color:var(--ck-bad, #B54708); }
+    .wizard-status.working { color:var(--muted); }
+    .wizard-status.working span { font-weight:600; font-size:13px; }
+    .wizard-reasons { margin:4px 0 10px; padding-left:20px; color:var(--ck-bad, #B54708); font-size:14px; }
+    .wizard-preview { border:1px solid var(--line); border-radius:12px; overflow:hidden; margin:12px 0; background:#fff; }
+    .wizard-preview img { display:block; width:100%; max-height:420px; object-fit:contain; background:#f3f5f4; }
+    .wizard-no-image { padding:36px 16px; text-align:center; color:var(--muted); font-weight:750; background:#f3f5f4; }
+    .wizard-caption { padding:14px 16px; display:grid; gap:6px; }
+    .wizard-caption p { margin:0; white-space:pre-wrap; }
+    .wizard-actions button { min-height:42px; }
+    .wizard-raw, .wizard-editor { margin-top:10px; }
+    .wizard-raw summary, .wizard-editor summary { cursor:pointer; color:var(--muted); font-size:13px; font-weight:750; }
     .ck-sub b { color:var(--ck-ink); font-weight:650; }
     .ck-topbar { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; justify-content:space-between; }
     .ck-topbar .ck-when { text-align:right; }
@@ -19873,6 +19936,131 @@ function htmlShell() {
       const all = [...postRows, ...followUps, ...reports, ...proof, ...partners, ...channelReviews, ...supportRows, ...productSignalRows, ...rcapRows]
         .map(item => ({ ...item, category:item.category || queueDerivedCategory(item) }));
       return options.allCategories || queueOriginFilter === "all" ? all : all.filter(item => item.category === queueOriginFilter);
+    }
+
+    // ---- Phase S: Review Desk wizard (approved 2026-07-12) --------------------------------
+    // One draft at a time, shown FINISHED (rendered image + caption together), with exactly
+    // three operator-facing states. The pipeline stages (prompt, render, style gate, QA,
+    // ceremony flags) run server-side and surface here ONLY when one fails — translated to
+    // plain English. The gates themselves are untouched; this is a presentation change.
+    const WIZARD_PLAIN_REASONS = {
+      voice_em_dash: "The caption uses an em-dash. The guidelines ban em-dashes everywhere.",
+      voice_ai_phrase: "The caption uses a phrase that sounds AI-written and is on the banned list.",
+      voice_outcome_promise: "The caption promises an outcome. We never promise results.",
+      voice_upl_signoff: "The caption reads like legal advice. It needs a scope-safe rewrite.",
+      voice_untraced_number: "The caption cites a number that has no approved source.",
+      dignity_language: "The caption labels people instead of using person-first language.",
+      dignity_framing: "The caption frames people in a way the dignity guidelines do not allow.",
+      dignity_imagery: "The image asks for imagery the dignity guidelines ban.",
+      stock_cliche: "The image direction asks for a stock-photo cliche.",
+      overlay_verbatim: "The text on the image does not match the approved overlay text word for word.",
+      overlay_corruption: "The text on the image came out garbled.",
+      spelling: "The text on the image has a spelling problem.",
+      legibility: "The text on the image is too long to stay readable at thumbnail size.",
+      asset_integrity: "The image was generated without the required brand-safety locks.",
+      palette: "The image was generated without the brand palette lock."
+    };
+    function wizardPlainReason(fail) {
+      if (!fail) return "Something failed a quality check.";
+      const mapped = WIZARD_PLAIN_REASONS[fail.rule];
+      return mapped || String(fail.detail || fail.rule || "Something failed a quality check.");
+    }
+    let wizardIndex = 0;
+    function wizardPosts(reviewPosts) {
+      return sortQueuePosts(reviewPosts).filter(post =>
+        !post.deletedAt
+        && ["draft", "needs_review", "idea", "retry_ready", ""].includes(String(post.status || "")));
+    }
+    function wizardStateForPost(post, image) {
+      const gate = post.guidelinesGate || {};
+      const gateFails = Array.isArray(gate.hardFails) ? gate.hardFails : [];
+      if (gateFails.length) {
+        return { key: "fix", kind: "copy", reasons: gateFails.map(wizardPlainReason), raw: gateFails };
+      }
+      const imageKey = queueImageStatusKey(post, image);
+      if (imageKey === "qa_failed") {
+        const fails = (image && image.renderQa && image.renderQa.hardFails) || [];
+        return { key: "fix", kind: "image", reasons: fails.length ? fails.map(wizardPlainReason) : ["The rendered image failed its quality check."], raw: fails };
+      }
+      if (imageKey === "render_failed") {
+        return { key: "fix", kind: "image", reasons: [String((image && image.generationError) || "The image failed to render.")], raw: [] };
+      }
+      if (generatingImages.has(post.id)) {
+        return { key: "working", note: "Rendering the image. This card updates when it finishes." };
+      }
+      if (!image || !image.imageUrl) {
+        return { key: "fix", kind: "render_missing", reasons: ["No image has been rendered for this draft yet."], raw: [] };
+      }
+      return { key: "ready" };
+    }
+    async function wizardApprove(id) {
+      await safeAction(async () => {
+        await setStatus(id, "approved");
+      }, "Could not approve. The reason appears above the draft.");
+    }
+    function wizardSkip(total) {
+      wizardIndex = total > 0 ? (wizardIndex + 1) % total : 0;
+      render();
+    }
+    function wizardToggleFix(id) {
+      const editor = document.getElementById("wizard-fix-" + id);
+      if (editor) editor.open = !editor.open;
+    }
+    function socialWizardHtml(reviewPosts) {
+      const posts = wizardPosts(reviewPosts);
+      if (!posts.length) {
+        return \`<section class="growth-card wizard-shell"><div class="ck-empty"><b>Review Desk is clear.</b> New drafts arrive here already rendered and checked; you only Approve or Fix.</div></section>\`;
+      }
+      if (wizardIndex >= posts.length) wizardIndex = 0;
+      const post = posts[wizardIndex];
+      const image = imageForPost(post.id);
+      const wizard = wizardStateForPost(post, image);
+      const statusLine = wizard.key === "ready"
+        ? '<div class="wizard-status ready">Ready to approve</div>'
+        : wizard.key === "working"
+          ? \`<div class="wizard-status working">Working... <span>\${esc(wizard.note || "")}</span></div>\`
+          : \`<div class="wizard-status fix">Needs a fix</div><ul class="wizard-reasons">\${(wizard.reasons || []).map(reason => \`<li>\${esc(reason)}</li>\`).join("")}</ul>\`;
+      const fixButton = wizard.kind === "copy"
+        ? \`<button class="primary" type="button" onclick="wizardToggleFix('\${post.id}')">Fix the caption</button>\`
+        : wizard.kind === "image" || wizard.kind === "render_missing"
+          ? \`<button class="primary" type="button" \${generatingImages.has(post.id) ? "disabled" : ""} onclick="generateQueueImageDraft('\${post.id}')">\${generatingImages.has(post.id) ? "Rendering..." : (wizard.kind === "image" ? "Fix it: regenerate the image" : "Render the image")}</button>\`
+          : "";
+      const actions = wizard.key === "ready"
+        ? \`<button class="primary" type="button" onclick="wizardApprove('\${post.id}')">Approve</button>
+           <button type="button" onclick="wizardToggleFix('\${post.id}')">Edit...</button>
+           <button type="button" onclick="wizardSkip(\${posts.length})">Skip</button>\`
+        : wizard.key === "working"
+          ? \`<button type="button" onclick="render()">Check again</button><button type="button" onclick="wizardSkip(\${posts.length})">Skip</button>\`
+          : \`\${fixButton}
+             <button type="button" onclick="wizardToggleFix('\${post.id}')">Edit...</button>
+             <button type="button" onclick="wizardSkip(\${posts.length})">Skip</button>\`;
+      const finishedPreview = \`<div class="wizard-preview">
+        \${image && image.imageUrl ? \`<img src="\${esc(image.imageUrl)}" alt="Rendered post image" loading="lazy">\` : '<div class="wizard-no-image">No image yet</div>'}
+        <div class="wizard-caption">
+          \${post.headline ? \`<h4>\${esc(post.headline)}</h4>\` : ""}
+          <p>\${esc(post.caption || post.body || "No caption yet.")}</p>
+          \${post.cta ? \`<strong>\${esc(post.cta)}</strong>\` : ""}
+          \${(post.hashtags || []).length ? \`<small>\${esc((post.hashtags || []).join(" "))}</small>\` : ""}
+        </div>
+      </div>\`;
+      const rawDetails = (wizard.raw || []).length
+        ? \`<details class="wizard-raw"><summary>Technical details</summary><ul>\${wizard.raw.map(fail => \`<li>\${esc([fail.rule, fail.detail].filter(Boolean).join(": "))}</li>\`).join("")}</ul></details>\`
+        : "";
+      return \`<section class="growth-card wizard-shell">
+        <div class="wizard-head">
+          <div><div class="eyebrow">Draft \${wizardIndex + 1} of \${posts.length}</div><h2>\${esc(post.title || post.hook || "Post draft")}</h2><small>\${esc(queueItemMetaForPost(post))}</small></div>
+        </div>
+        \${statusLine}
+        \${finishedPreview}
+        <div class="card-actions wizard-actions">\${actions}</div>
+        \${rawDetails}
+        <details id="wizard-fix-\${esc(post.id)}" class="wizard-editor">
+          <summary>Manual editor (caption and image prompt)</summary>
+          \${queueImageWorkspaceHtml(post)}
+          \${queuePostPreviewHtml(post)}
+          <div class="card-actions quiet-actions"><button type="button" onclick="openQueueDeleteDialog('\${post.id}')">\${esc(queueDeleteButtonLabel(post))}</button></div>
+        </details>
+      </section>\`;
     }
 
     function queueReviewListHtml(reviewPosts) {
@@ -31091,27 +31279,29 @@ function htmlShell() {
         \${safeRenderModule("soc2-evidence", () => soc2EvidencePageHtml(pageClass))}
         \${safeRenderModule("soc2-policies", () => soc2PoliciesPageHtml(pageClass))}
         <section id="queue" class="queue-review-shell \${pageClass("queue")}">
-          \${surfaceTabsHtml("production", currentPageId)}
           <div class="queue-review-hero">
             <div class="queue-review-hero-head">
               <div>
                 <div class="eyebrow">Review desk</div>
-                <h1 class="big-title">Queue</h1>
-                <p>Review posts, follow-ups, reports, and partner work before anything moves forward.</p>
+                <h1 class="big-title">Review Desk</h1>
+                <p>One draft at a time, shown as it will post. Approve it or fix it; the pipeline runs on its own.</p>
               </div>
               <span class="queue-safety-note">Safe mode: approvals prepare work only. Nothing sends or publishes automatically.</span>
             <button type="button" onclick="location.href='/sources/import-social-calendar'">Import Calendar</button>
           </div>
-          <div class="queue-summary-grid">\${queueReviewSummaryCards(reviewPosts).map(([label, value, detail]) => \`<article class="queue-summary-card"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
-            \${rcapRevenueSavedViewsPanelHtml("queue")}
-            \${guidedQueueWorkbenchHtml()}
-            \${queueReviewTabsHtml(reviewPosts)}
             \${selectedPosts.size ? \`<div class="bulk-bar queue-delete-bulk"><strong>\${selectedPosts.size} selected</strong><button type="button" onclick="openBulkQueueDeleteDialog()">Delete Selected</button></div>\` : ""}
           </div>
-          <section class="growth-card">
-            <div class="growth-card-head"><h2>Needs review</h2><small>One clear action per item</small></div>
-            \${queueReviewListHtml(reviewPosts)}
-          </section>
+          \${socialWizardHtml(reviewPosts)}
+          <details class="queue-detail-workflow">
+            <summary>All items (list view) and other review work</summary>
+            <div class="queue-summary-grid" style="margin-top:12px">\${queueReviewSummaryCards(reviewPosts).map(([label, value, detail]) => \`<article class="queue-summary-card"><span>\${esc(label)}</span><strong>\${esc(String(value))}</strong><small>\${esc(detail)}</small></article>\`).join("")}</div>
+            \${rcapRevenueSavedViewsPanelHtml("queue")}
+            \${queueReviewTabsHtml(reviewPosts)}
+            <section class="growth-card">
+              <div class="growth-card-head"><h2>Needs review</h2><small>One clear action per item</small></div>
+              \${queueReviewListHtml(reviewPosts)}
+            </section>
+          </details>
           <details class="queue-detail-workflow">
             <summary>Detailed production workflow</summary>
             <p class="muted" style="margin:10px 0 0">Use this for image, export, readiness, and manual posting steps. It stays internal; no live posting controls are enabled.</p>
@@ -33684,11 +33874,9 @@ function htmlShell() {
     }
 
     async function setStatus(id, status) {
-      const post = state.posts.find(item => item.id === id);
-      if (status === "approved" && !post?.copyReviewed) {
-        toast("Review copy before approving");
-        return;
-      }
+      // Phase S: approving from the wizard IS the copy review (the operator sees the finished
+      // post on one card), so the old client-side "Review copy first" block is gone. The
+      // server still enforces the guidelines hard-fail gate and render QA at approve time.
       const result = await api("/api/posts/update", { method:"POST", body:JSON.stringify({ id, patch:{ status } }) });
       state = result.state;
       render();
@@ -37776,7 +37964,11 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/content-bank/generate" && request.method === "POST") {
     try {
       const result = await generateContentBankDrafts(await readJson(request));
-      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+      // Phase S: freshly generated drafts render automatically (text gates first, daily cap)
+      // so they arrive at the Review Desk finished instead of waiting on a Generate click.
+      const renderedState = await autoRenderNewPosts(result.posts || []);
+      const finalState = renderedState || result.state;
+      sendJson(response, { ...result, state: withPublicChannelSetup(finalState) });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not generate content drafts." }, 400);
     }
@@ -38626,10 +38818,9 @@ async function handleRequest(request, response) {
     const posts = targets.map((platform) => generateDraft(input, platform));
     await store.generatePosts(posts);
     let state = await store.readState();
-    for (const post of posts) {
-      const result = await generateImageForPost(post.id);
-      state = result.state;
-    }
+    // Phase S: gated + capped auto-render replaces the old unconditional per-post loop.
+    const renderedState = await autoRenderNewPosts(posts);
+    if (renderedState) state = renderedState;
     sendJson(response, { posts, state: withPublicChannelSetup(state) });
     return;
   }
@@ -39455,16 +39646,14 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/posts/update" && request.method === "POST") {
     const { id, patch } = await readJson(request);
+    let effectivePatch = patch;
     if (patch?.status === "approved") {
       const currentState = await store.readState();
       const post = currentState.posts.find((item) => item.id === id);
-      if (post && !post.copyReviewed) {
-        sendJson(response, { error: "Review copy before approving this post." }, 400);
-        return;
-      }
       if (post) {
         // Guidelines hard-fail gate (§2 voice, §3 dignity) on the direct-approve path.
         // Gate the post as patched, so an edit that fixes the violation approves cleanly.
+        // The gate itself is UNCHANGED by the Phase S wizard — only the ceremony flags moved.
         const guidelinesGate = socialGuidelinesGate({ ...post, ...patch });
         if (!guidelinesGate.passed) {
           sendJson(response, {
@@ -39473,6 +39662,23 @@ async function handleRequest(request, response) {
           }, 400);
           return;
         }
+        // Guidelines §6 at approve time: a post whose LATEST render failed QA (or failed to
+        // render) cannot be approved past the failure — fix and re-render first. Posts with
+        // no render at all stay approvable (text-first flows, manual posting kits).
+        const latestImage = imageForPostFromState(currentState, id);
+        if (latestImage && (latestImage.generationStatus === "qa_failed" || latestImage.generationStatus === "failed" || latestImage.renderQa?.passed === false)) {
+          sendJson(response, { error: "The latest image failed its quality check. Fix or regenerate the image before approving." }, 400);
+          return;
+        }
+        // Phase S (approved 2026-07-12): approving IS the human review. The operator sees
+        // the finished post (caption + rendered image) on one card; a separate "Mark Copy
+        // Reviewed" click was pure ceremony, so Approve absorbs it instead of rejecting.
+        effectivePatch = {
+          ...patch,
+          copyReviewed: true,
+          copyReviewedAt: post.copyReviewedAt || new Date().toISOString(),
+          approvalStatus: "approved"
+        };
       }
     }
     if (patch?.imageStatus === "ready") {
@@ -39485,7 +39691,7 @@ async function handleRequest(request, response) {
         return;
       }
     }
-    const state = await store.updatePost(id, patch);
+    const state = await store.updatePost(id, effectivePatch);
     sendJson(response, { state: withPublicChannelSetup(state) });
     return;
   }
