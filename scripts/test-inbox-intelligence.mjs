@@ -274,4 +274,37 @@ const PIPELINE_STATE = {
   ok("I3: skeleton drafts + UPL refusal with Lawrence flag; no send path anywhere");
 }
 
+// ---- 14. I4: pipeline record suggestions — pending-only, evidence-quoted ------------------------
+{
+  const { buildInboxRecordSuggestions } = await import("./inbox-intelligence.mjs");
+  const partnerSignal = {
+    id: "sig-partner", kind: "pipeline_inbound", status: "suggested",
+    counterpartName: "Riverside Legal Aid", counterpartEmail: "maria@riverside.org",
+    pipelineMatch: { collection: "partners", itemId: "partner-9" },
+    occurredAt: NOW, evidence: ["We would like to move forward with the pilot."]
+  };
+  const contactSignal = {
+    id: "sig-contact", kind: "pipeline_inbound", status: "suggested",
+    counterpartName: "Techstars", counterpartEmail: "team@techstars.com",
+    pipelineMatch: { collection: "", itemId: "", matchedBy: "investor_pattern" },
+    occurredAt: NOW, evidence: ["Can you share your latest numbers?"]
+  };
+  const suggestions = buildInboxRecordSuggestions({}, [partnerSignal, contactSignal], { now: NOW });
+  assert.equal(suggestions.length, 2);
+  const partner = suggestions.find((s) => s.suggestionType === "update_partner_status");
+  assert.equal(partner.relatedEntityId, "partner-9", "partner suggestion targets the matched record");
+  assert.match(partner.summary, /We would like to move forward/, "evidence is quoted");
+  assert.equal(partner.status, "pending", "engine writes PENDING only");
+  assert.ok(!("appliedAt" in partner), "engine never writes applied state");
+  const task = suggestions.find((s) => s.suggestionType === "mark_follow_up_due");
+  assert.ok(task && task.proposedChanges.dueDate, "non-partner matches propose a follow-up task with a due date");
+  // Dedupe: an existing suggestion for the same signal is never duplicated.
+  const again = buildInboxRecordSuggestions({ automationSuggestions: suggestions }, [partnerSignal, contactSignal], { now: NOW });
+  assert.equal(again.length, 0, "re-scans never duplicate suggestions");
+  // Only the human endpoint applies: the engine module must not contain apply/approve logic.
+  const moduleSource = readFileSync(join(here, "inbox-intelligence.mjs"), "utf8");
+  assert.ok(!moduleSource.includes("applyAutomationSuggestionToState") && !moduleSource.includes('status: "applied"'), "engine is locked out of applying suggestions");
+  ok("I4: pipeline inbounds propose pending, evidence-quoted updates; approval is human-only");
+}
+
 console.log("\ntest-inbox-intelligence: all " + passed + " checks passed.");
