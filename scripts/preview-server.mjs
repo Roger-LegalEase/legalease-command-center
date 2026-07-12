@@ -91,17 +91,11 @@ import {
   xAuthorizationUrl
 } from "./channel-connectors.mjs";
 import {
-  applyLeeActionProposal,
-  buildLeeKnowledgeIndex,
+  buildLeeModelCaller,
   buildLeeStatus,
-  createLeeThread,
-  leeChat,
-  leeToolPolicy,
-  leeTools,
-  rebuildLeeIndexState,
-  searchLeeKnowledge,
-  updateLeeActionProposal
-} from "./lee-engine.mjs";
+  migrateLegacyLeeProposals,
+  runLeeAssistant
+} from "./lee-assistant.mjs";
 import { ensureRcapProductionActivation, rcapActivationStatus } from "./production-activation.mjs";
 import { computeRcapPartnerJourneyHandoffReadiness, ensureRcapReviewStates, generateRcapPartnerJourneyHandoffPacket, rcapHandoffPacketKey, rcapHandoffReadinessSummary, rcapReviewArtifactDefinitions, rcapReviewQueue, transitionRcapReviewArtifact } from "./review-approval-engine.mjs";
 import { saveTodayOperatingMemory, synthesizeOperatingMemory } from "./operating-memory.mjs";
@@ -2556,56 +2550,46 @@ async function updateTaskRecord(id = "", action = "in_progress", patch = {}) {
   });
 }
 
-async function runLeeChat(payload = {}) {
+// Le-E chat v2. Three deliberate properties, all fixing prod failures of the old endpoint:
+// (1) The response is the chat delta only, never a full-state echo (the old 7.6 MB body blew
+//     the client's 8s abort on prod data). (2) All writes are SCOPED to the collections this
+//     handler actually changes. (3) The retired leeActionProposals lane migrates one-way into
+//     the I4 automationSuggestions flow, and the abandoned knowledge index is drained so it
+//     stops bloating /api/state. Le-E itself never applies anything: suggestions land
+//     "pending" and only the existing approve endpoint changes records.
+async function runLeeChat(payload = {}, actor = {}) {
   return serializeStateMutation(async () => {
     const state = await store.readState();
-    const result = leeChat(state, payload || {}, {
-      openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
-      now: new Date().toISOString()
+    const now = new Date().toISOString();
+    const visibleState = stripOwnerOnlyCollections(state, actor);
+    const migration = migrateLegacyLeeProposals(state, { now });
+    const result = await runLeeAssistant(visibleState, payload || {}, {
+      now,
+      callModel: buildLeeModelCaller(process.env)
     });
-    const nextState = analyzeOperations(result.state);
-    await writeChangedCollections(state, nextState);
-    return { ...result, state: nextState };
-  });
-}
-
-async function createLeeThreadRecord(payload = {}) {
-  return serializeStateMutation(async () => {
-    const state = await store.readState();
-    const thread = createLeeThread(payload || {}, { now: new Date().toISOString() });
-    const nextState = {
-      ...state,
-      leeThreads: [thread, ...(state.leeThreads || [])].slice(0, 100),
-      leeMemory: { ...(state.leeMemory || {}), lastThreadId: thread.id, updatedAt: thread.updatedAt }
+    const newSuggestions = [...result.suggestions, ...migration.suggestions];
+    const patch = {
+      leeThreads: [result.thread, ...(state.leeThreads || []).filter((thread) => thread.id !== result.thread.id)].slice(0, 100),
+      leeMessages: [result.userMessage, result.assistantMessage, ...(state.leeMessages || [])].slice(0, 1000),
+      leeRuns: [result.run, ...(state.leeRuns || [])].slice(0, 300),
+      leeMemory: { ...(state.leeMemory || {}), lastThreadId: result.thread.id, lastPrompt: String(payload?.message || "").slice(0, 240), updatedAt: now }
     };
-    await writeChangedCollections(state, nextState);
-    return { state: nextState, thread, message: "Le-E thread created." };
-  });
-}
-
-async function rebuildLeeIndex() {
-  return serializeStateMutation(async () => {
-    const state = await store.readState();
-    const nextState = rebuildLeeIndexState(state, { now: new Date().toISOString() });
-    await writeChangedCollections(state, nextState);
+    if (newSuggestions.length) {
+      patch.automationSuggestions = [...newSuggestions, ...(state.automationSuggestions || [])].slice(0, 200);
+    }
+    if (migration.changed) patch.leeActionProposals = migration.state.leeActionProposals;
+    if ((state.leeKnowledgeChunks || []).length) patch.leeKnowledgeChunks = [];
+    if ((state.leeKnowledgeSources || []).length) patch.leeKnowledgeSources = [];
+    await store.writeCollections(patch);
     return {
-      state: nextState,
-      sources: nextState.leeKnowledgeSources || [],
-      chunks: nextState.leeKnowledgeChunks || [],
-      message: "Le-E knowledge index rebuilt."
+      thread: result.thread,
+      messages: [result.userMessage, result.assistantMessage],
+      suggestions: result.suggestions,
+      migratedLegacyProposals: migration.migratedCount,
+      message: result.suggestions.length
+        ? `Le-E answered and queued ${result.suggestions.length} suggestion(s) for your approval.`
+        : "Le-E answered."
     };
-  });
-}
-
-async function updateLeeAction(id = "", action = "approve", payload = {}) {
-  return serializeStateMutation(async () => {
-    const state = await store.readState();
-    const result = action === "apply"
-      ? applyLeeActionProposal(state, id, state, { now: new Date().toISOString() })
-      : updateLeeActionProposal(state, id, action, { actor: "Roger", reason: payload?.reason || "", now: new Date().toISOString() });
-    const nextState = analyzeOperations(result.state);
-    await writeChangedCollections(state, nextState);
-    return { ...result, state: nextState };
   });
 }
 
@@ -12753,7 +12737,9 @@ async function googleJson(url, token = "") {
 // Inbox-derived data is owner-visible ONLY: these collections are stripped from any state
 // payload served to a non-owner actor. This is the codebase's first per-collection visibility
 // gate; test-inbox-intelligence.mjs pins it.
-const OWNER_ONLY_COLLECTIONS = ["inboxSignals", "inboxConfig"];
+// Le-E's conversation memory joins the inbox data behind the owner wall: Roger's chat history
+// (and the leeMemory pointer into it) is stripped from any state payload served to a non-owner.
+const OWNER_ONLY_COLLECTIONS = ["inboxSignals", "inboxConfig", "leeThreads", "leeMessages", "leeRuns", "leeMemory"];
 function stripOwnerOnlyCollections(payload, actor) {
   if (!payload || typeof payload !== "object") return payload;
   if (String(actor?.role || "") === "owner") return payload;
@@ -15857,7 +15843,6 @@ function htmlShell() {
     .focus-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:20px; }
     .focus-actions button { min-height:44px; }
     .done-state { border:1px dashed rgba(8,20,95,.14); border-radius:16px; background:#fff; color:var(--muted); padding:22px; text-align:center; }
-    .lee-shell { display:grid; grid-template-columns:minmax(0,1fr) minmax(260px,320px); gap:18px; align-items:start; }
     .lee-chat { min-height:620px; display:flex; flex-direction:column; gap:14px; }
     .lee-messages { flex:1; display:flex; flex-direction:column; gap:12px; max-height:620px; overflow:auto; padding-right:4px; }
     .lee-message { display:grid; gap:8px; max-width:86%; padding:14px 16px; border:1px solid rgba(8,20,95,.08); border-radius:16px; background:#F7FAF9; white-space:normal; word-break:normal; overflow-wrap:break-word; }
@@ -15865,46 +15850,11 @@ function htmlShell() {
     .lee-message.user .muted { color:rgba(255,255,255,.72); }
     .lee-message.assistant { align-self:flex-start; background:white; }
     .lee-message pre { margin:0; white-space:pre-wrap; font:inherit; line-height:1.5; }
-    .lee-source-row { display:flex; flex-wrap:wrap; gap:6px; }
-    .lee-source-chip { display:inline-flex; max-width:100%; border:1px solid rgba(8,20,95,.1); border-radius:999px; padding:4px 9px; color:#475467; background:#F2F4F7; font-size:12px; font-weight:800; }
-    .lee-input { display:grid; gap:10px; border-top:1px solid rgba(8,20,95,.08); padding-top:14px; }
-    .lee-input textarea { min-height:92px; resize:vertical; font-size:15px; line-height:1.45; }
-    .lee-side { display:grid; gap:14px; }
-    .lee-onboarding { display:grid; gap:10px; }
-    .lee-onboarding button { justify-content:flex-start; text-align:left; }
-    .lee-suggestions { display:flex; flex-wrap:wrap; gap:8px; }
-    .lee-suggestions button { border-radius:999px; min-height:34px; font-size:12px; }
-    .lee-proposal { display:grid; gap:10px; border:1px solid rgba(8,20,95,.08); border-radius:16px; background:white; padding:14px; }
-    .lee-proposal h3 { margin:0; color:var(--ink); font-size:16px; line-height:1.3; }
-    .lee-proposal-note { margin:0; color:#667085; font-size:13px; line-height:1.45; }
-    .lee-proposal code { display:block; white-space:pre-wrap; max-height:160px; overflow:auto; }
-    .lee-status-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-    .lee-status-grid div { border:1px solid rgba(8,20,95,.08); border-radius:12px; padding:10px; background:#F7FAF9; display:grid; gap:4px; }
-    .lee-status-grid strong { color:var(--ink); font-size:20px; }
+    .lee-suggestion-note { margin:0; font-size:13px; color:#475467; }
+    .lee-suggestion-note a { color:var(--accent); font-weight:700; }
     .lee-simple { max-width:820px; margin:0 auto; display:grid; gap:16px; width:100%; }
     .lee-simple h1 { margin:0; font-size:42px; letter-spacing:0; line-height:1; }
     .lee-simple-help { margin:4px 0 0; color:#667085; font-size:15px; }
-    .lee-simple-input { display:grid; gap:12px; }
-    .lee-simple-input textarea { min-height:138px; font-size:17px; line-height:1.48; padding:16px; border-radius:16px; }
-    .lee-simple-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
-    .lee-quick { display:flex; gap:8px; flex-wrap:wrap; }
-    .lee-quick button { border-radius:999px; min-height:34px; font-size:12px; }
-    .lee-menu { margin-left:auto; position:relative; }
-    .lee-menu summary { list-style:none; cursor:pointer; border:1px solid var(--line); border-radius:999px; width:34px; height:34px; display:grid; place-items:center; font-weight:900; background:white; }
-    .lee-menu summary::-webkit-details-marker { display:none; }
-    .lee-menu > div { position:absolute; right:0; top:40px; min-width:160px; border:1px solid var(--line); border-radius:12px; background:white; box-shadow:0 18px 48px rgba(8,20,95,.12); padding:8px; z-index:5; display:grid; gap:6px; }
-    .lee-menu button { width:100%; justify-content:flex-start; text-align:left; }
-    .lee-latest-answer { display:grid; gap:12px; border:1px solid rgba(8,20,95,.08); border-radius:18px; background:white; padding:18px; }
-    .lee-latest-answer pre { margin:0; white-space:pre-wrap; font:inherit; line-height:1.55; color:#202434; }
-    .lee-collapsed-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-    .lee-collapsed-row details { border:1px solid rgba(8,20,95,.1); border-radius:999px; padding:6px 10px; background:#F7FAF9; }
-    .lee-collapsed-row summary { cursor:pointer; font-size:12px; font-weight:850; color:#475467; }
-    .lee-collapsed-row details[open] { border-radius:14px; width:100%; }
-    .lee-simple-proposal { border:1px solid rgba(8,20,95,.1); border-radius:16px; background:#F7FAF9; padding:14px; display:grid; gap:10px; }
-    .lee-simple-proposal h2 { margin:0; font-size:17px; }
-    .lee-simple-proposal p { margin:0; color:#667085; font-size:14px; }
-    .lee-advanced { display:grid; gap:16px; }
-    .lee-advanced[hidden] { display:none; }
     .lee-bubble-wrap { position:fixed; right:24px; bottom:22px; z-index:60; display:grid; justify-items:end; gap:12px; pointer-events:none; }
     .lee-pill { pointer-events:auto; display:inline-flex; align-items:center; gap:10px; min-width:90px; min-height:48px; border:0; border-radius:999px; background:#101820; color:#f8fffe; box-shadow:0 18px 48px rgba(0,38,36,.2); font-family:inherit; font-size:15px; font-weight:800; text-transform:none; letter-spacing:0; padding:0 18px; }
     .lee-pill:hover, .lee-pill:focus-visible { background:#15242b; outline:3px solid rgba(0,169,157,.22); }
@@ -15917,16 +15867,10 @@ function htmlShell() {
     .lee-panel-status { display:inline-flex; align-items:center; gap:8px; color:#b9d9d6; font-size:12px; font-weight:750; }
     .lee-panel-close { width:34px; height:34px; border-radius:999px; padding:0; border-color:rgba(248,255,254,.18); background:rgba(248,255,254,.08); color:#f8fffe; }
     .lee-panel-body { display:grid; gap:12px; padding:14px; }
-    .lee-context { border:1px solid var(--border-default); border-radius:16px; padding:12px; background:var(--bg-cue); color:var(--text-secondary); font-size:13px; line-height:1.45; }
-    .lee-panel .lee-latest-answer { box-shadow:none; padding:12px; border-radius:16px; border-color:var(--border-default); }
-    .lee-panel .lee-latest-answer pre { color:var(--text-primary); font-size:13px; }
-    .lee-panel .lee-quick { gap:7px; }
-    .lee-panel .lee-quick button { min-height:32px; border-radius:999px; background:var(--accent-tint); border-color:var(--border-light); color:var(--accent); text-transform:none; }
     .lee-input-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; }
     .lee-input-row textarea { min-height:50px; max-height:120px; resize:vertical; border-radius:16px; font-size:14px; }
     .lee-input-row button { min-height:42px; border-radius:999px; }
-    .lee-panel .lee-advanced { max-height:48vh; overflow:auto; }
-    .lee-panel .lee-shell { grid-template-columns:1fr; }
+    .lee-panel .lee-messages { max-height:48vh; }
     .lee-panel .lee-message { max-width:100%; }
     @media (max-width:640px) {
       .lee-bubble-wrap { inset:0; right:0; bottom:0; justify-items:stretch; align-items:end; padding:0; }
@@ -16476,7 +16420,7 @@ function htmlShell() {
     .funnel-stage strong { color:var(--ink); font-size:20px; }
     @media (max-width:1100px) { .layout,.command,.post-grid,.three,.two,.calendar,.queue-card,.operator-review,.wilma-grid,.export-grid,.archive-grid,.executive-grid,.ops-row,.operator-legacy-grid,.landing-grid { grid-template-columns:1fr; } .app-topbar { min-height:auto; align-items:flex-start; flex-direction:column; padding:14px 18px; } .top-nav { width:100%; overflow:visible; align-items:flex-start; flex-wrap:wrap; justify-content:flex-start; } .nav-menu,.nav-top-link { flex:0 0 auto; } header,main { padding-left:18px; padding-right:18px; } .image-stage { position:static; order:-1; } .operator-preview .image-preview { min-height:300px; } .operator-command-strip { grid-template-columns:1fr; } .operator-strip-status { justify-content:flex-start; } }
     @media (max-width:760px) { .queue-review-hero-head,.queue-review-item,.queue-platform-preview { grid-template-columns:1fr; display:grid; } .queue-review-actions { justify-content:flex-start; } .queue-safety-note { border-radius:14px; } }
-    @media (max-width:1100px) { .mission-grid,.readiness-strip,.pipeline-board,.health-grid,.metric-table,.asset-library-grid,.modal-grid,.lee-shell { grid-template-columns:1fr; } .readiness-strip,.pipeline-board { overflow:visible; } .lee-message { max-width:100%; } }
+    @media (max-width:1100px) { .mission-grid,.readiness-strip,.pipeline-board,.health-grid,.metric-table,.asset-library-grid,.modal-grid { grid-template-columns:1fr; } .readiness-strip,.pipeline-board { overflow:visible; } .lee-message { max-width:100%; } }
 
     ${designSystem.interfaceCss}
 
@@ -17252,7 +17196,6 @@ function htmlShell() {
     let focusIndex = 0;
     let leeDraft = "";
     let leeBusy = false;
-    let leeAdvanced = false;
     let leeBubbleOpen = false;
     let rcapActivationClientStatus = null;
     let campaignImportPreview = null;
@@ -28553,7 +28496,7 @@ function htmlShell() {
           </header>
           <section class="app-intention" aria-label="Daily intention">
             <h1>\${esc(intention.prefix)}<span class="intention-accent">\${esc(intention.accent)}</span>\${esc(intention.suffix)}</h1>
-            <div class="intention-meta"><span>\${esc(intention.source)}</span><button type="button" data-lee-prompt="Rewrite today's intention from current open work.">Rewrite with Le-E</button></div>
+            <div class="intention-meta"><span>\${esc(intention.source)}</span></div>
           </section>
           \${dailyRunTodayPanelHtml()}
           \${rcapRevenueSavedViewsPanelHtml("command")}
@@ -28692,270 +28635,60 @@ function htmlShell() {
         .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
     }
 
-    function leeThreadProposals(threadId = leeCurrentThreadId()) {
-      return (state.leeActionProposals || [])
-        .filter(proposal => !threadId || proposal.threadId === threadId)
-        .slice()
-        .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-    }
-
     function leeFormat(content = "") {
       return esc(content || "").replace(/\\n/g, "<br>");
     }
 
-    function leeSourceChips(refs = []) {
-      return refs?.length ? \`<div class="lee-source-row">\${refs.slice(0, 5).map(ref => \`<span class="lee-source-chip">\${esc(ref.citationLabel || ref.title || ref.sourceType)}</span>\`).join("")}</div>\` : "";
-    }
-
-    function leeProposalCard(proposal = {}) {
-      const canApply = proposal.status === "proposed" && proposal.autonomyLevel === "auto_safe" && !proposal.requiredApproval;
-      const blocked = proposal.status === "blocked" || proposal.autonomyLevel === "forbidden";
-      const proposalOnly = !blocked && !canApply;
-      const actionNote = blocked
-        ? "Blocked by LegalEase safety rules. This cannot be applied."
-        : canApply
-          ? "Safe internal change. Applying this updates Command Center records only."
-          : "Proposal only. Review and route through the required approval workflow before anything external happens.";
-      return \`<article class="lee-proposal">
-        <div class="today-meta"><span class="today-phase \${blocked ? "now" : proposal.riskLevel === "high" ? "next" : "later"}">\${esc(plainOperatorState(proposal.status))}</span><span>\${esc(growthLabel(proposal.riskLevel || "low"))} risk</span><span>\${esc(growthLabel(proposal.autonomyLevel || "approval_required"))}</span></div>
-        <h3>\${esc(proposal.title || "Le-E proposed action")}</h3>
-        <p class="muted">\${esc(proposal.summary || "Review before applying.")}</p>
-        <p class="lee-proposal-note">\${esc(actionNote)}</p>
-        <details>
-          <summary>What will change</summary>
-          <code>\${esc(JSON.stringify(proposal.proposedChanges || {}, null, 2))}</code>
-        </details>
-        <div class="card-actions">
-          <button class="primary" onclick="applyLeeAction('\${esc(proposal.id)}')" \${canApply ? "" : "disabled"}>\${canApply ? "Apply safe change" : blocked ? "Blocked" : "Needs approval"}</button>
-          <button onclick="approveLeeAction('\${esc(proposal.id)}')" \${proposal.status === "proposed" && !blocked ? "" : "disabled"}>\${proposalOnly ? "Mark reviewed" : "Approve"}</button>
-          <button onclick="rejectLeeAction('\${esc(proposal.id)}')" \${["applied", "rejected"].includes(proposal.status) ? "disabled" : ""}>Reject</button>
-        </div>
-      </article>\`;
-    }
-
-    function leeShortAnswer(content = "") {
-      const full = content || "";
-      const simpleLines = String(full).split("\\n");
-      const kept = [];
-      let skippingWhy = false;
-      for (const line of simpleLines) {
-        if (/^\\s*Sources:/i.test(line)) continue;
-        if (/^\\s*Why it matters/i.test(line)) {
-          skippingWhy = true;
-          continue;
-        }
-        if (/^\\s*Recommended action/i.test(line)) skippingWhy = false;
-        if (!skippingWhy) kept.push(line);
-      }
-      const simple = kept.join("\\n").replace(/\\n{3,}/g, "\\n\\n").trim() || full;
-      const words = simple.split(/\\s+/).filter(Boolean);
-      if (words.length <= 120) return { short: simple, full, truncated: simple !== full };
-      return { short: words.slice(0, 120).join(" ") + "...", full, truncated: true };
-    }
-
-    function leeSimpleProposalSummary(proposals = []) {
-      const active = proposals.filter(proposal => proposal.status === "proposed");
-      if (!active.length) return "";
-      const safe = active.filter(proposal => proposal.autonomyLevel === "auto_safe" && !proposal.requiredApproval);
-      const blocked = active.filter(proposal => proposal.status === "blocked" || proposal.autonomyLevel === "forbidden");
-      const first = safe[0] || active[0];
-      const label = safe.length
-        ? \`\${safe.length} safe change\${safe.length === 1 ? "" : "s"} proposed\`
-        : blocked.length
-          ? \`\${blocked.length} blocked action\${blocked.length === 1 ? "" : "s"}\`
-          : \`\${active.length} change\${active.length === 1 ? "" : "s"} need review\`;
-      return \`<article class="lee-simple-proposal">
-        <h2>\${esc(label)}</h2>
-        <p>\${esc(first?.title || "Review Le-E proposed changes.")}</p>
-        <div class="card-actions">
-          <button class="primary" onclick="applyLeeAction('\${esc(first?.id || "")}')" \${safe.length && first?.id ? "" : "disabled"}>Apply</button>
-          <button onclick="leeAdvanced=true; render()">Review</button>
-          <button onclick="rejectLeeAction('\${esc(first?.id || "")}')" \${first?.id ? "" : "disabled"}>Dismiss</button>
-        </div>
-      </article>\`;
+    // One shared renderer for the Le-E page and the floating panel: message history on top,
+    // one text box, one send button. No chips, no quick prompts, no proposal cards. Suggested
+    // record updates render as a one-line notice under the reply, pointing at the Automation
+    // Inbox where the normal approve-then-apply flow lives.
+    function leeConversationHtml() {
+      const messages = leeThreadMessages(leeCurrentThreadId());
+      return \`<div class="lee-messages" aria-live="polite">
+        \${messages.length ? messages.map(message => \`<article class="lee-message \${message.role === "user" ? "user" : "assistant"}">
+          <div class="today-meta"><span>\${esc(message.role === "assistant" ? "Le-E" : "Roger")}</span><span>\${esc(String(message.createdAt || "").slice(0, 16).replace("T", " "))}</span></div>
+          <pre>\${leeFormat(message.content || "")}</pre>
+          \${(message.suggestionIds || []).length ? \`<p class="lee-suggestion-note">Suggested update queued for your approval. <a href="#automation">Review it in the Automation Inbox</a>.</p>\` : ""}
+        </article>\`).join("") : '<div class="done-state"><h2>No conversation yet.</h2><p>Ask about the company, or tell Le-E something to log. It answers from live Command Center data and never changes anything without your approval.</p></div>'}
+        \${leeBusy ? '<article class="lee-message assistant"><pre>Thinking...</pre></article>' : ""}
+      </div>
+      <form class="lee-input-row" onsubmit="sendLeeMessage(event)">
+        <textarea name="message" required aria-label="Message Le-E" placeholder="Message Le-E...">\${esc(leeDraft)}</textarea>
+        <button class="primary" type="submit" \${leeBusy ? "disabled" : ""}>\${leeBusy ? "Thinking..." : "Send"}</button>
+      </form>\`;
     }
 
     function leePageHtml(pageClass) {
-      const threadId = leeCurrentThreadId();
-      const messages = leeThreadMessages(threadId);
-      const proposals = leeThreadProposals(threadId).slice(0, 12);
-      const assistantMessages = messages.filter(message => message.role === "assistant");
-      const latest = assistantMessages[assistantMessages.length - 1] || null;
-      const answer = leeShortAnswer(latest?.content || "");
-      const status = {
-        openAIConfigured:Boolean(state.runtime?.openAIConfigured),
-        knowledgeIndexRecords:(state.leeKnowledgeChunks || []).length || ["growthInbox", "tasks", "partnerPrograms", "partners", "campaigns", "contentBank", "approvalQueue", "reports", "dataRoomItems", "soc2Evidence", "events", "activityEvents"].reduce((sum, key) => sum + ((state[key] || []).length || 0), 0),
-        pendingProposedActions:(state.leeActionProposals || []).filter(item => item.status === "proposed").length,
-        blockedActions:(state.leeActionProposals || []).filter(item => item.status === "blocked").length,
-        liveGatesCount:Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length
-      };
-      const prompts = [
-        "What should I focus on today?",
-        "Which partners are stalled?",
-        "What needs my decision?",
-        "What proof did we create this week?",
-        "Generate a partner follow-up plan.",
-        "Create tasks from Growth Inbox.",
-        "What is risky or blocked?",
-        "What should go into the Evidence Pack?"
-      ];
-      const quickPrompts = [
-        ["Plan my day", "What should I focus on today?"],
-        ["What needs me?", "What needs my decision?"],
-        ["Create tasks", "Create tasks from Growth Inbox."]
-      ];
+      loadLeeHistory();
       return \`<section id="lee" class="section \${pageClass("lee")}">
         <div class="lee-simple">
-          <section class="panel lee-command-card">
+          <section class="panel lee-chat">
             <div class="simple-panel-head">
               <div>
                 <div class="eyebrow">Le-E</div>
                 <h1>Le-E</h1>
-                <p class="lee-simple-help">Ask what matters, create a task, or find something in LegalEase.</p>
+                <p class="lee-simple-help">A plain conversation over live Command Center data. Le-E proposes; you approve. It never sends, never writes records, never touches gates.</p>
               </div>
-              <details class="lee-menu">
-                <summary aria-label="Le-E menu">...</summary>
-                <div>
-                  <button onclick="newLeeThread()">New thread</button>
-                  <button onclick="clearLeeThread()">Clear thread</button>
-                  <button onclick="leeAdvanced=!leeAdvanced; render()">\${leeAdvanced ? "Hide Advanced" : "Advanced"}</button>
-                </div>
-              </details>
             </div>
-            <form class="lee-simple-input" onsubmit="sendLeeMessage(event)">
-              <textarea name="message" required placeholder="Ask Le-E...">\${esc(leeDraft)}</textarea>
-              <div class="lee-simple-actions">
-                <div class="lee-quick">\${quickPrompts.map(([label, prompt]) => \`<button type="button" onclick='askLeePrompt(\${JSON.stringify(prompt)})'>\${esc(label)}</button>\`).join("")}</div>
-                <button class="primary" type="submit" \${leeBusy ? "disabled" : ""}>\${leeBusy ? "Thinking..." : "Send"}</button>
-              </div>
-            </form>
-          </section>
-          \${leeBusy ? '<section class="lee-latest-answer"><pre>Checking Command Center memory and safety rules...</pre></section>' : latest ? \`<section class="lee-latest-answer">
-            <div class="eyebrow">Latest answer</div>
-            <pre>\${leeFormat(answer.short)}</pre>
-            \${answer.truncated ? \`<details><summary>Show details</summary><pre>\${leeFormat(answer.full)}</pre></details>\` : ""}
-            <div class="lee-collapsed-row">
-              <details><summary>Sources: \${(latest.sourceRefs || []).length}</summary>\${leeSourceChips(latest.sourceRefs || []) || '<p class="muted">No source references attached.</p>'}</details>
-            </div>
-          </section>\` : '<section class="lee-latest-answer"><pre>Ask Le-E what matters today.</pre></section>'}
-          \${leeSimpleProposalSummary(proposals)}
-          <section class="lee-advanced" \${leeAdvanced ? "" : "hidden"}>
-            <div class="lee-shell">
-              <section class="panel lee-chat">
-                <div class="simple-panel-head">
-                  <h2>Advanced conversation</h2>
-                  <div class="card-actions"><button onclick="newLeeThread()">New thread</button><button onclick="clearLeeThread()">Clear thread</button><button type="button" onclick="rebuildLeeIndex()">Rebuild index</button></div>
-                </div>
-                <div class="lee-messages">
-                  \${messages.length ? messages.map(message => \`<article class="lee-message \${message.role === "user" ? "user" : "assistant"}">
-                    <div class="today-meta"><span>\${esc(message.role === "assistant" ? "Le-E" : "Roger")}</span><span>\${esc(message.createdAt || "")}</span></div>
-                    <pre>\${leeFormat(message.content || "")}</pre>
-                    \${leeSourceChips(message.sourceRefs || [])}
-                  </article>\`).join("") : '<div class="done-state"><h2>No conversation history yet.</h2><p>Ask one question in Simple Mode first.</p></div>'}
-                </div>
-              </section>
-              <aside class="lee-side">
-            <section class="panel">
-              <h2>Suggested prompts</h2>
-              <div class="lee-suggestions">\${prompts.map(prompt => \`<button onclick='askLeePrompt(\${JSON.stringify(prompt)})'>\${esc(prompt)}</button>\`).join("")}</div>
-            </section>
-            <section class="panel">
-              <h2>Status</h2>
-              <div class="lee-status-grid">
-                <div><span>OpenAI</span><strong>\${status.openAIConfigured ? "yes" : "no"}</strong></div>
-                <div><span>Index</span><strong>\${status.knowledgeIndexRecords}</strong></div>
-                <div><span>Pending</span><strong>\${status.pendingProposedActions}</strong></div>
-                <div><span>Blocked</span><strong>\${status.blockedActions}</strong></div>
-                <div><span>Safe mode</span><strong>on</strong></div>
-                <div><span>Publishing</span><strong>\${status.liveGatesCount === 0 ? "off" : "needs review"}</strong></div>
-              </div>
-            </section>
-            <section class="panel">
-              <div class="simple-panel-head"><h2>Proposed changes</h2><button onclick="applyAllSafeLeeActions()">Apply all safe</button></div>
-              <div class="grid">\${proposals.map(leeProposalCard).join("") || '<div class="done-state">No proposed actions. Le-E will show draft changes here before anything important changes.</div>'}</div>
-            </section>
-              </aside>
-            </div>
+            \${leeConversationHtml()}
           </section>
         </div>
       </section>\`;
     }
 
     function leeBubbleHtml() {
-      const threadId = leeCurrentThreadId();
-      const messages = leeThreadMessages(threadId);
-      const proposals = leeThreadProposals(threadId).slice(0, 8);
-      const assistantMessages = messages.filter(message => message.role === "assistant");
-      const latest = assistantMessages[assistantMessages.length - 1] || null;
-      const answer = leeShortAnswer(latest?.content || "");
-      const quickPrompts = [
-        ["Plan my day", "What should I focus on today?"],
-        ["What needs me?", "What needs my decision?"],
-        ["Create tasks", "Create tasks from Growth Inbox."]
-      ];
-      const status = {
-        openAIConfigured:Boolean(state.runtime?.openAIConfigured),
-        knowledgeIndexRecords:(state.leeKnowledgeChunks || []).length || ["growthInbox", "tasks", "partnerPrograms", "partners", "campaigns", "contentBank", "approvalQueue", "reports", "dataRoomItems", "soc2Evidence", "events", "activityEvents"].reduce((sum, key) => sum + ((state[key] || []).length || 0), 0),
-        pendingProposedActions:(state.leeActionProposals || []).filter(item => item.status === "proposed").length,
-        liveGatesCount:Object.values(state.runtime?.livePostingGates || {}).filter(gate => gate?.enabled).length
-      };
       return \`<div class="lee-bubble-wrap" aria-live="polite">
         <section class="lee-panel" \${leeBubbleOpen ? "" : "hidden"} aria-label="Le-E chat panel">
           <div class="lee-panel-head">
             <div>
               <h2>Le-E</h2>
-              <div class="lee-panel-status"><span class="lee-pill-dot"></span>\${status.openAIConfigured ? "ready" : "safe local mode"}</div>
+              <div class="lee-panel-status"><span class="lee-pill-dot"></span>proposes only, never acts</div>
             </div>
             <button class="lee-panel-close" type="button" onclick="closeLeeBubble()" aria-label="Close Le-E">×</button>
           </div>
           <div class="lee-panel-body">
-            <div class="lee-context">Ask what matters, create a task, or find something in LegalEase.</div>
-            \${leeBusy ? '<section class="lee-latest-answer"><pre>Checking Command Center memory and safety rules...</pre></section>' : latest ? \`<section class="lee-latest-answer">
-              <pre>\${leeFormat(answer.short)}</pre>
-              \${answer.truncated ? \`<details><summary>Show details</summary><pre>\${leeFormat(answer.full)}</pre></details>\` : ""}
-              <div class="lee-collapsed-row">
-                <details><summary>Sources: \${(latest.sourceRefs || []).length}</summary>\${leeSourceChips(latest.sourceRefs || []) || '<p class="muted">No source references attached.</p>'}</details>
-              </div>
-            </section>\` : '<section class="lee-latest-answer"><pre>Ask Le-E what matters today.</pre></section>'}
-            \${leeSimpleProposalSummary(proposals)}
-            <div class="lee-quick">\${quickPrompts.map(([label, prompt]) => \`<button type="button" onclick='askLeePrompt(\${JSON.stringify(prompt)})'>\${esc(label)}</button>\`).join("")}</div>
-            <form class="lee-input-row" onsubmit="sendLeeMessage(event)">
-              <textarea name="message" required aria-label="Ask Le-E" placeholder="Ask Le-E...">\${esc(leeDraft)}</textarea>
-              <button class="primary" type="submit" \${leeBusy ? "disabled" : ""}>\${leeBusy ? "Thinking" : "Send"}</button>
-            </form>
-            <details class="lee-advanced">
-              <summary>Advanced</summary>
-              <div class="lee-shell" style="margin-top:12px">
-                <section class="lee-chat">
-                  <div class="simple-panel-head">
-                    <h2>Conversation</h2>
-                    <div class="card-actions"><button onclick="newLeeThread()">New</button><button onclick="clearLeeThread()">Clear</button><button type="button" onclick="rebuildLeeIndex()">Rebuild index</button></div>
-                  </div>
-                  <div class="lee-messages">
-                    \${messages.length ? messages.map(message => \`<article class="lee-message \${message.role === "user" ? "user" : "assistant"}">
-                      <div class="today-meta"><span>\${esc(message.role === "assistant" ? "Le-E" : "Roger")}</span><span>\${esc(message.createdAt || "")}</span></div>
-                      <pre>\${leeFormat(message.content || "")}</pre>
-                      \${leeSourceChips(message.sourceRefs || [])}
-                    </article>\`).join("") : '<div class="done-state">No conversation history yet.</div>'}
-                  </div>
-                </section>
-                <aside class="lee-side">
-                  <section class="panel">
-                    <h2>Status</h2>
-                    <div class="lee-status-grid">
-                      <div><span>OpenAI</span><strong>\${status.openAIConfigured ? "yes" : "no"}</strong></div>
-                      <div><span>Index</span><strong>\${status.knowledgeIndexRecords}</strong></div>
-                      <div><span>Pending</span><strong>\${status.pendingProposedActions}</strong></div>
-                      <div><span>Publishing</span><strong>\${status.liveGatesCount === 0 ? "off" : "needs review"}</strong></div>
-                    </div>
-                  </section>
-                  <section class="panel">
-                    <div class="simple-panel-head"><h2>Proposed changes</h2><button onclick="applyAllSafeLeeActions()">Apply all safe</button></div>
-                    <div class="grid">\${proposals.map(leeProposalCard).join("") || '<div class="done-state">No proposed actions.</div>'}</div>
-                  </section>
-                </aside>
-              </div>
-            </details>
+            \${leeConversationHtml()}
           </div>
         </section>
         <button class="lee-pill" type="button" onclick="openLeeBubble()" aria-label="Ask Le-E" \${leeBubbleOpen ? "hidden" : ""}><span class="lee-pill-dot"></span><span>Le-E</span></button>
@@ -32535,6 +32268,10 @@ function htmlShell() {
       }, "Could not update conversation note.");
     }
 
+    // Le-E send path. Press, spin, response: the Phase L capture listener marks the button
+    // busy on the click, api() keeps it busy for the whole request, and the chat response is
+    // a small delta ({messages, suggestions}) merged into local state, never a full-state
+    // echo. The 30s timeout covers the model call; the default 8s abort killed prod chat.
     async function sendLeeMessage(event) {
       event.preventDefault();
       const message = String(new FormData(event.target).get("message") || "").trim();
@@ -32542,58 +32279,50 @@ function htmlShell() {
         toast("Ask Le-E a question first.");
         return;
       }
-      leeBubbleOpen = true;
-      leeDraft = message;
+      leeDraft = "";
       leeBusy = true;
+      const pendingMessage = { id:"lee-pending-" + Date.now(), threadId:leeCurrentThreadId() || "lee-main-thread", role:"user", content:message, createdAt:new Date().toISOString(), pending:true };
+      state.leeMessages = [pendingMessage, ...(state.leeMessages || [])];
       render();
       await cooAction(async () => {
-        toast("Le-E is thinking...");
         const result = await api("/api/lee/chat", {
           method:"POST",
+          timeoutMs: 30000,
           body:JSON.stringify({ threadId: leeCurrentThreadId(), message })
         });
-        state = result.state;
-        leeDraft = "";
-        render();
-        const messageText = result.proposals?.length ? "Le-E answered and proposed " + result.proposals.length + " action(s)." : "Le-E answered.";
+        state.leeMessages = [...(result.messages || []), ...(state.leeMessages || []).filter(item => item.id !== pendingMessage.id)];
+        state.leeThreads = [result.thread, ...(state.leeThreads || []).filter(item => item.id !== result.thread?.id)].filter(Boolean);
+        state.leeMemory = { ...(state.leeMemory || {}), lastThreadId: result.thread?.id || leeCurrentThreadId() };
+        const messageText = result.suggestions?.length
+          ? "Le-E queued " + result.suggestions.length + " suggested update(s) for your approval."
+          : "Le-E answered.";
         toast(messageText);
         return messageText;
       }, "Could not ask Le-E.");
       leeBusy = false;
       render();
+      const log = document.querySelector(".lee-messages");
+      if (log) log.scrollTop = log.scrollHeight;
     }
 
-    async function askLeePrompt(prompt) {
-      leeBubbleOpen = true;
-      leeDraft = prompt;
-      leeBusy = true;
-      render();
-      await cooAction(async () => {
-        toast("Le-E is thinking...");
-        const result = await api("/api/lee/chat", {
-          method:"POST",
-          body:JSON.stringify({ threadId: leeCurrentThreadId(), message:prompt })
-        });
-        state = result.state;
+    let leeHistoryLoaded = false;
+    async function loadLeeHistory() {
+      if (leeHistoryLoaded) return;
+      leeHistoryLoaded = true;
+      try {
+        const result = await api("/api/lee/threads", {});
+        state.leeThreads = result.threads || state.leeThreads || [];
+        state.leeMessages = result.messages || state.leeMessages || [];
         render();
-        const messageText = result.proposals?.length ? "Le-E answered with proposed actions." : "Le-E answered.";
-        toast(messageText);
-        return messageText;
-      }, "Could not ask Le-E.");
-      leeBusy = false;
-      leeDraft = "";
-      render();
-    }
-
-    function askLeePromptFromButton(button) {
-      const prompt = button?.dataset?.leePrompt || "";
-      if (!prompt) return;
-      askLeePrompt(prompt);
+      } catch {
+        // History stays empty for non-owner sessions; chat itself will explain.
+      }
     }
 
     function openLeeBubble() {
       leeBubbleOpen = true;
       render();
+      loadLeeHistory();
     }
 
     function closeLeeBubble() {
@@ -32635,79 +32364,6 @@ function htmlShell() {
         if (marker) marker.style.left = left + "%";
         if (label) label.style.left = left + "%";
       }
-    }
-
-    async function newLeeThread() {
-      await cooAction(async () => {
-        const result = await api("/api/lee/threads", {
-          method:"POST",
-          body:JSON.stringify({ title:"Le-E thread" })
-        });
-        state = result.state;
-        render();
-        toast(result.message || "New Le-E thread created.");
-        return result.message || "New Le-E thread created.";
-      }, "Could not create Le-E thread.");
-    }
-
-    async function clearLeeThread() {
-      const ok = window.confirm("Start a fresh Le-E thread? Existing messages and activity stay preserved.");
-      if (!ok) return;
-      await newLeeThread();
-    }
-
-    async function rebuildLeeIndex() {
-      await cooAction(async () => {
-        const result = await api("/api/lee/index/rebuild", { method:"POST", body:JSON.stringify({}) });
-        state = result.state;
-        render();
-        toast(result.message || "Le-E index rebuilt.");
-        return result.message || "Le-E index rebuilt.";
-      }, "Could not rebuild Le-E index.");
-    }
-
-    async function applyLeeAction(id) {
-      await cooAction(async () => {
-        const result = await api("/api/lee/actions/" + encodeURIComponent(id) + "/apply", { method:"POST", body:JSON.stringify({}) });
-        state = result.state;
-        render();
-        toast(result.message || "Le-E action applied.");
-        return result.message || "Le-E action applied.";
-      }, "Le-E action was not applied.");
-    }
-
-    async function approveLeeAction(id) {
-      await cooAction(async () => {
-        const result = await api("/api/lee/actions/" + encodeURIComponent(id) + "/approve", { method:"POST", body:JSON.stringify({}) });
-        state = result.state;
-        render();
-        toast(result.message || "Le-E action approved.");
-        return result.message || "Le-E action approved.";
-      }, "Could not approve Le-E action.");
-    }
-
-    async function rejectLeeAction(id) {
-      await cooAction(async () => {
-        const result = await api("/api/lee/actions/" + encodeURIComponent(id) + "/reject", { method:"POST", body:JSON.stringify({ reason:"Rejected by Roger." }) });
-        state = result.state;
-        render();
-        toast(result.message || "Le-E action rejected.");
-        return result.message || "Le-E action rejected.";
-      }, "Could not reject Le-E action.");
-    }
-
-    async function applyAllSafeLeeActions() {
-      const safe = (state.leeActionProposals || []).filter(proposal => proposal.status === "proposed" && proposal.autonomyLevel === "auto_safe" && !proposal.requiredApproval);
-      if (!safe.length) {
-        toast("No safe Le-E actions are ready to apply.");
-        return;
-      }
-      for (const proposal of safe) {
-        const result = await api("/api/lee/actions/" + encodeURIComponent(proposal.id) + "/apply", { method:"POST", body:JSON.stringify({}) });
-        state = result.state;
-      }
-      render();
-      toast("Applied " + safe.length + " safe Le-E action(s).");
     }
 
     function setFocusMode(mode) {
@@ -35291,12 +34947,6 @@ function htmlShell() {
       }
     });
     document.addEventListener("click", (event) => {
-      const leePromptButton = event.target.closest("[data-lee-prompt]");
-      if (leePromptButton) {
-        event.preventDefault();
-        askLeePromptFromButton(leePromptButton);
-        return;
-      }
       if (!event.target.closest(".nav-menu")) {
         document.querySelectorAll(".nav-menu[open]").forEach((menu) => menu.removeAttribute("open"));
       }
@@ -36695,92 +36345,47 @@ async function handleRequest(request, response) {
     return;
   }
 
+  // ---- Le-E assistant v2 -------------------------------------------------------------------
+  // One conversation surface, three routes. The old search/index/actions/thread-CRUD routes are
+  // gone with the proposal lane and knowledge index they served; suggestions now flow through
+  // /api/automation/suggestions/* like every other engine.
   if (url.pathname === "/api/lee/status" && request.method === "GET") {
     const currentState = await store.readState();
+    const caller = buildLeeModelCaller(process.env);
     sendJson(response, {
-      status: buildLeeStatus(currentState, { openAIConfigured: Boolean(process.env.OPENAI_API_KEY), now: new Date().toISOString() }),
-      tools: leeTools().map((tool) => ({
-        name: tool.name,
-        category: tool.category,
-        autonomyLevel: tool.autonomyLevel,
-        executionMode: tool.executionMode,
-        allowed: tool.allowed
-      }))
+      status: buildLeeStatus(currentState, {
+        modelConfigured: Boolean(caller),
+        provider: caller?.provider || "",
+        now: new Date().toISOString()
+      })
     });
     return;
   }
 
-  if (url.pathname === "/api/lee/search" && request.method === "GET") {
-    const currentState = await store.readState();
-    const query = url.searchParams.get("q") || "";
-    const index = currentState.leeKnowledgeChunks?.length
-      ? { chunks: currentState.leeKnowledgeChunks, sources: currentState.leeKnowledgeSources || [], rebuiltAt: currentState.leeMemory?.lastIndexRebuildAt || "" }
-      : buildLeeKnowledgeIndex(currentState, { now: new Date().toISOString() });
-    sendJson(response, searchLeeKnowledge(index, query, { limit: Number(url.searchParams.get("limit") || 8) }));
-    return;
-  }
-
   if (url.pathname === "/api/lee/threads" && request.method === "GET") {
-    const currentState = await store.readState();
-    sendJson(response, { threads: currentState.leeThreads || [], messages: currentState.leeMessages || [], proposals: currentState.leeActionProposals || [] });
-    return;
-  }
-
-  if (url.pathname === "/api/lee/threads" && request.method === "POST") {
-    try {
-      const result = await createLeeThreadRecord(await readJson(request));
-      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
-    } catch (error) {
-      sendJson(response, { error: "Could not create Le-E thread.", safeMessage: error.message || "Le-E could not create a new thread." }, 400);
-    }
-    return;
-  }
-
-  const leeThread = url.pathname.match(/^\/api\/lee\/threads\/([^/]+)$/);
-  if (leeThread && request.method === "GET") {
-    const id = decodeURIComponent(leeThread[1]);
-    const currentState = await store.readState();
-    const thread = (currentState.leeThreads || []).find((item) => item.id === id);
-    if (!thread) {
-      sendJson(response, { error: "Le-E thread not found." }, 404);
+    if (!["owner", "admin"].includes(String(accessDecision.actor?.role || ""))) {
+      sendJson(response, { error: "Le-E conversation history is owner-only." }, 403);
       return;
     }
+    const currentState = await store.readState();
     sendJson(response, {
-      thread,
-      messages: (currentState.leeMessages || []).filter((message) => message.threadId === id),
-      proposals: (currentState.leeActionProposals || []).filter((proposal) => proposal.threadId === id)
+      threads: currentState.leeThreads || [],
+      messages: currentState.leeMessages || [],
+      pendingSuggestions: (currentState.automationSuggestions || []).filter((item) => item.source === "lee-assistant" && ["pending", "edited"].includes(String(item.status || "").toLowerCase())).length
     });
     return;
   }
 
   if (url.pathname === "/api/lee/chat" && request.method === "POST") {
+    if (!["owner", "admin"].includes(String(accessDecision.actor?.role || ""))) {
+      sendJson(response, { error: "Only the owner can talk to Le-E." }, 403);
+      return;
+    }
     try {
-      const result = await runLeeChat(await readJson(request));
-      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
+      const result = await runLeeChat(await readJson(request), accessDecision.actor);
+      sendJson(response, result);
     } catch (error) {
       sendJson(response, { error: "Could not ask Le-E.", safeMessage: error.message || "Le-E could not answer that request." }, 400);
-    }
-    return;
-  }
-
-  if (url.pathname === "/api/lee/index/rebuild" && request.method === "POST") {
-    try {
-      const result = await rebuildLeeIndex();
-      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
-    } catch (error) {
-      sendJson(response, { error: "Could not rebuild Le-E index.", safeMessage: error.message || "Le-E could not rebuild the knowledge index." }, 400);
-    }
-    return;
-  }
-
-  const leeAction = url.pathname.match(/^\/api\/lee\/actions\/([^/]+)\/(approve|reject|apply)$/);
-  if (leeAction && request.method === "POST") {
-    try {
-      const payload = !request.headers["content-length"] || request.headers["content-length"] === "0" ? {} : await readJson(request);
-      const result = await updateLeeAction(decodeURIComponent(leeAction[1]), leeAction[2], payload || {});
-      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
-    } catch (error) {
-      sendJson(response, { error: "Could not update Le-E action.", safeMessage: error.message || "Le-E could not update that action.", policy: leeToolPolicy("") }, 400);
     }
     return;
   }
