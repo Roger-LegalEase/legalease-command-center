@@ -155,7 +155,7 @@ export function resolveReactivationSendDecision(message = {}, { env = process.en
     if (lower(config.status) !== "active") {
       return { status: "not_sent", ...base, liveSend: false, reason: `campaign_${lower(config.status) || "inactive"}` };
     }
-    const thr = evaluateThresholds(state, config);
+    const thr = evaluateThresholds(state, config, { now });
     if (thr.tripped) return { status: "not_sent", ...base, liveSend: false, reason: "threshold_tripped" };
     if (!withinSendingWindow({ ...config.caps }, etParts(now))) {
       return { status: "not_sent", ...base, liveSend: false, reason: "outside_window" };
@@ -217,7 +217,13 @@ export const DEFAULT_REACTIVATION_CONFIG = Object.freeze({
   cadenceDays: REACTIVATION_CADENCE_DAYS, // [1,4,9,16,30]
   ctaUrl: REACTIVATION_CTA_URL,
   // Stop-thresholds (rates, evaluated once minSampleSize sends have gone out). Trip => auto-pause.
-  thresholds: { hard_bounce: 0.02, spam_complaint: 0.001, unsubscribe: 0.025 },
+  // ROLLING BASIS (2026-07-12): rates are computed over the trailing windowDays only, and the
+  // three threshold numerators count DISTINCT people, not raw webhook events. An all-time
+  // cumulative rate could never recover once tripped (the gate blocks the very sends that would
+  // grow the denominator — a permanent deadlock), and duplicate webhook rows double-counted a
+  // single complainant. With a rolling window a past incident ages out; if recent volume falls
+  // below minSampleSize the monitor reports belowSample instead of tripping.
+  thresholds: { hard_bounce: 0.02, spam_complaint: 0.001, unsubscribe: 0.025, windowDays: 14 },
   minSampleSize: 100
 });
 
@@ -385,14 +391,31 @@ export function releaseWave(state = {}, waveNumber, { now = nowIso() } = {}) {
 // ---------------------------------------------------------------------------
 // 5. STOP-THRESHOLD MONITOR — bounce / complaint / unsubscribe rates. Trip => pause campaign.
 // ---------------------------------------------------------------------------
-export function campaignRates(state = {}) {
-  const attempts = list(state.reactivationAttempts).filter((a) => lower(a.status) === "sent");
+// Rates over the trailing window. Denominator = sends inside the window; the three threshold
+// numerators = DISTINCT identities (email, falling back to contact_id) inside the window, so a
+// person whose duplicate webhook rows recorded the same complaint twice counts once. A row with
+// an unparseable/missing timestamp counts as IN window — a data gap must widen the gate, never
+// hide a complaint. delivered/clicks stay raw event counts (informational, not gates).
+export function campaignRates(state = {}, { now = new Date(), windowDays } = {}) {
+  const days = Number(windowDays ?? state.reactivationCampaign?.thresholds?.windowDays
+    ?? DEFAULT_REACTIVATION_CONFIG.thresholds.windowDays) || 14;
+  const cutoffMs = new Date(now).getTime() - days * 24 * 60 * 60 * 1000;
+  const inWindow = (iso) => {
+    const t = Date.parse(iso || "");
+    return Number.isNaN(t) ? true : t >= cutoffMs;
+  };
+  const attempts = list(state.reactivationAttempts).filter(
+    (a) => lower(a.status) === "sent" && inWindow(a.created_at || a.sent_date));
   const sent = attempts.length;
-  const events = list(state.reactivationEvents);
+  const events = list(state.reactivationEvents).filter((e) => inWindow(e.created_at));
   const count = (types) => events.filter((e) => types.includes(lower(e.type))).length;
-  const hardBounces = count(["bounce", "dropped", "blocked"]);
-  const complaints = count(["spamreport", "complaint"]);
-  const unsubs = count(["unsubscribe", "group_unsubscribe"]);
+  const distinct = (types) => new Set(events
+    .filter((e) => types.includes(lower(e.type)))
+    .map((e) => normalizeEmail(e.email) || clean(e.contact_id) || clean(e.id))
+    .filter(Boolean)).size;
+  const hardBounces = distinct(["bounce", "dropped", "blocked"]);
+  const complaints = distinct(["spamreport", "complaint"]);
+  const unsubs = distinct(["unsubscribe", "group_unsubscribe"]);
   const rate = (n) => (sent > 0 ? n / sent : 0);
   return {
     sent,
@@ -401,21 +424,40 @@ export function campaignRates(state = {}) {
     hardBounces, complaints, unsubs,
     hard_bounce: rate(hardBounces),
     spam_complaint: rate(complaints),
-    unsubscribe: rate(unsubs)
+    unsubscribe: rate(unsubs),
+    basis: "rolling",
+    windowDays: days,
+    allTimeSent: list(state.reactivationAttempts).filter((a) => lower(a.status) === "sent").length
   };
 }
 
-export function evaluateThresholds(state = {}, config = reactivationCampaignOf(state)) {
-  const rates = campaignRates(state);
-  const t = config.thresholds;
+// A temporary threshold override MUST carry expiresAt — an override without an expiry is ignored
+// entirely (no open-ended bumps). While active it substitutes only the three rate limits; at
+// expiry the base thresholds re-apply automatically with no further write.
+function activeThresholdOverride(config = {}, nowMs = Date.now()) {
+  const ov = config.thresholdOverride;
+  if (!ov || typeof ov !== "object") return null;
+  const expiry = Date.parse(ov.expiresAt || "");
+  if (Number.isNaN(expiry) || expiry <= nowMs) return null;
+  const patch = {};
+  for (const key of ["hard_bounce", "spam_complaint", "unsubscribe"]) {
+    if (Number.isFinite(ov[key])) patch[key] = ov[key];
+  }
+  return Object.keys(patch).length ? { patch, expiresAt: ov.expiresAt } : null;
+}
+
+export function evaluateThresholds(state = {}, config = reactivationCampaignOf(state), { now = new Date() } = {}) {
+  const rates = campaignRates(state, { now, windowDays: config.thresholds?.windowDays });
+  const override = activeThresholdOverride(config, new Date(now).getTime());
+  const t = { ...config.thresholds, ...(override ? override.patch : {}) };
   if (rates.sent < (config.minSampleSize || 0)) {
-    return { tripped: false, reasons: [], rates, belowSample: true };
+    return { tripped: false, reasons: [], rates, belowSample: true, overrideActive: Boolean(override), overrideExpiresAt: override?.expiresAt || "" };
   }
   const reasons = [];
-  if (rates.hard_bounce >= t.hard_bounce) reasons.push(`hard_bounce ${(rates.hard_bounce * 100).toFixed(2)}% >= ${(t.hard_bounce * 100).toFixed(2)}%`);
-  if (rates.spam_complaint >= t.spam_complaint) reasons.push(`spam_complaint ${(rates.spam_complaint * 100).toFixed(3)}% >= ${(t.spam_complaint * 100).toFixed(3)}%`);
-  if (rates.unsubscribe >= t.unsubscribe) reasons.push(`unsubscribe ${(rates.unsubscribe * 100).toFixed(2)}% >= ${(t.unsubscribe * 100).toFixed(2)}%`);
-  return { tripped: reasons.length > 0, reasons, rates, belowSample: false };
+  if (rates.hard_bounce >= t.hard_bounce) reasons.push(`hard_bounce ${(rates.hard_bounce * 100).toFixed(2)}% >= ${(t.hard_bounce * 100).toFixed(2)}% (rolling ${rates.windowDays}d)`);
+  if (rates.spam_complaint >= t.spam_complaint) reasons.push(`spam_complaint ${(rates.spam_complaint * 100).toFixed(3)}% >= ${(t.spam_complaint * 100).toFixed(3)}% (rolling ${rates.windowDays}d)`);
+  if (rates.unsubscribe >= t.unsubscribe) reasons.push(`unsubscribe ${(rates.unsubscribe * 100).toFixed(2)}% >= ${(t.unsubscribe * 100).toFixed(2)}% (rolling ${rates.windowDays}d)`);
+  return { tripped: reasons.length > 0, reasons, rates, belowSample: false, overrideActive: Boolean(override), overrideExpiresAt: override?.expiresAt || "" };
 }
 
 // Per-wave metrics for reporting (sent/delivered/bounced/complaints/unsubs/clicks + domain mix).
@@ -589,7 +631,7 @@ export function planReactivation(state = {}, ctx = {}) {
   const observations = [];
 
   // Threshold gate first — if tripped, surface a pause recommendation and queue nothing.
-  const thr = evaluateThresholds(state, config);
+  const thr = evaluateThresholds(state, config, { now: new Date(nowMs) });
   if (config.status === "paused") {
     observations.push({ type: "campaign_paused", reason: config.pausedReason || "paused" });
     return { state, proposals: [], observations };
@@ -688,7 +730,7 @@ export async function actReactivation(state = {}, ctx = {}) {
   const results = [];
 
   // Auto-pause BEFORE sending if thresholds trip.
-  const thr = evaluateThresholds(next, config);
+  const thr = evaluateThresholds(next, config, { now });
   if (thr.tripped) {
     next.reactivationCampaign = { ...(next.reactivationCampaign || {}), campaignId: REACTIVATION_CAMPAIGN_ID, status: "paused", pausedReason: thr.reasons.join("; "), paused_at: nowIso() };
     return { state: next, results: [{ status: "paused", reason: thr.reasons.join("; ") }] };
@@ -874,7 +916,7 @@ const THRESHOLD_REASON_PATTERN = /hard_bounce|spam_complaint|unsubscribe/;
 
 export function buildReactivationLiveStatus(state = {}, { env = process.env, now = new Date() } = {}) {
   const config = reactivationCampaignOf(state);
-  const thr = evaluateThresholds(state, config);
+  const thr = evaluateThresholds(state, config, { now });
   const rates = thr.rates;
   const parts = etParts(now);
   const withinWindow = withinSendingWindow({ ...config.caps }, parts);

@@ -68,7 +68,9 @@ function attempts(n, contactId = "c-sent") {
 // (sends with NO webhook feedback correctly raise their own telemetry warning).
 const HEALTHY_TELEMETRY = { last_received_at: NOW, last_ok_at: NOW, total_batches: 2, total_events: 60, total_recorded: 60 };
 function events(n, type, contactId = "c-sent") {
-  return Array.from({ length: n }, (_, i) => ({ id: `e-${type}-${i}`, type, contact_id: contactId }));
+  // Each event gets its own identity: the threshold monitor counts DISTINCT people, so n events
+  // here mean "n complainants/bouncers/unsubscribers", matching every caller's intent.
+  return Array.from({ length: n }, (_, i) => ({ id: `e-${type}-${i}`, type, contact_id: i === 0 ? contactId : `${contactId}-${i}` }));
 }
 
 // ---- outreach lane view ------------------------------------------------------------------------
