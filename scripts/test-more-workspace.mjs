@@ -21,7 +21,7 @@ assert(renderBlock.includes('safeRenderModule("more", () => moreWorkspaceHtml(pa
 
 for (const required of [
   "More",
-  "Settings, recovery, support tools, and focused work views.",
+  "Everything that is not Today, Queue, Campaigns, Review Desk, or Reports lives here.",
   "Publishing is off",
   "Protected",
   "Utility Summary",

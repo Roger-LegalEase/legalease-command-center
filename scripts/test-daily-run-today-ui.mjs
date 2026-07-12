@@ -80,8 +80,8 @@ assert(today.includes("${dailyRunTodayPanelHtml()}"), "Today should render the D
 assert(dailyRunPanel.includes("bestBucketHeadline"), "Today Start Here headline should use the brain-provided bucket count headline.");
 assert(renderBlock.includes('overview:"today"'), "#overview should still route to the approved Today page.");
 assert(renderBlock.includes('["today", "overview"].includes(pageId)'), "#today should render the approved Today page directly.");
-assert(topNav.includes("#production"), "Production should now be a primary surface in the approved six-surface nav.");
-assert(topNav.includes("Settings &amp; Health"), "Settings & Health should be visible in the approved six-surface nav.");
+assert(topNav.includes("#queue"), "Review Desk should be a primary surface in the operator-mode nav (Phase N).");
+assert(topNav.includes(">More<"), "More should be visible in the operator-mode nav; Settings lives inside it.");
 assert(source.includes('state.runwayInputs || {}'), "Today runway should read the dedicated manual operator-input state.");
 assert(!source.includes('state.metrics?.monthlyBurn || state.metrics?.burnMonthly || state.runway?.monthlyBurn'), "Today runway should not infer monthly burn from legacy metrics.");
 assert(source.includes('add cash + burn to compute'), "Runway should show the required no-guess placeholder.");

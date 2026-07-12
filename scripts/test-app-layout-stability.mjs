@@ -18,8 +18,8 @@ function assertContains(source, pattern, message) {
 }
 
 assertContains(server, /<header class="app-topbar">/, "Global shell topbar should render in hosted mode.");
-assertContains(topNav, /Today[\s\S]*Growth[\s\S]*Partners[\s\S]*Production[\s\S]*Proof[\s\S]*Settings &amp; Health[\s\S]*Le-E/, "Founder-facing top navigation should expose the six surfaces plus Le-E.");
-assertContains(server, /href="#settings"/, "Settings & Health should remain available in the primary utility nav.");
+assertContains(topNav, /Today[\s\S]*Queue[\s\S]*Campaigns[\s\S]*Review Desk[\s\S]*Reports[\s\S]*More/, "Founder-facing top navigation should expose the six operator-mode items (Phase N).");
+assertContains(server, /\["Settings", "settings"\]/, "Settings must stay reachable through the More directory (Phase N moved it out of the top nav).");
 assertContains(server, /id="app"/, "Route host should remain available for client rendering.");
 assert.doesNotMatch(server, /shell:\s*app-layout-stable-v1|controls:\s*button-audit-v1|nav:\s*topnav-fixed-v1/, "Normal shell should not expose old debug markers.");
 assertContains(server, /\.app-section,\s*\.page-section,\s*\.command-page,\s*\.section-page/, "Stable page container CSS should exist.");

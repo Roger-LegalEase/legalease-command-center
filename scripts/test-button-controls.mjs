@@ -24,11 +24,11 @@ assert.match(server, /Posting remains approval-gated|No agent auto-posts to soci
 assert.doesNotMatch(server, />Enable live publishing<\/button>/, "Enable live publishing should not appear as a normal visible control.");
 assert.doesNotMatch(server, /Live posting:\s*<strong>\\\$\{liveEnabled \? "Enabled" : "Disabled"\}<\/strong>/, "Channels should not repeat live posting status on every row.");
 assert.match(server, /onclick="startRcapActivation\(\)"/, "RCAP activation button should still be wired.");
-assert.match(server, /class="nav-top-link" href="#growth" data-nav-section="growth"/, "Growth top nav link should route directly.");
-assert.match(server, /class="nav-top-link" href="#partners" data-nav-section="partners"/, "Partners top nav link should route directly.");
-assert.match(server, /class="nav-top-link" href="#production" data-nav-section="production"/, "Production top nav link should route directly.");
-assert.match(server, /class="nav-top-link" href="#proof" data-nav-section="proof"/, "Proof top nav link should route directly.");
-assert.match(server, /class="nav-top-link" href="#settings" data-nav-section="settings"/, "Settings & Health top nav link should route directly.");
+assert.match(server, /class="nav-top-link" href="#decisions" data-nav-section="queue"/, "Queue top nav link should route directly (Phase N).");
+assert.match(server, /class="nav-top-link" href="#campaigns" data-nav-section="campaigns"/, "Campaigns top nav link should route directly.");
+assert.match(server, /class="nav-top-link" href="#queue" data-nav-section="review-desk"/, "Review Desk top nav link should route directly.");
+assert.match(server, /class="nav-top-link" href="#reports" data-nav-section="reports"/, "Reports top nav link should route directly.");
+assert.match(server, /class="nav-top-link" href="#more" data-nav-section="more"/, "More top nav link should route directly.");
 assert.match(server, /Open RCAP Program/, "RCAP access buttons should use a clear route label.");
 assert.match(server, /Open App Status/, "App Status access should remain available from utility navigation.");
 
