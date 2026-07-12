@@ -14,7 +14,7 @@ import {
   INBOX_BACKFILL_WINDOW_DAYS, INBOX_ROLLING_WINDOW_DAYS,
   inboxConfigOf, classifyInboxThreads, mergeInboxSignals, detectCommitment, impliedDeadline,
   buildPipelineIndex, pipelineMatchFor, buildInboxIntelligenceEngine, planInboxIntelligence,
-  recordInboxActivationAudit
+  recordInboxActivationAudit, prepareInboxDraftReply
 } from "./inbox-intelligence.mjs";
 import { coreStateCollections, singletonCollections } from "./storage.mjs";
 
@@ -242,6 +242,36 @@ const PIPELINE_STATE = {
   const retired = reprojected.queueItems.find((i) => i.id === owed.id);
   assert.equal(retired.status, "completed", "a moved thread retires its queue card honestly");
   ok("I2: signals project as needs_roger sentences with deep links; moved threads retire");
+}
+
+// ---- 13. I3: drafts — skeleton default, UPL refusal, never sends -------------------------------
+{
+  const signal = { id: "sig-1", kind: "needs_reply", counterpartName: "Dana Fulton", counterpartEmail: "dana@fultoncounty.org", subject: "Packet timing", uplSensitive: false };
+  const prepared = prepareInboxDraftReply(signal, { now: NOW });
+  assert.ok(prepared.ok, "non-UPL signal gets a draft");
+  assert.match(prepared.draft.body, /Hi Dana - thanks for your note about "Packet timing"\./, "skeleton opens in Roger's voice pattern");
+  assert.ok(prepared.draft.body.includes("[Add the specific answer here.]"), "bracketed slot: Roger fills it, AI never defaults");
+  assert.equal(prepared.draft.internalOnly, true);
+  assert.equal(prepared.draft.aiAssisted, false, "assist is never applied by default");
+  assert.ok(!("send" in prepared.draft) && !("to" in prepared.draft), "draft carries no send fields");
+  const upl = prepareInboxDraftReply({ ...signal, uplSensitive: true }, { now: NOW });
+  assert.equal(upl.ok, false, "UPL-sensitive: NO draft is prepared");
+  assert.equal(upl.flagLawrence, true, "Lawrence is flagged");
+  assert.match(upl.error, /reply personally/, "refusal tells Roger to reply personally");
+  const quiet = prepareInboxDraftReply({ ...signal, kind: "went_quiet" }, { now: NOW });
+  assert.match(quiet.draft.body, /float this back to the top/, "went-quiet gets a nudge skeleton");
+  const commitment = prepareInboxDraftReply({ ...signal, kind: "commitment" }, { now: NOW });
+  assert.match(commitment.draft.body, /following through on what I promised/, "commitment gets a delivery skeleton");
+  // Server walls: draft routes exist, no send route exists, assist is explicit.
+  for (const route of ['"/api/inbox/signals/draft"', '"/api/inbox/drafts/update"', '"/api/inbox/drafts/assist"']) {
+    assert.ok(serverSource.includes('url.pathname === ' + route), route + " route exists");
+  }
+  for (const forbidden of ["/api/inbox/send", "/api/email/send", "gmail.users.messages.send", "users/me/messages/send"]) {
+    assert.ok(!serverSource.includes(forbidden), "no send route: " + forbidden);
+  }
+  assert.ok(serverSource.includes("lawrenceFlaggedAt: now"), "UPL refusal records the Lawrence flag on the signal");
+  assert.ok(serverSource.includes('copyInboxDraft'), "clipboard copy is the only exit for a draft");
+  ok("I3: skeleton drafts + UPL refusal with Lawrence flag; no send path anywhere");
 }
 
 console.log("\ntest-inbox-intelligence: all " + passed + " checks passed.");

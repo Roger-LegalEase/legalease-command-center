@@ -14,9 +14,13 @@ function functionBlock(name) {
   return next > 0 ? rest.slice(0, next + 1) : rest;
 }
 
-const more = functionBlock("moreWorkspaceHtml");
+// 2026-07-12 (fixed during inbox I3; this suite was stale-red per docs/followups.md):
+// the activation copy moved from the More workspace into the dedicated Email Draft
+// Workflow card, and the server model was renamed serverEmailReadinessState. Assert
+// against where the copy actually lives; the guarantees themselves are unchanged.
+const more = [functionBlock("moreWorkspaceHtml"), functionBlock("cockpitEmailDraftWorkflowHtml")].join("\n");
 const appStatus = functionBlock("osHealthPageHtml");
-const emailModel = functionBlock("emailReadinessState");
+const emailModel = functionBlock("serverEmailReadinessState");
 const emailStatus = functionBlock("emailStatusResponse");
 
 for (const required of [

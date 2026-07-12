@@ -18,7 +18,10 @@ const more = functionBlock("moreWorkspaceHtml");
 const draftWorkflow = functionBlock("cockpitEmailDraftWorkflowHtml");
 const draftResponse = functionBlock("emailDraftResponse");
 const prepareDraft = functionBlock("prepareEmailDraft");
-const emailBlocks = [more, draftWorkflow, draftResponse, prepareDraft, source.includes("emailDrafts") ? "emailDrafts" : ""].join("\n");
+// emailPostureRow added 2026-07-12: the display-truth refactor moved the sending-status
+// copy out of the workflow blocks into the derived posture chain; assert where it lives.
+const postureRow = functionBlock("emailPostureRow");
+const emailBlocks = [more, draftWorkflow, draftResponse, prepareDraft, postureRow, source.includes("emailDrafts") ? "emailDrafts" : ""].join("\n");
 
 for (const required of [
   "Email Draft Workflow",
@@ -43,8 +46,12 @@ for (const required of [
   "Drafts are internal until Roger reviews them. Email sending is off.",
   "Email draft",
   "Partner follow-up",
-  "Prepared email draft for review",
-  "Email sending: Off"
+  // Display-truth refactor (2026-07-09) replaced the hardcoded "Off" claim and the legacy
+  // review copy with the DERIVED posture chain; assert the honest versions instead.
+  // (This suite was stale-red since then — fixed 2026-07-12 during inbox I3, per
+  // docs/followups.md convention: fix the assertion, then delete the quarantine entry.)
+  "Email draft saved internally for Roger review. No message was sent.",
+  "Email sending: Unverified"
 ]) {
   assert(emailBlocks.includes(required), `Email draft safety UI should include ${required}`);
 }

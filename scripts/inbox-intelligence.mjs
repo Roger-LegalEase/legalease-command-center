@@ -394,6 +394,51 @@ export function recordInboxActivationAudit(state = {}, { actor = "owner", now = 
   return next;
 }
 
+// ---- I3: reply drafts (skeleton default, never sends) -----------------------------------------
+// Mirrors prepareSupportDraftReply: a UPL-sensitive thread gets NO draft (Roger reads it in
+// Gmail and replies personally; Lawrence is flagged), everything else gets an honest skeleton
+// with a bracketed slot — Roger's voice is Roger's (his call: skeleton default, AI assist one
+// click away, never automatic). There is NO send path: the only exit is the clipboard.
+export function prepareInboxDraftReply(signal = {}, { now = new Date().toISOString() } = {}) {
+  if (!signal || !signal.id) return { ok: false, error: "Signal not found." };
+  if (signal.uplSensitive) {
+    return {
+      ok: false,
+      flagLawrence: true,
+      error: "This thread may ask for legal advice, so no draft is prepared. Read it in Gmail and reply personally; loop in Lawrence for the legal part."
+    };
+  }
+  const firstName = clean(String(signal.counterpartName || "").split(" ")[0]) || "there";
+  const subjectNote = signal.subject ? ' about "' + signal.subject + '"' : "";
+  const opener = signal.kind === "went_quiet"
+    ? "Hi " + firstName + " - wanted to float this back to the top of your inbox."
+    : signal.kind === "commitment"
+      ? "Hi " + firstName + " - following through on what I promised."
+      : "Hi " + firstName + " - thanks for your note" + subjectNote + ".";
+  const middle = signal.kind === "went_quiet"
+    ? "[Add one sentence on why this is still worth their time.]"
+    : signal.kind === "commitment"
+      ? "[Attach or link the thing you promised, or give the honest new date.]"
+      : "[Add the specific answer here.]";
+  const body = [opener, "", middle, "", "Best,", "Roger"].join("\n");
+  return {
+    ok: true,
+    draft: {
+      id: "email-draft-inbox-" + sha16(signal.id + "|" + now),
+      signalId: signal.id,
+      title: ("Reply: " + (signal.counterpartName || signal.counterpartEmail || "thread")).slice(0, 120),
+      target: String(signal.counterpartEmail || "").slice(0, 120),
+      body,
+      status: "Needs review",
+      states: ["Draft needed", "Draft prepared", "Needs review", "Approved to send manually", "Sent manually"],
+      internalOnly: true,
+      aiAssisted: false,
+      createdAt: now,
+      updatedAt: now
+    }
+  };
+}
+
 // ---- the engine ------------------------------------------------------------------------------
 export function planInboxIntelligence(state = {}, ctx = {}) {
   const now = nowIso(ctx);
