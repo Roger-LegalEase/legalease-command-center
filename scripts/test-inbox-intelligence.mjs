@@ -216,4 +216,32 @@ const PIPELINE_STATE = {
   ok("server wiring: owner-only projection, identity-first fetcher, gated scan route, audit on flip");
 }
 
+// ---- 12. I2: queue projection ------------------------------------------------------------------
+{
+  const { projectCompanyMemory } = await import("./company-memory-projector.mjs");
+  const { QUEUE_ITEM_TYPES } = await import("./company-memory.mjs");
+  for (const type of ["inbox_reply", "inbox_commitment", "inbox_pipeline"]) {
+    assert.ok(QUEUE_ITEM_TYPES.includes(type), type + " is a registered queue type");
+  }
+  const scan = classifyInboxThreads([
+    thread({ threadId: "t-owe", messages: [inbound({ at: daysAgo(4) })] }),
+    thread({ threadId: "t-prom", messages: [inbound({ at: daysAgo(6) }), outbound({ at: daysAgo(4), bodyText: "I'll send the packet this week." })] })
+  ], { state: PIPELINE_STATE, now: NOW }).signals;
+  const projected = projectCompanyMemory({ ...PIPELINE_STATE, inboxSignals: mergeInboxSignals([], scan, { now: NOW }) }, { now: () => NOW }).state;
+  const inboxItems = projected.queueItems.filter((i) => i.sourceEngine === "inbox-intelligence");
+  assert.ok(inboxItems.length >= 2, "signals project into the queue");
+  const owed = inboxItems.find((i) => i.type === "inbox_reply");
+  assert.equal(owed.status, "needs_roger", "reply-owed lands in the morning queue");
+  assert.match(owed.title, /You owe .* a reply - 4 days\./, "title is the plain sentence");
+  assert.deepEqual(owed.sourceRef.collection, "inboxSignals", "Open deep-links to the signal artifact");
+  const commitment = inboxItems.find((i) => i.type === "inbox_commitment");
+  assert.ok(commitment && commitment.dueAt, "commitment queue item carries dueAt (alerts overdue path applies)");
+  // A resolved signal projects as completed — reality reconciled, never resurrected as work.
+  const resolvedState = { ...PIPELINE_STATE, inboxSignals: mergeInboxSignals(mergeInboxSignals([], scan, { now: NOW }), [], { now: NOW }) };
+  const reprojected = projectCompanyMemory({ ...resolvedState, queueItems: projected.queueItems }, { now: () => NOW }).state;
+  const retired = reprojected.queueItems.find((i) => i.id === owed.id);
+  assert.equal(retired.status, "completed", "a moved thread retires its queue card honestly");
+  ok("I2: signals project as needs_roger sentences with deep links; moved threads retire");
+}
+
 console.log("\ntest-inbox-intelligence: all " + passed + " checks passed.");

@@ -27402,7 +27402,8 @@ function htmlShell() {
       prospectCandidates: ["prospects", "Prospects"], partners: ["partners", "Partners"],
       reactivationContacts: ["campaigns", "Campaigns"], outreachContacts: ["campaigns", "Campaigns"],
       companyContacts: ["contacts", "Contacts"], rcapRevenueQueueTasks: ["rcap", "RCAP"],
-      autonomyActions: ["autonomy", "Autonomy"], campaignKits: ["campaigns", "Campaigns"]
+      autonomyActions: ["autonomy", "Autonomy"], campaignKits: ["campaigns", "Campaigns"],
+      inboxSignals: ["decisions", "Queue"]
     };
     function artifactRecordId(record, index) {
       return String(record?.id || record?.contact_id || record?.postId || record?.title || record?.name || "row-" + index);
@@ -27444,6 +27445,23 @@ function htmlShell() {
         } else if (collection === "approvalQueue" && record.sourceId && (state.posts || []).some(p => p.id === record.sourceId)) {
           const post = (state.posts || []).find(p => p.id === record.sourceId);
           body = artifactPostPreviewHtml(post) + \`<div class="card-actions"><button class="primary" type="button" onclick="location.hash='queue'">Review this in the Review Desk</button></div>\`;
+        } else if (collection === "inboxSignals") {
+          // I2: the inbox signal artifact — the plain sentence, the redacted evidence lines,
+          // and the jump to the real thread in Gmail. Nothing here sends; the draft flow
+          // (I3) prepares internal drafts only.
+          const gmailLink = record.threadId
+            ? \`<a class="button-link primary" href="https://mail.google.com/mail/u/0/#all/\${encodeURIComponent(String(record.threadId))}" target="_blank" rel="noopener noreferrer">Open the thread in Gmail</a>\`
+            : "";
+          body = \`<p style="font-size:16px; font-weight:750">\${esc(record.summary || "Inbox signal")}</p>
+            \${record.uplSensitive ? '<p class="muted"><strong>Careful:</strong> this thread may be asking for legal advice. UPL rules apply; loop in Lawrence before answering the legal part.</p>' : ""}
+            \${(record.evidence || []).length ? \`<div class="metric-table">\${record.evidence.map(line => \`<div class="metric-row"><span>they wrote</span><strong>\${esc(line)}</strong></div>\`).join("")}</div>\` : ""}
+            <div class="metric-table" style="margin-top:10px">
+              <div class="metric-row"><span>Who</span><strong>\${esc(record.counterpartName || record.counterpartEmail || "unknown")}</strong></div>
+              \${record.ageDays ? \`<div class="metric-row"><span>Age</span><strong>\${esc(String(record.ageDays))} day\${record.ageDays === 1 ? "" : "s"}</strong></div>\` : ""}
+              \${record.dueAt ? \`<div class="metric-row"><span>You promised by</span><strong>\${esc(String(record.dueAt).slice(0, 10))}</strong></div>\` : ""}
+              <div class="metric-row"><span>Privacy</span><strong>Evidence lines are redacted; the full email stays in Gmail, not here.</strong></div>
+            </div>
+            <div class="card-actions" style="margin-top:12px">\${gmailLink}</div>\`;
         } else if (collection === "reports") {
           const path = record.markdownPath || record.textPath || "";
           body = \`<div class="metric-table">\${artifactFieldRows(record)}</div>
@@ -28400,6 +28418,18 @@ function htmlShell() {
       if (freshReport) rows.push(ckOvernightRow('The report "' + String(freshReport.title || "Weekly report").slice(0, 60) + '" was generated.', "reports"));
       const briefToday = (state.morningBriefs || []).find(brief => ckWithin24h(brief.createdAt || brief.date));
       if (briefToday) rows.push(ckOvernightRow("Your morning brief is ready.", "morning-brief"));
+      // I2: what the inbox scan caught (owner-only data; absent for other roles).
+      const openInboxSignals = (state.inboxSignals || []).filter(s => s && s.status === "suggested");
+      if (openInboxSignals.length) {
+        const owed = openInboxSignals.filter(s => s.kind === "needs_reply").length;
+        const promised = openInboxSignals.filter(s => s.kind === "commitment").length;
+        const quiet = openInboxSignals.filter(s => s.kind === "went_quiet").length;
+        const parts = [];
+        if (owed) parts.push(owed + (owed === 1 ? " reply owed" : " replies owed"));
+        if (promised) parts.push(promised + (promised === 1 ? " promise coming due" : " promises coming due"));
+        if (quiet) parts.push(quiet + " waiting on others");
+        rows.push(ckOvernightRow("Your inbox: " + (parts.join(", ") || openInboxSignals.length + " items") + ".", "decisions"));
+      }
       if (!rows.length) return '<div class="ck-card"><div class="ck-empty">A quiet night. Nothing new arrived while you were away.</div></div>';
       return \`<div class="ck-card"><div class="ck-module-body">\${rows.join("")}</div></div>\`;
     }
