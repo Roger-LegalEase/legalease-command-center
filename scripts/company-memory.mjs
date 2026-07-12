@@ -80,7 +80,12 @@ export const QUEUE_ITEM_TYPES = [
   "write_health",
   "system_health",
   "source_monitor",
-  "funnel_alert"
+  "funnel_alert",
+  // I2 inbox intelligence (owner decision 2026-07-12): reply owed / went quiet, written
+  // commitments (carry dueAt for overdue escalation), and pipeline inbound.
+  "inbox_reply",
+  "inbox_commitment",
+  "inbox_pipeline"
 ];
 
 export const QUEUE_RISK_LEVELS = ["safe", "caution", "dangerous"];

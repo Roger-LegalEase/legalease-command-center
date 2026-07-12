@@ -272,6 +272,60 @@ function queueFromProspects(state) {
   })];
 }
 
+// I2 inbox intelligence — the morning-queue sentences the owner decision was for. Each open
+// signal becomes one item (stable id via sourceRef, so re-scans refresh instead of
+// duplicating). A RESOLVED signal (thread moved: they replied, or Roger did) projects as
+// completed — honest reconciliation of reality, distinct from auto-completing Roger's tasks
+// (his open decisions stay untouched; upsertQueueItems keeps decided statuses sticky).
+// Open lands on the signal artifact (#item deep link via sourceRef); the Gmail thread link
+// lives on the artifact page. Signals are owner-only; queue items carry only the plain
+// sentence + redacted counterpart, never evidence.
+const INBOX_QUEUE_TYPE_BY_KIND = {
+  needs_reply: "inbox_reply",
+  went_quiet: "inbox_reply",
+  commitment: "inbox_commitment",
+  pipeline_inbound: "inbox_pipeline"
+};
+function queueFromInboxSignals(state) {
+  return list(state.inboxSignals)
+    .filter((s) => s && INBOX_QUEUE_TYPE_BY_KIND[s.kind] && ["suggested", "resolved"].includes(String(s.status)))
+    .slice(0, 40)
+    .map((signal) => {
+      const resolved = String(signal.status) === "resolved";
+      const who = clean(signal.counterpartName) || clean(signal.counterpartEmail) || "someone";
+      return createQueueItem({
+        type: INBOX_QUEUE_TYPE_BY_KIND[signal.kind],
+        sourceEngine: "inbox-intelligence",
+        sourceRef: { collection: "inboxSignals", itemId: clean(signal.id) },
+        title: clean(signal.summary) || "Inbox item needs a look",
+        summary: signal.kind === "commitment"
+          ? "You put this in writing; the date came from your own words."
+          : signal.kind === "went_quiet"
+            ? "A pipeline thread stalled after your last reply. A short nudge usually restarts it."
+            : signal.kind === "pipeline_inbound"
+              ? "A pipeline contact wrote in. The evidence line is on the item page."
+              : "This thread is waiting on you.",
+        recommendation: signal.kind === "commitment"
+          ? "Deliver it, or reply to reset the date honestly."
+          : signal.kind === "went_quiet"
+            ? "Send a short nudge."
+            : "Open the thread and reply, or dismiss if it truly needs nothing.",
+        status: resolved ? "completed" : "needs_roger",
+        requiresApproval: false,
+        riskLevel: signal.uplSensitive ? "caution" : "safe",
+        priority: signal.kind === "commitment" ? 20 : signal.kind === "needs_reply" ? 25 : signal.kind === "went_quiet" ? 30 : 35,
+        dueAt: clean(signal.dueAt),
+        sourceLink: { kind: "page", target: "#decisions" },
+        metadata: {
+          kind: clean(signal.kind),
+          counterpart: who,
+          ageDays: Number(signal.ageDays) || 0,
+          uplSensitive: Boolean(signal.uplSensitive)
+        }
+      });
+    });
+}
+
 // Google read-only insights ({id,insightType,title,suggestedNextAction,status:"suggested"}) —
 // meeting prep and reply gaps surface as meeting queue items.
 function queueFromGoogleInsights(state) {
@@ -576,7 +630,8 @@ export function projectCompanyMemory(state = {}, { now = () => new Date().toISOS
     ...queueFromCampaignSafety(state),
     ...queueFromWebhookHealth(state, env),
     ...queueFromProspects(state),
-    ...queueFromGoogleInsights(state)
+    ...queueFromGoogleInsights(state),
+    ...queueFromInboxSignals(state)
   ];
   const queueItems = wakeSnoozedQueueItems(
     upsertQueueItems(state.queueItems, incomingQueue, opts),
