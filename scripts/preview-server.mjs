@@ -15968,6 +15968,9 @@ function htmlShell() {
     .wizard-actions button { min-height:42px; }
     .wizard-raw, .wizard-editor { margin-top:10px; }
     .wizard-raw summary, .wizard-editor summary { cursor:pointer; color:var(--muted); font-size:13px; font-weight:750; }
+    .report-body-view { margin-top:14px; }
+    .report-body-pre { white-space:pre-wrap; overflow-wrap:break-word; background:#F9FAF7; border:1px solid var(--line); border-radius:10px; padding:16px; font-size:13px; line-height:1.5; max-height:520px; overflow:auto; }
+    .report-export-row .quiet-actions { margin-left:auto; }
     .ck-sub b { color:var(--ck-ink); font-weight:650; }
     .ck-topbar { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; justify-content:space-between; }
     .ck-topbar .ck-when { text-align:right; }
@@ -27283,9 +27286,82 @@ function htmlShell() {
           \${open ? \`<button type="button" onclick="decideQueueItem('\${esc(item.id)}','snooze')">Snooze</button>\` : ""}
           \${open && !item.requiresApproval ? \`<button type="button" onclick="decideQueueItem('\${esc(item.id)}','complete')">Mark complete</button>\` : ""}
           \${open ? \`<button type="button" onclick="decideQueueItem('\${esc(item.id)}','dismiss')">Dismiss</button>\` : ""}
-          \${ckOpenControlHtml(item.sourceLink, "button-link")}
+          \${ckOpenControlHtml(item.sourceLink, "button-link", item.sourceRef)}
         </div>
       </article>\`;
+    }
+    // ---- Phase O artifact viewer: #item/<collection>/<id> lands ON the record --------------
+    // Resolves the record client-side from the hydrated state graph using the same id
+    // precedence the storage layer uses (coreRecordId), then renders a type-aware view with
+    // an honest fallback: a plain field list. Never fabricates; missing records say so.
+    const ARTIFACT_HOME_PAGES = {
+      posts: ["queue", "Review Desk"], postImages: ["queue", "Review Desk"], approvalQueue: ["queue", "Review Desk"],
+      tasks: ["tasks", "Tasks"], supportIssues: ["support", "Support"], alerts: ["alerts", "Alerts"],
+      growthInbox: ["growth-inbox", "Reply Inbox"], reports: ["reports", "Reports"],
+      meetingBriefs: ["meetings", "Meetings"], morningBriefs: ["morning-brief", "Morning Brief"],
+      prospectCandidates: ["prospects", "Prospects"], partners: ["partners", "Partners"],
+      reactivationContacts: ["campaigns", "Campaigns"], outreachContacts: ["campaigns", "Campaigns"],
+      companyContacts: ["contacts", "Contacts"], rcapRevenueQueueTasks: ["rcap", "RCAP"],
+      autonomyActions: ["autonomy", "Autonomy"], campaignKits: ["campaigns", "Campaigns"]
+    };
+    function artifactRecordId(record, index) {
+      return String(record?.id || record?.contact_id || record?.postId || record?.title || record?.name || "row-" + index);
+    }
+    function artifactFieldRows(record) {
+      return Object.entries(record)
+        .filter(([, value]) => ["string", "number", "boolean"].includes(typeof value))
+        .filter(([key, value]) => String(value).length > 0 && String(value).length < 500 && !String(value).startsWith("data:"))
+        .slice(0, 24)
+        .map(([key, value]) => \`<div class="metric-row"><span>\${esc(key)}</span><strong>\${esc(String(value))}</strong></div>\`)
+        .join("");
+    }
+    function artifactPostPreviewHtml(post) {
+      const image = imageForPost(post.id);
+      return \`<div class="wizard-preview">
+        \${image && image.imageUrl ? \`<img src="\${esc(image.imageUrl)}" alt="Rendered post image" loading="lazy">\` : ""}
+        <div class="wizard-caption">
+          \${post.headline ? \`<h4>\${esc(post.headline)}</h4>\` : ""}
+          <p>\${esc(post.caption || post.body || "No caption yet.")}</p>
+          \${post.cta ? \`<strong>\${esc(post.cta)}</strong>\` : ""}
+        </div>
+      </div>\`;
+    }
+    function artifactViewerHtml(pageClass, ref) {
+      const collection = ref ? ref.collection : "";
+      const itemId = ref ? ref.itemId : "";
+      const home = ARTIFACT_HOME_PAGES[collection] || ["more", "More"];
+      const homeButton = \`<button type="button" onclick="location.hash='\${esc(home[0])}'">Open \${esc(home[1])}</button>\`;
+      const rows = state && Array.isArray(state[collection]) ? state[collection] : [];
+      const record = rows.find((row, index) => artifactRecordId(row, index) === itemId) || null;
+      let body;
+      let title = itemId;
+      if (!record) {
+        body = \`<p class="muted">This record is not in the loaded data\${state && state.heavyCollectionsDeferred ? " yet (the full data set is still loading; try again in a moment)" : ""}. It may have been removed, or it lives in a collection this view cannot read.</p>\`;
+      } else {
+        title = record.title || record.reportTitle || record.name || record.hook || record.subject || itemId;
+        if (collection === "posts") {
+          body = artifactPostPreviewHtml(record) + \`<div class="card-actions"><button class="primary" type="button" onclick="location.hash='queue'">Review this in the Review Desk</button></div>\`;
+        } else if (collection === "approvalQueue" && record.sourceId && (state.posts || []).some(p => p.id === record.sourceId)) {
+          const post = (state.posts || []).find(p => p.id === record.sourceId);
+          body = artifactPostPreviewHtml(post) + \`<div class="card-actions"><button class="primary" type="button" onclick="location.hash='queue'">Review this in the Review Desk</button></div>\`;
+        } else if (collection === "reports") {
+          const path = record.markdownPath || record.textPath || "";
+          body = \`<div class="metric-table">\${artifactFieldRows(record)}</div>
+            <div class="card-actions" style="margin-top:12px">
+              \${path ? \`<button class="primary" type="button" onclick="viewReportFile('\${esc(path)}')">Read it here</button><button type="button" onclick="downloadReportFile('\${esc(path)}')">Download</button>\` : ""}
+            </div><div id="artifact-report-body" class="report-body-view"></div>\`;
+        } else {
+          body = \`<div class="metric-table">\${artifactFieldRows(record) || '<p class="muted">This record has no readable fields.</p>'}</div>\`;
+        }
+      }
+      return \`<section id="item" class="\${pageClass("item")} command-page section-page lee-bubble-safe-space">
+        <div class="panel hero-panel"><div>
+          <div class="eyebrow">\${esc(home[1])} record</div>
+          <h1 class="big-title">\${esc(String(title).slice(0, 120))}</h1>
+          <p class="muted">Opened directly from a queue card or Today. Nothing on this page sends or publishes.</p>
+        </div><div class="card-actions">\${homeButton}<button type="button" onclick="history.back()">Back</button></div></div>
+        <section class="panel">\${body}</section>
+      </section>\`;
     }
     function decisionsGroupHtml(title, items, emptyText) {
       return \`<section class="growth-card">
@@ -27321,7 +27397,17 @@ function htmlShell() {
 
     // The "Open" control: an in-app page hash or a vetted https link, nothing else.
     // Server-side normalizeSourceLink already rejects unsafe targets; this trusts only its shape.
-    function ckOpenControlHtml(link, cls) {
+    function ckOpenControlHtml(link, cls, sourceRef) {
+      // Phase O (approved 2026-07-12): every queue item already carries a precise pointer to
+      // its artifact (sourceRef {collection, itemId}); Open now uses it, landing ON the thing
+      // instead of a section list. The page link stays as the fallback for items without one.
+      if (sourceRef && sourceRef.collection && sourceRef.itemId) {
+        const collection = String(sourceRef.collection).replace(/[^a-zA-Z0-9_-]/g, "");
+        const itemId = encodeURIComponent(String(sourceRef.itemId));
+        if (collection) {
+          return \`<button class="\${cls || "ck-btn"}" type="button" onclick="location.hash='item/\${collection}/\${itemId}'">Open</button>\`;
+        }
+      }
       if (!link || !link.target) return "";
       if (link.kind === "external" && /^https:\\/\\//i.test(String(link.target))) {
         return \`<a class="\${cls || "ck-btn"}" href="\${esc(link.target)}" target="_blank" rel="noopener noreferrer">Open</a>\`;
@@ -27352,7 +27438,7 @@ function htmlShell() {
           \${item.requiresApproval ? \`<button class="ck-btn primary" type="button" onclick="decideQueueItem('\${esc(item.id)}','approve')">Approve</button>\` : ""}
           <button class="ck-btn" type="button" onclick="decideQueueItem('\${esc(item.id)}','snooze')">Snooze</button>
           <button class="ck-btn" type="button" onclick="decideQueueItem('\${esc(item.id)}','dismiss')">Dismiss</button>
-          \${ckOpenControlHtml(item.sourceLink)}
+          \${ckOpenControlHtml(item.sourceLink, "", item.sourceRef)}
         </div>
       </article>\`;
     }
@@ -28179,10 +28265,15 @@ function htmlShell() {
       return \`\${ckWatchStatusHtml(ctx.v)}\${items}\`;
     }
     function ckMeetingsModuleHtml(ctx) {
-      return \`<div class="ck-rows">\${ctx.meetings.map(m => ckListRowHtml("calendar", m.title, m.recommendation || "Review the prep notes.", "", "small")).join("")}</div>\`;
+      // Phase O: meeting rows open the Meetings page (they used to be dead text).
+      return \`<div class="ck-rows">\${ctx.meetings.map(m => ckOvernightRow(String(m.title || "Meeting") + (m.recommendation ? " - " + String(m.recommendation) : ""), "meetings")).join("")}</div>\`;
     }
     function ckDraftsModuleHtml(ctx) {
-      return \`<div class="ck-rows">\${ctx.drafts.map(d => ckListRowHtml("doc", d.title, friendlyAgentName(d.sourceEngine), "", "small")).join("")}</div>\`;
+      // Phase O: each draft opens its own artifact page via the queue item's sourceRef
+      // (they used to be dead text on the landing page).
+      return \`<div class="ck-rows">\${ctx.drafts.map(d => d.sourceRef && d.sourceRef.collection && d.sourceRef.itemId
+        ? \`<button class="ck-overnight-row" type="button" onclick="location.hash='item/\${esc(String(d.sourceRef.collection).replace(/[^a-zA-Z0-9_-]/g, ""))}/\${encodeURIComponent(String(d.sourceRef.itemId))}'"><span>\${esc(d.title || "Draft")}</span><span class="go">Open</span></button>\`
+        : ckOvernightRow(String(d.title || "Draft"), "queue")).join("")}</div>\`;
     }
 
     // ---- Phase N Today modules: Overnight + Your outputs -------------------------------
@@ -30334,6 +30425,29 @@ function htmlShell() {
       </section>\`;
     }
 
+    // Phase O: the codebase-health and engagement-growth reports were generated hourly and
+    // stored, but NO page ever rendered them — classic dead end. This gives each family its
+    // latest snapshot in plain English on the Reports page, honest when none exists yet.
+    function systemReportsSectionHtml() {
+      const health = (state.codebaseHealthSnapshots || [])[0] || null;
+      const growth = (state.engagementGrowthSnapshots || [])[0] || null;
+      const healthBody = health
+        ? \`<p><strong>\${esc(String(health.status || "unknown").replace(/_/g, " "))}</strong> · \${esc(String(health.counts?.total ?? 0))} finding\${(health.counts?.total ?? 0) === 1 ? "" : "s"} (\${esc(String(health.deltas?.new_count ?? 0))} new since last run) · generated \${esc(String(health.generated_at || "").slice(0, 16).replace("T", " "))}</p>
+           \${(health.findings || []).slice(0, 5).map(f => \`<div class="metric-row"><span>\${esc(f.severity || "note")}</span><strong>\${esc(String(f.title || f.key || f.detail || "Finding").slice(0, 110))}</strong></div>\`).join("")}
+           \${health.scan_error ? \`<p class="muted">Scan error: \${esc(health.scan_error)}</p>\` : ""}\`
+        : '<p class="muted">No codebase health report yet. The hourly heartbeat writes one; it appears here after the first run.</p>';
+      const growthSources = growth ? (growth.sources || []) : [];
+      const growthBody = growth
+        ? \`<p>Generated \${esc(String(growth.generated_at || growth.generatedAt || "").slice(0, 16).replace("T", " "))} · \${esc(String(growthSources.filter(s => s.available).length))}/\${esc(String(growthSources.length))} sources live</p>
+           \${growthSources.slice(0, 8).map(s => \`<div class="metric-row"><span>\${esc(s.label || s.key)}</span><strong>\${esc(String(s.state || (s.available ? "live" : "not connected")).replace(/_/g, " "))}</strong></div>\`).join("")}
+           \${(growth.blocked_sources || []).length ? \`<p class="muted">Blocked: \${esc(growth.blocked_sources.join("; ").slice(0, 300))}</p>\` : ""}\`
+        : '<p class="muted">No engagement and growth report yet. The hourly heartbeat writes one; it appears here after the first run.</p>';
+      return \`<div class="grid two" style="margin-top:16px">
+        <section class="panel"><div class="eyebrow">Code health (auto-generated)</div>\${healthBody}</section>
+        <section class="panel"><div class="eyebrow">Engagement &amp; growth (auto-generated)</div>\${growthBody}</section>
+      </div>\`;
+    }
+
     function reportsPageHtml(pageClass) {
       const primaryTypes = [
         ["weekly_operating", "Weekly", "Run the company."],
@@ -30371,8 +30485,13 @@ function htmlShell() {
         <section class="panel section">
           <div class="simple-panel-head"><h2>Recent exports</h2><button onclick="exportGrowthReport('weekly_operating')">New weekly report</button></div>
           <div class="report-export-list">
-            \${exported.map(report => \`<article class="report-export-row"><span class="badge good">Exported</span><strong>\${esc(growthLabel(report.reportTitle))}</strong><small>\${esc(report.generatedAt || "recent")}</small><code>\${esc(report.markdownPath || report.textPath || "local export")}</code></article>\`).join("") || '<div class="empty">No reports exported yet. Start with Weekly.</div>'}
+            \${exported.map(report => {
+              const filePath = report.markdownPath || report.textPath || "";
+              return \`<article class="report-export-row"><span class="badge good">Exported</span><strong>\${esc(growthLabel(report.reportTitle))}</strong><small>\${esc(report.generatedAt || "recent")}</small>\${filePath ? \`<span class="card-actions quiet-actions"><button class="primary" type="button" onclick="viewReportFile('\${esc(filePath)}','reports-file-view')">Read</button><button type="button" onclick="downloadReportFile('\${esc(filePath)}')">Download</button></span>\` : "<code>local export</code>"}</article>\`;
+            }).join("") || '<div class="empty">No reports exported yet. Start with Weekly.</div>'}
           </div>
+          <div id="reports-file-view" class="report-body-view"></div>
+          \${systemReportsSectionHtml()}
           <details class="simple-more report-more">
             <summary>Templates</summary>
             <div class="report-export-list" style="margin-top:12px">\${templates.map(report => \`<article class="report-export-row muted-row"><span class="badge info">Template</span><strong>\${esc(growthLabel(report.reportTitle))}</strong><small>\${esc(report.notes || "Ready")}</small></article>\`).join("") || '<div class="empty">No templates yet.</div>'}</div>
@@ -31194,13 +31313,23 @@ function htmlShell() {
       const pathRoute = String(location.pathname || "/").replace(/^\\/+|\\/+$/g, "");
       const requestedPage = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#cockpit")).replace("#", "");
       const routeAliases = { overview:"today", cockpit:"today", command:"growth", "le-e":"lee", partner:"partners", "partner-hub":"partners", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", health:"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings", replies:"growth-inbox", "inbox-replies":"growth-inbox", lists:"contacts", contact:"contacts", people:"contacts", "upload-list":"upload", "list-upload":"upload", import:"upload", "import-list":"upload", campaign:"campaigns", "campaign-control":"campaigns", "campaigns-control":"campaigns", prospect:"prospects", prospects:"prospects", "rcap-prospects":"prospects", "rcap-pipeline":"prospects", money:"revenue", payments:"revenue", stripe:"revenue", calendar:"meetings", meeting:"meetings", "meeting-prep":"meetings", "support-inbox":"support", notifications:"alerts", "alert-center":"alerts", "partner-pages-review":"pages", "page-review":"pages", "co-branded-pages":"pages", system:"os-health" };
-      const normalizedPage = routeAliases[requestedPage] || requestedPage;
-      const knownPages = ["cockpit", "upload", "contacts", "prospects", "revenue", "meetings", "support", "alerts", "pages", "today", "overview", "daily-run", "focus", "decisions", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode"];
+      // Phase O deep links: #item/<collection>/<id> renders the artifact viewer for one
+      // record. Parsed before alias/known-page validation (slashes would fail both).
+      let artifactRef = null;
+      if (requestedPage.startsWith("item/")) {
+        const refParts = requestedPage.split("/");
+        const refCollection = String(refParts[1] || "").replace(/[^a-zA-Z0-9_-]/g, "");
+        let refItemId = refParts.slice(2).join("/");
+        try { refItemId = decodeURIComponent(refItemId); } catch {}
+        if (refCollection && refItemId) artifactRef = { collection: refCollection, itemId: refItemId };
+      }
+      const normalizedPage = artifactRef ? "item" : (routeAliases[requestedPage] || requestedPage);
+      const knownPages = ["cockpit", "upload", "contacts", "prospects", "revenue", "meetings", "support", "alerts", "pages", "today", "overview", "daily-run", "focus", "decisions", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode", "item"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "today";
       currentPageId = pageId;
       document.body.classList.toggle("ck-wash", ["today", "overview"].includes(pageId));
       if (pageId === "decisions" && !companyQueue && !companyQueueLoading) loadDecisionsQueue();
-      const canonicalHash = pageId === "overview" ? "today" : pageId === "partner-hub" ? "partners" : pageId;
+      const canonicalHash = artifactRef ? requestedPage : pageId === "overview" ? "today" : pageId === "partner-hub" ? "partners" : pageId;
       if (location.hash !== "#" + canonicalHash && !pathRoute) history.replaceState(null, "", "#" + canonicalHash);
       if (pageId === "safe-mode") {
         renderSafeBootShell({
@@ -31240,6 +31369,7 @@ function htmlShell() {
         \${safeRenderModule("production", () => productionWorkspaceHtml(pageClass))}
         \${safeRenderModule("proof", () => proofWorkspaceHtml(pageClass))}
         \${safeRenderModule("more", () => moreWorkspaceHtml(pageClass))}
+        \${safeRenderModule("item", () => pageId === "item" ? artifactViewerHtml(pageClass, artifactRef) : "")}
         \${safeRenderModule("growth-inbox", () => growthInboxPageHtml(pageClass))}
         \${safeRenderModule("tasks", () => ["tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week"].includes(pageId) ? tasksPageHtml(pageClass, pageId) : "")}
         \${safeRenderModule("production-activation-rcap", () => pageId === "production-activation-rcap" ? rcapReviewWorkspaceHtml(pageClass) : "")}
@@ -31440,7 +31570,7 @@ function htmlShell() {
       // Six operator-mode sections (Phase N). Every page maps to exactly one top-nav item so
       // the active state always lands somewhere; anything not named here highlights More.
       if (["today", "overview", "cockpit", "focus", "daily-run", "morning-brief", "evening-reflection", "daily-closeout"].includes(pageId)) return "today";
-      if (["decisions", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "prospects", "support", "alerts", "meetings", "growth-inbox", "capture-inbox"].includes(pageId)) return "queue";
+      if (["decisions", "item", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "prospects", "support", "alerts", "meetings", "growth-inbox", "capture-inbox"].includes(pageId)) return "queue";
       if (["campaigns", "funnel", "sources", "upload", "contacts", "revenue"].includes(pageId)) return "campaigns";
       if (["queue", "posted", "assets", "content-bank", "production", "autonomy", "pages"].includes(pageId)) return "review-desk";
       if (["reports", "proof", "metrics", "kpis", "evidence-room", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "reports";
@@ -33640,6 +33770,47 @@ function htmlShell() {
         URL.revokeObjectURL(url);
         toast(format === "json" ? "Weekly evidence JSON exported" : "Weekly evidence Markdown exported");
       }, "Could not download weekly evidence pack.");
+    }
+
+    // Phase O: exported report files become readable + downloadable in-app (they used to be
+    // shown as dead path text). Fetches carry the Bearer token, so no cookie is needed.
+    async function fetchReportFileText(reportPath) {
+      const headers = {};
+      const token = storedOwnerToken();
+      if (token) headers.Authorization = "Bearer " + token;
+      const response = await fetch("/api/reports/file?path=" + encodeURIComponent(reportPath), { headers });
+      if (!response.ok) {
+        let message = "Could not open the report file.";
+        try { message = JSON.parse(await response.text()).error || message; } catch {}
+        throw new Error(message);
+      }
+      return response.text();
+    }
+    async function viewReportFile(reportPath, targetId) {
+      await safeAction(async () => {
+        const text = await fetchReportFileText(reportPath);
+        const target = document.getElementById(targetId || "artifact-report-body") || document.getElementById("reports-file-view");
+        if (target) {
+          target.innerHTML = '<pre class="report-body-pre"></pre>';
+          target.querySelector("pre").textContent = text;
+          target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      }, "Could not open the report file.");
+    }
+    async function downloadReportFile(reportPath) {
+      await safeAction(async () => {
+        const text = await fetchReportFileText(reportPath);
+        const blob = new Blob([text], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = String(reportPath).split("/").pop() || "report.md";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        toast("Report downloaded");
+      }, "Could not download the report file.");
     }
 
     async function rebuildPriorities() {
@@ -38055,6 +38226,30 @@ async function handleRequest(request, response) {
     return;
   }
 
+  // Phase O (approved 2026-07-12): exported report FILES were dead ends — the Reports page
+  // showed their path as plain text with no way to open them. This serves exactly the files
+  // under data/exports/reports (path-traversal guarded: resolved path must stay inside that
+  // directory), read-only, as text.
+  if (url.pathname === "/api/reports/file" && request.method === "GET") {
+    try {
+      const requested = String(url.searchParams.get("path") || "");
+      const reportsRoot = path.resolve(process.cwd(), "data", "exports", "reports");
+      const resolved = path.resolve(process.cwd(), requested);
+      if (!resolved.startsWith(reportsRoot + path.sep)) {
+        sendJson(response, { error: "Only files under data/exports/reports can be opened here." }, 400);
+        return;
+      }
+      const body = await readFile(resolved, "utf8");
+      response.writeHead(200, {
+        "content-type": resolved.endsWith(".json") ? "application/json; charset=utf-8" : "text/markdown; charset=utf-8",
+        "cache-control": "no-store"
+      });
+      response.end(body);
+    } catch {
+      sendJson(response, { error: "That report file is not on this server (exports are per-deploy)." }, 404);
+    }
+    return;
+  }
 
   if (url.pathname === "/api/soc2/readiness" && request.method === "GET") {
     const currentState = await store.readState();

@@ -105,7 +105,7 @@ check("the Decisions page exists with the four controls and safe Open rendering"
   assert(source.includes('pageId === "decisions" && !companyQueue && !companyQueueLoading) loadDecisionsQueue()'), "queue loads lazily on open");
   assert(source.includes("function ckOpenControlHtml("), "Open control helper exists");
   assert(source.includes('rel="noopener noreferrer"'), "external links open safely");
-  assert(source.includes("ckOpenControlHtml(item.sourceLink)"), "Needs Roger cards carry the Open control");
+  assert(source.includes('ckOpenControlHtml(item.sourceLink, "", item.sourceRef)'), "Needs Roger cards carry the Open control with the artifact deep link (Phase O)");
   const decideFn = source.slice(source.indexOf("async function decideQueueItem"), source.indexOf("async function loadDecisionsQueue"));
   assert(decideFn.includes('"complete"'), "mark-complete is wired through the same decide path");
 });
