@@ -12550,13 +12550,26 @@ const SIGNUPS_METRICS_URL = "https://expungement.ai/api/metrics/signups";
 // fresh fetch) correctly showed connected. The fetchers fail SOFT (available:false),
 // so a cached failure clears the cache slot and the next request retries.
 let liveMetricsCache = { at: 0, promise: null };
-function fetchLiveMetricsSnapshots() {
-  const nowMs = Date.now();
-  if (liveMetricsCache.promise && nowMs - liveMetricsCache.at < 60000) return liveMetricsCache.promise;
+// Stale-while-revalidate layer (2026-07-12 latency fix). Stripe + signups sit on the two
+// hottest GETs (/api/state, /api/today/summary) with 8s abort ceilings, and any soft failure
+// used to clear the 60s cache — so one upstream wobble put an up-to-8s stall back on every
+// request. Now: the last fully-available pair is kept and served immediately (marked
+// stale:true once older than the 60s window) while a refresh runs in the background; only a
+// caller with NO good pair from the last 5 minutes ever awaits a live fetch. Past the 5-minute
+// grace, unavailability is served honestly, exactly as before — the layer never fabricates and
+// never hides an ongoing outage, it only stops an outage from also being a latency cliff.
+let liveMetricsLastGood = { at: 0, value: null };
+const LIVE_METRICS_TTL_MS = 60000;
+const LIVE_METRICS_STALE_GRACE_MS = 300000;
+
+function startLiveMetricsRefresh(nowMs) {
   const promise = Promise.all([fetchStripeRevenueSnapshot(), fetchSignupsSnapshot()]).then(([stripeRevenue, signups]) => {
-    if ((stripeRevenue && stripeRevenue.available === false) || (signups && signups.available === false)) {
-      // Do not pin an outage for a whole minute; keep honest unavailability per request.
-      if (liveMetricsCache.promise === promise) liveMetricsCache = { at: 0, promise: null };
+    const allGood = !(stripeRevenue && stripeRevenue.available === false) && !(signups && signups.available === false);
+    if (allGood) {
+      liveMetricsLastGood = { at: Date.now(), value: [stripeRevenue, signups] };
+    } else if (liveMetricsCache.promise === promise) {
+      // Do not pin an outage for a whole minute; the next request retries in the background.
+      liveMetricsCache = { at: 0, promise: null };
     }
     return [stripeRevenue, signups];
   });
@@ -12567,6 +12580,18 @@ function fetchLiveMetricsSnapshots() {
     if (liveMetricsCache.promise === promise) liveMetricsCache = { at: 0, promise: null };
   });
   return promise;
+}
+
+function fetchLiveMetricsSnapshots() {
+  const nowMs = Date.now();
+  const cacheFresh = liveMetricsCache.promise && nowMs - liveMetricsCache.at < LIVE_METRICS_TTL_MS;
+  if (!cacheFresh) startLiveMetricsRefresh(nowMs);
+  const lastGood = liveMetricsLastGood;
+  if (lastGood.value && nowMs - lastGood.at < LIVE_METRICS_STALE_GRACE_MS) {
+    if (nowMs - lastGood.at < LIVE_METRICS_TTL_MS) return Promise.resolve(lastGood.value);
+    return Promise.resolve(lastGood.value.map((snapshot) => ({ ...snapshot, stale: true })));
+  }
+  return liveMetricsCache.promise;
 }
 
 async function fetchSignupsSnapshot() {
@@ -15367,6 +15392,14 @@ function htmlShell() {
     .danger { background:rgba(154,79,58,.12); color:var(--rust); border-color:rgba(154,79,58,.35); }
     button,.button { border:1px solid var(--line); background:white; border-radius:6px; min-height:34px; padding:0 11px; font-weight:750; cursor:pointer; color:var(--ink); }
     button:hover,.button:hover { background:var(--paper); }
+    /* Universal click feedback (Phase L): every press is visible instantly. :active is the
+       sub-frame pressed state (pure CSS, no JS on the path); .is-busy is the in-flight state
+       the capture-phase click listener applies; .did-fail is the brief failure flash. */
+    button:active,.button:active,.button-link:active { transform:translateY(1px); filter:brightness(.95); }
+    button.is-busy,.button-link.is-busy { position:relative; pointer-events:none; opacity:.7; transform:translateY(1px); }
+    button.is-busy::after,.button-link.is-busy::after { content:""; position:absolute; top:50%; right:6px; width:11px; height:11px; margin-top:-7px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:le-btn-spin .65s linear infinite; }
+    button.did-fail,.button-link.did-fail { border-color:var(--rust); color:var(--rust); background:#FBEAE2; }
+    @keyframes le-btn-spin { 100% { transform:rotate(360deg); } }
     button:disabled { opacity:.45; cursor:not-allowed; background:white; color:#6f7684; }
     .primary { background:var(--ink); color:white; border:0; }
     .primary:disabled { background:#cbd5d6; color:#596070; }
@@ -18682,6 +18715,21 @@ function htmlShell() {
     }
 
     async function api(path, options = {}) {
+      // Feedback wrapper: ties this request to the button click that started it (if any),
+      // so the button's spinner spans the request and flashes on failure. The transport
+      // itself is untouched below in apiRequest.
+      const releaseFeedback = beginClickFeedbackRequest();
+      try {
+        const result = await apiRequest(path, options);
+        releaseFeedback(true);
+        return result;
+      } catch (error) {
+        releaseFeedback(false);
+        throw error;
+      }
+    }
+
+    async function apiRequest(path, options = {}) {
       const timeoutMs = Number(options.timeoutMs || 8000);
       const requestOptions = { ...options };
       delete requestOptions.timeoutMs;
@@ -34566,6 +34614,73 @@ function htmlShell() {
         document.querySelectorAll(".nav-menu[open]").forEach((menu) => menu.removeAttribute("open"));
       }
     });
+    const clickFeedback = { el: null, requests: 0, clickId: 0, idleTimer: null, releaseTimer: null };
+    function releaseClickFeedback(failed) {
+      const el = clickFeedback.el;
+      if (clickFeedback.idleTimer) { clearTimeout(clickFeedback.idleTimer); clickFeedback.idleTimer = null; }
+      if (clickFeedback.releaseTimer) { clearTimeout(clickFeedback.releaseTimer); clickFeedback.releaseTimer = null; }
+      clickFeedback.el = null;
+      clickFeedback.requests = 0;
+      if (!el || !el.isConnected) return;
+      el.classList.remove("is-busy");
+      el.removeAttribute("aria-busy");
+      if (failed) {
+        el.classList.add("did-fail");
+        setTimeout(() => { if (el.isConnected) el.classList.remove("did-fail"); }, 1600);
+      }
+    }
+    function beginClickFeedbackRequest() {
+      if (!clickFeedback.el) return () => {};
+      const clickId = clickFeedback.clickId;
+      clickFeedback.requests += 1;
+      if (clickFeedback.idleTimer) { clearTimeout(clickFeedback.idleTimer); clickFeedback.idleTimer = null; }
+      let settled = false;
+      return (ok) => {
+        if (settled) return;
+        settled = true;
+        if (clickFeedback.clickId !== clickId) return;
+        clickFeedback.requests -= 1;
+        if (ok === false) { releaseClickFeedback(true); return; }
+        if (clickFeedback.requests <= 0) {
+          // Linger briefly: actions often chain several api() calls back-to-back; the
+          // spinner should span the chain, not flicker off between calls.
+          if (clickFeedback.releaseTimer) clearTimeout(clickFeedback.releaseTimer);
+          clickFeedback.releaseTimer = setTimeout(() => {
+            if (clickFeedback.clickId === clickId && clickFeedback.requests <= 0) releaseClickFeedback(false);
+          }, 250);
+        }
+      };
+    }
+    // ---- Universal button feedback (Phase L, 2026-07-12) ------------------------------------
+    // Rule: no click may ever do nothing visibly. The capture-phase listener marks the pressed
+    // button busy BEFORE its handler runs; api() (via beginClickFeedbackRequest) keeps it busy
+    // until every request the click started settles, then releases — or flashes a failure. A
+    // button whose handler starts no request (tab switches, dialogs) releases after 300ms. The
+    // capture listener also swallows clicks on already-busy buttons, closing the double-fire
+    // window on slow actions. Handlers themselves stay untouched: this is one layer, not 650
+    // per-button edits. clickId versions each press so a request settling late can never
+    // release a NEWER click's spinner.
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      const el = target && target.closest ? target.closest("button") : null;
+      if (!el) return;
+      if (el.classList.contains("is-busy")) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (el.disabled) return;
+      releaseClickFeedback(false);
+      clickFeedback.clickId += 1;
+      clickFeedback.el = el;
+      clickFeedback.requests = 0;
+      el.classList.add("is-busy");
+      el.setAttribute("aria-busy", "true");
+      const clickId = clickFeedback.clickId;
+      clickFeedback.idleTimer = setTimeout(() => {
+        if (clickFeedback.clickId === clickId && clickFeedback.requests === 0) releaseClickFeedback(false);
+      }, 300);
+    }, true);
     document.querySelectorAll(".nav-menu-summary").forEach((summary) => {
       summary.addEventListener("click", () => {
         const current = summary.closest(".nav-menu");
@@ -34590,6 +34705,39 @@ function htmlShell() {
   </script>
 </body>
 </html>`;
+}
+
+// Company-memory projection memo (2026-07-12 latency fix). projectCompanyMemory is pure over
+// the domain ledgers, but /api/queue, /api/today/summary, and every queue transition re-ran it
+// per request — a full re-derivation over thousands of contact/org rows on top of the state
+// fetch. The memo is keyed on the state graph's queueItems ARRAY IDENTITY: the storage cache
+// serves one shared graph between writes, and every durable write produces a wholly new graph
+// (applyCoreRecordsToState builds fresh arrays), so a memo hit is exactly "same graph, nothing
+// written since" — the same coherence rule the state cache itself proves. The WeakMap entry
+// dies with the graph. Attach-on fields the caller spread onto the state (stripeRevenue,
+// signups) are re-enveloped from the CALLER's state so a memo hit never resurrects another
+// request's attachments.
+const companyMemoryProjectionMemo = new WeakMap();
+function projectCompanyMemoryCached(state, opts = {}) {
+  const key = state && Array.isArray(state.queueItems) ? state.queueItems : null;
+  if (!key) return projectCompanyMemory(state, opts);
+  let cached = companyMemoryProjectionMemo.get(key);
+  if (!cached) {
+    cached = projectCompanyMemory(state, opts);
+    companyMemoryProjectionMemo.set(key, cached);
+  }
+  const projected = cached.state;
+  return {
+    state: {
+      ...state,
+      queueItems: projected.queueItems,
+      companyEvents: projected.companyEvents,
+      agentRuns: projected.agentRuns,
+      companyContacts: projected.companyContacts,
+      companyOrganizations: projected.companyOrganizations
+    },
+    observations: cached.observations
+  };
 }
 
 async function handleRequest(request, response) {
@@ -34751,15 +34899,15 @@ async function handleRequest(request, response) {
   // GETs; transitions write ONLY the queueItems/approvals collections (scoped write — a queue
   // decision can never rewrite unrelated state). Approving performs NO action: it records an
   // Approval that the existing gated executors require; sends/publishes stay behind their gates.
-  // One call powers Today at LegalEase. Computed on demand from a fresh projection over the
-  // domain ledgers — reading the page never writes anything.
+  // One call powers Today at LegalEase. Computed on demand from a projection over the domain
+  // ledgers (memoized per state graph — see projectCompanyMemoryCached) — reading never writes.
   if (url.pathname === "/api/today/summary" && request.method === "GET") {
     const currentState = await store.readState();
     // Attach the live Stripe + signups snapshots (60s cache) exactly as /api/state
     // does, so the scoreboard's Revenue and Accounts created tiles read real source
     // data instead of permanently missing keys. Read-only: nothing is persisted.
     const [stripeRevenue, signups] = await fetchLiveMetricsSnapshots();
-    sendJson(response, buildTodaySummary({ ...currentState, stripeRevenue, signups }, { env: process.env }));
+    sendJson(response, buildTodaySummary({ ...currentState, stripeRevenue, signups }, { env: process.env, project: projectCompanyMemoryCached }));
     return;
   }
 
@@ -34767,7 +34915,7 @@ async function handleRequest(request, response) {
     const currentState = await store.readState();
     // Serve the same on-demand projection the Today summary uses, so the queue is complete
     // even before the first scheduled refresh persisted it. Reading never writes.
-    const projected = projectCompanyMemory(currentState, { env: process.env }).state;
+    const projected = projectCompanyMemoryCached(currentState, { env: process.env }).state;
     const items = wakeSnoozedQueueItems(Array.isArray(projected.queueItems) ? projected.queueItems : []);
     const open = items.filter((i) => !["dismissed", "completed"].includes(i.status));
     sendJson(response, {
@@ -34794,7 +34942,7 @@ async function handleRequest(request, response) {
     }
     // Project before transitioning: stable ids mean an item shown from the on-demand summary
     // resolves here even if no scheduled refresh has persisted the queue yet.
-    const result = transitionQueueItem(projectCompanyMemory(currentState, { env: process.env }).state, {
+    const result = transitionQueueItem(projectCompanyMemoryCached(currentState, { env: process.env }).state, {
       id: String(body.queueItemId || body.id || ""),
       status: "approved",
       actor: accessDecision.actor?.label || accessDecision.actor?.role || "owner",
@@ -34818,7 +34966,7 @@ async function handleRequest(request, response) {
       return;
     }
     const currentState = await store.readState();
-    const result = transitionQueueItem(projectCompanyMemory(currentState, { env: process.env }).state, {
+    const result = transitionQueueItem(projectCompanyMemoryCached(currentState, { env: process.env }).state, {
       id: String(body.id || ""),
       status,
       actor: accessDecision.actor?.label || accessDecision.actor?.role || "owner",

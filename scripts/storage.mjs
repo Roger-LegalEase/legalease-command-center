@@ -287,8 +287,8 @@ function contentRangeTotal(value = "") {
 // under a STABLE order (collection,item_id) until a short/empty page proves we've read everything.
 const SUPABASE_PAGE_SIZE = 1000;
 
-async function supabaseFetchAllRows(selectColumns) {
-  const base = supabaseRecordsTable + "?select=" + selectColumns + "&order=collection.asc,item_id.asc";
+async function supabaseFetchAllRows(selectColumns, extraQuery = "") {
+  const base = supabaseRecordsTable + "?select=" + selectColumns + (extraQuery ? "&" + extraQuery : "") + "&order=collection.asc,item_id.asc";
   // First page asks for the exact total (Prefer: count=exact => Content-Range
   // "0-999/13593"); the REMAINING pages are then fetched CONCURRENTLY. The old
   // sequential loop put a pages-times-round-trip latency floor under every state
@@ -735,20 +735,104 @@ export class SupabaseCoreStore extends JsonStore {
     // this, a serialized mutation could read a graph fetched BEFORE the previous
     // mutation's write and compute on stale state (lost update).
     this._writeGen = 0;
+    // Cross-request state cache (2026-07-12 latency fix). Before this, EVERY request that
+    // touched state re-paged the whole table (~14 round-trips, ~1.5-3s) — 236 readState
+    // call sites, so every button click and page load paid it, often twice. The cache
+    // holds the LAST successfully hydrated graph and serves it while it is provably
+    // current:
+    //   - In-process coherence is exact: the cache is keyed to _writeGen, and every
+    //     durable mutation (writes AND claims, success or failure) bumps _writeGen, so a
+    //     write-then-read can never see the pre-write graph.
+    //   - Cross-process coherence (another deploy, a local script against the same table)
+    //     is bounded by STATE_CACHE_TTL_MS (default 3000): inside that burst window the
+    //     graph is served as-is; past it, ONE cheap signature probe (exact row count +
+    //     max updated_at, a single round-trip) decides between reuse and a full refetch.
+    //     Every writer in this codebase stamps updated_at on every row, so external
+    //     upserts and deletes both move the signature. (Raw-SQL edits that keep
+    //     updated_at AND row count unchanged are the documented blind spot.)
+    // Readers share the cached graph exactly like single-flight readers always have —
+    // the codebase invariant that state transforms are immutable spread-copies is what
+    // makes both safe. STATE_CACHE_TTL_MS=0 disables the cache entirely.
+    this._stateCache = null;
+    this._stateCacheGen = -1;
+    this._stateCacheAt = 0;
+    this._stateCacheSignature = "";
+    this._lastFetchSignature = "";
     // The JsonStore fallback layer parses the on-disk seed/data file (~590KB) on every
     // read. Under the supabase backend that file is static deploy content (all writes go
     // to Supabase), so it is parsed once per process and reused.
     this._fallbackCache = null;
   }
 
+  _stateCacheTtlMs() {
+    const raw = process.env.STATE_CACHE_TTL_MS;
+    if (raw === undefined || raw === "") return 3000;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 3000;
+  }
+
   async readState() {
+    const ttlMs = this._stateCacheTtlMs();
+    // Burst path: same generation (no in-process write since) and inside the TTL window —
+    // serve the shared graph with zero round-trips.
+    if (
+      ttlMs > 0
+      && this._stateCache
+      && this._stateCacheGen === this._writeGen
+      && Date.now() - this._stateCacheAt < ttlMs
+    ) {
+      return this._stateCache;
+    }
     if (this._readInFlight && this._readInFlightGen === this._writeGen) return this._readInFlight;
-    const promise = this._readStateFresh().finally(() => {
+    const genAtStart = this._writeGen;
+    const promise = this._readStateCachedOrFresh(genAtStart, ttlMs).finally(() => {
       if (this._readInFlight === promise) this._readInFlight = null;
     });
     this._readInFlight = promise;
-    this._readInFlightGen = this._writeGen;
+    this._readInFlightGen = genAtStart;
     return promise;
+  }
+
+  async _readStateCachedOrFresh(genAtStart, ttlMs) {
+    // Probe path: we hold a graph for the current generation but the burst window has
+    // passed. One cheap signature request decides between reuse and a full refetch; any
+    // probe failure falls through to the authoritative full read.
+    if (ttlMs > 0 && this._stateCache && this._stateCacheGen === genAtStart && this._stateCacheSignature) {
+      const signature = await this._remoteStateSignature();
+      if (signature && signature === this._stateCacheSignature && this._writeGen === genAtStart) {
+        this._stateCacheAt = Date.now();
+        return this._stateCache;
+      }
+    }
+    const state = await this._readStateFresh();
+    // Cache only clean supabase reads, and only if no write landed while the fetch was in
+    // flight (a mid-flight write means this graph may be torn; the gen mismatch would
+    // make the cache unusable anyway, so don't install it).
+    if (ttlMs > 0 && state && state.persistence === "supabase" && this._writeGen === genAtStart) {
+      this._stateCache = state;
+      this._stateCacheGen = genAtStart;
+      this._stateCacheAt = Date.now();
+      this._stateCacheSignature = this._lastFetchSignature || "";
+    }
+    return state;
+  }
+
+  // Signature of the remote table: exact row count + newest updated_at, from a single
+  // 1-row request. Returns "" when the server cannot provide it (missing headers, error),
+  // which callers must treat as "cannot prove freshness" (full refetch).
+  async _remoteStateSignature() {
+    try {
+      const result = await supabaseRestRequest(
+        supabaseRecordsTable + "?select=updated_at&order=updated_at.desc&limit=1",
+        { prefer: "count=exact", withContentRange: true }
+      );
+      const total = contentRangeTotal(result?.contentRange || "");
+      if (!Number.isFinite(total)) return "";
+      const newest = Array.isArray(result?.data) && result.data[0] ? String(result.data[0].updated_at || "") : "";
+      return total + "|" + newest;
+    } catch {
+      return "";
+    }
   }
 
   async _readStateFresh() {
@@ -766,6 +850,14 @@ export class SupabaseCoreStore extends JsonStore {
     try {
       const rows = await supabaseFetchAllRows("collection,item_id,payload,updated_at");
       this.lastError = "";
+      // Signature of THIS fetch (same shape as _remoteStateSignature): lets the cache
+      // later prove via one cheap probe that the table has not moved under it.
+      let newest = "";
+      for (const row of rows || []) {
+        const stamp = String(row?.updated_at || "");
+        if (stamp > newest) newest = stamp;
+      }
+      this._lastFetchSignature = (rows || []).length + "|" + newest;
       return { ...applyCoreRecordsToState(fallback, rows || []), persistence:"supabase" };
     } catch (error) {
       this.lastError = String(error.message || error).slice(0, 500);
@@ -831,7 +923,13 @@ export class SupabaseCoreStore extends JsonStore {
       const keep = new Set(rows.map((row) => row.collection + "\0" + row.item_id));
       // Must page too: a truncated read here would hide orphans past row 1000, leaving stale
       // rows to accumulate (and, before the readState fix, could resurrect deleted items).
-      const existing = (await supabaseFetchAllRows("collection,item_id")) || [];
+      // Scoped to the collections present in THIS snapshot (2026-07-12 latency fix): rows in
+      // other collections can never be orphans of this write, so fetching them was pure
+      // round-trip cost — for a typical scoped write (one or two collections) this turns a
+      // ~14-page full-table sweep into a single small request. Collection names are
+      // registry-controlled identifiers (coreStateCollections), safe to embed in the filter.
+      const collectionFilter = "collection=in.(" + [...presentCollections].map((name) => encodeURIComponent(name)).join(",") + ")";
+      const existing = (await supabaseFetchAllRows("collection,item_id", collectionFilter)) || [];
       const orphans = existing.filter(
         (row) => presentCollections.has(row.collection) && !keep.has(row.collection + "\0" + row.item_id)
       );

@@ -19,6 +19,10 @@ import { SupabaseCoreStore, coreStateCollections, coreRecordsFromState } from ".
 process.env.SUPABASE_URL = "https://fake-pagination-test.supabase.co";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
 process.env.STORAGE_BACKEND = "supabase";
+// This suite counts RAW fetch requests per read; the Phase L cross-request cache would serve
+// repeat reads with zero requests. Kill switch off — the cache has its own coherence suite
+// (test-state-cache-coherence.mjs).
+process.env.STATE_CACHE_TTL_MS = "0";
 process.env.COMMAND_CENTER_DATA_PATH = "/tmp/__nonexistent_pagination_test__/data.json";
 process.env.COMMAND_CENTER_SEED_PATH = "/tmp/__nonexistent_pagination_test__/seed.json";
 

@@ -8,9 +8,15 @@
 // on a graph fetched before the previous mutation landed, and the on-disk JSON fallback
 // (~590KB, static deploy content under the supabase backend) is parsed once per process.
 //
-// Proves:
+// 2026-07-12 (Phase L): a cross-request TTL cache now sits on top of single-flight. This
+// suite pins the UNDERLYING single-flight semantics with the cache disabled
+// (STATE_CACHE_TTL_MS=0); the cache's own coherence contract — every write invalidates,
+// write-then-immediate-read reflects the write — lives in test-state-cache-coherence.mjs.
+//
+// Proves (with the cache OFF):
 //   1. Concurrent readState calls share one fetch sweep and one object graph.
-//   2. Sequential reads stay FRESH: no TTL cache, every non-concurrent read refetches.
+//   2. Sequential reads stay FRESH: with the cache disabled, every non-concurrent read
+//      refetches.
 //   3. Write invalidation: a readState issued after a write never joins a pre-write
 //      in-flight read (the lost-update hazard), for writeCollections AND for
 //      claimCollectionItems, and even when the write FAILS (partial-write safety).
@@ -24,6 +30,7 @@ import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 process.env.SUPABASE_URL = "https://fake-singleflight-test.supabase.co";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
 process.env.STORAGE_BACKEND = "supabase";
+process.env.STATE_CACHE_TTL_MS = "0"; // pin single-flight semantics; the cache has its own suite
 const DIR = "/tmp/leos-singleflight-test";
 rmSync(DIR, { recursive: true, force: true });
 mkdirSync(DIR, { recursive: true });
@@ -88,9 +95,9 @@ const store = new SupabaseCoreStore({ posts: [], library: [] });
   getSweeps = 0;
   const first = await store.readState();
   const second = await store.readState();
-  assert.equal(getSweeps, 2, "non-concurrent reads must each refetch (no TTL cache)");
+  assert.equal(getSweeps, 2, "non-concurrent reads must each refetch (cache disabled via STATE_CACHE_TTL_MS=0)");
   assert.ok(first !== second, "sequential reads build fresh graphs");
-  ok("sequential reads refetch: single-flight is not a stale cache");
+  ok("sequential reads refetch: single-flight alone is not a cache (TTL=0 kill switch works)");
 }
 
 // ---- 3a. write invalidation: writeCollections ---------------------------------------------
