@@ -643,9 +643,12 @@ function aggregateFunnelMetrics(state) {
   };
 }
 
-export function buildTodaySummary(state = {}, { env = process.env, now = () => new Date().toISOString() } = {}) {
-  // Computed on demand from a fresh projection — reading the page never writes anything.
-  const projected = projectCompanyMemory(state, { now, env }).state;
+export function buildTodaySummary(state = {}, { env = process.env, now = () => new Date().toISOString(), project = projectCompanyMemory } = {}) {
+  // Computed on demand from a projection — reading the page never writes anything. The
+  // caller may pass a memoizing `project` (preview-server does): the projection is pure
+  // over the domain ledgers, so per-request recomputation over an unchanged graph was
+  // pure latency (2026-07-12 fix).
+  const projected = project(state, { now, env }).state;
   const queue = list(projected.queueItems);
   const open = queue.filter((i) => !["dismissed", "completed"].includes(i.status));
   const needsRoger = open
