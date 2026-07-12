@@ -77,9 +77,17 @@ function sliceBetween(startMarker, endMarker) {
 {
   const body = sliceBetween('url.pathname === "/api/heartbeat/autopilot"', '// ---- B2 outreach OS');
   assert(body.includes("serializeStateMutation"), "autopilot toggle is serialized");
-  assert(body.includes("writeCollections({ autopilotSettings"), "autopilot toggle write is scoped");
+  // I1 (2026-07-12): the toggle write stays scoped, but is built as a patch because the
+  // FIRST inbox-toggle flip also carries the activation audit trio (auditHistory,
+  // companyEvents, inboxConfig) mandated by the owner decision record. Still never a
+  // full-state write.
+  assert(body.includes("const patch = { autopilotSettings: settings }"), "autopilot toggle write starts scoped to the singleton");
+  assert(body.includes("store.writeCollections(patch)"), "autopilot toggle write is scoped");
+  for (const key of ["patch.auditHistory", "patch.companyEvents", "patch.inboxConfig"]) {
+    assert(body.includes(key), "inbox activation additionally writes " + key + " (and nothing else)");
+  }
   assert(!body.includes("store.writeState("), "no full-state write remains in the autopilot toggle");
-  ok("/api/heartbeat/autopilot: serialized + scoped singleton write");
+  ok("/api/heartbeat/autopilot: serialized + scoped write (singleton, plus the one-time inbox activation trio)");
 }
 
 {

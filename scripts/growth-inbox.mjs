@@ -38,7 +38,10 @@ function compact(value = "", max = 180) {
   return text.length > max ? text.slice(0, max - 1).trimEnd() + "…" : text;
 }
 
-function redactSupportText(value = "") {
+// Exported for the inbox-intelligence layer (I1): quoted evidence lines from email bodies
+// run through this exact redactor before persistence, so the PII discipline is one shared
+// implementation, not a copy that can drift.
+export function redactSupportText(value = "") {
   return clean(value)
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
     .replace(/\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/g, "[redacted-phone]")

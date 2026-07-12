@@ -23,6 +23,7 @@ import { buildOutreachLaneView, previewHeldRelease, confirmHeldRelease, buildDel
 import { buildPartnerUsageView, buildOnboardingChecklist, buildPacketCounts } from "./rcap-partner-ops.mjs";
 import { buildAlertsView, setAlertStatus, buildAlertCandidates, reconcileAlerts, resolveAlertEmailDecision, buildDailyDigest, alertsConfigOf, ALERTS_ENGINE_ID } from "./alerts-engine.mjs";
 import { buildMeetingBrief, reconcileMeetingBriefs, attachEmailContext, buildMeetingBriefsView, MEETING_BRIEFS_ENGINE_ID } from "./meeting-briefs.mjs";
+import { INBOX_ENGINE_ID, INBOX_ALLOWED_MAILBOX, INBOX_SCAN_MESSAGE_CAP, planInboxIntelligence, recordInboxActivationAudit, inboxConfigOf } from "./inbox-intelligence.mjs";
 import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID, buildTodaySummary, projectCompanyMemory } from "./company-memory-projector.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { previewIntake, confirmIntake, INTAKE_TYPES, INTAKE_ACTIONS } from "./intake.mjs";
@@ -12745,6 +12746,105 @@ async function googleJson(url, token = "") {
   }
   if (!result.ok) throw new Error(body.error?.message || body.error || `Google API returned ${result.status}`);
   return body;
+}
+
+// ---- I1 inbox intelligence: owner-only visibility + the ONE-mailbox full-read fetcher --------
+// Owner decision 2026-07-12 (docs/decisions/2026-07-12-inbox-full-read-roger-legalease.md).
+// Inbox-derived data is owner-visible ONLY: these collections are stripped from any state
+// payload served to a non-owner actor. This is the codebase's first per-collection visibility
+// gate; test-inbox-intelligence.mjs pins it.
+const OWNER_ONLY_COLLECTIONS = ["inboxSignals", "inboxConfig"];
+function stripOwnerOnlyCollections(payload, actor) {
+  if (!payload || typeof payload !== "object") return payload;
+  if (String(actor?.role || "") === "owner") return payload;
+  const stripped = { ...payload };
+  for (const collection of OWNER_ONLY_COLLECTIONS) delete stripped[collection];
+  return stripped;
+}
+
+function decodeGmailBodyData(data = "") {
+  try {
+    return Buffer.from(String(data || "").replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+// Prefer a text/plain part anywhere in the MIME tree; fall back to tag-stripped HTML. The
+// decoded text is a TRANSIENT classification input — inbox-intelligence.mjs persists only
+// classifications, summaries, and redacted evidence lines (never this).
+function gmailPlainTextBody(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  if (payload.mimeType === "text/plain" && payload.body?.data) return decodeGmailBodyData(payload.body.data);
+  for (const part of payload.parts || []) {
+    const text = gmailPlainTextBody(part);
+    if (text) return text;
+  }
+  if (payload.mimeType === "text/html" && payload.body?.data) {
+    return decodeGmailBodyData(payload.body.data).replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&");
+  }
+  return "";
+}
+
+// Full-read fetch for EXACTLY the authorized mailbox. Identity wall lives here: if the bound
+// Google account is any other address, this returns a refusal and reads nothing — the
+// snippets-only rules keep governing every other account. Paginated (Gmail nextPageToken)
+// with an explicit message cap; a capped scan reports truncated:true so the engine can
+// resume the window next scan instead of silently dropping the tail.
+async function fetchInboxThreadsForIntelligence({ windowDays = 14, messageCap = INBOX_SCAN_MESSAGE_CAP } = {}) {
+  const currentState = await store.readState();
+  const connector = (currentState.socialAccounts || []).find((account) => account.platform === "google_workspace");
+  if (!connector) return { ok: false, reason: "google_not_connected" };
+  const boundMailbox = String(connector.accountName || "").toLowerCase();
+  if (boundMailbox !== INBOX_ALLOWED_MAILBOX) {
+    return { ok: false, reason: "mailbox_not_authorized", mailbox: boundMailbox };
+  }
+  const token = await googleStoredOrEnvAccessToken(connector);
+  if (!token) return { ok: false, reason: "no_access_token", mailbox: boundMailbox };
+  const query = encodeURIComponent("newer_than:" + Math.max(1, Math.round(Number(windowDays) || 14)) + "d -in:chats");
+  const cap = Math.max(1, Math.min(Number(messageCap) || INBOX_SCAN_MESSAGE_CAP, INBOX_SCAN_MESSAGE_CAP));
+  const refs = [];
+  let pageToken = "";
+  let truncated = false;
+  for (let page = 0; page < 20; page += 1) {
+    const listUrl = "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=" + query
+      + (pageToken ? "&pageToken=" + encodeURIComponent(pageToken) : "");
+    const data = await googleJson(listUrl, token);
+    for (const ref of data?.messages || []) {
+      if (refs.length >= cap) { truncated = true; break; }
+      refs.push(ref);
+    }
+    pageToken = data?.nextPageToken || "";
+    if (!pageToken || truncated) break;
+  }
+  if (pageToken && refs.length >= cap) truncated = true;
+  const threads = new Map();
+  for (const ref of refs) {
+    let message;
+    try {
+      message = await googleJson("https://gmail.googleapis.com/gmail/v1/users/me/messages/" + encodeURIComponent(ref.id) + "?format=full", token);
+    } catch {
+      continue; // one unreadable message never kills the scan
+    }
+    const from = gmailHeader(message, "From") || "";
+    const fromEmail = ((from.match(/<([^>]+)>/) || [])[1] || from).trim().toLowerCase();
+    const fromName = from.replace(/<[^>]*>/, "").replace(/"/g, "").trim();
+    const at = new Date(Number(message?.internalDate) || Date.parse(gmailHeader(message, "Date") || "") || Date.now()).toISOString();
+    const isFromMe = (message?.labelIds || []).includes("SENT") || fromEmail === INBOX_ALLOWED_MAILBOX;
+    const threadId = String(message?.threadId || ref.threadId || ref.id);
+    if (!threads.has(threadId)) {
+      threads.set(threadId, { threadId, subject: gmailHeader(message, "Subject") || "", messages: [] });
+    }
+    threads.get(threadId).messages.push({
+      id: String(message?.id || ref.id),
+      fromEmail,
+      fromName,
+      isFromMe,
+      at,
+      bodyText: gmailPlainTextBody(message?.payload).slice(0, 20000)
+    });
+  }
+  return { ok: true, mailbox: boundMailbox, threads: [...threads.values()], scannedCount: refs.length, truncated };
 }
 
 async function fetchGmailReadOnlyEvents(token = "") {
@@ -35519,7 +35619,7 @@ async function handleRequest(request, response) {
 
 	  if (url.pathname === "/api/boot-state" && request.method === "GET") {
     const currentState = await store.readState();
-    sendJson(response, buildCompactBootState(currentState, accessDecision.actor));
+    sendJson(response, stripOwnerOnlyCollections(buildCompactBootState(currentState, accessDecision.actor), accessDecision.actor));
     return;
   }
 
@@ -35540,7 +35640,7 @@ async function handleRequest(request, response) {
       engineId,
       enabled: autopilotEnabled(fullState, engineId, process.env)
     }));
-    sendJson(response, fullState);
+    sendJson(response, stripOwnerOnlyCollections(fullState, accessDecision.actor));
     return;
   }
 
@@ -36651,6 +36751,12 @@ async function handleRequest(request, response) {
         // Phase 18H meeting briefs — read-only Calendar fetch of the owner's own schedule.
         // Gmail snippets are deliberately NOT injected: email context is on-demand only.
         fetchCalendarEventsForBriefs,
+        // I1 inbox intelligence — full READ-ONLY fetch of exactly the one authorized mailbox
+        // (owner decision 2026-07-12). The fetcher itself enforces the identity wall; the
+        // engine additionally refuses to read at all until the inbox autopilot toggle is ON
+        // (the flip that writes the activation audit event). plan()-only, no act(), no send.
+        fetchInboxThreads: fetchInboxThreadsForIntelligence,
+        inboxReadEnabled: (state) => autopilotEnabled(state, INBOX_ENGINE_ID, process.env),
         // B5 prospect discovery — inert (zero rows) until the live Tier-1 dataset clients are
         // wired and PROSPECT_LIVE_DISCOVERY is flipped. The prospect engine's act() only runs
         // when its autopilot toggle is ON (default OFF), so this is gated twice over.
@@ -36731,12 +36837,61 @@ async function handleRequest(request, response) {
           updatedAt: new Date().toISOString(),
           updatedBy: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
         };
-        const nextState = { ...currentState, autopilotSettings: settings };
-        await store.writeCollections({ autopilotSettings: settings });
+        let nextState = { ...currentState, autopilotSettings: settings };
+        const patch = { autopilotSettings: settings };
+        // I1: the first ON-flip of the inbox toggle IS the capability activation the owner
+        // decision record mandates an audit event for. Written once, ever.
+        if (engineId === INBOX_ENGINE_ID && enabled && !inboxConfigOf(currentState).activationAuditAt) {
+          nextState = recordInboxActivationAudit(nextState, {
+            actor: accessDecision.actor?.label || accessDecision.actor?.role || "owner"
+          });
+          patch.auditHistory = nextState.auditHistory;
+          patch.companyEvents = nextState.companyEvents;
+          patch.inboxConfig = nextState.inboxConfig;
+        }
+        await store.writeCollections(patch);
         sendJson(response, { engineId, enabled, autopilotSettings: settings, state: withPublicChannelSetup(nextState) });
       });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not update autopilot toggle." }, 400);
+    }
+    return;
+  }
+
+  // ---- I1 inbox intelligence: on-demand scan --------------------------------------------
+  // Owner/admin only, and refused while the inbox toggle is OFF: the toggle is the
+  // capability gate the 2026-07-12 decision record hangs the audit event on, so nothing —
+  // including a manual scan — reads the mailbox before the flip. Read-only; writes only the
+  // inboxSignals/inboxConfig scoped patch.
+  if (url.pathname === "/api/inbox/scan" && request.method === "POST") {
+    if (!["owner", "admin"].includes(String(accessDecision.actor?.role || ""))) {
+      sendJson(response, { error: "Only the owner can scan the inbox." }, 403);
+      return;
+    }
+    try {
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        if (!autopilotEnabled(currentState, INBOX_ENGINE_ID, process.env)) {
+          return { blocked: true };
+        }
+        const planned = await planInboxIntelligence(currentState, {
+          fetchInboxThreads: fetchInboxThreadsForIntelligence,
+          inboxReadEnabled: () => true,
+          now: new Date().toISOString()
+        });
+        const patch = {};
+        if (planned.state.inboxSignals !== currentState.inboxSignals) patch.inboxSignals = planned.state.inboxSignals;
+        if (planned.state.inboxConfig !== currentState.inboxConfig) patch.inboxConfig = planned.state.inboxConfig;
+        if (Object.keys(patch).length) await store.writeCollections(patch);
+        return { observations: planned.observations, config: inboxConfigOf(planned.state) };
+      });
+      if (result.blocked) {
+        sendJson(response, { error: "Inbox reading is off. Flip the Inbox intelligence toggle first (that flip records the activation audit event)." }, 400);
+        return;
+      }
+      sendJson(response, { ok: true, observations: result.observations, lastScan: { at: result.config.lastScanAt, status: result.config.lastScanStatus, count: result.config.lastScanCount, truncated: result.config.lastScanTruncated, backfillCompletedAt: result.config.backfillCompletedAt } });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Inbox scan failed." }, 500);
     }
     return;
   }
