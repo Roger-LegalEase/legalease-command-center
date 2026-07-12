@@ -199,7 +199,7 @@ const PIPELINE_STATE = {
 
 // ---- 11. server wiring (structural) ------------------------------------------------------------
 {
-  assert.ok(serverSource.includes('const OWNER_ONLY_COLLECTIONS = ["inboxSignals", "inboxConfig"]'), "owner-only collections declared");
+  assert.ok(serverSource.includes('const OWNER_ONLY_COLLECTIONS = ["inboxSignals", "inboxConfig", "leeThreads", "leeMessages", "leeRuns", "leeMemory"]'), "owner-only collections declared (inbox + Le-E conversation memory)");
   assert.ok(serverSource.includes("stripOwnerOnlyCollections(fullState, accessDecision.actor)"), "/api/state strips for non-owners");
   assert.ok(serverSource.includes("stripOwnerOnlyCollections(buildCompactBootState"), "/api/boot-state strips for non-owners");
   const fetcher = serverSource.slice(serverSource.indexOf("async function fetchInboxThreadsForIntelligence"), serverSource.indexOf("async function fetchGmailReadOnlyEvents"));
