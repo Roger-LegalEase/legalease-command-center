@@ -12799,7 +12799,14 @@ async function fetchInboxThreadsForIntelligence({ windowDays = 14, messageCap = 
   if (boundMailbox !== INBOX_ALLOWED_MAILBOX) {
     return { ok: false, reason: "mailbox_not_authorized", mailbox: boundMailbox };
   }
-  const token = await googleStoredOrEnvAccessToken(connector);
+  let token = "";
+  try {
+    token = await googleStoredOrEnvAccessToken(connector);
+  } catch (error) {
+    // Fail CLOSED but soft: a token/decryption problem is a "blocked" observation for the
+    // engine, never an unhandled throw (the scan endpoint should report it plainly).
+    return { ok: false, reason: "token_unavailable: " + String(error.message || error).slice(0, 120), mailbox: boundMailbox };
+  }
   if (!token) return { ok: false, reason: "no_access_token", mailbox: boundMailbox };
   const query = encodeURIComponent("newer_than:" + Math.max(1, Math.round(Number(windowDays) || 14)) + "d -in:chats");
   const cap = Math.max(1, Math.min(Number(messageCap) || INBOX_SCAN_MESSAGE_CAP, INBOX_SCAN_MESSAGE_CAP));
@@ -27478,7 +27485,7 @@ function htmlShell() {
               \${record.dueAt ? \`<div class="metric-row"><span>You promised by</span><strong>\${esc(String(record.dueAt).slice(0, 10))}</strong></div>\` : ""}
               <div class="metric-row"><span>Privacy</span><strong>Evidence lines are redacted; the full email stays in Gmail, not here.</strong></div>
             </div>
-            <div class="card-actions" style="margin-top:12px">\${gmailLink}</div>
+            <div class="card-actions" style="margin-top:12px">\${gmailLink}\${record.kind === "pipeline_inbound" && (state.automationSuggestions || []).some(s => s.sourceSignalId === record.id && s.status === "pending") ? '<button type="button" onclick="location.hash=\\'automation\\'">Review the suggested record update</button>' : ""}</div>
             <div style="margin-top:14px">\${draftArea}</div>\`;
         } else if (collection === "reports") {
           const path = record.markdownPath || record.textPath || "";
@@ -36981,6 +36988,7 @@ async function handleRequest(request, response) {
         const patch = {};
         if (planned.state.inboxSignals !== currentState.inboxSignals) patch.inboxSignals = planned.state.inboxSignals;
         if (planned.state.inboxConfig !== currentState.inboxConfig) patch.inboxConfig = planned.state.inboxConfig;
+        if (planned.state.automationSuggestions !== currentState.automationSuggestions) patch.automationSuggestions = planned.state.automationSuggestions;
         if (Object.keys(patch).length) await store.writeCollections(patch);
         return { observations: planned.observations, config: inboxConfigOf(planned.state) };
       });

@@ -439,6 +439,64 @@ export function prepareInboxDraftReply(signal = {}, { now = new Date().toISOStri
   };
 }
 
+// ---- I4: pipeline record suggestions (approve-then-apply, engine locked out of applying) ------
+// A pipeline inbound becomes an automationSuggestion with the evidence QUOTED, riding the
+// existing approve-applies flow: this module may only write status "pending"; the human
+// approval endpoint applies the change and stamps "applied" (prospect-pipeline lockout
+// pattern). Partners get a real record update; everything else proposes a follow-up task —
+// approving never touches a record type the applier does not explicitly support.
+export function buildInboxRecordSuggestions(state = {}, signals = [], { now = new Date().toISOString() } = {}) {
+  const existing = new Set(list(state.automationSuggestions).map((s) => s.id));
+  const suggestions = [];
+  for (const signal of list(signals)) {
+    if (signal.kind !== "pipeline_inbound" || String(signal.status) !== "suggested") continue;
+    const id = "auto-suggest-inbox-" + signal.id;
+    if (existing.has(id)) continue;
+    const match = signal.pipelineMatch || {};
+    const who = clean(signal.counterpartName) || clean(signal.counterpartEmail) || "a pipeline contact";
+    const quote = clean((signal.evidence || [])[0] || "");
+    const base = {
+      id,
+      source: INBOX_ENGINE_ID,
+      sourceSignalId: signal.id,
+      evidence: list(signal.evidence),
+      status: "pending",
+      createdAt: now,
+      updatedAt: now
+    };
+    if (match.collection === "partners" && match.itemId) {
+      suggestions.push({
+        ...base,
+        suggestionType: "update_partner_status",
+        title: "Partner update: " + who + " replied",
+        summary: quote ? 'They wrote: "' + quote + '"' : "A partner contact wrote in.",
+        relatedEntityType: "partner",
+        relatedEntityId: match.itemId,
+        proposedChanges: {
+          lastInboundAt: signal.occurredAt,
+          nextAction: ("Reply to their message" + (quote ? ': "' + quote + '"' : ".")).slice(0, 240)
+        }
+      });
+    } else {
+      suggestions.push({
+        ...base,
+        suggestionType: "mark_follow_up_due",
+        title: "Follow up: " + who + " wrote in",
+        summary: quote ? 'They wrote: "' + quote + '"' : "A pipeline contact wrote in.",
+        relatedEntityType: match.collection || "contact",
+        relatedEntityId: match.itemId || "",
+        proposedChanges: {
+          title: ("Reply to " + who).slice(0, 120),
+          description: (quote ? 'They wrote: "' + quote + '" ' : "") + "(caught by the inbox scan; evidence is redacted)",
+          dueDate: new Date(Date.parse(now) + 2 * 86400000).toISOString().slice(0, 10),
+          sourceType: "inbox_intelligence"
+        }
+      });
+    }
+  }
+  return suggestions;
+}
+
 // ---- the engine ------------------------------------------------------------------------------
 export function planInboxIntelligence(state = {}, ctx = {}) {
   const now = nowIso(ctx);
@@ -468,6 +526,9 @@ export function planInboxIntelligence(state = {}, ctx = {}) {
     }
     const { signals, skippedInternal, skippedBulk } = classifyInboxThreads(fetched.threads, { state, config, now });
     const merged = mergeInboxSignals(state.inboxSignals, signals, { now });
+    // I4: pipeline inbounds propose record updates as PENDING suggestions only; the human
+    // approval endpoint is the only thing that applies them.
+    const recordSuggestions = buildInboxRecordSuggestions(state, merged, { now });
     const truncated = Boolean(fetched.truncated);
     const nextConfig = {
       ...(state.inboxConfig || {}),
@@ -489,9 +550,14 @@ export function planInboxIntelligence(state = {}, ctx = {}) {
       openSignals: merged.filter((s) => s.status === "suggested").length,
       skippedInternal,
       skippedBulk,
+      recordSuggestions: recordSuggestions.length,
       detail: truncated ? "Scan hit the " + INBOX_SCAN_MESSAGE_CAP + "-message cap; the window resumes next scan (nothing silently dropped)." : ""
     });
-    return { state: { ...state, inboxSignals: merged, inboxConfig: nextConfig }, observations };
+    const nextState = { ...state, inboxSignals: merged, inboxConfig: nextConfig };
+    if (recordSuggestions.length) {
+      nextState.automationSuggestions = [...recordSuggestions, ...list(state.automationSuggestions)].slice(0, 200);
+    }
+    return { state: nextState, observations };
   });
 }
 
