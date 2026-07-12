@@ -149,6 +149,13 @@ const coreStateCollections = [
   // SENDGRID_WEBHOOK_HEALTH_COLLECTION in sendgrid-webhook.mjs, or webhook health silently
   // fails to persist (same trap). test-sendgrid-webhook.mjs asserts membership.
   "sendgridWebhookHealth",
+  // Inbox intelligence (I1, 2026-07-12 owner decision: full read-only, roger@legalease.com
+  // ONLY). MUST stay in sync with INBOX_COLLECTIONS / INBOX_SINGLETON_COLLECTIONS in
+  // inbox-intelligence.mjs, or signals silently fail to persist (the B1 trap).
+  // test-inbox-intelligence.mjs asserts membership. Signals store classifications,
+  // summaries, and redacted evidence lines only — never bodies. Owner-visible only.
+  "inboxSignals",
+  "inboxConfig",
   // Phase 1 — Company Memory (company-memory.mjs). Projections + direct engine emits;
   // domain collections stay authoritative. Registered here or Supabase silently drops them.
   "queueItems",
@@ -196,7 +203,7 @@ const coreStateCollections = [
   "dailyRunPublisherRuns",
   "handoffContractPreviews"
 ];
-const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth", "settings"]);
+const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth", "settings", "inboxConfig"]);
 // Append-only safety ledgers: rows are inserted via claimCollectionItems and updated in place,
 // NEVER bulk-reconciled away. Excluding them from the snapshot orphan-delete pass means a stale
 // in-memory snapshot (the exact mechanism that shredded reactivationContacts on 2026-07-08) can

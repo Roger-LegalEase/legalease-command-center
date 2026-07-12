@@ -20,6 +20,7 @@ import { buildReactivationEngine, REACTIVATION_ENGINE_ID } from "./reactivation-
 import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID } from "./company-memory-projector.mjs";
 import { buildAlertsEngine, ALERTS_ENGINE_ID } from "./alerts-engine.mjs";
 import { buildMeetingBriefsEngine, MEETING_BRIEFS_ENGINE_ID } from "./meeting-briefs.mjs";
+import { buildInboxIntelligenceEngine, INBOX_ENGINE_ID } from "./inbox-intelligence.mjs";
 
 export function buildHeartbeatRegistry(deps = {}) {
   const engines = [];
@@ -155,6 +156,16 @@ export function buildHeartbeatRegistry(deps = {}) {
   // Meetings page, one brief at a time. Autopilot OFF by default.
   engines.push(buildMeetingBriefsEngine({ fetchCalendarEventsForBriefs: deps.fetchCalendarEventsForBriefs }));
 
+  // I1 inbox intelligence (owner decision 2026-07-12: full READ-ONLY, roger@legalease.com
+  // ONLY). plan()-only — NO act() method, so the heartbeat structurally cannot run side
+  // effects for it. The autopilot toggle gates READING itself (deps.inboxReadEnabled): until
+  // Roger flips it, no fetch happens at all. Registered before the company-memory projector
+  // so fresh signals project into the queue on the same tick.
+  engines.push(buildInboxIntelligenceEngine({
+    fetchInboxThreads: deps.fetchInboxThreads,
+    inboxReadEnabled: deps.inboxReadEnabled
+  }));
+
   // Phase 1 company-memory projector (plan()-only, NO act()). Runs LAST on purpose: it reads
   // what every engine above recorded this tick and refreshes the shared Queue/Contacts/Events/
   // AgentRuns memory. Structurally cannot send, publish, release, or deploy.
@@ -165,4 +176,4 @@ export function buildHeartbeatRegistry(deps = {}) {
 
 // Stable list of registered engine ids (for surfacing autopilot toggles in the UI even
 // when an engine hasn't run yet). Mirrors buildHeartbeatRegistry's ids.
-export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID, ENGAGEMENT_GROWTH_ENGINE_ID, ...OPERATING_LOOP_ENGINE_IDS, REACTIVATION_ENGINE_ID, ALERTS_ENGINE_ID, MEETING_BRIEFS_ENGINE_ID, COMPANY_MEMORY_ENGINE_ID];
+export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID, ENGAGEMENT_GROWTH_ENGINE_ID, ...OPERATING_LOOP_ENGINE_IDS, REACTIVATION_ENGINE_ID, ALERTS_ENGINE_ID, MEETING_BRIEFS_ENGINE_ID, INBOX_ENGINE_ID, COMPANY_MEMORY_ENGINE_ID];
