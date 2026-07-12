@@ -133,7 +133,11 @@ for (const duplicateClearingSource of ["parked_items", "completed_items", "skipp
 }
 assert(brain.includes("dailyRunBucketRemainingCount") && guidedHeader.includes("activeBucketRemainingCount"), "Guided Queue should consume the brain-computed remaining count.");
 assert(brain.includes("dailyRunBucketHeadline") && guidedHeader.includes("activeBucketHeadline"), "Guided Queue should consume the brain-computed headline.");
-assert(queueSection.includes("${guidedQueueWorkbenchHtml()}"), "Queue page should render Guided Queue mode above normal Queue.");
+// Phase S (approved 2026-07-12): the Review Desk leads with the one-at-a-time wizard; the
+// guided workbench no longer renders on the page (its brain + session plumbing below stays
+// tested because Daily Run still uses it).
+assert(queueSection.includes("${socialWizardHtml(reviewPosts)}"), "Queue page should lead with the Phase S wizard.");
+assert(!queueSection.includes("${guidedQueueWorkbenchHtml()}"), "Guided workbench must not render on the Review Desk anymore.");
 assert(source.includes("guidedQueueMode") && source.includes("exitGuidedQueueMode") && source.includes("resumeGuidedQueueMode"), "Roger should be able to exit and resume guided mode.");
 assert(source.includes("selectedGuidedPosts") && source.includes("selectAllVisibleGuidedItems"), "Guided bulk selection should be scoped to visible guided rows.");
 assert(source.includes("selectedGuidedPosts = new Set()"), "Guided selection should clear when bucket or filter changes.");
