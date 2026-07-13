@@ -166,13 +166,19 @@ function assetFileUrl(asset) {
   }
   const assetUrl = new URL(asset.fileUrl, assetRoot);
   if (existsSync(assetUrl)) return assetUrl;
-  if (logoKind(asset) === "full_logo") {
-    const fullLogoUrl = new URL("assets/brand/logos/legalease-logo-2025-ob.png", assetRoot);
-    if (existsSync(fullLogoUrl)) return fullLogoUrl;
-  }
-  if (logoKind(asset) === "symbol") {
-    const symbolUrl = new URL("assets/brand/logos/legalease-mark-white.png", assetRoot);
-    if (existsSync(symbolUrl)) return symbolUrl;
+  // Logo fallbacks apply ONLY to logo-type records. logoKind() calls everything without a
+  // symbol tag "full_logo", so an unrestricted fallback here handed the OB wordmark to ANY
+  // asset whose file was missing — a canonical Wilma record silently composited the logo
+  // where Wilma belongs instead of hitting the canonical-missing hard block.
+  if (["logo", "icon"].includes(asset.assetType)) {
+    if (logoKind(asset) === "full_logo") {
+      const fullLogoUrl = new URL("assets/brand/logos/legalease-logo-2025-ob.png", assetRoot);
+      if (existsSync(fullLogoUrl)) return fullLogoUrl;
+    }
+    if (logoKind(asset) === "symbol") {
+      const symbolUrl = new URL("assets/brand/logos/legalease-mark-white.png", assetRoot);
+      if (existsSync(symbolUrl)) return symbolUrl;
+    }
   }
   if (asset.assetType === "wilma_reference" && (asset.isDefault || (asset.tags || []).includes("canonical"))) {
     const canonicalUrl = new URL("assets/brand/wilma/new-wilma-2025.png", assetRoot);
@@ -3155,8 +3161,11 @@ function wilmaPoseReferenceCount(state = {}) {
 }
 
 function wilmaPoseAssetById(state = {}, id = "") {
+  // No catch-all: an unknown pose id must surface as missing at the caller, never silently
+  // become pose 1 (the old `|| poses[0]` swapped in the primary stance for any typo'd or
+  // legacy id, e.g. intake's "pose-03" vs the library's "wilma-pose-03").
   const poses = wilmaPoseAssets(state);
-  return poses.find((asset) => asset.id === id) || poses[0] || null;
+  return poses.find((asset) => asset.id === id) || null;
 }
 
 function words(value = "") {
@@ -3515,10 +3524,16 @@ function buildWilmaImageWorkflow(state = {}, post = {}, overrides = {}) {
     ? (overrides.wilmaExpression || overrides.expression)
     : (wilmaExpressions.includes(post.wilmaExpression) ? post.wilmaExpression : defaultWilmaExpression(post));
   const fallbackPoseId = wilmaExpressionPoseMap[wilmaExpression] || "wilma-pose-02";
-  const requestedPoseId = String(overrides.wilmaPoseReferenceId || overrides.poseReferenceId || post.wilmaPoseReferenceId || fallbackPoseId);
-  const pose = wilmaPoseAssetById(state, requestedPoseId) || wilmaPoseAssetById(state, fallbackPoseId);
+  const explicitPoseId = String(overrides.wilmaPoseReferenceId || overrides.poseReferenceId || post.wilmaPoseReferenceId || "");
+  const requestedPoseId = explicitPoseId || fallbackPoseId;
+  // No silent substitution: an explicitly requested pose that isn't in the library stays
+  // missing — the expression fallback only fills in when nothing was requested, and a
+  // missing pose is named as missing rather than quietly becoming another pose.
+  const pose = wilmaPoseAssetById(state, requestedPoseId) || (explicitPoseId ? null : wilmaPoseAssetById(state, fallbackPoseId));
   const poseReferenceId = pose?.id || requestedPoseId;
-  const poseReferenceName = pose?.name || poseReferenceId;
+  const poseReferenceName = pose
+    ? pose.name
+    : `${requestedPoseId} — POSE MISSING: not in the pose library, no substitute used`;
   const linkedPoseAsset = localAssetById(state, overrides.wilmaAssetId || post.wilmaImageWorkflow?.wilmaAssetId || pose?.localAssetId || "") || linkedAssetForPose(state, poseReferenceId);
   const backgroundAsset = localAssetById(state, overrides.backgroundAssetId || post.wilmaImageWorkflow?.backgroundAssetId || "");
   const brandMarkAsset = localAssetById(state, overrides.brandMarkAssetId || post.wilmaImageWorkflow?.brandMarkAssetId || "");
@@ -3559,7 +3574,9 @@ function buildWilmaImageWorkflow(state = {}, post = {}, overrides = {}) {
     `Audience: ${audience}.`,
     `Visual bucket: ${visualBucket}.`,
     `Wilma expression: ${wilmaExpression}.`,
-    `Use Wilma pose reference ${poseReferenceName} (${poseReferenceId}) from the approved pose library.`,
+    pose
+      ? `Use Wilma pose reference ${poseReferenceName} (${poseReferenceId}) from the approved pose library.`
+      : `Pose reference unavailable — ${poseReferenceName}. Do not invent or substitute a different pose; keep Wilma in a neutral stance matching the expression above.`,
     `Background style: ${backgroundStyle}`,
     `Palette: ${colorPalette}`,
     `Lighting: ${lighting}`,
@@ -4566,7 +4583,13 @@ async function removeLightBackground(buffer) {
 
 async function canonicalWilmaCutoutBuffer(context = {}) {
   const { default: sharp } = await import("sharp");
-  const asset = context.wilmaReferenceAssets?.[0];
+  // The extract() crop below is tuned to the canonical reference's geometry. Pose-library
+  // files also live in wilmaReferenceAssets (they are OpenAI drawing references), and taking
+  // [0] let a pose slip in here and composite a mangled half-crop — so only the canonical
+  // asset may feed the cutout, and its absence stays a hard block, never a substitution.
+  const asset = (context.wilmaReferenceAssets || []).find(
+    (candidate) => candidate?.isDefault || (candidate?.tags || []).includes("canonical")
+  ) || null;
   const referenceUrl = assetFileUrl(asset);
   if (!referenceUrl || !existsSync(referenceUrl)) {
     throw new Error("Wilma generation blocked: canonical reference asset missing.");
@@ -9059,7 +9082,10 @@ function audienceForImage(post = {}) {
 }
 
 function selectVisualLane(post = {}, route = {}, overrides = {}) {
-  const overrideLane = normalizeImageLane(overrides.visualLane || overrides.imageLane);
+  // A lane stored ON the post is a persisted operator decision (the postCard dropdown already
+  // reads post.visualLane as its default) — it outranks keyword routing on every regenerate,
+  // while a per-request override still outranks both.
+  const overrideLane = normalizeImageLane(overrides.visualLane || overrides.imageLane || post.visualLane || post.imageLane);
   const text = imagePostText(post);
   const format = String(route.contentFormat || post.contentFormat || "").toLowerCase();
   const bucket = String(route.contentBucket || post.contentBucket || "").toLowerCase();
@@ -11495,8 +11521,15 @@ function typographicQuoteCardDataUrl(post, context = {}) {
   const orange = designSystem.colors?.horizonOrange || "#F04800";
   const seafoam = designSystem.colors?.skylineBlue || "#B7D6D7";
   const paper = designSystem.colors?.paperWhite || "#F8F7F3";
-  const logoAsset = (context.logoReferenceAssets || [])[0] || null;
-  const logoUri = assetDataUri(logoAsset?.filePath || "assets/brand/logos/legalease-mark-white.png");
+  // The dark card needs the white symbol mark, so prefer that from the library, then any
+  // symbol, then the library's top pick. brandAssets records carry fileUrl (filePath kept
+  // for localAssets-shaped objects) — the old filePath-only read was always empty, which
+  // silently ignored the asset library and rendered the hardcoded fallback forever.
+  const logoCandidates = context.logoReferenceAssets || [];
+  const logoAsset = logoCandidates.find((asset) => logoKind(asset) === "symbol" && logoColorMode(asset) === "white")
+    || logoCandidates.find((asset) => logoKind(asset) === "symbol")
+    || logoCandidates[0] || null;
+  const logoUri = assetDataUri(logoAsset?.fileUrl || logoAsset?.filePath || "assets/brand/logos/legalease-mark-white.png");
   const quoteText = collapseWhitespaceForQa(overlay.headline || post.hook || post.title || "");
   const quoteLines = wrapSvgText(quoteText, width > height ? 26 : 20, 5);
   const quoteSize = Math.round((quoteLines.length > 3 ? 58 : 72) * scale);
