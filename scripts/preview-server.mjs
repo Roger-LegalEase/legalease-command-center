@@ -3177,8 +3177,11 @@ function wilmaPoseReferenceCount(state = {}) {
 }
 
 function wilmaPoseAssetById(state = {}, id = "") {
+  // No catch-all: an unknown pose id must surface as missing at the caller, never silently
+  // become pose 1 (the old `|| poses[0]` swapped in the primary stance for any typo'd or
+  // legacy id, e.g. intake's "pose-03" vs the library's "wilma-pose-03").
   const poses = wilmaPoseAssets(state);
-  return poses.find((asset) => asset.id === id) || poses[0] || null;
+  return poses.find((asset) => asset.id === id) || null;
 }
 
 function words(value = "") {
@@ -3537,10 +3540,16 @@ function buildWilmaImageWorkflow(state = {}, post = {}, overrides = {}) {
     ? (overrides.wilmaExpression || overrides.expression)
     : (wilmaExpressions.includes(post.wilmaExpression) ? post.wilmaExpression : defaultWilmaExpression(post));
   const fallbackPoseId = wilmaExpressionPoseMap[wilmaExpression] || "wilma-pose-02";
-  const requestedPoseId = String(overrides.wilmaPoseReferenceId || overrides.poseReferenceId || post.wilmaPoseReferenceId || fallbackPoseId);
-  const pose = wilmaPoseAssetById(state, requestedPoseId) || wilmaPoseAssetById(state, fallbackPoseId);
+  const explicitPoseId = String(overrides.wilmaPoseReferenceId || overrides.poseReferenceId || post.wilmaPoseReferenceId || "");
+  const requestedPoseId = explicitPoseId || fallbackPoseId;
+  // No silent substitution: an explicitly requested pose that isn't in the library stays
+  // missing — the expression fallback only fills in when nothing was requested, and a
+  // missing pose is named as missing rather than quietly becoming another pose.
+  const pose = wilmaPoseAssetById(state, requestedPoseId) || (explicitPoseId ? null : wilmaPoseAssetById(state, fallbackPoseId));
   const poseReferenceId = pose?.id || requestedPoseId;
-  const poseReferenceName = pose?.name || poseReferenceId;
+  const poseReferenceName = pose
+    ? pose.name
+    : `${requestedPoseId} — POSE MISSING: not in the pose library, no substitute used`;
   const linkedPoseAsset = localAssetById(state, overrides.wilmaAssetId || post.wilmaImageWorkflow?.wilmaAssetId || pose?.localAssetId || "") || linkedAssetForPose(state, poseReferenceId);
   const backgroundAsset = localAssetById(state, overrides.backgroundAssetId || post.wilmaImageWorkflow?.backgroundAssetId || "");
   const brandMarkAsset = localAssetById(state, overrides.brandMarkAssetId || post.wilmaImageWorkflow?.brandMarkAssetId || "");
@@ -3581,7 +3590,9 @@ function buildWilmaImageWorkflow(state = {}, post = {}, overrides = {}) {
     `Audience: ${audience}.`,
     `Visual bucket: ${visualBucket}.`,
     `Wilma expression: ${wilmaExpression}.`,
-    `Use Wilma pose reference ${poseReferenceName} (${poseReferenceId}) from the approved pose library.`,
+    pose
+      ? `Use Wilma pose reference ${poseReferenceName} (${poseReferenceId}) from the approved pose library.`
+      : `Pose reference unavailable — ${poseReferenceName}. Do not invent or substitute a different pose; keep Wilma in a neutral stance matching the expression above.`,
     `Background style: ${backgroundStyle}`,
     `Palette: ${colorPalette}`,
     `Lighting: ${lighting}`,
@@ -9087,7 +9098,10 @@ function audienceForImage(post = {}) {
 }
 
 function selectVisualLane(post = {}, route = {}, overrides = {}) {
-  const overrideLane = normalizeImageLane(overrides.visualLane || overrides.imageLane);
+  // A lane stored ON the post is a persisted operator decision (the postCard dropdown already
+  // reads post.visualLane as its default) — it outranks keyword routing on every regenerate,
+  // while a per-request override still outranks both.
+  const overrideLane = normalizeImageLane(overrides.visualLane || overrides.imageLane || post.visualLane || post.imageLane);
   const text = imagePostText(post);
   const format = String(route.contentFormat || post.contentFormat || "").toLowerCase();
   const bucket = String(route.contentBucket || post.contentBucket || "").toLowerCase();
