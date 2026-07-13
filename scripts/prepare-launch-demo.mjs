@@ -6,6 +6,18 @@ import sharp from "sharp";
 import { analyzeOperations } from "./priority-engine.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// 2026-07-13 ground-truth reset: same guard as create-demo-dataset.mjs — this loads
+// fictional demo records. Explicit opt-in only; never against the Supabase backend.
+if (process.env.ALLOW_DEMO_DATA !== "1") {
+  console.error("prepare-launch-demo.mjs is disabled: it loads fictional demo records that were purged from real state on 2026-07-13. Set ALLOW_DEMO_DATA=1 to run it against a local sandbox only.");
+  process.exit(1);
+}
+if ((process.env.STORAGE_BACKEND || "").toLowerCase() === "supabase") {
+  console.error("prepare-launch-demo.mjs refuses to run with STORAGE_BACKEND=supabase.");
+  process.exit(1);
+}
+
 const rootDir = path.resolve(__dirname, "..");
 const devRoot = path.resolve(rootDir, "..");
 const dataPath = path.join(rootDir, "data", "social-command-center.json");

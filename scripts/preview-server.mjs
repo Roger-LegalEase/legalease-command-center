@@ -12074,6 +12074,7 @@ async function confirmFinalPreview(postId) {
 
 const growthCollections = new Set([
   "milestones",
+  "products",
   "partners",
   "campaigns",
   "tasks",
@@ -12255,219 +12256,6 @@ function automaticTasksForGrowthChange(collection, item = {}, previous = {}) {
     }));
   }
   return tasks;
-}
-
-function sixMonthSeedData(now = new Date()) {
-  const today = now.toISOString().slice(0, 10);
-  const month = (offset) => {
-    const date = new Date(now);
-    date.setMonth(date.getMonth() + offset);
-    return date.toISOString().slice(0, 10);
-  };
-  const partner = (id, organizationName, partnerType, status, nextAction, notes, extra = {}) => ({
-    id,
-    organizationName,
-    partnerType,
-    regionState: extra.regionState || "TBD",
-    primaryContactName: "",
-    email: "",
-    phone: "",
-    website: extra.website || "",
-    status,
-    lastTouchDate: "",
-    nextFollowUpDate: month(1),
-    owner: extra.owner || "Owner TBD",
-    priority: extra.priority || "High",
-    nextAction,
-    notes,
-    referralCount: 0,
-    screenings: 0,
-    recordShieldStarts: 0,
-    expungementStarts: 0,
-    revenue: 0,
-    createdAt: today
-  });
-  const campaign = (id, campaignName, partnerId, campaignType, status, nextAction, notes, extra = {}) => ({
-    id,
-    campaignName,
-    partnerId,
-    campaignType,
-    stateRegion: extra.stateRegion || "TBD",
-    status,
-    landingPageUrl: "",
-    trackingSlug: extra.trackingSlug || "",
-    sourceChannel: extra.sourceChannel || "partner",
-    startDate: extra.startDate || month(1),
-    endDate: extra.endDate || month(3),
-    targetReferrals: extra.targetReferrals || 100,
-    actualReferrals: 0,
-    recordShieldStarts: 0,
-    expungementStarts: 0,
-    paidConversions: 0,
-    owner: extra.owner || "Owner TBD",
-    nextAction,
-    notes,
-    createdAt: today
-  });
-  const pilot = (id, pilotName, partnerId, status, objective, nextAction, notes, extra = {}) => ({
-    id,
-    pilotName,
-    partnerId,
-    objective,
-    startDate: extra.startDate || month(1),
-    endDate: extra.endDate || month(4),
-    status,
-    targetUsers: extra.targetUsers || 150,
-    actualUsers: 0,
-    successMetrics: extra.successMetrics || "RecordShield starts, Expungement.ai starts, partner reporting cadence, and proof artifact readiness.",
-    internalOwner: extra.internalOwner || "Owner TBD",
-    partnerOwner: "",
-    weeklyReportingStatus: "not started",
-    risks: "Needs partner confirmation, tracking setup, and launch owner.",
-    nextAction,
-    publicProofStatus: "not_requested",
-    notes,
-    checklist: {
-      proposalSent: false,
-      scopeApproved: false,
-      agreementSigned: false,
-      campaignAssetsApproved: false,
-      landingPageLive: false,
-      trackingActive: false,
-      staffTrained: false,
-      campaignLaunched: false,
-      first25Users: false,
-      midpointReport: false,
-      finalReport: false,
-      testimonialRequested: false,
-      caseStudyDrafted: false,
-      expansionConversationScheduled: false
-    },
-    createdAt: today
-  });
-  const dataRoom = (id, title, section, notes, status = "missing") => ({
-    id,
-    title,
-    section,
-    status,
-    filePath: "",
-    lastUpdated: today,
-    owner: "Owner TBD",
-    nextAction: `Create or attach ${title.toLowerCase()}.`,
-    dueDate: month(2),
-    notes,
-    createdAt: today
-  });
-  const report = (id, reportTitle, reportType, notes) => ({
-    id,
-    reportTitle,
-    reportType,
-    status: "template",
-    owner: "Owner TBD",
-    nextAction: `Export ${reportTitle} from Reports when data is current.`,
-    dueDate: month(1),
-    notes,
-    createdAt: today
-  });
-  return {
-    milestones: [
-      { id:"seed-milestone-sign-3-pilots", title:"Sign 3 institutional pilots", target:3, current:0, unit:"pilots", status:"needs_attention", owner:"Owner TBD", nextAction:"Prioritize TimeDone, county/government, and workforce/reentry pilot follow-ups.", dueDate:month(4), relatedPartners:["seed-partner-timedone", "seed-partner-fulton-county", "seed-partner-workforce-reentry"], relatedCampaigns:[], relatedPilots:["seed-pilot-national-nonprofit", "seed-pilot-county-government", "seed-pilot-workforce-reentry"], notes:"Signed pilots are the clearest infrastructure validation for investors, acquirers, and institutional partners.", createdAt:today },
-      { id:"seed-milestone-launch-10-campaigns", title:"Launch 10 partner campaigns", target:10, current:0, unit:"campaigns", status:"needs_attention", owner:"Owner TBD", nextAction:"Turn the highest-priority partners into campaign kits with tracking slugs.", dueDate:month(4), relatedPartners:["seed-partner-we-must-vote", "seed-partner-goodwill-ms", "seed-partner-hope-credit-union"], relatedCampaigns:["seed-campaign-workforce-reentry", "seed-campaign-voter-civic-access"], relatedPilots:[], notes:"Campaign volume proves repeatability across partner categories and referral channels.", createdAt:today },
-      { id:"seed-milestone-1000-recordshield-users", title:"Reach 1,000 RecordShield users", target:1000, current:0, unit:"users", status:"at_risk", owner:"Owner TBD", nextAction:"Connect partner campaigns to tracked RecordShield starts and weekly funnel snapshots.", dueDate:month(6), relatedPartners:["seed-partner-timedone", "seed-partner-goodwill-ms"], relatedCampaigns:["seed-campaign-recordshield-launch"], relatedPilots:["seed-pilot-recordshield-conversion"], notes:"This is the top-of-funnel usage proof that shows RecordShield can create scalable demand.", createdAt:today },
-      { id:"seed-milestone-track-rs-to-expai", title:"Track RecordShield-to-Expungement.ai conversion", target:1, current:0, unit:"tracking system", status:"needs_attention", owner:"Owner TBD", nextAction:"Define conversion events and enter weekly manual snapshots until automated events are live.", dueDate:month(2), relatedPartners:[], relatedCampaigns:["seed-campaign-recordshield-launch"], relatedPilots:["seed-pilot-recordshield-conversion"], notes:"Conversion data validates whether free screening demand turns into paid or higher-intent Expungement.ai action.", createdAt:today },
-      { id:"seed-milestone-public-proof-point", title:"Generate one public institutional proof point", target:1, current:0, unit:"proof point", status:"needs_attention", owner:"Owner TBD", nextAction:"Identify the partner most likely to approve a quote, case study, or public campaign result.", dueDate:month(5), relatedPartners:["seed-partner-timedone", "seed-partner-clean-slate"], relatedCampaigns:["seed-campaign-public-proof"], relatedPilots:[], notes:"One approved public proof point de-risks sales, fundraising, and acquisition conversations.", createdAt:today },
-      { id:"seed-milestone-investor-data-room", title:"Build investor/acquirer-ready data room", target:1, current:0, unit:"data room", status:"needs_attention", owner:"Owner TBD", nextAction:"Move every required data room section from missing to draft, then usable.", dueDate:month(3), relatedPartners:[], relatedCampaigns:[], relatedPilots:[], notes:"The data room is the diligence package for investors, institutional partners, and strategic acquirers.", createdAt:today },
-      { id:"seed-milestone-weekly-reports", title:"Produce weekly operating reports", target:24, current:0, unit:"reports", status:"on_track", owner:"Owner TBD", nextAction:"Export a Weekly Operating Report every Friday and review blockers on Monday.", dueDate:month(1), relatedPartners:[], relatedCampaigns:[], relatedPilots:[], notes:"Weekly reporting creates operating cadence and investor-ready narrative discipline.", createdAt:today },
-      { id:"seed-milestone-partner-dashboard", title:"Launch partner dashboard experience", target:1, current:0, unit:"dashboard", status:"needs_attention", owner:"Owner TBD", nextAction:"Define the minimum partner dashboard view: referrals, starts, conversion, assets, and reporting.", dueDate:month(4), relatedPartners:["seed-partner-timedone"], relatedCampaigns:["seed-campaign-partner-referral"], relatedPilots:[], notes:"Partner dashboard framing supports the infrastructure platform story.", createdAt:today },
-      { id:"seed-milestone-acquisition-funnel", title:"Validate RecordShield as acquisition funnel", target:1, current:0, unit:"validated funnel", status:"at_risk", owner:"Owner TBD", nextAction:"Compare RecordShield starts against Expungement.ai intakes, payments, and packet completions.", dueDate:month(6), relatedPartners:[], relatedCampaigns:["seed-campaign-recordshield-launch"], relatedPilots:["seed-pilot-recordshield-conversion"], notes:"This proves RecordShield is not just a free tool, but a measurable acquisition channel.", createdAt:today },
-      { id:"seed-milestone-traction-narrative", title:"Prepare six-month traction narrative", target:1, current:0, unit:"narrative", status:"needs_attention", owner:"Owner TBD", nextAction:"Turn pilots, campaign data, funnel conversion, and proof artifacts into one investor story.", dueDate:month(6), relatedPartners:[], relatedCampaigns:[], relatedPilots:[], notes:"This becomes the board/investor/acquirer narrative for what LegalEase learned and proved.", createdAt:today }
-    ],
-    partners: [
-      partner("seed-partner-timedone", "TimeDone", "nonprofit", "target_identified", "Confirm the best pilot entry point and licensing conversation owner.", "High-signal nonprofit relationship for RecordShield distribution and institutional validation."),
-      partner("seed-partner-we-must-vote", "We Must Vote", "church/community", "target_identified", "Map voter/civic access campaign angle and compliance guardrails.", "Potential civic campaign partner for reaching people affected by records and reentry barriers."),
-      partner("seed-partner-clean-slate", "Clean Slate Initiative", "legal aid", "target_identified", "Clarify whether collaboration should be policy proof, referral, or education campaign.", "Credibility partner for clean slate policy ecosystem and public proof."),
-      partner("seed-partner-fulton-county", "Fulton County Solicitor-General", "government", "target_identified", "Identify government intake pilot scope and responsible contact.", "County/government pilot target that can validate public-sector intake infrastructure."),
-      partner("seed-partner-goodwill-ms", "Goodwill of Mississippi", "workforce", "target_identified", "Draft workforce/reentry campaign concept and pilot intake use case.", "Workforce partner target for referrals and second-chance employment context."),
-      partner("seed-partner-hope-credit-union", "Hope Credit Union", "foundation", "target_identified", "Explore financial-health and reentry support campaign fit.", "Potential trusted community distribution partner in the Southeast."),
-      partner("seed-partner-jackson-state", "Jackson State University", "other", "target_identified", "Explore research, workforce, or public proof collaboration path.", "Institutional relationship that could support credibility, research, or local campaign reach."),
-      partner("seed-partner-reform-alliance", "REFORM Alliance relationship", "nonprofit", "target_identified", "Clarify warm path and whether the ask is pilot, campaign, or proof support.", "High-leverage justice reform relationship with potential distribution and proof value."),
-      partner("seed-partner-workforce-reentry", "Workforce/reentry partner target", "workforce", "target_identified", "Name the first target organization and create outreach task.", "Generic placeholder for the next high-quality workforce or reentry organization."),
-      partner("seed-partner-employer-second-chance", "Employer second-chance hiring target", "employer", "target_identified", "Identify an employer willing to test candidate support or education flow.", "Employer-side validation can show RecordShield value for hiring and workforce readiness.")
-    ],
-    campaigns: [
-      campaign("seed-campaign-workforce-reentry", "Workforce/reentry campaign", "seed-partner-goodwill-ms", "workforce/reentry", "draft", "Generate campaign kit and tracking slug for workforce referrals.", "Turns workforce partner demand into measurable RecordShield starts.", { targetReferrals:150 }),
-      campaign("seed-campaign-voter-civic-access", "Voter/civic access campaign", "seed-partner-we-must-vote", "voter/civic", "draft", "Define civic access message and compliance-safe disclaimers.", "Tests civic partner distribution without overclaiming legal outcomes.", { targetReferrals:100 }),
-      campaign("seed-campaign-recordshield-launch", "RecordShield launch campaign", "", "RecordShield", "assets_needed", "Create landing-page copy, social posts, and manual funnel snapshot cadence.", "Core growth campaign for RecordShield user acquisition.", { targetReferrals:300, trackingSlug:"recordshield-launch" }),
-      campaign("seed-campaign-partner-referral", "Partner referral campaign", "seed-partner-timedone", "RecordShield", "draft", "Build partner referral kit and dashboard reporting promise.", "Validates repeatable referral motion and partner reporting expectations.", { targetReferrals:200 }),
-      campaign("seed-campaign-public-proof", "Public proof/case study campaign", "seed-partner-clean-slate", "awareness", "draft", "Identify the proof artifact and approval path before launch.", "Creates institutional proof for investor and acquisition conversations.", { targetReferrals:50 }),
-      campaign("seed-campaign-fresh-start-network", "Fresh Start Network campaign", "", "expungement", "draft", "Define partner list and campaign owner for Fresh Start distribution.", "Potential branded campaign for broader second-chance awareness and funnel growth.", { targetReferrals:150 }),
-      campaign("seed-campaign-employer-hiring", "Employer second-chance hiring campaign", "seed-partner-employer-second-chance", "employer", "draft", "Draft employer-facing copy and compliance-safe candidate support flow.", "Tests employer-side demand and second-chance hiring infrastructure value.", { targetReferrals:75 })
-    ],
-    pilots: [
-      pilot("seed-pilot-national-nonprofit", "National nonprofit licensing pilot", "seed-partner-timedone", "proposed", "Validate whether a national nonprofit can license or distribute LegalEase/RecordShield infrastructure.", "Send pilot concept and define licensing economics.", "Could become the cleanest institutional pilot and licensing proof.", { targetUsers:250 }),
-      pilot("seed-pilot-county-government", "County/government intake pilot", "seed-partner-fulton-county", "proposed", "Test whether a county/government office can route residents into RecordShield and follow-up workflows.", "Identify scope, risk review, and intake owner.", "Government pilot supports public-sector infrastructure narrative.", { targetUsers:200 }),
-      pilot("seed-pilot-workforce-reentry", "Workforce/reentry partner pilot", "seed-partner-goodwill-ms", "proposed", "Validate RecordShield as a workforce/reentry support tool.", "Confirm launch staff, referral workflow, and reporting fields.", "Workforce/reentry usage is central to practical growth and impact proof.", { targetUsers:150 }),
-      pilot("seed-pilot-civic-partner", "Civic partner campaign pilot", "seed-partner-we-must-vote", "proposed", "Test civic-partner distribution for records education and RecordShield starts.", "Define campaign guardrails and launch timeline.", "Civic access pilot can create a distinct non-legal aid growth channel.", { targetUsers:100 }),
-      pilot("seed-pilot-recordshield-conversion", "RecordShield conversion pilot", "", "proposed", "Measure RecordShield-to-Expungement.ai conversion across partner campaigns.", "Define manual funnel snapshots and conversion review cadence.", "This is the core acquisition-funnel proof for RecordShield.", { targetUsers:300 })
-    ],
-    dataRoomItems: [
-      dataRoom("seed-dataroom-company-overview", "Company overview", "Company overview", "One-page company narrative, market framing, and operating plan."),
-      dataRoom("seed-dataroom-product-suite", "Product suite", "Product suite", "RecordShield, Expungement.ai, partner dashboard, and growth command center overview."),
-      dataRoom("seed-dataroom-traction-dashboard", "Traction dashboard", "Traction", "Snapshot of users, campaigns, pilots, funnel conversion, and content performance."),
-      dataRoom("seed-dataroom-partner-pipeline", "Partner pipeline", "Partner pipeline", "Current partner pipeline, status, owners, next actions, and proof potential."),
-      dataRoom("seed-dataroom-pilot-proposals", "Pilot proposals", "Pilots", "Pilot scopes, proposals, signed agreements, and reporting templates."),
-      dataRoom("seed-dataroom-recordshield-funnel", "RecordShield funnel", "RecordShield funnel", "Manual or automated funnel snapshots from visits through Expungement.ai conversion."),
-      dataRoom("seed-dataroom-revenue-model", "Revenue model", "Revenue", "Pricing, conversion assumptions, partner licensing, and paid conversion model."),
-      dataRoom("seed-dataroom-compliance-memo", "Compliance memo", "Compliance", "Non-UPL posture, disclaimers, risk review, and consumer-facing claim rules."),
-      dataRoom("seed-dataroom-technical-architecture", "Technical architecture", "Technical architecture", "App architecture, storage model, publishing adapters, and security boundaries."),
-      dataRoom("seed-dataroom-security-posture", "Security posture", "Security", "Supabase RLS, secret handling, local backup, live gate, and fail-closed summary."),
-      dataRoom("seed-dataroom-case-studies", "Case studies", "Case studies", "Partner pilot and campaign case studies as they become approved."),
-      dataRoom("seed-dataroom-public-proof", "Public proof", "Press/public proof", "Approved testimonials, public campaign links, institutional references, and press."),
-      dataRoom("seed-dataroom-financial-model", "Financial model", "Financial model", "Six-month model with funnel assumptions, revenue scenarios, and acquisition logic."),
-      dataRoom("seed-dataroom-acquisition-thesis", "Acquisition thesis", "Acquisition thesis", "Why LegalEase infrastructure and RecordShield funnel matter to strategic buyers.")
-    ],
-    reports: [
-      report("seed-report-weekly-operating", "Weekly Operating Report", "weekly_operating", "Weekly operating cadence across milestones, partner motion, funnel, blockers, and decisions."),
-      report("seed-report-partner-campaign", "Partner Campaign Report", "partner_campaign", "Partner-facing report for campaign referrals, RecordShield starts, and next actions."),
-      report("seed-report-pilot-update", "Pilot Update Report", "pilot_report", "Pilot status, risks, success metrics, and public proof readiness."),
-      report("seed-report-investor-update", "Investor Update", "investor_update", "Concise update for traction, milestones, asks, risks, and proof."),
-      report("seed-report-data-room-readiness", "Data Room Readiness Snapshot", "data_room_traction_snapshot", "Data room score, missing sections, investor-critical proof, and next artifact actions.")
-    ]
-  };
-}
-
-async function seedSixMonthPlan({ force = false } = {}) {
-  return serializeStateMutation(async () => {
-    const state = await store.readState();
-    const seeds = sixMonthSeedData();
-    const seededAt = new Date().toISOString();
-    const summary = {};
-    const nextState = { ...state };
-    for (const [collection, records] of Object.entries(seeds)) {
-      const current = Array.isArray(nextState[collection]) ? nextState[collection] : [];
-      const existingIds = new Set(current.map((item) => item.id));
-      const shouldSeed = force || current.length === 0 || records.some((record) => !existingIds.has(record.id));
-      const additions = shouldSeed ? records.filter((record) => !existingIds.has(record.id)).map((record) => ({ ...record, seedSource: "legalease-six-month-plan", seededAt, updatedAt: seededAt })) : [];
-      nextState[collection] = [...additions, ...current];
-      summary[collection] = { existing: current.length, added: additions.length, total: nextState[collection].length };
-    }
-    const totalAdded = Object.values(summary).reduce((sum, item) => sum + item.added, 0);
-    nextState.activityEvents = totalAdded ? [{
-      id: `activity-six-month-seed-${crypto.randomUUID().slice(0, 8)}`,
-      eventType: "Seed data loaded",
-      title: "LegalEase six-month plan seed data",
-      relatedObjectType: "growth_seed",
-      relatedObjectId: "legalease-six-month-plan",
-      createdAt: seededAt
-    }, ...(state.activityEvents || [])].slice(0, 500) : state.activityEvents || [];
-    nextState.settings = {
-      ...(state.settings || {}),
-      sixMonthSeedDataLoadedAt: totalAdded ? seededAt : state.settings?.sixMonthSeedDataLoadedAt || "",
-      sixMonthSeedDataSummary: summary
-    };
-    await writeChangedCollections(state, nextState);
-    return { state: nextState, summary, totalAdded, message: totalAdded ? `Loaded ${totalAdded} LegalEase six-month seed records.` : "Seed data already present. No records added." };
-  });
 }
 
 const automationSources = ["gmail", "calendar", "stripe", "supabase", "drive", "website", "recordshield", "expungement_ai", "social", "manual_import"];
@@ -15131,12 +14919,16 @@ function reportBody(state = {}, reportType = "weekly_internal") {
   const activeCampaigns = campaigns.filter((item) => item.status === "live" && (item.distributionActions || []).length && (Number(item.actualReferrals || 0) + Number(item.recordShieldStarts || 0) + Number(item.landingPageVisits || 0)) > 0).length;
   const rsConversion = (funnelTotals.recordShieldCompletions || funnelTotals.recordShieldStarts) ? Math.round((Number(funnelTotals.expungementIntakeStarted || 0) / Number(funnelTotals.recordShieldCompletions || funnelTotals.recordShieldStarts || 1)) * 100) : 0;
   const publicProof = (state.dataRoomItems || []).filter((item) => /proof|case|quote|press|public/i.test([item.title, item.section, item.notes].join(" ")) && ["usable", "investor-ready", "approved", "uploaded", "current"].includes(String(item.status || "").toLowerCase())).length;
+  const products = state.products || [];
+  const recordShieldProduct = products.find((item) => /recordshield/i.test(String(item.name || item.id || "")));
+  const recordShieldLive = recordShieldProduct ? String(recordShieldProduct.stage || "").toLowerCase() === "live" : true;
+  const rsTargetNote = recordShieldLive ? "" : " (target — RecordShield not launched)";
   const proofProgress = [
-    `Signed pilots: ${signedPilots}/3`,
-    `RecordShield users: ${funnelTotals.recordShieldStarts || 0}/1000`,
-    `RecordShield → Expungement.ai conversion: ${rsConversion}%/20%`,
-    `Active partner campaigns: ${activeCampaigns}/10`,
-    `Public institutional proof: ${publicProof}/1`,
+    `Signed pilots: ${signedPilots}/3 (target)`,
+    `RecordShield users: ${funnelTotals.recordShieldStarts || 0}/1000${rsTargetNote}`,
+    `RecordShield → Expungement.ai conversion: ${rsConversion}%/20%${rsTargetNote}`,
+    `Active partner campaigns: ${activeCampaigns}/10 (target)`,
+    `Public institutional proof: ${publicProof}/1 (target)`,
     `Data room readiness: ${readiness.score}%`
   ];
   const topActions = [
@@ -15148,7 +14940,47 @@ function reportBody(state = {}, reportType = "weekly_internal") {
     ...atRisk.map((item) => ({ title: item.nextAction || `Add next action: ${item.title}`, source: "Milestones" })),
     ...openTasks.map((task) => ({ title: `${task.title} (${task.dueDate || "no due date"})`, source: "Tasks" }))
   ].slice(0, 15);
-  return `# ${reportType.replaceAll("_", " ")}\n\nGenerated: ${new Date().toISOString()}\n\n## 9.5 proof progress\n${proofProgress.map((item) => `- ${item}`).join("\n")}\n\n## Milestone progress\n${(state.milestones || []).map((item) => `- ${item.title}: ${item.current || 0}/${item.target || "target"} ${item.unit || ""}; status ${item.status || "not set"}; owner ${item.owner || "Unassigned"}; due ${item.dueDate || "TBD"}; next ${item.nextAction || "Needs next action"}`).join("\n") || "- No milestones configured"}\n\n## Partner pipeline\n${partners.map((item) => `- ${item.organizationName}: ${item.status || "target identified"}; owner ${item.owner || "Unassigned"}; last touch ${item.lastTouchDate || "TBD"}; next follow-up ${item.nextFollowUpDate || "Follow-up missing"}; expected value $${item.expectedValue || 0}; probability ${item.probability || 0}%; next ${item.nextAction || "Follow up and record the next step"}`).join("\n") || "- No partners yet"}\n\n## Revenue and pipeline\n- Direct revenue: $${funnelTotals.revenue || 0}\n- Partner/pilot expected value: $${partners.reduce((sum, item) => sum + Number(item.expectedValue || 0), 0) + pilots.reduce((sum, item) => sum + Number(item.price || 0), 0)}\n- Weighted pipeline: $${partners.reduce((sum, item) => sum + Number(item.expectedValue || 0) * (Number(item.probability || 0) / 100), 0).toFixed(0)}\n\n## Due and stalled follow-ups\n${partnerFlags.map((item) => `- ${item}`).join("\n") || "- No partner follow-up flags"}\n\n## Active campaigns\n${liveCampaigns.map((item) => `- ${item.campaignName}: ${item.status}; tracking ${item.trackingSlug || item.trackingUrl || item.landingPageUrl || "missing"}; referrals ${item.actualReferrals || 0}/${item.targetReferrals || 0}; RS starts ${item.recordShieldStarts || 0}; Expungement.ai starts ${item.expungementStarts || 0}; next ${item.nextAction || "Confirm tracking, assets, and reporting"}`).join("\n") || "- No active campaigns"}\n\n## RecordShield funnel snapshot\n- Landing visits: ${funnelTotals.landingPageVisits || 0}\n- RecordShield starts: ${funnelTotals.recordShieldStarts || 0}\n- RecordShield completions: ${funnelTotals.recordShieldCompletions || 0}\n- Cleanup CTA clicks: ${funnelTotals.cleanupCtaClicks || 0}\n- Expungement.ai starts: ${funnelTotals.expungementIntakeStarted || 0}\n- Payment completed: ${funnelTotals.paymentCompleted || 0}\n- Revenue: $${funnelTotals.revenue || 0}\n${funnel.length ? funnel.map((item) => `- ${campaignName(state, item.campaignId)}: ${item.recordShieldStarts || 0} starts, ${item.expungementIntakeStarted || 0} Expungement.ai starts, $${item.revenue || 0} revenue`).join("\n") : "- No funnel snapshots yet"}\n\n## Pilot status\n${pilots.map((item) => `- ${item.pilotName}: ${item.status}; partner ${partnerName(state, item.partnerId)}; target users ${item.targetUsers || 0}; success metrics ${item.successMetrics || "missing"}; public proof ${item.publicProofStatus || "not requested"}; expansion path ${item.expansionPath || item.renewalExpansionPath || "missing"}; next ${item.nextAction || "Needs next action"}`).join("\n") || "- No pilots"}\n\n## Compliance blockers\n${complianceBlockers.map((item) => `- ${item.itemTitle}: ${item.riskLevel} risk, ${item.status}; reviewer ${item.reviewer || "Unassigned"}`).join("\n") || "- No high-risk blockers"}\n\n## Data room readiness\n- Score: ${readiness.score}%\n- Missing: ${readiness.counts.missing}\n- Draft: ${readiness.counts.draft}\n- Usable: ${readiness.counts.usable}\n- Investor-ready: ${readiness.counts["investor-ready"]}\n${[...readiness.sectionMap.entries()].map(([section, status]) => `- ${section}: ${status}`).join("\n")}\n\n## Published content\n- Posted items: ${posted.length}\n- Posts needing metrics: ${posted.filter((post) => !post.performanceUpdatedAt).length}\n\n## Top next actions\n${topActions.map((item) => `- ${item.title} [${item.source}]`).join("\n") || "- No urgent actions"}\n\n## Risks\n${[...partnerFlags, ...campaignFlags, ...pilotFlags, ...complianceBlockers.map((item) => `${item.itemTitle}: compliance blocker`)].map((item) => `- ${item}`).join("\n") || "- No major risks recorded"}\n\n## Wins\n- Add recent signed pilots, campaign launches, content wins, or proof artifacts here.\n\n## Decisions needed\n- Confirm owners and dates for any item marked missing, stalled, blocked, or at risk.\n`;
+  // Wins are DERIVED from recorded movement in the last 7 days; when nothing moved the
+  // section says so instead of leaking placeholder instructions into the export.
+  const weekAgoDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const withinLastWeek = (value) => Boolean(value) && String(value).slice(0, 10) >= weekAgoDate;
+  const wins = [
+    ...pilots.filter((item) => ["signed", "active"].includes(String(item.status || "").toLowerCase()) && withinLastWeek(item.startDate || item.updatedAt)).map((item) => `Pilot signed/active: ${item.pilotName}`),
+    ...campaigns.filter((item) => item.status === "live" && withinLastWeek(item.startDate || item.lastActivityAt)).map((item) => `Campaign live: ${item.campaignName}`),
+    ...(state.tasks || []).filter((task) => ["done", "completed"].includes(String(task.status || "").toLowerCase()) && withinLastWeek(task.completedAt || task.updatedAt)).map((task) => `Task completed: ${task.title}`),
+    ...posted.filter((post) => withinLastWeek(post.manuallyPostedAt || post.postedAt || post.publishedAt)).map((post) => `Published: ${post.title || post.hook || "post"}`)
+  ];
+  // Aggregate funnel snapshots per campaign. Snapshots whose campaignId matches no
+  // campaign (product events arrive without a campaign link) collapse into ONE
+  // "Unlinked product events" line instead of one row per snapshot.
+  const funnelGroups = new Map();
+  for (const item of funnel) {
+    const linked = item.campaignId && campaigns.some((campaign) => campaign.id === item.campaignId);
+    const key = linked ? item.campaignId : "";
+    const entry = funnelGroups.get(key) || { count: 0, landingPageVisits: 0, recordShieldStarts: 0, expungementIntakeStarted: 0, revenue: 0 };
+    entry.count += 1;
+    ["landingPageVisits", "recordShieldStarts", "expungementIntakeStarted", "revenue"].forEach((metric) => entry[metric] += Number(item[metric] || 0));
+    funnelGroups.set(key, entry);
+  }
+  const funnelRows = [...funnelGroups.entries()].map(([campaignId, totals]) => `- ${campaignId ? campaignName(state, campaignId) : "Unlinked product events"} (${totals.count} snapshot${totals.count === 1 ? "" : "s"}): ${totals.landingPageVisits} landing visits, ${totals.recordShieldStarts} RecordShield starts, ${totals.expungementIntakeStarted} Expungement.ai starts, $${totals.revenue} revenue`);
+  const partnerLine = (item) => [
+    `${item.organizationName}: ${item.status || "target identified"}`,
+    `owner ${item.owner || "Unassigned"}`,
+    item.lastTouchDate ? `last touch ${item.lastTouchDate}` : "",
+    item.nextFollowUpDate ? `next follow-up ${item.nextFollowUpDate}` : "",
+    Number(item.expectedValue || 0) > 0 ? `expected value $${item.expectedValue}` : "",
+    Number(item.probability || 0) > 0 ? `probability ${item.probability}%` : "",
+    `next ${item.nextAction || "Follow up and record the next step"}`
+  ].filter(Boolean).join("; ");
+  const campaignLine = (item) => [
+    `${item.campaignName}: ${item.status}`,
+    `tracking ${item.trackingSlug || item.trackingUrl || item.landingPageUrl || "missing"}`,
+    (Number(item.actualReferrals || 0) || Number(item.targetReferrals || 0)) ? `referrals ${item.actualReferrals || 0}/${item.targetReferrals || 0}` : "",
+    Number(item.recordShieldStarts || 0) ? `RS starts ${item.recordShieldStarts}` : "",
+    Number(item.expungementStarts || 0) ? `Expungement.ai starts ${item.expungementStarts}` : "",
+    `next ${item.nextAction || "Confirm tracking, assets, and reporting"}`
+  ].filter(Boolean).join("; ");
+  return `# ${reportType.replaceAll("_", " ")}\n\nGenerated: ${new Date().toISOString()}\n\n## Products\n${products.map((item) => `- ${item.name} — ${item.stage || "stage not set"}: ${item.summary || ""}`.trim()).join("\n") || "- No products recorded"}\n\n## 9.5 proof progress\n${proofProgress.map((item) => `- ${item}`).join("\n")}\n\n## Milestone progress\n${(state.milestones || []).map((item) => `- ${item.title}: ${item.current || 0}/${item.target || "target"} ${item.unit || ""}; status ${item.status || "not set"}; owner ${item.owner || "Unassigned"}; due ${item.dueDate || "TBD"}; next ${item.nextAction || "Needs next action"}`).join("\n") || "- No milestones configured"}\n\n## Partner pipeline\n${partners.map((item) => `- ${partnerLine(item)}`).join("\n") || "- No partners yet"}\n\n## Revenue and pipeline\n- Direct revenue: $${funnelTotals.revenue || 0}\n- Partner/pilot expected value: $${partners.reduce((sum, item) => sum + Number(item.expectedValue || 0), 0) + pilots.reduce((sum, item) => sum + Number(item.price || 0), 0)}\n- Weighted pipeline: $${partners.reduce((sum, item) => sum + Number(item.expectedValue || 0) * (Number(item.probability || 0) / 100), 0).toFixed(0)}\n\n## Due and stalled follow-ups\n${partnerFlags.map((item) => `- ${item}`).join("\n") || "- No partner follow-up flags"}\n\n## Active campaigns\n${liveCampaigns.map((item) => `- ${campaignLine(item)}`).join("\n") || "- No active campaigns"}\n\n## Product funnel snapshot\n- Landing visits: ${funnelTotals.landingPageVisits || 0}\n- RecordShield starts: ${funnelTotals.recordShieldStarts || 0}\n- RecordShield completions: ${funnelTotals.recordShieldCompletions || 0}\n- Cleanup CTA clicks: ${funnelTotals.cleanupCtaClicks || 0}\n- Expungement.ai starts: ${funnelTotals.expungementIntakeStarted || 0}\n- Payment completed: ${funnelTotals.paymentCompleted || 0}\n- Revenue: $${funnelTotals.revenue || 0}\n${funnelRows.join("\n") || "- No funnel snapshots yet"}\n\n## Pilot status\n${pilots.map((item) => `- ${item.pilotName}: ${item.status}; partner ${partnerName(state, item.partnerId)}; target users ${item.targetUsers || 0}; success metrics ${item.successMetrics || "missing"}; public proof ${item.publicProofStatus || "not requested"}; expansion path ${item.expansionPath || item.renewalExpansionPath || "missing"}; next ${item.nextAction || "Needs next action"}`).join("\n") || "- No pilots"}\n\n## Compliance blockers\n${complianceBlockers.map((item) => `- ${item.itemTitle}: ${item.riskLevel} risk, ${item.status}; reviewer ${item.reviewer || "Unassigned"}`).join("\n") || "- No high-risk blockers"}\n\n## Data room readiness\n- Score: ${readiness.score}%\n- Missing: ${readiness.counts.missing}\n- Draft: ${readiness.counts.draft}\n- Usable: ${readiness.counts.usable}\n- Investor-ready: ${readiness.counts["investor-ready"]}\n${[...readiness.sectionMap.entries()].map(([section, status]) => `- ${section}: ${status}`).join("\n")}\n\n## Published content\n- Posted items: ${posted.length}\n- Posts needing metrics: ${posted.filter((post) => !post.performanceUpdatedAt).length}\n\n## Top next actions\n${topActions.map((item) => `- ${item.title} [${item.source}]`).join("\n") || "- No urgent actions"}\n\n## Risks\n${[...partnerFlags, ...campaignFlags, ...pilotFlags, ...complianceBlockers.map((item) => `${item.itemTitle}: compliance blocker`)].map((item) => `- ${item}`).join("\n") || "- No major risks recorded"}\n\n## Wins\n${wins.map((item) => `- ${item}`).join("\n") || "- No wins recorded this week."}\n\n## Decisions needed\n- Confirm owners and dates for any item marked missing, stalled, blocked, or at risk.\n`;
 }
 
 async function exportGrowthReport(reportType = "weekly_internal") {
@@ -31606,22 +31438,6 @@ function htmlShell() {
       </div>\`;
     }
 
-    function sixMonthSeedHtml() {
-      const summary = state.settings?.sixMonthSeedDataSummary || {};
-      const loadedAt = state.settings?.sixMonthSeedDataLoadedAt || "";
-      const rows = ["milestones", "partners", "campaigns", "pilots", "dataRoomItems", "reports"].map(collection => {
-        const item = summary[collection] || {};
-        return \`<div class="metric-row"><span>\${esc(growthLabel(collection))}</span><strong>\${Number(item.total || growthItems(collection).length || 0)}</strong></div>\`;
-      }).join("");
-      return \`<section class="panel">
-        <h3>LegalEase Six-Month Seed Data</h3>
-        <p class="muted">Loads the real six-month operating plan: milestones, partner targets, campaigns, pilots, data room items, and report templates. Existing records are not overwritten.</p>
-        <button class="primary" onclick="loadSixMonthSeedData()">Load LegalEase six-month seed data</button>
-        <p class="muted">\${loadedAt ? "Last loaded: " + esc(loadedAt) : "Not loaded yet."}</p>
-        <div class="metric-table" style="margin-top:12px">\${rows}</div>
-      </section>\`;
-    }
-
     function formObject(form) {
       const data = Object.fromEntries(new FormData(form).entries());
       for (const key of Object.keys(data)) {
@@ -31816,16 +31632,6 @@ function htmlShell() {
       } catch (error) {
         showRenderFailure(error.message || "Could not export Markdown snapshot.", "soc2-markdown-export");
       }
-    }
-
-    async function loadSixMonthSeedData() {
-      const ok = window.confirm("Load LegalEase six-month seed data? This adds missing seed records and does not overwrite existing user data.");
-      if (!ok) return;
-      const result = await api("/api/growth/seed-six-month-plan", { method:"POST", body:JSON.stringify({ mode:"merge" }) });
-      state = result.state;
-      toast(result.message || "Seed data loaded.");
-      render();
-      location.hash = "overview";
     }
 
     function setAutomationFilter(filter) {
@@ -38426,17 +38232,6 @@ async function handleRequest(request, response) {
       sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not export report." }, 400);
-    }
-    return;
-  }
-
-  if (url.pathname === "/api/growth/seed-six-month-plan" && request.method === "POST") {
-    try {
-      const { force } = await readJson(request);
-      const result = await seedSixMonthPlan({ force: Boolean(force) });
-      sendJson(response, { ...result, state: withPublicChannelSetup(result.state) });
-    } catch (error) {
-      sendJson(response, { error: error.message || "Could not load seed data." }, 400);
     }
     return;
   }
