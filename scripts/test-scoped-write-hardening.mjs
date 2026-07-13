@@ -21,7 +21,7 @@
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync, existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -169,12 +169,40 @@ function sliceBetween(startMarker, endMarker) {
 }
 
 {
-  for (const file of ["reactivation-import.mjs", "reactivation-release-wave.mjs", "reactivation-fire-touch1-wave1.mjs"]) {
+  for (const file of ["reactivation-import.mjs", "reactivation-release-wave.mjs"]) {
     const cli = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
     assert(!cli.includes("store.writeState("), `${file}: no partial-snapshot full-state write (JSON wipe hazard)`);
     assert(cli.includes("store.writeCollections(writeState)"), `${file}: scoped write of the reactivation collections`);
   }
   ok("reactivation CLI scripts: partial snapshots write via writeCollections (backend-safe)");
+}
+
+{
+  // reactivation-fire-touch1-wave1.mjs is DELETED and must stay deleted (2026-07-13). It sent live
+  // consumer email in a loop with no send claim and one closing write after the batch — the exact
+  // 2026-07-08 duplicate-send shape. Its premise ("the heartbeat cannot send") is obsolete: the
+  // heartbeat has runReactivationSend and the reactivationSendClaims ledger. Any resurrected
+  // unclaimed direct-send CLI is a regression, so the guard is on the pattern, not just the name.
+  assert(!existsSync(new URL("./reactivation-fire-touch1-wave1.mjs", import.meta.url)),
+    "reactivation-fire-touch1-wave1.mjs must remain deleted (unclaimed live-send bypass)");
+  // The dangerous property is not "calls SendGrid" — it is "mails the CONTACT LIST without a
+  // claim". Two legitimate scripts touch SendGrid and must not be swept in: the bounce backfill
+  // only GETs /v3/suppression/*, and reactivation-seed-test.mjs mails Roger's own addresses and
+  // hard-aborts if any recipient appears in reactivationContacts (no loop, no batch, nothing to
+  // duplicate). So: any script that POSTs /v3/mail/send while reading reactivationContacts as a
+  // send audience must claim first.
+  const senders = readdirSync(new URL("./", import.meta.url))
+    .filter((file) => /^reactivation-.*\.mjs$/.test(file) && !file.startsWith("test-"));
+  for (const file of senders) {
+    const src = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
+    const mailsOut = /v3\/mail\/send/.test(src);
+    const readsContacts = /reactivationContacts/.test(src);
+    const refusesContacts = /refusing \(seed test is for Roger only\)|is in the reactivation list/.test(src);
+    if (!mailsOut || !readsContacts || refusesContacts) continue;
+    assert(src.includes("claimCollectionItems") || src.includes("claimReactivationSends"),
+      `${file}: a script that mails the reactivation contact list must claim each send first (no unclaimed bypass senders)`);
+  }
+  ok("no unclaimed reactivation live-send bypass script exists (fire-touch1-wave1 stays deleted)");
 }
 
 // ---- 6. Live behavior against a spawned server -------------------------------------------------

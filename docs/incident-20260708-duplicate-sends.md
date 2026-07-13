@@ -1,5 +1,20 @@
 # Incident report: duplicate reactivation sends, 2026-07-08
 
+> **Epilogue, 2026-07-13 — the bypass script is dead.** `scripts/reactivation-fire-touch1-wave1.mjs`
+> is deleted. It was the operator escape hatch written on the morning of this incident, and it kept
+> the incident's exact shape long after the incident was closed: up to 150 live consumer emails sent
+> in a loop, recorded only in memory, persisted in a single `writeCollections` **after** the last
+> send, with no entry in the `reactivationSendClaims` ledger. Die mid-loop — crash, OOM, deploy,
+> dropped socket — and every email already sent leaves no durable trace, so the next run re-sends the
+> whole batch to real people. Both the Phase-B run doc and the "Proposed fix" section below recommended
+> retiring it; it survived because it was double-gated and nothing invoked it. That is not a safety
+> property, it is luck with a countdown. Its stated reason to exist ("the heartbeat reactivation engine
+> cannot currently send a live reactivation email") is obsolete: the heartbeat now injects
+> `runReactivationSend` and claims every send before it leaves the building. A regression test in
+> `test-scoped-write-hardening.mjs` now asserts the file stays gone, and — more usefully — that **no**
+> `reactivation-*.mjs` script may call the SendGrid API without claiming first. The lesson this file
+> paid for: a send path whose durability depends on surviving the loop is not idempotent, it is a bet.
+
 Phase A read-only diagnosis. All prod interaction was GET probes with the owner token plus direct read-only Supabase REST selects. No state was written, no gates touched, no sends made. All times UTC. SendGrid ground truth comes from the activity export in `docs/ebd3dae7-5a52-4be4-a6fa-5a842780637a.csv` (742 events; complete for 2026-07-08, partial for June).
 
 ## Executive summary
