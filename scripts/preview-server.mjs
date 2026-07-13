@@ -172,13 +172,19 @@ function assetFileUrl(asset) {
   }
   const assetUrl = new URL(asset.fileUrl, assetRoot);
   if (existsSync(assetUrl)) return assetUrl;
-  if (logoKind(asset) === "full_logo") {
-    const fullLogoUrl = new URL("assets/brand/logos/legalease-logo-2025-ob.png", assetRoot);
-    if (existsSync(fullLogoUrl)) return fullLogoUrl;
-  }
-  if (logoKind(asset) === "symbol") {
-    const symbolUrl = new URL("assets/brand/logos/legalease-mark-white.png", assetRoot);
-    if (existsSync(symbolUrl)) return symbolUrl;
+  // Logo fallbacks apply ONLY to logo-type records. logoKind() calls everything without a
+  // symbol tag "full_logo", so an unrestricted fallback here handed the OB wordmark to ANY
+  // asset whose file was missing — a canonical Wilma record silently composited the logo
+  // where Wilma belongs instead of hitting the canonical-missing hard block.
+  if (["logo", "icon"].includes(asset.assetType)) {
+    if (logoKind(asset) === "full_logo") {
+      const fullLogoUrl = new URL("assets/brand/logos/legalease-logo-2025-ob.png", assetRoot);
+      if (existsSync(fullLogoUrl)) return fullLogoUrl;
+    }
+    if (logoKind(asset) === "symbol") {
+      const symbolUrl = new URL("assets/brand/logos/legalease-mark-white.png", assetRoot);
+      if (existsSync(symbolUrl)) return symbolUrl;
+    }
   }
   if (asset.assetType === "wilma_reference" && (asset.isDefault || (asset.tags || []).includes("canonical"))) {
     const canonicalUrl = new URL("assets/brand/wilma/new-wilma-2025.png", assetRoot);
@@ -4582,7 +4588,13 @@ async function removeLightBackground(buffer) {
 
 async function canonicalWilmaCutoutBuffer(context = {}) {
   const { default: sharp } = await import("sharp");
-  const asset = context.wilmaReferenceAssets?.[0];
+  // The extract() crop below is tuned to the canonical reference's geometry. Pose-library
+  // files also live in wilmaReferenceAssets (they are OpenAI drawing references), and taking
+  // [0] let a pose slip in here and composite a mangled half-crop — so only the canonical
+  // asset may feed the cutout, and its absence stays a hard block, never a substitution.
+  const asset = (context.wilmaReferenceAssets || []).find(
+    (candidate) => candidate?.isDefault || (candidate?.tags || []).includes("canonical")
+  ) || null;
   const referenceUrl = assetFileUrl(asset);
   if (!referenceUrl || !existsSync(referenceUrl)) {
     throw new Error("Wilma generation blocked: canonical reference asset missing.");
@@ -11511,8 +11523,15 @@ function typographicQuoteCardDataUrl(post, context = {}) {
   const orange = designSystem.colors?.horizonOrange || "#F04800";
   const seafoam = designSystem.colors?.skylineBlue || "#B7D6D7";
   const paper = designSystem.colors?.paperWhite || "#F8F7F3";
-  const logoAsset = (context.logoReferenceAssets || [])[0] || null;
-  const logoUri = assetDataUri(logoAsset?.filePath || "assets/brand/logos/legalease-mark-white.png");
+  // The dark card needs the white symbol mark, so prefer that from the library, then any
+  // symbol, then the library's top pick. brandAssets records carry fileUrl (filePath kept
+  // for localAssets-shaped objects) — the old filePath-only read was always empty, which
+  // silently ignored the asset library and rendered the hardcoded fallback forever.
+  const logoCandidates = context.logoReferenceAssets || [];
+  const logoAsset = logoCandidates.find((asset) => logoKind(asset) === "symbol" && logoColorMode(asset) === "white")
+    || logoCandidates.find((asset) => logoKind(asset) === "symbol")
+    || logoCandidates[0] || null;
+  const logoUri = assetDataUri(logoAsset?.fileUrl || logoAsset?.filePath || "assets/brand/logos/legalease-mark-white.png");
   const quoteText = collapseWhitespaceForQa(overlay.headline || post.hook || post.title || "");
   const quoteLines = wrapSvgText(quoteText, width > height ? 26 : 20, 5);
   const quoteSize = Math.round((quoteLines.length > 3 ? 58 : 72) * scale);
