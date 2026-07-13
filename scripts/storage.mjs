@@ -196,6 +196,10 @@ const coreStateCollections = [
   //    partner-journey-handoff-contract.mjs:
   "campaignKits",
   "emailDrafts",
+  // Product registry (2026-07-13 ground-truth reset). One record per product with its real
+  // stage (live / building / research) so reports state product status truthfully instead of
+  // implying every product has a live funnel. Written via /api/growth/upsert.
+  "products",
   "externalActionOutbox",
   "generationBatches",
   "syncRuns",
