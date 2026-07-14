@@ -45,7 +45,7 @@ assert.equal(reactivationLiveSendEnabled({ REACTIVATION_LIVE_SEND: "false" }), f
 ok("REACTIVATION_LIVE_SEND defaults OFF; only a truthy flag enables");
 
 {
-  const contact = { email: "alice@gmail.com", first_name: "Alice", contact_id: contactIdForEmail("alice@gmail.com") };
+  const contact = { email: "alice@example.com", first_name: "Alice", contact_id: contactIdForEmail("alice@example.com") };
   const touch = getReactivationTouch("logged_in", 1);
   const message = assembleCompliantMessage({
     contact,
@@ -63,21 +63,21 @@ ok("REACTIVATION_LIVE_SEND defaults OFF; only a truthy flag enables");
 
 // ---- 3. Import: dedup, bad-domain drop, suppression honored, idempotent -------
 const rawRows = [
-  { email: "Alice@Gmail.com", full_name: "Alice Adams", priority: "warm" },
-  { email: "alice@gmail.com", full_name: "Alice Dup", priority: "cold" },     // dup (normalized)
-  { email: "bob@yahoo.com", full_name: "Bob Brown", priority: "cold" },
-  { email: "info@gmail.com", full_name: "Role Acct", priority: "cold" },       // bad (role account)
-  { email: "carol@icloud.com", full_name: "Carol", priority: "never_logged_in" },
+  { email: "Alice@example.com", full_name: "Alice Adams", priority: "warm" },
+  { email: "alice@example.com", full_name: "Alice Dup", priority: "cold" },     // dup (normalized)
+  { email: "bob@example.com", full_name: "Bob Brown", priority: "cold" },
+  { email: "info@example.com", full_name: "Role Acct", priority: "cold" },       // bad (role account)
+  { email: "carol@example.com", full_name: "Carol", priority: "never_logged_in" },
   { email: "notanemail", full_name: "Bad", priority: "cold" }                  // bad syntax
 ];
-const supState = { outreachSuppressions: [{ email: "carol@icloud.com", reason: "unsubscribed" }] };
+const supState = { outreachSuppressions: [{ email: "carol@example.com", reason: "unsubscribed" }] };
 const imp = importReactivationContacts(supState, rawRows);
 assert.equal(imp.summary.added, 3, "3 unique valid contacts (alice, bob, carol)");
 assert.equal(imp.summary.skippedDup, 1, "1 normalized duplicate dropped");
 assert.equal(imp.summary.skippedBad, 2, "role account + bad syntax dropped");
-const carol = imp.state.reactivationContacts.find((c) => c.email === "carol@icloud.com");
+const carol = imp.state.reactivationContacts.find((c) => c.email === "carol@example.com");
 assert(carol.suppressed_at_import, "pre-suppressed contact flagged at import (ledger => manually_suppressed)");
-assert.equal(contactIdForEmail("ALICE@gmail.com"), contactIdForEmail("alice@gmail.com"), "id is normalized");
+assert.equal(contactIdForEmail("ALICE@example.com"), contactIdForEmail("alice@example.com"), "id is normalized");
 const reimp = importReactivationContacts(imp.state, rawRows);
 assert.equal(reimp.state.reactivationContacts.length, 3, "idempotent re-import — no growth");
 ok("import dedups, drops bad domains, honors suppression, is idempotent");
@@ -139,8 +139,8 @@ ok("contacts inert until wave release; cadence timing + per-tick throttle respec
   // Two contacts in Wave 1: one normal, one explicitly held. Both look due once enrolled.
   const held = {
     reactivationContacts: [
-      { contact_id: "react-norm", email: "norm@gmail.com", wave: 1, priority: "warm" },
-      { contact_id: "react-held", email: "held@gmail.com", wave: 1, priority: "warm", campaign_hold: true, campaign_hold_reason: "consumer_upload_review", import_status: "staged" }
+      { contact_id: "react-norm", email: "norm@example.com", wave: 1, priority: "warm" },
+      { contact_id: "react-held", email: "held@example.com", wave: 1, priority: "warm", campaign_hold: true, campaign_hold_reason: "consumer_upload_review", import_status: "staged" }
     ]
   };
   // assignWaves does not bucket a held contact.
@@ -313,13 +313,13 @@ ok("per-contact pause signals (replied/...) stop the cadence");
   assert(afterBounce.outreachSuppressions.some((s) => s.email === target.email), "bounce writes suppression");
   const afterClick = applyReactivationEvent(evState, { event: "click", email: target.email });
   assert.equal(afterClick.reactivationContacts.find((c) => c.email === target.email).clicked, true, "click flags engaged + pauses");
-  const foreign = applyReactivationEvent(evState, { event: "bounce", email: "stranger@nowhere.com" });
+  const foreign = applyReactivationEvent(evState, { event: "bounce", email: "stranger@example.com" });
   assert.equal(foreign.reactivationContacts.length, evState.reactivationContacts.length, "foreign email is a no-op");
   // Metrics roll up.
   const metricState = {
-    reactivationContacts: [{ contact_id: "c1", email: "c1@gmail.com", wave: 1 }],
-    reactivationAttempts: [{ status: "sent", contact_id: "c1", to: "c1@gmail.com", wave: 1 }],
-    reactivationEvents: [{ type: "delivered", email: "c1@gmail.com", contact_id: "c1" }, { type: "click", email: "c1@gmail.com", contact_id: "c1" }]
+    reactivationContacts: [{ contact_id: "c1", email: "c1@example.com", wave: 1 }],
+    reactivationAttempts: [{ status: "sent", contact_id: "c1", to: "c1@example.com", wave: 1 }],
+    reactivationEvents: [{ type: "delivered", email: "c1@example.com", contact_id: "c1" }, { type: "click", email: "c1@example.com", contact_id: "c1" }]
   };
   const m = waveMetrics(metricState);
   assert.equal(m[1].sent, 1); assert.equal(m[1].delivered, 1); assert.equal(m[1].clicks, 1);

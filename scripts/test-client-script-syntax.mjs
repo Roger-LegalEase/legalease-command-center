@@ -15,10 +15,11 @@
 //      before running a single line.
 
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { loginOwner, startPreviewServer } from "./test-support/preview-server-harness.mjs";
 
 const source = readFileSync(join(process.cwd(), "scripts", "preview-server.mjs"), "utf8");
 
@@ -56,41 +57,12 @@ assert.equal(badEscapes.length, 0,
 console.log("  ✓ no template-consumed escapes in the client script region");
 
 // ---- Layer 2: live shell parse ---------------------------------------------------------------
-const port = 4700 + Math.floor(Math.random() * 200);
-const ownerToken = "client-syntax-test-token-1234";
 const dir = mkdtempSync(join(tmpdir(), "client-syntax-"));
-const child = spawn(process.execPath, [join("scripts", "preview-server.mjs")], {
-  cwd: process.cwd(),
-  env: {
-    ...process.env,
-    PORT: String(port),
-    HOST: "127.0.0.1",
-    COMMAND_CENTER_REQUIRE_AUTH: "true",
-    COMMAND_CENTER_OWNER_TOKEN: ownerToken,
-    LOCAL_DEMO_MODE: "true",
-    STORAGE_BACKEND: "json",
-    COMMAND_CENTER_DATA_PATH: join(dir, "state.json"),
-    NODE_DISABLE_COMPILE_CACHE: "1"
-  },
-  stdio: ["ignore", "pipe", "pipe"]
-});
-
-async function waitForServer() {
-  for (let i = 0; i < 60; i++) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/privacy`);
-      if (response.ok) return;
-    } catch { /* not up yet */ }
-    await new Promise((resolve) => setTimeout(resolve, 400));
-  }
-  throw new Error("Server did not start.");
-}
+const server = await startPreviewServer();
 
 try {
-  await waitForServer();
-  const response = await fetch(`http://127.0.0.1:${port}/`, {
-    headers: { cookie: `leos_session=${encodeURIComponent(ownerToken)}` }
-  });
+  const login = await loginOwner(server);
+  const response = await fetch(`${server.baseUrl}/`, { headers:{ cookie:login.cookie } });
   assert.equal(response.status, 200, "Authenticated shell should load.");
   const html = await response.text();
   const scripts = [...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
@@ -106,7 +78,7 @@ try {
   assert(html.includes("Today at LegalEase"), "Shell should contain the Today at LegalEase page.");
   console.log("  ✓ Today at LegalEase present in the served shell");
 } finally {
-  child.kill("SIGTERM");
+  await server.stop();
 }
 
 console.log("\ntest-client-script-syntax: all checks passed");

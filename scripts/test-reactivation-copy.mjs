@@ -213,8 +213,8 @@ ok("26. dry-run renders Touch 1 for both logged-in and never-logged-in variants"
 (async () => {
   // Build a tiny released-wave state and run act() with NO live dep => dry_run only, no SendGrid.
   const imp = importReactivationContacts({}, [
-    { email: "warm1@gmail.com", full_name: "Warm One", priority: "warm" },
-    { email: "never1@gmail.com", full_name: "Never One", priority: "never_logged_in" }
+    { email: "warm1@example.com", full_name: "Warm One", priority: "warm" },
+    { email: "never1@example.com", full_name: "Never One", priority: "never_logged_in" }
   ]);
   const applied = applyWaveAssignment(imp.state, reactivationCampaignOf(imp.state));
   const enrolledAt = new Date("2026-06-29T15:00:00Z").getTime() - 3 * 24 * 60 * 60 * 1000;

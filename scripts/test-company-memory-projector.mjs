@@ -18,8 +18,8 @@ function sampleState() {
   return {
     // B2 outreach approval item (outreach-os planOutreach shape)
     approvalQueue: [
-      { id: "outreach-q-abc", type: "outreach_message", status: "queued_for_approval", contact_id: "prospect-contact-1", to: "x@org.org", subject: "Partnering on record clearing", title: "Outreach: Fresh Start — step 1", created_at: "2026-07-02T10:00:00Z" },
-      { id: "outreach-q-sent", type: "outreach_message", status: "sent", to: "y@org.org", subject: "old", title: "Outreach: sent already" },
+      { id: "outreach-q-abc", type: "outreach_message", status: "queued_for_approval", contact_id: "prospect-contact-1", to: "x@example.com", subject: "Partnering on record clearing", title: "Outreach: Fresh Start — step 1", created_at: "2026-07-02T10:00:00Z" },
+      { id: "outreach-q-sent", type: "outreach_message", status: "sent", to: "y@example.com", subject: "old", title: "Outreach: sent already" },
       { id: "approval-post-p1", type: "post", status: "needs_review", title: "LinkedIn post draft", whyItMatters: "This content needs review before it can move.", recommendedAction: "Review the draft", risk: "low" }
     ],
     autonomyActions: [
@@ -77,10 +77,10 @@ function sampleState() {
       { lifecycle_contact_id: "exp-3", email: "erased@example.com", deleted_or_erasure_requested: true }
     ],
     outreachContacts: [
-      { contact_id: "prospect-contact-1", email: "x@org.org", contact_name: "Alex Org", organization_name: "Fresh Start", linked_account_id: "prospect-org-1" }
+      { contact_id: "prospect-contact-1", email: "x@example.com", contact_name: "Alex Org", organization_name: "Fresh Start", linked_account_id: "prospect-org-1" }
     ],
     rcapRevenueContacts: [
-      { contact_id: "rcap-contact-1", public_email: "buyer@county.gov", contact_name: "Casey County", linked_account_id: "rcap-account-1", suppression_status: "Unsubscribed" }
+      { contact_id: "rcap-contact-1", public_email: "buyer@example.com", contact_name: "Casey County", linked_account_id: "rcap-account-1", suppression_status: "Unsubscribed" }
     ],
     outreachSuppressions: [{ email: "person@example.com" }],
     outreachUnsubscribes: [],
@@ -140,7 +140,7 @@ check("contacts index: suppression makes do_not_contact true; erasure-requested 
   const { state } = projectCompanyMemory(sampleState(), NOW);
   const suppressed = state.companyContacts.find((c) => c.email === "person@example.com");
   assert(suppressed && suppressed.do_not_contact === true);
-  const rcap = state.companyContacts.find((c) => c.email === "buyer@county.gov");
+  const rcap = state.companyContacts.find((c) => c.email === "buyer@example.com");
   assert(rcap && rcap.do_not_contact === true, "rcap suppression_status honored");
   assert(!state.companyContacts.some((c) => c.email === "erased@example.com"), "erasure request respected");
 });

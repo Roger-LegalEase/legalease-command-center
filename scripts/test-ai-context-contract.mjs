@@ -16,12 +16,12 @@ const product = readFileSync("docs/product-contract.md", "utf8");
 const safety = readFileSync("docs/safety-contract.md", "utf8");
 const arch = readFileSync("docs/architecture-map.md", "utf8");
 
-assert.match(product, /Today \/ Work \/ Social \/ Proof \/ Search/, "Product contract should preserve main workflow.");
-assert.match(product, /Post Idea -> Draft -> Preview -> Ready to Publish -> Publish manually -> Mark published manually/, "Product contract should document Social workflow.");
-assert.match(safety, /liveGatesCount.*0/s, "Safety contract should say live gates remain 0.");
-assert.match(safety, /Owner-token auth/i, "Safety contract should preserve owner-token auth.");
-assert.match(safety, /External actions remain off/i, "Safety contract should keep external actions off.");
-assert.match(safety, /Social is manual-only/i, "Safety contract should keep Social manual-only.");
+assert.match(product, /Today, Queue, Campaigns, Review Desk, Reports, and More/, "Product contract should preserve the current founder workflow.");
+assert.match(product, /claim-before-call/i, "Product contract should document outbound claims.");
+assert.match(safety, /defaults off/i, "Safety contract should keep every live gate off by default.");
+assert.match(safety, /opaque sessions in HttpOnly cookies/i, "Safety contract should require server-managed sessions.");
+assert.match(safety, /claim-before-call/i, "Safety contract should document durable outbound claims.");
+assert.match(safety, /single-use/i, "Safety contract should document OAuth state consumption.");
 for (const word of ["route", "storage", "Auth", "Tests", "Health", "Social"]) {
   assert.match(arch, new RegExp(word, "i"), `Architecture map should mention ${word}.`);
 }

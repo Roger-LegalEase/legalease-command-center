@@ -72,55 +72,55 @@ console.log("Reconciliation script tests");
 
 // ---- fixture: 3 recipients at 12:00 (one duplicated, one dropped), 2 at 15:00 (one June-touched)
 const CSV = `"processed","message_id","event","recv_message_id","email","type","reason"
-"2026-07-08 12:00:20.000","full-a1.x","processed","short-a1","dup@x.com","",""
-"2026-07-08 12:00:22.000","full-a2.x","processed","short-a2","dup@x.com","",""
-"2026-07-08 12:00:24.000","full-b1.x","processed","short-b1","solo@x.com","",""
-"2026-07-08 12:00:26.000","full-c1.x","drop","short-c1","gone@bad.comm","","Bounced Address"
-"2026-07-08 12:00:30.000","full-a1.x","delivered","short-a1","dup@x.com","",""
-"2026-07-08 12:00:31.000","full-a2.x","delivered","short-a2","dup@x.com","",""
-"2026-07-08 12:00:32.000","full-b1.x","delivered","short-b1","solo@x.com","",""
-"2026-07-08 15:00:34.000","full-d1.x","processed","short-d1","fresh15@x.com","",""
-"2026-07-08 15:00:35.000","full-e1.x","processed","short-e1","june15@x.com","",""
-"2026-07-08 15:01:00.000","full-f1.x","bounce","short-f1","bounced@x.com","bounce","550 no mailbox"
+"2026-07-08 12:00:20.000","full-a1.x","processed","short-a1","dup@example.com","",""
+"2026-07-08 12:00:22.000","full-a2.x","processed","short-a2","dup@example.com","",""
+"2026-07-08 12:00:24.000","full-b1.x","processed","short-b1","solo@example.com","",""
+"2026-07-08 12:00:26.000","full-c1.x","drop","short-c1","gone@example.com","","Bounced Address"
+"2026-07-08 12:00:30.000","full-a1.x","delivered","short-a1","dup@example.com","",""
+"2026-07-08 12:00:31.000","full-a2.x","delivered","short-a2","dup@example.com","",""
+"2026-07-08 12:00:32.000","full-b1.x","delivered","short-b1","solo@example.com","",""
+"2026-07-08 15:00:34.000","full-d1.x","processed","short-d1","fresh15@example.com","",""
+"2026-07-08 15:00:35.000","full-e1.x","processed","short-e1","june15@example.com","",""
+"2026-07-08 15:01:00.000","full-f1.x","bounce","short-f1","bounced@example.com","bounce","550 no mailbox"
 `;
 const events = parseCsv(CSV);
 
 const contacts = [
-  { contact_id: "react-dup", email: "dup@x.com", wave: 1, enrolled_at: "2026-06-28T12:00:00Z" },
-  { contact_id: "react-solo", email: "solo@x.com", wave: 1, enrolled_at: "2026-06-28T12:00:00Z" },
-  { contact_id: "react-gone", email: "gone@bad.comm", wave: 1, enrolled_at: "2026-06-28T12:00:00Z" },
-  { contact_id: "react-fresh15", email: "fresh15@x.com", wave: 2, enrolled_at: "2026-06-28T12:00:00Z" },
-  { contact_id: "react-june15", email: "june15@x.com", wave: 1, enrolled_at: "2026-06-28T12:00:00Z" },
-  { contact_id: "react-bounced", email: "bounced@x.com", wave: 2, enrolled_at: "2026-06-28T12:00:00Z" },
-  { contact_id: "react-unsub", email: "unsub@x.com", wave: 2, enrolled_at: "2026-06-28T12:00:00Z" }
+  { contact_id: "react-dup", email: "dup@example.com", wave: 1, enrolled_at: "2026-06-28T12:00:00Z" },
+  { contact_id: "react-solo", email: "solo@example.com", wave: 1, enrolled_at: "2026-06-28T12:00:00Z" },
+  { contact_id: "react-gone", email: "gone@example.com", wave: 1, enrolled_at: "2026-06-28T12:00:00Z" },
+  { contact_id: "react-fresh15", email: "fresh15@example.com", wave: 2, enrolled_at: "2026-06-28T12:00:00Z" },
+  { contact_id: "react-june15", email: "june15@example.com", wave: 1, enrolled_at: "2026-06-28T12:00:00Z" },
+  { contact_id: "react-bounced", email: "bounced@example.com", wave: 2, enrolled_at: "2026-06-28T12:00:00Z" },
+  { contact_id: "react-unsub", email: "unsub@example.com", wave: 2, enrolled_at: "2026-06-28T12:00:00Z" }
 ];
 // pre-existing ledger: one June touch for june15; synthetic recon rows for the 12:00 three
 const attempts = [
-  { id: "react-attempt-june1", contact_id: "react-june15", to: "june15@x.com", wave: 1, step_number: 1, status: "sent", provider: "sendgrid", provider_message_id: "june-mid", sent_date: "2026-06-29", created_at: "2026-06-29T17:35:00Z" },
-  { id: "react-attempt-recon-a", contact_id: "react-dup", to: "dup@x.com", wave: 1, step_number: 1, status: "sent", provider: "sendgrid", provider_message_id: "", sent_date: "2026-07-08", created_at: "2026-07-08T12:00:08.242Z", reconciled: true },
-  { id: "react-attempt-recon-b", contact_id: "react-solo", to: "solo@x.com", wave: 1, step_number: 1, status: "sent", provider: "sendgrid", provider_message_id: "", sent_date: "2026-07-08", created_at: "2026-07-08T12:00:08.242Z", reconciled: true },
-  { id: "react-attempt-recon-c", contact_id: "react-gone", to: "gone@bad.comm", wave: 1, step_number: 1, status: "sent", provider: "sendgrid", provider_message_id: "", sent_date: "2026-07-08", created_at: "2026-07-08T12:00:08.242Z", reconciled: true }
+  { id: "react-attempt-june1", contact_id: "react-june15", to: "june15@example.com", wave: 1, step_number: 1, status: "sent", provider: "sendgrid", provider_message_id: "june-mid", sent_date: "2026-06-29", created_at: "2026-06-29T17:35:00Z" },
+  { id: "react-attempt-recon-a", contact_id: "react-dup", to: "dup@example.com", wave: 1, step_number: 1, status: "sent", provider: "sendgrid", provider_message_id: "", sent_date: "2026-07-08", created_at: "2026-07-08T12:00:08.242Z", reconciled: true },
+  { id: "react-attempt-recon-b", contact_id: "react-solo", to: "solo@example.com", wave: 1, step_number: 1, status: "sent", provider: "sendgrid", provider_message_id: "", sent_date: "2026-07-08", created_at: "2026-07-08T12:00:08.242Z", reconciled: true },
+  { id: "react-attempt-recon-c", contact_id: "react-gone", to: "gone@example.com", wave: 1, step_number: 1, status: "sent", provider: "sendgrid", provider_message_id: "", sent_date: "2026-07-08", created_at: "2026-07-08T12:00:08.242Z", reconciled: true }
 ];
 const suppressions = [
-  { id: "outreach-supp-jaime", email: "jaime.berrios@introba.com", reason: "unsubscribed", source: "one_click", created_at: "2026-07-08T16:10:19Z" },
-  { id: "outreach-supp-gone", email: "gone@bad.comm", reason: "bounced", source: "manual", created_at: "2026-07-08T14:30:53Z" }
+  { id: "outreach-supp-jaime", email: "jaime.berrios@example.com", reason: "unsubscribed", source: "one_click", created_at: "2026-07-08T16:10:19Z" },
+  { id: "outreach-supp-gone", email: "gone@example.com", reason: "bounced", source: "manual", created_at: "2026-07-08T14:30:53Z" }
 ];
 const unsubscribes = [
-  { id: "unsub-row-1", email: "unsub@x.com", created_at: "2026-07-08T15:02:28Z" },
-  { id: "unsub-row-2", email: "jaime.berrios@introba.com", created_at: "2026-07-08T16:10:19Z" }
+  { id: "unsub-row-1", email: "unsub@example.com", created_at: "2026-07-08T15:02:28Z" },
+  { id: "unsub-row-2", email: "jaime.berrios@example.com", created_at: "2026-07-08T16:10:19Z" }
 ];
 const expected = {
   batch12Processed: 3, batch12Unique: 2, batch15Processed: 2, batch15Unique: 2,
   duplicatedRecipients: 1, reconRows: 3, juneAttempts: 1,
-  dropEmail: "gone@bad.comm", step15Distribution: { 1: 1, 2: 1 }
+  dropEmail: "gone@example.com", step15Distribution: { 1: 1, 2: 1 }
 };
 
 const plan = computeReconciliation({ events, attempts, contacts, suppressions, unsubscribes, expected });
 
 // ---- 1. touch identity ----
 {
-  const fresh = plan.attemptsInsert.find((a) => a.to === "fresh15@x.com");
-  const june = plan.attemptsInsert.find((a) => a.to === "june15@x.com");
+  const fresh = plan.attemptsInsert.find((a) => a.to === "fresh15@example.com");
+  const june = plan.attemptsInsert.find((a) => a.to === "june15@example.com");
   assert.equal(fresh.step_number, 1);
   assert.equal(june.step_number, 2, "prior June touch makes the 15:00 send step 2");
   assert.equal(fresh.provider_message_id, "short-d1");
@@ -132,11 +132,11 @@ const plan = computeReconciliation({ events, attempts, contacts, suppressions, u
 
 // ---- 2. duplicate annotation ----
 {
-  const dup = plan.attemptsPatch.find((p) => p.current.to === "dup@x.com");
+  const dup = plan.attemptsPatch.find((p) => p.current.to === "dup@example.com");
   assert.equal(dup.patch.duplicate_copies_processed, 2);
   assert.equal(dup.patch.duplicate_copies_delivered, 2);
   assert.equal(dup.patch.provider_message_id, "short-a1", "first copy's message id");
-  const solo = plan.attemptsPatch.find((p) => p.current.to === "solo@x.com");
+  const solo = plan.attemptsPatch.find((p) => p.current.to === "solo@example.com");
   assert.equal(solo.patch.duplicate_copies_processed, undefined, "non-duplicated rows get no dup annotation");
   assert.equal(solo.patch.provider_message_id, "short-b1");
   ok("duplicates annotated as one counted touch with copies noted");
@@ -144,7 +144,7 @@ const plan = computeReconciliation({ events, attempts, contacts, suppressions, u
 
 // ---- 3. drop correction ----
 {
-  const drop = plan.attemptsPatch.find((p) => p.current.to === "gone@bad.comm");
+  const drop = plan.attemptsPatch.find((p) => p.current.to === "gone@example.com");
   assert.equal(drop.patch.status, "dropped");
   assert(drop.patch.drop_reason.includes("Bounced Address"));
   ok("the SendGrid drop is corrected to dropped, not counted as a touch");
@@ -166,9 +166,9 @@ const plan = computeReconciliation({ events, attempts, contacts, suppressions, u
 // ---- 5. suppressions minimal and mandatory ----
 {
   assert.equal(plan.suppressionsInsert.length, 2);
-  const bounced = plan.suppressionsInsert.find((s) => s.email === "bounced@x.com");
+  const bounced = plan.suppressionsInsert.find((s) => s.email === "bounced@example.com");
   assert.equal(bounced.reason, "bounced");
-  const unsub = plan.suppressionsInsert.find((s) => s.email === "unsub@x.com");
+  const unsub = plan.suppressionsInsert.find((s) => s.email === "unsub@example.com");
   assert.equal(unsub.reason, "unsubscribed");
   assert.equal(plan.suppressionsPatch.length, 1);
   assert(plan.suppressionsPatch[0].patch.first_unsubscribe_evidence.includes("12:00:56Z"));

@@ -23,20 +23,20 @@ const NOW = "2026-06-30T00:00:00Z";
 // Build a realistic state: a sync confirm (lifecycle + held reactivation) plus a separately-enrolled
 // reactivation contact so we can prove the enrolled count.
 const RECORDS = [
-  { email: "ab@gmail.com", first_name: "Ann", screening_status: "abandoned", state: "PA" },
-  { email: "co@yahoo.com", first_name: "Cal", checkout_status: "abandoned" },
-  { email: "cp@gmail.com", first_name: "Cam", screening_status: "completed" },
-  { email: "pd@outlook.com", first_name: "Pat", payment_status: "paid" },
-  { email: "un@gmail.com", first_name: "Uma", unsubscribed: true },
-  { email: "de@gmail.com", first_name: "Ed", deleted_or_erasure_requested: true },
-  { email: "rv@gmail.com", first_name: "Rev", consent_status: "revoked", eligibility_status_summary: "SECRET CASE DETAIL SHOULD NOT LEAK" }
+  { email: "ab@example.com", first_name: "Ann", screening_status: "abandoned", state: "PA" },
+  { email: "co@example.com", first_name: "Cal", checkout_status: "abandoned" },
+  { email: "cp@example.com", first_name: "Cam", screening_status: "completed" },
+  { email: "pd@example.com", first_name: "Pat", payment_status: "paid" },
+  { email: "un@example.com", first_name: "Uma", unsubscribed: true },
+  { email: "de@example.com", first_name: "Ed", deleted_or_erasure_requested: true },
+  { email: "rv@example.com", first_name: "Rev", consent_status: "revoked", eligibility_status_summary: "SECRET CASE DETAIL SHOULD NOT LEAK" }
 ];
 const synced = confirmExpungementSync({}, RECORDS, { sourceNote: "nightly export", now: NOW });
 const STATE = {
   ...synced.state,
   reactivationContacts: [
     ...synced.state.reactivationContacts,
-    { contact_id: "enr1", email: "enrolled@gmail.com", enrolled_at: NOW, sequence_status: "Enrolled", wave: 1, campaign_id: "mvp-reactivation" }
+    { contact_id: "enr1", email: "enrolled@example.com", enrolled_at: NOW, sequence_status: "Enrolled", wave: 1, campaign_id: "mvp-reactivation" }
   ]
 };
 
@@ -109,7 +109,7 @@ assert.equal(permissionForRequest("GET", "/api/contacts/held-review"), "read", "
   const anon = authorizeRequest({ method: "GET", url: "/api/contacts/held-review", headers: {} }, null, env);
   assert.equal(anon.ok, false, "anonymous review rejected");
   assert.equal(anon.status, 401);
-  const owner = authorizeRequest({ method: "GET", url: "/api/contacts/held-review", headers: { authorization: "Bearer " + "x".repeat(20) } }, null, env);
+  const owner = authorizeRequest({ method: "GET", url: "/api/contacts/held-review", headers:{}, authenticatedActor:{ id:"synthetic-session", role:"owner", authenticated:true, session:{ id:"synthetic-session" } } }, null, env);
   assert.equal(owner.ok, true, "authenticated review allowed");
 }
 ok("held review endpoint requires auth; anonymous rejected, authenticated allowed");

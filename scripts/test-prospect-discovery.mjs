@@ -55,11 +55,11 @@ function fixtureDiscovery(rowsBySource = {}) {
 
 const SAMPLE_ROWS = {
   irs_bmf: [
-    { organization_name: "Greater Boston Legal Aid", ein: "04-1234567", website: "https://gbla.org", email: "intake@gbla.org", contact_name: "Pat Lee", city: "Boston", state: "MA", source_url: "https://irs.gov/bmf/1" },
+    { organization_name: "Greater Boston Legal Aid", ein: "04-1234567", website: "https://gbla.org", email: "intake@example.com", contact_name: "Pat Lee", city: "Boston", state: "MA", source_url: "https://irs.gov/bmf/1" },
     { organization_name: "Helping Hands Foundation", ein: "12-3456789", website: "helpinghands.org", source_url: "https://irs.gov/bmf/2" }
   ],
   lsc_grantees: [
-    { organization_name: "Cook County Public Defender", website: "cookdefender.gov", email: "info@cookdefender.gov", source_url: "https://lsc.gov/g/1" }
+    { organization_name: "Cook County Public Defender", website: "cookdefender.gov", email: "info@example.com", source_url: "https://lsc.gov/g/1" }
   ]
 };
 

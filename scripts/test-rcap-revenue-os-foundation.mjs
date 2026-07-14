@@ -52,7 +52,7 @@ const workbook = {
       contact_name: "Avery Director",
       title: "Executive Director",
       decision_role: "Decision maker",
-      public_email: "avery@example.org",
+      public_email: "avery@example.com",
       public_phone: "555-0100",
       contact_route: "public email",
       segment: "A1",
@@ -69,7 +69,7 @@ const workbook = {
       Contact_ID: "C-002",
       linked_account_id: "P-002",
       contact_name: "Jordan Program",
-      public_email: "jordan@example.org",
+      public_email: "jordan@example.com",
       suppression_status: "unsubscribed"
     }
   ],
@@ -78,7 +78,7 @@ const workbook = {
       Contact_ID: "C-003",
       linked_account_id: "P-002",
       contact_name: "Case Manager",
-      public_email: "case@example.org",
+      public_email: "case@example.com",
       source_confidence: "Medium"
     }
   ],
@@ -214,7 +214,7 @@ const activeOverwriteWorkbook = {
       Contact_ID: "C-002",
       linked_account_id: "P-002",
       contact_name: "Jordan Program",
-      public_email: "jordan@example.org",
+      public_email: "jordan@example.com",
       email_status: "Verified",
       sequence_status: "Ready to Enroll",
       suppression_status: "Active",
@@ -225,7 +225,7 @@ const activeOverwriteWorkbook = {
       Contact_ID: "C-005",
       linked_account_id: "P-001",
       contact_name: "Bounced Contact",
-      public_email: "bounced@example.org",
+      public_email: "bounced@example.com",
       suppression_status: "Bounced",
       bounced: "true"
     }
@@ -253,7 +253,7 @@ const incomingSuppressionWorkbook = {
       Contact_ID: "C-001",
       linked_account_id: "P-001",
       contact_name: "Avery Director",
-      public_email: "avery@example.org",
+      public_email: "avery@example.com",
       suppression_status: "Do Not Contact",
       unsubscribed: "true"
     }
@@ -279,7 +279,7 @@ const bouncedOverwriteWorkbook = {
       Contact_ID: "C-005",
       linked_account_id: "P-001",
       contact_name: "Bounced Contact",
-      public_email: "bounced@example.org",
+      public_email: "bounced@example.com",
       email_status: "Verified",
       sequence_status: "Ready to Enroll",
       suppression_status: "Active",
@@ -311,7 +311,7 @@ const malformedWorkbook = {
   ],
   Contacts_Master: [
     { contact_name: "No Safe Contact", linked_account_id: "P-010" },
-    { contact_name: "Safe Fallback Contact", linked_account_id: "P-010", public_email: "safe@example.org", email_status: "Verified", sequence_status: "Ready to Enroll" }
+    { contact_name: "Safe Fallback Contact", linked_account_id: "P-010", public_email: "safe@example.com", email_status: "Verified", sequence_status: "Ready to Enroll" }
   ]
 };
 const malformedResult = importRcapRevenueWorkbook({}, malformedWorkbook, {
@@ -322,7 +322,7 @@ const malformedResult = importRcapRevenueWorkbook({}, malformedWorkbook, {
 assert.equal(malformedResult.state.rcapRevenueAccounts.length, 1);
 assert.equal(malformedResult.state.rcapRevenueAccounts[0].account_id, "P-010");
 assert.equal(malformedResult.state.rcapRevenueContacts.length, 1);
-assert.equal(malformedResult.state.rcapRevenueContacts[0].public_email, "safe@example.org");
+assert.equal(malformedResult.state.rcapRevenueContacts[0].public_email, "safe@example.com");
 assert.equal(malformedResult.state.rcapRevenueContacts[0].email_status, "Not Verified");
 assert.equal(malformedResult.state.rcapRevenueContacts[0].sequence_status, "Not Enrolled");
 assert.ok(malformedResult.batch.warnings.some(warning => warning.includes("lacked a stable Prospect_ID")));
@@ -358,16 +358,16 @@ const authEnv = {
   COMMAND_CENTER_VIEWER_TOKEN:"viewer-token-rcap-revenue-1234567890"
 };
 const routeUrl = new URL("http://local/api/rcap-revenue/import");
-const authDecision = token => authorizeRequest(
-  { method:"POST", url:"/api/rcap-revenue/import", headers: token ? { authorization:`Bearer ${token}` } : {} },
+const authDecision = role => authorizeRequest(
+  { method:"POST", url:"/api/rcap-revenue/import", headers:{}, authenticatedActor:role ? { id:`session-${role}`, role, authenticated:true, session:{ id:`session-${role}` } } : null },
   routeUrl,
   authEnv
 );
 assert.equal(authDecision("").ok, false, "Unauthenticated RCAP Revenue import should fail the protected API gate.");
 assert.equal(authDecision("").status, 401, "Unauthenticated RCAP Revenue import should return 401.");
-assert.equal(authDecision(authEnv.COMMAND_CENTER_VIEWER_TOKEN).ok, false, "Viewer RCAP Revenue import should fail the generic mutation gate.");
-assert.equal(authDecision(authEnv.COMMAND_CENTER_OPERATOR_TOKEN).ok, true, "Operator passes generic mutation gate, so the route-specific owner/admin guard is required.");
-assert.equal(authDecision(authEnv.COMMAND_CENTER_ADMIN_TOKEN).ok, true, "Admin should pass the generic gate before the route-specific guard allows import.");
-assert.equal(authDecision(authEnv.COMMAND_CENTER_OWNER_TOKEN).ok, true, "Owner should pass the generic gate before the route-specific guard allows import.");
+assert.equal(authDecision("viewer").ok, false, "Viewer RCAP Revenue import should fail the generic mutation gate.");
+assert.equal(authDecision("operator").ok, true, "Operator passes generic mutation gate, so the route-specific owner/admin guard is required.");
+assert.equal(authDecision("admin").ok, true, "Admin should pass the generic gate before the route-specific guard allows import.");
+assert.equal(authDecision("owner").ok, true, "Owner should pass the generic gate before the route-specific guard allows import.");
 
 console.log("RCAP Revenue OS foundation tests passed.");

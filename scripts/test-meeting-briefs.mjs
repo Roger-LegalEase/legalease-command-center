@@ -42,17 +42,17 @@ const RAW_EVENT = {
   location: "Zoom",
   start: { dateTime: "2026-07-08T15:00:00Z" },
   end: { dateTime: "2026-07-08T16:00:00Z" },
-  organizer: { email: "roger@legalease.com" },
+  organizer: { email: "roger@example.com" },
   attendees: [
-    { email: "roger@legalease.com", self: true, responseStatus: "accepted" },
-    { email: "Jane@CountyLegalAid.org", displayName: "Jane Alvarez", responseStatus: "accepted" },
+    { email: "roger@example.com", self: true, responseStatus: "accepted" },
+    { email: "Jane@example.com", displayName: "Jane Alvarez", responseStatus: "accepted" },
     { email: "declined@example.com", responseStatus: "declined" },
-    { email: "room-4@resource.calendar.google.com", resource: true, responseStatus: "accepted" }
+    { email: "room-4@example.com", resource: true, responseStatus: "accepted" }
   ]
 };
 
 const MEMORY_STATE = {
-  contacts: [{ contact_id: "c-jane", email: "jane@countylegalaid.org", name: "Jane Alvarez", organization: "County Legal Aid" }],
+  contacts: [{ contact_id: "c-jane", email: "jane@example.com", name: "Jane Alvarez", organization: "County Legal Aid" }],
   queueItems: [{ id: "q1", status: "needs_roger", title: "Approve pilot terms", relatedContact: "c-jane", riskLevel: "caution" }],
   partnerPrograms: [{ id: "p1", name: "County Legal Aid", status: "stalled" }],
   supportIssues: []
@@ -69,13 +69,13 @@ await check("normalizeBriefEvent drops cancelled/declined/rooms, keeps people", 
   const event = normalizeBriefEvent(RAW_EVENT);
   assert.equal(event.event_id, "evt-1");
   assert.equal(event.title, "Pilot kickoff with County Legal Aid");
-  assert.deepEqual(event.attendees.map((a) => a.email), ["roger@legalease.com", "jane@countylegalaid.org"]);
+  assert.deepEqual(event.attendees.map((a) => a.email), ["roger@example.com", "jane@example.com"]);
   assert.equal(event.attendees[0].self, true);
   assert.equal(event.attendees[1].name, "Jane Alvarez");
 });
 
 await check("attendee matching never fabricates a relationship", () => {
-  const known = matchAttendeeToMemory(MEMORY_STATE, "JANE@countylegalaid.org");
+  const known = matchAttendeeToMemory(MEMORY_STATE, "JANE@example.com");
   assert.equal(known.known, true);
   assert.equal(known.contactName, "Jane Alvarez");
   assert.equal(known.relationship, "company memory contact");
@@ -85,7 +85,7 @@ await check("attendee matching never fabricates a relationship", () => {
 });
 
 await check("talking points: known contact, waiting decisions, stalled partner, honest default", () => {
-  const points = buildTalkingPoints(MEMORY_STATE, [matchAttendeeToMemory(MEMORY_STATE, "jane@countylegalaid.org")]);
+  const points = buildTalkingPoints(MEMORY_STATE, [matchAttendeeToMemory(MEMORY_STATE, "jane@example.com")]);
   assert(points.some((p) => p.includes("Jane Alvarez is known here")), points.join(" | "));
   assert(points.some((p) => p.includes("1 queue item(s) about Jane Alvarez")), "waiting decisions surface");
   assert(points.some((p) => p.includes("stalled partner program")), "stalled partner surfaces");
@@ -104,7 +104,7 @@ await check("buildMeetingBrief assembles the persisted record", () => {
 });
 
 await check("email snippets are short single lines, never bodies", () => {
-  const long = normalizeEmailSnippet({ with: "jane@countylegalaid.org", subject: "Re: pilot", snippet: ("word ".repeat(200)) + "\nsecond\nline", at: "Mon, 6 Jul 2026" });
+  const long = normalizeEmailSnippet({ with: "jane@example.com", subject: "Re: pilot", snippet: ("word ".repeat(200)) + "\nsecond\nline", at: "Mon, 6 Jul 2026" });
   assert(long.snippet.length <= EMAIL_SNIPPET_MAX_CHARS);
   assert(!long.snippet.includes("\n"), "snippet collapses to one line");
   assert.equal(normalizeEmailSnippet({}), null);
@@ -123,7 +123,7 @@ await check("email context caps attendees and snippets per attendee", () => {
 
 await check("reconcile preserves pulled email context, drops stale, caps", () => {
   const brief = buildMeetingBrief(MEMORY_STATE, RAW_EVENT, { now: NOW });
-  const withContext = attachEmailContext(brief, { "jane@countylegalaid.org": [{ subject: "Re: pilot", snippet: "see you Tuesday", at: "" }] }, { now: NOW });
+  const withContext = attachEmailContext(brief, { "jane@example.com": [{ subject: "Re: pilot", snippet: "see you Tuesday", at: "" }] }, { now: NOW });
   const stale = { ...brief, id: "brief-old", event_id: "old", start_at: "2026-07-01T00:00:00Z" };
   const refreshed = buildMeetingBrief(MEMORY_STATE, { ...RAW_EVENT, summary: "Pilot kickoff (renamed)" }, { now: NOW });
   const rec = reconcileMeetingBriefs([withContext, stale], [refreshed], { now: NOW });

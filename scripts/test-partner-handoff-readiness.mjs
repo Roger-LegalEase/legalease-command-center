@@ -80,7 +80,7 @@ const readyPartnerState = {
     missing_external_details: false,
     missingExternalDetailsList: [],
     primaryContact: "TBD reviewed contact",
-    email: "review_required@example.invalid",
+    email: "review_required@example.com",
     website: "https://review-required.example.invalid",
     stakeholders: ["approval authority review_required"]
   } : partner),

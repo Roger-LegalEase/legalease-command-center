@@ -99,7 +99,7 @@ check("snoozed items wake after their window", () => {
 });
 
 check("contacts never duplicate — email-keyed identity with merged types and links", () => {
-  let { contacts } = upsertCompanyContact([], { email: "Jane@Example.com", name: "Jane", types: ["consumer"], links: [{ collection: "reactivationContacts", itemId: "r1" }] }, NOW);
+  let { contacts } = upsertCompanyContact([], { email: "Jane@example.com", name: "Jane", types: ["consumer"], links: [{ collection: "reactivationContacts", itemId: "r1" }] }, NOW);
   ({ contacts } = upsertCompanyContact(contacts, { email: "jane@example.com", types: ["media"], links: [{ collection: "reactivationContacts", itemId: "r1" }, { collection: "outreachContacts", itemId: "o1" }] }, NOW));
   assert.equal(contacts.length, 1);
   assert.deepEqual(contacts[0].types.sort(), ["consumer", "media"]);

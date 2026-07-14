@@ -1,5 +1,5 @@
 // I1 verifier — inbox intelligence foundation (owner decision 2026-07-12: full READ-ONLY,
-// roger@legalease.com ONLY; docs/decisions/2026-07-12-inbox-full-read-roger-legalease.md).
+// roger@example.com ONLY; docs/decisions/2026-07-12-inbox-full-read-roger-legalease.md).
 // Pins the four walls: capability (plan-only, no send), identity (one mailbox), privacy
 // (no bodies persisted, redacted evidence, owner-only visibility), suggestion (sticky
 // decisions). Plus Roger's amendments: 30-day backfill that RESUMES if the message cap
@@ -35,12 +35,12 @@ function thread(overrides = {}) {
     messages: overrides.messages || []
   };
 }
-const inbound = (over = {}) => ({ id: over.id || "m-in", fromEmail: over.fromEmail || "dana@fultoncounty.org", fromName: over.fromName || "Dana Fulton", isFromMe: false, at: over.at || daysAgo(4), bodyText: over.bodyText || "Following up on the packet.\nCan you confirm timing?" , ...over });
+const inbound = (over = {}) => ({ id: over.id || "m-in", fromEmail: over.fromEmail || "dana@example.com", fromName: over.fromName || "Dana Fulton", isFromMe: false, at: over.at || daysAgo(4), bodyText: over.bodyText || "Following up on the packet.\nCan you confirm timing?" , ...over });
 const outbound = (over = {}) => ({ id: over.id || "m-out", fromEmail: INBOX_ALLOWED_MAILBOX, fromName: "Roger", isFromMe: true, at: over.at || daysAgo(5), bodyText: over.bodyText || "Thanks - details attached.", ...over });
 
 const PIPELINE_STATE = {
-  outreachContacts: [{ id: "oc-1", email: "dana@fultoncounty.org" }],
-  companyContacts: [{ id: "cc-press", email: "press@journal.com" }],
+  outreachContacts: [{ id: "oc-1", email: "dana@example.com" }],
+  companyContacts: [{ id: "cc-press", email: "press@example.com" }],
   partners: [], prospectCandidates: [], reactivationContacts: []
 };
 
@@ -64,7 +64,7 @@ const PIPELINE_STATE = {
   assert.match(reply.summary, /You owe Dana Fulton a reply - 4 days\./);
   const fresh = classifyInboxThreads([thread({ messages: [inbound({ at: daysAgo(1) })] })], { state: {}, now: NOW }).signals;
   assert.ok(!fresh.some((s) => s.kind === "needs_reply"), "1-day-old inbound is not yet owed (default 2)");
-  const bulk = classifyInboxThreads([thread({ messages: [inbound({ fromEmail: "no-reply@stripe.com", fromName: "Stripe", at: daysAgo(5) })] })], { state: {}, now: NOW }).signals;
+  const bulk = classifyInboxThreads([thread({ messages: [inbound({ fromEmail: "no-reply@example.com", fromName: "Stripe", at: daysAgo(5) })] })], { state: {}, now: NOW }).signals;
   assert.ok(!bulk.some((s) => s.kind === "needs_reply"), "bulk senders never become owed replies");
   ok("needs_reply: age threshold, plain sentence, bulk senders excluded");
 }
@@ -72,8 +72,8 @@ const PIPELINE_STATE = {
 // ---- 3. internal teammates are noise (Roger amendment) ---------------------------------------
 {
   const { signals, skippedInternal } = classifyInboxThreads([
-    thread({ threadId: "t-int", messages: [inbound({ fromEmail: "lawrence@blackmonlaw.com", fromName: "Lawrence Blackmon", at: daysAgo(5) })] }),
-    thread({ threadId: "t-int2", messages: [inbound({ fromEmail: "britton@legalease.com", fromName: "Britton", at: daysAgo(5) })] })
+    thread({ threadId: "t-int", messages: [inbound({ fromEmail: "lawrence@example.com", fromName: "Lawrence Blackmon", at: daysAgo(5) })] }),
+    thread({ threadId: "t-int2", messages: [inbound({ fromEmail: "britton@example.com", fromName: "Britton", at: daysAgo(5) })] })
   ], { state: {}, now: NOW });
   assert.equal(signals.length, 0, "no signals from internal teammates");
   assert.equal(skippedInternal, 2);
@@ -88,7 +88,7 @@ const PIPELINE_STATE = {
   assert.ok(quiet, "pipeline counterpart quiet 6 days after my reply");
   assert.match(quiet.summary, /went quiet after your reply - 6 days\./);
   assert.deepEqual(quiet.pipelineMatch, { collection: "outreachContacts", itemId: "oc-1", matchedBy: "address" });
-  const notPipeline = classifyInboxThreads([thread({ threadId: "t-q2", messages: [inbound({ fromEmail: "stranger@random.org", at: daysAgo(8) }), outbound({ at: daysAgo(6) })] })], { state: PIPELINE_STATE, now: NOW }).signals;
+  const notPipeline = classifyInboxThreads([thread({ threadId: "t-q2", messages: [inbound({ fromEmail: "stranger@example.com", at: daysAgo(8) }), outbound({ at: daysAgo(6) })] })], { state: PIPELINE_STATE, now: NOW }).signals;
   assert.ok(!notPipeline.some((s) => s.kind === "went_quiet"), "non-pipeline silence is not a signal");
   ok("went_quiet: pipeline-only, with the record pointer for deep links");
 }
@@ -112,13 +112,13 @@ const PIPELINE_STATE = {
 {
   const { signals } = classifyInboxThreads([thread({ threadId: "t-p", messages: [inbound({ at: daysAgo(1) })] })], { state: PIPELINE_STATE, now: NOW });
   assert.ok(signals.some((s) => s.kind === "pipeline_inbound"), "inbound from a pipeline contact is surfaced");
-  const investor = classifyInboxThreads([thread({ threadId: "t-i", messages: [inbound({ fromEmail: "team@techstars.com", fromName: "Techstars", at: daysAgo(1) })] })], { state: {}, now: NOW }).signals;
+  const investor = classifyInboxThreads([thread({ threadId: "t-i", messages: [inbound({ fromEmail: "team@example.com", fromName: "Techstars", at: daysAgo(1) })] })], { state: {}, now: NOW }).signals;
   const inv = investor.find((s) => s.kind === "pipeline_inbound");
   assert.ok(inv, "investor pattern (Techstars) counts as pipeline");
   assert.equal(inv.pipelineMatch.matchedBy, "investor_pattern");
-  const index = buildPipelineIndex({ companyContacts: [{ id: "x", email: "reporter@nyt.com" }] }, inboxConfigOf());
-  assert.ok(pipelineMatchFor("reporter@nyt.com", "", index), "press contacts in companyContacts match");
-  assert.ok(pipelineMatchFor("someone@slauson.co", "Slauson & Co.", index), "Slauson matches by pattern");
+  const index = buildPipelineIndex({ companyContacts: [{ id: "x", email: "reporter@example.com" }] }, inboxConfigOf());
+  assert.ok(pipelineMatchFor("reporter@example.com", "", index), "press contacts in companyContacts match");
+  assert.ok(pipelineMatchFor("someone@example.com", "Slauson & Co.", index), "Slauson matches by pattern");
   ok("pipeline inbound: contacts, press in companyContacts, and the named investors");
 }
 
@@ -164,7 +164,7 @@ const PIPELINE_STATE = {
   assert.equal(fetchCalls, 0, "toggle OFF means NO fetch happens at all");
   assert.equal(spyOff.observations[0].status, "off");
 
-  const wrongMailbox = await planInboxIntelligence({}, { fetchInboxThreads: async () => ({ ok: true, mailbox: "other@gmail.com", threads: [thread({ messages: [inbound({ at: daysAgo(4) })] })] }), inboxReadEnabled: () => true, now: NOW });
+  const wrongMailbox = await planInboxIntelligence({}, { fetchInboxThreads: async () => ({ ok: true, mailbox: "other@example.com", threads: [thread({ messages: [inbound({ at: daysAgo(4) })] })] }), inboxReadEnabled: () => true, now: NOW });
   assert.equal(wrongMailbox.observations[0].status, "blocked", "identity wall: wrong mailbox echo refused");
   assert.ok(!(wrongMailbox.state.inboxSignals || []).length, "no signals from an unauthorized mailbox");
 
@@ -246,7 +246,7 @@ const PIPELINE_STATE = {
 
 // ---- 13. I3: drafts — skeleton default, UPL refusal, never sends -------------------------------
 {
-  const signal = { id: "sig-1", kind: "needs_reply", counterpartName: "Dana Fulton", counterpartEmail: "dana@fultoncounty.org", subject: "Packet timing", uplSensitive: false };
+  const signal = { id: "sig-1", kind: "needs_reply", counterpartName: "Dana Fulton", counterpartEmail: "dana@example.com", subject: "Packet timing", uplSensitive: false };
   const prepared = prepareInboxDraftReply(signal, { now: NOW });
   assert.ok(prepared.ok, "non-UPL signal gets a draft");
   assert.match(prepared.draft.body, /Hi Dana - thanks for your note about "Packet timing"\./, "skeleton opens in Roger's voice pattern");
@@ -279,13 +279,13 @@ const PIPELINE_STATE = {
   const { buildInboxRecordSuggestions } = await import("./inbox-intelligence.mjs");
   const partnerSignal = {
     id: "sig-partner", kind: "pipeline_inbound", status: "suggested",
-    counterpartName: "Riverside Legal Aid", counterpartEmail: "maria@riverside.org",
+    counterpartName: "Riverside Legal Aid", counterpartEmail: "maria@example.com",
     pipelineMatch: { collection: "partners", itemId: "partner-9" },
     occurredAt: NOW, evidence: ["We would like to move forward with the pilot."]
   };
   const contactSignal = {
     id: "sig-contact", kind: "pipeline_inbound", status: "suggested",
-    counterpartName: "Techstars", counterpartEmail: "team@techstars.com",
+    counterpartName: "Techstars", counterpartEmail: "team@example.com",
     pipelineMatch: { collection: "", itemId: "", matchedBy: "investor_pattern" },
     occurredAt: NOW, evidence: ["Can you share your latest numbers?"]
   };

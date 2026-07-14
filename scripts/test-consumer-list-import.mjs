@@ -30,12 +30,12 @@ const SRC = { listType: "consumer", sourceNote: "manual export" };
 // and a quoted name containing a comma.
 const BASE_CSV = [
   "Email,First Name,Full Name,Phone,Priority",
-  "alice@gmail.com,Alice,Alice Smith,555-1,warm",
-  "bob@yahoo.com,,Bob Jones,,",                          // no first name -> fallback; no priority -> cold
-  "alice@gmail.com,Alice,,,",                            // duplicate email
+  "alice@example.com,Alice,Alice Smith,555-1,warm",
+  "bob@example.com,,Bob Jones,,",                          // no first name -> fallback; no priority -> cold
+  "alice@example.com,Alice,,,",                            // duplicate email
   "not-an-email,,No Email,,",                            // invalid email
   ",,Ghost,,",                                           // missing email
-  '"carol@outlook.com",Carol,"Doe, Carol",555-3,'        // quoted comma in name; blank priority -> cold
+  '"carol@example.com",Carol,"Doe, Carol",555-3,'        // quoted comma in name; blank priority -> cold
 ].join("\n");
 
 // ---- CSV parser ---------------------------------------------------------------
@@ -88,11 +88,11 @@ ok("duplicate emails are skipped");
 // ---- 5. Defaults + fallbacks (inherited from importReactivationContacts) -------
 {
   const byEmail = Object.fromEntries(conf.state.reactivationContacts.map((c) => [c.email, c]));
-  assert.equal(byEmail["carol@outlook.com"].priority, "cold", "blank priority -> cold");
-  assert.equal(byEmail["bob@yahoo.com"].priority, "cold", "missing priority -> cold");
-  assert.equal(byEmail["alice@gmail.com"].priority, "warm", "explicit priority preserved");
+  assert.equal(byEmail["carol@example.com"].priority, "cold", "blank priority -> cold");
+  assert.equal(byEmail["bob@example.com"].priority, "cold", "missing priority -> cold");
+  assert.equal(byEmail["alice@example.com"].priority, "warm", "explicit priority preserved");
   ok("default priority is cold when missing");
-  assert.equal(byEmail["bob@yahoo.com"].first_name, "Bob", "first-name fallback from full_name");
+  assert.equal(byEmail["bob@example.com"].first_name, "Bob", "first-name fallback from full_name");
   ok("first-name fallback uses existing reactivation behavior");
 }
 
@@ -113,11 +113,11 @@ assert.equal(permissionForRequest("POST", "/api/upload/consumer/confirm"), "writ
   const anon = authorizeRequest({ method: "POST", url: "/api/upload/consumer/confirm", headers: {} }, null, env);
   assert.equal(anon.ok, false, "anonymous confirm rejected");
   assert.equal(anon.status, 401, "401 without a token");
-  const owner = authorizeRequest({ method: "POST", url: "/api/upload/consumer/confirm", headers: { authorization: "Bearer " + ownerToken } }, null, env);
-  assert.equal(owner.ok, true, "owner token accepted");
+  const owner = authorizeRequest({ method: "POST", url: "/api/upload/consumer/confirm", headers:{}, authenticatedActor:{ id:"synthetic-session", role:"owner", authenticated:true, session:{ id:"synthetic-session" } } }, null, env);
+  assert.equal(owner.ok, true, "owner session accepted");
   assert.equal(owner.actor.role, "owner");
 }
-ok("confirm + preview require auth/owner (write); anonymous rejected, owner accepted");
+ok("confirm + preview require auth/owner (write); anonymous rejected, owner session accepted");
 
 // ---- 8. No send function is called --------------------------------------------
 {
@@ -163,9 +163,9 @@ ok("confirm + preview require auth/owner (write); anonymous rejected, owner acce
   // Pre-existing contact carrying live signal + first-seen provenance, plus a real suppression
   // ledger entry (so suppressed_at_import recomputes truthy). A re-import must refresh provenance
   // ONLY and leave all send/signal/suppression state intact. (alice already exists in conf.state.)
-  const aliceId = conf.state.reactivationContacts.find((c) => c.email === "alice@gmail.com").contact_id;
+  const aliceId = conf.state.reactivationContacts.find((c) => c.email === "alice@example.com").contact_id;
   const seeded = {
-    outreachSuppressions: [{ id: "supp-1", contact_id: aliceId, email: "alice@gmail.com", reason: "unsubscribed", source: "test" }],
+    outreachSuppressions: [{ id: "supp-1", contact_id: aliceId, email: "alice@example.com", reason: "unsubscribed", source: "test" }],
     reactivationContacts: conf.state.reactivationContacts.map((c) => c.contact_id === aliceId
       ? { ...c, enrolled_at: "2026-01-01T00:00:00Z", sequence_status: "Paused", replied: true, clicked: true,
           converted: true, unsubscribed: true, bounced: true, complained: true, do_not_contact: true,
@@ -245,11 +245,11 @@ ok("confirm + preview require auth/owner (write); anonymous rejected, owner acce
 
 // ---- 16. Existing enrolled contact is NOT force-held on re-import --------------
 {
-  const aliceId = conf.state.reactivationContacts.find((c) => c.email === "alice@gmail.com").contact_id;
+  const aliceId = conf.state.reactivationContacts.find((c) => c.email === "alice@example.com").contact_id;
   // Pre-existing, enrolled, NOT held (e.g. a live campaign contact).
   const live = {
     reactivationContacts: [{
-      contact_id: aliceId, email: "alice@gmail.com", wave: 1, enrolled_at: "2026-02-01T00:00:00Z",
+      contact_id: aliceId, email: "alice@example.com", wave: 1, enrolled_at: "2026-02-01T00:00:00Z",
       sequence_status: "Enrolled", campaign_id: "mvp-reactivation"
     }]
   };

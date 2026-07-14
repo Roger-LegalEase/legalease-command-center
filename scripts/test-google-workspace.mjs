@@ -15,7 +15,7 @@ const gmailEvent = {
   summary: "Can you send the pilot proposal and data room link?",
   relatedEntityType: "partner",
   relatedEntityId: "partner-goodwill",
-  rawPayload: { from: "person@goodwill.org", threadId: "thread-1" },
+  rawPayload: { from: "person@example.com", threadId: "thread-1" },
   receivedAt: "2026-05-26T12:00:00.000Z"
 };
 
@@ -74,7 +74,7 @@ for (const forbidden of [
   "Can you send the pilot proposal",
   "Discuss LegalEase traction",
   "Customer says the product promised",
-  "person@goodwill.org"
+  "person@example.com"
 ]) {
   assert.equal(outputsJson.includes(forbidden), false, `Google workspace draft outputs should not persist ${forbidden}`);
 }

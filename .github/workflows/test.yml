@@ -1,7 +1,3 @@
-# The canonical gate, automated. Until 2026-07-08 this repo had NO CI — the gate was a human
-# running `npm run check && npm test` in a clean worktree before every merge (a dirty checkout
-# with .env.local leaks env into spawned test servers and 401s the auth suites; CI's clean
-# environment matches the clean-worktree behavior by construction).
 name: test
 
 on:
@@ -9,16 +5,81 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
+env:
+  NODE_ENV: test
+  COMMAND_CENTER_TEST_MODE: "true"
+  SKIP_ENV_LOCAL_FILE: "true"
+  STORAGE_BACKEND: json
+  LOCAL_DEMO_MODE: "true"
+  COMMAND_CENTER_ALLOW_JSON: "true"
+  ENABLE_LIVE_LINKEDIN_POSTING: "false"
+  ENABLE_LIVE_FACEBOOK_POSTING: "false"
+  ENABLE_LIVE_INSTAGRAM_POSTING: "false"
+  ENABLE_LIVE_X_POSTING: "false"
+  ENABLE_LIVE_THREADS_POSTING: "false"
+  ENABLE_LIVE_TIKTOK_POSTING: "false"
+  REACTIVATION_LIVE_SEND: "false"
+  OUTREACH_LIVE_SEND: "false"
+  ALERT_EMAIL_LIVE_SEND: "false"
+  PROSPECT_LIVE_DISCOVERY: "false"
+  ALLOW_LOCAL_IMAGE_FALLBACK: "false"
+  SENDGRID_WEBHOOK_ENABLED: "false"
+  PRODUCT_EVENT_WEBHOOK_ENABLED: "false"
+
 jobs:
-  gate:
+  check:
+    runs-on: ubuntu-latest
+    steps: &setup
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run check
+
+  canonical:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
+        with: { node-version: 24, cache: npm }
       - run: npm ci
-      - run: npm run check
       - run: npm test
+
+  extended:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run test:extended
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run test:security-hardening
+      - run: npm run test:concurrency
+      - run: npm run test:rbac-canary
+
+  privacy-and-migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run security:scanner:test
+      - run: npm run secret:scan
+      - run: npm run pii:scan
+      - run: npm run migrations:validate
+      - run: npm run restore:drill

@@ -129,7 +129,7 @@ function registryWith(spy, outreachSpy, claims = memClaims()) {
 function compliantMessage() {
   const touch = getReactivationTouch("logged_in", 1);
   return assembleCompliantMessage({
-    contact: { email: "alice@gmail.com", first_name: "Alice", contact_id: "react-alice" },
+    contact: { email: "alice@example.com", first_name: "Alice", contact_id: "react-alice" },
     org: {},
     step: { ...touch, campaign_id: "mvp-reactivation", classification: "" },
     config: { ...reactivationMessageConfig({}, { sequenceId: "logged_in", touchNumber: 1 }), publicBaseUrl: PROD_BASE },

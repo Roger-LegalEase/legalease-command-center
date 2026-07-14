@@ -14,10 +14,10 @@ function functionBlock(name) {
   return next > 0 ? rest.slice(0, next + 1) : rest;
 }
 
-const production = functionBlock("productionWorkspaceHtml");
 const queue = functionBlock("linkedinApprovalQueueHtml");
 
-assert(production.includes("LinkedIn Approval Queue"), "Production should render LinkedIn Approval Queue");
+assert(source.includes('safeRenderModule("production-linkedin-queue"'), "Production must wire the LinkedIn Approval Queue deep link.");
+assert(source.includes('linkedin:"production-linkedin-queue"'), "The LinkedIn queue alias must resolve.");
 assert(queue.includes("Show which posts are ready for LinkedIn review."), "LinkedIn Approval Queue should explain its purpose");
 
 for (const required of [

@@ -53,8 +53,8 @@ function completePartnerDetails(state) {
       organization_type: "nonprofit",
       primaryContact: "Reviewed RCAP Contact",
       primary_contact_name: "Reviewed RCAP Contact",
-      email: "review-required@example.invalid",
-      primary_contact_email: "review-required@example.invalid",
+      email: "review-required@example.com",
+      primary_contact_email: "review-required@example.com",
       website: "https://review-required.example.invalid",
       stakeholders: ["Reviewed approval authority"]
     } : partner),

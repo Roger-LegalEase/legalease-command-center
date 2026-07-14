@@ -23,19 +23,19 @@ const NOW = "2026-07-01T00:00:00Z";
 
 // Build a state: two synced held contacts (ab, co), one held+enrolled (edge), one non-held plain.
 const synced = confirmExpungementSync({}, [
-  { email: "ab@gmail.com", first_name: "Ann", screening_status: "abandoned", state: "PA" },
-  { email: "co@yahoo.com", first_name: "Cal", checkout_status: "abandoned" }
+  { email: "ab@example.com", first_name: "Ann", screening_status: "abandoned", state: "PA" },
+  { email: "co@example.com", first_name: "Cal", checkout_status: "abandoned" }
 ], { sourceNote: "x", now: "2026-06-30T00:00:00Z" });
-const AB = contactIdForEmail("ab@gmail.com");
-const CO = contactIdForEmail("co@yahoo.com");
+const AB = contactIdForEmail("ab@example.com");
+const CO = contactIdForEmail("co@example.com");
 const BASE_STATE = {
   ...synced.state,
   reactivationContacts: [
     ...synced.state.reactivationContacts,
     // held AND enrolled (must be rejected by the enrolled guard)
-    { contact_id: "held-enrolled", email: "he@gmail.com", campaign_hold: true, enrolled_at: NOW, sequence_status: "Enrolled", wave: 1, campaign_id: "mvp-reactivation" },
+    { contact_id: "held-enrolled", email: "he@example.com", campaign_hold: true, enrolled_at: NOW, sequence_status: "Enrolled", wave: 1, campaign_id: "mvp-reactivation" },
     // not held
-    { contact_id: "plain", email: "plain@gmail.com", campaign_id: "mvp-reactivation" }
+    { contact_id: "plain", email: "plain@example.com", campaign_id: "mvp-reactivation" }
   ]
 };
 
@@ -46,7 +46,7 @@ assert.equal(permissionForRequest("POST", "/api/contacts/held-review/disposition
   const anon = authorizeRequest({ method: "POST", url: "/api/contacts/held-review/disposition", headers: {} }, null, env);
   assert.equal(anon.ok, false);
   assert.equal(anon.status, 401, "anonymous disposition rejected");
-  const owner = authorizeRequest({ method: "POST", url: "/api/contacts/held-review/disposition", headers: { authorization: "Bearer " + "x".repeat(20) } }, null, env);
+  const owner = authorizeRequest({ method: "POST", url: "/api/contacts/held-review/disposition", headers:{}, authenticatedActor:{ id:"synthetic-session", role:"owner", authenticated:true, session:{ id:"synthetic-session" } } }, null, env);
   assert.equal(owner.ok, true);
   assert.equal(owner.actor.role, "owner");
 }
@@ -100,7 +100,7 @@ ok("disposition endpoint requires owner/admin; anonymous rejected");
   assert.equal(co.import_status, "suppressed");
   assert.ok(!co.enrolled_at && co.wave === null, "not enrolled, no wave");
   assert.ok((r.state.outreachSuppressions || []).some((s) => /co@yahoo/.test(s.email)), "sticky suppression written");
-  assert.ok(r.state.expungementLifecycleContacts.some((c) => c.email === "co@yahoo.com"), "lifecycle record preserved");
+  assert.ok(r.state.expungementLifecycleContacts.some((c) => c.email === "co@example.com"), "lifecycle record preserved");
   // No attempts; planReactivation never proposes the suppressed contact even if forced due.
   const forced = {
     ...r.state,

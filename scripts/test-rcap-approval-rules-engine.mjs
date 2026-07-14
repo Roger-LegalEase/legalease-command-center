@@ -35,7 +35,7 @@ function baseContact(patch = {}) {
     contact_name: "Jordan Program Manager",
     title: "Program Manager",
     decision_role: "Program Manager",
-    public_email: "jordan@example.org",
+    public_email: "jordan@example.com",
     segment: "A2",
     source_confidence: "High",
     suppression_status: "Active",

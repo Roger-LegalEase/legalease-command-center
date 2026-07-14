@@ -23,15 +23,15 @@ const OPTS = { sourceNote: "test upload", fileName: "list.csv", now: NOW };
 
 const PROSPECT_CSV = [
   "Email,First Name,Organization,Website",
-  "ann@acmelegal.org,Ann,Acme Legal Aid,https://acmelegal.org",
-  "bo@waco.gov,Bo,City of Waco,waco.gov",
-  "ann@acmelegal.org,Ann,Acme Legal Aid,acmelegal.org",
+  "ann@example.com,Ann,Acme Legal Aid,https://acmelegal.org",
+  "bo@example.com,Bo,City of Waco,waco.gov",
+  "ann@example.com,Ann,Acme Legal Aid,acmelegal.org",
   ",Nobody,No Email Org,"
 ].join("\n");
 
 const SENSITIVE_CSV = [
   "email,name,ssn,date_of_birth,case_number,charge",
-  "p1@example.org,Pat,123-45-6789,1990-01-01,CR-1234,felony theft"
+  "p1@example.com,Pat,123-45-6789,1990-01-01,CR-1234,felony theft"
 ].join("\n");
 
 // ---------------------------------------------------------------------------------------------
@@ -95,20 +95,20 @@ check("preview is pure — it never writes state", () => {
 });
 
 check("preview warns when the declared type disagrees with a strong detection", () => {
-  const csv = "email,lifecycle_stage,checkout_status\na@b.org,paid,complete";
+  const csv = "email,lifecycle_stage,checkout_status\na@example.com,paid,complete";
   const preview = previewIntake({}, csv, { ...OPTS, intakeType: "support_list", fileName: "expungement-lifecycle.csv" });
   assert(preview.warnings.some((w) => /looks more like/i.test(w)), "expected a type-mismatch warning");
 });
 
 check("preview coerces a disallowed action with a plain-English note", () => {
-  const preview = previewIntake({}, "email\na@b.org", { ...OPTS, intakeType: "revenue_workbook", afterAction: "draft_outreach" });
+  const preview = previewIntake({}, "email\na@example.com", { ...OPTS, intakeType: "revenue_workbook", afterAction: "draft_outreach" });
   assert.equal(preview.afterAction, "review_only");
   assert(preview.warnings.some((w) => /not available/.test(w)));
 });
 
 check("preview requires type, source note, and content", () => {
-  assert.throws(() => previewIntake({}, "email\na@b.org", { sourceNote: "x", intakeType: "nope" }));
-  assert.throws(() => previewIntake({}, "email\na@b.org", { intakeType: "consumer" }));
+  assert.throws(() => previewIntake({}, "email\na@example.com", { sourceNote: "x", intakeType: "nope" }));
+  assert.throws(() => previewIntake({}, "email\na@example.com", { intakeType: "consumer" }));
   assert.throws(() => previewIntake({}, "", { ...OPTS, intakeType: "consumer" }));
 });
 
@@ -119,7 +119,7 @@ check("confirm add_to_contacts writes deduped contacts + organizations and an au
   assert.equal(result.counts.organizations, 2);
   assert.equal(result.state.companyContacts.length, 2);
   assert.equal(result.state.companyOrganizations.length, 2);
-  const ann = result.state.companyContacts.find((c) => c.email === "ann@acmelegal.org");
+  const ann = result.state.companyContacts.find((c) => c.email === "ann@example.com");
   assert(ann.types.includes("prospect"));
   assert.equal(result.state.companyEvents.length, 1);
   assert.equal(result.state.agentRuns.length, 1);
@@ -180,7 +180,7 @@ check("sensitive columns create a review queue item and are never imported", () 
 });
 
 check("consumer route stages contacts held through the existing reactivation import", () => {
-  const csv = "email,first_name\nnew1@example.org,Nia\nnew2@example.org,Ned";
+  const csv = "email,first_name\nnew1@example.com,Nia\nnew2@example.com,Ned";
   const result = confirmIntake({}, csv, { ...OPTS, intakeType: "consumer", fileName: "reactivation.csv" });
   assert.equal(result.counts.staged, 2);
   assert.equal(result.counts.held, 2);
@@ -196,8 +196,8 @@ check("consumer route stages contacts held through the existing reactivation imp
 check("expungement route stages lifecycle contacts always held, suppressed people excluded", () => {
   const csv = [
     "email,first_name,lifecycle_stage,unsubscribed",
-    "go@example.org,Gia,checkout_abandoned,",
-    "no@example.org,Non,checkout_abandoned,true"
+    "go@example.com,Gia,checkout_abandoned,",
+    "no@example.com,Non,checkout_abandoned,true"
   ].join("\n");
   const result = confirmIntake({}, csv, { ...OPTS, intakeType: "expungement_lifecycle", fileName: "lifecycle.csv" });
   assert.equal(result.counts.added, 2, "both lifecycle contacts recorded");
@@ -211,8 +211,8 @@ check("NO send machinery is ever touched by any intake action", () => {
   for (const [type, def] of Object.entries(INTAKE_TYPES)) {
     for (const action of def.actions) {
       const csv = type === "expungement_lifecycle"
-        ? "email,lifecycle_stage\nx@example.org,paid"
-        : "email,name,organization\nx@example.org,Xa,Org Inc";
+        ? "email,lifecycle_stage\nx@example.com,paid"
+        : "email,name,organization\nx@example.com,Xa,Org Inc";
       const result = confirmIntake({}, csv, { ...OPTS, intakeType: type, afterAction: action });
       for (const col of sendCollections) {
         assert.equal(result.state[col], undefined, `${type}/${action} touched ${col}`);
@@ -272,7 +272,7 @@ check("suppress writes the authoritative suppression ledger, not just Company Me
   const ledger = result.state.outreachSuppressions || [];
   assert.equal(ledger.length, 2, "each suppressed person lands in outreachSuppressions");
   const emails = ledger.map((s) => s.email).sort();
-  assert.deepEqual(emails, ["ann@acmelegal.org", "bo@waco.gov"]);
+  assert.deepEqual(emails, ["ann@example.com", "bo@example.com"]);
   for (const s of ledger) assert.equal(s.source, "list_intake");
 });
 
@@ -292,15 +292,15 @@ check("Stripe-style charge columns do not trip the criminal-record warning", () 
 });
 
 check("sensitive values never transit the consumer preview sample rows", () => {
-  const csv = "email,first_name,ssn\nc1@example.org,Cy,123-45-6789";
+  const csv = "email,first_name,ssn\nc1@example.com,Cy,123-45-6789";
   const preview = previewIntake({}, csv, { ...OPTS, intakeType: "consumer", afterAction: "hold_for_campaign" });
   const dump = JSON.stringify(preview);
   assert(!dump.includes("123-45-6789"), "raw SSN leaked into the preview response");
 });
 
 check("contact ids stay canonical with Company Memory", () => {
-  const result = confirmIntake({}, "email,name\nsame@example.org,Sam", { ...OPTS, intakeType: "partner_contacts", afterAction: "add_to_contacts" });
-  assert.equal(result.state.companyContacts[0].contact_id, companyContactId("same@example.org"));
+  const result = confirmIntake({}, "email,name\nsame@example.com,Sam", { ...OPTS, intakeType: "partner_contacts", afterAction: "add_to_contacts" });
+  assert.equal(result.state.companyContacts[0].contact_id, companyContactId("same@example.com"));
 });
 
 console.log(`\nAll ${passed} intake checks passed.`);

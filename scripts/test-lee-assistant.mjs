@@ -26,7 +26,7 @@ const state = {
     { id: "partner-saad", name: "Saad Rahman", stage: "proposal_sent", nextAction: "Wait for reply", updatedAt: "2026-07-10T00:00:00Z" },
     { id: "partner-fulton", name: "Fulton County", stage: "active", nextAction: "Kickoff", updatedAt: "2026-07-01T00:00:00Z" }
   ],
-  growthInbox: [{ id: "gi-1", summary: "Contact celia@example.com called +1 (555) 123-4567 about RCAP", status: "new" }],
+  growthInbox: [{ id: "gi-1", summary: "Contact celia@example.com called (202) 555-0100 about RCAP", status: "new" }],
   automationSuggestions: [],
   activityEvents: [{ id: "ev-1", title: "Wave 2 released", createdAt: "2026-07-10T00:00:00Z" }],
   leeThreads: [{ id: "lee-main-thread", title: "Le-E conversation", createdAt: "2026-07-01T00:00:00Z", updatedAt: "2026-07-01T00:00:00Z" }],
@@ -69,7 +69,7 @@ const state = {
   assert.ok(digest.includes("[email]"), "email placeholder present");
   const small = buildLeeStateDigest(state, { now, maxChars: 200 });
   assert.ok(small.length <= 240 && small.includes("truncated"), "digest hard-caps at maxChars");
-  assert.equal(scrubPii("mail roger@x.co now"), "mail [email] now");
+  assert.equal(scrubPii("mail roger@example.com now"), "mail [email] now");
 }
 
 // ---- cross-session recall ------------------------------------------------------------------------
