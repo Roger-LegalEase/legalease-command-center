@@ -88,7 +88,7 @@ const PIPELINE_STATE = {
   assert.ok(quiet, "pipeline counterpart quiet 6 days after my reply");
   assert.match(quiet.summary, /went quiet after your reply - 6 days\./);
   assert.deepEqual(quiet.pipelineMatch, { collection: "outreachContacts", itemId: "oc-1", matchedBy: "address" });
-  const notPipeline = classifyInboxThreads([thread({ threadId: "t-q2", messages: [inbound({ fromEmail: "stranger@example.com", at: daysAgo(8) }), outbound({ at: daysAgo(6) })] })], { state: PIPELINE_STATE, now: NOW }).signals;
+  const notPipeline = classifyInboxThreads([thread({ threadId: "t-q2", messages: [inbound({ fromEmail: "stranger@example.net", at: daysAgo(8) }), outbound({ at: daysAgo(6) })] })], { state: PIPELINE_STATE, now: NOW }).signals;
   assert.ok(!notPipeline.some((s) => s.kind === "went_quiet"), "non-pipeline silence is not a signal");
   ok("went_quiet: pipeline-only, with the record pointer for deep links");
 }

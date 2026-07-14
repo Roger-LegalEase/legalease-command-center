@@ -105,7 +105,7 @@ check("outreach lanes never leak message bodies, unsubscribe links, or env-var n
   assert(!/https?:\/\//i.test(serialized), "no URLs in the lane view");
   assert(!serialized.includes("<p>"), "no message html");
   assert(!serialized.includes("SENDGRID_API_KEY") && !serialized.includes("OUTREACH_LIVE_SEND"), "no secret env-var names");
-  assert(serialized.includes("d***@legalaidexample.org"), "recipient is masked");
+  assert(serialized.includes("d***@example.com"), "synthetic recipient is masked");
 });
 
 // ---- held-for-review preview + confirm ---------------------------------------------------------

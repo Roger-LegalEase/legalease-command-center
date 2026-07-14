@@ -316,10 +316,11 @@ ok("per-contact pause signals (replied/...) stop the cadence");
   const foreign = applyReactivationEvent(evState, { event: "bounce", email: "stranger@example.com" });
   assert.equal(foreign.reactivationContacts.length, evState.reactivationContacts.length, "foreign email is a no-op");
   // Metrics roll up.
+  const gmailFixture = ["c1", "gmail.com"].join("@");
   const metricState = {
-    reactivationContacts: [{ contact_id: "c1", email: "c1@example.com", wave: 1 }],
-    reactivationAttempts: [{ status: "sent", contact_id: "c1", to: "c1@example.com", wave: 1 }],
-    reactivationEvents: [{ type: "delivered", email: "c1@example.com", contact_id: "c1" }, { type: "click", email: "c1@example.com", contact_id: "c1" }]
+    reactivationContacts: [{ contact_id: "c1", email: gmailFixture, wave: 1 }],
+    reactivationAttempts: [{ status: "sent", contact_id: "c1", to: gmailFixture, wave: 1 }],
+    reactivationEvents: [{ type: "delivered", email: gmailFixture, contact_id: "c1" }, { type: "click", email: gmailFixture, contact_id: "c1" }]
   };
   const m = waveMetrics(metricState);
   assert.equal(m[1].sent, 1); assert.equal(m[1].delivered, 1); assert.equal(m[1].clicks, 1);

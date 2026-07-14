@@ -456,8 +456,9 @@ check("legacy/unattributed prior sends surface when totals exceed the wave displ
       { contact_id: "cx", email: "x@example.com", wave: null }
     ],
     reactivationAttempts: [
-      { id: "a1", contact_id: "cx", to: "x@example.com", status: "sent", sent_date: "2026-06-30", created_at: "2026-06-30T15:00:00Z" },
-      { id: "a2", contact_id: "c1", to: "a@example.com", status: "sent", sent_date: "2026-06-30", created_at: "2026-06-30T15:00:00Z" }
+      // Undated legacy rows are deliberately counted inside the safety window (fail-safe).
+      { id: "a1", contact_id: "cx", to: "x@example.com", status: "sent" },
+      { id: "a2", contact_id: "c1", to: "a@example.com", status: "sent" }
     ]
   });
   const view = buildCampaignCommandView(state, { env: ENV, now: new Date(NOW) });
