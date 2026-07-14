@@ -41,7 +41,14 @@ const table = new Map(); // key: collection + "\0" + item_id -> row
 let stamp = 0;
 const nextStamp = () => new Date(Date.UTC(2026, 6, 12, 0, 0, 0, (stamp += 1))).toISOString();
 function upsertRow(collection, itemId, payload) {
-  table.set(collection + "\0" + itemId, { collection, item_id: itemId, payload, updated_at: nextStamp() });
+  const current = table.get(collection + "\0" + itemId);
+  table.set(collection + "\0" + itemId, {
+    collection,
+    item_id: itemId,
+    payload,
+    version: Number(current?.version || 0) + 1,
+    updated_at: nextStamp()
+  });
 }
 const counters = { sweeps: 0, probes: 0, reconciles: 0, lastReconcileUrl: "" };
 function tableRows() {
@@ -64,10 +71,16 @@ globalThis.fetch = async (url, options = {}) => {
     const newest = rows.reduce((max, row) => (row.updated_at > max ? row.updated_at : max), "");
     return respond(newest ? [{ updated_at: newest }] : [], 200, rows);
   }
-  if (method === "GET" && u.includes("select=collection,item_id,payload,updated_at")) {
+  if (method === "GET" && u.includes("select=collection,item_id,payload,version,updated_at")) {
     if (u.includes("offset=0")) counters.sweeps += 1;
     const rows = tableRows();
     return respond(u.includes("offset=0") ? rows : [], 200, rows);
+  }
+  if (method === "GET" && u.includes("select=collection,item_id,payload,version&collection=eq.")) {
+    const collection = (u.match(/collection=eq\.([^&]+)/) || [])[1];
+    const itemId = (u.match(/item_id=eq\.([^&]+)/) || [])[1];
+    const row = collection && itemId ? table.get(collection + "\0" + itemId) : null;
+    return respond(row ? [row] : []);
   }
   if (method === "GET" && u.includes("select=collection,item_id")) {
     counters.reconciles += 1;
@@ -77,6 +90,58 @@ globalThis.fetch = async (url, options = {}) => {
     const rows = tableRows().filter((row) => !allowed || allowed.has(row.collection));
     return respond(rows.map(({ collection, item_id }) => ({ collection, item_id })), 200, rows);
   }
+  if (method === "POST" && u.includes("rpc/leos_apply_core_mutations")) {
+    const body = JSON.parse(options.body || "{}");
+    for (const mutation of body.p_mutations || []) {
+      const key = mutation.collection + "\0" + mutation.item_id;
+      const current = table.get(key);
+      if (mutation.operation === "delete") {
+        table.delete(key);
+      } else {
+        table.set(key, {
+          collection: mutation.collection,
+          item_id: mutation.item_id,
+          payload: mutation.payload,
+          version: Number(current?.version || 0) + 1,
+          updated_at: nextStamp()
+        });
+      }
+    }
+    return respond({ applied: (body.p_mutations || []).length });
+  }
+  if (method === "POST" && u.includes("rpc/leos_upsert_record_cas")) {
+    const body = JSON.parse(options.body || "{}");
+    const key = body.p_collection + "\0" + body.p_item_id;
+    const current = table.get(key);
+    const row = {
+      collection: body.p_collection,
+      item_id: body.p_item_id,
+      payload: body.p_payload,
+      version: Number(current?.version || 0) + 1,
+      updated_at: nextStamp()
+    };
+    table.set(key, row);
+    return respond([row]);
+  }
+  if (method === "POST" && u.includes("rpc/leos_append_audit_event")) {
+    const body = JSON.parse(options.body || "{}");
+    const event = body.p_event;
+    upsertRow("auditEvents", event.id, event);
+    return respond([{ ...event, _version: 1 }]);
+  }
+  if (method === "POST" && u.includes("rpc/leos_claim_social_publish")) {
+    const body = JSON.parse(options.body || "{}");
+    const postKey = "posts\0" + body.p_post_id;
+    const post = table.get(postKey);
+    table.set(postKey, {
+      ...post,
+      payload: { ...post.payload, status: "publish_claimed", publishingStatus: "publish_claimed" },
+      version: Number(post.version || 0) + 1,
+      updated_at: nextStamp()
+    });
+    upsertRow("publishClaims", body.p_claim.id, body.p_claim);
+    return respond([{ claimed: true }]);
+  }
   if (method === "POST" && u.includes("on_conflict")) {
     const body = Array.isArray(options.body) ? options.body : JSON.parse(options.body || "[]");
     const ignoreDuplicates = String(options.headers?.prefer || "").includes("ignore-duplicates");
@@ -84,7 +149,7 @@ globalThis.fetch = async (url, options = {}) => {
     for (const row of body) {
       const key = row.collection + "\0" + row.item_id;
       if (ignoreDuplicates && table.has(key)) continue;
-      table.set(key, { ...row, updated_at: nextStamp() });
+      table.set(key, { ...row, version: Number(row.version || 1), updated_at: nextStamp() });
       won.push({ item_id: row.item_id });
     }
     return respond(won, 201);
@@ -99,7 +164,7 @@ globalThis.fetch = async (url, options = {}) => {
 };
 
 const store = new SupabaseCoreStore({ posts: [], library: [], settings: {} });
-upsertRow("posts", "p-1", { id: "p-1", title: "one" });
+upsertRow("posts", "p-1", { id: "p-1", title: "one", status: "approved" });
 
 // ---- 1. burst path: reads between writes share one graph, zero extra round-trips -----------
 {
@@ -125,8 +190,21 @@ const MUTATOR_CASES = [
     (st) => st.posts.some((p) => p.id === "p-ws")],
   ["writeStateNow", (s) => s.writeStateNow({ posts: [{ id: "p-wsn", title: "wsn" }] }),
     (st) => st.posts.some((p) => p.id === "p-wsn")],
+  ["writeChanges", async (s) => {
+    const before = await s.readState();
+    return s.writeChanges(before, { ...before, posts: [...before.posts, { id: "p-wch", title: "wch" }] });
+  }, (st) => st.posts.some((p) => p.id === "p-wch")],
   ["claimCollectionItems", (s) => s.claimCollectionItems("outreachSendClaims", [{ id: "claim-coherence-1" }]),
     (st) => (st.outreachSendClaims || []).some((c) => c.id === "claim-coherence-1")],
+  ["mutateCollectionItem", (s) => s.mutateCollectionItem("posts", "p-mut", () => ({ id: "p-mut", title: "mut" }), { createIfMissing: true }),
+    (st) => st.posts.some((p) => p.id === "p-mut")],
+  ["appendAuditEvent", (s) => s.appendAuditEvent({ id: "audit-coherence-1", action: "cache verifier" }),
+    (st) => (st.auditEvents || []).some((event) => event.id === "audit-coherence-1")],
+  ["claimSocialPublish", async (s) => {
+    const before = await s.readState();
+    const post = before.posts.find((item) => item.id === "p-1");
+    return s.claimSocialPublish({ postId: post.id, expectedVersion: post._version, claim: { id: "publish-claim-coherence-1" } });
+  }, (st) => (st.publishClaims || []).some((claim) => claim.id === "publish-claim-coherence-1")],
   ["generatePosts", (s) => s.generatePosts([{ id: "p-gen", title: "gen" }]),
     (st) => st.posts.some((p) => p.id === "p-gen")],
   ["updatePost", (s) => s.updatePost("p-gen", { title: "gen-updated" }),
@@ -165,7 +243,7 @@ for (const [name, mutate, reflected] of MUTATOR_CASES) {
   await store.readState();
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: false, status: 500, headers: { get: () => "" }, json: async () => ({}), text: async () => "boom" });
-  await assert.rejects(() => store.writeCollections({ posts: [] }));
+  await assert.rejects(() => store.writeCollections({ posts: [{ id: "p-failed", title: "failed write probe" }] }));
   globalThis.fetch = realFetch;
   counters.sweeps = 0;
   await store.readState();
@@ -229,17 +307,19 @@ for (const [name, mutate, reflected] of MUTATOR_CASES) {
   ok("STATE_CACHE_TTL_MS=0 is a full kill switch");
 }
 
-// ---- 8. orphan reconcile is scoped to written collections + orphans actually deleted --------
+// ---- 8. explicit record diffs delete only records removed by the caller's before/after pair ---
 {
-  await store.writeCollections({ posts: [{ id: "p-only", title: "sole survivor" }] });
-  assert.ok(counters.lastReconcileUrl.includes("collection=in.(posts)"),
-    "reconcile fetch must be scoped to the collections present in the write");
+  const before = await store.readState();
+  const afterSnapshot = { ...before, posts: [{ id: "p-only", title: "sole survivor" }] };
+  counters.reconciles = 0;
+  await store.writeChanges(before, afterSnapshot);
+  assert.equal(counters.reconciles, 0, "record-diff writes do not perform broad reconciliation reads");
   const after = await store.readState();
   const ids = after.posts.map((p) => p.id);
-  assert.deepEqual(ids, ["p-only"], "orphan rows of the written collection are reconciled away");
+  assert.deepEqual(ids, ["p-only"], "records explicitly removed from the posts snapshot are deleted");
   assert.ok((after.outreachSendClaims || []).some((c) => c.id === "claim-coherence-1"),
-    "append-only ledgers and unwritten collections survive untouched");
-  ok("write reconcile: scoped to written collections, orphans removed, others untouched");
+    "append-only ledgers and unchanged collections survive untouched");
+  ok("explicit record diff: selected records deleted, unchanged collections untouched");
 }
 
 // ---- 9. structural: no caller bypasses readState() to reach the raw fetch -------------------
