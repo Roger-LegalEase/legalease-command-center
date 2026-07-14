@@ -58,7 +58,7 @@ set search_path = public
 as $$
 declare mutation jsonb; current_version bigint; affected integer := 0;
 begin
-  if jsonb_typeof(p_mutations) <> 'array' or jsonb_array_length(p_mutations) > 1000 then
+  if jsonb_typeof(p_mutations) <> 'array' or jsonb_array_length(p_mutations) > 20000 then
     raise exception using errcode = '22023', message = 'invalid mutation batch';
   end if;
   if exists (

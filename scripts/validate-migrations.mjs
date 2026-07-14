@@ -16,4 +16,6 @@ for (const name of files) {
   await readFile(recovery, "utf8");
 }
 for (const required of ["version bigint", "leos_apply_core_mutations", "leos_upsert_record_cas", "leos_social_publish_claims", "leos_claim_social_publish", "leos_audit_events", "leos_audit_events_immutable", "leos_append_audit_event"]) assert(combined.includes(required), required);
+const mutationLimit = Number(combined.match(/jsonb_array_length\(p_mutations\)\s*>\s*(\d+)/i)?.[1] || 0);
+assert(mutationLimit >= 5000, "Atomic mutation batches must cover the verified multi-thousand-record collections.");
 console.log(`migration validation passed (${files.length} migration)`);
