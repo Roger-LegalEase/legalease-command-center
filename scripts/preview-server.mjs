@@ -1000,10 +1000,10 @@ function supabaseServiceRoleKeyStatus() {
   };
 }
 
-function supabaseStorageStatus() {
+function supabaseStorageStatus(bucketOverride = "") {
   const url = String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
   const serviceRoleKey = supabaseServiceRoleKeyStatus();
-  const bucket = supabaseStorageBucket();
+  const bucket = String(bucketOverride || supabaseStorageBucket()).trim();
   return {
     configured: Boolean(url && serviceRoleKey.present && bucket),
     urlPresent: Boolean(url),
@@ -1051,7 +1051,7 @@ function safeSupabaseError(error) {
 }
 
 async function supabaseStorageFetch(pathname, options = {}) {
-  const status = supabaseStorageStatus();
+  const status = supabaseStorageStatus(options.bucket);
   if (!status.configured) throw new Error(status.message);
   if (!status.serviceRoleKeyLooksUsable) throw new Error(status.message);
   const baseUrl = String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
@@ -1067,13 +1067,17 @@ async function supabaseStorageFetch(pathname, options = {}) {
         ...(options.upsert ? { "x-upsert": "true" } : {}),
         ...(options.contentType ? { "content-type": options.contentType } : {})
       },
-      body: options.body
+      body: options.body,
+      signal: options.signal || AbortSignal.timeout(30_000)
     });
   } catch (error) {
     const wrapped = new Error(error.message || "fetch failed");
     wrapped.cause = error.cause;
     wrapped.storageSafeMessage = safeSupabaseError(error);
     throw wrapped;
+  }
+  if (options.binary && response.ok) {
+    return { ok:true, status:response.status, data:Buffer.from(await response.arrayBuffer()) };
   }
   const text = await response.text();
   let data = null;
@@ -1093,7 +1097,7 @@ async function supabaseStorageFetch(pathname, options = {}) {
         : "SUPABASE_SERVICE_ROLE_KEY is not a valid Supabase service_role JWT.";
     }
     if (response.status === 404 || lowered.includes("not found") || lowered.includes("does not exist")) {
-      safeMessage = `Bucket ${supabaseStorageBucket()} does not exist.`;
+      safeMessage = `Bucket ${status.bucket} does not exist.`;
     }
     const error = new Error(safeMessage);
     error.status = response.status;
@@ -8520,18 +8524,57 @@ async function saveDebugOpenAIImage(imageUrl = "") {
 
 async function saveOpenAIGeneratedPostImage(postId = "", imageUrl = "") {
   if (!String(imageUrl || "").startsWith("data:image/png;base64,")) return null;
-  const outputDir = path.resolve(process.cwd(), "data/private/draft-assets");
-  await mkdir(outputDir, { recursive: true });
   const filename = `${crypto.randomUUID()}.png`;
-  const filePath = path.join(outputDir, filename);
   const buffer = Buffer.from(imageUrl.split(",")[1] || "", "base64");
+  return persistPrivateDraftAsset(filename, buffer, "image/png");
+}
+
+function privateDraftStorageBucket() {
+  return String(process.env.SOCIAL_DRAFT_ASSETS_BUCKET || "").trim();
+}
+
+function privateDraftObjectPath(assetPath = "") {
+  const normalized = normalizePrivateAssetPath(assetPath);
+  return normalized ? normalized.slice("data/private/".length) : "";
+}
+
+function encodedStorageObjectPath(objectPath = "") {
+  return String(objectPath).split("/").map((part) => encodeURIComponent(part)).join("/");
+}
+
+async function persistPrivateDraftAsset(filename, buffer, contentType) {
+  const privateAssetPath = `data/private/draft-assets/${filename}`;
+  if (isHostedProduction(process.env)) {
+    const bucket = privateDraftStorageBucket();
+    const objectPath = privateDraftObjectPath(privateAssetPath);
+    if (!bucket || !objectPath) throw new Error("Private draft storage is unavailable.");
+    await supabaseStorageFetch(`object/${encodeURIComponent(bucket)}/${encodedStorageObjectPath(objectPath)}`, {
+      method:"PUT",
+      body:buffer,
+      contentType,
+      upsert:false,
+      bucket
+    });
+    return { filePath:"", privateAssetPath, storageBucket:bucket, storageObjectPath:objectPath, filename, size:buffer.length };
+  }
+  const outputDir = path.resolve(process.cwd(), "data/private/draft-assets");
+  await mkdir(outputDir, { recursive:true });
+  const filePath = path.join(outputDir, filename);
   await writeFile(filePath, buffer);
-  return {
-    filePath,
-    privateAssetPath: `data/private/draft-assets/${filename}`,
-    filename,
-    size: buffer.length
-  };
+  return { filePath, privateAssetPath, filename, size:buffer.length };
+}
+
+async function readPrivateDraftAsset(assetPath = "") {
+  const normalized = normalizePrivateAssetPath(assetPath);
+  if (!normalized) throw new Error("Private asset is unavailable.");
+  if (isHostedProduction(process.env)) {
+    const bucket = privateDraftStorageBucket();
+    const objectPath = privateDraftObjectPath(normalized);
+    if (!bucket || !objectPath) throw new Error("Private draft storage is unavailable.");
+    const result = await supabaseStorageFetch(`object/${encodeURIComponent(bucket)}/${encodedStorageObjectPath(objectPath)}`, { binary:true, bucket });
+    return result.data;
+  }
+  return readFile(new URL(normalized, assetRoot));
 }
 
 async function serveAsset(pathname, response) {
@@ -11100,20 +11143,19 @@ async function saveUploadedPostImage(request) {
   const previous = (state.postImages || []).filter((image) => image.postId === postId);
   const versionNumber = previous.length + 1;
   const extension = detectedType.replace("jpeg", "jpg");
-  const uploadDir = new URL("data/private/draft-assets/", assetRoot);
-  await mkdir(uploadDir, { recursive: true });
   const safeName = `${crypto.randomUUID()}.${extension}`;
-  const uploadUrl = new URL(safeName, uploadDir);
-  await writeFile(uploadUrl, file.buffer);
+  const storedDraft = await persistPrivateDraftAsset(safeName, file.buffer, file.mimeType);
   const image = {
     id: crypto.randomUUID(),
     postId,
     imageUrl: "",
-    privateAssetPath: `data/private/draft-assets/${safeName}`,
+    privateAssetPath: storedDraft.privateAssetPath,
     imagePrompt: "",
     promptSummary: "Human-uploaded image. This visual overrides generated image output for the queue item.",
     assetBundleUsed: {
-      uploadPath: `data/private/draft-assets/${safeName}`,
+      uploadPath: storedDraft.privateAssetPath,
+      storageBucket: storedDraft.storageBucket || "",
+      storageObjectPath: storedDraft.storageObjectPath || "",
       uploadedBy: "human",
       watermark: {
         position: "none",
@@ -35041,7 +35083,7 @@ async function handleRequest(request, response) {
       sendJson(response, { error: "Asset is unavailable." }, 404);
       return;
     }
-    const body = await readFile(new URL(verified.assetPath, assetRoot));
+    const body = await readPrivateDraftAsset(verified.assetPath);
     const type = imageTypeFromSignature(body);
     if (!type) {
       sendJson(response, { error: "Asset is unavailable." }, 404);
@@ -36598,10 +36640,10 @@ async function handleRequest(request, response) {
     return;
   }
 
-  // SendGrid event webhook — PUBLIC. Signature verification is ENFORCED when
-  // SENDGRID_WEBHOOK_PUBLIC_KEY is configured (fail closed); otherwise batches process but are
-  // counted "unverified" in health telemetry. Records bounces/unsubscribes into the suppression
-  // ledger and reactivation events into the campaign ledger, then writes back ONLY the touched
+  // SendGrid event webhook — PUBLIC. A configured SENDGRID_WEBHOOK_PUBLIC_KEY and a valid,
+  // fresh signature are required; missing verification rejects the batch before processing.
+  // Records bounces/unsubscribes into the suppression ledger and reactivation events into the
+  // campaign ledger, then writes back ONLY the touched
   // collections (scoped write) — a webhook batch can never rewrite, or be broken by, unrelated
   // state. Health telemetry persists to sendgridWebhookHealth and is surfaced (with warnings) on
   // /api/reactivation/status. MUST be the -prod host URL at SendGrid.

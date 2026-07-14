@@ -1,11 +1,10 @@
 // SendGrid Event Webhook — verification, scoped event reduction, and health telemetry.
 //
 // Phase 0 trust fix (see docs/command-center-ground-truth-audit.md). Three jobs:
-//   1. SIGNATURE VERIFICATION (fail closed when configured). SendGrid signs each webhook POST
-//      with an ECDSA P-256 key ("Signed Event Webhook"). When SENDGRID_WEBHOOK_PUBLIC_KEY is
-//      set, batches with a missing/invalid signature are REJECTED before any processing. When
-//      the key is not configured we still process (backward compatible) but the health record
-//      marks every batch "unverified" so the gap stays visible instead of silently trusted.
+//   1. SIGNATURE VERIFICATION (fail closed). SendGrid signs each webhook POST
+//      with an ECDSA P-256 key ("Signed Event Webhook"). SENDGRID_WEBHOOK_PUBLIC_KEY must be
+//      configured, and batches with a missing, stale, or invalid signature are REJECTED before
+//      any processing.
 //   2. SCOPED REDUCTION. reduceSendGridEvents is a pure reducer over ONLY the collections the
 //      webhook may touch (SENDGRID_WEBHOOK_COLLECTIONS). The server writes back ONLY those
 //      collections, so a webhook batch can never rewrite — or be broken by — unrelated state
@@ -51,7 +50,7 @@ export function sendgridSignatureConfigured(env = process.env) {
 // Verify a SendGrid Signed Event Webhook batch: ECDSA P-256 / SHA-256 over (timestamp + rawBody),
 // base64 DER signature, base64 SPKI public key (exactly what the SendGrid dashboard displays).
 // Returns { checked, verified, rejected, reason }:
-//   - key not configured  -> { checked:false, verified:false, rejected:false } (process, mark unverified)
+//   - key not configured  -> { checked:false, verified:false, rejected:true } (fail closed)
 //   - key configured + ok -> { checked:true,  verified:true,  rejected:false }
 //   - key configured + bad-> { checked:true,  verified:false, rejected:true, reason } (fail closed)
 export function verifySendGridSignature({ env = process.env, rawBody = Buffer.alloc(0), signature = "", timestamp = "", now = Date.now() } = {}) {

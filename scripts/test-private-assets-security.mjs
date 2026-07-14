@@ -18,4 +18,9 @@ assert.deepEqual(requiredCapabilitiesForEndpoint("POST", "/api/posts/post-a/uplo
 assert.deepEqual(requiredCapabilitiesForEndpoint("POST", "/api/posts/batch-upload-public-images"), ["social_publish"]);
 const serverSource = await readFile(new URL("./preview-server.mjs", import.meta.url), "utf8");
 assert.match(serverSource, /status \|\| ""\)\.toLowerCase\(\) !== "approved" \|\| !post\.finalPreviewConfirmed/);
+assert.match(serverSource, /function privateDraftStorageBucket\(\)[\s\S]*SOCIAL_DRAFT_ASSETS_BUCKET/);
+assert.match(serverSource, /async function persistPrivateDraftAsset[\s\S]*isHostedProduction\(process\.env\)[\s\S]*supabaseStorageFetch/);
+assert.match(serverSource, /async function readPrivateDraftAsset[\s\S]*isHostedProduction\(process\.env\)[\s\S]*binary:true/);
+assert.match(serverSource, /const body = await readPrivateDraftAsset\(verified\.assetPath\)/);
+assert.doesNotMatch(serverSource, /const uploadUrl = new URL\(safeName, uploadDir\)/);
 console.log("private asset security tests passed");
