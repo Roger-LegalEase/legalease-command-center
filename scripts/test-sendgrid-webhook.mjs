@@ -1,7 +1,7 @@
 // SendGrid webhook hardening tests (Phase 0 trust fix). Proves:
 //  1. Signature verification: valid ECDSA P-256 signatures verify; tampered payloads are
 //     REJECTED (fail closed) when a key is configured; missing headers reject; and with NO key
-//     configured batches are processed but marked unverified — never rejected (backward compat).
+//     configured requests are rejected because verification is unavailable (fail closed).
 //  2. reduceSendGridEvents mirrors the original handler semantics: bounces suppress + ledger,
 //     unsubscribe/spamreport suppress, reactivation contacts get campaign events + pause — and
 //     the reducer touches ONLY the scoped webhook collections (never unrelated state).
@@ -42,15 +42,16 @@ function ok(name) { console.log("  ✓ " + name); passed += 1; }
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const publicKeyB64 = publicKey.export({ format: "der", type: "spki" }).toString("base64");
   const rawBody = JSON.stringify([{ event: "delivered", email: "a@example.com" }]);
-  const timestamp = "1751900000";
+  const now = Date.now();
+  const timestamp = String(Math.floor(now / 1000));
   const signature = crypto.sign("sha256", Buffer.from(timestamp + rawBody, "utf8"), privateKey).toString("base64");
   const env = { SENDGRID_WEBHOOK_PUBLIC_KEY: publicKeyB64 };
 
-  const good = verifySendGridSignature({ env, rawBody, signature, timestamp });
+  const good = verifySendGridSignature({ env, rawBody, signature, timestamp, now });
   assert.deepEqual({ checked: good.checked, verified: good.verified, rejected: good.rejected }, { checked: true, verified: true, rejected: false });
   ok("a correctly signed batch verifies");
 
-  const tampered = verifySendGridSignature({ env, rawBody: rawBody + "x", signature, timestamp });
+  const tampered = verifySendGridSignature({ env, rawBody: rawBody + "x", signature, timestamp, now });
   assert.equal(tampered.rejected, true, "tampered payload must be rejected");
   ok("a tampered payload is REJECTED (fail closed) when a key is configured");
 
@@ -59,9 +60,9 @@ function ok(name) { console.log("  ✓ " + name); passed += 1; }
   assert.equal(missing.reason, "missing_signature_headers");
   ok("missing signature headers reject when a key is configured");
 
-  const noKey = verifySendGridSignature({ env: {}, rawBody, signature: "", timestamp: "" });
-  assert.deepEqual({ checked: noKey.checked, rejected: noKey.rejected }, { checked: false, rejected: false });
-  ok("with no key configured, batches are processed (never rejected) but unverified");
+  const noKey = verifySendGridSignature({ env: {}, rawBody, signature: "", timestamp: "", now });
+  assert.deepEqual({ checked: noKey.checked, rejected: noKey.rejected }, { checked: false, rejected: true });
+  ok("with no key configured, requests are rejected because verification is unavailable");
 }
 
 // ---- 2. Event reduction (scoped) ------------------------------------------------------------
@@ -69,14 +70,14 @@ function ok(name) { console.log("  ✓ " + name); passed += 1; }
   const now = "2026-07-02T12:00:00.000Z";
   const scoped = {
     outreachSuppressions: [],
-    outreachContacts: [{ contact_id: "biz-1", email: "org@nonprofit.org", sequence_status: "Enrolled" }],
+    outreachContacts: [{ contact_id: "biz-1", email: "org@example.com", sequence_status: "Enrolled" }],
     outreachBounces: [],
-    reactivationContacts: [{ contact_id: "react-1", email: "user@gmail.com", wave: 1, enrolled_at: now, sequence_status: "Enrolled" }],
+    reactivationContacts: [{ contact_id: "react-1", email: "user@example.com", wave: 1, enrolled_at: now, sequence_status: "Enrolled" }],
     reactivationEvents: []
   };
   const events = [
-    { event: "delivered", email: "user@gmail.com" },                       // reactivation ledger only
-    { event: "bounce", email: "org@nonprofit.org", reason: "550" },        // suppress + bounce ledger
+    { event: "delivered", email: "user@example.com" },                       // reactivation ledger only
+    { event: "bounce", email: "org@example.com", reason: "550" },        // suppress + bounce ledger
     { event: "spamreport", email: "stranger@example.com" },                // suppression only
     { event: "click", email: "" }                                          // skipped: no email
   ];
@@ -95,7 +96,7 @@ function ok(name) { console.log("  ✓ " + name); passed += 1; }
   ok("a delivered event for a reactivation contact lands in the campaign ledger");
 
   assert.equal(state.outreachBounces.length, 1);
-  assert.ok(state.outreachSuppressions.some((s) => s.email === "org@nonprofit.org" && s.reason === "bounced"));
+  assert.ok(state.outreachSuppressions.some((s) => s.email === "org@example.com" && s.reason === "bounced"));
   const bouncedContact = state.outreachContacts.find((c) => c.contact_id === "biz-1");
   assert.equal(bouncedContact.bounced, true);
   assert.equal(bouncedContact.sequence_status, "Not Enrolled");

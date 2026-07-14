@@ -41,6 +41,8 @@ export const SENDGRID_TIMESTAMP_HEADER = "x-twilio-email-event-webhook-timestamp
 const clean = (v = "") => String(v ?? "").trim();
 const list = (v) => (Array.isArray(v) ? v : []);
 function nowIso() { return new Date().toISOString(); }
+export const SENDGRID_TIMESTAMP_MAX_AGE_SECONDS = 5 * 60;
+export const SENDGRID_TIMESTAMP_FUTURE_SKEW_SECONDS = 60;
 
 export function sendgridSignatureConfigured(env = process.env) {
   return clean((env || {}).SENDGRID_WEBHOOK_PUBLIC_KEY).length > 0;
@@ -52,11 +54,16 @@ export function sendgridSignatureConfigured(env = process.env) {
 //   - key not configured  -> { checked:false, verified:false, rejected:false } (process, mark unverified)
 //   - key configured + ok -> { checked:true,  verified:true,  rejected:false }
 //   - key configured + bad-> { checked:true,  verified:false, rejected:true, reason } (fail closed)
-export function verifySendGridSignature({ env = process.env, rawBody = "", signature = "", timestamp = "" } = {}) {
+export function verifySendGridSignature({ env = process.env, rawBody = Buffer.alloc(0), signature = "", timestamp = "", now = Date.now() } = {}) {
   const publicKeyB64 = clean((env || {}).SENDGRID_WEBHOOK_PUBLIC_KEY);
-  if (!publicKeyB64) return { checked: false, verified: false, rejected: false, reason: "no_key_configured" };
+  if (!publicKeyB64) return { checked: false, verified: false, rejected: true, reason: "verification_unavailable" };
   if (!clean(signature) || !clean(timestamp)) {
     return { checked: true, verified: false, rejected: true, reason: "missing_signature_headers" };
+  }
+  const timestampSeconds = Number(timestamp);
+  const ageSeconds = now / 1000 - timestampSeconds;
+  if (!Number.isFinite(timestampSeconds) || ageSeconds > SENDGRID_TIMESTAMP_MAX_AGE_SECONDS || ageSeconds < -SENDGRID_TIMESTAMP_FUTURE_SKEW_SECONDS) {
+    return { checked: true, verified: false, rejected: true, reason: "timestamp_outside_window" };
   }
   try {
     const publicKey = crypto.createPublicKey({
@@ -66,16 +73,29 @@ export function verifySendGridSignature({ env = process.env, rawBody = "", signa
     });
     const verified = crypto.verify(
       "sha256",
-      Buffer.from(clean(timestamp) + String(rawBody ?? ""), "utf8"),
+      Buffer.concat([Buffer.from(clean(timestamp), "utf8"), Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody ?? ""), "utf8")]),
       publicKey,
       Buffer.from(clean(signature), "base64")
     );
     return verified
       ? { checked: true, verified: true, rejected: false, reason: "" }
       : { checked: true, verified: false, rejected: true, reason: "signature_mismatch" };
-  } catch (error) {
-    return { checked: true, verified: false, rejected: true, reason: `verification_error:${error.message}` };
+  } catch {
+    return { checked: true, verified: false, rejected: true, reason: "verification_error" };
   }
+}
+
+export function sendgridBatchDigest(rawBody = Buffer.alloc(0), timestamp = "") {
+  const body = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody || ""), "utf8");
+  return crypto.createHash("sha256").update(Buffer.from(clean(timestamp), "utf8")).update(body).digest("hex");
+}
+
+export function sendgridEventDigest(event = {}) {
+  const identity = event.sg_event_id || event.event_id || event.sg_message_id || "";
+  const material = identity
+    ? `provider:${identity}:${clean(event.event || event.type)}`
+    : JSON.stringify({ event: clean(event.event || event.type), timestamp: Number(event.timestamp || 0), email: clean(event.email).toLowerCase(), reason: clean(event.reason) });
+  return crypto.createHash("sha256").update(material).digest("hex");
 }
 
 // Pure reducer: apply a SendGrid event batch to the scoped state slice. Mirrors the original
