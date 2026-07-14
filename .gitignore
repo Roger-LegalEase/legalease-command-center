@@ -18,8 +18,52 @@ data/social-command-center.json.*.tmp
 data/social-command-center.json
 data/backups/
 data/exports/
+data/private/
 !data/seed/
 !data/seed/**
+
+# Local operational evidence and provider exports. Keep path manifests/redacted summaries only.
+suppression*.csv
+*suppression-export*.csv
+*suppression-export*.json*
+*suppression-export*.xlsx
+*bounce-export*.csv
+*bounce-export*.json*
+*bounce-export*.xlsx
+*spam-report*.csv
+*spam-report*.json*
+*spam-report*.xlsx
+*provider-activity*.csv
+*provider-activity*.json*
+*provider-activity*.xlsx
+*sendgrid-activity*.csv
+*sendgrid-activity*.json*
+*sendgrid-activity*.xlsx
+*reconciliation*.csv
+*reconciliation*.json*
+*reconciliation*.xlsx
+*campaign-ledger*.csv
+*campaign-ledger*.json*
+*campaign-ledger*.xlsx
+*recipient-export*.csv
+*recipient-export*.json*
+*recipient-export*.xlsx
+*operational-dump*.csv
+*operational-dump*.json*
+*operational-dump*.xlsx
+docs/ebd3dae7-5a52-4be4-a6fa-5a842780637a.csv
+docs/phaseb-20260709-reconciliation-diff.json
+evidence-quarantine/
+local-evidence/
+quarantine/
+social-clean/
+
+# Generated verification output must never become an operational-data side channel.
+coverage/
+test-results/
+playwright-report/
+reports/generated/
+*.snap.actual
 
 # Consumer PII — the MVP reactivation list (real emails/phones). Read locally by
 # reactivation-import.mjs; NEVER committed (the workbook's own data-hygiene note forbids it).

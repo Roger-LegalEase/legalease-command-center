@@ -2,7 +2,7 @@
 
 Date: 2026-07-12. Status: **PROPOSAL ONLY — nothing built.**
 Authorizing decision: `docs/decisions/2026-07-12-inbox-full-read-roger-legalease.md`
-(full READ-ONLY access, roger@legalease.com only, merged to main via PR #53).
+(full READ-ONLY access, roger@example.com only, merged to main via PR #53).
 
 Acceptance test (Roger's words): *after three days, my morning queue shows what slipped,
 what I owe, and what's waiting on others, in plain sentences.*
@@ -68,7 +68,7 @@ already behave.
    plan()-only (no act() method = the heartbeat cannot run side effects for it even if
    toggled). Pinned by source-scan tests, as today.
 2. **Identity wall** — full read activates ONLY when the bound connector address equals
-   `roger@legalease.com` (checked at fetch time, every scan; constant in code, not config,
+   `roger@example.com` (checked at fetch time, every scan; constant in code, not config,
    so changing it is an auditable diff). Any other connected account gets exactly the old
    snippets-only behavior — enforced in the same fetcher, pinned by test.
 3. **Privacy wall** — bodies are fetched transiently for classification and never persisted.
@@ -115,7 +115,7 @@ paginated (Gmail `nextPageToken` loop — new; today's helper reads one page), c
 ## 3. The activation audit event (from the decision record)
 
 The build ships with the engine's autopilot toggle **OFF**. The first time the toggle is
-flipped ON with a verified `roger@legalease.com` binding, the engine writes:
+flipped ON with a verified `roger@example.com` binding, the engine writes:
 - an `auditHistory` row — actor, action "inbox full-read decision recorded", resource
   `docs/decisions/2026-07-12-inbox-full-read-roger-legalease.md`, before/after posture;
 - a `companyEvents` entry (pointer + plain summary, no PII), per the standing convention.

@@ -81,7 +81,7 @@ export const DEFAULT_OUTREACH_CAPS = {
 // remain the gates).
 export const OUTREACH_IDENTITY_DEFAULTS = Object.freeze({
   postalAddress: "8 The Green, Suite D, Dover, DE 19901",
-  fromEmail: "roger@legalease.com",
+  fromEmail: "roger@example.com",
   fromName: "Roger Roman",
   sendingDomain: "legalease.com",
   companyName: "LegalEase"
@@ -92,7 +92,7 @@ export const OUTREACH_IDENTITY_DEFAULTS = Object.freeze({
 export const OUTREACH_SIGNATURE_LINES = Object.freeze([
   "Roger Roman",
   "COO, LegalEase",
-  "(323) 394-8201 | roger@legalease.com | legaleasepartner.com",
+  "(202) 555-0100 | roger@example.com | legaleasepartner.com",
   "",
   "LegalEase provides self-help technology and information. LegalEase is not a law firm and does not provide legal advice."
 ]);

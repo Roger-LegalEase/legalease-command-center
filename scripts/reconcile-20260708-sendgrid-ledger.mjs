@@ -7,7 +7,7 @@
 //      computed from each contact's prior ledger), marked source: sendgrid-reconciliation.
 //   2. PATCH the 95 synthetic 12:00Z recon rows: real message ids; the 33 duplicate-affected
 //      recipients annotated as one counted touch with copies processed/delivered noted; the one
-//      SendGrid drop (dcalmesejr@gmai.com) corrected from "sent" to "dropped".
+//      SendGrid drop (dcalmesejr@example.com) corrected from "sent" to "dropped".
 //   3. INSERT backfill claims into reactivationSendClaims for every real historical send, using
 //      the SAME deterministic claim id the live send path uses (reactivationClaimId), so the
 //      PR 1 safety ledger covers pre-claims history too.
@@ -44,7 +44,7 @@ const DEFAULT_EXPECTED = {
   duplicatedRecipients: 33,
   reconRows: 95,
   juneAttempts: 186,
-  dropEmail: "dcalmesejr@gmai.com",
+  dropEmail: "dcalmesejr@example.com",
   step15Distribution: { 1: 117, 2: 29 }
 };
 
@@ -274,7 +274,7 @@ export function computeReconciliation({ events, attempts, contacts, suppressions
 
   // jaime.berrios: annotate the recovered first-unsubscribe evidence on the existing row.
   const suppressionsPatch = [];
-  const jaime = suppressions.find((s) => norm(s.email) === "jaime.berrios@introba.com");
+  const jaime = suppressions.find((s) => norm(s.email) === "jaime.berrios@example.com");
   if (jaime && !jaime.first_unsubscribe_evidence) {
     suppressionsPatch.push({
       id: jaime.id,

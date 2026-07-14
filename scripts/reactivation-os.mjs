@@ -550,7 +550,7 @@ function reactivationSignatureBlock() {
     REACTIVATION_HR_HTML,
     "Roger Roman<br>",
     "COO, LegalEase<br>",
-    `<a href="mailto:roger@legalease.com">Roger@legalease.com</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="https://legalease.com">legalease.com</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="${siteHref}">expungement.ai</a>`,
+    `<a href="mailto:roger@example.com">Roger@example.com</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="https://legalease.com">legalease.com</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="${siteHref}">expungement.ai</a>`,
     REACTIVATION_HR_HTML,
     `<em>${REACTIVATION_DISCLAIMER}</em>`
   ].join("\n");
@@ -558,7 +558,7 @@ function reactivationSignatureBlock() {
     REACTIVATION_HR_TEXT,
     "Roger Roman",
     "COO, LegalEase",
-    "Roger@legalease.com  |  legalease.com  |  expungement.ai",
+    "Roger@example.com  |  legalease.com  |  expungement.ai",
     REACTIVATION_HR_TEXT,
     REACTIVATION_DISCLAIMER
   ].join("\n");

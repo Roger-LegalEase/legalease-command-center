@@ -306,7 +306,7 @@ export function criticalAlertsNeedingEmail(alerts = []) {
 }
 
 function senderFor(env = process.env) {
-  return clean(env.ALERTS_EMAIL_FROM) || "roger@legalease.com";
+  return clean(env.ALERTS_EMAIL_FROM) || "roger@example.com";
 }
 
 export function buildCriticalEmail(alert = {}, { env = process.env, recipient = "" } = {}) {

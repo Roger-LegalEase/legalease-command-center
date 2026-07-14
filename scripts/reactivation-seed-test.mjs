@@ -3,7 +3,7 @@
 // path: it does not read contacts, does not loop, and HARD-REFUSES to send to anyone who is in
 // the reactivation list (so it can never accidentally seed a real consumer).
 //
-//   REACTIVATION_SEED_RECIPIENTS="roger@legalease.com,roman.roger@gmail.com,roger@icloud.com" \
+//   REACTIVATION_SEED_RECIPIENTS="roger@example.com,roman.roger@example.com,roger@example.com" \
 //     node scripts/reactivation-seed-test.mjs --confirm-live-send
 //
 // Requires REACTIVATION_LIVE_SEND=true AND SENDGRID_API_KEY in env (e.g. the prod Render Shell),
@@ -27,9 +27,9 @@ if (!process.argv.includes("--confirm-live-send")) {
 
 // Roger's own monitored inboxes, one per major client for cross-client render verification:
 // Gmail + primary (legalease.com) + Outlook (legalease.law). REACTIVATION_SEED_RECIPIENTS (env)
-// overrides. NOTE: info@legalease.law is a ROLE account — tolerated for the seed ONLY (see the
+// overrides. NOTE: info@example.com is a ROLE account — tolerated for the seed ONLY (see the
 // compliance block below); it is operator-owned and explicitly listed, not cold outreach.
-const DEFAULT_RECIPIENTS = ["roman.roger@gmail.com", "roger@legalease.com", "info@legalease.law"];
+const DEFAULT_RECIPIENTS = ["roman.roger@example.com", "roger@example.com", "info@example.com"];
 const recipients = (env.REACTIVATION_SEED_RECIPIENTS
   ? env.REACTIVATION_SEED_RECIPIENTS.split(",")
   : DEFAULT_RECIPIENTS
@@ -73,7 +73,7 @@ for (const recipient of recipients) {
   });
   if (message.to !== recipient) fail(`recipient mismatch (${message.to} != ${recipient}).`);
   // Full compliance, EXCEPT we tolerate "invalid_recipient" caused solely by a role-account local
-  // part (e.g. info@legalease.law) — these are Roger's own monitored aliases for the render test,
+  // part (e.g. info@example.com) — these are Roger's own monitored aliases for the render test,
   // not cold recipients. Every OTHER compliance error stays fatal, and the address must still be a
   // syntactically valid email. (The live campaign keeps the full guard; role accounts in the
   // consumer list are dropped at import.)
