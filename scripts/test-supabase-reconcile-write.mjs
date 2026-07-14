@@ -30,7 +30,17 @@ global.fetch = async (url, opts = {}) => {
   if (method === "GET") {
     // Honor limit/offset like real PostgREST so the store's paginated reads terminate
     // (an unpaginated stub would loop forever against the paging readState).
-    const all = [...table.values()];
+    let all = [...table.values()];
+    const collectionFilter = u.searchParams.get("collection") || "";
+    const collectionIn = collectionFilter.match(/^in\.\((.*)\)$/);
+    const collectionEq = collectionFilter.match(/^eq\.(.*)$/);
+    if (collectionIn) {
+      const allowed = new Set(collectionIn[1].split(",").map((name) => decodeURIComponent(name)));
+      all = all.filter((row) => allowed.has(row.collection));
+    } else if (collectionEq) {
+      const allowed = decodeURIComponent(collectionEq[1]);
+      all = all.filter((row) => row.collection === allowed);
+    }
     const offset = Number(u.searchParams.get("offset") || 0);
     const limit = Number(u.searchParams.get("limit") || all.length);
     return ok(JSON.stringify(all.slice(offset, offset + limit)));
@@ -141,5 +151,36 @@ for (const c of SAFETY_COLLECTIONS) {
   assert.deepEqual(rowsOf(c), [`${c}-keep-1`, `${c}-keep-2`], `${c}: stable across repeated writes`);
 }
 assert.deepEqual(rowsOf("posts"), ["post-keep-1"], "posts: stable across repeated writes");
+
+// 7) Scoped writeCollections reconciliation: only the collection present in the patch is
+// reconciled, append-only/protected ledgers are never reconciled, and absent collections are
+// untouched. This is the path used by Supabase scoped writes, distinct from writeChanges().
+table.clear();
+largestMutationBatch = 0;
+seed("approvalQueue", "approval-keep", { id:"approval-keep", note:"STALE" });
+seed("approvalQueue", "approval-remove", { id:"approval-remove", note:"remove-me" });
+seed("contentBank", "cb-untouched-1", { id:"cb-untouched-1", title:"Unrelated" });
+seed("reactivationSendClaims", "claim-untouched-1", { id:"claim-untouched-1", contactId:"synthetic-contact" });
+
+await store.writeCollections({
+  approvalQueue: [{ id:"approval-keep", note:"current", _version:1 }]
+});
+assert.deepEqual(rowsOf("approvalQueue"), ["approval-keep"], "writeCollections should delete stale approvalQueue rows present in the scoped patch");
+assert.equal(table.get(k("approvalQueue", "approval-keep")).payload.note, "current", "writeCollections should retain and update the kept approval item");
+assert.deepEqual(rowsOf("contentBank"), ["cb-untouched-1"], "writeCollections must not delete rows from collections absent from the patch");
+assert.deepEqual(rowsOf("reactivationSendClaims"), ["claim-untouched-1"], "writeCollections must not delete append-only claim rows");
+
+seed("approvalQueue", "approval-clear-a", { id:"approval-clear-a", note:"clear-me" });
+seed("approvalQueue", "approval-clear-b", { id:"approval-clear-b", note:"clear-me" });
+await store.writeCollections({ approvalQueue: [] });
+assert.deepEqual(rowsOf("approvalQueue"), [], "empty arrays should intentionally clear eligible scoped collections");
+assert.deepEqual(rowsOf("contentBank"), ["cb-untouched-1"], "empty scoped arrays must not affect absent unrelated collections");
+assert.deepEqual(rowsOf("reactivationSendClaims"), ["claim-untouched-1"], "empty scoped arrays must not affect absent append-only claims");
+
+seed("approvalQueue", "approval-omitted-a", { id:"approval-omitted-a", note:"keep" });
+seed("approvalQueue", "approval-omitted-b", { id:"approval-omitted-b", note:"keep" });
+await store.writeCollections({ reactivationSendClaims: [] });
+assert.deepEqual(rowsOf("approvalQueue"), ["approval-omitted-a", "approval-omitted-b"], "patches omitting approvalQueue must not delete approvalQueue rows");
+assert.deepEqual(rowsOf("reactivationSendClaims"), ["claim-untouched-1"], "append-only collections must not be reconciled even when present as an empty array");
 
 console.log("supabase record-diff round-trip tests passed");

@@ -15,11 +15,8 @@
 
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { spawn } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import { buildTodaySummary } from "./company-memory-projector.mjs";
+import { loginOwner, startPreviewServer } from "./test-support/preview-server-harness.mjs";
 
 let passed = 0;
 const ok = (name) => { console.log("  ✓ " + name); passed += 1; };
@@ -71,38 +68,36 @@ console.log("Scoreboard wiring tests");
 }
 
 // ---- 3. end to end: signed product event auto-applies ---------------------------------------
-const port = Number(process.env.TEST_SCOREBOARD_PORT || 3471);
-const baseUrl = `http://127.0.0.1:${port}`;
-const HMAC_SECRET = "test-os-events-secret-0123456789";
-const dataDir = await mkdtemp(path.join(os.tmpdir(), "legalease-scoreboard-"));
-await writeFile(path.join(dataDir, "seed.json"), JSON.stringify({ funnelSnapshots: [], automationEvents: [], automationSuggestions: [], activityEvents: [] }));
-
-const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
+const HMAC_SECRET = ["scoreboard", "synthetic", "product", "2026", "Q7m9", "V4x2"].join("-");
+const server = await startPreviewServer({
+  seed: { funnelSnapshots: [], automationEvents: [], automationSuggestions: [], activityEvents: [] },
   env: {
-    ...process.env,
-    PORT: String(port),
-    COMMAND_CENTER_DATA_PATH: path.join(dataDir, "data.json"),
-    COMMAND_CENTER_SEED_PATH: path.join(dataDir, "seed.json"),
+    NODE_ENV: "test",
+    COMMAND_CENTER_TEST_MODE: "true",
+    SKIP_ENV_LOCAL_FILE: "1",
     STORAGE_BACKEND: "json",
-    LOCAL_DEMO_MODE: "false",
+    COMMAND_CENTER_ALLOW_JSON: "true",
+    LOCAL_DEMO_MODE: "true",
     PRODUCT_EVENT_WEBHOOK_ENABLED: "true",
+    PRODUCT_EVENT_WEBHOOK_SECRET: HMAC_SECRET,
     LEGALEASE_OS_EVENTS_SECRET: HMAC_SECRET,
-    PRODUCT_EVENT_WEBHOOK_SECRET: "",
-    STRIPE_SECRET_KEY: "",
-    COMMAND_CENTER_API_KEY: "",
-    COMMAND_CENTER_REQUIRE_AUTH: "false"
-  },
-  stdio: ["ignore", "pipe", "pipe"]
+    ENABLE_LIVE_LINKEDIN_POSTING: "false",
+    ENABLE_LIVE_FACEBOOK_POSTING: "false",
+    ENABLE_LIVE_INSTAGRAM_POSTING: "false",
+    ENABLE_LIVE_X_POSTING: "false",
+    ENABLE_LIVE_THREADS_POSTING: "false",
+    ENABLE_LIVE_TIKTOK_POSTING: "false",
+    REACTIVATION_LIVE_SEND: "false",
+    OUTREACH_LIVE_SEND: "false",
+    ALERT_EMAIL_LIVE_SEND: "false",
+    PROSPECT_LIVE_DISCOVERY: "false"
+  }
 });
-let logs = "";
-child.stdout.on("data", (c) => { logs += c.toString(); });
-child.stderr.on("data", (c) => { logs += c.toString(); });
-const startedAt = Date.now();
-while (!logs.includes("preview server ready")) {
-  if (child.exitCode !== null) throw new Error(`Server exited before ready:\n${logs}`);
-  if (Date.now() - startedAt > 15000) { child.kill(); throw new Error(`Server never became ready:\n${logs}`); }
-  await new Promise((r) => setTimeout(r, 100));
-}
+const baseUrl = server.baseUrl;
+const request = (pathname, options = {}) => fetch(`${baseUrl}${pathname}`, {
+  ...options,
+  signal: options.signal || AbortSignal.timeout(10_000)
+});
 
 function signedHeaders(rawBody) {
   const timestamp = String(Math.floor(Date.now() / 1000));
@@ -123,16 +118,19 @@ const eventBody = (over = {}) => JSON.stringify({
 });
 
 try {
+  const owner = await loginOwner(server);
+  const ownerGet = (pathname) => request(pathname, { headers: { cookie: owner.cookie } });
+
   // 3a. bad signature rejected, nothing changes
   {
     const raw = eventBody();
-    const bad = await fetch(`${baseUrl}/api/events/product`, {
+    const bad = await request("/api/events/product", {
       method: "POST",
       headers: { ...signedHeaders(raw), "X-Legalease-OS-Signature": "sha256=" + "0".repeat(64) },
       body: raw
     });
     assert.equal(bad.status >= 400, true, "bad signature must be rejected");
-    const summary = await (await fetch(`${baseUrl}/api/today/summary`)).json();
+    const summary = await (await ownerGet("/api/today/summary")).json();
     assert.equal(summary.goodMorning.screeningsStarted, 0);
     assert.equal(summary.goodMorning.funnelConnected, false);
     ok("bad signature rejected; funnel untouched");
@@ -141,11 +139,11 @@ try {
   // 3b. signed event auto-applies the metric
   {
     const raw = eventBody();
-    const res = await fetch(`${baseUrl}/api/events/product`, { method: "POST", headers: signedHeaders(raw), body: raw });
+    const res = await request("/api/events/product", { method: "POST", headers: signedHeaders(raw), body: raw });
     const body = await res.json();
     assert.equal(res.status >= 200 && res.status < 300, true, `accepted (got ${res.status})`);
     assert.equal(body.autoApplied, true, "response reports the auto-applied funnel metric");
-    const summary = await (await fetch(`${baseUrl}/api/today/summary`)).json();
+    const summary = await (await ownerGet("/api/today/summary")).json();
     assert.equal(summary.goodMorning.screeningsStarted, 1, "metric auto-applied without any approval step");
     assert.equal(summary.goodMorning.funnelConnected, true);
     ok("signed metric event auto-applies: funnel count moves with zero human steps");
@@ -153,7 +151,7 @@ try {
 
   // 3c. audit suggestion exists born-applied; nothing pending
   {
-    const state = await (await fetch(`${baseUrl}/api/state`)).json();
+    const state = await (await ownerGet("/api/state")).json();
     const suggestions = (state.automationSuggestions || []).filter((s) => s.suggestionType === "update_funnel_snapshot");
     assert.equal(suggestions.length, 1, "one audit suggestion recorded");
     assert.equal(suggestions[0].status, "applied", "born applied, never pending");
@@ -169,8 +167,8 @@ try {
   // 3d. replay of the same event does not double-count
   {
     const raw = eventBody();  // same anonymousId + timestamp => same sourceEventId
-    await fetch(`${baseUrl}/api/events/product`, { method: "POST", headers: signedHeaders(raw), body: raw });
-    const summary = await (await fetch(`${baseUrl}/api/today/summary`)).json();
+    await request("/api/events/product", { method: "POST", headers: signedHeaders(raw), body: raw });
+    const summary = await (await ownerGet("/api/today/summary")).json();
     assert.equal(summary.goodMorning.screeningsStarted, 1, "replayed sourceEventId never double-counts");
     ok("replay-safe: duplicate event leaves the count unchanged");
   }
@@ -178,21 +176,21 @@ try {
   // 3e. web visits flows from landing_page_viewed
   {
     const raw = eventBody({ eventType: "landing_page_viewed", anonymousId: "anon-e2e-2" });
-    await fetch(`${baseUrl}/api/events/product`, { method: "POST", headers: signedHeaders(raw), body: raw });
-    const summary = await (await fetch(`${baseUrl}/api/today/summary`)).json();
+    await request("/api/events/product", { method: "POST", headers: signedHeaders(raw), body: raw });
+    const summary = await (await ownerGet("/api/today/summary")).json();
     assert.equal(summary.goodMorning.webVisits, 1, "web visits counts landing_page_viewed events");
     ok("web visits wired to landing_page_viewed product events");
   }
 
   // 3f. summary attaches live-source posture without keys: honest not-connected
   {
-    const summary = await (await fetch(`${baseUrl}/api/today/summary`)).json();
+    const summary = await (await ownerGet("/api/today/summary")).json();
     assert.equal(summary.money.stripeConnected, false, "no Stripe key = not connected, not fake");
     assert.equal(summary.goodMorning.signupsConnected, false, "no signups key = not connected");
     ok("summary endpoint attaches live-source posture; missing keys stay honestly disconnected");
   }
 } finally {
-  child.kill();
+  await server.stop();
 }
 
 console.log(`\nAll ${passed} scoreboard wiring checks passed.`);

@@ -222,6 +222,10 @@ const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth",
 // never erase a claim that another invocation inserted directly. Deleting a claim would re-open
 // the duplicate-send window it exists to close.
 const appendOnlyCollections = new Set(["reactivationSendClaims", "outreachSendClaims", "webhookReplayClaims", "oauthStateClaims", "publishClaims", "auditEvents"]);
+const protectedReconcileCollections = new Set([...appendOnlyCollections, "authSessions"]);
+// Scoped snapshot reconciliation is intentionally opt-in. Most collections require explicit
+// versioned delete mutations (`writeChanges`) so a stale scoped patch cannot erase a concurrent row.
+const reconcileEligibleCollections = new Set(["approvalQueue"]);
 
 const jsonFileQueues = new Map();
 function withJsonFileLock(filePath, operation) {
@@ -1100,7 +1104,15 @@ export class SupabaseCoreStore extends JsonStore {
     // Append-only ledgers are additionally excluded: their rows can be inserted by a
     // concurrent claimCollectionItems call that this snapshot has never seen, so
     // reconciling them against the snapshot would delete live claims.
-    const presentCollections = new Set();
+    const presentCollections = new Set(
+      coreStateCollections.filter(
+        (collection) =>
+          Object.prototype.hasOwnProperty.call(state, collection)
+          && Array.isArray(state[collection])
+          && reconcileEligibleCollections.has(collection)
+          && !protectedReconcileCollections.has(collection)
+      )
+    );
     if (presentCollections.size) {
       const keep = new Set(rows.map((row) => row.collection + "\0" + row.item_id));
       // Must page too: a truncated read here would hide orphans past row 1000, leaving stale
