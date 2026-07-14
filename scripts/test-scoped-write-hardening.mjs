@@ -20,15 +20,12 @@
 //      path; a signed product event persists; scoped writes never wipe unrelated collections.
 
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 
 import { coreStateCollections, singletonCollections } from "./storage.mjs";
 import { signUnsubscribeToken } from "./outreach-os.mjs";
-import { loginWithCredential } from "./test-support/preview-server-harness.mjs";
+import { loginWithCredential, startPreviewServer } from "./test-support/preview-server-harness.mjs";
 
 let passed = 0;
 function ok(name) { console.log("  ✓ " + name); passed += 1; }
@@ -181,62 +178,33 @@ function sliceBetween(startMarker, endMarker) {
 }
 
 // ---- 6. Live behavior against a spawned server -------------------------------------------------
-const port = Number(process.env.TEST_SCOPED_WRITE_PORT || 3971);
-const dataDir = mkdtempSync(path.join(tmpdir(), "scoped-write-test-"));
-const dataPath = path.join(dataDir, "state.json");
 const OWNER_TOKEN = "test-owner-token-0123456789abcdef";
 const PRODUCT_SECRET = "test-product-secret-0123456789";
-
-const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
+const server = await startPreviewServer({
   env: {
-    ...process.env,
-    PORT: String(port),
-    STORAGE_BACKEND: "local",
-    LOCAL_DEMO_MODE: "false",
-    COMMAND_CENTER_REQUIRE_AUTH: "true",
-    COMMAND_CENTER_AUTH_DISABLED: "false",
     COMMAND_CENTER_OWNER_TOKEN: OWNER_TOKEN,
-    COMMAND_CENTER_SESSION_SECRET: "test-session-secret-0123456789abcdef",
+    PRODUCT_EVENT_WEBHOOK_ENABLED: "true",
     PRODUCT_EVENT_WEBHOOK_SECRET: PRODUCT_SECRET,
     LEGALEASE_OS_EVENTS_SECRET: "",
-    COMMAND_CENTER_DATA_PATH: dataPath,
-    COMMAND_CENTER_SEED_DISABLED: "true",
     OUTREACH_SIGNING_SECRET: "test-unsub-signing-secret-0123456789"
-  },
-  stdio: ["ignore", "pipe", "pipe"]
-});
-let serverLog = "";
-child.stdout.on("data", (d) => { serverLog += d; });
-child.stderr.on("data", (d) => { serverLog += d; });
-
-const base = `http://localhost:${port}`;
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function untilHealthy(deadlineMs = 30000) {
-  const start = Date.now();
-  while (Date.now() - start < deadlineMs) {
-    try {
-      const resp = await fetch(`${base}/api/health`);
-      if (resp.ok) return;
-    } catch { /* not up yet */ }
-    await wait(300);
   }
-  throw new Error(`server never became healthy. log:\n${serverLog.slice(-2000)}`);
-}
+});
+const dataPath = server.dataPath;
+const base = server.baseUrl;
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const request = (pathname, options = {}) => fetch(`${base}${pathname}`, { ...options, signal:options.signal || AbortSignal.timeout(10_000) });
 
 async function readDataFile() {
   return JSON.parse(await readFile(dataPath, "utf8"));
 }
 
 try {
-  await untilHealthy();
-
   // 6a. Denial dedup: four rapid anonymous hits on one path → ONE audit entry; a second path → one more.
   for (let i = 0; i < 4; i++) {
-    const resp = await fetch(`${base}/api/state`);
+    const resp = await request("/api/state");
     assert.equal(resp.status, 401, "anonymous /api/state is denied");
   }
-  const tasksResp = await fetch(`${base}/api/tasks`);
+  const tasksResp = await request("/api/tasks");
   assert.equal(tasksResp.status, 401, "anonymous /api/tasks is denied");
   await wait(1200);
   {
@@ -255,7 +223,7 @@ try {
     anonymousId: "scoped-write-test",
     timestamp: "2026-07-08T12:00:00.000Z"
   });
-  const eventResp = await fetch(`${base}/api/events/product`, {
+  const eventResp = await request("/api/events/product", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-product-event-secret": PRODUCT_SECRET },
     body: eventPayload
@@ -275,7 +243,7 @@ try {
   }
 
   // 6c. Duplicate product event stays idempotent (same source event id → not re-imported).
-  const dupResp = await fetch(`${base}/api/events/product`, {
+  const dupResp = await request("/api/events/product", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-product-event-secret": PRODUCT_SECRET },
     body: eventPayload
@@ -285,7 +253,7 @@ try {
 
   // 6d. Autopilot toggle persists scoped, and everything written before it survives.
   const login = await loginWithCredential({ baseUrl:base }, OWNER_TOKEN);
-  const toggleResp = await fetch(`${base}/api/heartbeat/autopilot`, {
+  const toggleResp = await request("/api/heartbeat/autopilot", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -310,7 +278,7 @@ try {
     { contact_id: "scoped-test-contact", email: "scoped-test@example.com", campaign_id: "scoped-test-campaign" },
     { OUTREACH_SIGNING_SECRET: "test-unsub-signing-secret-0123456789" }
   );
-  const unsubResp = await fetch(`${base}/api/outreach/unsubscribe?token=${encodeURIComponent(unsubToken)}`);
+  const unsubResp = await request(`/api/outreach/unsubscribe?token=${encodeURIComponent(unsubToken)}`);
   assert.equal(unsubResp.status, 200, `unsubscribe page renders (got ${unsubResp.status})`);
   assert((await unsubResp.text()).includes("unsubscribed"), "unsubscribe confirmation copy renders");
   await wait(800);
@@ -327,14 +295,14 @@ try {
     ok("live: public unsubscribe persists via scoped write; earlier collections survive");
   }
   {
-    const badResp = await fetch(`${base}/api/outreach/unsubscribe?token=not-a-real-token`);
+    const badResp = await request("/api/outreach/unsubscribe?token=not-a-real-token");
     assert.equal(badResp.status, 400, "malformed unsubscribe token is rejected");
     ok("live: malformed unsubscribe token stays rejected (fail closed)");
   }
 
   // 6f. Bot-style GET on the public Google callback: missing owner/session-bound state is
   // rejected before any connector mutation, and every earlier-written collection survives.
-  const gcbResp = await fetch(`${base}/api/google/callback?error=access_denied`, { redirect: "manual" });
+  const gcbResp = await request("/api/google/callback?error=access_denied", { redirect:"manual" });
   assert.equal(gcbResp.status, 400, `google callback without valid state is rejected (got ${gcbResp.status})`);
   await wait(800);
   {
@@ -347,9 +315,7 @@ try {
     ok("live: invalid public google callback is rejected before mutation; earlier collections survive");
   }
 } finally {
-  child.kill("SIGTERM");
-  await wait(300);
-  rmSync(dataDir, { recursive: true, force: true });
+  await server.stop();
 }
 
 console.log(`\nAll ${passed} scoped-write hardening checks passed.`);
