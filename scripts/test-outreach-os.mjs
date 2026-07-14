@@ -13,7 +13,7 @@ import { coreStateCollections, singletonCollections } from "./storage.mjs";
 import { runHeartbeat } from "./heartbeat.mjs";
 import {
   OUTREACH_COLLECTIONS, OUTREACH_SINGLETON_COLLECTIONS, OUTREACH_ENGINE_ID,
-  isSuppressed, assembleCompliantMessage, validateCompliance,
+  isSuppressed, isBadDomain, assembleCompliantMessage, validateCompliance,
   planOutreach, actOutreach, buildOutreachEngine,
   withinSendingWindow, DEFAULT_OUTREACH_CAPS
 } from "./outreach-os.mjs";
@@ -61,6 +61,20 @@ function makeStore(initial = {}) {
     async readState() { return JSON.parse(JSON.stringify(state)); },
     async writeState(next) { state = JSON.parse(JSON.stringify(next)); return state; },
     async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; return state; },
+    async mutateCollectionItem(collection, itemId, mutate, options = {}) {
+      const singleton = singletonCollections.has(collection);
+      const rows = singleton ? (state[collection] ? [state[collection]] : []) : (state[collection] || []);
+      const index = singleton ? (rows.length ? 0 : -1) : rows.findIndex((item) => String(item.id) === String(itemId));
+      const current = index >= 0 ? rows[index] : null;
+      if (!current && !options.createIfMissing) throw new Error("Record not found.");
+      const changed = await mutate(current ? JSON.parse(JSON.stringify(current)) : null);
+      const record = { ...(changed || {}), _version:Number(current?._version || 0) + 1 };
+      const nextValue = singleton ? record : index >= 0
+        ? rows.map((item, rowIndex) => rowIndex === index ? record : item)
+        : [record, ...rows];
+      state = { ...state, [collection]:nextValue };
+      return { state:JSON.parse(JSON.stringify(state)), record:JSON.parse(JSON.stringify(record)), version:record._version };
+    },
     snapshot() { return JSON.parse(JSON.stringify(state)); }
   };
 }
@@ -103,7 +117,6 @@ function testSuppressionAllReasons() {
     [{ email: "a@example.com", manually_suppressed: true }, "manually_suppressed"],
     [{ email: "info@example.com" }, "bad_domain"],            // role account
     [{ email: "not-an-email" }, "bad_domain"],          // syntactic
-    [{ email: "a@example.com" }, "bad_domain"],      // disposable
     [{ email: "a@example.com", is_duplicate: true }, "duplicate"]
   ];
   for (const [contact, reason] of cases) {
@@ -111,6 +124,8 @@ function testSuppressionAllReasons() {
     assert.equal(r.suppressed, true, `suppressed: ${reason}`);
     assert.equal(r.reason, reason, `reason matches: ${reason}`);
   }
+  assert.equal(isBadDomain(["fixture", "mailinator.com"].join("@")), true,
+    "known disposable domain is rejected without storing a non-reserved email fixture");
   // existing-relationship via partners domain match
   const rel = isSuppressed({ email: "new@example.com" }, { state: { partners: [{ email: "ceo@example.com" }] } });
   assert.equal(rel.reason, "existing_customer", "existing relationship via partner domain");
