@@ -85,6 +85,7 @@ const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
     COMMAND_CENTER_SEED_PATH: path.join(dataDir, "seed.json"),
     STORAGE_BACKEND: "json",
     LOCAL_DEMO_MODE: "false",
+    PRODUCT_EVENT_WEBHOOK_ENABLED: "true",
     LEGALEASE_OS_EVENTS_SECRET: HMAC_SECRET,
     PRODUCT_EVENT_WEBHOOK_SECRET: "",
     STRIPE_SECRET_KEY: "",
