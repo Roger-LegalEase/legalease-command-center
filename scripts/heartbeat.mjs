@@ -107,21 +107,25 @@ export async function runHeartbeat(options = {}) {
     const initialState = state;
 
     // Layer 3: lease guard (cross-restart / duplicate cron delivery). force overrides.
-    const existingLease = state.heartbeatLease || null;
-    if (!force && leaseActive(existingLease, now.getTime()) && existingLease.runId !== id) {
-      return { ok: true, skipped: "leased", reason: "A non-expired heartbeat lease is held.", lease: existingLease };
-    }
-
-    // Claim the lease (durable in-progress marker; self-expires via TTL after a crash).
+    // Claim the lease with versioned compare-and-swap. The mutator is re-evaluated after
+    // a conflict, so two independent hosted instances cannot both win.
     const lease = {
       runId: id,
       holder: actor,
       claimedAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + leaseTtlMs).toISOString()
     };
-    state = { ...state, heartbeatLease: lease };
-    // Scoped: the lease claim changes exactly one singleton.
-    await store.writeCollections({ heartbeatLease: lease });
+    let leaseWon = false;
+    const leaseMutation = await store.mutateCollectionItem("heartbeatLease", "singleton", (current) => {
+      if (!force && leaseActive(current, now.getTime()) && current.runId !== id) {
+        leaseWon = false;
+        return current;
+      }
+      leaseWon = true;
+      return lease;
+    }, { createIfMissing:true, maxRetries:2 });
+    if (!leaseWon) return { ok:true, skipped:"leased", reason:"A non-expired heartbeat lease is held." };
+    state = leaseMutation.state || await store.readState();
 
     const engineResults = [];
     for (const engine of registry) {
@@ -200,7 +204,7 @@ export async function runHeartbeat(options = {}) {
     state = {
       ...state,
       heartbeatRuns: [...ledgerEntries, ...carried].slice(0, 500),
-      heartbeatLease: null
+      heartbeatLease: state.heartbeatLease
     };
     // Diff-scoped closing write: persists exactly the collections the tick's engines changed
     // (every engine returns spread-copied state, so changed collections have new references;
@@ -214,8 +218,11 @@ export async function runHeartbeat(options = {}) {
     // lease was already the literal null (JSON backend steady state after the first tick),
     // null !== null is false and the diff alone would leave the mid-tick claim persisted,
     // wrongly skipping the next tick for a full TTL.
-    patch.heartbeatLease = null;
+    delete patch.heartbeatLease;
     await store.writeCollections(patch);
+    await store.mutateCollectionItem("heartbeatLease", "singleton", (current) => current?.runId === id
+      ? { runId:"", holder:"", claimedAt:current.claimedAt || "", expiresAt:"", releasedAt:finishedAt }
+      : current, { maxRetries:2 });
 
     return {
       ok: true,
