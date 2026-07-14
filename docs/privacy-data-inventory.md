@@ -1,34 +1,17 @@
-# Privacy Data Inventory
+# Privacy and data inventory
 
-Inputs and records:
+| Category | Examples | Active storage | Retention/deletion owner |
+|---|---|---|---|
+| Founder and role access | hashed opaque sessions, role, expiry, revocation | Supabase core records; local JSON only in explicit development | Security owner; expire in 30 minutes and revoke on logout/role change |
+| Consumer and lifecycle operations | contact details, eligibility/lifecycle state, suppression, unsubscribe, bounce/spam state | Supabase core records | Operations/privacy owner; retain only for campaign, legal, and suppression obligations; delete or de-identify through an approved request |
+| Campaign delivery | approved content, send claims, safe provider identifiers, outcomes | Supabase core records | Campaign owner; claims retained for duplicate prevention and archived under the retention schedule |
+| Gmail and Calendar read paths | message/meeting metadata and derived summaries | Supabase projections where explicitly saved | Workspace owner; read-only scopes; delete derived records when no longer operationally needed |
+| Revenue and product metrics | Stripe aggregate reads, signup/funnel aggregates, revenue-contact workflow records | Supabase core records and short-lived server caches | Finance/product owner; viewers receive aggregates only |
+| Social connectors | encrypted access/refresh tokens, account readiness, approval state, publish claims | Supabase core records; tokens encrypted server-side | Security owner; revoke provider access and delete local connector records on disconnect |
+| AI processing | approved prompts/drafts and generated asset metadata sent to OpenAI or Anthropic when configured | Supabase records and private draft storage | Product/security owner; do not send unnecessary contact data; follow processor retention settings |
+| Draft assets | human uploads and generated draft images | private Supabase bucket in hosted production; `data/private/` locally | Content owner; delete abandoned drafts per content schedule; public promotion requires approval |
+| Security and audit | append-only events, request IDs, safe summaries, webhook replay claims, OAuth nonce claims, rate-limit counters | Supabase audit table and versioned core records | Security owner; audit retention 13 months minimum unless policy requires longer; replay/rate records expire by bounded windows |
 
-- Quick captures
-- tasks
-- notes
-- decisions
-- blockers
-- Morning Brief and Daily Closeout records
-- Social ideas, drafts, planned posts, ready posts, manually published records, and manually entered published URLs
-- Proof, wins, customer notes, evidence items, and proof-to-social links
-- owner/account identifiers from owner-token auth
-- activity logs
+Active processors/integrations visible in code include Render, Supabase, SendGrid, Google Workspace, LinkedIn, X, Meta, Stripe, OpenAI, and Anthropic. Provider console configuration and contracts require separate verification. Raw provider webhook payloads, authorization codes, cookies, credentials, and unnecessary personal data must never be logged or placed in audit summaries.
 
-Providers:
-
-- Hosting: Render when deployed there.
-- Database: Postgres provider selected through `DATABASE_URL` such as Neon, Supabase, or Render Postgres.
-- OpenAI: only if `OPENAI_API_KEY` is configured and server-side features use it.
-- Email providers: not active.
-- Social providers: not active for live publishing.
-- Calendar providers: not active for writes.
-- Payment providers: not active.
-
-Retention:
-
-- Internal records are retained until Roger deletes or migrates them.
-- Generated exports and local backups are convenience artifacts, not the source of truth.
-
-Notes:
-
-- The app is currently owner-access only.
-- Social publishing is off. The OS stores manual planning and tracking records, but does not publish to social platforms.
+Deletion requests require identity/authority verification, a scoped search across core records/private assets/audit-policy exceptions, provider-side revocation where relevant, and a recorded safe audit outcome. Append-only security events are not edited; privacy-required erasure uses a reviewed tombstone or cryptographic/de-identification procedure consistent with legal obligations.

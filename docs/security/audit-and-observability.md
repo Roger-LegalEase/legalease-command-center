@@ -1,0 +1,9 @@
+# Audit, observability, and alert policy
+
+High-risk actions append a durable event with session actor ID, role, action, target, request ID, timestamp, outcome, safe primitive summary, and source. The audit table rejects updates/deletes and chains event hashes. It never stores tokens, cookies, authorization codes, raw provider payloads, contact fields, arbitrary before/after objects, or source IP. Audit events are retained for at least 13 months, exported only to a restricted encrypted archive, and deleted only through an approved legal/privacy process.
+
+Structured request errors carry correlation IDs and generic codes. Sensitive response caching is disabled. Operational metrics cover storage failures/version conflicts, webhook rejection/replay, outbound/publish claims, reconciliation-required actions, authentication failures/throttling, and heartbeat age. `/api/metrics` and readiness are owner/admin diagnostic surfaces; liveness is a constant public response.
+
+Alert when readiness fails for two consecutive minutes, any audit append blocks a high-risk action, storage failures exceed three in five minutes, webhook signature rejection exceeds ten in five minutes, any replay spike exceeds five in five minutes, auth throttling exceeds twenty in fifteen minutes, any publish claim enters reconciliation-required, or the hourly heartbeat is more than two hours old. External error tracking remains disabled until an operator configures and privacy-reviews it; repository code does not transmit errors externally.
+
+For incidents, keep outbound gates off, use request IDs and fingerprints only, inspect provider state read-only, preserve claims/audit evidence, and follow migration/restore runbooks. Never automatically repeat an ambiguous provider action.
