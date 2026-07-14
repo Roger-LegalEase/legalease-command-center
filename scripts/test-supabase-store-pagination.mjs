@@ -76,13 +76,24 @@ globalThis.fetch = async (url, options = {}) => {
   const u = new URL(url);
   const params = u.searchParams;
   if (method === "POST") {
-    lastPostRows = JSON.parse(options.body || "[]");
-    TABLE_ROWS.push(...lastPostRows.map((row) => ({ ...row, updated_at: row.updated_at || "2026-06-27T00:00:00.000Z" })));
+    const body = JSON.parse(options.body || "{}");
+    const mutations = body.p_mutations || [];
+    lastPostRows = mutations.filter((mutation) => mutation.operation === "upsert");
+    for (const mutation of mutations) {
+      const index = TABLE_ROWS.findIndex((row) => row.collection === mutation.collection && row.item_id === mutation.item_id);
+      if (mutation.operation === "delete") {
+        deleteCalls.push({ collection:mutation.collection, item_id:mutation.item_id });
+        if (index >= 0) TABLE_ROWS.splice(index, 1);
+      } else {
+        const row = { collection:mutation.collection, item_id:mutation.item_id, payload:mutation.payload, version:Number(TABLE_ROWS[index]?.version || 0) + 1, updated_at:"2026-06-27T00:00:00.000Z" };
+        if (index >= 0) TABLE_ROWS[index] = row; else TABLE_ROWS.push(row);
+      }
+    }
     return {
       ok: true,
-      status: 201,
-      statusText: "Created",
-      async text() { return ""; }
+      status: 200,
+      statusText: "OK",
+      async text() { return JSON.stringify({ applied:mutations.length }); }
     };
   }
   if (method === "DELETE") {
@@ -220,20 +231,21 @@ async function run() {
   assert.equal(duplicateRows[0].payload.engineId, "new", "last duplicate wins");
   ok("coreRecordsFromState dedupes duplicate upsert keys before Supabase writes");
 
-  // 8. Null singleton snapshots are intentional tombstones. They should not upsert a row, but the
-  // collection must still be reconciled so stale singleton rows (heartbeatLease) are deleted.
+  // 8. Null singleton tombstones delete only through an explicit versioned record diff.
   TABLE_ROWS.push({
     collection: "heartbeatLease",
     item_id: "singleton",
     payload: { runId: "stale", expiresAt: "2026-06-30T23:05:00.000Z" },
+    version: 1,
     updated_at: "2026-06-30T23:00:00.000Z"
   });
+  const beforeLeaseRemoval = await store.readState();
   lastPostRows = [];
   deleteCalls = [];
-  await store.writeState({ heartbeatLease: null, heartbeatRuns: [] });
+  await store.writeChanges(beforeLeaseRemoval, { ...beforeLeaseRemoval, heartbeatLease:null });
   assert.ok(!lastPostRows.some((row) => row.collection === "heartbeatLease"), "null singleton is not upserted");
   assert.ok(deleteCalls.some((row) => row.collection === "heartbeatLease" && row.item_id === "singleton"), "stale heartbeatLease singleton is deleted");
-  ok("null singleton snapshots clear stale persisted singleton rows");
+  ok("explicit null singleton record diffs clear stale persisted singleton rows");
 
   console.log(`\n${passed} checks passed.`);
 }
