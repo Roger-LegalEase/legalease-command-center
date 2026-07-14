@@ -39,6 +39,14 @@ function makeStore(initial = {}) {
     async readState() { return JSON.parse(JSON.stringify(state)); },
     async writeState(next) { state = JSON.parse(JSON.stringify(next)); return state; },
     async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; return state; },
+    async mutateCollectionItem(collection, _itemId, mutate, options = {}) {
+      const current = state[collection] ?? null;
+      if (!current && !options.createIfMissing) throw new Error("Record not found.");
+      const changed = await mutate(current ? JSON.parse(JSON.stringify(current)) : null);
+      const record = { ...(changed || {}), _version:Number(current?._version || 0) + 1 };
+      state = { ...state, [collection]:record };
+      return { state:JSON.parse(JSON.stringify(state)), record, version:record._version };
+    },
     snapshot() { return JSON.parse(JSON.stringify(state)); }
   };
 }
