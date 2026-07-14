@@ -130,13 +130,14 @@ import { buildSmokeTestChecklist, buildSmokeTestStatus, finishSmokeTestRun, mark
 import { buildEvidenceIndex, buildEvidenceOverview, generateEvidenceSummary, latestEvidenceSummary } from "./evidence-room.mjs";
 import { buildPartnerJourneyHandoffContractPacket, generatePartnerJourneyHandoffContractPreview, handoffContractRequiredArtifactTypes, handoffContractRequiredPartnerFields, handoffContractRequiredTopLevelFields, handoffContractStatus, handoffContractVersion, latestHandoffContractPreview, redactHandoffContractJson, validatePartnerJourneyHandoffContract } from "./partner-journey-handoff-contract.mjs";
 import { applyRoleAssignmentChange, buildRoleSystemStatus, canPerformEndpoint, ensureRoleAssignments, roleCapabilities } from "./roles.mjs";
+import { assertProductionReadiness, isHostedProduction, parseBoolean, productEventRouteEnabled, safeStartupError, webhookRouteEnabled } from "./runtime-security.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
 const port = Number(process.env.PORT ?? 3001);
 function productionBindHost() {
   if (process.env.HOST) return process.env.HOST;
-  if (process.env.RENDER || process.env.NODE_ENV === "production") return "0.0.0.0";
+  if (isHostedProduction(process.env)) return "0.0.0.0";
   return "127.0.0.1";
 }
 const host = productionBindHost();
@@ -483,6 +484,8 @@ function loadEnvFile(relativePath) {
 }
 
 function loadLocalEnv() {
+  if (process.env.NODE_ENV === "test" || parseBoolean(process.env.COMMAND_CENTER_TEST_MODE) || parseBoolean(process.env.SKIP_ENV_LOCAL_FILE)) return;
+  if (isHostedProduction(process.env)) return;
   loadEnvFile(".env");
   loadEnvFile(".env.local");
 }
@@ -6420,7 +6423,7 @@ async function resolveLinkedInOAuthResult(code = "") {
       profile: {
         sub:"linkedin-oauth-test-profile",
         name:"LinkedIn Test Owner",
-        email:"owner@example.test"
+        email:"redacted@example.com"
       }
     };
   }
@@ -7971,7 +7974,14 @@ const initialState = {
   postImages: []
 };
 
-const store = createStore(initialState);
+let store;
+try {
+  store = createStore(initialState);
+  assertProductionReadiness(process.env, { activeStorageBackend: store.kind });
+} catch (error) {
+  console.error(safeStartupError(error));
+  process.exit(error?.exitCode || 78);
+}
 let stateMutationQueue = Promise.resolve();
 
 function serializeStateMutation(operation) {
@@ -12971,7 +12981,7 @@ function demoAutomationEvents(state = {}) {
   const campaign = (state.campaigns || [])[0] || {};
   return [
     { source:"gmail", sourceEventId:"demo-gmail-proposal", eventType:"email_received", title:`Proposal follow-up from ${partner.organizationName || "TimeDone"}`, summary:"Can we revisit the RecordShield pilot proposal and discuss next steps this week?", rawPayload:{ subject:"RecordShield proposal follow-up", from:"partner@example.org" } },
-    { source:"gmail", sourceEventId:"demo-gmail-partnership", eventType:"email_received", title:"Partnership inquiry from Fresh Start Legal Network", summary:"We are interested in a partnership around RecordShield access for clients and community referrals.", rawPayload:{ subject:"LegalEase partnership inquiry", from:"director@freshstartlegal.example", organizationName:"Fresh Start Legal Network" } },
+    { source:"gmail", sourceEventId:"demo-gmail-partnership", eventType:"email_received", title:"Partnership inquiry from Fresh Start Legal Network", summary:"We are interested in a partnership around RecordShield access for clients and community referrals.", rawPayload:{ subject:"LegalEase partnership inquiry", from:"redacted@example.com", organizationName:"Fresh Start Legal Network" } },
     { source:"calendar", sourceEventId:"demo-calendar-partner", eventType:"calendar_event", title:`Meeting with ${partner.organizationName || "Goodwill of Mississippi"}`, summary:"Calendar meeting detected. Suggest prep and follow-up task.", rawPayload:{ startsAt:appendDaysIso(1) } },
     { source:"supabase", sourceEventId:"demo-supabase-rs-user", eventType:"recordshield_user_created", title:"RecordShield user created", summary:"New RecordShield user event from app database.", rawPayload:{ campaign_slug:campaign.trackingSlug || "recordshield-launch" } },
     { source:"stripe", sourceEventId:"demo-stripe-checkout", eventType:"checkout.session.completed", title:"Stripe checkout completed", summary:"Payment completed from Expungement.ai flow.", rawPayload:{ amount_total: 19900, campaign_slug:campaign.trackingSlug || "" } },
@@ -37101,7 +37111,7 @@ async function handleRequest(request, response) {
       }
       const result = await runAlertEmailSend({
         to: decision.recipient,
-        from: String(process.env.ALERTS_EMAIL_FROM || "roger@legalease.com").trim(),
+        from: String(process.env.ALERTS_EMAIL_FROM || "redacted@example.com").trim(),
         subject: "Alert email test from the LegalEase Command Center",
         text: "This is a test of owner alert email. It goes only to you. Nothing was sent to contacts, customers, or partners."
       }, { env: process.env });
