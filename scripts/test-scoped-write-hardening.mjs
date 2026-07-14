@@ -28,6 +28,7 @@ import path from "node:path";
 
 import { coreStateCollections, singletonCollections } from "./storage.mjs";
 import { signUnsubscribeToken } from "./outreach-os.mjs";
+import { loginWithCredential } from "./test-support/preview-server-harness.mjs";
 
 let passed = 0;
 function ok(name) { console.log("  ✓ " + name); passed += 1; }
@@ -108,10 +109,11 @@ function sliceBetween(startMarker, endMarker) {
 }
 
 {
-  // The Google OAuth callback is PUBLIC (Google redirects the browser to it); a bot GET with
-  // ?error= or a garbage state reaches its error writes, so every write must be serialized
-  // and scoped: connect success writes exactly connectorStatus+auditHistory+activityEvents
-  // (socialAccounts persists via the store method), error paths write via updateSocialAccount.
+  // The Google OAuth callback is PUBLIC (Google redirects the browser to it), but the shared
+  // callback guard validates and consumes owner/session-bound state before this route runs.
+  // Valid callback writes must still be serialized and scoped: connect success writes exactly
+  // connectorStatus+auditHistory+activityEvents (socialAccounts persists via the store method),
+  // and valid provider-error paths write via updateSocialAccount.
   const body = sliceBetween('if (url.pathname === "/api/google/callback"', '"/api/google/status"');
   const serializedCount = (body.match(/serializeStateMutation\(/g) || []).length;
   assert(serializedCount >= 4, `all four google-callback write paths are serialized (found ${serializedCount})`);
@@ -126,21 +128,23 @@ function sliceBetween(startMarker, endMarker) {
   const storageSrc = readFileSync(new URL("./storage.mjs", import.meta.url), "utf8");
   const start = storageSrc.indexOf("async updateSocialAccount");
   const body = storageSrc.slice(start, storageSrc.indexOf("\n  }", start));
-  assert(body.includes("writeCollections({ socialAccounts"), "updateSocialAccount writes only socialAccounts");
+  assert(body.includes('this.mutateCollectionItem("socialAccounts"'),
+    "updateSocialAccount uses the atomic record-scoped socialAccounts mutator");
   assert(!body.includes("this.writeState("), "updateSocialAccount no longer performs a full-state write");
-  ok("store.updateSocialAccount: scoped to socialAccounts (reachable from the public callback)");
+  assert(!body.includes("this.writeCollections("), "updateSocialAccount no longer rewrites the full socialAccounts collection");
+  ok("store.updateSocialAccount: atomic record-scoped socialAccounts mutation (reachable from the public callback)");
 }
 
 // ---- Tier-2 sweep pin: the full-state write count can never silently grow -------------------
 {
   const count = (src.match(/store\.writeState\(/g) || []).length;
-  // Allowlist: (1) writeChangedCollections' own in-place-mutation fallback, (2) the
-  // /api/publishing/run summary write (worker state lineage has no clean before snapshot;
-  // serialized full-state, documented in the handler).
-  assert(count <= 2, `preview-server full-state writeState count must stay at 2 or fewer (found ${count})`);
+  // The only allowlist is writeChangedCollections' defensive in-place-mutation fallback.
+  // Publishing summaries use an atomic append and no longer need a full-state write.
+  assert(count <= 1, `preview-server full-state writeState count must stay at 1 or fewer (found ${count})`);
   assert(src.includes("if (after !== before) await store.writeState(after);"), "allowlisted site 1: the diff helper fallback");
-  assert(src.includes("serializeStateMutation(() => store.writeState(stateWithSummary))"), "allowlisted site 2: publishing run summary, serialized");
-  ok(`tier-2 sweep pinned: ${count} full-state writes remain in preview-server, both allowlisted`);
+  assert(src.includes('await store.claimCollectionItems("dailyRunPublisherRuns", [summary])'),
+    "publishing run summaries use an atomic append-only claim");
+  ok(`tier-2 sweep pinned: ${count} full-state write remains in preview-server; publishing summaries append atomically`);
 }
 
 {
@@ -158,14 +162,13 @@ function sliceBetween(startMarker, endMarker) {
 // ---- Tier-3: heartbeat + reactivation CLI write mechanics ------------------------------------
 {
   const hb = readFileSync(new URL("./heartbeat.mjs", import.meta.url), "utf8");
-  assert(hb.includes("writeCollections({ heartbeatLease: lease })"), "lease claim is a one-key scoped write");
+  const leaseMutations = (hb.match(/store\.mutateCollectionItem\("heartbeatLease", "singleton"/g) || []).length;
+  assert.equal(leaseMutations, 2, "heartbeat lease claim and release both use versioned compare-and-swap");
   const fullWrites = (hb.match(/store\.writeState\(/g) || []).length;
   assert.equal(fullWrites, 0, `heartbeat performs zero full-state writes; found ${fullWrites}`);
-  // The unconditional release guards the JSON-backend steady state where the stored lease is
-  // the literal null: a pure reference diff would omit the release and leave the mid-tick
-  // claim persisted, wrongly skipping the next tick for a full TTL.
-  assert(hb.includes("patch.heartbeatLease = null;"), "closing patch always releases the lease");
-  ok("heartbeat tick: lease claim scoped; closing write diff-scoped with unconditional lease release");
+  assert(hb.includes("delete patch.heartbeatLease;"), "closing collection patch cannot overwrite the CAS-managed lease");
+  assert(hb.includes("current?.runId === id"), "lease release verifies ownership before mutation");
+  ok("heartbeat tick: lease claim/release use CAS; closing write cannot clobber the lease");
 }
 
 {
@@ -193,6 +196,7 @@ const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
     COMMAND_CENTER_REQUIRE_AUTH: "true",
     COMMAND_CENTER_AUTH_DISABLED: "false",
     COMMAND_CENTER_OWNER_TOKEN: OWNER_TOKEN,
+    COMMAND_CENTER_SESSION_SECRET: "test-session-secret-0123456789abcdef",
     PRODUCT_EVENT_WEBHOOK_SECRET: PRODUCT_SECRET,
     LEGALEASE_OS_EVENTS_SECRET: "",
     COMMAND_CENTER_DATA_PATH: dataPath,
@@ -280,9 +284,14 @@ try {
   ok("live: duplicate product event stays idempotent under the scoped write");
 
   // 6d. Autopilot toggle persists scoped, and everything written before it survives.
+  const login = await loginWithCredential({ baseUrl:base }, OWNER_TOKEN);
   const toggleResp = await fetch(`${base}/api/heartbeat/autopilot`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${OWNER_TOKEN}` },
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: login.cookie,
+      "x-csrf-token": login.csrfToken
+    },
     body: JSON.stringify({ engineId: "reactivation-sequencer", enabled: true })
   });
   assert.equal(toggleResp.status, 200, `autopilot toggle accepted (got ${toggleResp.status})`);
@@ -323,20 +332,19 @@ try {
     ok("live: malformed unsubscribe token stays rejected (fail closed)");
   }
 
-  // 6f. Bot-style GET on the public Google callback: writes an error status via the scoped
-  // store method and every earlier-written collection survives.
+  // 6f. Bot-style GET on the public Google callback: missing owner/session-bound state is
+  // rejected before any connector mutation, and every earlier-written collection survives.
   const gcbResp = await fetch(`${base}/api/google/callback?error=access_denied`, { redirect: "manual" });
-  assert.equal(gcbResp.status, 302, `google callback error path redirects (got ${gcbResp.status})`);
+  assert.equal(gcbResp.status, 400, `google callback without valid state is rejected (got ${gcbResp.status})`);
   await wait(800);
   {
     const persisted = await readDataFile();
     const google = (persisted.socialAccounts || []).find((account) => account.platform === "google_workspace");
-    assert(google, "google_workspace account status persisted");
-    assert.equal(google.status, "error", "error status recorded");
+    assert.equal(google, undefined, "invalid callback cannot create or mutate a google_workspace account");
     assert((persisted.outreachSuppressions || []).some((entry) => entry.email === "scoped-test@example.com"), "unsubscribe suppression survived the callback write");
     assert.equal(persisted.autopilotSettings?.["reactivation-sequencer"]?.enabled, true, "autopilot setting survived the callback write");
     assert((persisted.soc2AuditLogs || []).some((entry) => entry.action === "access denied"), "audit log survived the callback write");
-    ok("live: public google-callback error write is scoped; earlier collections survive");
+    ok("live: invalid public google callback is rejected before mutation; earlier collections survive");
   }
 } finally {
   child.kill("SIGTERM");
