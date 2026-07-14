@@ -157,13 +157,13 @@ function cookiePair(setCookie, name) {
   return match ? `${name}=${match[1]}` : "";
 }
 
-export async function loginOwner(server) {
+export async function loginWithCredential(server, credential) {
   const result = await jsonRequest(server.baseUrl, "/api/auth/login", {
     method:"POST",
     headers:{ "content-type":"application/json" },
-    body:JSON.stringify({ credential:server.ownerCredential })
+    body:JSON.stringify({ credential })
   });
-  assert.equal(result.response.status, 200, "Synthetic owner login must succeed.");
+  assert.equal(result.response.status, 200, "Synthetic role login must succeed.");
   const setCookie = result.response.headers.get("set-cookie") || "";
   const session = cookiePair(setCookie, "leos_session");
   const csrf = cookiePair(setCookie, "leos_csrf");
@@ -173,4 +173,8 @@ export async function loginOwner(server) {
     cookie:`${session}; ${csrf}`,
     csrfToken:decodeURIComponent(csrf.slice("leos_csrf=".length))
   };
+}
+
+export async function loginOwner(server) {
+  return loginWithCredential(server, server.ownerCredential);
 }

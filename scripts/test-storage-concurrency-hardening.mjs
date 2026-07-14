@@ -6,7 +6,7 @@ import path from "node:path";
 const dir = await mkdtemp(path.join(os.tmpdir(), "leos-storage-concurrency-"));
 process.env.COMMAND_CENTER_DATA_PATH = path.join(dir, "state.json");
 process.env.COMMAND_CENTER_SEED_PATH = path.join(dir, "missing-seed.json");
-const { JsonStore, StorageConflictError } = await import("./storage.mjs");
+const { JsonStore, StorageConflictError, coreMutationsBetween } = await import("./storage.mjs");
 const initial = {
   posts:[{ id:"post-a", title:"A", status:"approved", _version:1 }, { id:"post-b", title:"B", status:"approved", _version:1 }],
   reactivationContacts:[{ id:"contact-a", state:"ready", _version:1 }, { id:"contact-b", state:"ready", _version:1 }],
@@ -15,6 +15,18 @@ const initial = {
 const a = new JsonStore(initial);
 const b = new JsonStore(initial);
 await a.writeState(initial);
+
+const recordDiff = coreMutationsBetween(
+  { posts:[{ id:"post-a", title:"before", _version:4 }, { id:"post-b", title:"remove", _version:2 }] },
+  { posts:[{ id:"post-a", title:"after", _version:4 }, { id:"post-c", title:"create" }] }
+);
+assert.deepEqual(recordDiff.map((mutation) => [mutation.operation, mutation.item_id, mutation.expected_version]), [
+  ["upsert", "post-a", 4],
+  ["upsert", "post-c", null],
+  ["delete", "post-b", 2]
+]);
+assert.equal(recordDiff.find((mutation) => mutation.item_id === "post-a").payload.title, "after");
+assert.equal("_version" in recordDiff.find((mutation) => mutation.item_id === "post-a").payload, false);
 
 await Promise.all([
   a.mutateCollectionItem("posts", "post-a", (row) => ({ ...row, title:"A2" }), { expectedVersion:1 }),
