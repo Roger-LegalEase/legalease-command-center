@@ -142,7 +142,7 @@ function withAuditAndActivity(state = {}, note = {}, action = "", options = {}, 
       resourceId: note.id,
       beforeValue: { review_state: beforeState || "" },
       afterValue: { review_state: note.review_state, action }
-    }, ...list(state.auditHistory)].slice(0, 1000),
+    }, ...list(state.auditHistory)],
     activityEvents: [{
       id: `activity-${note.id}-${action}-${Date.parse(timestamp) || Date.now()}`,
       eventType,

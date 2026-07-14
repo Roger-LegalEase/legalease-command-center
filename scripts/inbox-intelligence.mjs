@@ -1,5 +1,5 @@
 // Inbox Intelligence (I-series, approved 2026-07-12) — full READ-ONLY analysis of exactly
-// ONE mailbox: roger@legalease.com. Authorizing decision (scope, bounds, supersession of the
+// ONE mailbox: roger@example.com. Authorizing decision (scope, bounds, supersession of the
 // 18I snippets-only rule for this one mailbox): docs/decisions/2026-07-12-inbox-full-read-
 // roger-legalease.md.
 //
@@ -31,7 +31,7 @@ export const INBOX_ENGINE_ID = "inbox-intelligence";
 // The ONE mailbox the owner decision names. A different mailbox requires a new decision
 // record and a code change here — deliberately not env-configurable, so widening scope is
 // an auditable diff, never a config drift.
-export const INBOX_ALLOWED_MAILBOX = "roger@legalease.com";
+export const INBOX_ALLOWED_MAILBOX = "roger@example.com";
 export const INBOX_COLLECTIONS = ["inboxSignals"];
 export const INBOX_SINGLETON_COLLECTIONS = ["inboxConfig"];
 
@@ -380,7 +380,7 @@ export function recordInboxActivationAudit(state = {}, { actor = "owner", now = 
   };
   let next = {
     ...state,
-    auditHistory: [auditRow, ...list(state.auditHistory)].slice(0, 1000),
+    auditHistory: [auditRow, ...list(state.auditHistory)],
     inboxConfig: { ...(state.inboxConfig || {}), activationAuditAt: now }
   };
   next = emitCompanyEvent(next, {

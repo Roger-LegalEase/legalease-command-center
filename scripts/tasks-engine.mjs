@@ -438,7 +438,7 @@ export function updateTaskInState(state = {}, taskId = "", action = "in_progress
       due_date: updated.due_date,
       externalSideEffects: false
     }
-  }, ...list(state.auditHistory)].slice(0, 1000);
+  }, ...list(state.auditHistory)];
   next.activityEvents = [{
     id: `activity-task-${taskId}-${normalizedAction}-${Date.parse(timestamp) || Date.now()}`,
     eventType: "Task status changed",

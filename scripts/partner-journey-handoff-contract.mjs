@@ -393,7 +393,7 @@ export function generatePartnerJourneyHandoffContractPreview(state = {}, options
       live_gates_count: validation.live_gates_count,
       no_external_system_contacted: true
     }
-  }, ...list(state.auditHistory)].slice(0, 1000);
+  }, ...list(state.auditHistory)];
   next.activityEvents = [{
     id: `activity-${handoffContractPreviewKey}-${Date.parse(generatedAt) || Date.now()}`,
     eventType: "Partner Journey handoff contract preview generated",

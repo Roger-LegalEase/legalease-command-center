@@ -224,7 +224,7 @@ export function saveOsHealthSnapshot(state = {}, options = {}) {
       live_gates_count: snapshot.live_gates_count,
       warnings: snapshot.trust_warnings.length
     }
-  }, ...list(state.auditHistory)].slice(0, 1000);
+  }, ...list(state.auditHistory)];
   next.activityEvents = [{
     id: `activity-${snapshot.id}-${Date.parse(timestamp) || Date.now()}`,
     eventType: "OS Health Snapshot refreshed",

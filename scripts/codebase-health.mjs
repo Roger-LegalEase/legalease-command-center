@@ -463,7 +463,7 @@ export function saveCodebaseHealthSnapshot(state = {}, scan = {}, options = {}) 
       new_findings: snapshot.deltas.new_count,
       resolved_findings: snapshot.deltas.resolved_count
     }
-  }, ...list(state.auditHistory)].slice(0, 1000);
+  }, ...list(state.auditHistory)];
   next.activityEvents = [{
     id: `activity-${snapshot.id}-${stamp}`,
     eventType: "Codebase Health Snapshot refreshed",

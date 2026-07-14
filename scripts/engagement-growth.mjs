@@ -262,7 +262,7 @@ export function saveEngagementGrowthSnapshot(state = {}, fetched = {}, options =
       live_sources_connected: snapshot.live_sources_connected,
       blocked_sources: snapshot.blocked_sources.length
     }
-  }, ...list(state.auditHistory)].slice(0, 1000);
+  }, ...list(state.auditHistory)];
   next.activityEvents = [{
     id: `activity-${snapshot.id}-${stamp}`,
     eventType: "Engagement & Growth Snapshot refreshed",
