@@ -32,6 +32,11 @@ export const capabilities = [
   "manage_content_drafts",
   "manage_approval_queue",
   "manage_autonomy"
+  ,"social_publish"
+  ,"read_sensitive"
+  ,"view_aggregate_reports"
+  ,"view_private_assets"
+  ,"view_diagnostics"
 ];
 
 export const roleCapabilities = {
@@ -59,7 +64,10 @@ export const roleCapabilities = {
     "manage_growth",
     "manage_content_drafts",
     "manage_approval_queue",
-    "manage_autonomy"
+    "manage_autonomy",
+    "read_sensitive",
+    "view_private_assets",
+    "view_diagnostics"
   ],
   operator: [
     "read_internal",
@@ -72,14 +80,14 @@ export const roleCapabilities = {
     "save_closeout",
     "add_notes"
   ],
-  viewer: ["read_internal"]
+  viewer: ["view_aggregate_reports"]
 };
 
 const legacyPermissions = {
   owner: ["read", "write", "admin", "approve", "publish_review", "compliance_review", "view_investor", "view_partner"],
   admin: ["read", "write", "admin", "approve", "compliance_review", "view_investor", "view_partner"],
   operator: ["read", "write", "approve", "compliance_review"],
-  viewer: ["read", "view_investor", "view_partner"]
+  viewer: ["view_investor", "view_partner", "view_aggregate_reports"]
 };
 
 export const roleDefinitions = Object.fromEntries(roles.map(role => [role, {
@@ -166,7 +174,13 @@ function isFinalArtifactState(input = {}) {
 export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", input = {}) {
   const verb = String(method || "GET").toUpperCase();
   const path = String(pathname || "/");
+  if (verb === "GET" && path === "/api/reports/aggregate") return ["view_aggregate_reports"];
+  if (verb === "GET" && (["/api/ready", "/api/metrics", "/api/auth/diagnostics", "/api/production/readiness", "/api/health/supabase"].includes(path) || path.startsWith("/api/storage"))) return ["view_diagnostics"];
+  if (path.startsWith("/api/assets/") || /^\/assets\/uploads\//.test(path) || /^\/data\/(exports|assets|backups)\//.test(path) || /\/final-png$/.test(path)) return ["view_private_assets"];
+  if (path === "/api/publishing/reconciliation") return ["social_publish"];
+  if (/^\/api\/posts\/[^/]+\/upload-public-image$/.test(path) || path === "/api/posts/batch-upload-public-images") return ["social_publish"];
   if (["GET", "HEAD", "OPTIONS"].includes(verb)) return ["read_internal"];
+  if (/^\/api\/(linkedin\/publish|publishing\/run|posts\/.*\/publish)/.test(path)) return ["social_publish"];
   if (path === "/api/roles/assignments" || path === "/api/roles/assignments/deactivate") return ["manage_roles"];
   if (path === "/api/production-activation/rcap/start") return ["run_internal_activation"];
   if (path === "/api/production-activation/rcap/review-state") {
@@ -308,7 +322,7 @@ export function applyRoleAssignmentChange(state = {}, input = {}, options = {}) 
     resourceId: actorId,
     beforeValue: previous,
     afterValue: nextAssignment
-  }, ...list(state.auditHistory)].slice(0, 1000);
+  }, ...list(state.auditHistory)];
   next.activityEvents = [{
     id: `activity-role-${actorId}-${Date.parse(timestamp) || Date.now()}`,
     eventType: action === "deactivate" ? "Role assignment deactivated" : "Role assignment updated",
