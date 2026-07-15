@@ -11,6 +11,8 @@ import {
 } from "./app-shell-navigation.mjs";
 
 export const DESKTOP_SHELL_STYLESHEET_PATH = "assets/ui/desktop-shell.css";
+export const RESPONSIVE_SHELL_BREAKPOINT_PX = 860;
+export const RESPONSIVE_NAVIGATION_DRAWER_ID = "vnext-navigation-drawer";
 
 const assetUrl = (path) => `/${String(path || "").replace(/^\/+/, "")}`;
 const routeHref = (route) => `#${String(route || "today").replace(/^#/, "")}`;
@@ -54,10 +56,12 @@ export function renderVNextDesktopShellChrome() {
   const help = TOP_BAR_CONTROLS.find((item) => item.id === "help");
   return Object.freeze({
     start:`<div class="vnext-shell" data-vnext-shell="desktop">
-    <aside class="vnext-sidebar" aria-label="Command Center sidebar">
+    <button class="vnext-drawer-overlay" type="button" data-shell-action="close-navigation" aria-label="Close navigation" tabindex="-1" hidden></button>
+    <aside class="vnext-sidebar" aria-label="Command Center sidebar" id="${RESPONSIVE_NAVIGATION_DRAWER_ID}" data-shell-drawer>
       <a class="vnext-logo-link" href="#today" aria-label="LegalEase Command Center home">
         <img class="vnext-shell-logo" src="${escapeAttribute(assetUrl(APPROVED_WHITE_LOGO_PATH))}" width="1920" height="1080" alt="LegalEase">
       </a>
+      <button class="vnext-drawer-close" type="button" data-shell-action="close-navigation" aria-label="Close navigation"><span aria-hidden="true">×</span></button>
       <nav class="vnext-primary-navigation" aria-label="Primary destinations">${primaryNavigationHtml()}
       </nav>
       <div class="vnext-sidebar-divider" aria-hidden="true"></div>
@@ -66,8 +70,14 @@ export function renderVNextDesktopShellChrome() {
     </aside>
     <div class="vnext-shell-stage">
       <header class="vnext-topbar" aria-label="Application controls">
+        <div class="vnext-mobile-leading">
+          <button class="vnext-navigation-trigger" type="button" data-shell-action="open-navigation" aria-label="Open navigation" aria-expanded="false" aria-controls="${RESPONSIVE_NAVIGATION_DRAWER_ID}">
+            <span class="vnext-menu-icon" aria-hidden="true"><span></span><span></span><span></span></span>
+          </button>
+          <strong class="vnext-current-context" data-shell-current-context aria-live="polite">Today</strong>
+        </div>
         <a class="vnext-search-link" href="${escapeAttribute(routeHref(search.route))}" data-shell-destination="${escapeAttribute(search.label)}">
-          <span>${escapeHtml(search.label)}</span>
+          <span class="vnext-topbar-icon" aria-hidden="true">⌕</span><span class="vnext-topbar-label">${escapeHtml(search.label)}</span>
         </a>
         <div class="vnext-topbar-actions">
           <div class="vnext-menu">
@@ -75,9 +85,9 @@ export function renderVNextDesktopShellChrome() {
             <div class="vnext-menu-panel vnext-create-menu" id="vnext-create-menu" role="menu" aria-label="Create" hidden>${createMenuHtml()}
             </div>
           </div>
-          <a class="vnext-topbar-link" href="${escapeAttribute(routeHref(help.route))}">${escapeHtml(help.label)}</a>
+          <a class="vnext-topbar-link" href="${escapeAttribute(routeHref(help.route))}" aria-label="${escapeAttribute(help.label)}"><span class="vnext-topbar-icon" aria-hidden="true">?</span><span class="vnext-topbar-label">${escapeHtml(help.label)}</span></a>
           <div class="vnext-menu">
-            <button class="vnext-profile-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="vnext-profile-menu">Profile</button>
+            <button class="vnext-profile-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="vnext-profile-menu"><span class="vnext-topbar-icon" aria-hidden="true">●</span><span class="vnext-topbar-label">Profile</span></button>
             <div class="vnext-menu-panel vnext-profile-menu" id="vnext-profile-menu" role="menu" aria-label="Profile" hidden>
               <a role="menuitem" href="#settings">Settings</a>
               <button role="menuitem" type="button" data-shell-action="sign-out">Sign out</button>
@@ -106,6 +116,13 @@ function shellClientScript() {
       [document.querySelector(".vnext-create-trigger"), document.querySelector("#vnext-create-menu")],
       [document.querySelector(".vnext-profile-trigger"), document.querySelector("#vnext-profile-menu")]
     ].filter((pair) => pair[0] && pair[1]);
+    const drawer = document.querySelector("[data-shell-drawer]");
+    const drawerTrigger = document.querySelector(".vnext-navigation-trigger");
+    const drawerClose = document.querySelector(".vnext-drawer-close");
+    const drawerOverlay = document.querySelector(".vnext-drawer-overlay");
+    const shellStage = document.querySelector(".vnext-shell-stage");
+    const navigationMedia = window.matchMedia("(max-width: ${RESPONSIVE_SHELL_BREAKPOINT_PX}px)");
+    const drawerFocusableSelector = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
     function requestedRoute() {
       const path = String(location.pathname || "/").replace(/^\\/+|\\/+$/g, "");
       return String(location.hash || (path === "sources/import-social-calendar" ? "#sources" : "#cockpit")).replace(/^#/, "").split("?")[0];
@@ -152,6 +169,8 @@ function shellClientScript() {
       normalizeNestedMainRegions();
       const destination = destinationForLocation();
       document.body.dataset.shellDestination = destination;
+      const currentContext = document.querySelector("[data-shell-current-context]");
+      if (currentContext) currentContext.textContent = destination;
       document.querySelectorAll("[data-shell-destination]").forEach((control) => {
         const selected = control.dataset.shellDestination === destination;
         control.classList.toggle("is-selected", selected);
@@ -179,6 +198,59 @@ function shellClientScript() {
       });
       menu.hidden = false;
       trigger.setAttribute("aria-expanded", "true");
+    }
+
+    function drawerIsOpen() {
+      return document.body.classList.contains("vnext-navigation-open");
+    }
+
+    function drawerFocusableControls() {
+      if (!drawer) return [];
+      return [...drawer.querySelectorAll(drawerFocusableSelector)].filter((control) => {
+        const style = getComputedStyle(control);
+        return style.display !== "none" && style.visibility !== "hidden";
+      });
+    }
+
+    function closeNavigationDrawer(returnFocus = false) {
+      if (!drawer || !drawerTrigger || !drawerOverlay) return;
+      document.body.classList.remove("vnext-navigation-open");
+      drawerTrigger.setAttribute("aria-expanded", "false");
+      drawer.setAttribute("aria-hidden", navigationMedia.matches ? "true" : "false");
+      drawer.toggleAttribute("inert", navigationMedia.matches);
+      drawerOverlay.hidden = true;
+      if (shellStage) shellStage.inert = false;
+      if (returnFocus && navigationMedia.matches) setTimeout(() => drawerTrigger.focus(), 0);
+    }
+
+    function openNavigationDrawer() {
+      if (!navigationMedia.matches || !drawer || !drawerTrigger || !drawerOverlay) return;
+      closeAllMenus(false);
+      document.body.classList.add("vnext-navigation-open");
+      drawerTrigger.setAttribute("aria-expanded", "true");
+      drawer.setAttribute("aria-hidden", "false");
+      drawer.removeAttribute("inert");
+      drawerOverlay.hidden = false;
+      if (shellStage) shellStage.inert = true;
+      setTimeout(() => (drawerClose || drawerFocusableControls()[0])?.focus(), 0);
+    }
+
+    function syncResponsiveMode() {
+      if (!drawer || !drawerTrigger || !drawerOverlay) return;
+      closeNavigationDrawer(false);
+      if (navigationMedia.matches) {
+        drawer.setAttribute("role", "dialog");
+        drawer.setAttribute("aria-modal", "true");
+        drawer.setAttribute("aria-label", "Command Center navigation");
+        drawer.setAttribute("aria-hidden", "true");
+        drawer.setAttribute("inert", "");
+      } else {
+        drawer.removeAttribute("role");
+        drawer.removeAttribute("aria-modal");
+        drawer.setAttribute("aria-label", "Command Center sidebar");
+        drawer.removeAttribute("aria-hidden");
+        drawer.removeAttribute("inert");
+      }
     }
 
     menuPairs.forEach(([trigger, menu]) => {
@@ -209,22 +281,54 @@ function shellClientScript() {
 
     document.addEventListener("click", (event) => {
       const action = event.target.closest?.("[data-shell-action]")?.dataset.shellAction;
+      if (action === "open-navigation") {
+        openNavigationDrawer();
+        return;
+      }
+      if (action === "close-navigation") {
+        closeNavigationDrawer(true);
+        return;
+      }
       if (action === "open-lee") {
         if (typeof openLeeBubble === "function") openLeeBubble();
       }
       if (action === "sign-out") {
         if (typeof lockCommandCenter === "function") lockCommandCenter();
       }
+      if (navigationMedia.matches && drawerIsOpen() && event.target.closest?.(".vnext-sidebar a, .vnext-sidebar [data-shell-action]")) {
+        closeNavigationDrawer(false);
+      }
       if (event.target.closest?.('[role="menuitem"]')) closeAllMenus(false);
       if (!event.target.closest?.(".vnext-menu")) closeAllMenus(false);
     });
 
     document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && drawerIsOpen()) {
+        event.preventDefault();
+        closeNavigationDrawer(true);
+        return;
+      }
+      if (event.key === "Tab" && drawerIsOpen()) {
+        const controls = drawerFocusableControls();
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (!first || !last) return;
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+        return;
+      }
       if (event.key === "Escape") closeAllMenus(true);
     });
     window.addEventListener("hashchange", () => setTimeout(syncShell, 0));
+    navigationMedia.addEventListener("change", syncResponsiveMode);
     const app = document.querySelector("main#app");
     if (app) new MutationObserver(syncShell).observe(app, { childList:true, subtree:false });
+    syncResponsiveMode();
     syncShell();
   })();
   </script>`;
@@ -266,4 +370,14 @@ export const DESKTOP_SHELL_CONTRACT = Object.freeze({
   secondaryControls:SECONDARY_SHELL_CONTROLS,
   topBarControls:TOP_BAR_CONTROLS,
   createOptions:CREATE_MENU_OPTIONS
+});
+
+export const RESPONSIVE_SHELL_CONTRACT = Object.freeze({
+  breakpointPx:RESPONSIVE_SHELL_BREAKPOINT_PX,
+  drawerId:RESPONSIVE_NAVIGATION_DRAWER_ID,
+  approvedLogoPath:APPROVED_WHITE_LOGO_PATH,
+  primaryDestinations:PRIMARY_SHELL_DESTINATIONS,
+  secondaryControls:SECONDARY_SHELL_CONTROLS,
+  createOptions:CREATE_MENU_OPTIONS,
+  requiredWidths:Object.freeze([1440, 1280, 1024, 768, 390])
 });

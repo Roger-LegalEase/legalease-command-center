@@ -25,6 +25,7 @@
     "test:vnext-ui-primitives": "node scripts/test-vnext-ui-primitives.mjs",
     "test:vnext-brand-contract": "node scripts/test-vnext-brand-contract.mjs",
     "test:vnext-desktop-shell": "node scripts/test-vnext-desktop-shell.mjs",
+    "test:vnext-responsive-shell": "node scripts/test-vnext-responsive-shell.mjs",
     "test:browser": "node scripts/run-browser-tests.mjs",
     "test:browser:install": "playwright install --with-deps chromium",
     "test:extended": "node scripts/run-extended-tests.mjs",
