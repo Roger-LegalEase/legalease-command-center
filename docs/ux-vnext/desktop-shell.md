@@ -97,10 +97,10 @@ and no failed critical same-origin requests.
 
 At 1440, 1280, and 1024 pixels the sidebar remains visible, navigation labels remain
 readable, top controls remain in the viewport, and the content canvas has no
-page-level horizontal overflow. At 768 and 390 pixels CCX-100 uses a safe stacked
-navigation fallback so the application does not blank, crash, or become unreachable.
-CCX-101 owns the final tablet and mobile navigation drawer, compact top bar, focus
-management, and responsive polish.
+page-level horizontal overflow. At 768 and 390 pixels, CCX-101 replaces the former
+stacked fallback with the complete navigation drawer and compact top bar documented
+in `responsive-shell.md`. The 1440, 1280, and 1024 desktop composition remains
+unchanged.
 
 ## Verification, screenshots, and performance
 
@@ -120,14 +120,14 @@ chrome. Hash navigation continues through the existing client renderer and issue
 second document request or full-state fetch. Exact HTML, CSS, request, load-time, and
 state-payload measurements are recorded in the CCX-100 pull request.
 
-## Rollback and CCX-101 handoff
+## Rollback and CCX-102 handoff
 
 Unset `COMMAND_CENTER_UX_VNEXT` or set it to the exact string `false`, then restart or
 redeploy. Rollback requires no data migration, route change, cache cleanup, or browser
 preference reset because the flag is server-side and the underlying data contract is
 shared.
 
-CCX-101 may replace the narrow stacked fallback with the approved responsive drawer.
-It must keep the same route registry, five destinations, functional controls, focus
+CCX-101 keeps the same route registry, five destinations, functional controls, focus
 rules, direct logo asset, feature-flag rollback, and unchanged business and safety
-boundaries.
+boundaries across the responsive drawer. CCX-102 may introduce canonical vNext route
+parsing only after preserving every current alias and exact-object link.

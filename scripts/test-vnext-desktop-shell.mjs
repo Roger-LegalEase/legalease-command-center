@@ -51,7 +51,7 @@ assert.ok(Object.isFrozen(DESKTOP_SHELL_CONTRACT));
 assert.ok(Object.isFrozen(PRIMARY_SHELL_DESTINATIONS));
 
 const chrome = renderVNextDesktopShellChrome();
-assert.match(chrome.start, /<aside class="vnext-sidebar" aria-label="Command Center sidebar">/);
+assert.match(chrome.start, /<aside class="vnext-sidebar" aria-label="Command Center sidebar"[^>]*>/);
 assert.match(chrome.start, /<nav class="vnext-primary-navigation" aria-label="Primary destinations">/);
 assert.match(chrome.start, /<header class="vnext-topbar" aria-label="Application controls">/);
 assert.match(chrome.start, /src="\/assets\/brand\/logos\/legalease-logo-white-2025\.png" width="1920" height="1080"/);

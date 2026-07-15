@@ -3,8 +3,8 @@
 ## Purpose
 
 CCX-005 added Chromium tests for the current Command Center, CCX-006 extended the
-suite to the protected design-system showcase, and CCX-100 adds the production vNext
-desktop shell. The suite exercises the
+suite to the protected design-system showcase, CCX-100 added the production vNext
+desktop shell, and CCX-101 covers its responsive navigation drawer. The suite exercises the
 served application in a real browser; it does not replace the existing Node, route,
 security, migration, restore, or source-level contracts.
 
@@ -108,6 +108,21 @@ The six CCX-100 tests additionally cover:
 - byte-identical full-state payloads across shell modes, response-size measurement,
   and zero extra document or full-state requests during hash navigation.
 
+The five CCX-101 tests additionally cover:
+
+- opening and closing the responsive drawer at 768 and 390 pixels through Escape and
+  the overlay, including focus entry, containment, return, inert background, and
+  body-scroll lock;
+- navigating all five destinations through visible drawer controls with exact route,
+  active-state, current-context, and close-after-selection synchronization;
+- reaching Inbox, the existing Le-E assistant, Settings, and the two supported Create
+  flows on mobile without exposing deferred creation options;
+- preserving aliases, parameterized item links, unknown-route fallback, and the
+  unchanged flag-off legacy shell; and
+- zero serious/critical axe findings, no horizontal overflow at 1440, 1280, 1024,
+  768, or 390 pixels, direct undistorted logo use, and eight deterministic responsive
+  screenshots.
+
 `Review Desk` remains the underlying current workspace for Social. CCX-100 changes
 the enabled shell label while leaving that page renderer and its behavior intact.
 
@@ -151,7 +166,8 @@ not contain request payloads.
 
 The design-system test writes review screenshots to
 `docs/ux-vnext/screenshots/ccx-006/`. CCX-100 writes seven desktop-shell review images
-to `docs/ux-vnext/screenshots/ccx-100/`. These PNGs are intentional documentation
+to `docs/ux-vnext/screenshots/ccx-100/`. CCX-101 writes eight responsive-shell review
+images to `docs/ux-vnext/screenshots/ccx-101/`. These PNGs are intentional documentation
 artifacts rather than failure artifacts; the HTML report, traces, videos, and failure
 screenshots remain generated and ignored.
 
