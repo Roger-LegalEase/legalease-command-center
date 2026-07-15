@@ -111,7 +111,7 @@ There are two pre-existing serious exceptions and no critical exceptions:
 
 | Route | Rule | Affected selector/signature | Impact | Reason | Owner |
 | --- | --- | --- | --- | --- | --- |
-| Today (`#today`) | `color-contrast` | Exact 56-selector set in `tests/browser/baselines.mjs`; newline-joined SHA-256 `d72d5ddf19a10613129c6c2a208f5581b072397667073d35ea3cda810b43b16e` | Serious | Existing Today text and status colors do not meet the axe contrast threshold. | CCX-006 design-system packet |
+| Today (`#today`) | `color-contrast` | Exact 56-selector set in `tests/browser/baselines.mjs`; newline-joined SHA-256 `294b1b8007bdda720a0bc84602de5ff513edadb0a072636d5edb49fb6b0a1535` | Serious | Existing Today text and status colors do not meet the axe contrast threshold. | CCX-006 design-system packet |
 | Current Social workspace (`#queue`) | `color-contrast` | `.wizard-actions > .primary[type="button"]`; SHA-256 `517e247f5da422efa0f385e174333ade211f2aedfa8ff68950c437e2bc4cd611` | Serious | The existing Review Desk primary action color combination does not meet the axe contrast threshold. | CCX-006 design-system packet |
 
 No axe rule is disabled, and there is no broad selector or route exclusion.

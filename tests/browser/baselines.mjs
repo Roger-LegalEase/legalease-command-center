@@ -31,6 +31,7 @@ const todayContrastTargets = Object.freeze([
   ".ck-approve.ck-card:nth-child(1) > .from",
   ".ck-approve.ck-card:nth-child(2) > .from",
   ".ck-approve.ck-card:nth-child(3) > .from",
+  ".ck-chip.ok",
   ".ck-counter.good:nth-child(1) > .l",
   ".ck-counter.good:nth-child(2) > .l",
   ".ck-counter.good:nth-child(3) > .l",
@@ -62,7 +63,6 @@ const todayContrastTargets = Object.freeze([
   ".ck-lrow:nth-child(3) > .txt > .s",
   ".ck-module-body > .ck-sec-head > .hint",
   ".ck-when > .s",
-  ".ok",
   ".scroll > .ck-empty",
   ".teal.ck-pill",
   ".when"

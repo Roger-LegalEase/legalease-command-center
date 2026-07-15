@@ -12,7 +12,13 @@ async function seriousOrCriticalViolations(page) {
     .map((violation) => ({
       rule:violation.id,
       impact:violation.impact,
-      targets:violation.nodes.map((node) => node.target.join(" ")).sort()
+      targets:violation.nodes.map((node) => {
+        // axe chooses the shortest unique CSS selector, so the same chip may be `.ok`
+        // locally and `.ok.ck-chip` when another `.ok` element is present in CI. Anchor
+        // this one known baseline node to its semantic class pair instead of uniqueness.
+        if (/class=["'][^"']*\bck-chip\b[^"']*\bok\b[^"']*["']/.test(node.html)) return ".ck-chip.ok";
+        return node.target.join(" ");
+      }).sort()
     }));
 }
 
