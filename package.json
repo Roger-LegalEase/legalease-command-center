@@ -23,6 +23,8 @@
     "test:vnext-founder-language": "node scripts/test-vnext-founder-language.mjs",
     "test:vnext-shell-boundary": "node scripts/test-vnext-shell-boundary.mjs",
     "test:vnext-ui-primitives": "node scripts/test-vnext-ui-primitives.mjs",
+    "test:browser": "node scripts/run-browser-tests.mjs",
+    "test:browser:install": "playwright install --with-deps chromium",
     "test:extended": "node scripts/run-extended-tests.mjs",
     "test:full-daily-workflow": "node scripts/test-full-daily-workflow.mjs",
     "test:prospect-discovery": "node scripts/test-prospect-discovery.mjs",
@@ -92,5 +94,9 @@
   "dependencies": {
     "pg": "^8.21.0",
     "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.61.1"
   }
 }
