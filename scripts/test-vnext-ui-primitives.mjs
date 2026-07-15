@@ -279,13 +279,15 @@ assert.doesNotMatch(serverSource, /const helperMessage = String\(options\.messag
 assert.match(companyMemorySource, /import \{ normalizeSourceLink \} from "\.\/ui\/links\.mjs";/);
 assert.match(companyMemorySource, /export \{ normalizeSourceLink \} from "\.\/ui\/links\.mjs";/);
 
-// The complete legacy htmlShell source is a stable fixture. CCX-004 adopts no
-// shell renderer, so flag-off visual HTML must remain byte-for-byte unchanged.
+// The complete legacy htmlShell source is a stable fixture. CCX-006 intentionally
+// removes a blocked external font request, loads the shared same-origin token file,
+// and applies two narrow contrast remediations; other shell changes must update
+// this reviewed fixture deliberately.
 const shellStart = serverSource.indexOf("function htmlShell()");
 const shellEnd = serverSource.indexOf("\nfunction renderLegacyApp()", shellStart);
 assert.ok(shellStart >= 0 && shellEnd > shellStart);
 const shellHash = createHash("sha256").update(serverSource.slice(shellStart, shellEnd)).digest("hex");
-assert.equal(shellHash, "c65af20292a215a7f10f4d9e7eacf4b80a01b222a2a82ab3de580c7be8ac8cce");
+assert.equal(shellHash, "d9c94bd1cbe726d98c5a4952db74641ef6864b85216b9a60eedd90c572ae7187");
 
 assert.equal(packageJson.scripts["test:vnext-ui-primitives"], "node scripts/test-vnext-ui-primitives.mjs");
 const extendedRunner = readFileSync("scripts/run-extended-tests.mjs", "utf8");
