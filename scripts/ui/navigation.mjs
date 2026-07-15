@@ -1,5 +1,7 @@
-// CCX-001 inventory only. This module is deliberately not wired into the runtime router.
-// The focused inventory test compares it with the live literals in preview-server.mjs.
+// The legacy runtime router remains the compatibility source of route behavior. CCX-100
+// consumes this registry only to resolve vNext shell highlighting; it does not redirect,
+// rename, render, authorize, fetch, or mutate a route. The focused inventory test still
+// compares the registry with the live literals in preview-server.mjs.
 
 export const MIGRATION_CLASSIFICATIONS = Object.freeze([
   "Keep as primary",

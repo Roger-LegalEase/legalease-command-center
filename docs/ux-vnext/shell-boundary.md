@@ -2,11 +2,12 @@
 
 Source main SHA: `7898dddde76b65f12c754c15a27286e675e186e9`
 
-CCX-003 creates a deployment boundary between the current Command Center shell and
-the future vNext shell. It does not build or expose the vNext visual shell. Both
-branches currently return the complete existing application, so routes, aliases,
-deep links, navigation, labels, safe boot, authentication, authorization, and all
-business behavior remain unchanged.
+CCX-003 created the deployment boundary between the current Command Center shell and
+the future vNext shell. CCX-100 now uses that same boundary to compose the production
+desktop vNext shell around the shared routed content. The default branch still returns
+the complete unchanged legacy application. Both branches retain the same routes,
+aliases, deep links, safe boot, authentication, authorization, state, endpoints, and
+business behavior.
 
 ## Deployment setting
 
@@ -20,7 +21,7 @@ Parsing is deliberately strict and case-sensitive:
 
 | Server value | Selected branch |
 | --- | --- |
-| `true` | vNext compatibility branch |
+| `true` | vNext desktop shell branch |
 | `false` | Current shell |
 | Missing | Current shell |
 | Any other value | Current shell |
@@ -29,22 +30,24 @@ The safe default is therefore the current shell in local, test, and hosted modes
 Values such as `1`, `yes`, `TRUE`, whitespace-padded strings, booleans, and other
 invalid inputs do not enable vNext.
 
-## Boundary behavior in CCX-003
+## Boundary behavior after CCX-100
 
 - `scripts/ui/vnext-config.mjs` defines the pure strict-parsing contract. The module
   does not read `process.env`; the server passes its environment explicitly.
 - `scripts/ui/shell-boundary.mjs` chooses one injected renderer. It owns no route,
   state, authorization, storage, sending, publishing, or business logic.
 - `renderLegacyApp()` delegates to the existing `htmlShell()` implementation.
-- `renderVNextApp()` is an isolated compatibility renderer that delegates to
-  `renderLegacyApp()` until a later packet builds the new shell.
+- `renderVNextApp()` passes the complete existing application through the isolated
+  `renderVNextDesktopShell()` compositor. The compositor replaces only top-level
+  navigation chrome; it retains the current `main#app`, client renderer, state
+  serialization, route dispatch, actions, and safety behavior.
 - The authenticated root response passes through `renderCommandCenterApp()` and the
   boundary. Public legal pages and authentication decisions still occur before that
   composition point.
 
-The enabled and disabled responses are intentionally byte-for-byte identical in
-this packet. The enabled branch proves the deployment switch without creating a
-blank, partial, static, or misleading application.
+The disabled response remains byte-for-byte identical to the merged CCX-006 legacy
+shell. The enabled response now has intentionally different shell chrome while still
+returning the complete working application.
 
 ## Server-side only
 
@@ -74,12 +77,12 @@ SKIP_ENV_LOCAL_FILE=1 NODE_ENV=test COMMAND_CENTER_TEST_MODE=true npm run test:v
 
 The test starts the server on ephemeral loopback ports with temporary JSON state and
 all external-action controls off. It verifies missing, false, invalid, and true
-values; compares current and compatibility shell output; and checks the live route,
-alias, primary-navigation, deep-link, safe-boot, legal-route, OAuth-callback, and
-social-calendar-import contracts.
+values; proves the current shell is byte-stable; enters the isolated desktop shell;
+and checks the live route, alias, deep-link, safe-boot, legal-route, OAuth-callback,
+and social-calendar-import contracts.
 
 For a local manual smoke check, start separate processes and confirm that the full
-current application remains available in both modes:
+application remains available in both modes:
 
 ```bash
 COMMAND_CENTER_UX_VNEXT=false npm run dev
@@ -98,7 +101,8 @@ client cleanup is required.
 
 ## Scope boundary
 
-CCX-003 changes only top-level shell composition. It does not implement the navy
-sidebar, the five-destination navigation, design tokens, new labels, UI primitives,
-feature redesigns, compact APIs, route migrations, or any later packet. CCX-004 may
-extract shared UI primitives while preserving the same behavior and rollback path.
+CCX-100 changes only the enabled top-level shell composition. It does not redesign
+Today, Social, Outreach, Partners, Files, Inbox, Search, Settings, or Le-E; implement
+the final responsive drawer; migrate a route; or change an endpoint, record, safety
+gate, permission, sending rule, or publishing rule. CCX-101 owns the full responsive
+and mobile shell while preserving this rollback path.

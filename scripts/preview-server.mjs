@@ -145,6 +145,7 @@ import { readCommandCenterVNextConfig } from "./ui/vnext-config.mjs";
 import { renderShellBoundary } from "./ui/shell-boundary.mjs";
 import { DESIGN_SYSTEM_SHOWCASE_PATH } from "./ui/brand-contract.mjs";
 import { renderDesignSystemShowcase } from "./ui/design-system-showcase.mjs";
+import { renderVNextDesktopShell } from "./ui/app-shell.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -34889,10 +34890,9 @@ function renderLegacyApp() {
 }
 
 function renderVNextApp() {
-  // CCX-003 establishes the isolated branch only. Until the later shell packet,
-  // vNext intentionally delegates to the complete legacy application so every
-  // route, deep link, recovery state, endpoint, and safety control stays usable.
-  return renderLegacyApp();
+  // CCX-100 composes one new navigation shell around the same routed application.
+  // Page renderers, state, actions, authorization, and safety systems remain shared.
+  return renderVNextDesktopShell(renderLegacyApp());
 }
 
 function renderCommandCenterApp() {

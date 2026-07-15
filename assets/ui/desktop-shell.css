@@ -1,0 +1,396 @@
+body.vnext-app-shell {
+  min-width: 0;
+  overflow-x: hidden;
+  background: var(--le-page);
+  color: var(--le-text);
+  font-family: var(--le-font-sans);
+}
+
+.vnext-app-shell *,
+.vnext-app-shell *::before,
+.vnext-app-shell *::after {
+  box-sizing: border-box;
+}
+
+.vnext-app-shell [hidden] {
+  display: none !important;
+}
+
+.vnext-app-shell :focus-visible {
+  outline: 2px solid var(--le-navy-950);
+  outline-offset: 3px;
+  box-shadow: var(--le-focus-ring);
+}
+
+.vnext-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--le-sidebar-width) minmax(0, 1fr);
+  background: var(--le-page);
+}
+
+.vnext-app-shell .vnext-sidebar {
+  position: sticky;
+  top: 0;
+  z-index: var(--le-z-dropdown);
+  width: auto;
+  min-width: 0;
+  height: 100vh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--le-space-5);
+  padding: var(--le-space-6) var(--le-space-4);
+  overflow-y: auto;
+  border: 0;
+  border-right: 1px solid var(--le-navy-800);
+  background: var(--le-navy-950);
+  color: var(--le-surface);
+}
+
+.vnext-logo-link {
+  width: fit-content;
+  display: block;
+  padding: var(--le-space-2) var(--le-space-3) var(--le-space-5);
+  border-radius: var(--le-radius-md);
+}
+
+.vnext-shell-logo {
+  width: 8rem;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
+.vnext-app-shell .vnext-primary-navigation,
+.vnext-app-shell .vnext-secondary-navigation {
+  width: 100%;
+  display: grid;
+  align-items: stretch;
+  gap: var(--le-space-2);
+  padding: 0;
+}
+
+.vnext-sidebar-divider {
+  height: 1px;
+  margin: var(--le-space-2) var(--le-space-3);
+  background: var(--le-navy-800);
+}
+
+.vnext-app-shell .vnext-nav-link {
+  position: relative;
+  width: 100%;
+  min-height: var(--le-touch-target);
+  display: flex;
+  align-items: center;
+  gap: var(--le-space-3);
+  padding: 0 var(--le-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--le-radius-md);
+  background: transparent;
+  color: var(--le-text-on-dark);
+  font: inherit;
+  font-size: var(--le-type-sm);
+  font-weight: var(--le-weight-semibold);
+  line-height: var(--le-line-normal);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.vnext-app-shell .vnext-nav-link:hover {
+  background: var(--le-navy-900);
+  color: var(--le-surface);
+}
+
+.vnext-app-shell .vnext-nav-link.is-selected,
+.vnext-app-shell .vnext-nav-link[aria-current="page"] {
+  border-color: var(--le-teal-600);
+  background: var(--le-teal-100);
+  color: var(--le-navy-950);
+}
+
+.vnext-nav-indicator {
+  width: var(--le-space-2);
+  height: var(--le-space-2);
+  flex: 0 0 var(--le-space-2);
+  border: 1px solid currentColor;
+  border-radius: var(--le-radius-pill);
+}
+
+.vnext-nav-link.is-selected .vnext-nav-indicator,
+.vnext-nav-link[aria-current="page"] .vnext-nav-indicator {
+  border-color: var(--le-teal-600);
+  background: var(--le-teal-600);
+  box-shadow: 0 0 0 2px var(--le-surface);
+}
+
+.vnext-inbox-count {
+  min-width: var(--le-space-6);
+  height: var(--le-space-6);
+  display: inline-grid;
+  place-items: center;
+  margin-left: auto;
+  padding: 0 var(--le-space-1);
+  border: 1px solid var(--le-orange-700);
+  border-radius: var(--le-radius-pill);
+  background: var(--le-orange-600);
+  color: var(--le-navy-950);
+  font-size: var(--le-type-xs);
+  font-weight: var(--le-weight-bold);
+}
+
+.vnext-shell-stage {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.vnext-app-shell .vnext-topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--le-z-dropdown);
+  min-height: var(--le-topbar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--le-space-4);
+  padding: 0 var(--le-space-6);
+  border-bottom: var(--le-border-thin);
+  background: var(--le-surface);
+  box-shadow: var(--le-shadow-sm);
+}
+
+.vnext-search-link {
+  min-width: 14rem;
+  min-height: var(--le-control-md);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--le-space-4);
+  border: var(--le-border-strong);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface-warm);
+  color: var(--le-text-muted);
+  font-size: var(--le-type-sm);
+  font-weight: var(--le-weight-medium);
+  text-decoration: none;
+}
+
+.vnext-search-link:hover,
+.vnext-search-link.is-selected {
+  border-color: var(--le-teal-600);
+  background: var(--le-teal-100);
+  color: var(--le-navy-950);
+}
+
+.vnext-topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--le-space-2);
+}
+
+.vnext-topbar-link,
+.vnext-profile-trigger,
+.vnext-create-trigger {
+  min-height: var(--le-control-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--le-space-4);
+  border: var(--le-border-strong);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface);
+  color: var(--le-text);
+  font: inherit;
+  font-size: var(--le-type-sm);
+  font-weight: var(--le-weight-semibold);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.vnext-topbar-link:hover,
+.vnext-profile-trigger:hover {
+  background: var(--le-surface-muted);
+}
+
+.vnext-create-trigger {
+  border-color: var(--le-orange-600);
+  background: var(--le-orange-600);
+  color: var(--le-navy-950);
+}
+
+.vnext-create-trigger:hover,
+.vnext-create-trigger[aria-expanded="true"] {
+  border-color: var(--le-orange-700);
+  background: var(--le-orange-600);
+  box-shadow: 0 0 0 2px var(--le-orange-100);
+}
+
+.vnext-menu {
+  position: relative;
+}
+
+.vnext-menu-panel {
+  position: absolute;
+  top: calc(100% + var(--le-space-2));
+  right: 0;
+  z-index: var(--le-z-overlay);
+  width: min(22rem, calc(100vw - var(--le-space-8)));
+  display: grid;
+  gap: var(--le-space-1);
+  padding: var(--le-space-2);
+  border: var(--le-border-thin);
+  border-radius: var(--le-radius-lg);
+  background: var(--le-surface);
+  box-shadow: var(--le-shadow-md);
+}
+
+.vnext-menu-panel a,
+.vnext-menu-panel button {
+  width: 100%;
+  min-height: var(--le-touch-target);
+  display: grid;
+  gap: var(--le-space-1);
+  align-content: center;
+  padding: var(--le-space-2) var(--le-space-3);
+  border: 0;
+  border-radius: var(--le-radius-md);
+  background: transparent;
+  color: var(--le-text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.vnext-menu-panel a:hover,
+.vnext-menu-panel button:hover,
+.vnext-menu-panel a:focus-visible,
+.vnext-menu-panel button:focus-visible {
+  background: var(--le-teal-100);
+}
+
+.vnext-menu-panel span {
+  color: var(--le-text-muted);
+  font-size: var(--le-type-xs);
+}
+
+.vnext-profile-menu {
+  width: 12rem;
+}
+
+.vnext-routed-content {
+  min-width: 0;
+  flex: 1 1 auto;
+  background: var(--le-page);
+}
+
+.vnext-routed-content > .shell {
+  min-height: calc(100vh - var(--le-topbar-height));
+  background: var(--le-page);
+}
+
+.vnext-app-shell main#app {
+  width: min(100%, var(--le-content-wide));
+  min-width: 0;
+  margin: 0 auto;
+}
+
+@media (max-width: 1100px) {
+  .vnext-shell {
+    grid-template-columns: 13rem minmax(0, 1fr);
+  }
+
+  .vnext-app-shell .vnext-topbar {
+    padding-inline: var(--le-space-4);
+  }
+
+  .vnext-search-link {
+    min-width: 10rem;
+  }
+}
+
+@media (max-width: 760px) {
+  .vnext-shell {
+    display: block;
+  }
+
+  .vnext-app-shell .vnext-sidebar {
+    position: relative;
+    width: 100%;
+    height: auto;
+    padding: var(--le-space-3) var(--le-space-4);
+    border-right: 0;
+    border-bottom: 1px solid var(--le-navy-800);
+  }
+
+  .vnext-logo-link {
+    padding-bottom: var(--le-space-2);
+  }
+
+  .vnext-shell-logo {
+    width: 7rem;
+  }
+
+  .vnext-app-shell .vnext-primary-navigation,
+  .vnext-app-shell .vnext-secondary-navigation {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .vnext-app-shell .vnext-nav-link {
+    width: auto;
+    flex: 1 1 7rem;
+  }
+
+  .vnext-sidebar-divider {
+    width: 100%;
+    margin: var(--le-space-1) 0;
+  }
+
+  .vnext-app-shell .vnext-topbar {
+    position: relative;
+    min-height: var(--le-topbar-mobile);
+    flex-wrap: wrap;
+    padding: var(--le-space-3) var(--le-space-4);
+  }
+
+  .vnext-search-link {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  .vnext-topbar-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .vnext-topbar-actions > * {
+    flex: 1 1 auto;
+  }
+
+  .vnext-topbar-link,
+  .vnext-profile-trigger,
+  .vnext-create-trigger {
+    width: 100%;
+  }
+
+  .vnext-menu-panel {
+    right: auto;
+    left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vnext-app-shell *,
+  .vnext-app-shell *::before,
+  .vnext-app-shell *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
