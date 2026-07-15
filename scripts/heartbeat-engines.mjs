@@ -156,7 +156,7 @@ export function buildHeartbeatRegistry(deps = {}) {
   // Meetings page, one brief at a time. Autopilot OFF by default.
   engines.push(buildMeetingBriefsEngine({ fetchCalendarEventsForBriefs: deps.fetchCalendarEventsForBriefs }));
 
-  // I1 inbox intelligence (owner decision 2026-07-12: full READ-ONLY, roger@legalease.com
+  // I1 inbox intelligence (owner decision 2026-07-12: full READ-ONLY, roger@example.com
   // ONLY). plan()-only — NO act() method, so the heartbeat structurally cannot run side
   // effects for it. The autopilot toggle gates READING itself (deps.inboxReadEnabled): until
   // Roger flips it, no fetch happens at all. Registered before the company-memory projector

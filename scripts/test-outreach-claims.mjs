@@ -45,7 +45,7 @@ const IN_WINDOW = new Date("2026-07-01T15:00:00Z"); // Wed 11:00 ET
 function compliantMessage(to, step = 1) {
   return {
     to,
-    from: "roger@legalease.com",
+    from: "roger@example.com",
     subject: "Operational walkthrough",
     classification: "nonprofit",
     step_number: step,

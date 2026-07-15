@@ -14,10 +14,10 @@ function functionBlock(name) {
   return next > 0 ? rest.slice(0, next + 1) : rest;
 }
 
-const production = functionBlock("productionWorkspaceHtml");
 const queue = functionBlock("twitterXApprovalQueueHtml");
 
-assert(production.includes("Twitter / X Approval Queue"), "Production should render Twitter / X Approval Queue");
+assert(source.includes('safeRenderModule("production-twitter-x-queue"'), "Production must wire the Twitter / X Approval Queue deep link.");
+assert(source.includes('"twitter-x":"production-twitter-x-queue"'), "The Twitter / X queue alias must resolve.");
 assert(queue.includes("Show which posts are ready for Twitter / X review."), "Twitter / X Approval Queue should explain its purpose");
 
 for (const required of [

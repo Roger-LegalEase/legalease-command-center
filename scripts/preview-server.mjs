@@ -13,7 +13,7 @@ import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_Q
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
 import { reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, buildReactivationLiveStatus, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
-import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
+import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, sendgridBatchDigest, sendgridEventDigest, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
 import { runDomainAuthAction, DEFAULT_OUTREACH_AUTH_DOMAIN } from "./sendgrid-domain-auth.mjs";
 import { buildVersionDrift, createVersionDriftCache } from "./version-truth.mjs";
 import { buildSafetyPosture } from "./safety-posture.mjs";
@@ -32,7 +32,7 @@ import { runProspectDiscoverySource, prospectLiveDiscoveryEnabled, RCAP_NTEE_FIL
 import { CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
 import { LOOP_REGISTRY } from "./operating-loops.mjs";
-import { actorFromRequest, authorizeRequest, authRequiredForEnv, normalizeToken, permissionForRequest, publicActor, roleDefinitions, tokenCandidatesFromRequest, tokenFromRequest } from "./access-control.mjs";
+import { actorFromRequest, authorizeRequest, authRequiredForEnv, permissionForRequest, publicActor, roleDefinitions } from "./access-control.mjs";
 import {
   classifyGrowthInboxText,
   convertGrowthInboxItem,
@@ -130,13 +130,23 @@ import { buildSmokeTestChecklist, buildSmokeTestStatus, finishSmokeTestRun, mark
 import { buildEvidenceIndex, buildEvidenceOverview, generateEvidenceSummary, latestEvidenceSummary } from "./evidence-room.mjs";
 import { buildPartnerJourneyHandoffContractPacket, generatePartnerJourneyHandoffContractPreview, handoffContractRequiredArtifactTypes, handoffContractRequiredPartnerFields, handoffContractRequiredTopLevelFields, handoffContractStatus, handoffContractVersion, latestHandoffContractPreview, redactHandoffContractJson, validatePartnerJourneyHandoffContract } from "./partner-journey-handoff-contract.mjs";
 import { applyRoleAssignmentChange, buildRoleSystemStatus, canPerformEndpoint, ensureRoleAssignments, roleCapabilities } from "./roles.mjs";
+import { assertProductionReadiness, isHostedProduction, parseBoolean, productEventRouteEnabled, safeStartupError, webhookRouteEnabled } from "./runtime-security.mjs";
+import { REQUEST_LIMITS, RequestLimitError, readBoundedBody, readBoundedJson, requestId, securityHeaders } from "./request-security.mjs";
+import { clearCsrfCookie, clearSessionCookie, createSessionService, credentialRole, csrfCookie, sessionCookie } from "./session-auth.mjs";
+import { stateAccessAllowed, stripServerOnlyState, viewerReportDto } from "./role-dto.mjs";
+import { consumeRateLimit } from "./security-rate-limit.mjs";
+import { imageTypeFromSignature, normalizePrivateAssetPath, signPrivateAsset, verifyPrivateAsset } from "./private-assets.mjs";
+import { acquireSocialPublishClaim, reconciliationQueue, safeProviderReference, transitionSocialPublishClaim } from "./social-publish-service.mjs";
+import { createAuditService } from "./audit-service.mjs";
+import { incrementSecurityMetric, operationalMetrics } from "./observability.mjs";
+import { oauthSigningSecret, signOAuthState, verifyOAuthState, verifyOwnerStartedOAuthState } from "./oauth-state.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
 const port = Number(process.env.PORT ?? 3001);
 function productionBindHost() {
   if (process.env.HOST) return process.env.HOST;
-  if (process.env.RENDER || process.env.NODE_ENV === "production") return "0.0.0.0";
+  if (isHostedProduction(process.env)) return "0.0.0.0";
   return "127.0.0.1";
 }
 const host = productionBindHost();
@@ -483,6 +493,8 @@ function loadEnvFile(relativePath) {
 }
 
 function loadLocalEnv() {
+  if (process.env.NODE_ENV === "test" || parseBoolean(process.env.COMMAND_CENTER_TEST_MODE) || parseBoolean(process.env.SKIP_ENV_LOCAL_FILE)) return;
+  if (isHostedProduction(process.env)) return;
   loadEnvFile(".env");
   loadEnvFile(".env.local");
 }
@@ -988,10 +1000,10 @@ function supabaseServiceRoleKeyStatus() {
   };
 }
 
-function supabaseStorageStatus() {
+function supabaseStorageStatus(bucketOverride = "") {
   const url = String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
   const serviceRoleKey = supabaseServiceRoleKeyStatus();
-  const bucket = supabaseStorageBucket();
+  const bucket = String(bucketOverride || supabaseStorageBucket()).trim();
   return {
     configured: Boolean(url && serviceRoleKey.present && bucket),
     urlPresent: Boolean(url),
@@ -1039,7 +1051,7 @@ function safeSupabaseError(error) {
 }
 
 async function supabaseStorageFetch(pathname, options = {}) {
-  const status = supabaseStorageStatus();
+  const status = supabaseStorageStatus(options.bucket);
   if (!status.configured) throw new Error(status.message);
   if (!status.serviceRoleKeyLooksUsable) throw new Error(status.message);
   const baseUrl = String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
@@ -1055,13 +1067,17 @@ async function supabaseStorageFetch(pathname, options = {}) {
         ...(options.upsert ? { "x-upsert": "true" } : {}),
         ...(options.contentType ? { "content-type": options.contentType } : {})
       },
-      body: options.body
+      body: options.body,
+      signal: options.signal || AbortSignal.timeout(30_000)
     });
   } catch (error) {
     const wrapped = new Error(error.message || "fetch failed");
     wrapped.cause = error.cause;
     wrapped.storageSafeMessage = safeSupabaseError(error);
     throw wrapped;
+  }
+  if (options.binary && response.ok) {
+    return { ok:true, status:response.status, data:Buffer.from(await response.arrayBuffer()) };
   }
   const text = await response.text();
   let data = null;
@@ -1081,7 +1097,7 @@ async function supabaseStorageFetch(pathname, options = {}) {
         : "SUPABASE_SERVICE_ROLE_KEY is not a valid Supabase service_role JWT.";
     }
     if (response.status === 404 || lowered.includes("not found") || lowered.includes("does not exist")) {
-      safeMessage = `Bucket ${supabaseStorageBucket()} does not exist.`;
+      safeMessage = `Bucket ${status.bucket} does not exist.`;
     }
     const error = new Error(safeMessage);
     error.status = response.status;
@@ -2858,6 +2874,9 @@ async function regenerateAIDraftForPost(postId = "") {
     const state = await store.readState();
     const post = (state.posts || []).find((item) => item.id === postId);
     if (!post) throw new Error("Post not found.");
+    if (String(post.status || "").toLowerCase() !== "approved" || !post.finalPreviewConfirmed) {
+      throw new Error("A post must be approved and its final preview confirmed before public asset promotion.");
+    }
     const idea = (state.contentBank || []).find((item) => item.id === post.contentBankIdeaId) || ideaFromPost(post);
     let nextPost;
     try {
@@ -5484,6 +5503,15 @@ async function runPublishingWorker() {
         channelResults.push({ channel, status: "blocked", message });
         continue;
       }
+      const ownership = await acquireSocialPublishClaim(store, { post: latestPost, channel, actorId: "scheduled_publisher", requestId: "scheduled-publisher" });
+      if (!ownership.claimed) {
+        channelResults.push({ channel, status: "skipped", message: "A durable publish claim already exists; manual reconciliation is required before any retry." });
+        continue;
+      }
+      await transitionSocialPublishClaim(store, ownership.claim.id, "publishing");
+      await incrementSecurityMetric(store, "publish_claims").catch(() => {});
+      await auditService.append({ actor:{ id:"scheduled_publisher", role:"system" }, action:"social_publish_claimed", targetType:"post", targetId:latestPost.id, requestId:"scheduled-publisher", summary:{ channel, claimStatus:"publishing" } });
+      let providerSucceeded = false;
       try {
         state = await recordPublishEvent({
           post: latestPost,
@@ -5494,6 +5522,7 @@ async function runPublishingWorker() {
           message: `${channelLabels[channel] || channel} scheduled publishing worker started.`
         });
         const publishResult = await publishToChannel({ state, post: latestPost, channel });
+        providerSucceeded = true;
         statuses[channel] = "posted";
         externalIds[channel] = publishResult.externalPostId;
         delete failures[channel];
@@ -5540,9 +5569,13 @@ async function runPublishingWorker() {
           message: publishResult.message,
           errorCode: ""
         });
+        await transitionSocialPublishClaim(store, ownership.claim.id, "published", { providerReference:safeProviderReference(publishResult.externalPostId), publishedAt:postedAt });
         channelResults.push({ channel, status: "posted", message: publishResult.message, externalPostId: publishResult.externalPostId });
       } catch (error) {
         const message = safeSocialError(channel, error);
+        const claimStatus = providerSucceeded ? "reconciliation_required" : "failed_retryable";
+        if (providerSucceeded) await incrementSecurityMetric(store, "reconciliation_required").catch(() => {});
+        await transitionSocialPublishClaim(store, ownership.claim.id, claimStatus, { errorCode:providerSucceeded ? "local_finalize_failed" : `${channel}_publish_failed` }).catch(() => {});
         statuses[channel] = "failed";
         failures[channel] = message;
         attempts = appendPublishAttempt(latestPost, {
@@ -5553,9 +5586,9 @@ async function runPublishingWorker() {
         });
         const nextStatus = overallStatusFromChannelStatuses(statuses, targetChannels);
         state = await store.updatePost(latestPost.id, {
-          status: nextStatus,
+          status: providerSucceeded ? "reconciliation_required" : nextStatus,
           post_status: founderPostStatus(nextStatus),
-          publishingStatus: "failed",
+          publishingStatus: claimStatus,
           publishErrorSummary: message,
           publishAttemptCount: Number(latestPost.publishAttemptCount || 0) + 1,
           publish_attempts: attempts,
@@ -5610,7 +5643,7 @@ function publishingRunSummaryFromResults(results = [], options = {}) {
   };
 }
 
-async function publishPostNow(postId) {
+async function publishPostNow(postId, context = {}) {
   let state = await store.readState();
   const post = state.posts.find((item) => item.id === postId);
   if (!post) throw new Error("Post not found.");
@@ -5645,6 +5678,15 @@ async function publishPostNow(postId) {
     error.readiness = readiness;
     throw error;
   }
+  const ownership = await acquireSocialPublishClaim(store, { post, channel, actorId: context.actor?.id, requestId: context.requestId });
+  if (!ownership.claimed) {
+    const error = new Error("A publish claim already exists. Reconcile the existing attempt; do not republish.");
+    error.code = "PUBLISH_ALREADY_CLAIMED";
+    throw error;
+  }
+  await transitionSocialPublishClaim(store, ownership.claim.id, "publishing");
+  await incrementSecurityMetric(store, "publish_claims").catch(() => {});
+  await auditService.append({ actor:context.actor, action:"social_publish_claimed", targetType:"post", targetId:post.id, requestId:context.requestId, summary:{ channel, claimStatus:"publishing" } });
   const attemptCount = Number(post.publishAttemptCount || 0) + 1;
   state = await store.updatePost(post.id, {
     status: "publishing",
@@ -5662,8 +5704,10 @@ async function publishPostNow(postId) {
     statusAfter: "publishing",
     message: `Publish Now started for ${channelLabels[channel] || channel}.`
   });
+  let providerSucceeded = false;
   try {
     const publishResult = await publishToChannel({ state, post: { ...post, targetChannels: [channel] }, channel });
+    providerSucceeded = true;
     state = await store.updatePost(post.id, {
       status: "posted",
       publishingStatus: "ready",
@@ -5684,12 +5728,16 @@ async function publishPostNow(postId) {
       message: publishResult.message,
       errorCode: ""
     });
+    await transitionSocialPublishClaim(store, ownership.claim.id, "published", { providerReference: safeProviderReference(publishResult.externalPostId), publishedAt: new Date().toISOString() });
     return { state, result: publishResult, message: publishResult.message };
   } catch (error) {
     const message = safeSocialError(channel, error);
+    const claimStatus = providerSucceeded ? "reconciliation_required" : "failed_retryable";
+    if (providerSucceeded) await incrementSecurityMetric(store, "reconciliation_required").catch(() => {});
+    await transitionSocialPublishClaim(store, ownership.claim.id, claimStatus, { errorCode: providerSucceeded ? "local_finalize_failed" : `${channel}_publish_failed` }).catch(() => {});
     state = await store.updatePost(post.id, {
-      status: "failed",
-      publishingStatus: "failed",
+      status: providerSucceeded ? "reconciliation_required" : "failed",
+      publishingStatus: claimStatus,
       publishErrorSummary: message,
       lastPublishAttemptAt: new Date().toISOString()
     });
@@ -5698,7 +5746,7 @@ async function publishPostNow(postId) {
       channel,
       eventType: "publish_failed",
       statusBefore: "publishing",
-      statusAfter: "failed",
+      statusAfter: providerSucceeded ? "reconciliation_required" : "failed",
       message,
       errorCode: `${channel}_publish_failed`
     });
@@ -5755,61 +5803,8 @@ async function runLinkedInDryTest() {
   };
 }
 
-function oauthSigningSecret(platform) {
-  if (platform === "linkedin") return process.env.LINKEDIN_CLIENT_SECRET || "";
-  if (platform === "google_workspace") return process.env.GOOGLE_CLIENT_SECRET || "";
-  if (platform === "meta") return process.env.META_CLIENT_SECRET || process.env.META_APP_SECRET || "";
-  if (platform === "facebook" || platform === "instagram" || platform === "threads") return process.env.META_CLIENT_SECRET || process.env.THREADS_CLIENT_SECRET || "";
-  if (platform === "x") return process.env.X_CLIENT_SECRET || "";
-  return "";
-}
-
-function signOAuthState(platform, options = {}) {
-  const payload = {
-    platform,
-    nonce: crypto.randomBytes(16).toString("hex"),
-    issuedAt: Date.now(),
-    ...options
-  };
-  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = crypto.createHmac("sha256", oauthSigningSecret(platform)).update(encoded).digest("base64url");
-  return `${encoded}.${signature}`;
-}
-
-function verifyOAuthState(platform, state) {
-  if (!state || !state.includes(".")) return { ok: false, error: "OAuth state is missing or invalid." };
-  const [encoded, signature] = state.split(".");
-  const expected = crypto.createHmac("sha256", oauthSigningSecret(platform)).update(encoded).digest("base64url");
-  if (Buffer.byteLength(signature || "") !== Buffer.byteLength(expected || "")) {
-    return { ok: false, error: "OAuth state could not be verified." };
-  }
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-    return { ok: false, error: "OAuth state could not be verified." };
-  }
-  try {
-    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
-    if (payload.platform !== platform) return { ok: false, error: "OAuth state channel mismatch." };
-    if (Date.now() - Number(payload.issuedAt || 0) > 10 * 60 * 1000) {
-      return { ok: false, error: "OAuth state expired. Start the connection again." };
-    }
-    return { ok: true, payload };
-  } catch {
-    return { ok: false, error: "OAuth state could not be read." };
-  }
-}
-
-function verifyOwnerStartedOAuthState(platform, state) {
-  const verified = verifyOAuthState(platform, state);
-  if (!verified.ok) return verified;
-  const role = String(verified.payload?.startedByRole || "").toLowerCase();
-  if (verified.payload?.ownerStarted !== true || !["owner", "admin"].includes(role)) {
-    return { ok:false, error:"OAuth flow was not started by an owner." };
-  }
-  return verified;
-}
-
 function oauthStateCipherKey(platform) {
-  const secret = oauthSigningSecret(platform);
+  const secret = process.env.OAUTH_STATE_SECRET || oauthSigningSecret(platform, process.env);
   if (!secret) throw new Error(`${channelLabels[platform] || platform} OAuth setup is missing.`);
   return crypto.createHash("sha256").update(secret).digest();
 }
@@ -6386,10 +6381,8 @@ function metaOAuthDiagnosticsPayload(state = {}) {
 }
 
 function xOAuthDiagnosticsAccessDecision(request = {}) {
-  const diagnostics = authDiagnosticsForRequest(request);
   const actor = actorFromRequest(request, process.env);
-  const ownerTokenMatched = Boolean(diagnostics.tokenMatch);
-  const ownerOrAdmin = ownerTokenMatched || (actor.authenticated && ["owner", "admin"].includes(String(actor.role || "").toLowerCase()));
+  const ownerOrAdmin = actor.authenticated && ["owner", "admin"].includes(String(actor.role || "").toLowerCase());
   if (!ownerOrAdmin) {
     return {
       ok:false,
@@ -6397,7 +6390,7 @@ function xOAuthDiagnosticsAccessDecision(request = {}) {
       actor,
       requiredPermission:"owner/admin",
       reason: actor.authenticated ? "Owner or admin access required." : "Authentication required.",
-      diagnostics
+      diagnostics: { sessionAuthenticated: Boolean(actor.authenticated) }
     };
   }
   return {
@@ -6406,7 +6399,7 @@ function xOAuthDiagnosticsAccessDecision(request = {}) {
       ? { id:"owner", role:"owner", label:"Owner", authenticated:true, permissions:roleDefinitions.owner.can }
       : actor,
     requiredPermission:"owner/admin",
-    diagnostics
+    diagnostics: { sessionAuthenticated: true }
   };
 }
 
@@ -6420,7 +6413,7 @@ async function resolveLinkedInOAuthResult(code = "") {
       profile: {
         sub:"linkedin-oauth-test-profile",
         name:"LinkedIn Test Owner",
-        email:"owner@example.test"
+        email:"owner@example.com"
       }
     };
   }
@@ -6706,17 +6699,27 @@ async function markLinkedInPublishBlocked(state = {}, post = {}, reason = "") {
   return nextState;
 }
 
-async function publishLinkedInApprovedPost(input = {}) {
+async function publishLinkedInApprovedPost(input = {}, context = {}) {
   let state = await store.readState();
-  const post = (state.posts || []).find((item) => item.id === input.postId);
+  let post = (state.posts || []).find((item) => item.id === input.postId);
   const validation = validateLinkedInApprovedPost(state, post, input);
   if (!validation.ok) {
     state = await markLinkedInPublishBlocked(state, post || { id:input.postId, title:"LinkedIn post" }, validation.reason);
     return { ok:false, state, status:"Blocked", message:`LinkedIn post was blocked: ${validation.reason}` };
   }
+  const ownership = await acquireSocialPublishClaim(store, { post, channel: "linkedin", actorId: context.actor?.id, requestId: context.requestId });
+  if (!ownership.claimed) return { ok:false, state, status:"Blocked", message:"A publish claim already exists. Reconcile it; do not republish." };
+  await transitionSocialPublishClaim(store, ownership.claim.id, "publishing");
+  await incrementSecurityMetric(store, "publish_claims").catch(() => {});
+  await auditService.append({ actor:context.actor, action:"social_publish_claimed", targetType:"post", targetId:post.id, requestId:context.requestId, summary:{ channel:"linkedin", claimStatus:"publishing" } });
+  state = await store.readState();
+  post = (state.posts || []).find((item) => item.id === input.postId) || post;
+  let providerSucceeded = false;
+  try {
   const publishResult = process.env.LINKEDIN_MOCK_POSTING_ENABLED === "true"
     ? { externalPostId:`mock-linkedin-${post.id}`, externalPostUrl:"", message:"Posted to LinkedIn." }
     : await publishLinkedInPost({ state, post });
+  providerSucceeded = true;
   const timestamp = new Date().toISOString();
   const nextState = {
     ...state,
@@ -6748,19 +6751,27 @@ async function publishLinkedInApprovedPost(input = {}) {
     auditHistory: [{
       id:`audit-linkedin-post-${crypto.randomUUID().slice(0, 8)}`,
       timestamp,
-      actor:"owner_token",
+      actor:context.actorId || "system",
       action:"linkedin post published after final approval",
       resourceType:"post",
       resourceId:post.id,
       beforeValue:{ status:post.status },
       afterValue:{ status:"posted", target:"LinkedIn", approval:"final confirmation" }
-    }, ...(state.auditHistory || [])].slice(0, 1000)
+    }, ...(state.auditHistory || [])]
   };
   // The LinkedIn publish network call happened above (gated; mock in tests); only the state
   // write is serialized, diff-scoped to posts + externalActionOutbox + activityEvents +
   // auditHistory.
   await serializeStateMutation(() => writeChangedCollections(state, nextState));
+  await transitionSocialPublishClaim(store, ownership.claim.id, "published", { providerReference:safeProviderReference(publishResult.externalPostId), publishedAt:timestamp });
   return { ok:true, state:nextState, status:"Posted", result:publishResult, message:"Posted to LinkedIn." };
+  } catch (error) {
+    const status = providerSucceeded ? "reconciliation_required" : "failed_retryable";
+    if (providerSucceeded) await incrementSecurityMetric(store, "reconciliation_required").catch(() => {});
+    await transitionSocialPublishClaim(store, ownership.claim.id, status, { errorCode:providerSucceeded ? "local_finalize_failed" : "provider_failed" }).catch(() => {});
+    if (providerSucceeded) await store.updatePost(post.id, { status:"reconciliation_required", publishingStatus:"reconciliation_required" }).catch(() => {});
+    throw error;
+  }
 }
 
 function safeGoogleError(error) {
@@ -7803,7 +7814,7 @@ const initialState = {
       partnerType: "reentry",
       regionState: "PA",
       primaryContactName: "Program Director",
-      email: "partner@example.org",
+      email: "partner@example.com",
       phone: "",
       website: "",
       status: "proposal_sent",
@@ -7971,7 +7982,16 @@ const initialState = {
   postImages: []
 };
 
-const store = createStore(initialState);
+let store;
+try {
+  store = createStore(initialState);
+  assertProductionReadiness(process.env, { activeStorageBackend: store.kind });
+} catch (error) {
+  console.error(safeStartupError(error));
+  process.exit(error?.exitCode || 78);
+}
+const sessionService = createSessionService({ store, env: process.env });
+const auditService = createAuditService({ store });
 let stateMutationQueue = Promise.resolve();
 
 function serializeStateMutation(operation) {
@@ -7988,6 +8008,10 @@ function serializeStateMutation(operation) {
 // transform is spread-style. Falls back to a full-state write if nothing diffs but the objects
 // differ (belt for an unnoticed in-place mutation upstream).
 async function writeChangedCollections(before = {}, after = {}) {
+  if (typeof store.writeChanges === "function") {
+    await store.writeChanges(before, after);
+    return after;
+  }
   const patch = {};
   for (const key of Object.keys(after)) {
     if (after[key] !== before[key]) patch[key] = after[key];
@@ -8001,23 +8025,19 @@ async function writeChangedCollections(before = {}, after = {}) {
 }
 
 async function readJson(request) {
-  const chunks = [];
-  for await (const chunk of request) chunks.push(chunk);
-  const raw = Buffer.concat(chunks).toString("utf8");
-  return raw ? JSON.parse(raw) : {};
+  return readBoundedJson(request, { limit: REQUEST_LIMITS.json });
 }
 
 async function readJsonWithRawBody(request) {
-  const chunks = [];
-  for await (const chunk of request) chunks.push(chunk);
-  const rawBody = Buffer.concat(chunks).toString("utf8");
-  return { payload: rawBody ? JSON.parse(rawBody) : {}, rawBody };
+  const rawBody = await readBoundedBody(request, { limit: REQUEST_LIMITS.webhook });
+  let payload;
+  try { payload = rawBody.length ? JSON.parse(rawBody.toString("utf8")) : {}; }
+  catch { const error = new Error("Request body must be valid JSON."); error.status = 400; throw error; }
+  return { payload, rawBody };
 }
 
 async function readBuffer(request) {
-  const chunks = [];
-  for await (const chunk of request) chunks.push(chunk);
-  return Buffer.concat(chunks);
+  return readBoundedBody(request, { limit: REQUEST_LIMITS.image });
 }
 
 async function runAutonomyCycle({ executeAutomatic = true } = {}) {
@@ -8074,7 +8094,7 @@ async function updateAutonomyAction(id = "", action = "", patch = {}) {
     const nextState = {
       ...state,
       autonomyActions: nextActions,
-      soc2AuditLogs: [audit, ...(state.soc2AuditLogs || [])].slice(0, 1000),
+      soc2AuditLogs: [audit, ...(state.soc2AuditLogs || [])],
       activityEvents: [activity, ...(state.activityEvents || [])].slice(0, 500)
     };
     await writeChangedCollections(state, nextState);
@@ -8204,26 +8224,6 @@ function isGoogleOAuthCallbackRequest(request = {}, url = new URL("http://localh
   return request.method === "GET" && url.pathname === "/api/google/callback";
 }
 
-function authDiagnosticsForRequest(request = {}) {
-  const headers = request.headers || {};
-  const ownerToken = normalizeToken(process.env.COMMAND_CENTER_OWNER_TOKEN || process.env.COMMAND_CENTER_ACCESS_TOKEN || "");
-  const receivedToken = tokenFromRequest(request);
-  const receivedTokenCandidates = tokenCandidatesFromRequest(request);
-  const authHeader = String(headers.authorization || "");
-  const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
-  const receivedBearerToken = normalizeToken(bearerMatch?.[1] || "");
-  return {
-    hostedMode: authRequiredForEnv(process.env),
-    ownerTokenConfigured: ownerToken.length >= 16,
-    configuredTokenLength: ownerToken.length,
-    receivedAuthHeaderPresent: Boolean(authHeader),
-    receivedBearerTokenLength: receivedBearerToken.length,
-    receivedTokenCandidateCount: receivedTokenCandidates.length,
-    tokenMatch: Boolean(ownerToken && receivedTokenCandidates.includes(ownerToken)),
-    requiredPermission: permissionForRequest("GET", "/api/state")
-  };
-}
-
 function sendAuthRequired(response, decision = {}, options = {}) {
   const helperMessage = String(options.message || "").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[char]));
   const helperMessageHtml = helperMessage ? `<p class="auth-helper-message">${helperMessage}</p>` : "";
@@ -8264,21 +8264,19 @@ function sendAuthRequired(response, decision = {}, options = {}) {
   <main class="panel">
     <div class="eyebrow">Owner login</div>
     <h1>LegalEase Command Center</h1>
-    <p>Hosted mode is protected. Unlock with the owner token configured in Render.</p>
+    <p>Hosted mode is protected. Sign in with the access credential configured by the operator.</p>
     ${helperMessageHtml}
     <form id="accessForm">
-      <label>Owner access token
+      <label>Access credential
         <input id="ownerToken" type="password" autocomplete="current-password" required autofocus>
       </label>
-      <div class="helper">Paste your owner token from Render.</div>
+      <div class="helper">The credential is exchanged for a short-lived server session.</div>
       <button id="unlockButton" type="button">Unlock Command Center</button>
-      <div id="accessError" class="message error">Token not accepted.</div>
+      <div id="accessError" class="message error">Authentication unavailable.</div>
       <div id="accessSuccess" class="message success">Access granted.</div>
     </form>
   </main>
   <script>
-    const tokenKey = "legalease_command_center_owner_token";
-    const legacyTokenKey = "legalease.commandCenter.ownerToken";
     const form = document.getElementById("accessForm");
     const input = document.getElementById("ownerToken");
     const button = document.getElementById("unlockButton");
@@ -8294,73 +8292,27 @@ function sendAuthRequired(response, decision = {}, options = {}) {
       success.textContent = message;
       success.style.display = "block";
     }
-    function storedToken() {
-      return localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey) || localStorage.getItem(legacyTokenKey) || sessionStorage.getItem(legacyTokenKey) || "";
-    }
-    function clearStoredTokens() {
-      localStorage.removeItem(tokenKey);
-      sessionStorage.removeItem(tokenKey);
-      localStorage.removeItem(legacyTokenKey);
-      sessionStorage.removeItem(legacyTokenKey);
-    }
-    function storeToken(token) {
-      localStorage.setItem(tokenKey, token);
-      sessionStorage.setItem(tokenKey, token);
-      localStorage.removeItem(legacyTokenKey);
-      sessionStorage.removeItem(legacyTokenKey);
-    }
-    function setTokenCookie(token) {
-      document.cookie = "leos_session=" + encodeURIComponent(token) + "; Path=/; SameSite=Lax";
-    }
-    async function validateToken(token) {
-      const response = await fetch("/api/state", {
-        headers: { "Authorization":"Bearer " + token, "content-type":"application/json" },
-        cache: "no-store"
-      });
-      if (response.ok) return { ok:true };
-      let diagnostics = {};
-      try {
-        diagnostics = await fetch("/api/auth/diagnostics", {
-          headers: { "Authorization":"Bearer " + token, "content-type":"application/json" },
-          cache: "no-store"
-        }).then(response => response.json());
-      } catch {}
-      return { ok:false, diagnostics };
-    }
-    async function loadDashboardWithToken(token) {
-      const response = await fetch("/", {
-        headers: { "Authorization":"Bearer " + token },
-        cache: "no-store"
-      });
-      if (!response.ok) throw new Error("dashboard denied");
-      const html = await response.text();
-      document.open();
-      document.write(html);
-      document.close();
-    }
-    async function unlock(token) {
+    async function unlock(credential) {
       error.style.display = "none";
       success.style.display = "none";
       button.disabled = true;
       try {
-        if (!token) {
-          showError("No token entered.");
+        if (!credential) {
+          showError("Enter an access credential.");
           return;
         }
-        const result = await validateToken(token);
-        if (!result.ok) {
-          if (result.diagnostics && result.diagnostics.ownerTokenConfigured === false) showError("Server owner token is not configured.");
-          else showError("Token not accepted.");
-          return;
-        }
-        storeToken(token);
-        setTokenCookie(token);
+        const response = await fetch("/api/auth/login", {
+          method:"POST",
+          credentials:"same-origin",
+          headers:{ "content-type":"application/json" },
+          body:JSON.stringify({ credential })
+        });
+        if (!response.ok) throw new Error("denied");
+        input.value = "";
         showSuccess("Access granted.");
-        await loadDashboardWithToken(token);
+        location.assign("/");
       } catch {
-        clearStoredTokens();
-        document.cookie = "leos_session=; Path=/; Max-Age=0; SameSite=Lax";
-        showError("Token not accepted.");
+        showError("Authentication unavailable.");
       } finally {
         button.disabled = false;
       }
@@ -8380,29 +8332,29 @@ function sendAuthRequired(response, decision = {}, options = {}) {
         unlock(input.value.trim());
       }
     });
-    const saved = storedToken();
-    if (saved) unlock(saved);
   </script>
 </body>
 </html>`);
 }
 
-const legalPageUpdatedAt = "June 3, 2026";
+const legalPageUpdatedAt = "July 13, 2026";
 
 const publicLegalPages = {
   privacy: {
     title: "Privacy Policy",
-    intro: "LegalEase Command Center is used by LegalEase to manage internal operations and approved social media workflows.",
+    intro: "LegalEase Command Center is used by LegalEase to manage internal operations, review workflows, and explicitly authorized communications.",
     sections: [
-      ["Introduction", "This Privacy Policy explains how LegalEase handles information used with the LegalEase Command Center. The Command Center supports internal planning, connected account readiness, review workflows, and approved social media operations."],
-      ["Information we collect", "We may collect account profile details, workflow notes, uploaded source material, connected account status, and usage information needed to operate the Command Center. We do not use these pages to collect payment information."],
-      ["How we use information", "Information is used to operate the Command Center, manage internal workflows, prepare review-ready materials, improve safety controls, and support authorized LegalEase work."],
-      ["Connected accounts and OAuth", "When LegalEase connects a social account through OAuth, limited account information may be processed to complete the connection. Connected account tokens may be stored securely and encrypted. These tokens are used only to support authorized account connection, readiness checks, and approved workflow management."],
-      ["Social media integrations", "Social platform data is used only for authorized account connection, readiness/status checks, and approved internal workflow management. The app does not resell X data. Live posting remains disabled unless separately authorized by LegalEase."],
-      ["Data storage and security", "LegalEase uses reasonable safeguards to protect Command Center information, including access controls, protected server-side credentials, and encrypted connected-account storage where applicable."],
+      ["Introduction", "This policy explains how LegalEase handles information used by the Command Center for planning, campaigns, review, reporting, connected services, and approved outbound workflows."],
+      ["Data collected", "The Command Center may process role and session records; lifecycle, outreach, and suppression records; approved email or social drafts; provider delivery outcomes; Gmail and Calendar metadata and derived summaries; aggregate product, signup, payment, and revenue information; workflow notes; audit events; and uploaded or generated draft assets."],
+      ["How data is used", "Information is used to operate authorized workflows, prevent duplicate actions, apply unsubscribe and delivery protections, prepare review-ready materials, measure aggregate outcomes, investigate failures, and maintain security and audit records."],
+      ["Storage and providers", "Hosted records use durable Supabase storage and private draft-asset storage. Depending on configured workflows, Render, Supabase, SendGrid, Google Workspace, LinkedIn, X, Meta, Stripe, OpenAI, or Anthropic may process limited data. Provider use remains subject to LegalEase approval and the provider's terms."],
+      ["Connected accounts and OAuth", "Connector tokens are handled server-side and encrypted. OAuth state is signed, expiring, session-bound, and single-use. Disconnecting a provider requires revocation with that provider and deletion or de-identification of local connector records where appropriate."],
+      ["Outbound actions and draft assets", "Email and social actions require authorization, approval, a durable claim, provider readiness, and an environment-specific live gate. Every live gate defaults off. Draft uploads and generated images stay private until an explicit approved publishing flow promotes a final asset."],
+      ["Security and audit", "The Command Center uses access controls, short-lived server-managed sessions, request protections, encrypted connector credentials, append-only security events, and redacted operational logs. Raw credentials and full provider payloads are not intended for logs or audit summaries."],
       ["No sale of personal information", "The app does not sell personal information."],
       ["Third-party services", "The Command Center may rely on trusted third-party infrastructure and platform services, including hosting, storage, OAuth providers, and connected social platforms. Those services may process information according to their own terms and policies."],
-      ["Data retention", "LegalEase keeps information only as long as reasonably needed for internal operations, compliance, safety review, legal obligations, or authorized business purposes."],
+      ["Access and deletion", "Authorized privacy requests require identity verification and a scoped search across durable records, provider accounts, and private assets. Records are deleted, de-identified, revoked, or retained only where legal, security, suppression, or append-only audit obligations require it."],
+      ["Data retention", "Sessions expire on a short schedule; replay and rate-limit records use bounded windows; operational, suppression, and audit records follow documented retention and legal requirements. Abandoned private drafts are removed under the content-retention schedule."],
       ["Contact", "Questions about this Privacy Policy can be sent to LegalEase through the contact channel provided by LegalEase."]
     ]
   },
@@ -8545,7 +8497,7 @@ async function logAccessDecision(decision = {}, url = {}) {
     // writeState here rewrote (and orphan-reconciled) every collection per denied request.
     await serializeStateMutation(async () => {
       const state = await store.readState();
-      await store.writeCollections({ soc2AuditLogs: [audit, ...(state.soc2AuditLogs || [])].slice(0, 1000) });
+      await store.writeCollections({ soc2AuditLogs: [audit, ...(state.soc2AuditLogs || [])] });
     });
   } catch {
     // Authorization logging should never make the protected route available.
@@ -8572,20 +8524,57 @@ async function saveDebugOpenAIImage(imageUrl = "") {
 
 async function saveOpenAIGeneratedPostImage(postId = "", imageUrl = "") {
   if (!String(imageUrl || "").startsWith("data:image/png;base64,")) return null;
-  const outputDir = path.resolve(process.cwd(), "data/exports/openai-images");
-  await mkdir(outputDir, { recursive: true });
-  const safePostId = slugify(postId || "post").slice(0, 80);
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const filename = `${safePostId}-${timestamp}.png`;
-  const filePath = path.join(outputDir, filename);
+  const filename = `${crypto.randomUUID()}.png`;
   const buffer = Buffer.from(imageUrl.split(",")[1] || "", "base64");
+  return persistPrivateDraftAsset(filename, buffer, "image/png");
+}
+
+function privateDraftStorageBucket() {
+  return String(process.env.SOCIAL_DRAFT_ASSETS_BUCKET || "").trim();
+}
+
+function privateDraftObjectPath(assetPath = "") {
+  const normalized = normalizePrivateAssetPath(assetPath);
+  return normalized ? normalized.slice("data/private/".length) : "";
+}
+
+function encodedStorageObjectPath(objectPath = "") {
+  return String(objectPath).split("/").map((part) => encodeURIComponent(part)).join("/");
+}
+
+async function persistPrivateDraftAsset(filename, buffer, contentType) {
+  const privateAssetPath = `data/private/draft-assets/${filename}`;
+  if (isHostedProduction(process.env)) {
+    const bucket = privateDraftStorageBucket();
+    const objectPath = privateDraftObjectPath(privateAssetPath);
+    if (!bucket || !objectPath) throw new Error("Private draft storage is unavailable.");
+    await supabaseStorageFetch(`object/${encodeURIComponent(bucket)}/${encodedStorageObjectPath(objectPath)}`, {
+      method:"PUT",
+      body:buffer,
+      contentType,
+      upsert:false,
+      bucket
+    });
+    return { filePath:"", privateAssetPath, storageBucket:bucket, storageObjectPath:objectPath, filename, size:buffer.length };
+  }
+  const outputDir = path.resolve(process.cwd(), "data/private/draft-assets");
+  await mkdir(outputDir, { recursive:true });
+  const filePath = path.join(outputDir, filename);
   await writeFile(filePath, buffer);
-  return {
-    filePath,
-    fileUrl: `/data/exports/openai-images/${filename}`,
-    filename,
-    size: buffer.length
-  };
+  return { filePath, privateAssetPath, filename, size:buffer.length };
+}
+
+async function readPrivateDraftAsset(assetPath = "") {
+  const normalized = normalizePrivateAssetPath(assetPath);
+  if (!normalized) throw new Error("Private asset is unavailable.");
+  if (isHostedProduction(process.env)) {
+    const bucket = privateDraftStorageBucket();
+    const objectPath = privateDraftObjectPath(normalized);
+    if (!bucket || !objectPath) throw new Error("Private draft storage is unavailable.");
+    const result = await supabaseStorageFetch(`object/${encodeURIComponent(bucket)}/${encodedStorageObjectPath(objectPath)}`, { binary:true, bucket });
+    return result.data;
+  }
+  return readFile(new URL(normalized, assetRoot));
 }
 
 async function serveAsset(pathname, response) {
@@ -11145,27 +11134,28 @@ async function saveUploadedPostImage(request) {
   if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.mimeType)) {
     throw new Error("Upload a PNG, JPG, WebP, or GIF image.");
   }
+  const detectedType = imageTypeFromSignature(file.buffer);
+  const declaredType = file.mimeType.split("/")[1].toLowerCase().replace("jpg", "jpeg");
+  if (!detectedType || detectedType !== declaredType) throw new Error("Uploaded image content does not match its declared type.");
   const state = await store.readState();
   const post = state.posts.find((item) => item.id === postId);
   if (!post) throw new Error("Post not found.");
   const previous = (state.postImages || []).filter((image) => image.postId === postId);
   const versionNumber = previous.length + 1;
-  const extension = file.mimeType.split("/")[1].replace("jpeg", "jpg");
-  const uploadDir = new URL("assets/uploads/post-images/", assetRoot);
-  await mkdir(uploadDir, { recursive: true });
-  const safeName = `${postId}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.${extension}`;
-  const uploadUrl = new URL(safeName, uploadDir);
-  await writeFile(uploadUrl, file.buffer);
-  const imageUrl = `data:${file.mimeType};base64,${file.buffer.toString("base64")}`;
+  const extension = detectedType.replace("jpeg", "jpg");
+  const safeName = `${crypto.randomUUID()}.${extension}`;
+  const storedDraft = await persistPrivateDraftAsset(safeName, file.buffer, file.mimeType);
   const image = {
     id: crypto.randomUUID(),
     postId,
-    imageUrl,
+    imageUrl: "",
+    privateAssetPath: storedDraft.privateAssetPath,
     imagePrompt: "",
     promptSummary: "Human-uploaded image. This visual overrides generated image output for the queue item.",
     assetBundleUsed: {
-      uploadPath: `assets/uploads/post-images/${safeName}`,
-      originalFilename: file.filename,
+      uploadPath: storedDraft.privateAssetPath,
+      storageBucket: storedDraft.storageBucket || "",
+      storageObjectPath: storedDraft.storageObjectPath || "",
       uploadedBy: "human",
       watermark: {
         position: "none",
@@ -11733,7 +11723,6 @@ async function generateImageForPost(postId, overrides = {}) {
   if (openAIResult.imageUrl && !localFallbackUsed) {
     try {
       generatedImageFile = await saveOpenAIGeneratedPostImage(postId, openAIResult.imageUrl);
-      if (generatedImageFile?.fileUrl) openAIResult.imageUrl = generatedImageFile.fileUrl;
     } catch (error) {
       const details = openAIErrorDetails({ message: error.message || "Could not save OpenAI generated image.", route:"openai_image_save" });
       logOpenAIImageFailure(details, error);
@@ -11764,7 +11753,8 @@ async function generateImageForPost(postId, overrides = {}) {
   const image = {
     id: crypto.randomUUID(),
     postId,
-    imageUrl: openAIResult.imageUrl && !localFallbackUsed ? openAIResult.imageUrl : localFallbackUsed ? fallbackImageUrl : "",
+    imageUrl: localFallbackUsed ? fallbackImageUrl : "",
+    privateAssetPath: generatedImageFile?.privateAssetPath || "",
     imagePrompt: promptUsed,
     promptSummary: openAIResult.imageUrl
       ? context.usesWilma
@@ -12970,8 +12960,8 @@ function demoAutomationEvents(state = {}) {
   const partner = (state.partners || [])[0] || {};
   const campaign = (state.campaigns || [])[0] || {};
   return [
-    { source:"gmail", sourceEventId:"demo-gmail-proposal", eventType:"email_received", title:`Proposal follow-up from ${partner.organizationName || "TimeDone"}`, summary:"Can we revisit the RecordShield pilot proposal and discuss next steps this week?", rawPayload:{ subject:"RecordShield proposal follow-up", from:"partner@example.org" } },
-    { source:"gmail", sourceEventId:"demo-gmail-partnership", eventType:"email_received", title:"Partnership inquiry from Fresh Start Legal Network", summary:"We are interested in a partnership around RecordShield access for clients and community referrals.", rawPayload:{ subject:"LegalEase partnership inquiry", from:"director@freshstartlegal.example", organizationName:"Fresh Start Legal Network" } },
+    { source:"gmail", sourceEventId:"demo-gmail-proposal", eventType:"email_received", title:`Proposal follow-up from ${partner.organizationName || "TimeDone"}`, summary:"Can we revisit the RecordShield pilot proposal and discuss next steps this week?", rawPayload:{ subject:"RecordShield proposal follow-up", from:"partner@example.com" } },
+    { source:"gmail", sourceEventId:"demo-gmail-partnership", eventType:"email_received", title:"Partnership inquiry from Fresh Start Legal Network", summary:"We are interested in a partnership around RecordShield access for clients and community referrals.", rawPayload:{ subject:"LegalEase partnership inquiry", from:"director@example.com", organizationName:"Fresh Start Legal Network" } },
     { source:"calendar", sourceEventId:"demo-calendar-partner", eventType:"calendar_event", title:`Meeting with ${partner.organizationName || "Goodwill of Mississippi"}`, summary:"Calendar meeting detected. Suggest prep and follow-up task.", rawPayload:{ startsAt:appendDaysIso(1) } },
     { source:"supabase", sourceEventId:"demo-supabase-rs-user", eventType:"recordshield_user_created", title:"RecordShield user created", summary:"New RecordShield user event from app database.", rawPayload:{ campaign_slug:campaign.trackingSlug || "recordshield-launch" } },
     { source:"stripe", sourceEventId:"demo-stripe-checkout", eventType:"checkout.session.completed", title:"Stripe checkout completed", summary:"Payment completed from Expungement.ai flow.", rawPayload:{ amount_total: 19900, campaign_slug:campaign.trackingSlug || "" } },
@@ -13063,7 +13053,7 @@ async function importAutomationEvents(inputEvents = [], connector = "manual_impo
           evidencePackNotes: outputs.evidencePackNotes.length,
           noOutboundAction: true
         }
-      }, ...(nextState.auditHistory || [])].slice(0, 1000);
+      }, ...(nextState.auditHistory || [])];
       nextState = analyzeOperations(nextState);
     }
     await writeChangedCollections(state, nextState);
@@ -13442,7 +13432,7 @@ async function disconnectGoogleWorkspace() {
         resourceId: "google_workspace",
         beforeValue: { connected: Boolean(current.connectedAt || current.accountName), accountName: current.accountName || "" },
         afterValue: { connected: false, tokensRemoved: true }
-      }, ...(state.auditHistory || [])].slice(0, 1000),
+      }, ...(state.auditHistory || [])],
       activityEvents: [{
         id: `activity-google-disconnect-${crypto.randomUUID().slice(0, 8)}`,
         eventType: "Google Workspace disconnected",
@@ -14098,7 +14088,7 @@ async function upsertGrowthItem(collection, input = {}) {
       tasks: collection === "tasks" ? [item, ...current.filter((entry) => entry.id !== id)] : [...autoTasks, ...(state.tasks || [])],
       events: partnerProgramCreatedEvent ? [partnerProgramCreatedEvent, ...(state.events || [])].slice(0, 1000) : (state.events || []),
       activityEvents: [activity, ...(state.activityEvents || [])].slice(0, 500),
-      soc2AuditLogs: auditEntry ? [auditEntry, ...(state.soc2AuditLogs || [])].slice(0, 1000) : (state.soc2AuditLogs || [])
+      soc2AuditLogs: auditEntry ? [auditEntry, ...(state.soc2AuditLogs || [])] : (state.soc2AuditLogs || [])
     };
     await writeChangedCollections(state, nextState);
     return { state: nextState, item, tasks: autoTasks, activity, message: `${titleForGrowthItem(collection, item)} saved.` };
@@ -14689,7 +14679,7 @@ async function exportSoc2MarkdownSnapshot() {
     };
     const nextState = {
       ...state,
-      soc2AuditLogs: [auditEntry, ...(state.soc2AuditLogs || [])].slice(0, 1000)
+      soc2AuditLogs: [auditEntry, ...(state.soc2AuditLogs || [])]
     };
     await writeChangedCollections(state, nextState);
     return { state: nextState, markdown, snapshot, filename, relativePath, generatedAt: now };
@@ -14768,7 +14758,7 @@ async function reviewSoc2Evidence(id = "", input = {}) {
     const nextState = {
       ...state,
       soc2Evidence: [item, ...evidence.filter((entry) => entry.id !== id)],
-      soc2AuditLogs: [...auditEntries, ...(state.soc2AuditLogs || [])].slice(0, 1000)
+      soc2AuditLogs: [...auditEntries, ...(state.soc2AuditLogs || [])]
     };
     await writeChangedCollections(state, nextState);
     return { state: nextState, item, auditEntries, message: "Evidence review updated." };
@@ -17133,7 +17123,7 @@ function htmlShell() {
         ["Boot-state status", details.bootStateStatus || bootStateDiagnostics?.status || "unknown"],
         ["Full-state status", details.fullStateStatus || fullStateDiagnostics?.status || "unknown"],
         ["Heavy collections deferred", details.heavyCollectionsDeferred ? "Yes" : "No"],
-        ["Auth token present", details.authTokenPresent ? "Yes" : "No"],
+        ["Auth session present", details.authSessionPresent ? "Yes" : "No"],
         ["Fell back to safe shell", details.fellBackToSafeShell ? "Yes" : "No"],
         ["Publishing", "Off"]
       ];
@@ -17200,7 +17190,7 @@ function htmlShell() {
         timeoutMs:error.timeoutMs || "",
         aborted:Boolean(error.aborted || error.name === "AbortError"),
         bodyPreview:error.bodyPreview || "",
-        authTokenPresent:Boolean(error.authTokenPresent || authSessionPresent()),
+        authSessionPresent:Boolean(error.authSessionPresent || authSessionPresent()),
         bootStateStatus:bootStateDiagnostics?.status || "unknown",
         fullStateStatus:fullStateDiagnostics?.status || "unknown",
         heavyCollectionsDeferred:Boolean(state?.heavyCollectionsDeferred || error.heavyCollectionsDeferred),
@@ -17338,7 +17328,7 @@ function htmlShell() {
         "Error message: " + (error.message || "unknown"),
         "Timeout ms: " + (error.timeoutMs || "unknown"),
         "Request aborted: " + (error.aborted || error.name === "AbortError" ? "yes" : "no"),
-        "Auth token present: " + (error.authTokenPresent ? "yes" : "no"),
+        "Auth session present: " + (error.authSessionPresent ? "yes" : "no"),
         "Fell back to safe shell: " + (error.fellBackToSafeShell ? "yes" : "no")
       ];
       if (error.parseError) parts.push("JSON parse error: " + error.parseError);
@@ -17390,31 +17380,18 @@ function htmlShell() {
       date.setHours(9 + (offset % 5), 0, 0, 0);
       return date.toISOString().slice(0, 16);
     };
-    const ownerTokenStorageKey = "legalease_command_center_owner_token";
-    const legacyOwnerTokenStorageKey = "legalease.commandCenter.ownerToken";
-    function storedOwnerToken() {
-      try {
-        return localStorage.getItem(ownerTokenStorageKey) || sessionStorage.getItem(ownerTokenStorageKey) || localStorage.getItem(legacyOwnerTokenStorageKey) || sessionStorage.getItem(legacyOwnerTokenStorageKey) || "";
-      } catch {
-        return "";
-      }
+    function cookieValue(name) {
+      const prefix = name + "=";
+      const part = String(document.cookie || "").split(";").map(value => value.trim()).find(value => value.startsWith(prefix));
+      return part ? decodeURIComponent(part.slice(prefix.length)) : "";
     }
     function authSessionPresent() {
+      return Boolean(cookieValue("leos_csrf"));
+    }
+    async function lockCommandCenter() {
       try {
-        return Boolean(storedOwnerToken() || /(?:^|;\\s*)leos_session=/.test(document.cookie || ""));
-      } catch {
-        return Boolean(storedOwnerToken());
-      }
-    }
-    function clearOwnerToken() {
-      try { localStorage.removeItem(ownerTokenStorageKey); } catch {}
-      try { sessionStorage.removeItem(ownerTokenStorageKey); } catch {}
-      try { localStorage.removeItem(legacyOwnerTokenStorageKey); } catch {}
-      try { sessionStorage.removeItem(legacyOwnerTokenStorageKey); } catch {}
-      document.cookie = "leos_session=; Path=/; Max-Age=0; SameSite=Lax";
-    }
-    function lockCommandCenter() {
-      clearOwnerToken();
+        await fetch("/api/auth/logout", { method:"POST", credentials:"same-origin", headers:{ "content-type":"application/json", "x-csrf-token":cookieValue("leos_csrf") } });
+      } catch {}
       location.href = "/";
     }
     const toast = message => {
@@ -18737,15 +18714,14 @@ function htmlShell() {
         const controller = typeof AbortController === "function" ? new AbortController() : null;
         const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
         let response;
-        const token = storedOwnerToken();
         try {
           const headers = { "content-type": "application/json", ...(requestOptions.headers || {}) };
-          if (token && !headers.Authorization && !headers.authorization) headers.Authorization = "Bearer " + token;
+          if (![/^GET$/i, /^HEAD$/i].some(pattern => pattern.test(requestOptions.method || "GET"))) headers["x-csrf-token"] = cookieValue("leos_csrf");
           requestOptions.headers = headers;
           response = await fetch(path, { credentials:"same-origin", ...requestOptions, signal: controller?.signal });
         } catch (error) {
           error.endpoint = path;
-          error.authTokenPresent = Boolean(token || authSessionPresent());
+          error.authSessionPresent = authSessionPresent();
           error.timeoutMs = timeoutMs;
           error.aborted = error.name === "AbortError";
           throw error;
@@ -18761,7 +18737,7 @@ function htmlShell() {
             error.status = response.status;
             error.endpoint = path;
             error.contentType = contentType;
-            error.authTokenPresent = Boolean(token || authSessionPresent());
+            error.authSessionPresent = authSessionPresent();
             error.timeoutMs = timeoutMs;
             error.payload = parsed;
             throw error;
@@ -18771,7 +18747,7 @@ function htmlShell() {
             error.status = response.status;
             error.endpoint = path;
             error.contentType = contentType;
-            error.authTokenPresent = Boolean(token || authSessionPresent());
+            error.authSessionPresent = authSessionPresent();
             error.timeoutMs = timeoutMs;
             error.bodyPreview = text.slice(0, 240);
             throw error;
@@ -18784,7 +18760,7 @@ function htmlShell() {
           error.status = response.status;
           error.endpoint = path;
           error.contentType = contentType;
-          error.authTokenPresent = Boolean(token || authSessionPresent());
+          error.authSessionPresent = authSessionPresent();
           error.timeoutMs = timeoutMs;
           error.parseError = parseError.message || String(parseError);
           error.bodyPreview = text.slice(0, 240);
@@ -18796,15 +18772,14 @@ function htmlShell() {
         xhr.open(requestOptions.method || "GET", path, true);
         xhr.timeout = timeoutMs;
         xhr.setRequestHeader("content-type", "application/json");
-        const token = storedOwnerToken();
-        if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
+        if (![/^GET$/i, /^HEAD$/i].some(pattern => pattern.test(requestOptions.method || "GET"))) xhr.setRequestHeader("x-csrf-token", cookieValue("leos_csrf"));
         xhr.onload = () => {
           if (xhr.status < 200 || xhr.status >= 300) {
             const error = new Error(xhr.responseText || "Request failed");
             error.status = xhr.status;
             error.endpoint = path;
             error.contentType = xhr.getResponseHeader("content-type") || "";
-            error.authTokenPresent = Boolean(token || authSessionPresent());
+            error.authSessionPresent = authSessionPresent();
             error.timeoutMs = timeoutMs;
             error.bodyPreview = String(xhr.responseText || "").slice(0, 240);
             reject(error);
@@ -18816,7 +18791,7 @@ function htmlShell() {
             error.status = xhr.status;
             error.endpoint = path;
             error.contentType = xhr.getResponseHeader("content-type") || "";
-            error.authTokenPresent = Boolean(token || authSessionPresent());
+            error.authSessionPresent = authSessionPresent();
             error.timeoutMs = timeoutMs;
             error.parseError = error.message || String(error);
             error.bodyPreview = String(xhr.responseText || "").slice(0, 240);
@@ -18826,14 +18801,14 @@ function htmlShell() {
         xhr.onerror = () => {
           const error = new Error("Network request failed");
           error.endpoint = path;
-          error.authTokenPresent = Boolean(token || authSessionPresent());
+          error.authSessionPresent = authSessionPresent();
           error.timeoutMs = timeoutMs;
           reject(error);
         };
         xhr.ontimeout = () => {
           const error = new Error("Request timed out");
           error.endpoint = path;
-          error.authTokenPresent = Boolean(token || authSessionPresent());
+          error.authSessionPresent = authSessionPresent();
           error.timeoutMs = timeoutMs;
           error.aborted = true;
           reject(error);
@@ -18877,7 +18852,7 @@ function htmlShell() {
           contentType:error.contentType || "unknown",
           timeoutMs:error.timeoutMs || 20000,
           aborted:Boolean(error.aborted || error.name === "AbortError"),
-          authTokenPresent:Boolean(error.authTokenPresent || authSessionPresent()),
+          authSessionPresent:Boolean(error.authSessionPresent || authSessionPresent()),
           checkedAt:new Date().toISOString()
         };
         state = hydrateStatePayload({
@@ -18923,7 +18898,7 @@ function htmlShell() {
           endpoint:"/api/health",
           status:"not_requested",
           contentType:"application/json",
-          authTokenPresent:Boolean(authSessionPresent()),
+          authSessionPresent:Boolean(authSessionPresent()),
           message:"Safe Mode opened without requiring full app state.",
           fellBackToSafeShell:true,
           reason:"manual_safe_mode"
@@ -18960,7 +18935,7 @@ function htmlShell() {
           contentType:error.contentType || "unknown",
           timeoutMs:error.timeoutMs || 20000,
           aborted:Boolean(error.aborted || error.name === "AbortError"),
-          authTokenPresent:Boolean(error.authTokenPresent || authSessionPresent()),
+          authSessionPresent:Boolean(error.authSessionPresent || authSessionPresent()),
           checkedAt:new Date().toISOString()
         };
         showSafeBootShell(formatStateFetchError(error), "boot-state-fetch", error);
@@ -31070,7 +31045,7 @@ function htmlShell() {
       const schemaStale = Boolean(state.schemaStatus?.stale);
       const pathRoute = String(location.pathname || "/").replace(/^\\/+|\\/+$/g, "");
       const requestedPage = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#cockpit")).replace("#", "");
-      const routeAliases = { overview:"today", cockpit:"today", command:"growth", "le-e":"lee", partner:"partners", "partner-hub":"partners", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", health:"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings", replies:"growth-inbox", "inbox-replies":"growth-inbox", lists:"contacts", contact:"contacts", people:"contacts", "upload-list":"upload", "list-upload":"upload", import:"upload", "import-list":"upload", campaign:"campaigns", "campaign-control":"campaigns", "campaigns-control":"campaigns", prospect:"prospects", prospects:"prospects", "rcap-prospects":"prospects", "rcap-pipeline":"prospects", money:"revenue", payments:"revenue", stripe:"revenue", calendar:"meetings", meeting:"meetings", "meeting-prep":"meetings", "support-inbox":"support", notifications:"alerts", "alert-center":"alerts", "partner-pages-review":"pages", "page-review":"pages", "co-branded-pages":"pages", system:"os-health" };
+      const routeAliases = { overview:"today", cockpit:"today", command:"growth", "le-e":"lee", partner:"partners", "partner-hub":"partners", metrics:"proof", kpis:"proof", marketing:"growth", social:"growth", "social-media":"growth", "content-calendar":"growth", posts:"growth", rcap:"production-activation-rcap", "app-status":"os-health", health:"os-health", recovery:"safe-mode", guide:"operator-manual", "course-manual":"operator-manual", "data-check":"data-integrity", "handoff-notes":"handoff-contract", privacy:"settings", replies:"growth-inbox", "inbox-replies":"growth-inbox", lists:"contacts", contact:"contacts", people:"contacts", "upload-list":"upload", "list-upload":"upload", import:"upload", "import-list":"upload", campaign:"campaigns", "campaign-control":"campaigns", "campaigns-control":"campaigns", prospect:"prospects", prospects:"prospects", "rcap-prospects":"prospects", "rcap-pipeline":"prospects", money:"revenue", payments:"revenue", stripe:"revenue", calendar:"meetings", meeting:"meetings", "meeting-prep":"meetings", "support-inbox":"support", notifications:"alerts", "alert-center":"alerts", "partner-pages-review":"pages", "page-review":"pages", "co-branded-pages":"pages", system:"os-health", linkedin:"production-linkedin-queue", "twitter-x":"production-twitter-x-queue" };
       // Phase O deep links: #item/<collection>/<id> renders the artifact viewer for one
       // record. Parsed before alias/known-page validation (slashes would fail both).
       let artifactRef = null;
@@ -31082,7 +31057,7 @@ function htmlShell() {
         if (refCollection && refItemId) artifactRef = { collection: refCollection, itemId: refItemId };
       }
       const normalizedPage = artifactRef ? "item" : (routeAliases[requestedPage] || requestedPage);
-      const knownPages = ["cockpit", "upload", "contacts", "prospects", "revenue", "meetings", "support", "alerts", "pages", "today", "overview", "daily-run", "focus", "decisions", "lee", "growth", "partner-hub", "production", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode", "item"];
+      const knownPages = ["cockpit", "upload", "contacts", "prospects", "revenue", "meetings", "support", "alerts", "pages", "today", "overview", "daily-run", "focus", "decisions", "lee", "growth", "partner-hub", "production", "production-linkedin-queue", "production-twitter-x-queue", "proof", "more", "growth-inbox", "capture-inbox", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "production-activation-rcap", "operating-memory", "morning-brief", "evening-reflection", "daily-closeout", "os-health", "smoke-test", "evidence-room", "handoff-contract", "operator-manual", "roles", "data-integrity", "operator-search", "conversation-notes", "partner-programs", "partner-pages", "partner-dashboards", "partner-reports", "partner-proposals", "milestones", "partners", "campaigns", "funnel", "content-bank", "queue", "sources", "assets", "posted", "autonomy", "automation", "pilots", "compliance", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies", "reports", "dataroom", "metrics", "settings", "safe-mode", "item"];
       const pageId = knownPages.includes(normalizedPage) ? normalizedPage : "today";
       currentPageId = pageId;
       document.body.classList.toggle("ck-wash", ["today", "overview"].includes(pageId));
@@ -31096,7 +31071,7 @@ function htmlShell() {
           endpoint:"/api/health",
           status:"not_requested",
           contentType:"application/json",
-          authTokenPresent:Boolean(authSessionPresent()),
+          authSessionPresent:Boolean(authSessionPresent()),
           message:"Safe Mode opened without requiring full app state.",
           fellBackToSafeShell:true,
           reason:"manual_safe_mode"
@@ -31125,6 +31100,8 @@ function htmlShell() {
         \${safeRenderModule("growth", () => growthWorkspaceHtml(pageClass))}
         \${safeRenderModule("partner-hub", () => sectionLandingPageHtml(pageClass, "partner-hub"))}
         \${safeRenderModule("production", () => productionWorkspaceHtml(pageClass))}
+        \${safeRenderModule("production-linkedin-queue", () => pageId === "production-linkedin-queue" ? linkedinApprovalQueueHtml(reviewPosts, state.postImages || []) : "")}
+        \${safeRenderModule("production-twitter-x-queue", () => pageId === "production-twitter-x-queue" ? twitterXApprovalQueueHtml(reviewPosts, state.postImages || []) : "")}
         \${safeRenderModule("proof", () => proofWorkspaceHtml(pageClass))}
         \${safeRenderModule("more", () => moreWorkspaceHtml(pageClass))}
         \${safeRenderModule("item", () => pageId === "item" ? artifactViewerHtml(pageClass, artifactRef) : "")}
@@ -31330,7 +31307,7 @@ function htmlShell() {
       if (["today", "overview", "cockpit", "focus", "daily-run", "morning-brief", "evening-reflection", "daily-closeout"].includes(pageId)) return "today";
       if (["decisions", "item", "tasks", "tasks-today", "tasks-blocked", "tasks-waiting", "tasks-this-week", "prospects", "support", "alerts", "meetings", "growth-inbox", "capture-inbox"].includes(pageId)) return "queue";
       if (["campaigns", "funnel", "sources", "upload", "contacts", "revenue"].includes(pageId)) return "campaigns";
-      if (["queue", "posted", "assets", "content-bank", "production", "autonomy", "pages"].includes(pageId)) return "review-desk";
+      if (["queue", "posted", "assets", "content-bank", "production", "production-linkedin-queue", "production-twitter-x-queue", "autonomy", "pages"].includes(pageId)) return "review-desk";
       if (["reports", "proof", "metrics", "kpis", "evidence-room", "dataroom", "soc2", "soc2-access", "soc2-audit", "soc2-changes", "soc2-vendors", "soc2-incidents", "soc2-evidence", "soc2-policies"].includes(pageId)) return "reports";
       return "more";
     }
@@ -33405,10 +33382,7 @@ function htmlShell() {
 
     async function downloadWeeklyEvidencePack(format = "markdown") {
       return cooAction(async () => {
-        const headers = {};
-        const token = storedOwnerToken();
-        if (token) headers.Authorization = "Bearer " + token;
-        const response = await fetch("/api/reports/weekly-evidence-pack/export?format=" + encodeURIComponent(format), { headers });
+        const response = await fetch("/api/reports/weekly-evidence-pack/export?format=" + encodeURIComponent(format), { credentials:"same-origin" });
         if (!response.ok) throw new Error(await response.text());
         const blob = await response.blob();
         const fallback = "weekly-evidence-pack." + (format === "json" ? "json" : "md");
@@ -33428,12 +33402,9 @@ function htmlShell() {
     }
 
     // Phase O: exported report files become readable + downloadable in-app (they used to be
-    // shown as dead path text). Fetches carry the Bearer token, so no cookie is needed.
+    // shown as dead path text). Fetches use the HttpOnly server session.
     async function fetchReportFileText(reportPath) {
-      const headers = {};
-      const token = storedOwnerToken();
-      if (token) headers.Authorization = "Bearer " + token;
-      const response = await fetch("/api/reports/file?path=" + encodeURIComponent(reportPath), { headers });
+      const response = await fetch("/api/reports/file?path=" + encodeURIComponent(reportPath), { credentials:"same-origin" });
       if (!response.ok) {
         let message = "Could not open the report file.";
         try { message = JSON.parse(await response.text()).error || message; } catch {}
@@ -34927,13 +34898,61 @@ async function handleRequest(request, response) {
     sendPublicLegalPage(response, url.pathname === "/terms" ? "terms" : "privacy", { headOnly:request.method === "HEAD" });
     return;
   }
+  request.authenticatedActor = await sessionService.authenticate(request);
+  const callbackProvider = url.pathname === "/api/google/callback" ? "google_workspace"
+    : url.pathname === "/api/linkedin/callback" ? "linkedin"
+      : url.pathname === "/api/x/callback" ? "x"
+        : url.pathname === "/api/meta/callback" ? "meta"
+          : url.pathname.match(/^\/api\/oauth\/([^/]+)\/callback$/)?.[1] || "";
+  if (request.method === "GET" && callbackProvider) {
+    const sessionId = request.authenticatedActor?.session?.id || "";
+    const verified = verifyOwnerStartedOAuthState(callbackProvider, url.searchParams.get("state"), { sessionId, callbackPath: url.pathname });
+    if (!sessionId || !verified.ok) {
+      sendJson(response, { error: "OAuth callback rejected." }, 400);
+      return;
+    }
+    const nonceHash = crypto.createHash("sha256").update(String(verified.payload.nonce)).digest("hex");
+    const consumed = await store.claimCollectionItems("oauthStateClaims", [{ id: `oauth-state-${nonceHash}`, provider: callbackProvider, sessionId, callbackPath: url.pathname, consumedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString() }]);
+    if (!consumed.inserted?.length) {
+      sendJson(response, { error: "OAuth callback rejected." }, 400);
+      return;
+    }
+    request.verifiedOAuthState = verified;
+  }
+  if (url.pathname === "/api/auth/login" && request.method === "POST") {
+    const rate = await consumeRateLimit({
+      store,
+      scope: "login",
+      subject: request.socket?.remoteAddress || "unknown",
+      limit: 6,
+      windowMs: 15 * 60 * 1000,
+      secret: process.env.COMMAND_CENTER_SESSION_SECRET
+    });
+    if (!rate.allowed) {
+      await incrementSecurityMetric(store, "auth_throttled").catch(() => {});
+      response.setHeader("retry-after", String(rate.retryAfterSeconds));
+      sendJson(response, { error: "Authentication unavailable." }, 429);
+      return;
+    }
+    const body = await readJson(request);
+    const role = credentialRole(body.credential, process.env);
+    if (!role) {
+      await incrementSecurityMetric(store, "auth_failures").catch(() => {});
+      sendJson(response, { error: "Authentication unavailable." }, 401);
+      return;
+    }
+    const created = await sessionService.create(role, { userAgent: request.headers["user-agent"] || "" });
+    response.setHeader("set-cookie", [sessionCookie(created.token, { env: process.env }), csrfCookie(created.csrfToken, { env: process.env })]);
+    sendJson(response, { ok: true, role });
+    return;
+  }
   const accessDecision = authorizeRequest(request, url, process.env);
   if (!accessDecision.ok) {
     await logAccessDecision(accessDecision, url);
     if (isLinkedInOAuthCallbackRequest(request, url)) {
       const providerError = url.searchParams.get("error");
       const verified = verifyOAuthState("linkedin", url.searchParams.get("state"));
-      const ownerStarted = verifyOwnerStartedOAuthState("linkedin", url.searchParams.get("state"));
+      const ownerStarted = verifyOwnerStartedOAuthState("linkedin", url.searchParams.get("state"), { sessionId:request.authenticatedActor?.session?.id || "", callbackPath:url.pathname });
       if (providerError && ownerStarted.ok) sendLinkedInSettingsRedirect(response, "LinkedIn connection was cancelled. Try again from Settings.");
       else if (providerError) sendLinkedInSettingsRedirect(response, safeLinkedInError(url.searchParams.get("error_description") || providerError));
       else if (!verified.ok) sendLinkedInSettingsRedirect(response, "LinkedIn connection expired. Try again from Settings.");
@@ -34946,7 +34965,7 @@ async function handleRequest(request, response) {
     else if (isXOAuthCallbackRequest(request, url)) {
       const providerError = url.searchParams.get("error");
       const verified = verifyOAuthState("x", url.searchParams.get("state"));
-      const ownerStarted = verifyOwnerStartedOAuthState("x", url.searchParams.get("state"));
+      const ownerStarted = verifyOwnerStartedOAuthState("x", url.searchParams.get("state"), { sessionId:request.authenticatedActor?.session?.id || "", callbackPath:url.pathname });
       if (providerError && ownerStarted.ok) sendXSettingsRedirect(response, "Twitter / X connection was cancelled. Try again from Settings.");
       else if (providerError) sendXSettingsRedirect(response, safeXError(url.searchParams.get("error_description") || providerError));
       else if (!verified.ok) sendXSettingsRedirect(response, "Twitter / X connection expired. Try again from Settings.");
@@ -34959,7 +34978,7 @@ async function handleRequest(request, response) {
     else if (isMetaOAuthCallbackRequest(request, url)) {
       const providerError = url.searchParams.get("error");
       const verified = verifyOAuthState("meta", url.searchParams.get("state"));
-      const ownerStarted = verifyOwnerStartedOAuthState("meta", url.searchParams.get("state"));
+      const ownerStarted = verifyOwnerStartedOAuthState("meta", url.searchParams.get("state"), { sessionId:request.authenticatedActor?.session?.id || "", callbackPath:url.pathname });
       if (providerError && ownerStarted.ok) sendMetaSettingsRedirect(response, "Meta connection was cancelled. Try again from Settings.");
       else if (providerError) sendMetaSettingsRedirect(response, safeMetaError(url.searchParams.get("error_description") || providerError));
       else if (!verified.ok) sendMetaSettingsRedirect(response, "Meta connection expired. Try again from Settings.");
@@ -34972,7 +34991,7 @@ async function handleRequest(request, response) {
     else if (isGoogleOAuthCallbackRequest(request, url)) {
       const providerError = url.searchParams.get("error");
       const verified = verifyOAuthState("google_workspace", url.searchParams.get("state"));
-      const ownerStarted = verifyOwnerStartedOAuthState("google_workspace", url.searchParams.get("state"));
+      const ownerStarted = verifyOwnerStartedOAuthState("google_workspace", url.searchParams.get("state"), { sessionId:request.authenticatedActor?.session?.id || "", callbackPath:url.pathname });
       if (providerError && ownerStarted.ok) sendGoogleSettingsRedirect(response, "Google connection was cancelled. Try again from Settings.");
       else if (providerError) sendGoogleSettingsRedirect(response, safeGoogleError(url.searchParams.get("error_description") || providerError));
       else if (!verified.ok) sendGoogleSettingsRedirect(response, "Google connection expired. Try again from Settings.");
@@ -34989,6 +35008,29 @@ async function handleRequest(request, response) {
     }
   }
 
+  const stateChanging = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+  const csrfExempt = ["/api/auth/login", "/api/outreach/webhooks/sendgrid", "/api/events/product"].includes(url.pathname)
+    || accessDecision.actor?.role === "cron"
+    || accessDecision.actor?.id === "local_operator";
+  if (stateChanging && !csrfExempt) {
+    let originMatches = true;
+    if (request.headers.origin) {
+      try { originMatches = new URL(request.headers.origin).host === String(request.headers.host || ""); }
+      catch { originMatches = false; }
+    }
+    if (!originMatches || !sessionService.csrfValid(request, accessDecision.actor)) {
+      sendJson(response, { error: "Request verification failed." }, 403);
+      return;
+    }
+  }
+
+  if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+    await sessionService.revoke(request);
+    response.setHeader("set-cookie", [clearSessionCookie({ env: process.env }), clearCsrfCookie({ env: process.env })]);
+    sendJson(response, { ok: true });
+    return;
+  }
+
   const forbiddenEndpoint = guardForbiddenEndpoint({ method: request.method, pathname: url.pathname });
   if (!forbiddenEndpoint.ok) {
     let currentState = {};
@@ -34998,44 +35040,69 @@ async function handleRequest(request, response) {
   }
 
   if (url.pathname === "/api/auth/diagnostics" && request.method === "GET") {
-    sendJson(response, authDiagnosticsForRequest(request));
+    sendJson(response, { hostedMode: isHostedProduction(process.env), sessionAuthenticated: true, role: accessDecision.actor.role });
     return;
   }
 
-	  if (url.pathname.startsWith("/assets/") && request.method === "GET") {
+  if (url.pathname === "/api/reports/aggregate" && request.method === "GET") {
+    sendJson(response, viewerReportDto(await store.readState()));
+    return;
+  }
+
+  if (url.pathname === "/api/metrics" && request.method === "GET") {
+    const state = await store.readState();
+    sendJson(response, operationalMetrics(state, typeof store.writeHealth === "function" ? store.writeHealth() : {}));
+    return;
+  }
+
+  if (url.pathname === "/api/assets/preview-url" && request.method === "POST") {
+    const body = await readJson(request);
+    const assetPath = normalizePrivateAssetPath(body.assetPath);
+    const postId = String(body.postId || "");
+    const currentState = await store.readState();
+    const postExists = (currentState.posts || []).some((post) => String(post.id) === postId);
+    const assetOwned = (currentState.postImages || []).some((image) => String(image.postId) === postId && [image.privateAssetPath, image.assetBundleUsed?.uploadPath].includes(assetPath));
+    if (!assetPath || !postExists || !assetOwned) {
+      sendJson(response, { error: "Asset is unavailable." }, 404);
+      return;
+    }
+    const token = signPrivateAsset({ assetPath, postId, sessionId: accessDecision.actor?.session?.id || accessDecision.actor?.id, env: process.env });
+    sendJson(response, { url: `/api/assets/private?token=${encodeURIComponent(token)}`, expiresInSeconds: 60 });
+    return;
+  }
+
+  if (url.pathname === "/api/assets/private" && request.method === "GET") {
+    const verified = verifyPrivateAsset(url.searchParams.get("token"), { sessionId: accessDecision.actor?.session?.id || accessDecision.actor?.id, env: process.env });
+    if (!verified.ok) {
+      sendJson(response, { error: "Asset is unavailable." }, 404);
+      return;
+    }
+    const currentState = await store.readState();
+    const assetOwned = (currentState.postImages || []).some((image) => String(image.postId) === verified.postId && [image.privateAssetPath, image.assetBundleUsed?.uploadPath].includes(verified.assetPath));
+    if (!assetOwned) {
+      sendJson(response, { error: "Asset is unavailable." }, 404);
+      return;
+    }
+    const body = await readPrivateDraftAsset(verified.assetPath);
+    const type = imageTypeFromSignature(body);
+    if (!type) {
+      sendJson(response, { error: "Asset is unavailable." }, 404);
+      return;
+    }
+    response.writeHead(200, { "content-type": type === "jpeg" ? "image/jpeg" : `image/${type}`, "cache-control": "private, no-store, max-age=0" });
+    response.end(body);
+    return;
+  }
+
+	  if (/^\/assets\/(styles|brand)\//.test(url.pathname) && request.method === "GET") {
 	    await serveAsset(url.pathname, response);
 	    return;
 	  }
 
-	  if (url.pathname.startsWith("/data/exports/final-pngs/") && request.method === "GET") {
-	    await serveAsset(url.pathname, response);
-	    return;
-	  }
-
-	  if (url.pathname.startsWith("/data/exports/openai-images/") && request.method === "GET") {
-	    await serveAsset(url.pathname, response);
-	    return;
-	  }
-
-	  if (url.pathname.startsWith("/data/exports/posting-kits/") && request.method === "GET") {
-	    await serveAsset(url.pathname, response);
-	    return;
-	  }
-
-	  if (url.pathname.startsWith("/data/exports/partner-programs/") && request.method === "GET") {
-	    await serveAsset(url.pathname, response);
-	    return;
-	  }
-
-	  if (url.pathname.startsWith("/data/assets/") && request.method === "GET") {
-	    await serveAsset(url.pathname, response);
-	    return;
-	  }
-
-	  if (url.pathname.startsWith("/data/backups/") && request.method === "GET") {
-	    await serveAsset(url.pathname, response);
-	    return;
-	  }
+	  if ((url.pathname.startsWith("/assets/") || url.pathname.startsWith("/data/")) && request.method === "GET") {
+    sendJson(response, { error: "Asset is unavailable." }, 404);
+    return;
+  }
 
 	  const finalPngDownload = url.pathname.match(/^\/api\/posts\/([^/]+)\/final-png$/);
 	  if (finalPngDownload && request.method === "GET") {
@@ -35164,56 +35231,18 @@ async function handleRequest(request, response) {
     return;
   }
 
-	  if (url.pathname === "/api/health" && request.method === "GET") {
-    const supabaseDb = await getSupabaseHealth();
-    const storageDiagnostics = await diagnoseSupabaseStorage({ testUpload: false });
-    const hostingConfig = storageRuntimeConfig();
-    let currentState = {};
-    let metaStatus = {};
-    let linkedInStatus = {};
-    let xStatus = {};
+  if (url.pathname === "/api/health" && request.method === "GET") {
+    sendJson(response, { status: "ok" });
+    return;
+  }
+
+  if (url.pathname === "/api/ready" && request.method === "GET") {
+    let durableDependencyReady = false;
     try {
-      currentState = await store.readState();
-      metaStatus = metaStatusPayload(currentState);
-      linkedInStatus = linkedinStatusPayload(currentState);
-      xStatus = xStatusPayload(currentState);
-    } catch {
-      metaStatus = {};
-      linkedInStatus = {};
-      xStatus = {};
-    }
-    sendJson(response, {
-      appRunning: true,
-      timestamp: new Date().toISOString(),
-      storageBackend: hostingConfig.activeStorageBackend,
-      requestedStorageBackend: hostingConfig.requestedStorageBackend,
-      localDemoMode: hostingConfig.localDemoMode,
-      appBaseUrl: appBaseUrl(),
-      supabaseDbConfigured: Boolean(supabaseDb.configured),
-      supabaseDbConnected: Boolean(supabaseDb.connected),
-      supabaseDbMode: supabaseDb.mode || "unknown",
-      supabaseDbTable: supabaseDb.table || hostingConfig.supabaseRecordsTable,
-      supabaseDbError: supabaseDb.connected ? "" : String(supabaseDb.error || "").slice(0, 300),
-      supabaseStorageConfigured: Boolean(storageDiagnostics.configured),
-      supabaseStorageConnected: Boolean(storageDiagnostics.bucketReachable),
-      supabaseStorageBucket: storageDiagnostics.bucket,
-      supabaseStoragePublic: storageDiagnostics.bucketPublic,
-      supabaseStorageError: storageDiagnostics.bucketReachable ? "" : String(storageDiagnostics.error || "").slice(0, 300),
-      socialPublicAssetsBucket: storageDiagnostics.bucket,
-      publicImageHostingConfigured: Boolean(storageDiagnostics.configured),
-      metaOAuthConfigured: Boolean(channelSetup("meta").configured),
-      metaConnected: Boolean(metaStatus.connected),
-      facebookConnected: Boolean(metaStatus.facebookConnected),
-      instagramConnected: Boolean(metaStatus.instagramConnected),
-      metaLivePostingEnabled: metaLivePostingEnabled(),
-      linkedInConnected: Boolean(linkedInStatus.connected),
-      xConnected: Boolean(xStatus.connected),
-      linkedInLiveGateEnabled: livePostingEnabledForChannel("linkedin"),
-      xLiveGateEnabled: livePostingEnabledForChannel("x"),
-      scheduledPublishingReady: Boolean(linkedInStatus.connected || xStatus.connected),
-      openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
-      liveGatesCount: Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length
-    });
+      await store.readState();
+      durableDependencyReady = !isHostedProduction(process.env) || store.kind === "supabase";
+    } catch {}
+    sendJson(response, { ready: durableDependencyReady, durableStorage: store.kind === "supabase", authenticationRequired: authRequiredForEnv(process.env) }, durableDependencyReady ? 200 : 503);
     return;
   }
 
@@ -35229,6 +35258,10 @@ async function handleRequest(request, response) {
   }
 
 	  if (url.pathname === "/api/state" && request.method === "GET") {
+    if (!stateAccessAllowed(accessDecision.actor?.role)) {
+      sendJson(response, { error: "This role cannot access the general state graph." }, 403);
+      return;
+    }
     const fullState = withPublicChannelSetup(await store.readState());
     // Live revenue and signups are fetched server-side (60s cache, shared with
     // /api/today/summary) so the Revenue and Users boxes always reflect real source
@@ -35240,7 +35273,7 @@ async function handleRequest(request, response) {
       engineId,
       enabled: autopilotEnabled(fullState, engineId, process.env)
     }));
-    sendJson(response, stripOwnerOnlyCollections(fullState, accessDecision.actor));
+    sendJson(response, stripServerOnlyState(stripOwnerOnlyCollections(fullState, accessDecision.actor)));
     return;
   }
 
@@ -36607,14 +36640,18 @@ async function handleRequest(request, response) {
     return;
   }
 
-  // SendGrid event webhook — PUBLIC. Signature verification is ENFORCED when
-  // SENDGRID_WEBHOOK_PUBLIC_KEY is configured (fail closed); otherwise batches process but are
-  // counted "unverified" in health telemetry. Records bounces/unsubscribes into the suppression
-  // ledger and reactivation events into the campaign ledger, then writes back ONLY the touched
+  // SendGrid event webhook — PUBLIC. A configured SENDGRID_WEBHOOK_PUBLIC_KEY and a valid,
+  // fresh signature are required; missing verification rejects the batch before processing.
+  // Records bounces/unsubscribes into the suppression ledger and reactivation events into the
+  // campaign ledger, then writes back ONLY the touched
   // collections (scoped write) — a webhook batch can never rewrite, or be broken by, unrelated
   // state. Health telemetry persists to sendgridWebhookHealth and is surfaced (with warnings) on
   // /api/reactivation/status. MUST be the -prod host URL at SendGrid.
   if (url.pathname === "/api/outreach/webhooks/sendgrid" && request.method === "POST") {
+    if (!webhookRouteEnabled(process.env)) {
+      sendJson(response, { error:"Not found." }, 404);
+      return;
+    }
     // Best-effort health stamp — never lets a telemetry failure mask the primary outcome.
     const recordWebhookHealth = async (outcome) => {
       try {
@@ -36625,19 +36662,48 @@ async function handleRequest(request, response) {
       } catch {}
     };
     try {
-      const { payload, rawBody } = await readJsonWithRawBody(request).catch(() => ({ payload: [], rawBody: "" }));
+      const rate = await consumeRateLimit({
+        store,
+        scope: "sendgrid_webhook",
+        subject: request.socket?.remoteAddress || "unknown",
+        limit: 120,
+        windowMs: 60_000,
+        secret: process.env.COMMAND_CENTER_SESSION_SECRET
+      });
+      if (!rate.allowed) {
+        response.setHeader("retry-after", String(rate.retryAfterSeconds));
+        sendJson(response, { error: "Webhook rejected." }, 429);
+        return;
+      }
+      const { payload, rawBody } = await readJsonWithRawBody(request);
+      const signedTimestamp = request.headers[SENDGRID_TIMESTAMP_HEADER] || "";
       const verification = verifySendGridSignature({
         env: process.env,
         rawBody,
         signature: request.headers[SENDGRID_SIGNATURE_HEADER] || "",
-        timestamp: request.headers[SENDGRID_TIMESTAMP_HEADER] || ""
+        timestamp: signedTimestamp
       });
       if (verification.rejected) {
+        await incrementSecurityMetric(store, "webhook_rejections").catch(() => {});
         await recordWebhookHealth({ rejected: true, reason: verification.reason });
-        sendJson(response, { error: "Invalid webhook signature." }, 401);
+        sendJson(response, { error: "Webhook rejected." }, 401);
         return;
       }
-      const events = Array.isArray(payload) ? payload : [];
+      if (!Array.isArray(payload)) {
+        sendJson(response, { error: "Webhook rejected." }, 400);
+        return;
+      }
+      const batchId = `sendgrid-batch-${sendgridBatchDigest(rawBody, signedTimestamp)}`;
+      const batchClaim = await store.claimCollectionItems("webhookReplayClaims", [{ id: batchId, kind: "sendgrid_batch", status: "claimed", createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString() }]);
+      if (!batchClaim.inserted?.length) {
+        await incrementSecurityMetric(store, "webhook_replays").catch(() => {});
+        sendJson(response, { ok: true, duplicate: true, processed: 0 });
+        return;
+      }
+      const eventClaims = payload.map((event) => ({ id: `sendgrid-event-${sendgridEventDigest(event)}`, kind: "sendgrid_event", createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString() }));
+      const claimedEvents = await store.claimCollectionItems("webhookReplayClaims", eventClaims);
+      const wonIds = new Set((claimedEvents.inserted || []).map((claim) => claim.id));
+      const events = payload.filter((event, index) => wonIds.has(eventClaims[index].id));
       const currentState = await store.readState();
       const scoped = {};
       for (const collection of SENDGRID_WEBHOOK_COLLECTIONS) scoped[collection] = serverList(currentState[collection]);
@@ -36649,10 +36715,11 @@ async function handleRequest(request, response) {
         { ok: true, counters, verified: verification.verified }
       );
       await store.writeCollections(writePatch);
+      await store.mutateCollectionItem("webhookReplayClaims", batchId, (claim) => ({ ...claim, status: "processed", processedAt: new Date().toISOString() }), { maxRetries: 1 });
       sendJson(response, { ok: true, processed: events.length, recorded: counters.recorded, verified: verification.verified });
     } catch (error) {
-      await recordWebhookHealth({ error: error.message || "Webhook processing failed." });
-      sendJson(response, { error: error.message || "Webhook processing failed." }, 400);
+      await recordWebhookHealth({ error: "webhook_processing_failed" });
+      sendJson(response, { error: "Webhook rejected." }, error instanceof RequestLimitError ? 413 : 400);
     }
     return;
   }
@@ -37101,7 +37168,7 @@ async function handleRequest(request, response) {
       }
       const result = await runAlertEmailSend({
         to: decision.recipient,
-        from: String(process.env.ALERTS_EMAIL_FROM || "roger@legalease.com").trim(),
+        from: String(process.env.ALERTS_EMAIL_FROM || "roger@example.com").trim(),
         subject: "Alert email test from the LegalEase Command Center",
         text: "This is a test of owner alert email. It goes only to you. Nothing was sent to contacts, customers, or partners."
       }, { env: process.env });
@@ -38394,6 +38461,8 @@ async function handleRequest(request, response) {
       ownerStarted:true,
       startedByRole:actorRole,
       startedByActor:accessDecision.actor?.id || actorRole,
+      sessionId:accessDecision.actor?.session?.id || accessDecision.actor?.id,
+      callbackPath:"/api/google/callback",
       returnTarget:"settings"
     });
     const authorizationUrl = googleAuthorizationUrl({ state });
@@ -38433,7 +38502,7 @@ async function handleRequest(request, response) {
       sendGoogleSettingsRedirect(response, safeError);
       return;
     }
-    const verified = verifyOwnerStartedOAuthState("google_workspace", url.searchParams.get("state"));
+    const verified = verifyOwnerStartedOAuthState("google_workspace", url.searchParams.get("state"), { sessionId:request.authenticatedActor?.session?.id || "", callbackPath:url.pathname });
     if (!verified.ok) {
       await serializeStateMutation(() => store.updateSocialAccount("google_workspace", {
         status:"error",
@@ -38492,7 +38561,7 @@ async function handleRequest(request, response) {
             resourceId: profile.sub || "google_workspace",
             beforeValue: null,
             afterValue: { accountName, scopes: googleReadOnlyScopes.filter(scope => /readonly|openid|email|profile/i.test(scope)), noOutboundScopes: true }
-          }, ...(state.auditHistory || [])].slice(0, 1000),
+          }, ...(state.auditHistory || [])],
           activityEvents: [{
             id: `activity-google-connect-${crypto.randomUUID().slice(0, 8)}`,
             eventType: "Google Workspace connected",
@@ -38652,6 +38721,10 @@ async function handleRequest(request, response) {
   }
 
   if (url.pathname === "/api/events/product" && request.method === "POST") {
+    if (!productEventRouteEnabled(process.env)) {
+      sendJson(response, { error:"Not found." }, 404);
+      return;
+    }
     try {
       const { payload, rawBody } = await readJsonWithRawBody(request);
       const result = await receiveProductEvent(payload || {}, request, rawBody);
@@ -38713,7 +38786,9 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/health/supabase" && request.method === "GET") {
     // writeHealth: last successful/failed persist + failure count (Phase 0 trust fix) — makes
     // "writes are silently failing" visible instead of discoverable only via broken telemetry.
-    sendJson(response, { ...(await getSupabaseHealth()), writeHealth: typeof store.writeHealth === "function" ? store.writeHealth() : null });
+    const health = await getSupabaseHealth();
+    const writes = typeof store.writeHealth === "function" ? store.writeHealth() : {};
+    sendJson(response, { configured:Boolean(health.configured), connected:Boolean(health.connected), writeHealthy:!writes.lastWriteErrorAt || writes.lastWriteOkAt > writes.lastWriteErrorAt, failedWriteCount:Number(writes.failedWriteCount || 0) });
     return;
   }
 
@@ -38924,6 +38999,8 @@ async function handleRequest(request, response) {
       ownerStarted:true,
       startedByRole:actorRole,
       startedByActor:accessDecision.actor?.id || actorRole,
+      sessionId:accessDecision.actor?.session?.id || accessDecision.actor?.id,
+      callbackPath:"/api/linkedin/callback",
       returnTarget:"settings"
     });
     const authorizationUrl = linkedinAuthorizationUrl({ state });
@@ -39082,6 +39159,8 @@ async function handleRequest(request, response) {
       ownerStarted:true,
       startedByRole:actorRole,
       startedByActor:accessDecision.actor?.id || actorRole,
+      sessionId:accessDecision.actor?.session?.id || accessDecision.actor?.id,
+      callbackPath:"/api/x/callback",
       returnTarget:"settings",
       codeVerifierEncrypted:encryptOAuthStateValue("x", codeVerifier)
     });
@@ -39118,7 +39197,7 @@ async function handleRequest(request, response) {
       sendXSettingsRedirect(response, safeError);
       return;
     }
-    const verified = verifyOwnerStartedOAuthState("x", url.searchParams.get("state"));
+    const verified = verifyOwnerStartedOAuthState("x", url.searchParams.get("state"), { sessionId:request.authenticatedActor?.session?.id || "", callbackPath:url.pathname });
     if (!verified.ok) {
       await store.updateSocialAccount("x", {
         status:"error",
@@ -39243,6 +39322,8 @@ async function handleRequest(request, response) {
       ownerStarted:true,
       startedByRole:actorRole,
       startedByActor:accessDecision.actor?.id || actorRole,
+      sessionId:accessDecision.actor?.session?.id || accessDecision.actor?.id,
+      callbackPath:"/api/meta/callback",
       returnTarget:"settings"
     });
     const authorizationUrl = metaAuthorizationUrl({ state });
@@ -39279,7 +39360,7 @@ async function handleRequest(request, response) {
       sendMetaSettingsRedirect(response, safeError);
       return;
     }
-    const verified = verifyOwnerStartedOAuthState("meta", url.searchParams.get("state"));
+    const verified = verifyOwnerStartedOAuthState("meta", url.searchParams.get("state"), { sessionId:request.authenticatedActor?.session?.id || "", callbackPath:url.pathname });
     if (!verified.ok) {
       await store.updateSocialAccount("meta", {
         status:"error",
@@ -39380,7 +39461,7 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/linkedin/publish" && request.method === "POST") {
     const input = await readJson(request);
-    const result = await publishLinkedInApprovedPost(input || {});
+    const result = await publishLinkedInApprovedPost(input || {}, { actor:accessDecision.actor, requestId:request.requestId });
     sendJson(response, {
       ok:result.ok,
       status:result.status,
@@ -39566,7 +39647,7 @@ async function handleRequest(request, response) {
   const publishNowMatch = url.pathname.match(/^\/api\/posts\/([^/]+)\/publish-now$/);
   if (publishNowMatch && request.method === "POST") {
     try {
-      const result = await publishPostNow(decodeURIComponent(publishNowMatch[1]));
+      const result = await publishPostNow(decodeURIComponent(publishNowMatch[1]), { actor: accessDecision.actor, requestId: request.requestId });
       sendJson(response, {
         state: withPublicChannelSetup(result.state),
         result: result.result,
@@ -39596,6 +39677,11 @@ async function handleRequest(request, response) {
     return;
   }
 
+  if (url.pathname === "/api/publishing/reconciliation" && request.method === "GET") {
+    sendJson(response, { items: reconciliationQueue(await store.readState()) });
+    return;
+  }
+
   if (url.pathname === "/api/publishing/run" && request.method === "POST") {
     const result = await runPublishingWorker();
     const summary = publishingRunSummaryFromResults(result.results);
@@ -39603,10 +39689,7 @@ async function handleRequest(request, response) {
       ...result.state,
       dailyRunPublisherRuns: [summary, ...serverList(result.state.dailyRunPublisherRuns)].slice(0, 20)
     };
-    // Deliberately NOT diff-scoped: the worker's state lineage mixes its own store-method
-    // writes with returned mutations, so no clean before snapshot exists here. Serialized
-    // full-state write preserves behavior while closing the interleave window.
-    await serializeStateMutation(() => store.writeState(stateWithSummary));
+    await store.claimCollectionItems("dailyRunPublisherRuns", [summary]);
     sendJson(response, {
       state: withPublicChannelSetup(stateWithSummary),
       results: result.results,
@@ -39798,7 +39881,7 @@ async function handleRequest(request, response) {
         sendJson(response, { error:"OAUTH_TOKEN_ENCRYPTION_KEY is required before connecting Google." }, 400);
         return;
       }
-      const state = signOAuthState(platform);
+      const state = signOAuthState(platform, { ownerStarted:true, startedByRole:accessDecision.actor?.role, startedByActor:accessDecision.actor?.id, sessionId:accessDecision.actor?.session?.id || accessDecision.actor?.id, callbackPath:`/api/oauth/${platform}/callback`, returnTarget:"settings" });
       response.writeHead(302, { location: googleAuthorizationUrl({ state }) });
       response.end();
       return;
@@ -39817,7 +39900,7 @@ async function handleRequest(request, response) {
       return;
     }
     if (platform === "linkedin") {
-      const state = signOAuthState(platform);
+      const state = signOAuthState(platform, { ownerStarted:true, startedByRole:accessDecision.actor?.role, startedByActor:accessDecision.actor?.id, sessionId:accessDecision.actor?.session?.id || accessDecision.actor?.id, callbackPath:`/api/oauth/${platform}/callback`, returnTarget:"settings" });
       response.writeHead(302, { location: linkedinAuthorizationUrl({ state }) });
       response.end();
       return;
@@ -39906,7 +39989,7 @@ async function handleRequest(request, response) {
               resourceId: profile.sub || "google_workspace",
               beforeValue: null,
               afterValue: { accountName, scopes: googleReadOnlyScopes, noOutboundScopes: true }
-            }, ...(state.auditHistory || [])].slice(0, 1000),
+            }, ...(state.auditHistory || [])],
             activityEvents: [{
               id: `activity-google-connect-${crypto.randomUUID().slice(0, 8)}`,
               eventType: "Google Workspace connected",
@@ -40085,14 +40168,46 @@ async function handleRequest(request, response) {
   response.end(html);
 }
 
-const server = http.createServer((request, response) => {
+const server = http.createServer({ requestTimeout: 30_000, headersTimeout: 10_000, keepAliveTimeout: 5_000, maxHeaderSize: 16 * 1024 }, (request, response) => {
+  request.requestId = requestId(request);
+  for (const [name, value] of Object.entries(securityHeaders({ env: process.env, html: true, sensitive: true }))) response.setHeader(name, value);
+  response.setHeader("x-request-id", request.requestId);
   handleRequest(request, response).catch((error) => {
-    console.error(error);
-    sendJson(response, { error: error.message }, 500);
+    const status = Number(error?.status || (error instanceof RequestLimitError ? 413 : 500));
+    const testDetail = process.env.COMMAND_CENTER_TEST_MODE === "true"
+      ? { detail:sanitizeOutboundText(String(error?.message || "Request failed.")).slice(0, 240) }
+      : {};
+    console.error(JSON.stringify({ level:"error", requestId:request.requestId, status, code:error?.name || "RequestError", ...testDetail }));
+    if (response.headersSent) {
+      response.destroy();
+      return;
+    }
+    sendJson(response, { error: status === 413 ? "Request body is too large." : status === 400 ? "Request was invalid." : "Request failed securely." }, status);
   });
 });
 
 server.listen(port, host, () => {
-  console.log(`LegalEase preview server ready at http://${host}:${port} (${store.kind} persistence)`);
+  const address = server.address();
+  const listeningPort = typeof address === "object" && address ? address.port : port;
+  console.log(`LegalEase preview server ready at http://${host}:${listeningPort} (${store.kind} persistence)`);
   logOpenAIImageConfigStatus();
 });
+
+let shutdownStarted = false;
+function closePreviewServer() {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  const forceClose = setTimeout(() => server.closeAllConnections?.(), 2_000);
+  forceClose.unref();
+  server.close((error) => {
+    clearTimeout(forceClose);
+    if (error) {
+      process.exitCode = 1;
+      console.error(JSON.stringify({ level:"error", code:"ServerShutdownError" }));
+    }
+  });
+  server.closeIdleConnections?.();
+}
+
+process.once("SIGTERM", closePreviewServer);
+process.once("SIGINT", closePreviewServer);

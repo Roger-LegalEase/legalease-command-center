@@ -2,6 +2,8 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import crypto from "node:crypto";
+import { assertProductionReadiness, isHostedProduction } from "./runtime-security.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -149,7 +151,7 @@ const coreStateCollections = [
   // SENDGRID_WEBHOOK_HEALTH_COLLECTION in sendgrid-webhook.mjs, or webhook health silently
   // fails to persist (same trap). test-sendgrid-webhook.mjs asserts membership.
   "sendgridWebhookHealth",
-  // Inbox intelligence (I1, 2026-07-12 owner decision: full read-only, roger@legalease.com
+  // Inbox intelligence (I1, 2026-07-12 owner decision: full read-only, roger@example.com
   // ONLY). MUST stay in sync with INBOX_COLLECTIONS / INBOX_SINGLETON_COLLECTIONS in
   // inbox-intelligence.mjs, or signals silently fail to persist (the B1 trap).
   // test-inbox-intelligence.mjs asserts membership. Signals store classifications,
@@ -206,14 +208,62 @@ const coreStateCollections = [
   "googleInsights",
   "dailyRunPublisherRuns",
   "handoffContractPreviews"
+  ,"authSessions"
+  ,"webhookReplayClaims"
+  ,"oauthStateClaims"
+  ,"publishClaims"
+  ,"auditEvents"
+  ,"securityMetrics"
 ];
-const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth", "settings", "inboxConfig"]);
+const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth", "settings", "inboxConfig", "securityMetrics"]);
 // Append-only safety ledgers: rows are inserted via claimCollectionItems and updated in place,
 // NEVER bulk-reconciled away. Excluding them from the snapshot orphan-delete pass means a stale
 // in-memory snapshot (the exact mechanism that shredded reactivationContacts on 2026-07-08) can
 // never erase a claim that another invocation inserted directly. Deleting a claim would re-open
 // the duplicate-send window it exists to close.
-const appendOnlyCollections = new Set(["reactivationSendClaims", "outreachSendClaims"]);
+const appendOnlyCollections = new Set(["reactivationSendClaims", "outreachSendClaims", "webhookReplayClaims", "oauthStateClaims", "publishClaims", "auditEvents"]);
+const protectedReconcileCollections = new Set([...appendOnlyCollections, "authSessions"]);
+// Scoped snapshot reconciliation is intentionally opt-in. Most collections require explicit
+// versioned delete mutations (`writeChanges`) so a stale scoped patch cannot erase a concurrent row.
+const reconcileEligibleCollections = new Set(["approvalQueue"]);
+
+const jsonFileQueues = new Map();
+function withJsonFileLock(filePath, operation) {
+  const prior = jsonFileQueues.get(filePath) || Promise.resolve();
+  const next = prior.then(operation, operation);
+  jsonFileQueues.set(filePath, next.then(() => undefined, () => undefined));
+  return next;
+}
+
+export class StorageConflictError extends Error {
+  constructor(collection, itemId, expectedVersion, actualVersion = null) {
+    super(`Concurrent update conflict for ${collection}/${itemId}.`);
+    this.name = "StorageConflictError";
+    this.code = "STORAGE_VERSION_CONFLICT";
+    this.status = 409;
+    this.collection = collection;
+    this.itemId = itemId;
+    this.expectedVersion = expectedVersion;
+    this.actualVersion = actualVersion;
+  }
+}
+
+function validateMutableRecord(collection, itemId, record) {
+  if (!coreStateCollections.includes(collection)) throw new Error("Unsupported storage collection.");
+  if (!itemId || String(itemId).length > 240) throw new Error("A stable record identifier is required.");
+  if (!record || typeof record !== "object" || Array.isArray(record)) throw new Error("Stored records must be objects.");
+  const encoded = JSON.stringify(record);
+  if (encoded.length > 1024 * 1024) throw new Error("Stored record exceeds the 1MB boundary.");
+  if (/"(?:authorization|cookie|accessToken|refreshToken|apiKey|secret)"\s*:/i.test(encoded) && !/Encrypted/i.test(encoded)) {
+    throw new Error("Raw credentials may not be persisted in generic records.");
+  }
+  return record;
+}
+
+function payloadWithoutVersion(record = {}) {
+  const { _version, ...payload } = record || {};
+  return payload;
+}
 
 function parseBoolean(value = "") {
   return ["true", "1", "yes", "on"].includes(String(value || "").toLowerCase());
@@ -273,7 +323,13 @@ async function supabaseRestRequest(pathname, options = {}) {
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
   if (!response.ok) {
     const detail = typeof data === "string" ? data : data?.message || data?.error || response.statusText;
-    throw new Error("Supabase DB " + response.status + ": " + detail);
+    if (data?.code === "40001" || /version_conflict/i.test(String(detail))) {
+      throw new StorageConflictError(options.collection || "record", options.itemId || "unknown", options.expectedVersion ?? null);
+    }
+    const error = new Error("Supabase DB " + response.status + ": " + String(detail).slice(0, 300));
+    error.status = response.status;
+    error.code = data?.code || "SUPABASE_ERROR";
+    throw error;
   }
   if (options.withContentRange) {
     const contentRange = response.headers && typeof response.headers.get === "function"
@@ -361,12 +417,41 @@ function coreRecordsFromState(state = {}) {
       // before they become Supabase rows. Without this, registering postImages would upload
       // full base64 images on every write that includes the collection.
       const items = collection === "postImages" ? value.map(compactPostImageForLocal) : value;
-      items.forEach((item, index) => addRow({ collection, item_id: coreRecordId(collection, item, index), payload: item || {}, updated_at: new Date().toISOString() }));
+      items.forEach((item, index) => addRow({ collection, item_id: coreRecordId(collection, item, index), payload: payloadWithoutVersion(item || {}), expected_version: Number.isInteger(item?._version) ? item._version : null, updated_at: new Date().toISOString() }));
     } else if (typeof value === "object") {
-      addRow({ collection, item_id: "singleton", payload: value, updated_at: new Date().toISOString() });
+      addRow({ collection, item_id: "singleton", payload: payloadWithoutVersion(value), expected_version: Number.isInteger(value?._version) ? value._version : null, updated_at: new Date().toISOString() });
     }
   }
   return [...rowsByKey.values()];
+}
+
+function coreMutationsBetween(before = {}, after = {}) {
+  const beforeRows = new Map(coreRecordsFromState(before).map((row) => [`${row.collection}\u0000${row.item_id}`, row]));
+  const afterRows = new Map(coreRecordsFromState(after).map((row) => [`${row.collection}\u0000${row.item_id}`, row]));
+  const changedCollections = new Set(coreStateCollections.filter((collection) => before[collection] !== after[collection]));
+  const mutations = [];
+  for (const [key, row] of afterRows) {
+    if (!changedCollections.has(row.collection)) continue;
+    const prior = beforeRows.get(key);
+    if (prior && JSON.stringify(prior.payload) === JSON.stringify(row.payload)) continue;
+    mutations.push({
+      operation:"upsert",
+      collection:row.collection,
+      item_id:row.item_id,
+      payload:row.payload,
+      expected_version:prior ? (Number.isInteger(prior.expected_version) ? prior.expected_version : 0) : null
+    });
+  }
+  for (const [key, row] of beforeRows) {
+    if (!changedCollections.has(row.collection) || afterRows.has(key)) continue;
+    mutations.push({
+      operation:"delete",
+      collection:row.collection,
+      item_id:row.item_id,
+      expected_version:Number.isInteger(row.expected_version) ? row.expected_version : 0
+    });
+  }
+  return mutations;
 }
 
 function applyCoreRecordsToState(baseState = {}, rows = []) {
@@ -384,9 +469,9 @@ function applyCoreRecordsToState(baseState = {}, rows = []) {
   }
   for (const [collection, records] of grouped.entries()) {
     if (singletonCollections.has(collection)) {
-      next[collection] = records[0]?.payload || {};
+      next[collection] = records[0]?.payload ? { ...records[0].payload, _version: Number(records[0].version || 1) } : {};
     } else {
-      next[collection] = records.map((row) => row.payload).filter(Boolean);
+      next[collection] = records.map((row) => row.payload ? { ...row.payload, _version: Number(row.version || 1) } : null).filter(Boolean);
     }
   }
   if (!next.dataRoomItems?.length && Array.isArray(next.dataRoom)) next.dataRoomItems = next.dataRoom;
@@ -528,9 +613,7 @@ export class JsonStore {
   async writeState(state) {
     // Re-arm on failure: the caller must see the rejection, but the QUEUE must not
     // stay rejected, or one failed write would brick every later write until restart.
-    const next = this.writeQueue.then(() => this.writeStateNow(state));
-    this.writeQueue = next.catch(() => {});
-    return next;
+    return withJsonFileLock(this.dataPath, () => this.writeStateNow(state));
   }
 
   // Scoped write: persist ONLY the collections in `patch`, leaving everything else untouched.
@@ -538,8 +621,49 @@ export class JsonStore {
   // read first — writing `patch` directly would WIPE every other collection from the file.
   // (The Supabase backend overrides this with a true partial write.)
   async writeCollections(patch = {}) {
-    const state = await this.readState();
-    return this.writeState({ ...state, ...patch });
+    return withJsonFileLock(this.dataPath, async () => {
+      const state = await this.readState();
+      return this.writeStateNow({ ...state, ...patch });
+    });
+  }
+
+  async writeChanges(before = {}, after = {}) {
+    const mutations = coreMutationsBetween(before, after);
+    if (!mutations.length) return this.readState();
+    return withJsonFileLock(this.dataPath, async () => {
+      const state = await this.readState();
+      const staged = new Map();
+      for (const mutation of mutations) {
+        const singleton = singletonCollections.has(mutation.collection);
+        const currentRows = singleton ? [state[mutation.collection] || null] : (Array.isArray(state[mutation.collection]) ? state[mutation.collection] : []);
+        const currentIndex = singleton ? (currentRows[0] ? 0 : -1) : currentRows.findIndex((item, index) => coreRecordId(mutation.collection, item, index) === mutation.item_id);
+        const current = currentIndex >= 0 ? currentRows[currentIndex] : null;
+        const actualVersion = current ? Number(current._version || 0) : null;
+        if (mutation.expected_version === null ? Boolean(current) : (!current || actualVersion !== mutation.expected_version)) {
+          throw new StorageConflictError(mutation.collection, mutation.item_id, mutation.expected_version, actualVersion);
+        }
+        if (mutation.operation === "upsert") validateMutableRecord(mutation.collection, mutation.item_id, mutation.payload);
+        staged.set(`${mutation.collection}\u0000${mutation.item_id}`, { mutation, currentIndex, actualVersion });
+      }
+      const nextState = { ...state };
+      for (const collection of new Set(mutations.map((mutation) => mutation.collection))) {
+        const singleton = singletonCollections.has(collection);
+        let rows = singleton ? (state[collection] ? [state[collection]] : []) : [...(Array.isArray(state[collection]) ? state[collection] : [])];
+        for (const mutation of mutations.filter((item) => item.collection === collection)) {
+          const index = singleton ? (rows.length ? 0 : -1) : rows.findIndex((item, itemIndex) => coreRecordId(collection, item, itemIndex) === mutation.item_id);
+          if (mutation.operation === "delete") {
+            if (index >= 0) rows.splice(index, 1);
+            continue;
+          }
+          const record = { ...mutation.payload, _version:Number(staged.get(`${collection}\u0000${mutation.item_id}`)?.actualVersion || 0) + 1 };
+          if (index >= 0) rows[index] = record;
+          else rows.unshift(record);
+        }
+        nextState[collection] = singleton ? (rows[0] || {}) : rows;
+      }
+      await this.writeStateNow(nextState);
+      return nextState;
+    });
   }
 
   async writeStateNow(state) {
@@ -561,6 +685,7 @@ export class JsonStore {
       this.lastWriteErrorAt = now;
       this.lastWriteError = String(error.message || error).slice(0, 500);
       this.failedWriteCount = (this.failedWriteCount || 0) + 1;
+      if (error instanceof StorageConflictError) this.conflictCount = (this.conflictCount || 0) + 1;
     } else {
       this.lastWriteOkAt = now;
       this.lastWriteError = "";
@@ -573,7 +698,8 @@ export class JsonStore {
       lastWriteOkAt: this.lastWriteOkAt || "",
       lastWriteErrorAt: this.lastWriteErrorAt || "",
       lastWriteError: this.lastWriteError || "",
-      failedWriteCount: this.failedWriteCount || 0
+      failedWriteCount: this.failedWriteCount || 0,
+      conflictCount: this.conflictCount || 0
     };
   }
 
@@ -581,110 +707,140 @@ export class JsonStore {
     // Shallow copy: readState can return a graph SHARED with concurrent readers
     // (single-flight). This mutator assigns top-level keys; the copy keeps that
     // private so reference-diff closing writes (heartbeat) stay honest.
-    const state = { ...(await this.readState()) };
-    state.posts = [...(state.posts || []), ...posts];
-    await this.writeCollections({ posts: state.posts });
-    return state;
+    await this.claimCollectionItems("posts", posts);
+    return this.readState();
   }
 
-  async updatePost(id, patch) {
+  async updatePost(id, patch, options = {}) {
     // Shallow copy: readState can return a graph SHARED with concurrent readers
     // (single-flight). This mutator assigns top-level keys; the copy keeps that
     // private so reference-diff closing writes (heartbeat) stay honest.
-    const state = { ...(await this.readState()) };
-    state.posts = (state.posts || []).map((post) =>
-      post.id === id ? { ...post, ...patch, updatedAt: new Date().toISOString() } : post
-    );
-    await this.writeCollections({ posts: state.posts });
-    return state;
+    const result = await this.mutateCollectionItem("posts", id, (post) => ({ ...post, ...patch, updatedAt: new Date().toISOString() }), options);
+    return result.state;
   }
 
   async addLibraryItem(item) {
     // Shallow copy: readState can return a graph SHARED with concurrent readers
     // (single-flight). This mutator assigns top-level keys; the copy keeps that
     // private so reference-diff closing writes (heartbeat) stay honest.
-    const state = { ...(await this.readState()) };
-    state.library = [item, ...(state.library || [])];
-    await this.writeCollections({ library: state.library });
-    return state;
+    await this.claimCollectionItems("library", [item]);
+    return this.readState();
   }
 
   async savePostImage(image) {
     // Shallow copy: readState can return a graph SHARED with concurrent readers
     // (single-flight). This mutator assigns top-level keys; the copy keeps that
     // private so reference-diff closing writes (heartbeat) stay honest.
-    const state = { ...(await this.readState()) };
-    state.postImages = [image, ...(state.postImages || []).filter((item) => item.id !== image.id)];
-    await this.writeCollections({ postImages: state.postImages });
-    return state;
+    const result = await this.mutateCollectionItem("postImages", image.id, () => image, { createIfMissing: true, expectedVersion: image._version });
+    return result.state;
   }
 
   async addBrandAsset(asset) {
     // Shallow copy: readState can return a graph SHARED with concurrent readers
     // (single-flight). This mutator assigns top-level keys; the copy keeps that
     // private so reference-diff closing writes (heartbeat) stay honest.
-    const state = { ...(await this.readState()) };
-    state.brandAssets = [asset, ...(state.brandAssets || [])];
-    await this.writeCollections({ brandAssets: state.brandAssets });
-    return state;
+    await this.claimCollectionItems("brandAssets", [asset]);
+    return this.readState();
   }
 
   async addBrandRule(rule) {
     // Shallow copy: readState can return a graph SHARED with concurrent readers
     // (single-flight). This mutator assigns top-level keys; the copy keeps that
     // private so reference-diff closing writes (heartbeat) stay honest.
-    const state = { ...(await this.readState()) };
-    state.brandRules = [rule, ...(state.brandRules || [])];
-    await this.writeCollections({ brandRules: state.brandRules });
-    return state;
+    await this.claimCollectionItems("brandRules", [rule]);
+    return this.readState();
   }
 
   async upsertGenerationProfile(profile) {
     // Shallow copy: readState can return a graph SHARED with concurrent readers
     // (single-flight). This mutator assigns top-level keys; the copy keeps that
     // private so reference-diff closing writes (heartbeat) stay honest.
-    const state = { ...(await this.readState()) };
-    state.generationProfiles = [profile, ...(state.generationProfiles || []).filter((item) => item.id !== profile.id)];
-    await this.writeCollections({ generationProfiles: state.generationProfiles });
-    return state;
+    const result = await this.mutateCollectionItem("generationProfiles", profile.id, () => profile, { createIfMissing: true, expectedVersion: profile._version });
+    return result.state;
   }
 
   async updateSocialAccount(platform, patch) {
     // Shallow copy: readState can return a graph SHARED with concurrent readers
     // (single-flight). This mutator assigns top-level keys; the copy keeps that
     // private so reference-diff closing writes (heartbeat) stay honest.
-    const state = { ...(await this.readState()) };
+    const state = await this.readState();
     const existing =
       (state.socialAccounts || []).find((account) => account.platform === platform) ||
       (this.initialState.socialAccounts || []).find((account) => account.platform === platform) ||
       { id: `channel-${platform}`, platform };
-    const account = { ...existing, ...patch, platform, updatedAt: new Date().toISOString() };
-    state.socialAccounts = [account, ...(state.socialAccounts || []).filter((item) => item.platform !== platform)];
-    // Scoped: this method is reachable from the PUBLIC Google OAuth callback (any bot GET with
-    // ?error= writes an error status), so a full-state write here carried the same clobber
-    // exposure as the PR #30 denial-storm path. Only socialAccounts changes; only it is written.
-    await this.writeCollections({ socialAccounts: state.socialAccounts });
-    return state;
+    const result = await this.mutateCollectionItem("socialAccounts", coreRecordId("socialAccounts", existing, 0), (account) => ({ ...account, ...patch, platform, id: account?.id || existing.id, updatedAt: new Date().toISOString() }), { createIfMissing: true });
+    return result.state;
   }
 
   async addPublishEvent(event) {
     // Shallow copy: readState can return a graph SHARED with concurrent readers
     // (single-flight). This mutator assigns top-level keys; the copy keeps that
     // private so reference-diff closing writes (heartbeat) stay honest.
-    const state = { ...(await this.readState()) };
-    state.publishEvents = [event, ...(state.publishEvents || [])].slice(0, 500);
-    await this.writeCollections({ publishEvents: state.publishEvents });
-    return state;
+    await this.claimCollectionItems("publishEvents", [event]);
+    return this.readState();
   }
 
   async updateSettings(patch) {
     // Shallow copy: readState can return a graph SHARED with concurrent readers
     // (single-flight). This mutator assigns top-level keys; the copy keeps that
     // private so reference-diff closing writes (heartbeat) stay honest.
-    const state = { ...(await this.readState()) };
-    state.settings = { ...(state.settings || {}), ...patch };
-    await this.writeCollections({ settings: state.settings });
-    return state;
+    const result = await this.mutateCollectionItem("settings", "singleton", (settings) => ({ ...settings, ...patch }), { createIfMissing: true });
+    return result.state;
+  }
+
+  async mutateCollectionItem(collection, itemId, mutate, options = {}) {
+    if (typeof mutate !== "function") throw new Error("A record mutator is required.");
+    return withJsonFileLock(this.dataPath, async () => {
+      const state = await this.readState();
+      const singleton = singletonCollections.has(collection);
+      const rows = singleton ? [state[collection] || {}] : (Array.isArray(state[collection]) ? state[collection] : []);
+      const index = singleton ? 0 : rows.findIndex((item, i) => coreRecordId(collection, item, i) === String(itemId));
+      const current = index >= 0 ? rows[index] : null;
+      if (!current && !options.createIfMissing) throw new Error("Record not found.");
+      const actualVersion = Number(current?._version || 0);
+      if (options.expectedVersion !== undefined && options.expectedVersion !== null && Number(options.expectedVersion) !== actualVersion) {
+        throw new StorageConflictError(collection, itemId, Number(options.expectedVersion), actualVersion);
+      }
+      const changed = validateMutableRecord(collection, itemId, await mutate(current ? { ...current } : null));
+      const record = { ...payloadWithoutVersion(changed), _version: actualVersion + 1 };
+      const nextValue = singleton ? record : index >= 0 ? rows.map((item, i) => i === index ? record : item) : [record, ...rows];
+      const nextState = { ...state, [collection]: nextValue };
+      await this.writeStateNow(nextState);
+      return { state: nextState, record, version: record._version };
+    });
+  }
+
+  async appendAuditEvent(event = {}) {
+    return withJsonFileLock(this.dataPath, async () => {
+      const state = await this.readState();
+      const current = Array.isArray(state.auditEvents) ? state.auditEvents : [];
+      const previousHash = String(current[0]?.eventHash || "");
+      const safeEvent = validateMutableRecord("auditEvents", event.id, { ...event, previousHash });
+      const eventHash = crypto.createHash("sha256").update(previousHash).update(JSON.stringify(safeEvent)).digest("hex");
+      const record = { ...safeEvent, eventHash, _version: 1 };
+      const nextState = { ...state, auditEvents: [record, ...current] };
+      await this.writeStateNow(nextState);
+      return record;
+    });
+  }
+
+  async claimSocialPublish({ postId, expectedVersion, claim } = {}) {
+    return withJsonFileLock(this.dataPath, async () => {
+      const state = await this.readState();
+      const posts = Array.isArray(state.posts) ? state.posts : [];
+      const index = posts.findIndex((post) => String(post.id) === String(postId));
+      if (index < 0) throw new Error("Post not found.");
+      const post = posts[index];
+      const claims = Array.isArray(state.publishClaims) ? state.publishClaims : [];
+      if (claims.some((item) => item.id === claim.id)) return { claimed: false, claim };
+      const actualVersion = Number(post._version || 0);
+      if (expectedVersion !== undefined && Number(expectedVersion) !== actualVersion) throw new StorageConflictError("posts", postId, Number(expectedVersion), actualVersion);
+      if (!["approved", "scheduled", "retry_ready"].includes(String(post.status || ""))) throw new Error("Post is not approved for publishing.");
+      const nextPost = { ...post, status: "publish_claimed", publishingStatus: "publish_claimed", _version: actualVersion + 1 };
+      const nextState = { ...state, posts: posts.map((item, i) => i === index ? nextPost : item), publishClaims: [{ ...claim, _version: 1 }, ...claims] };
+      await this.writeStateNow(nextState);
+      return { claimed: true, claim, state: nextState };
+    });
   }
 
   // Atomic claim: insert each item ONLY if no row with its id already exists in `collection`,
@@ -717,10 +873,7 @@ export class JsonStore {
       }
       return { inserted, skipped };
     };
-    const result = this.writeQueue.then(claim, claim);
-    // Keep the queue itself always-resolved so one failed claim cannot poison later writes.
-    this.writeQueue = result.then(() => undefined, () => undefined);
-    return result;
+    return withJsonFileLock(this.dataPath, claim);
   }
 }
 
@@ -859,7 +1012,7 @@ export class SupabaseCoreStore extends JsonStore {
       this._fallbackCache = fallback;
     }
     try {
-      const rows = await supabaseFetchAllRows("collection,item_id,payload,updated_at");
+      const rows = await supabaseFetchAllRows("collection,item_id,payload,version,updated_at");
       this.lastError = "";
       // Signature of THIS fetch (same shape as _remoteStateSignature): lets the cache
       // later prove via one cheap probe that the table has not moved under it.
@@ -891,6 +1044,31 @@ export class SupabaseCoreStore extends JsonStore {
     return this.writeState(patch);
   }
 
+  async writeChanges(before = {}, after = {}) {
+    const mutations = coreMutationsBetween(before, after);
+    if (!mutations.length) return after;
+    for (const mutation of mutations) {
+      if (mutation.operation === "upsert") validateMutableRecord(mutation.collection, mutation.item_id, mutation.payload);
+    }
+    try {
+      await supabaseRestRequest("rpc/leos_apply_core_mutations", {
+        method:"POST",
+        body:{ p_mutations:mutations },
+        prefer:"return=representation",
+        collection:"batch",
+        expectedVersion:"record versions"
+      });
+      this.lastError = "";
+      this.recordWriteOutcome();
+      return after;
+    } catch (error) {
+      this.recordWriteOutcome(error);
+      throw error;
+    } finally {
+      this._writeGen += 1;
+    }
+  }
+
   async writeStateNow(state) {
     try {
       await this.writeStateToSupabase(state);
@@ -909,13 +1087,14 @@ export class SupabaseCoreStore extends JsonStore {
 
   async writeStateToSupabase(state) {
     const rows = coreRecordsFromState(state);
-    if (rows.length) {
-      await supabaseRestRequest(supabaseRecordsTable + "?on_conflict=collection,item_id", {
-        method:"POST",
-        body: rows,
-        prefer:"resolution=merge-duplicates,return=minimal"
-      });
+    for (const row of rows) {
+      validateMutableRecord(row.collection, row.item_id, row.payload);
     }
+    if (rows.length) await supabaseRestRequest("rpc/leos_apply_core_mutations", {
+      method: "POST",
+      body: { p_mutations: rows.map((row) => ({ operation:"upsert", collection:row.collection, item_id:row.item_id, payload:row.payload, expected_version:row.expected_version })) },
+      prefer: "return=representation"
+    });
     // Reconcile so the snapshot is the source of truth, matching the JSON backend.
     // Upsert happens first (current data is never at risk); then, within each collection
     // that is present in this snapshot, delete any table rows whose (collection,item_id)
@@ -927,7 +1106,11 @@ export class SupabaseCoreStore extends JsonStore {
     // reconciling them against the snapshot would delete live claims.
     const presentCollections = new Set(
       coreStateCollections.filter(
-        (collection) => state[collection] !== undefined && !appendOnlyCollections.has(collection)
+        (collection) =>
+          Object.prototype.hasOwnProperty.call(state, collection)
+          && Array.isArray(state[collection])
+          && reconcileEligibleCollections.has(collection)
+          && !protectedReconcileCollections.has(collection)
       )
     );
     if (presentCollections.size) {
@@ -969,7 +1152,8 @@ export class SupabaseCoreStore extends JsonStore {
     const rows = items.map((item) => ({
       collection,
       item_id: coreRecordId(collection, item, 0),
-      payload: item || {},
+      payload: payloadWithoutVersion(validateMutableRecord(collection, coreRecordId(collection, item, 0), item || {})),
+      version: 1,
       updated_at: now
     }));
     if (!rows.length) return { inserted: [], skipped: [] };
@@ -993,12 +1177,67 @@ export class SupabaseCoreStore extends JsonStore {
       this._writeGen += 1;
     }
   }
+
+  async appendAuditEvent(event = {}) {
+    const safeEvent = validateMutableRecord("auditEvents", event.id, event);
+    const returned = await supabaseRestRequest("rpc/leos_append_audit_event", { method: "POST", body: { p_event: safeEvent }, prefer: "return=representation" });
+    this._writeGen += 1;
+    return Array.isArray(returned) ? returned[0] : returned;
+  }
+
+  async claimSocialPublish({ postId, expectedVersion, claim } = {}) {
+    const returned = await supabaseRestRequest("rpc/leos_claim_social_publish", {
+      method: "POST",
+      body: { p_post_id: String(postId), p_expected_version: expectedVersion === undefined ? null : Number(expectedVersion), p_claim: validateMutableRecord("publishClaims", claim.id, claim) },
+      prefer: "return=representation"
+    });
+    this._writeGen += 1;
+    const row = Array.isArray(returned) ? returned[0] : returned;
+    return { claimed: Boolean(row?.claimed), claim };
+  }
+
+  async mutateCollectionItem(collection, itemId, mutate, options = {}) {
+    if (typeof mutate !== "function") throw new Error("A record mutator is required.");
+    const maxRetries = Math.min(3, Math.max(0, Number(options.maxRetries ?? 2)));
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+      const rows = await supabaseRestRequest(
+        `${supabaseRecordsTable}?select=collection,item_id,payload,version&collection=eq.${encodeURIComponent(collection)}&item_id=eq.${encodeURIComponent(itemId)}&limit=1`
+      );
+      const row = Array.isArray(rows) ? rows[0] : null;
+      if (!row && !options.createIfMissing) throw new Error("Record not found.");
+      const actualVersion = Number(row?.version || 0);
+      const expectedVersion = options.expectedVersion !== undefined && options.expectedVersion !== null ? Number(options.expectedVersion) : actualVersion;
+      if (expectedVersion !== actualVersion) throw new StorageConflictError(collection, itemId, expectedVersion, actualVersion);
+      const changed = validateMutableRecord(collection, itemId, await mutate(row ? { ...row.payload, _version: actualVersion } : null));
+      try {
+        const returned = await supabaseRestRequest("rpc/leos_upsert_record_cas", {
+          method: "POST", collection, itemId, expectedVersion,
+          body: { p_collection: collection, p_item_id: String(itemId), p_payload: payloadWithoutVersion(changed), p_expected_version: row ? expectedVersion : null },
+          prefer: "return=representation"
+        });
+        const resultRow = Array.isArray(returned) ? returned[0] : returned;
+        this._writeGen += 1;
+        const state = await this.readState();
+        return { state, record: { ...payloadWithoutVersion(changed), _version: Number(resultRow?.version || actualVersion + 1) }, version: Number(resultRow?.version || actualVersion + 1) };
+      } catch (error) {
+        if (!(error instanceof StorageConflictError) || options.expectedVersion !== undefined || attempt >= maxRetries) throw error;
+      }
+    }
+    throw new StorageConflictError(collection, itemId, options.expectedVersion ?? null);
+  }
 }
 
 export function createStore(initialState) {
   const backend = requestedStorageBackend();
   if (!localDemoMode() && backend === "supabase" && supabaseDatabaseConfigured()) {
     return new SupabaseCoreStore(initialState);
+  }
+  if (isHostedProduction(process.env)) {
+    assertProductionReadiness(process.env, { activeStorageBackend: "json" });
+    throw new Error("Durable production storage is unavailable.");
+  }
+  if (backend !== "json" || (!localDemoMode() && !parseBoolean(process.env.COMMAND_CENTER_ALLOW_JSON || "false"))) {
+    throw new Error("Local JSON storage requires explicit development configuration.");
   }
   return new JsonStore(initialState);
 }
@@ -1014,4 +1253,4 @@ export function storageRuntimeConfig() {
   };
 }
 
-export { coreStateCollections, singletonCollections, appendOnlyCollections, coreRecordsFromState, supabaseRestRequest };
+export { coreStateCollections, singletonCollections, appendOnlyCollections, coreRecordsFromState, coreMutationsBetween, supabaseRestRequest };

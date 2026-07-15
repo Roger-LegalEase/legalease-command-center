@@ -28,12 +28,12 @@ const NOW = "2026-06-30T00:00:00Z";
 const SRC = { sourceNote: "Expungement.ai nightly export", now: NOW };
 
 const RECORDS = [
-  { email: "abandon@gmail.com", first_name: "Ann", screening_status: "abandoned", dropoff_step: "charges", state: "PA", source_record_id: "u1" },
-  { email: "checkout@yahoo.com", first_name: "Cal", checkout_status: "abandoned" },
-  { email: "paid@outlook.com", first_name: "Pat", payment_status: "paid" },
-  { email: "done@gmail.com", first_name: "Dee", screening_status: "completed" },
-  { email: "unsub@gmail.com", first_name: "Uma", unsubscribed: true, screening_status: "abandoned" },
-  { email: "erased@gmail.com", first_name: "Ed", deleted_or_erasure_requested: true, screening_status: "abandoned" },
+  { email: "abandon@example.com", first_name: "Ann", screening_status: "abandoned", dropoff_step: "charges", state: "PA", source_record_id: "u1" },
+  { email: "checkout@example.com", first_name: "Cal", checkout_status: "abandoned" },
+  { email: "paid@example.com", first_name: "Pat", payment_status: "paid" },
+  { email: "done@example.com", first_name: "Dee", screening_status: "completed" },
+  { email: "unsub@example.com", first_name: "Uma", unsubscribed: true, screening_status: "abandoned" },
+  { email: "erased@example.com", first_name: "Ed", deleted_or_erasure_requested: true, screening_status: "abandoned" },
   { email: "bad", first_name: "Bo", screening_status: "abandoned" }
 ];
 
@@ -56,7 +56,7 @@ ok("abandoned screening / checkout abandoned / paid are classified correctly");
 
 // ---- 3. Preview does not write ------------------------------------------------
 {
-  const before = { reactivationContacts: [], expungementLifecycleContacts: [{ lifecycle_contact_id: "keep", email: "k@x.com" }] };
+  const before = { reactivationContacts: [], expungementLifecycleContacts: [{ lifecycle_contact_id: "keep", email: "k@example.com" }] };
   const snapshot = JSON.stringify(before);
   const prev = previewExpungementSync(before, RECORDS, SRC);
   assert.equal(prev.writesState, false);
@@ -89,8 +89,8 @@ ok("confirm writes lifecycle contacts and events");
   const staged = conf.state.reactivationContacts;
   assert.equal(staged.length, 3, "abandon + checkout + done (paid/unsub/deleted/bad excluded)");
   const emails = staged.map((c) => c.email).sort();
-  assert.deepEqual(emails, ["abandon@gmail.com", "checkout@yahoo.com", "done@gmail.com"]);
-  assert.ok(!emails.includes("paid@outlook.com"), "paid customer not campaign-staged");
+  assert.deepEqual(emails, ["abandon@example.com", "checkout@example.com", "done@example.com"]);
+  assert.ok(!emails.includes("paid@example.com"), "paid customer not campaign-staged");
   assert.equal(conf.reactivationStaged, 3);
   ok("only campaign-eligible, valid contacts are staged into reactivationContacts");
 }
@@ -100,14 +100,14 @@ ok("confirm writes lifecycle contacts and events");
   assert.equal(conf.excludedUnsubscribed, 1);
   assert.equal(conf.excludedDeleted, 1);
   const stagedEmails = conf.state.reactivationContacts.map((c) => c.email);
-  assert.ok(!stagedEmails.includes("unsub@gmail.com"), "unsubscribed not staged");
-  assert.ok(!stagedEmails.includes("erased@gmail.com"), "deleted not staged");
+  assert.ok(!stagedEmails.includes("unsub@example.com"), "unsubscribed not staged");
+  assert.ok(!stagedEmails.includes("erased@example.com"), "deleted not staged");
   // Hard signals also write a sticky suppression so a later import can't enroll them either.
   const suppressed = (conf.state.outreachSuppressions || []).map((s) => s.email);
-  assert.ok(suppressed.includes("unsub@gmail.com"), "unsubscribed recorded as suppression");
-  assert.ok(suppressed.includes("erased@gmail.com"), "deleted recorded as suppression");
+  assert.ok(suppressed.includes("unsub@example.com"), "unsubscribed recorded as suppression");
+  assert.ok(suppressed.includes("erased@example.com"), "deleted recorded as suppression");
   // Deletion flag is recorded on the lifecycle row.
-  assert.equal(conf.state.expungementLifecycleContacts.find((c) => c.email === "erased@gmail.com").deleted_or_erasure_requested, true);
+  assert.equal(conf.state.expungementLifecycleContacts.find((c) => c.email === "erased@example.com").deleted_or_erasure_requested, true);
   ok("unsubscribed/suppressed and deleted/erasure contacts are not campaign-staged (and are suppressed)");
 }
 
@@ -171,11 +171,11 @@ assert.equal(permissionForRequest("POST", "/api/sync/expungement-ai/confirm"), "
   const anon = authorizeRequest({ method: "POST", url: "/api/sync/expungement-ai/confirm", headers: {} }, null, env);
   assert.equal(anon.ok, false);
   assert.equal(anon.status, 401, "anonymous confirm rejected");
-  const owner = authorizeRequest({ method: "POST", url: "/api/sync/expungement-ai/confirm", headers: { authorization: "Bearer " + ownerToken } }, null, env);
+  const owner = authorizeRequest({ method: "POST", url: "/api/sync/expungement-ai/confirm", headers:{}, authenticatedActor:{ id:"synthetic-session", role:"owner", authenticated:true, session:{ id:"synthetic-session" } } }, null, env);
   assert.equal(owner.ok, true);
   assert.equal(owner.actor.role, "owner");
 }
-ok("preview + confirm require auth/owner (write); anonymous rejected, owner accepted");
+ok("preview + confirm require auth/owner (write); anonymous rejected, owner session accepted");
 
 // ---- 11. No live-send / autopilot gate changes --------------------------------
 {
@@ -208,8 +208,8 @@ ok("preview + confirm require auth/owner (write); anonymous rejected, owner acce
 {
   const first = confirmExpungementSync({}, RECORDS, { sourceNote: "batch one", now: NOW });
   const resync = confirmExpungementSync(first.state, RECORDS, { sourceNote: "batch two", now: "2026-07-10T00:00:00Z" });
-  const lc = resync.state.expungementLifecycleContacts.find((c) => c.email === "abandon@gmail.com");
-  const lc0 = first.state.expungementLifecycleContacts.find((c) => c.email === "abandon@gmail.com");
+  const lc = resync.state.expungementLifecycleContacts.find((c) => c.email === "abandon@example.com");
+  const lc0 = first.state.expungementLifecycleContacts.find((c) => c.email === "abandon@example.com");
   assert.equal(lc.sync_source_note, "batch two", "latest batch note wins on re-sync");
   assert.equal(lc.first_synced_at, lc0.first_synced_at, "first_synced_at preserved across re-sync");
   assert.equal(lc.last_synced_at, "2026-07-10T00:00:00Z", "last_synced_at refreshes");
@@ -222,17 +222,17 @@ ok("preview + confirm require auth/owner (write); anonymous rejected, owner acce
 
 // ---- 14. Blocker 2: revoked consent => sticky suppression, never staged -------
 {
-  const recs = [{ email: "revoked@gmail.com", first_name: "Rev", consent_status: "revoked", screening_status: "abandoned", source_record_id: "r1" }];
+  const recs = [{ email: "revoked@example.com", first_name: "Rev", consent_status: "revoked", screening_status: "abandoned", source_record_id: "r1" }];
   const r = confirmExpungementSync({}, recs, { sourceNote: "consent test", now: NOW });
   // Lifecycle-recorded with consent_status preserved.
-  const lc = r.state.expungementLifecycleContacts.find((c) => c.email === "revoked@gmail.com");
+  const lc = r.state.expungementLifecycleContacts.find((c) => c.email === "revoked@example.com");
   assert.ok(lc, "revoked-consent contact is lifecycle-recorded");
   assert.equal(lc.consent_status, "revoked", "consent_status preserved on the lifecycle row");
   // Not campaign-staged.
-  assert.ok(!(r.state.reactivationContacts || []).some((c) => c.email === "revoked@gmail.com"), "revoked consent not campaign-staged");
+  assert.ok(!(r.state.reactivationContacts || []).some((c) => c.email === "revoked@example.com"), "revoked consent not campaign-staged");
   assert.equal(r.excludedUnsubscribed, 1, "revoked consent counted as an exclusion");
   // Sticky suppression written.
-  const supp = (r.state.outreachSuppressions || []).find((s) => s.email === "revoked@gmail.com");
+  const supp = (r.state.outreachSuppressions || []).find((s) => s.email === "revoked@example.com");
   assert.ok(supp, "revoked consent writes a sticky suppression");
   assert.ok(["manually_suppressed", "do_not_contact"].includes(supp.reason), "uses a supported non-contact reason");
   ok("revoked consent is recorded, excluded from staging, and writes sticky suppression");
@@ -242,17 +242,17 @@ ok("preview + confirm require auth/owner (write); anonymous rejected, owner acce
 {
   // The person is already an enrolled, released, due reactivation contact. After a revoked-consent
   // sync, the suppression ledger must make planReactivation stop proposing them.
-  const id = contactIdForEmail("already@gmail.com");
+  const id = contactIdForEmail("already@example.com");
   const seeded = {
-    reactivationContacts: [{ contact_id: id, email: "already@gmail.com", wave: 1, enrolled_at: "2026-06-01T00:00:00Z", sequence_status: "Enrolled", campaign_id: "mvp-reactivation" }],
+    reactivationContacts: [{ contact_id: id, email: "already@example.com", wave: 1, enrolled_at: "2026-06-01T00:00:00Z", sequence_status: "Enrolled", campaign_id: "mvp-reactivation" }],
     reactivationCampaign: { campaignId: "mvp-reactivation", releasedWaves: [1], status: "active" }
   };
   const IN_WINDOW = new Date("2026-07-02T15:00:00Z");
   // Sanity: before the sync they WOULD be due (proves the test setup is live).
-  assert.ok(planReactivation(seeded, { now: IN_WINDOW }).proposals.some((p) => p.contact.email === "already@gmail.com"), "contact is due before suppression");
-  const synced = confirmExpungementSync(seeded, [{ email: "already@gmail.com", consent_status: "withdrawn" }], { sourceNote: "consent test", now: NOW });
+  assert.ok(planReactivation(seeded, { now: IN_WINDOW }).proposals.some((p) => p.contact.email === "already@example.com"), "contact is due before suppression");
+  const synced = confirmExpungementSync(seeded, [{ email: "already@example.com", consent_status: "withdrawn" }], { sourceNote: "consent test", now: NOW });
   const due = { ...synced.state, reactivationCampaign: { campaignId: "mvp-reactivation", releasedWaves: [1], status: "active" } };
-  assert.ok(!planReactivation(due, { now: IN_WINDOW }).proposals.some((p) => p.contact.email === "already@gmail.com"), "after revoked-consent sync, planReactivation no longer proposes them");
+  assert.ok(!planReactivation(due, { now: IN_WINDOW }).proposals.some((p) => p.contact.email === "already@example.com"), "after revoked-consent sync, planReactivation no longer proposes them");
   ok("revoked-consent suppression blocks a pre-existing reactivation contact from planReactivation()");
 }
 
@@ -261,12 +261,12 @@ ok("preview + confirm require auth/owner (write); anonymous rejected, owner acce
   // Mixed-case / spaced headers, a quoted name with an embedded comma, plus boolean string cells.
   const CSV = [
     "Email,First Name,Full Name,Payment Status,Screening Status,Checkout Status,Consent Status,Unsubscribed,Deleted Or Erasure Requested,State",
-    'ab@gmail.com,Ann,"Smith, Ann",,abandoned,,,,,PA',
-    "co@yahoo.com,Cal,,,,abandoned,,,,",
-    "pd@outlook.com,Pat,,paid,,,,,,",
-    "un@gmail.com,Uma,,,abandoned,,,true,,",
-    "de@gmail.com,Ed,,,abandoned,,,,true,",
-    "rv@gmail.com,Rev,,,,,revoked,,,"
+    'ab@example.com,Ann,"Smith, Ann",,abandoned,,,,,PA',
+    "co@example.com,Cal,,,,abandoned,,,,",
+    "pd@example.com,Pat,,paid,,,,,,",
+    "un@example.com,Uma,,,abandoned,,,true,,",
+    "de@example.com,Ed,,,abandoned,,,,true,",
+    "rv@example.com,Rev,,,,,revoked,,,"
   ].join("\n");
   const recs = csvToLifecycleRecords(CSV);
   assert.equal(recs.length, 6, "one record per CSV data row");
@@ -277,7 +277,7 @@ ok("preview + confirm require auth/owner (write); anonymous rejected, owner acce
   assert.equal(recs[2].payment_status, "paid", "Payment Status header mapped");
   assert.equal(recs[0].screening_status, "abandoned", "Screening Status header mapped");
   // resolveSyncRecords prefers JSON records, falls back to CSV.
-  assert.equal(resolveSyncRecords({ records: [{ email: "x@y.com" }] }).length, 1, "JSON records path preserved");
+  assert.equal(resolveSyncRecords({ records: [{ email: "x@example.com" }] }).length, 1, "JSON records path preserved");
   assert.equal(resolveSyncRecords({ csvText: CSV }).length, 6, "CSV text path resolves");
   ok("CSV parser handles normal + First Name/Full Name/Payment Status headers + quoted commas");
 
@@ -301,19 +301,19 @@ ok("preview + confirm require auth/owner (write); anonymous rejected, owner acce
   assert.equal(conf.state.expungementLifecycleContacts.length, 6, "CSV confirm writes lifecycle contacts");
   assert.equal(conf.state.expungementLifecycleEvents.length, 6, "CSV confirm writes lifecycle events");
   const stagedEmails = conf.state.reactivationContacts.map((c) => c.email).sort();
-  assert.deepEqual(stagedEmails, ["ab@gmail.com", "co@yahoo.com"], "only screening/checkout-abandoned staged");
+  assert.deepEqual(stagedEmails, ["ab@example.com", "co@example.com"], "only screening/checkout-abandoned staged");
   for (const c of conf.state.reactivationContacts) {
     assert.equal(c.campaign_hold, true, "CSV-staged contact is held");
     assert.equal(c.campaign_hold_reason, EXPUNGEMENT_HOLD_REASON);
     assert.equal(c.wave, null, "held CSV contact gets no wave");
     assert.ok(!c.enrolled_at, "not enrolled");
   }
-  assert.ok(!stagedEmails.includes("pd@outlook.com"), "paid CSV contact not campaign-staged");
+  assert.ok(!stagedEmails.includes("pd@example.com"), "paid CSV contact not campaign-staged");
   const supp = (conf.state.outreachSuppressions || []).map((s) => s.email);
-  assert.ok(supp.includes("un@gmail.com"), "unsubscribed CSV contact suppressed");
-  assert.ok(supp.includes("de@gmail.com"), "deleted CSV contact suppressed");
-  assert.ok(supp.includes("rv@gmail.com"), "revoked-consent CSV contact suppressed");
-  assert.ok(!stagedEmails.includes("un@gmail.com") && !stagedEmails.includes("de@gmail.com") && !stagedEmails.includes("rv@gmail.com"), "unsub/deleted/revoked CSV contacts not staged");
+  assert.ok(supp.includes("un@example.com"), "unsubscribed CSV contact suppressed");
+  assert.ok(supp.includes("de@example.com"), "deleted CSV contact suppressed");
+  assert.ok(supp.includes("rv@example.com"), "revoked-consent CSV contact suppressed");
+  assert.ok(!stagedEmails.includes("un@example.com") && !stagedEmails.includes("de@example.com") && !stagedEmails.includes("rv@example.com"), "unsub/deleted/revoked CSV contacts not staged");
   // No send attempts; only safe collections written.
   assert.ok(!(conf.state.reactivationAttempts && conf.state.reactivationAttempts.length), "no send attempts from CSV confirm");
   assert.ok(!("autopilotSettings" in conf.state) && !("reactivationCampaign" in conf.state), "no gate/autopilot/campaign mutation from CSV confirm");

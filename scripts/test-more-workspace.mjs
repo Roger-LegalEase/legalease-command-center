@@ -22,7 +22,6 @@ assert(renderBlock.includes('safeRenderModule("more", () => moreWorkspaceHtml(pa
 for (const required of [
   "More",
   "Everything that is not Today, Queue, Campaigns, Review Desk, or Reports lives here.",
-  "Publishing is off",
   "Protected",
   "Utility Summary",
   "App Status",
@@ -35,7 +34,7 @@ for (const required of [
   "RCAP Program",
   "Utilities",
   "System Safety",
-  "Publishing: Off",
+  "publishingPostureRow()",
   "emailPostureRow()",
   "socialPostureRow()",
   "Calendar writes: Off",
@@ -91,5 +90,6 @@ for (const forbidden of [
 
 assert(source.includes("leeBubbleHtml"), "Le-E bubble should remain part of the app shell");
 assert(source.includes("liveGatesCount:0"), "Safe fallback state should keep liveGatesCount at 0");
+assert(more.includes("publishingPostureRow()"), "More must derive publishing posture rather than hardcode it.");
 
 console.log("more workspace tests passed.");

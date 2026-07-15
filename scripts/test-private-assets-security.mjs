@@ -1,0 +1,26 @@
+import assert from "node:assert/strict";
+import { imageTypeFromSignature, normalizePrivateAssetPath, signPrivateAsset, verifyPrivateAsset } from "./private-assets.mjs";
+import { requiredCapabilitiesForEndpoint } from "./roles.mjs";
+import { readFile } from "node:fs/promises";
+
+const env = { NODE_ENV:"production", ASSET_SIGNING_SECRET:"9q-assets-A7v!m2Zx#4Lp8Wc6Rk3Tn5Ys1Hd0" };
+assert.equal(normalizePrivateAssetPath("../secrets.txt"), "");
+assert.equal(normalizePrivateAssetPath("assets/uploads/public.png"), "");
+const assetPath = "data/private/draft-assets/00000000-0000-4000-8000-000000000001.png";
+const token = signPrivateAsset({ assetPath, sessionId:"session-a", postId:"post-a", expiresAt:Date.now() + 1000, env });
+assert.equal(verifyPrivateAsset(token, { sessionId:"session-a", env }).ok, true);
+assert.equal(verifyPrivateAsset(token, { sessionId:"session-b", env }).ok, false);
+assert.equal(verifyPrivateAsset(token, { sessionId:"session-a", now:Date.now() + 2000, env }).ok, false);
+assert.equal(verifyPrivateAsset(`${token}x`, { sessionId:"session-a", env }).ok, false);
+assert.equal(imageTypeFromSignature(Buffer.from([137,80,78,71,13,10,26,10])), "png");
+assert.equal(imageTypeFromSignature(Buffer.from("not an image")), "");
+assert.deepEqual(requiredCapabilitiesForEndpoint("POST", "/api/posts/post-a/upload-public-image"), ["social_publish"]);
+assert.deepEqual(requiredCapabilitiesForEndpoint("POST", "/api/posts/batch-upload-public-images"), ["social_publish"]);
+const serverSource = await readFile(new URL("./preview-server.mjs", import.meta.url), "utf8");
+assert.match(serverSource, /status \|\| ""\)\.toLowerCase\(\) !== "approved" \|\| !post\.finalPreviewConfirmed/);
+assert.match(serverSource, /function privateDraftStorageBucket\(\)[\s\S]*SOCIAL_DRAFT_ASSETS_BUCKET/);
+assert.match(serverSource, /async function persistPrivateDraftAsset[\s\S]*isHostedProduction\(process\.env\)[\s\S]*supabaseStorageFetch/);
+assert.match(serverSource, /async function readPrivateDraftAsset[\s\S]*isHostedProduction\(process\.env\)[\s\S]*binary:true/);
+assert.match(serverSource, /const body = await readPrivateDraftAsset\(verified\.assetPath\)/);
+assert.doesNotMatch(serverSource, /const uploadUrl = new URL\(safeName, uploadDir\)/);
+console.log("private asset security tests passed");

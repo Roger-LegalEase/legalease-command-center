@@ -1,4 +1,4 @@
-# Decision: full READ-ONLY inbox access for roger@legalease.com (one mailbox only)
+# Decision: full READ-ONLY inbox access for roger@example.com (one mailbox only)
 
 - **Date:** 2026-07-12
 - **Decided by:** Roger (owner), in writing.
@@ -6,7 +6,7 @@
 
 ## The decision, verbatim scope
 
-Full inbox READ access is granted for **roger@legalease.com ONLY**.
+Full inbox READ access is granted for **roger@example.com ONLY**.
 
 - Every other connected account **stays out of scope entirely** — the snippets-only rules
   are **unchanged** for them.

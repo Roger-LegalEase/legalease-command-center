@@ -1,61 +1,11 @@
-# Backup And Restore
+# Supabase backup and restore
 
-Selected approach:
+Hosted Command Center persistence is the Supabase REST adapter over `public.leos_core_records`, `public.leos_audit_events`, and `public.leos_social_publish_claims`, plus a private draft-assets bucket. `DATABASE_URL` is not the hosted application path.
 
-- Production durable data should live in Postgres through `DATABASE_URL`.
-- Neon, Supabase Postgres, or Render Postgres can provide the database.
-- `DATABASE_URL` is a server-only secret and must be configured in Render environment variables.
+Target RPO is 24 hours with a four-hour target for security/audit records when PITR is available. Target RTO is four hours for the control plane and eight hours for private assets. The production owner must verify Supabase backup/PITR status and a downloadable manual backup monthly; repository work cannot verify console settings.
 
-What is backed up:
+Before restoration, freeze deployments and automation, keep every outbound gate off, revoke active sessions, export migration checksums, and take a pre-restore backup. Restore into an isolated Supabase project/schema first. Apply migrations in order, restore core records, append-only audit events, publish claims, and private objects without making the bucket public. Never overwrite audit events or ambiguous publish/send claims.
 
-- captures and inbox items
-- tasks
-- priorities and focus
-- notes, decisions, blockers
-- Morning Brief, closeout, and tomorrow plan data
-- Social ideas, drafts, planned posts, ready posts, manually published records, and manually entered URLs
-- Proof, wins, customer notes, evidence, and proof-to-social links
-- activity log and non-secret settings
+Validate row counts and non-reversible fingerprints, record versions, audit-chain continuity, unique claims, private-bucket policy, role denial, startup readiness, and all outbound gates. Run `npm run restore:drill` for the synthetic repository harness and `npm run migrations:validate`. Only then schedule a controlled production restore. After restore, rotate session generations, restart OAuth flows, reconcile every publishing/send claim using provider read-only history, and re-enable no live gate without a separate approved decision.
 
-What is not backed up:
-
-- API keys
-- provider tokens
-- refresh tokens
-- `DATABASE_URL`
-- temporary generated exports
-- local cache files
-
-Export:
-
-1. Use the database provider's backup/export tool.
-2. Keep app-level exports from `data/exports` as convenience artifacts only.
-3. Verify Social and Proof records are included.
-
-Restore:
-
-1. Restore into a new Postgres database or provider snapshot.
-2. Set Render `DATABASE_URL` to the restored database.
-3. Restart the service.
-4. Open `/api/health` and confirm `databaseConfigured` and `databaseReachable`.
-5. Open Social and Proof to verify records.
-
-Local migration:
-
-- Use `node scripts/migrate-local-data-to-postgres.mjs --dry-run` first.
-- Run without `--dry-run` only after setting `DATABASE_URL`.
-- The script creates a local backup before importing and does not delete original files.
-
-Credential rotation:
-
-- Rotate `DATABASE_URL` credentials in the database provider.
-- Update Render environment variables.
-- Restart the app.
-- Rotate any exposed provider keys immediately.
-
-Manual setup still needed:
-
-- Create the Postgres database in Neon, Supabase, or Render.
-- Add `DATABASE_URL` in Render.
-- Configure provider backups.
-- Run migration if local JSON contains data that should be retained.
+Forward recovery is preferred for migration failures. Each migration has a matching file in `supabase/recovery/`. If validation fails, leave automation off, preserve restored evidence, return traffic to the last verified environment, and open an incident with request IDs and safe fingerprints only.

@@ -162,7 +162,7 @@ export function createDailyRunQuickCapture(state = {}, input = {}, options = {})
       resourceType: collection,
       resourceId: item.id,
       afterValue: { quickCaptureType: item.quickCaptureType, externalSideEffects: false }
-    }, ...list(state.auditHistory)].slice(0, 1000),
+    }, ...list(state.auditHistory)],
     activityEvents: [{
       id: `activity-${item.id}-quick-capture`,
       eventType: "Daily Run Quick Capture saved",

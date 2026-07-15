@@ -76,8 +76,8 @@ check("autonomy sentences carry no developer jargon", () => {
 function baseState() {
   return {
     reactivationContacts: [
-      { contact_id: "c1", email: "a@gmail.com", wave: 3 },
-      { contact_id: "c2", email: "b@yahoo.com", wave: 3 }
+      { contact_id: "c1", email: "a@example.com", wave: 3 },
+      { contact_id: "c2", email: "b@example.com", wave: 3 }
     ],
     reactivationCampaign: { releasedWaves: [], status: "active" }
   };

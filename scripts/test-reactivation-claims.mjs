@@ -50,7 +50,16 @@ global.fetch = async (url, opts = {}) => {
     return ok(JSON.stringify(all.slice(offset, offset + limit)));
   }
   if (method === "POST") {
-    const rows = JSON.parse(opts.body || "[]");
+    const parsed = JSON.parse(opts.body || "[]");
+    if (u.pathname.endsWith("/rpc/leos_apply_core_mutations")) {
+      for (const mutation of parsed.p_mutations || []) {
+        const key = k(mutation.collection, mutation.item_id);
+        if (mutation.operation === "delete") table.delete(key);
+        else table.set(key, { collection:mutation.collection, item_id:mutation.item_id, payload:mutation.payload, version:Number(mutation.expected_version || 0) + 1, updated_at:"mutation" });
+      }
+      return ok(JSON.stringify({ applied:(parsed.p_mutations || []).length }));
+    }
+    const rows = parsed;
     const inserted = [];
     for (const row of rows) {
       const key = k(row.collection, row.item_id);
@@ -281,7 +290,7 @@ function mockTransport() {
     ...er.state,
     reactivationSendClaims: [
       ...er.state.reactivationSendClaims,
-      { id: "react-claim-x", contact_id: "cx", step_number: 1, to: "x@gmail.com", status: "claimed", claimed_at: "2026-07-01T10:00:00Z" }
+      { id: "react-claim-x", contact_id: "cx", step_number: 1, to: "x@example.com", status: "claimed", claimed_at: "2026-07-01T10:00:00Z" }
     ]
   };
   const status = buildReactivationLiveStatus(stale, { env: ENV, now: IN_WINDOW });
@@ -331,13 +340,13 @@ function mockTransport() {
     payload: { id: "react-claim-old", status: "sent" }, updated_at: "seed"
   });
   table.set(k("posts", "post-orphan"), { collection: "posts", item_id: "post-orphan", payload: { id: "post-orphan" }, updated_at: "seed" });
-  // Snapshot contains NEITHER row: a normal collection reconciles (orphan deleted); the
-  // append-only claims ledger must survive untouched.
+  // Snapshot contains neither old row. Snapshot writes no longer perform unsafe implicit
+  // deletes; explicit versioned delete mutations are required.
   await store.writeCollections({
     posts: [{ id: "post-keep" }],
     reactivationSendClaims: [{ id: "react-claim-new", status: "claimed" }]
   });
-  assert(!table.has(k("posts", "post-orphan")), "control: normal collections still reconcile orphans");
+  assert(table.has(k("posts", "post-orphan")), "implicit snapshot reconciliation must not delete concurrent rows");
   assert(table.has(k("reactivationSendClaims", "react-claim-old")),
     "a stale snapshot must NEVER delete claims it has not seen (the 2026-07-08 clobber shape)");
   assert(table.has(k("reactivationSendClaims", "react-claim-new")), "new claim rows still upsert");

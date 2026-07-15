@@ -3,7 +3,7 @@ services:
     name: legalease-command-center
     env: node
     plan: starter
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: npm run start:production
     healthCheckPath: /api/health
     autoDeploy: false
@@ -16,6 +16,34 @@ services:
         value: supabase
       - key: SUPABASE_STORAGE_BUCKET
         value: social-assets
+      - key: SOCIAL_DRAFT_ASSETS_BUCKET
+        value: social-draft-assets-private
+      - key: APP_BASE_URL
+        value: https://legalease-command-center-prod.onrender.com
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: COMMAND_CENTER_OWNER_TOKEN
+        sync: false
+      - key: COMMAND_CENTER_SESSION_SECRET
+        sync: false
+      - key: COMMAND_CENTER_CRON_TOKEN
+        sync: false
+      - key: OAUTH_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: OAUTH_STATE_SECRET
+        sync: false
+      - key: ASSET_SIGNING_SECRET
+        sync: false
+      - key: SENDGRID_WEBHOOK_ENABLED
+        value: "true"
+      - key: SENDGRID_WEBHOOK_PUBLIC_KEY
+        sync: false
+      - key: PRODUCT_EVENT_WEBHOOK_ENABLED
+        value: "true"
+      - key: PRODUCT_EVENT_WEBHOOK_SECRET
+        sync: false
       - key: ENABLE_LIVE_LINKEDIN_POSTING
         value: "false"
       - key: ENABLE_LIVE_FACEBOOK_POSTING
@@ -27,6 +55,16 @@ services:
       - key: ENABLE_LIVE_TIKTOK_POSTING
         value: "false"
       - key: ENABLE_LIVE_THREADS_POSTING
+        value: "false"
+      - key: REACTIVATION_LIVE_SEND
+        value: "false"
+      - key: OUTREACH_LIVE_SEND
+        value: "false"
+      - key: ALERT_EMAIL_LIVE_SEND
+        value: "false"
+      - key: PROSPECT_LIVE_DISCOVERY
+        value: "false"
+      - key: ALLOW_LOCAL_IMAGE_FALLBACK
         value: "false"
 
   # B1 heartbeat: a single hourly cron POSTs the protected tick endpoint. ET-aware due

@@ -24,7 +24,7 @@
 //
 // Sender / footer config for this campaign (overrides applied via reactivationMessageConfig in
 // reactivation-os.mjs):
-//   fromEmail "roger@legalease.com", fromName "LegalEase", replyTo "roger@legalease.com",
+//   fromEmail "roger@example.com", fromName "LegalEase", replyTo "roger@example.com",
 //   sendingDomain "legalease.com", postalAddress "8 The Green, Suite D, Dover, DE 19901".
 //   Footer website is expungement.ai (NOT legaleasepartner.com).
 

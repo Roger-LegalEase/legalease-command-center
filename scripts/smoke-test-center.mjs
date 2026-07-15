@@ -170,7 +170,7 @@ function auditEntries(state = {}, run = {}, action = "", options = {}) {
         not_tested_count: run.not_tested_count,
         live_gates_count: run.live_gates_count
       }
-    }, ...list(state.auditHistory)].slice(0, 1000),
+    }, ...list(state.auditHistory)],
     activityEvents: [{
       id: `activity-smoke-test-${run.id}-${slug(action)}-${Date.parse(timestamp) || Date.now()}`,
       eventType: "Smoke Test Run updated",

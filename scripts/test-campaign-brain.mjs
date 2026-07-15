@@ -33,9 +33,9 @@ function outreachItem(overrides = {}) {
     campaign_id: "camp-1",
     step_number: 1,
     classification: "legal_aid",
-    to: "director@legalaidexample.org",
+    to: "director@example.com",
     subject: "Verified reporting for reentry programs",
-    title: "Outreach email 1 to director@legalaidexample.org",
+    title: "Outreach email 1 to director@example.com",
     created_at: NOW,
     message: {
       subject: "Verified reporting for reentry programs",
@@ -105,7 +105,7 @@ check("outreach lanes never leak message bodies, unsubscribe links, or env-var n
   assert(!/https?:\/\//i.test(serialized), "no URLs in the lane view");
   assert(!serialized.includes("<p>"), "no message html");
   assert(!serialized.includes("SENDGRID_API_KEY") && !serialized.includes("OUTREACH_LIVE_SEND"), "no secret env-var names");
-  assert(serialized.includes("d***@legalaidexample.org"), "recipient is masked");
+  assert(serialized.includes("d***@example.com"), "synthetic recipient is masked");
 });
 
 // ---- held-for-review preview + confirm ---------------------------------------------------------
@@ -233,7 +233,7 @@ check("deliverability goes critical when a limit trips", () => {
 
 check("a single bad wave warns even when the campaign-wide average looks fine", () => {
   const state = {
-    reactivationContacts: [{ contact_id: "w1c", email: "w1c@gmail.com", wave: 1 }],
+    reactivationContacts: [{ contact_id: "w1c", email: "w1c@example.com", wave: 1 }],
     reactivationAttempts: attempts(30, "w1c"),
     reactivationEvents: events(1, "bounce", "w1c"),
     sendgridWebhookHealth: HEALTHY_TELEMETRY

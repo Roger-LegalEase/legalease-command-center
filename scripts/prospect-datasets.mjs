@@ -165,7 +165,7 @@ function resolveBmfStates(config = {}) {
 async function fetchBmfText(fetchImpl, state) {
   const url = bmfUrl(state);
   const resp = await fetchImpl(url, {
-    headers: { "User-Agent": "LegalEase-Prospect-Discovery/1.0 (+public IRS BMF extract; contact roger@legalease.com)" }
+    headers: { "User-Agent": "LegalEase-Prospect-Discovery/1.0 (+public IRS BMF extract; contact roger@example.com)" }
   });
   if (!resp || !resp.ok) throw new Error(`HTTP ${resp ? resp.status : "no-response"} for ${url}`);
   return await resp.text();

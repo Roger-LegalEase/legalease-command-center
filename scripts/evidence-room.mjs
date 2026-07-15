@@ -271,7 +271,7 @@ export function generateEvidenceSummary(state = {}, options = {}) {
       open_review_items: overview.open_review_items,
       live_gates_count: liveGates
     }
-  }, ...list(state.auditHistory)].slice(0, 1000);
+  }, ...list(state.auditHistory)];
   next.activityEvents = [{
     id: `activity-${key}-${Date.parse(generatedAt) || Date.now()}`,
     eventType: "Evidence Summary generated",

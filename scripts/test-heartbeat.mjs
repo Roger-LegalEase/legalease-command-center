@@ -24,6 +24,15 @@ function makeStore(initial = {}) {
     async writeState(next) { state = JSON.parse(JSON.stringify(next)); this.writes += 1; return state; },
     // Mirrors the real stores' merge semantics (JsonStore merges the patch into full state).
     async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; this.writes += 1; return state; },
+    async mutateCollectionItem(collection, _itemId, mutate, options = {}) {
+      const current = state[collection] ?? null;
+      if (!current && !options.createIfMissing) throw new Error("Record not found.");
+      const changed = await mutate(current ? JSON.parse(JSON.stringify(current)) : null);
+      const record = { ...changed, _version:Number(current?._version || 0) + 1 };
+      state = { ...state, [collection]:record };
+      this.writes += 1;
+      return { state:JSON.parse(JSON.stringify(state)), record, version:record._version };
+    },
     snapshot() { return JSON.parse(JSON.stringify(state)); }
   };
 }
@@ -72,7 +81,7 @@ async function testTogglesOffNothingActs() {
 
   const snap = store.snapshot();
   assert.ok((snap.testProposals || []).length === 1, "plan() proposal was written to state");
-  assert.equal(snap.heartbeatLease, null, "lease released after tick");
+  assert.equal(Boolean(snap.heartbeatLease?.expiresAt), false, "lease released after tick");
   assert.ok((snap.heartbeatRuns || []).some(r => r.engineId === "test-engine" && r.status === "success"), "ledger recorded");
   ok("toggles off: heartbeat fires, plan() writes proposals, ZERO act()/side effects");
 }
@@ -86,7 +95,7 @@ async function testTogglesOffNothingActs() {
   const engine = makeEngine({ id: "test-engine" });
   const first = await runHeartbeat({ store, registry: [engine], env: {}, now: HOURLY_NOW, runId: "steady-1" });
   assert.equal(first.ok, true, "steady-state tick runs");
-  assert.equal(store.snapshot().heartbeatLease, null, "lease released when the stored lease was already null");
+  assert.equal(Boolean(store.snapshot().heartbeatLease?.expiresAt), false, "lease released when the stored lease was already null");
   const second = await runHeartbeat({ store, registry: [engine], env: {}, now: new Date(HOURLY_NOW.getTime() + 60 * 1000), runId: "steady-2" });
   assert.equal(second.skipped === "leased", false, "a follow-up tick within the TTL is not skipped by a phantom lease");
   ok("steady-state: lease releases unconditionally; no phantom lease skips the next tick");
@@ -136,7 +145,16 @@ async function testOverlappingTickMutex() {
       return JSON.parse(JSON.stringify(state));
     },
     async writeState(next) { state = JSON.parse(JSON.stringify(next)); this.writes += 1; },
-    async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; this.writes += 1; }
+    async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; this.writes += 1; },
+    async mutateCollectionItem(collection, _itemId, mutate, options = {}) {
+      const current = state[collection] ?? null;
+      if (!current && !options.createIfMissing) throw new Error("Record not found.");
+      const changed = await mutate(current ? JSON.parse(JSON.stringify(current)) : null);
+      const record = { ...changed, _version:Number(current?._version || 0) + 1 };
+      state = { ...state, [collection]:record };
+      this.writes += 1;
+      return { state:JSON.parse(JSON.stringify(state)), record, version:record._version };
+    }
   };
   const engine = makeEngine({ id: "test-engine" });
   const p1 = runHeartbeat({ store, registry: [engine], env: {}, now: HOURLY_NOW, runId: "run-1" });

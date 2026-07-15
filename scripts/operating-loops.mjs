@@ -265,7 +265,7 @@ export function saveOperatingPulseSnapshot(state = {}, descriptor = {}, result =
     resourceId: id,
     beforeValue: null,
     afterValue: { loop: descriptor.key, status: snapshot.status, data_connected: snapshot.data_connected }
-  }, ...list(state.auditHistory)].slice(0, 1000);
+  }, ...list(state.auditHistory)];
   next.activityEvents = [{
     id: `activity-${id}-${stamp}`,
     eventType: "Operating Pulse refreshed",

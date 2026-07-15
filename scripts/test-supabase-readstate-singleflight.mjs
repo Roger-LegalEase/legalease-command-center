@@ -61,11 +61,26 @@ globalThis.fetch = async (url, options = {}) => {
     json: async () => body,
     text: async () => JSON.stringify(body)
   });
-  if (method === "GET" && u.includes("select=collection%2Citem_id%2Cpayload%2Cupdated_at") || (method === "GET" && u.includes("select=collection,item_id,payload,updated_at"))) {
+  if (
+    method === "GET"
+    && (
+      u.includes("select=collection%2Citem_id%2Cpayload%2Cversion%2Cupdated_at")
+      || u.includes("select=collection,item_id,payload,version,updated_at")
+    )
+  ) {
     if (u.includes("offset=0")) getSweeps += 1;
     if (gate) await gate;
     if (failReads) return respond({ message: "boom" }, 500);
     return respond(u.includes("offset=0") ? TABLE : []);
+  }
+  if (
+    method === "GET"
+    && (
+      u.includes("select=collection%2Citem_id%2Cpayload%2Cversion&collection=eq.posts")
+      || u.includes("select=collection,item_id,payload,version&collection=eq.posts")
+    )
+  ) {
+    return respond([{ ...TABLE[0], version: 1 }]);
   }
   if (method === "GET") return respond([]);
   if (method === "POST" && u.includes("on_conflict")) {
@@ -133,7 +148,7 @@ const store = new SupabaseCoreStore({ posts: [], library: [] });
   gate = new Promise((r) => { release = r; });
   const preRead = store.readState();
   globalThis.fetch = async () => ({ ok: false, status: 500, json: async () => ({}), text: async () => "boom" });
-  await assert.rejects(() => store.writeCollections({ posts: [] }));
+  await assert.rejects(() => store.writeCollections({ posts: [{ id: "p-failed", title: "failed write probe" }] }));
   globalThis.fetch = realFetch;
   const postFailPromise = store.readState();
   release(); gate = null;

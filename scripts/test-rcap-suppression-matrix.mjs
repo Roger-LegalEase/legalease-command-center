@@ -42,7 +42,7 @@ function taskStateFor(contactPatch = {}) {
     contact_name: "Suppressed Decision Maker",
     title: "Chief Executive Officer",
     decision_role: "CEO",
-    public_email: "suppressed@example.org",
+    public_email: "suppressed@example.com",
     source_confidence: "High",
     suppression_status: "Active",
     bounced: false,

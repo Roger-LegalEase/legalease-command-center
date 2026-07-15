@@ -31,11 +31,11 @@ const ENV_SENDING_ON = { REACTIVATION_LIVE_SEND: "true", SENDGRID_API_KEY: "sg-t
 function baseState(extra = {}) {
   return {
     reactivationContacts: [
-      { contact_id: "c1", email: "a@gmail.com", wave: 1, enrolled_at: "2026-06-20T00:00:00Z" },
-      { contact_id: "c2", email: "b@yahoo.com", wave: 3 },
-      { contact_id: "c3", email: "c@aol.com", wave: 3, campaign_hold: true },
-      { contact_id: "c4", email: "d@outlook.com", wave: 3, unsubscribed: true },
-      { contact_id: "c5", email: "e@icloud.com", wave: 3 }
+      { contact_id: "c1", email: "a@example.com", wave: 1, enrolled_at: "2026-06-20T00:00:00Z" },
+      { contact_id: "c2", email: "b@example.com", wave: 3 },
+      { contact_id: "c3", email: "c@example.com", wave: 3, campaign_hold: true },
+      { contact_id: "c4", email: "d@example.com", wave: 3, unsubscribed: true },
+      { contact_id: "c5", email: "e@example.com", wave: 3 }
     ],
     reactivationCampaign: { releasedWaves: [1, 2], status: "active" },
     ...extra
@@ -268,7 +268,7 @@ check("threshold monitor is honest below sample size and when tripped", () => {
 
 check("telemetry is honest: blind warning when sends happened but no webhook data", () => {
   const blind = baseState({
-    reactivationAttempts: [{ status: "sent", contact_id: "c1", to: "a@gmail.com" }]
+    reactivationAttempts: [{ status: "sent", contact_id: "c1", to: "a@example.com" }]
   });
   const view = buildCampaignCommandView(blind, { env: ENV, now: new Date(NOW) });
   assert.equal(view.telemetry.trusted, false);
@@ -453,11 +453,12 @@ check("legacy/unattributed prior sends surface when totals exceed the wave displ
   const state = baseState({
     reactivationContacts: [
       ...baseState().reactivationContacts,
-      { contact_id: "cx", email: "x@gmail.com", wave: null }
+      { contact_id: "cx", email: "x@example.com", wave: null }
     ],
     reactivationAttempts: [
-      { id: "a1", contact_id: "cx", to: "x@gmail.com", status: "sent", sent_date: "2026-06-30", created_at: "2026-06-30T15:00:00Z" },
-      { id: "a2", contact_id: "c1", to: "a@gmail.com", status: "sent", sent_date: "2026-06-30", created_at: "2026-06-30T15:00:00Z" }
+      // Undated legacy rows are deliberately counted inside the safety window (fail-safe).
+      { id: "a1", contact_id: "cx", to: "x@example.com", status: "sent" },
+      { id: "a2", contact_id: "c1", to: "a@example.com", status: "sent" }
     ]
   });
   const view = buildCampaignCommandView(state, { env: ENV, now: new Date(NOW) });

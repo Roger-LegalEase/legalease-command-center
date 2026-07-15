@@ -143,7 +143,7 @@ export function saveMorningBrief(state = {}, options = {}) {
       live_gates_count: record.live_gates_count,
       external_actions_confirmation: record.external_actions_confirmation
     }
-  }, ...list(state.auditHistory)].slice(0, 1000);
+  }, ...list(state.auditHistory)];
   next.activityEvents = [{
     id: `activity-${record.key}-${Date.parse(timestamp) || Date.now()}`,
     eventType: "Morning Brief saved",

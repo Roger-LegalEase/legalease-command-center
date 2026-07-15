@@ -236,7 +236,7 @@ export function generateRcapPartnerJourneyHandoffPacket(state = {}, options = {}
       missing_details_count: readiness.missing_partner_details.length,
       no_external_action: true
     }
-  }, ...list(current.auditHistory)].slice(0, 1000);
+  }, ...list(current.auditHistory)];
   next.activityEvents = [{
     id: eventId,
     eventType: "RCAP internal handoff packet generated",
@@ -300,7 +300,7 @@ export function transitionRcapReviewArtifact(state = {}, artifactKey = "", nextR
     resourceId: artifactKey,
     beforeValue: { review_state: oldState },
     afterValue: { review_state: nextReviewState, notes, blocker_reason: blockerReason, revision_reason: revisionReason }
-  }, ...list(current.auditHistory)].slice(0, 1000);
+  }, ...list(current.auditHistory)];
   next.activityEvents = [{
     id: eventId,
     eventType: "RCAP review state changed",

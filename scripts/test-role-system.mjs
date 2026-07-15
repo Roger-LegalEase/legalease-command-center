@@ -38,9 +38,9 @@ assert.equal(roleHasCapability("operator", "route_captures"), true, "Operator ca
 assert.equal(roleHasCapability("operator", "export_state_snapshot"), false, "Operator cannot export state snapshots.");
 
 for (const route of ["overview", "tasks", "morning-brief", "evening-reflection", "production-activation-rcap", "evidence-room", "os-health"]) {
-  assert.equal(canAccessRoute("viewer", route), true, `Viewer should be able to read #${route}.`);
+  assert.equal(canAccessRoute("viewer", route), false, `Viewer must not read internal #${route}.`);
 }
-assert.equal(canAccessRoute("viewer", "roles"), true, "Viewer can view Roles page.");
+assert.equal(canAccessRoute("viewer", "roles"), false, "Viewer cannot view Roles page.");
 assert.equal(canPerformEndpoint("viewer", "POST", "/api/operating-memory/today/save").ok, false, "Viewer cannot save operating memory.");
 assert.equal(canPerformEndpoint("admin", "POST", "/api/roles/assignments").ok, false, "Admin cannot manage role assignments.");
 assert.equal(canPerformEndpoint("owner", "POST", "/api/roles/assignments").ok, true, "Owner can manage role assignments.");
@@ -56,12 +56,10 @@ const env = {
   COMMAND_CENTER_VIEWER_TOKEN: "viewer-token-role-test-1234567890"
 };
 
-assert.equal(actorFromRequest({ headers: { authorization: "Bearer owner-token-role-test-1234567890" } }, env).role, "owner", "Owner token resolves owner.");
-assert.equal(actorFromRequest({ headers: { authorization: "Bearer operator-token-role-test-1234567890" } }, env).role, "operator", "Operator token resolves operator.");
-assert.equal(actorFromRequest({ headers: { authorization: "Bearer viewer-token-role-test-1234567890" } }, env).role, "viewer", "Viewer token resolves viewer.");
+assert.equal(actorFromRequest({ headers: { authorization: "Bearer owner-token-role-test-1234567890" } }, env).authenticated, false, "Bootstrap credentials are not bearer sessions.");
 
 const viewerMutation = authorizeRequest(
-  { method: "POST", url: "/api/operating-memory/today/save", headers: { authorization: "Bearer viewer-token-role-test-1234567890" } },
+  { method: "POST", url: "/api/operating-memory/today/save", headers: {}, authenticatedActor:{ id:"viewer-session", role:"viewer", authenticated:true } },
   new URL("http://local/api/operating-memory/today/save"),
   env
 );
@@ -69,14 +67,14 @@ assert.equal(viewerMutation.ok, false, "Viewer mutating endpoint should be denie
 assert.equal(viewerMutation.status, 403, "Viewer mutation denial should be a role/capability 403.");
 
 const adminManageRoles = authorizeRequest(
-  { method: "POST", url: "/api/roles/assignments", headers: { authorization: "Bearer admin-token-role-test-1234567890" } },
+  { method: "POST", url: "/api/roles/assignments", headers: {}, authenticatedActor:{ id:"admin-session", role:"admin", authenticated:true } },
   new URL("http://local/api/roles/assignments"),
   env
 );
 assert.equal(adminManageRoles.ok, false, "Admin role management should be denied.");
 
 const ownerManageRoles = authorizeRequest(
-  { method: "POST", url: "/api/roles/assignments", headers: { authorization: "Bearer owner-token-role-test-1234567890" } },
+  { method: "POST", url: "/api/roles/assignments", headers: {}, authenticatedActor:{ id:"owner-session", role:"owner", authenticated:true } },
   new URL("http://local/api/roles/assignments"),
   env
 );

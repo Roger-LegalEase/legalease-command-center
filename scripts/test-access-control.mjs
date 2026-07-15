@@ -2,47 +2,18 @@ import assert from "node:assert/strict";
 import { actorFromRequest, authRequiredForEnv, authorizeRequest, permissionForRequest, roleDefinitions } from "./access-control.mjs";
 
 assert.equal(authRequiredForEnv({ STORAGE_BACKEND:"json", LOCAL_DEMO_MODE:"true" }), false);
-assert.equal(authRequiredForEnv({ STORAGE_BACKEND:"supabase", LOCAL_DEMO_MODE:"false" }), true);
-
-const env = {
-  STORAGE_BACKEND: "supabase",
-  LOCAL_DEMO_MODE: "false",
-  COMMAND_CENTER_OWNER_TOKEN: "owner-token-1234567890",
-  COMMAND_CENTER_VIEWER_TOKEN: "viewer-token-1234567890",
-  COMMAND_CENTER_OPERATOR_TOKEN: "operator-token-1234567890"
-};
-
-const anonymous = authorizeRequest({ method:"GET", url:"/api/state", headers:{} }, new URL("http://local/api/state"), env);
+assert.equal(authRequiredForEnv({ NODE_ENV:"production", STORAGE_BACKEND:"" }), true);
+const env = { NODE_ENV:"production" };
+const anonymous = authorizeRequest({ method:"GET", url:"/api/state", headers:{} }, new URL("https://command.example.com/api/state"), env);
 assert.equal(anonymous.ok, false);
 assert.equal(anonymous.status, 401);
-
-const owner = authorizeRequest(
-  { method:"POST", url:"/api/approval/item/approve", headers:{ "x-command-center-token":"owner-token-1234567890" } },
-  new URL("http://local/api/approval/item/approve"),
-  env
-);
-assert.equal(owner.ok, true);
-assert.equal(owner.actor.role, "owner");
-
-const investorWrite = authorizeRequest(
-  { method:"POST", url:"/api/approval/item/approve", headers:{ "x-command-center-token":"viewer-token-1234567890" } },
-  new URL("http://local/api/approval/item/approve"),
-  env
-);
-assert.equal(investorWrite.ok, false);
-assert.equal(investorWrite.status, 403);
-
-const investorRead = authorizeRequest(
-  { method:"GET", url:"/api/state", headers:{ authorization:"Bearer viewer-token-1234567890" } },
-  new URL("http://local/api/state"),
-  env
-);
-assert.equal(investorRead.ok, true);
-assert.equal(investorRead.actor.role, "viewer");
-
-const compliance = actorFromRequest({ headers:{ "x-command-center-token":"operator-token-1234567890" } }, env);
-assert.equal(compliance.permissions.includes("compliance_review"), true);
+const ownerRequest = { method:"POST", url:"/api/approval/item/approve", headers:{}, authenticatedActor:{ id:"owner-session", role:"owner", authenticated:true } };
+assert.equal(authorizeRequest(ownerRequest, new URL("https://command.example.com/api/approval/item/approve"), env).ok, true);
+const viewer = { id:"viewer-session", role:"viewer", authenticated:true };
+assert.equal(authorizeRequest({ method:"GET", url:"/api/state", headers:{}, authenticatedActor:viewer }, new URL("https://command.example.com/api/state"), env).ok, false);
+assert.equal(authorizeRequest({ method:"GET", url:"/api/reports/aggregate", headers:{}, authenticatedActor:viewer }, new URL("https://command.example.com/api/reports/aggregate"), env).ok, true);
+assert.equal(actorFromRequest({ headers:{ authorization:"Bearer legacy-bootstrap-token-value-123456" } }, { ...env, COMMAND_CENTER_OWNER_TOKEN:"legacy-bootstrap-token-value-123456" }).authenticated, false);
 assert.equal(permissionForRequest("POST", "/api/channels/linkedin/test"), "admin");
-assert.equal(roleDefinitions.owner.can.includes("admin"), true);
-
+assert.equal(roleDefinitions.owner.can.includes("social_publish"), true);
+assert.equal(roleDefinitions.viewer.can.includes("read"), false);
 console.log("access control tests passed");

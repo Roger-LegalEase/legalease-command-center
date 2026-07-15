@@ -80,7 +80,7 @@ const gmailEvent = {
   eventType: "email_received",
   title: "Proposal follow up from Goodwill",
   summary: "Can you send the pilot proposal and next steps?",
-  rawPayload: { from: "Partner <partner@example.org>", threadId: "thread-1", snippet: "Can you send the pilot proposal?" },
+  rawPayload: { from: "Partner <partner@example.com>", threadId: "thread-1", snippet: "Can you send the pilot proposal?" },
   receivedAt: "2026-06-08T13:00:00.000Z"
 };
 
@@ -105,7 +105,7 @@ for (const forbidden of [
   "Can you send the pilot proposal",
   "Proposal follow up from Goodwill",
   "Partner meeting with Goodwill",
-  "Partner <partner@example.org>",
+  "Partner <partner@example.com>",
   "thread-1",
   "gmail:thread-1",
   "calendar:meeting-1",
@@ -116,7 +116,7 @@ for (const forbidden of [
 }
 assert.equal(insights.every((item) => item.sourceRefHash && item.sourceEventIdHash === item.sourceRefHash), true);
 assert.equal(insights.every((item) => item.sourceKind && item.title && item.inferredReason && item.suggestedQueueItemType), true);
-assert.equal(insights.some((item) => item.senderDomain === "example.org"), true);
+assert.equal(insights.some((item) => item.senderDomain === "example.com"), true);
 
 let state = mergeGoogleInsights({ googleInsights: [] }, insights, { now: "2026-06-08T14:01:00.000Z" });
 assert.equal(state.googleInsights.length, 2);
@@ -180,7 +180,7 @@ assert.ok(previewSource.includes('include_granted_scopes: "true"'));
 assert.ok(previewSource.includes("googleReadOnlyScopes.join"));
 assert.ok(previewSource.includes("emailSendingEnabled:false"));
 assert.ok(previewSource.includes("calendarWritesEnabled:false"));
-assert.ok(accessSource.includes('pathname.startsWith("/api/google/callback")'));
+assert.ok(accessSource.includes('"/api/google/callback"'), "Google callback must remain in the public routing inventory so signed state can be validated before authorization.");
 assert.equal(previewSource.includes("gmail.send"), false);
 assert.equal(previewSource.includes("calendar.events"), false);
 

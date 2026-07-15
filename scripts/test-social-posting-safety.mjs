@@ -1,68 +1,25 @@
-#!/usr/bin/env node
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { buildSafetyPosture } from "./safety-posture.mjs";
+import { requiredCapabilitiesForEndpoint, roleHasCapability } from "./roles.mjs";
 
-const source = readFileSync(join(process.cwd(), "scripts", "preview-server.mjs"), "utf8");
-
-function functionBlock(name) {
-  const marker = `function ${name}`;
-  const start = source.indexOf(marker);
-  assert(start >= 0, `${name} should exist`);
-  const rest = source.slice(start);
-  const next = rest.slice(1).search(/\n    function [a-zA-Z0-9_$]+\(/);
-  return next > 0 ? rest.slice(0, next + 1) : rest;
-}
-
-const production = functionBlock("productionWorkspaceHtml");
-const queue = functionBlock("linkedinApprovalQueueHtml");
-const twitterXQueue = functionBlock("twitterXApprovalQueueHtml");
-const moreStart = source.indexOf("function moreWorkspaceHtml");
-const moreEnd = source.indexOf("function render()", moreStart);
-const more = source.slice(moreStart, moreEnd);
-const appStatus = functionBlock("osHealthPageHtml");
-const visibleUi = [production, queue, twitterXQueue, more, appStatus].join("\n");
-
-for (const required of [
-  "socialPostureRow()",
-  "Live social posting is off",
-  "Outbox does not execute actions in this pass.",
-  "Social post",
-  "Target:",
-  "LinkedIn",
-  "LinkedIn post prepared for approval",
-  "Twitter / X",
-  "Twitter / X post prepared for approval",
-  "Approval:",
-  "Required",
-  "Safety:"
-]) {
-  assert(visibleUi.includes(required), `Social posting safety UI should include ${required}`);
-}
-
-for (const forbidden of [
-  "Post Now",
-  "Publish Now",
-  "Send to LinkedIn",
-  "Send to Twitter / X",
-  "Connect OAuth",
-  "Go Live",
-  "LinkedIn API",
-  "Twitter / X API",
-  "access token",
-  "API key"
-]) {
-  assert(!visibleUi.includes(forbidden), `Normal UI should not include ${forbidden}`);
-}
-
-assert(!production.includes("OAuth"), "Production normal UI should not mention OAuth");
-assert(!queue.includes("OAuth"), "LinkedIn Approval Queue should not mention OAuth");
-assert(!more.includes("Connect OAuth"), "More should not expose OAuth connection controls");
-// Trust layer: the social posting claim derives from /api/safety/posture; the only literal
-// fallback allowed is the honest Unverified state.
-assert(source.includes('"Live social posting: Unverified"'), "Social posture fallback must be Unverified, not a hardcoded Off");
-
-assert(!source.includes("ENABLE_LIVE_LINKEDIN_POSTING === \"true\" &&"), "LinkedIn live posting should not be enabled by this pass");
-assert(source.includes("liveGatesCount:0"), "Safe fallback state should keep liveGatesCount at 0");
-
+const source = await readFile(new URL("./preview-server.mjs", import.meta.url), "utf8");
+const env = {
+  LIVE_POSTING_ENABLED:"false", LINKEDIN_LIVE_POSTING:"false", FACEBOOK_LIVE_POSTING:"false",
+  INSTAGRAM_LIVE_POSTING:"false", X_LIVE_POSTING:"false", REACTIVATION_LIVE_SEND:"false", OUTREACH_LIVE_SEND:"false"
+};
+const posture = buildSafetyPosture({ state:{ runtime:{ livePostingGates:{} } }, env, socialLiveGates:[
+  { channel:"linkedin", enabled:false }, { channel:"facebook", enabled:false }, { channel:"instagram", enabled:false }, { channel:"x", enabled:false }
+] });
+assert.equal(posture.email.posture, "off");
+assert.equal(posture.social.posture, "off");
+assert.equal(posture.social.enabledChannels.length, 0);
+assert.deepEqual(requiredCapabilitiesForEndpoint("POST", "/api/linkedin/publish"), ["social_publish"]);
+assert.equal(roleHasCapability("owner", "social_publish"), true);
+assert.equal(roleHasCapability("admin", "social_publish"), false);
+assert.equal(roleHasCapability("operator", "social_publish"), false);
+for (const functionName of ["linkedinApprovalQueueHtml", "twitterXApprovalQueueHtml", "publishPostNow", "runPublishingWorker"]) assert(source.includes(`function ${functionName}`) || source.includes(`async function ${functionName}`));
+assert.match(source, /claimSocialPublish/);
+assert.match(source, /reconciliation_required/);
+assert.doesNotMatch(source, /ENABLE_LIVE_LINKEDIN_POSTING === "true" &&/);
 console.log("social posting safety tests passed.");

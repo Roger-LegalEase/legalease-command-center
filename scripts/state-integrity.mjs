@@ -667,7 +667,7 @@ export function saveDataIntegritySnapshot(state = {}, options = {}) {
       warnings: snapshot.warnings.length,
       live_gates_count: snapshot.live_gates_count
     }
-  }, ...list(state.auditHistory)].slice(0, 1000);
+  }, ...list(state.auditHistory)];
   next.activityEvents = [{
     id: `activity-${snapshot.id}-${Date.parse(timestamp) || Date.now()}`,
     eventType: "Data Integrity Snapshot refreshed",

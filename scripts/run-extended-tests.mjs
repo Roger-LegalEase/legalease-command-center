@@ -16,32 +16,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
-// Quarantine: tests that already failed on main b1c92dd when this runner was introduced
-// (2026-07-03). All are STALE UI ASSERTIONS — they assert page structure/copy that the app has
-// since moved past; none are environment-dependent. Fix the assertion, then delete the entry.
-const KNOWN_FAILING = {
-  "test-button-action-feedback.mjs": "stale: asserts removed runAction helper",
-  "test-calendar-readonly-safety.mjs": "stale: calendar scope assertion pre-dates current Google wiring",
-  "test-connector-readiness.mjs": "stale: asserts old Connected Accounts copy",
-  "test-every-visible-button-works.mjs": "stale: asserts removed socialPageHtml block",
-  "test-founder-language-and-clutter.mjs": "stale: asserts removed socialContentCardHtml block",
-  "test-generated-client-script-syntax.mjs": "stale: inline-script extraction pre-dates current shell",
-  "test-linkedin-approval-queue.mjs": "stale: asserts old Production page structure",
-  "test-linkedin-connect-button.mjs": "stale: asserts old Connected Accounts copy",
-  "test-linkedin-readiness.mjs": "stale: asserts old Production readiness copy",
-  "test-privacy-route.mjs": "stale: asserts old /privacy copy",
-  "test-production-hardening-health.mjs": "stale: expects ownerAuthEnabled default that changed",
-  "test-proof-workspace.mjs": "stale: asserts old Proof workspace copy",
-  "test-queue-workspace.mjs": "stale: asserts old Queue helper copy",
-  "test-rcap-page-usability.mjs": "stale: asserts old #rcap alias behavior",
-  "test-social-posting-safety.mjs": "stale: asserts old hardcoded 'Live social posting is off' copy replaced by live safety-posture labels",
-  "test-social-workspace.mjs": "stale: asserts removed socialPageHtml block",
-  "test-sources-social-calendar-import.mjs": "stale: asserts old six-surface top nav",
-  "test-today-email-followups.mjs": "stale: asserts old Proof evidence types",
-  "test-twitter-x-approval-queue.mjs": "stale: asserts old Production page structure",
-  "test-twitter-x-readiness.mjs": "stale: asserts old Production readiness copy",
-  "test-ux-emergency-repair.mjs": "stale: asserts old Metrics/KPIs copy"
-};
+// Security-critical behavior is never quarantined. Stale assertions must be repaired or removed.
+const KNOWN_FAILING = {};
 
 const runQuarantined = process.argv.includes("--all");
 const scriptsDir = join(process.cwd(), "scripts");
@@ -63,8 +39,18 @@ if (!runQuarantined && quarantined.length) {
 }
 
 const failures = [];
+const testEnv = {
+  PATH:process.env.PATH, HOME:process.env.HOME, TMPDIR:process.env.TMPDIR || "/tmp",
+  NODE_ENV:"test", COMMAND_CENTER_TEST_MODE:"true", SKIP_ENV_LOCAL_FILE:"true",
+  STORAGE_BACKEND:"json", LOCAL_DEMO_MODE:"true", COMMAND_CENTER_ALLOW_JSON:"true",
+  ENABLE_LIVE_LINKEDIN_POSTING:"false", ENABLE_LIVE_FACEBOOK_POSTING:"false", ENABLE_LIVE_INSTAGRAM_POSTING:"false",
+  ENABLE_LIVE_X_POSTING:"false", ENABLE_LIVE_THREADS_POSTING:"false", ENABLE_LIVE_TIKTOK_POSTING:"false",
+  REACTIVATION_LIVE_SEND:"false", OUTREACH_LIVE_SEND:"false", ALERT_EMAIL_LIVE_SEND:"false",
+  PROSPECT_LIVE_DISCOVERY:"false", ALLOW_LOCAL_IMAGE_FALLBACK:"false",
+  SENDGRID_WEBHOOK_ENABLED:"false", PRODUCT_EVENT_WEBHOOK_ENABLED:"false"
+};
 for (const file of toRun) {
-  const result = spawnSync(process.execPath, [join("scripts", file)], { encoding: "utf8", timeout: 120000 });
+  const result = spawnSync(process.execPath, [join("scripts", file)], { encoding: "utf8", timeout: 120000, env:testEnv });
   const ok = result.status === 0;
   console.log(`${ok ? "PASS" : "FAIL"} ${file}`);
   if (!ok) {

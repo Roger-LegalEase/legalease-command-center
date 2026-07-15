@@ -1,58 +1,13 @@
-# Architecture Map
+# Architecture map
 
-Entry point:
+The HTTP entry point is `scripts/preview-server.mjs`. The primary founder navigation is Today, Queue, Campaigns, Review Desk, Reports, and More. Generated browser code and hash-route normalization remain in that file; security-sensitive areas touched by the hardening are extracted into focused modules.
 
-- `scripts/preview-server.mjs` starts the HTTP server and emits the generated client script.
+Storage uses `scripts/storage.mjs`. Hosted production selects `SupabaseCoreStore` explicitly and applies versioned compare-and-swap or transactional mutation RPCs from `supabase/migrations/`. JSON is an explicit development/test adapter only. `scripts/runtime-security.mjs` is the single startup contract used by the server and `lib/storage/index.mjs`.
 
-Generated client:
+Authentication uses `scripts/session-auth.mjs`: opaque tokens, hash-only durable storage, expiry, revocation, rotation, HttpOnly cookies, and CSRF proof. `scripts/access-control.mjs` and `scripts/roles.mjs` enforce exact capabilities. Bootstrap role credentials are login-only; a static bearer token is not a session.
 
-- `scripts/preview-server.mjs` contains `htmlShell()`, route rendering helpers, client `api()`, global error handlers, and Recovery Mode.
+Request limits and application headers live in `scripts/request-security.mjs`. `/api/health` is constant liveness; protected readiness and diagnostics expose only bounded dependency booleans. OAuth callbacks validate signed single-use state before mutation. SendGrid webhook verification operates on exact raw bytes and uses durable replay claims and shared rate counters.
 
-Routes:
+Viewer DTOs and server-only state removal live in `scripts/role-dto.mjs`. Private draft asset authorization/signing lives in `scripts/private-assets.mjs`. Social provider calls are coordinated by `scripts/social-publish-service.mjs`. Append-only, tamper-evident events use `scripts/audit-service.mjs` and the dedicated Supabase audit table.
 
-- Hash routes are normalized inside `scripts/preview-server.mjs`.
-- The accepted main nav is Today / Work / Social / Proof / Search.
-
-Storage:
-
-- Current legacy store: `scripts/storage.mjs`.
-- Durable production storage contract: `lib/storage/index.mjs`.
-- Postgres adapter: `lib/storage/postgres.mjs`.
-- Development-only memory adapter: `lib/storage/memory-dev.mjs`.
-- Schema: `lib/storage/schema.sql`.
-- Migration helpers: `lib/storage/migrations.mjs`.
-
-Auth and roles:
-
-- Owner-token auth: `scripts/access-control.mjs`.
-- Role capability checks: `scripts/roles.mjs`.
-- Endpoint safety inventory and forbidden guards: `scripts/auth-endpoint-hardening.mjs`.
-
-Health:
-
-- `/api/health` is implemented in `scripts/preview-server.mjs`.
-
-Social:
-
-- Social UI, route aliases, and internal social actions live in `scripts/preview-server.mjs`.
-- Social records must be durable in production and remain manual-only.
-
-Le-E:
-
-- Engine: `scripts/lee-engine.mjs`.
-- Conversation context: `scripts/lee-conversation-context.mjs`.
-- Quick Capture: `scripts/lee-quick-capture.mjs`.
-
-Tests:
-
-- Product-shape tests are in `scripts/test-founder-language-and-clutter.mjs`, `scripts/test-social-workspace.mjs`, and `scripts/test-route-map-integrity.mjs`.
-- Generated client safety is in `scripts/test-generated-client-script-syntax.mjs`.
-- Hardening tests are named `scripts/test-*-hardening*.mjs`, `scripts/test-storage-durability.mjs`, and related scripts.
-
-Known fragile areas:
-
-- Generated inline client JavaScript in `scripts/preview-server.mjs`.
-- Hash route normalization.
-- Boot-state/full-state loading.
-- Social manual publishing language.
-- Storage fallback behavior.
+Canonical and extended tests are driven by `package.json`. Local server tests use `scripts/test-support/preview-server-harness.mjs`, which provides an allowlisted environment, temporary state, ephemeral ports, provider gates off, and reliable teardown. Privacy/secret scans and migration validation run locally and in CI.

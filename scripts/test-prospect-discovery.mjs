@@ -39,6 +39,14 @@ function makeStore(initial = {}) {
     async readState() { return JSON.parse(JSON.stringify(state)); },
     async writeState(next) { state = JSON.parse(JSON.stringify(next)); return state; },
     async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; return state; },
+    async mutateCollectionItem(collection, _itemId, mutate, options = {}) {
+      const current = state[collection] ?? null;
+      if (!current && !options.createIfMissing) throw new Error("Record not found.");
+      const changed = await mutate(current ? JSON.parse(JSON.stringify(current)) : null);
+      const record = { ...(changed || {}), _version:Number(current?._version || 0) + 1 };
+      state = { ...state, [collection]:record };
+      return { state:JSON.parse(JSON.stringify(state)), record, version:record._version };
+    },
     snapshot() { return JSON.parse(JSON.stringify(state)); }
   };
 }
@@ -55,11 +63,11 @@ function fixtureDiscovery(rowsBySource = {}) {
 
 const SAMPLE_ROWS = {
   irs_bmf: [
-    { organization_name: "Greater Boston Legal Aid", ein: "04-1234567", website: "https://gbla.org", email: "intake@gbla.org", contact_name: "Pat Lee", city: "Boston", state: "MA", source_url: "https://irs.gov/bmf/1" },
+    { organization_name: "Greater Boston Legal Aid", ein: "04-1234567", website: "https://gbla.org", email: "intake@example.com", contact_name: "Pat Lee", city: "Boston", state: "MA", source_url: "https://irs.gov/bmf/1" },
     { organization_name: "Helping Hands Foundation", ein: "12-3456789", website: "helpinghands.org", source_url: "https://irs.gov/bmf/2" }
   ],
   lsc_grantees: [
-    { organization_name: "Cook County Public Defender", website: "cookdefender.gov", email: "info@cookdefender.gov", source_url: "https://lsc.gov/g/1" }
+    { organization_name: "Cook County Public Defender", website: "cookdefender.gov", email: "info@example.com", source_url: "https://lsc.gov/g/1" }
   ]
 };
 

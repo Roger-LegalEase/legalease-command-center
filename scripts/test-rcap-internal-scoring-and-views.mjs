@@ -38,7 +38,7 @@ function contact(patch = {}) {
     contact_name: "Avery Program Manager",
     title: "Program Manager",
     decision_role: "Program Manager",
-    public_email: "avery@example.org",
+    public_email: "avery@example.com",
     source_confidence: "High",
     suppression_status: "Active",
     bounced: false,

@@ -372,7 +372,7 @@ export function runAutonomyCycleOnState(state = {}, options = {}) {
       autonomyDecisions: [...decisions, ...list(state.autonomyDecisions)].slice(0, 1000),
       tasks,
       activityEvents: [...activity, ...list(state.activityEvents)].slice(0, 500),
-      soc2AuditLogs: [...audit, ...list(state.soc2AuditLogs)].slice(0, 1000)
+      soc2AuditLogs: [...audit, ...list(state.soc2AuditLogs)]
     },
     run,
     executed,

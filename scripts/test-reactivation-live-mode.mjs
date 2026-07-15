@@ -75,6 +75,14 @@ function memStore(initial) {
     async readState() { return state; },
     async writeState(next) { calls.writeState += 1; state = next; },
     async writeCollections(patch) { calls.writeCollections.push(Object.keys(patch).sort()); state = { ...state, ...patch }; },
+    async mutateCollectionItem(collection, _itemId, mutate, options = {}) {
+      const current = state[collection] ?? null;
+      if (!current && !options.createIfMissing) throw new Error("Record not found.");
+      const changed = await mutate(current ? { ...current } : null);
+      const record = { ...(changed || {}), _version:Number(current?._version || 0) + 1 };
+      state = { ...state, [collection]:record };
+      return { state, record, version:record._version };
+    },
     get state() { return state; }
   };
 }
@@ -129,7 +137,7 @@ function registryWith(spy, outreachSpy, claims = memClaims()) {
 function compliantMessage() {
   const touch = getReactivationTouch("logged_in", 1);
   return assembleCompliantMessage({
-    contact: { email: "alice@gmail.com", first_name: "Alice", contact_id: "react-alice" },
+    contact: { email: "alice@example.com", first_name: "Alice", contact_id: "react-alice" },
     org: {},
     step: { ...touch, campaign_id: "mvp-reactivation", classification: "" },
     config: { ...reactivationMessageConfig({}, { sequenceId: "logged_in", touchNumber: 1 }), publicBaseUrl: PROD_BASE },

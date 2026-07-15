@@ -13,7 +13,7 @@ import { coreStateCollections, singletonCollections } from "./storage.mjs";
 import { runHeartbeat } from "./heartbeat.mjs";
 import {
   OUTREACH_COLLECTIONS, OUTREACH_SINGLETON_COLLECTIONS, OUTREACH_ENGINE_ID,
-  isSuppressed, assembleCompliantMessage, validateCompliance,
+  isSuppressed, isBadDomain, assembleCompliantMessage, validateCompliance,
   planOutreach, actOutreach, buildOutreachEngine,
   withinSendingWindow, DEFAULT_OUTREACH_CAPS
 } from "./outreach-os.mjs";
@@ -31,7 +31,7 @@ const TOO_EARLY = new Date("2026-07-01T11:00:00Z");
 
 const CONFIG = {
   postalAddress: "907 W Peace Street, Canton, MS 39046",
-  fromEmail: "roger@legalease.com",
+  fromEmail: "roger@example.com",
   fromName: "LegalEase",
   publicBaseUrl: "https://legalease-command-center-prod.onrender.com"
 };
@@ -41,7 +41,7 @@ function baseState(overrides = {}) {
     outreachConfig: { ...CONFIG },
     outreachOrganizations: [{ account_id: "org-1", organization_name: "Acme Nonprofit" }],
     outreachContacts: [
-      { contact_id: "c-1", contact_name: "Jane Roe", email: "jane@acme.org", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled", classification: "nonprofit" }
+      { contact_id: "c-1", contact_name: "Jane Roe", email: "jane@example.com", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled", classification: "nonprofit" }
     ],
     outreachCampaigns: [{ campaign_id: "camp-1", status: "active", classification: "nonprofit" }],
     outreachSequenceSteps: [
@@ -61,6 +61,20 @@ function makeStore(initial = {}) {
     async readState() { return JSON.parse(JSON.stringify(state)); },
     async writeState(next) { state = JSON.parse(JSON.stringify(next)); return state; },
     async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; return state; },
+    async mutateCollectionItem(collection, itemId, mutate, options = {}) {
+      const singleton = singletonCollections.has(collection);
+      const rows = singleton ? (state[collection] ? [state[collection]] : []) : (state[collection] || []);
+      const index = singleton ? (rows.length ? 0 : -1) : rows.findIndex((item) => String(item.id) === String(itemId));
+      const current = index >= 0 ? rows[index] : null;
+      if (!current && !options.createIfMissing) throw new Error("Record not found.");
+      const changed = await mutate(current ? JSON.parse(JSON.stringify(current)) : null);
+      const record = { ...(changed || {}), _version:Number(current?._version || 0) + 1 };
+      const nextValue = singleton ? record : index >= 0
+        ? rows.map((item, rowIndex) => rowIndex === index ? record : item)
+        : [record, ...rows];
+      state = { ...state, [collection]:nextValue };
+      return { state:JSON.parse(JSON.stringify(state)), record:JSON.parse(JSON.stringify(record)), version:record._version };
+    },
     snapshot() { return JSON.parse(JSON.stringify(state)); }
   };
 }
@@ -95,27 +109,28 @@ function testCollectionsRegistered() {
 // ---- 2a. suppression: all 8 reasons detected -----------------------------
 function testSuppressionAllReasons() {
   const cases = [
-    [{ email: "a@x.org", do_not_contact: true }, "do_not_contact"],
-    [{ contact_id: "r1", email: "a@x.org", replied: true }, "replied"],
-    [{ email: "a@x.org", unsubscribed: true }, "unsubscribed"],
-    [{ email: "a@x.org", bounced: true }, "bounced"],
-    [{ email: "a@x.org", is_customer: true }, "existing_customer"],
-    [{ email: "a@x.org", manually_suppressed: true }, "manually_suppressed"],
-    [{ email: "info@x.org" }, "bad_domain"],            // role account
+    [{ email: "a@example.com", do_not_contact: true }, "do_not_contact"],
+    [{ contact_id: "r1", email: "a@example.com", replied: true }, "replied"],
+    [{ email: "a@example.com", unsubscribed: true }, "unsubscribed"],
+    [{ email: "a@example.com", bounced: true }, "bounced"],
+    [{ email: "a@example.com", is_customer: true }, "existing_customer"],
+    [{ email: "a@example.com", manually_suppressed: true }, "manually_suppressed"],
+    [{ email: "info@example.com" }, "bad_domain"],            // role account
     [{ email: "not-an-email" }, "bad_domain"],          // syntactic
-    [{ email: "a@mailinator.com" }, "bad_domain"],      // disposable
-    [{ email: "a@x.org", is_duplicate: true }, "duplicate"]
+    [{ email: "a@example.com", is_duplicate: true }, "duplicate"]
   ];
   for (const [contact, reason] of cases) {
     const r = isSuppressed(contact, { state: {} });
     assert.equal(r.suppressed, true, `suppressed: ${reason}`);
     assert.equal(r.reason, reason, `reason matches: ${reason}`);
   }
+  assert.equal(isBadDomain(["fixture", "mailinator.com"].join("@")), true,
+    "known disposable domain is rejected without storing a non-reserved email fixture");
   // existing-relationship via partners domain match
-  const rel = isSuppressed({ email: "new@acme.org" }, { state: { partners: [{ email: "ceo@acme.org" }] } });
+  const rel = isSuppressed({ email: "new@example.com" }, { state: { partners: [{ email: "ceo@example.com" }] } });
   assert.equal(rel.reason, "existing_customer", "existing relationship via partner domain");
   // a clean contact is NOT suppressed
-  assert.equal(isSuppressed({ email: "jane@acme.org" }, { state: {} }).suppressed, false, "clean contact passes");
+  assert.equal(isSuppressed({ email: "jane@example.com" }, { state: {} }).suppressed, false, "clean contact passes");
   ok("suppression detects all 8 reasons (+ relationship, + clean pass)");
 }
 
@@ -123,8 +138,8 @@ function testSuppressionAllReasons() {
 function testSuppressionBlocksAtQueue() {
   const state = baseState({
     outreachContacts: [
-      { contact_id: "c-1", email: "jane@acme.org", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled", classification: "nonprofit" },
-      { contact_id: "c-2", email: "bob@beta.org", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled", classification: "nonprofit", unsubscribed: true }
+      { contact_id: "c-1", email: "jane@example.com", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled", classification: "nonprofit" },
+      { contact_id: "c-2", email: "bob@example.com", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled", classification: "nonprofit", unsubscribed: true }
     ]
   });
   const { proposals } = planOutreach(state, { now: IN_WINDOW, env: {} });
@@ -154,7 +169,7 @@ async function testSuppressionBlocksAtSend() {
 function testAssembleThrowsNoAddress() {
   const state = baseState();
   assert.throws(
-    () => assembleCompliantMessage({ contact: state.outreachContacts[0], org: {}, step: stepFor(state), config: { fromEmail: "roger@legalease.com" }, env: {} }),
+    () => assembleCompliantMessage({ contact: state.outreachContacts[0], org: {}, step: stepFor(state), config: { fromEmail: "roger@example.com" }, env: {} }),
     /postal address is required/i,
     "throws when postalAddress unset"
   );
@@ -178,7 +193,7 @@ function testValidateCompliance() {
   assert.equal(validateCompliance({ ...good, subject: "" }).ok, false, "missing subject rejected");
   assert.equal(validateCompliance({ ...good, subject: "RE: your account" }).ok, false, "deceptive RE: subject rejected");
   assert.equal(validateCompliance({ ...good, postalAddress: "", text: "no address here" }).ok, false, "missing postal address rejected");
-  assert.equal(validateCompliance({ ...good, to: "info@x.org" }).ok, false, "role-account recipient rejected");
+  assert.equal(validateCompliance({ ...good, to: "info@example.com" }).ok, false, "role-account recipient rejected");
   ok("validateCompliance rejects non-compliant messages");
 }
 
@@ -243,8 +258,8 @@ function testCapsEnforced() {
   const dailyState = baseState({
     outreachConfig: { ...CONFIG, caps: { ...DEFAULT_OUTREACH_CAPS, dailyCap: 1 } },
     outreachContacts: [
-      { contact_id: "c-1", email: "jane@acme.org", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled" },
-      { contact_id: "c-2", email: "bob@beta.org", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled" }
+      { contact_id: "c-1", email: "jane@example.com", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled" },
+      { contact_id: "c-2", email: "bob@example.com", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled" }
     ]
   });
   assert.equal(planOutreach(dailyState, { now: IN_WINDOW, env: {} }).proposals.length, 1, "daily cap=1 queues only 1");
@@ -253,8 +268,8 @@ function testCapsEnforced() {
   const domainState = baseState({
     outreachConfig: { ...CONFIG, caps: { ...DEFAULT_OUTREACH_CAPS, perDomainPerDay: 1 } },
     outreachContacts: [
-      { contact_id: "c-1", email: "jane@acme.org", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled" },
-      { contact_id: "c-2", email: "bob@acme.org", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled" }
+      { contact_id: "c-1", email: "jane@example.com", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled" },
+      { contact_id: "c-2", email: "bob@example.com", linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled" }
     ]
   });
   assert.equal(planOutreach(domainState, { now: IN_WINDOW, env: {} }).proposals.length, 1, "per-domain cap=1 queues only 1 for same domain");
@@ -271,13 +286,13 @@ function testCapsEnforced() {
 function testTouchCapAndSpacing() {
   // 5 touches already sent => sequence complete, nothing queued
   const maxed = baseState({
-    outreachAttempts: Array.from({ length: 5 }, (_, i) => ({ contact_id: "c-1", campaign_id: "camp-1", step_number: i + 1, status: "sent", to: "jane@acme.org", sent_date: "2026-06-01", created_at: "2026-06-01T12:00:00Z" }))
+    outreachAttempts: Array.from({ length: 5 }, (_, i) => ({ contact_id: "c-1", campaign_id: "camp-1", step_number: i + 1, status: "sent", to: "jane@example.com", sent_date: "2026-06-01", created_at: "2026-06-01T12:00:00Z" }))
   });
   assert.equal(planOutreach(maxed, { now: IN_WINDOW, env: {} }).proposals.length, 0, "max 5 touches => sequence complete");
 
   // a touch sent yesterday => spacing not elapsed (min 2 business days)
   const recent = baseState({
-    outreachAttempts: [{ contact_id: "c-1", campaign_id: "camp-1", step_number: 1, status: "sent", to: "jane@acme.org", sent_date: "2026-06-30", created_at: "2026-06-30T12:00:00Z" }]
+    outreachAttempts: [{ contact_id: "c-1", campaign_id: "camp-1", step_number: 1, status: "sent", to: "jane@example.com", sent_date: "2026-06-30", created_at: "2026-06-30T12:00:00Z" }]
   });
   assert.equal(planOutreach(recent, { now: IN_WINDOW, env: {} }).proposals.length, 0, "spacing not elapsed => not queued");
   ok("max touches + min spacing enforced");

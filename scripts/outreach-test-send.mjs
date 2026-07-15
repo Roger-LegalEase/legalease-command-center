@@ -1,12 +1,12 @@
 // B2 — ONE-OFF MANUAL TEST SEND. Sends exactly ONE live email: Touch 1 of verified-reporting,
-// classification nonprofit, to roger@legalease.com ONLY. This is NOT the autopilot path — it
+// classification nonprofit, to roger@example.com ONLY. This is NOT the autopilot path — it
 // does not read the queue, does not loop, and touches no other recipient. Run it in an
 // environment that already has SENDGRID_API_KEY + OUTREACH_LIVE_SEND set (e.g. the prod Render
 // Shell) so no secret is ever typed or logged.
 //
 //   node scripts/outreach-test-send.mjs --confirm-live-send
 //
-// Safety: the recipient is HARD-LOCKED to roger@legalease.com. It refuses to send unless the
+// Safety: the recipient is HARD-LOCKED to roger@example.com. It refuses to send unless the
 // live gate is genuinely on (flag + key); otherwise it reports the dry-run decision and sends
 // nothing. It never prints the API key.
 
@@ -16,7 +16,7 @@ import {
 import { getSequenceTouch } from "./outreach-sequences.mjs";
 
 // ---- HARD LOCKS (a manual test, not a campaign) ---------------------------
-const RECIPIENT = "roger@legalease.com";
+const RECIPIENT = "roger@example.com";
 const SEQUENCE = "verified-reporting";
 const TOUCH = 1;
 const CLASSIFICATION = "nonprofit";

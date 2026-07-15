@@ -184,7 +184,7 @@ Computed from prod plus the export this session, all guards passing:
 - 95 patches on the synthetic 12:00Z rows: real message ids added (they had
   none); the 33 duplicate-affected recipients annotated
   `duplicate_copies_processed`/`duplicate_copies_delivered` with a one-counted-
-  touch note; the one divergence found is dcalmesejr@gmai.com, which the export
+  touch note; the one divergence found is dcalmesejr@example.com, which the export
   shows as a 12:00:26Z SendGrid drop (never processed), corrected from `sent`
   to `dropped` (address already suppressed, so no resend exposure). Step
   numbers in the synthetic rows validated correct against June touches (21
@@ -194,13 +194,13 @@ Computed from prod plus the export this session, all guards passing:
   1 `failed` (the drop). The PR 1 safety ledger now also blocks every
   historical (contact, step) at the claim level, independent of the attempts
   ledger.
-- 2 mandatory suppression inserts found missing: topcarrier16@icloud.com
+- 2 mandatory suppression inserts found missing: topcarrier16@example.com
   (hard-bounced/blocked 07-08, no suppression row existed) and
-  ybrewer@holmescc.edu (unsubscribed 15:02:28Z per the unsubscribe ledger, no
+  ybrewer@example.com (unsubscribed 15:02:28Z per the unsubscribe ledger, no
   suppression row existed; legal requirement). All other bounced addresses,
-  lanceaskinssr@icloud.comm, and dcalmesejr@gmai.com verified already
+  lanceaskinssr@example.com, and dcalmesejr@example.com verified already
   suppressed. No other list changes.
-- 1 suppression annotation: jaime.berrios@introba.com gets the recovered
+- 1 suppression annotation: jaime.berrios@example.com gets the recovered
   first-unsubscribe evidence (clicks 12:00:56Z to 12:01:08Z from both duplicate
   copies; ledger row lost with the closing write; honored via 16:10Z re-clicks).
 
@@ -402,7 +402,7 @@ Roger's part (env vars in Render) listed explicitly below.
 - Dry-run tick on real prod state (simulated in-window 12:00 ET): 0 proposals,
   0 act results, 0 attempts, nothing sent (no transport injected).
 - From-address isolation: outreachConfig.fromEmail currently defaults to
-  roger@legalease.com, the SAME domain as B1 (reputation 97). Plan: SendGrid
+  roger@example.com, the SAME domain as B1 (reputation 97). Plan: SendGrid
   domain authentication on the dedicated subdomain outreach.legalease.com,
   then set outreachConfig.fromEmail to the subdomain via
   POST /api/outreach/config at activation time (changing it before domain
@@ -636,7 +636,7 @@ sequences approved. Flags set via Render API (audits ev-b5-flag-on-20260709,
 ev-b2-livesend-on-20260709): PROSPECT_LIVE_DISCOVERY=true and
 OUTREACH_LIVE_SEND=true, both verified live via the status endpoints.
 outreachConfig moved to the authenticated identity
-(roger@outreach.legalease.com, replyTo roger@legalease.com, sendingDomain
+(roger@example.com, replyTo roger@example.com, sendingDomain
 outreach.legalease.com). outreach-sequencer autopilot enabled 20:34:21Z
 (audit ev-b2-autopilot-on-20260709), then DISARMED 20:44:54Z on Roger's
 memory-fix-first order as a hard guard. Re-arm criterion: a clean tick on the

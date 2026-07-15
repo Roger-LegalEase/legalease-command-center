@@ -1,4 +1,5 @@
 import { canPerformEndpoint, normalizeRole, requiredCapabilitiesForEndpoint, roleDefinitions } from "./roles.mjs";
+import { isHostedProduction, parseBoolean } from "./runtime-security.mjs";
 
 const clean = (value = "") => String(value || "").trim();
 const lower = (value = "") => clean(value).toLowerCase();
@@ -17,19 +18,11 @@ function normalizeToken(value = "") {
 const publicPaths = [
   "/api/health",
   "/api/version",
-  "/api/auth/diagnostics",
-  "/api/x/oauth-diagnostics",
-  "/api/debug/env",
-  "/api/storage/debug",
-  "/api/storage/diagnostics",
   "/api/events/product"
 ];
 
-function parseBoolean(value = "") {
-  return ["true", "1", "yes", "on"].includes(lower(value));
-}
-
 export function authRequiredForEnv(env = process.env) {
+  if (isHostedProduction(env)) return true;
   if (parseBoolean(env.COMMAND_CENTER_AUTH_DISABLED || "false")) return false;
   if (parseBoolean(env.COMMAND_CENTER_REQUIRE_AUTH || "false")) return true;
   const backend = lower(env.STORAGE_BACKEND || "");
@@ -84,7 +77,13 @@ export function tokenFromRequest(request = {}) {
 
 export function actorFromRequest(request = {}, env = process.env) {
   const required = authRequiredForEnv(env);
-  const registry = tokenRegistryFromEnv(env);
+  if (request.authenticatedActor?.authenticated) {
+    const role = normalizeRole(request.authenticatedActor.role);
+    return { ...request.authenticatedActor, role, label: roleDefinitions[role]?.label || role, permissions: roleDefinitions[role]?.can || [], authRequired: required };
+  }
+  // Bootstrap credentials are accepted only by POST /api/auth/login. Static bearer,
+  // custom-header, and JavaScript-readable cookie credentials are never API sessions.
+  const registry = [];
   const tokenCandidates = tokenCandidatesFromRequest(request);
   const token = tokenCandidates[0] || "";
   if (!required && !token) {
@@ -100,12 +99,14 @@ export function actorFromRequest(request = {}, env = process.env) {
 }
 
 export function permissionForRequest(method = "GET", pathname = "/") {
+  if ((method === "GET" || method === "HEAD") && (/^\/assets\/(styles|brand)\//.test(pathname) || pathname === "/favicon.ico")) return "public";
+  if (method === "POST" && pathname === "/api/auth/login") return "public";
   if (publicPaths.includes(pathname)) return "public";
-  if (pathname.startsWith("/api/oauth/google/callback")) return "public";
-  if (pathname.startsWith("/api/google/callback")) return "public";
-  if (pathname.startsWith("/data/exports/final-pngs/")) return "public";
-  if (pathname.startsWith("/data/exports/openai-images/")) return "public";
-  if (pathname.startsWith("/assets/")) return "public";
+  if (["/api/google/callback", "/api/linkedin/callback", "/api/x/callback", "/api/meta/callback"].includes(pathname) || /^\/api\/oauth\/[^/]+\/callback$/.test(pathname)) return "public";
+  if (pathname === "/api/reports/aggregate") return "view_aggregate_reports";
+  if (["/api/ready", "/api/metrics", "/api/auth/diagnostics", "/api/production/readiness", "/api/health/supabase"].includes(pathname) || pathname.startsWith("/api/storage")) return "view_diagnostics";
+  if (pathname.startsWith("/api/assets/") || /^\/assets\/uploads\//.test(pathname) || /^\/data\/(exports|assets|backups)\//.test(pathname) || /\/final-png$/.test(pathname)) return "view_private_assets";
+  if (pathname === "/api/publishing/reconciliation") return "social_publish";
   // B2 outreach: the one-click unsubscribe (recipients, no auth — signed token) and the
   // SendGrid event webhook (verified by signature in the handler) must be publicly reachable.
   if (pathname === "/api/outreach/unsubscribe") return "public";
@@ -130,7 +131,7 @@ export function permissionForRequest(method = "GET", pathname = "/") {
   if (pathname === "/api/prospects/approve" || pathname === "/api/prospects/reject") return "approve";
   if (pathname.startsWith("/api/prospects/")) return "admin";
   if (/\/api\/channels|\/api\/oauth|\/api\/settings|\/api\/backups\/restore/.test(pathname)) return "admin";
-  if (/\/api\/publish|\/api\/posts\/.*\/publish/.test(pathname)) return "publish_review";
+  if (/\/api\/publish|\/api\/linkedin\/publish|\/api\/publishing\/run|\/api\/posts\/.*\/publish|\/api\/posts\/.*\/upload-public-image|\/api\/posts\/batch-upload-public-images/.test(pathname)) return "social_publish";
   if (/\/api\/approval|\/api\/autonomy\/actions|\/api\/automation\/suggestions/.test(pathname)) return "approve";
   return "write";
 }
@@ -153,8 +154,11 @@ export function authorizeRequest(request = {}, urlLike = null, env = process.env
 
   const requiredPermission = permissionForRequest(request.method || "GET", pathname);
   const actor = actorFromRequest(request, env);
+  if (pathname === "/api/state" && actor.role === "viewer") {
+    return { ok:false, status:403, actor, requiredPermission:"read_sensitive", reason:"This role may use aggregate report endpoints only." };
+  }
   if (requiredPermission === "public") return { ok:true, actor, requiredPermission };
-  if (!actor.authRequired && actor.authenticated) return { ok:true, actor, requiredPermission };
+  if (!actor.authRequired && actor.authenticated && actor.id === "local_operator") return { ok:true, actor, requiredPermission };
   if (!actor.authenticated) {
     return { ok:false, status:401, actor, requiredPermission, reason:"Authentication required." };
   }

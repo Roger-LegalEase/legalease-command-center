@@ -136,7 +136,7 @@ function withAuditAndActivity(state = {}, item = {}, action = "", options = {}, 
       resourceId: item.id,
       beforeValue: { review_state: beforeState || "" },
       afterValue: { review_state: item.review_state, routed_to: item.routed_to, action }
-    }, ...list(state.auditHistory)].slice(0, 1000),
+    }, ...list(state.auditHistory)],
     activityEvents: [{
       id: `activity-${item.id}-${action}-${Date.parse(timestamp) || Date.now()}`,
       eventType,

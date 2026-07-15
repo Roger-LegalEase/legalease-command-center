@@ -29,7 +29,7 @@ const IN_WINDOW = new Date("2026-07-01T15:00:00Z"); // Wed 11:00 ET — inside t
 
 function contactFor(classification, overrides = {}) {
   return {
-    contact_id: "c-1", contact_name: "Jane Roe", email: "jane@example.org",
+    contact_id: "c-1", contact_name: "Jane Roe", email: "jane@example.com",
     linked_account_id: "org-1", campaign_id: "camp-1", sequence_status: "Enrolled",
     classification, ...overrides
   };
@@ -52,7 +52,7 @@ function assembleFor(classification, seqId, { config, env = {} } = {}) {
 function testDelawareConfigNoThrow() {
   const cfg = outreachConfigOf({}); // no stored config => baked Delaware identity defaults
   assert.equal(cfg.postalAddress, DELAWARE_ADDRESS, "Delaware postal address is the default");
-  assert.equal(cfg.fromEmail, "roger@legalease.com", "from email default");
+  assert.equal(cfg.fromEmail, "roger@example.com", "from email default");
   assert.equal(cfg.fromName, "Roger Roman", "from name default");
   assert.equal(cfg.sendingDomain, "legalease.com", "sending domain default");
   assert.doesNotThrow(() => assembleFor("nonprofit", "verified-reporting", { config: cfg }),
@@ -111,7 +111,7 @@ function testCsiDoNotEnroll() {
   assert.ok(observations.some((o) => o.type === "skip_do_not_enroll"), "CSI skipped as do_not_enroll");
 
   // and the send gate fails closed too
-  const decision = resolveOutreachSendDecision({ classification: "csi", to: "x@csi.org", subject: "s", text: "t" }, { env: {} });
+  const decision = resolveOutreachSendDecision({ classification: "csi", to: "x@example.com", subject: "s", text: "t" }, { env: {} });
   assert.equal(decision.status, "not_sent", "CSI send decision is not_sent");
   assert.equal(decision.reason, "do_not_enroll", "CSI send reason is do_not_enroll");
   ok("CSI returns do-not-enroll; no message assembled and no send");
@@ -125,7 +125,7 @@ function testUnmappedFailsClosed() {
     assert.equal(r.sequenceId, "", `${c || "(empty)"} gets NO default sequence`);
     assert.equal(r.reason, "unmapped_classification", `${c || "(empty)"} reason is unmapped_classification`);
   }
-  const decision = resolveOutreachSendDecision({ classification: "unknown", to: "x@x.org", subject: "s", text: "t" }, { env: {} });
+  const decision = resolveOutreachSendDecision({ classification: "unknown", to: "x@example.com", subject: "s", text: "t" }, { env: {} });
   assert.equal(decision.status, "not_sent", "unmapped => not_sent");
   assert.equal(decision.reason, "unmapped_classification", "unmapped reason preserved");
   assert.equal(decision.classification, "unknown", "original classification reported");
@@ -208,7 +208,7 @@ function testCalendarLinkRendering() {
 // ---- signature block present between body and compliance footer ---------------
 function testSignatureBlock() {
   const msg = assembleFor("nonprofit", "verified-reporting");
-  for (const line of ["Roger Roman", "COO, LegalEase", "(323) 394-8201", "legaleasepartner.com",
+  for (const line of ["Roger Roman", "COO, LegalEase", "(202) 555-0100", "legaleasepartner.com",
     "LegalEase is not a law firm and does not provide legal advice."]) {
     assert.ok(msg.text.includes(line), `plaintext signature contains: ${line}`);
     assert.ok(msg.html.includes(line.replace(/&/g, "&amp;")), `HTML signature contains: ${line}`);
