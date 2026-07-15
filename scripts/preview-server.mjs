@@ -140,9 +140,12 @@ import { acquireSocialPublishClaim, reconciliationQueue, safeProviderReference, 
 import { createAuditService } from "./audit-service.mjs";
 import { incrementSecurityMetric, operationalMetrics } from "./observability.mjs";
 import { oauthSigningSecret, signOAuthState, verifyOAuthState, verifyOwnerStartedOAuthState } from "./oauth-state.mjs";
+import { readCommandCenterVNextConfig } from "./ui/vnext-config.mjs";
+import { renderShellBoundary } from "./ui/shell-boundary.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
+const commandCenterVNextConfig = readCommandCenterVNextConfig(process.env);
 const port = Number(process.env.PORT ?? 3001);
 function productionBindHost() {
   if (process.env.HOST) return process.env.HOST;
@@ -34859,6 +34862,25 @@ function htmlShell() {
 </html>`;
 }
 
+function renderLegacyApp() {
+  return htmlShell();
+}
+
+function renderVNextApp() {
+  // CCX-003 establishes the isolated branch only. Until the later shell packet,
+  // vNext intentionally delegates to the complete legacy application so every
+  // route, deep link, recovery state, endpoint, and safety control stays usable.
+  return renderLegacyApp();
+}
+
+function renderCommandCenterApp() {
+  return renderShellBoundary({
+    config: commandCenterVNextConfig,
+    renderLegacyApp,
+    renderVNextApp
+  });
+}
+
 // Company-memory projection memo (2026-07-12 latency fix). projectCompanyMemory is pure over
 // the domain ledgers, but /api/queue, /api/today/summary, and every queue transition re-ran it
 // per request — a full re-derivation over thousands of contact/org rows on top of the state
@@ -40163,7 +40185,7 @@ async function handleRequest(request, response) {
     return;
   }
 
-  const html = sanitizeOutboundText(htmlShell());
+  const html = sanitizeOutboundText(renderCommandCenterApp());
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
   response.end(html);
 }
