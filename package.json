@@ -22,6 +22,7 @@
     "test:vnext-route-inventory": "node scripts/test-vnext-route-inventory.mjs",
     "test:vnext-founder-language": "node scripts/test-vnext-founder-language.mjs",
     "test:vnext-shell-boundary": "node scripts/test-vnext-shell-boundary.mjs",
+    "test:vnext-ui-primitives": "node scripts/test-vnext-ui-primitives.mjs",
     "test:extended": "node scripts/run-extended-tests.mjs",
     "test:full-daily-workflow": "node scripts/test-full-daily-workflow.mjs",
     "test:prospect-discovery": "node scripts/test-prospect-discovery.mjs",
