@@ -195,7 +195,7 @@ try {
     vnext:false
   }));
   servers.push(await startServer({
-    name:"vnext-compatibility",
+    name:"vnext",
     dataPath:path.join(tempRoot, "vnext-state.json"),
     vnext:true
   }));

@@ -127,9 +127,10 @@ for (const [label, source] of [["configuration", configSource], ["shell boundary
 
 assert.match(serverSource, /import \{ readCommandCenterVNextConfig \} from "\.\/ui\/vnext-config\.mjs";/);
 assert.match(serverSource, /import \{ renderShellBoundary \} from "\.\/ui\/shell-boundary\.mjs";/);
+assert.match(serverSource, /import \{ renderVNextDesktopShell \} from "\.\/ui\/app-shell\.mjs";/);
 assert.match(serverSource, /loadLocalEnv\(\);\s*const commandCenterVNextConfig = readCommandCenterVNextConfig\(process\.env\);/);
 assert.match(serverSource, /function renderLegacyApp\(\) \{\s*return htmlShell\(\);\s*\}/);
-assert.match(serverSource, /function renderVNextApp\(\) \{[\s\S]*?return renderLegacyApp\(\);\s*\}/);
+assert.match(serverSource, /function renderVNextApp\(\) \{[\s\S]*?return renderVNextDesktopShell\(renderLegacyApp\(\)\);\s*\}/);
 assert.match(serverSource, /function renderCommandCenterApp\(\) \{\s*return renderShellBoundary\(\{[\s\S]*?config: commandCenterVNextConfig,[\s\S]*?renderLegacyApp,[\s\S]*?renderVNextApp[\s\S]*?\}\);\s*\}/);
 assert.match(serverSource, /const html = sanitizeOutboundText\(renderCommandCenterApp\(\)\);/);
 
@@ -262,9 +263,15 @@ const invalidFlagHtml = await shellResponse("not-a-boolean");
 const trueFlagHtml = await shellResponse("true");
 assert.equal(falseFlagHtml, missingFlagHtml, "An explicit false flag must preserve the default shell byte-for-byte.");
 assert.equal(invalidFlagHtml, missingFlagHtml, "An invalid flag must fail to the default shell byte-for-byte.");
-assert.equal(trueFlagHtml, missingFlagHtml, "The CCX-003 vNext compatibility branch must preserve access to the complete current application.");
+assert.notEqual(trueFlagHtml, missingFlagHtml, "The enabled branch must render the isolated vNext shell.");
 assert.match(missingFlagHtml, /<nav class="top-nav" aria-label="Primary">/);
+assert.doesNotMatch(missingFlagHtml, /data-vnext-shell="desktop"/);
+assert.match(trueFlagHtml, /data-vnext-shell="desktop"/);
+assert.match(trueFlagHtml, /<main id="app">/);
+assert.doesNotMatch(trueFlagHtml, /<nav class="top-nav" aria-label="Primary">/);
 assert.match(missingFlagHtml, /window\.addEventListener\("hashchange"/);
+assert.match(trueFlagHtml, /window\.addEventListener\("hashchange"/);
 assert.match(missingFlagHtml, /function renderSafeBootShell\(details = \{\}\)/);
+assert.match(trueFlagHtml, /function renderSafeBootShell\(details = \{\}\)/);
 
-console.log("vNext shell boundary verified: strict server-only flag, legacy default, isolated compatibility branch, and unchanged route/shell contracts.");
+console.log("vNext shell boundary verified: strict server-only flag, byte-stable legacy default, isolated desktop shell, and shared route/application contracts.");

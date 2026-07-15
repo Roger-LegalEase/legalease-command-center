@@ -2,8 +2,9 @@
 
 ## Purpose
 
-CCX-005 added Chromium tests for the current Command Center, and CCX-006 extends the
-suite to the protected design-system showcase. The suite exercises the
+CCX-005 added Chromium tests for the current Command Center, CCX-006 extended the
+suite to the protected design-system showcase, and CCX-100 adds the production vNext
+desktop shell. The suite exercises the
 served application in a real browser; it does not replace the existing Node, route,
 security, migration, restore, or source-level contracts.
 
@@ -28,7 +29,7 @@ complete suite twice with `npm run test:browser -- --repeat-each=2`.
 1. It removes only generated `test-results/` and `playwright-report/` output.
 2. It creates an operating-system temporary directory.
 3. It starts two copies of the existing `scripts/preview-server.mjs` on port `0`
-   at `127.0.0.1`: the default shell and the vNext compatibility boundary.
+   at `127.0.0.1`: the default shell and the server-enabled vNext shell.
 4. Each server bootstraps an independent mutable JSON state file from the tracked
    `data/seed/social-command-center.seed.json` seed.
 5. It waits for the real `/api/health` contract to return `{ "status": "ok" }`.
@@ -65,13 +66,13 @@ Locators use roles, accessible names, headings, and current stable structure. Te
 wait for `window.__LE_BOOT.ready`, visible landmarks, URLs, responses, and state; they
 do not use arbitrary fixed sleeps or depend on test order.
 
-## Smoke and design-system coverage
+## Smoke, design-system, and desktop-shell coverage
 
-The eleven browser tests cover:
+The original six browser tests cover:
 
 - the local authenticated app and current Today route loading with a semantic main
   region and visible heading;
-- the server-enabled vNext compatibility branch returning the complete usable app;
+- the server-enabled vNext branch returning the complete usable app;
 - visible Today to current Social workspace (`Review Desk`) to Today navigation,
   including hash and active-state synchronization;
 - the current Social review workspace rendering real fixture work rather than a
@@ -84,7 +85,7 @@ The eleven browser tests cover:
 The five CCX-006 tests additionally cover:
 
 - the showcase being unavailable with vNext off and available only through the
-  server-enabled compatibility instance;
+  server-enabled vNext instance;
 - the exact repository logo loading at its intrinsic size without stretching or
   clipping, plus representative component interactions;
 - keyboard focus visibility and an axe scan with zero serious or critical findings;
@@ -92,8 +93,23 @@ The five CCX-006 tests additionally cover:
   1280, 1024, 768, and 390 pixels; and
 - reduced-motion behavior under the browser media preference.
 
-`Review Desk` is intentionally used as the current UI entry point for Social. CCX-005
-does not apply the future founder-language migration.
+The six CCX-100 tests additionally cover:
+
+- the exact logo, five exact primary destinations, one main region, and removal of
+  the duplicate legacy primary navigation in vNext mode;
+- visible Today → Social → Outreach → Partners → Files navigation, active-state and
+  hash synchronization, truthful current content, and all seven desktop screenshots;
+- a legacy alias, a parameterized record deep link, unknown-route fallback, Inbox,
+  Le-E, Settings, Search, and Help through their current working surfaces;
+- accessible Create and Profile menus, including the real Social post and Task
+  flows; and
+- zero serious or critical axe findings plus no page-level horizontal overflow at
+  1440, 1280, 1024, 768, and 390 pixels; and
+- byte-identical full-state payloads across shell modes, response-size measurement,
+  and zero extra document or full-state requests during hash navigation.
+
+`Review Desk` remains the underlying current workspace for Social. CCX-100 changes
+the enabled shell label while leaving that page renderer and its behavior intact.
 
 ## Client-error and network policy
 
@@ -130,11 +146,12 @@ outside those directories and is deleted, so it cannot become an artifact.
 
 Locally, open `playwright-report/index.html` for the HTML report or inspect the trace
 path printed by Playwright. Server logs are `test-results/browser-server-legacy.log`
-and `test-results/browser-server-vnext-compatibility.log`; they are redacted and do
+and `test-results/browser-server-vnext.log`; they are redacted and do
 not contain request payloads.
 
 The design-system test writes review screenshots to
-`docs/ux-vnext/screenshots/ccx-006/`. Those five PNGs are intentional documentation
+`docs/ux-vnext/screenshots/ccx-006/`. CCX-100 writes seven desktop-shell review images
+to `docs/ux-vnext/screenshots/ccx-100/`. These PNGs are intentional documentation
 artifacts rather than failure artifacts; the HTML report, traces, videos, and failure
 screenshots remain generated and ignored.
 
