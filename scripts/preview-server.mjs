@@ -140,6 +140,7 @@ import { acquireSocialPublishClaim, reconciliationQueue, safeProviderReference, 
 import { createAuditService } from "./audit-service.mjs";
 import { incrementSecurityMetric, operationalMetrics } from "./observability.mjs";
 import { oauthSigningSecret, signOAuthState, verifyOAuthState, verifyOwnerStartedOAuthState } from "./oauth-state.mjs";
+import { escapeHtml } from "./ui/html.mjs";
 import { readCommandCenterVNextConfig } from "./ui/vnext-config.mjs";
 import { renderShellBoundary } from "./ui/shell-boundary.mjs";
 
@@ -8228,7 +8229,7 @@ function isGoogleOAuthCallbackRequest(request = {}, url = new URL("http://localh
 }
 
 function sendAuthRequired(response, decision = {}, options = {}) {
-  const helperMessage = String(options.message || "").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[char]));
+  const helperMessage = escapeHtml(options.message || "");
   const helperMessageHtml = helperMessage ? `<p class="auth-helper-message">${helperMessage}</p>` : "";
   response.writeHead(options.status || decision.status || 401, {
     "content-type": "text/html; charset=utf-8",

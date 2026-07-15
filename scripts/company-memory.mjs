@@ -25,6 +25,11 @@
 // or Supabase persistence silently drops it — the "B1 trap" codebase-health checks for.
 
 import { createHash } from "node:crypto";
+import { normalizeSourceLink } from "./ui/links.mjs";
+
+// Compatibility export: the canonical pure policy now lives with the shared UI
+// link renderer, while existing company-memory consumers keep the same API.
+export { normalizeSourceLink } from "./ui/links.mjs";
 
 const clean = (v = "") => String(v ?? "").trim();
 const lower = (v = "") => clean(v).toLowerCase();
@@ -115,20 +120,6 @@ export function stableMemoryId(prefix = "qi", parts = []) {
 export const DATA_STATUSES = [
   "connected", "not_connected", "needs_attention", "loading", "error", "no_data", "draft", "needs_approval"
 ];
-
-// A queue item's "Open" target. Two kinds only: an in-app page hash, or an https link.
-// Anything else (javascript:, http:, free text) is rejected so a projected item can never
-// smuggle an unsafe link into the operator's click path.
-export function normalizeSourceLink(input) {
-  if (!input || typeof input !== "object") return null;
-  const target = clean(input.target);
-  if (!target) return null;
-  if (input.kind === "external") {
-    return /^https:\/\/[^\s]+$/i.test(target) ? { kind: "external", target } : null;
-  }
-  const page = target.replace(/^#/, "");
-  return /^[a-z0-9-]+$/i.test(page) ? { kind: "page", target: `#${page}` } : null;
-}
 
 // Build a valid Queue Item. Throws on missing plain-English essentials — a queue item that
 // cannot say what it is and why it matters must not exist.
