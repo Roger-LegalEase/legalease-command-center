@@ -23,6 +23,7 @@
     "test:vnext-founder-language": "node scripts/test-vnext-founder-language.mjs",
     "test:vnext-shell-boundary": "node scripts/test-vnext-shell-boundary.mjs",
     "test:vnext-ui-primitives": "node scripts/test-vnext-ui-primitives.mjs",
+    "test:vnext-brand-contract": "node scripts/test-vnext-brand-contract.mjs",
     "test:browser": "node scripts/run-browser-tests.mjs",
     "test:browser:install": "playwright install --with-deps chromium",
     "test:extended": "node scripts/run-extended-tests.mjs",

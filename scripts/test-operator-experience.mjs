@@ -29,7 +29,7 @@ assert.match(server, /class="app-footer"/, "Today should render the v3.1 footer 
 assert.match(server, /MADE FOR ROGER/, "Footer should keep the made-for-Roger signature.");
 assert.match(server, /tickCockpitClock/, "Clock should update on an interval.");
 assert.match(server, /setInterval\(tickCockpitClock, 30000\)/, "Clock should refresh every 30 seconds.");
-assert.match(server, /family=Geist:wght@400;500;600;700;800/, "Today should load Geist Sans for the refined operator cockpit.");
+assert.doesNotMatch(server, /fonts\.(?:googleapis|gstatic)\.com/, "Today should not request a font that the self-only CSP blocks.");
 assert.match(server, /font-family:\s*"Geist", Inter/, "Today cockpit should use Geist as the primary font family.");
 assert.match(server, /--bg-primary:\s*#f6f8f8/, "Refined Today palette should use a calm LegalEase shell background.");
 assert.match(server, /--accent:\s*#00A99D/i, "Today accent should use LegalEase teal instead of burnt orange.");

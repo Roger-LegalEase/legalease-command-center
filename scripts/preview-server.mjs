@@ -143,6 +143,8 @@ import { oauthSigningSecret, signOAuthState, verifyOAuthState, verifyOwnerStarte
 import { escapeHtml } from "./ui/html.mjs";
 import { readCommandCenterVNextConfig } from "./ui/vnext-config.mjs";
 import { renderShellBoundary } from "./ui/shell-boundary.mjs";
+import { DESIGN_SYSTEM_SHOWCASE_PATH } from "./ui/brand-contract.mjs";
+import { renderDesignSystemShowcase } from "./ui/design-system-showcase.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -8603,7 +8605,8 @@ async function serveAsset(pathname, response) {
       json: "application/json",
       txt: "text/plain",
       md: "text/markdown",
-      html: "text/html"
+      html: "text/html",
+      css: "text/css; charset=utf-8"
     }[extension || ""] || "application/octet-stream";
     response.writeHead(200, { "content-type": mimeType, "cache-control": "public, max-age=3600" });
     response.end(body);
@@ -15317,9 +15320,7 @@ function htmlShell() {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>LegalEase Command Center</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/ui/tokens.css" />
   <style>
     :root { --ink:#0A1A5C; --paper:#EEF2F1; --line:#e2e8e6; --moss:#1d7f48; --steel:#3040BF; --rust:#E4541B; --gold:#F98C30; }
     * { box-sizing:border-box; }
@@ -16959,6 +16960,26 @@ function htmlShell() {
       .rcap-connection-card .toprow { grid-template-columns:1fr; }
       .rcap-connection-card .toprow .badge { justify-self:start; }
       .rcap-connection-row { align-items:flex-start; flex-direction:column; gap:7px; }
+    }
+
+    /* CCX-006 contrast remediation only. These shared token values replace the
+       two exact pre-existing axe baselines without changing page structure. */
+    .today-cockpit {
+      --ck-muted:var(--le-text-muted);
+      --ck-good:var(--le-success-700);
+    }
+    .today-cockpit .ck-pill.teal,
+    .today-cockpit .ck-counter.good .n { color:var(--le-success-700); }
+    .wizard-actions > .primary[type="button"] {
+      background:var(--le-navy-950);
+      color:var(--le-surface);
+      border-color:var(--le-navy-950);
+    }
+    .wizard-actions > .primary[type="button"]:disabled {
+      background:var(--le-control-disabled-bg);
+      color:var(--le-control-disabled-text);
+      border:1px solid var(--le-control-disabled-border);
+      opacity:1;
     }
 
   </style>
@@ -35047,6 +35068,18 @@ async function handleRequest(request, response) {
     }
   }
 
+  if (url.pathname === DESIGN_SYSTEM_SHOWCASE_PATH && ["GET", "HEAD"].includes(request.method)) {
+    if (!commandCenterVNextConfig.enabled) {
+      response.writeHead(302, { location:"/#today", "cache-control":"no-store" });
+      response.end();
+      return;
+    }
+    const showcase = sanitizeOutboundText(renderDesignSystemShowcase());
+    response.writeHead(200, { "content-type":"text/html; charset=utf-8", "cache-control":"no-store" });
+    response.end(request.method === "HEAD" ? "" : showcase);
+    return;
+  }
+
   if (url.pathname === "/api/auth/logout" && request.method === "POST") {
     await sessionService.revoke(request);
     response.setHeader("set-cookie", [clearSessionCookie({ env: process.env }), clearCsrfCookie({ env: process.env })]);
@@ -35117,7 +35150,7 @@ async function handleRequest(request, response) {
     return;
   }
 
-	  if (/^\/assets\/(styles|brand)\//.test(url.pathname) && request.method === "GET") {
+	  if (/^\/assets\/(styles|brand|ui)\//.test(url.pathname) && request.method === "GET") {
 	    await serveAsset(url.pathname, response);
 	    return;
 	  }

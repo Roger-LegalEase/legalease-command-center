@@ -2,10 +2,10 @@
 
 ## Purpose
 
-CCX-005 adds Chromium tests for the current Command Center. The suite exercises the
+CCX-005 added Chromium tests for the current Command Center, and CCX-006 extends the
+suite to the protected design-system showcase. The suite exercises the
 served application in a real browser; it does not replace the existing Node, route,
-security, migration, restore, or source-level contracts. This packet makes no runtime
-HTML, CSS, route, endpoint, data-model, authorization, sending, or publishing change.
+security, migration, restore, or source-level contracts.
 
 ## Dependencies and commands
 
@@ -65,9 +65,9 @@ Locators use roles, accessible names, headings, and current stable structure. Te
 wait for `window.__LE_BOOT.ready`, visible landmarks, URLs, responses, and state; they
 do not use arbitrary fixed sleeps or depend on test order.
 
-## Smoke coverage
+## Smoke and design-system coverage
 
-The six browser tests cover:
+The eleven browser tests cover:
 
 - the local authenticated app and current Today route loading with a semantic main
   region and visible heading;
@@ -81,24 +81,32 @@ The six browser tests cover:
   unchanged;
 - rendered axe scans for Today and the current Social workspace.
 
+The five CCX-006 tests additionally cover:
+
+- the showcase being unavailable with vNext off and available only through the
+  server-enabled compatibility instance;
+- the exact repository logo loading at its intrinsic size without stretching or
+  clipping, plus representative component interactions;
+- keyboard focus visibility and an axe scan with zero serious or critical findings;
+- no page-level horizontal overflow and deterministic full-page screenshots at 1440,
+  1280, 1024, 768, and 390 pixels; and
+- reduced-motion behavior under the browser media preference.
+
 `Review Desk` is intentionally used as the current UI entry point for Social. CCX-005
 does not apply the future founder-language migration.
 
 ## Client-error and network policy
 
-Every uncaught page error and every unexpected `console.error` fails its test.
+Every uncaught page error and every `console.error` fails its test.
 Same-origin request failures fail, as do HTTP failures from the boot state, full state,
 Today summary, campaign command, and tested local-action workflow endpoints. Optional health
 diagnostics may honestly return unavailable without being classified as a broken user
 workflow.
 
-Two exact, pre-existing console exceptions are registered in
-`tests/browser/baselines.mjs`. The current shell requests the Google-hosted Geist
-stylesheet while its own Content Security Policy permits styles and connections only
-from self. Chromium reports one `style-src` and one `connect-src` error; the browser
-blocks the request and the local font stack renders, so these errors are non-fatal.
-Their URL and CSP directives are matched exactly. Broader console suppression is not
-allowed. CCX-006 owns resolving the font/design-system mismatch.
+The console baseline is empty. CCX-006 removed the dead Google-hosted Geist request
+without weakening Content Security Policy or adding a replacement network request.
+The local approved font stack continues to render. Broad console suppression is not
+allowed.
 
 ## Accessibility policy and current baseline
 
@@ -107,14 +115,10 @@ Any new critical or serious violation fails. Baseline entries compare the exact 
 rule, severity, and sorted selector set; adding, changing, or removing affected nodes
 requires an intentional baseline review.
 
-There are two pre-existing serious exceptions and no critical exceptions:
-
-| Route | Rule | Affected selector/signature | Impact | Reason | Owner |
-| --- | --- | --- | --- | --- | --- |
-| Today (`#today`) | `color-contrast` | Exact 56-selector set in `tests/browser/baselines.mjs`; newline-joined SHA-256 `294b1b8007bdda720a0bc84602de5ff513edadb0a072636d5edb49fb6b0a1535` | Serious | Existing Today text and status colors do not meet the axe contrast threshold. | CCX-006 design-system packet |
-| Current Social workspace (`#queue`) | `color-contrast` | `.wizard-actions > .primary[type="button"]`; SHA-256 `517e247f5da422efa0f385e174333ade211f2aedfa8ff68950c437e2bc4cd611` | Serious | The existing Review Desk primary action color combination does not meet the axe contrast threshold. | CCX-006 design-system packet |
-
-No axe rule is disabled, and there is no broad selector or route exclusion.
+The accessibility baseline is empty. CCX-006 remediated the two precise serious
+color-contrast findings previously recorded for Today and the current Social workspace.
+There are zero critical exceptions and zero serious exceptions. No axe rule is
+disabled, and there is no broad selector or route exclusion.
 
 ## Artifacts and CI
 
@@ -128,6 +132,11 @@ Locally, open `playwright-report/index.html` for the HTML report or inspect the 
 path printed by Playwright. Server logs are `test-results/browser-server-legacy.log`
 and `test-results/browser-server-vnext-compatibility.log`; they are redacted and do
 not contain request payloads.
+
+The design-system test writes review screenshots to
+`docs/ux-vnext/screenshots/ccx-006/`. Those five PNGs are intentional documentation
+artifacts rather than failure artifacts; the HTML report, traces, videos, and failure
+screenshots remain generated and ignored.
 
 If Chromium is missing, rerun `npm run test:browser:install`. If startup fails, inspect
 the server logs. A clean checkout needs no untracked local state file and no service
