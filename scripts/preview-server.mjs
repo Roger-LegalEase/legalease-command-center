@@ -124,6 +124,7 @@ import {
 import { buildFounderCapacityPulse } from "./operator-pulse-feeders.mjs";
 import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
 import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex } from "./operator-search.mjs";
+import { searchGlobalRecords } from "./global-search-service.mjs";
 import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegritySnapshot } from "./state-integrity.mjs";
 import { buildEndpointInventory, guardForbiddenEndpoint, safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
 import { buildSmokeTestChecklist, buildSmokeTestStatus, finishSmokeTestRun, markSmokeTestItem, saveSmokeTestRun, startSmokeTestRun } from "./smoke-test-center.mjs";
@@ -35060,6 +35061,10 @@ async function handleRequest(request, response) {
       }
       if (!ownerStarted.ok || providerError || !verified.ok) return;
     }
+    else if (url.pathname === "/api/ui/search") {
+      sendJson(response, { error:"Search is unavailable for this account. No records were changed." }, accessDecision.status || 403);
+      return;
+    }
     else if (url.pathname.startsWith("/api/ui/create/")) {
       sendJson(response, { error:"Your current access does not allow this creation action. Nothing was saved." }, accessDecision.status || 403);
       return;
@@ -35116,6 +35121,32 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/auth/diagnostics" && request.method === "GET") {
     sendJson(response, { hostedMode: isHostedProduction(process.env), sessionAuthenticated: true, role: accessDecision.actor.role });
+    return;
+  }
+
+  if (url.pathname === "/api/ui/search" && request.method === "GET") {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { error:"Search is unavailable." }, 404);
+      return;
+    }
+    try {
+      const currentState = await store.readState();
+      const actor = publicActor(accessDecision.actor);
+      const payload = searchGlobalRecords(currentState, url.searchParams.get("q") || "", {
+        role:actor?.role || "viewer",
+        types:url.searchParams.getAll("types"),
+        limit:url.searchParams.get("limit") || undefined,
+        cursor:url.searchParams.get("cursor") || undefined,
+        recentHrefs:url.searchParams.getAll("recent")
+      });
+      sendJson(response, payload);
+    } catch (error) {
+      sendJson(response, {
+        error:error?.status === 400
+          ? error.message
+          : "Search could not load. No records were changed. Try again."
+      }, Number(error?.status || 500));
+    }
     return;
   }
 

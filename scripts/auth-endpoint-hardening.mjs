@@ -12,6 +12,7 @@ const endpointPurpose = [
   [/^GET \/api\/health$/, "Public-safe health summary without secrets."],
   [/^GET \/api\/auth\/diagnostics$/, "Safe owner-token diagnostics without token values."],
   [/^GET \/api\/state$/, "Read current Command Center state."],
+  [/^GET \/api\/ui\/search$/, "Search authorized Command Center records without returning full records or actions."],
   [/^GET \/api\/operator-search$/, "Search internal LegalEase OS records."],
   [/^POST \/api\/operator-search\/action$/, "Run internal command palette safe actions."],
   [/^GET \/api\/os-health$/, "Read OS Health snapshot."],

@@ -109,9 +109,10 @@ function destinationForEntry(entry) {
   return SHELL_DESTINATIONS.includes(entry.vnextDestination) ? entry.vnextDestination : "Settings";
 }
 
-const ROUTE_DESTINATIONS = Object.freeze(Object.fromEntries(
-  routeRegistry.map((entry) => [entry.canonicalRoute, destinationForEntry(entry)])
-));
+const ROUTE_DESTINATIONS = Object.freeze({
+  ...Object.fromEntries(routeRegistry.map((entry) => [entry.canonicalRoute, destinationForEntry(entry)])),
+  search:"Search"
+});
 const ALIAS_TARGETS = Object.freeze(Object.fromEntries(
   routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [alias, entry.canonicalRoute]))
 ));

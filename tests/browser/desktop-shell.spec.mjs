@@ -121,8 +121,11 @@ test("aliases, record links, unknown routes, utilities, and top-bar controls rem
   await expect(page.getByLabel("Le-E chat panel")).toBeVisible();
   await page.getByRole("navigation", { name:"Command Center utilities" }).getByRole("link", { name:"Settings", exact:true }).click();
   await expect(page).toHaveURL(/#settings$/);
-  await page.getByRole("link", { name:"Search", exact:true }).click();
-  await expect(page).toHaveURL(/#operator-search$/);
+  await page.getByRole("button", { name:"Search", exact:true }).click();
+  await expect(page.getByRole("dialog", { name:"Search" })).toBeVisible();
+  await expect(page.getByLabel("Le-E chat panel")).toBeHidden();
+  await expect(page).toHaveURL(/#settings$/);
+  await page.keyboard.press("Escape");
   await page.getByRole("link", { name:"Help", exact:true }).click();
   await expect(page).toHaveURL(/#operator-manual$/);
 });

@@ -163,7 +163,7 @@ audience, grants approval, runs AI, changes suppression, changes a live gate, ch
 authorization, or calls an external provider. All browser fixtures use temporary JSON
 state with live sending and publishing disabled and outbound network blocked.
 
-## Verification, screenshots, rollback, and CCX-104
+## Verification, screenshots, rollback, and Global Search
 
 Run `npm run test:vnext-global-create` for the focused contract and `npm run
 test:browser` for real Chromium coverage. The browser suite covers the menu and
@@ -176,5 +176,7 @@ Rollback is the existing server-only boundary: unset `COMMAND_CENTER_UX_VNEXT` o
 it to `false` and restart. The legacy flag-off `htmlShell()` remains byte-for-byte
 unchanged. Existing records need no migration or cleanup.
 
-CCX-104 may build Global Search against these exact link contracts. It must not move
-creation authority to the browser, create a second router, or broaden any endpoint.
+CCX-104 Global Search now reuses these exact link contracts and safely dismisses the
+Create layer before opening. Search does not move creation authority to the browser,
+create a second router, or broaden a Create endpoint. CCX-105 may simplify Today
+without changing either global utility.

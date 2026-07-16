@@ -124,8 +124,10 @@ test("unknown safe routes show recovery with working Today and Search actions", 
   await page.screenshot({ path:path.join(screenshotDirectory, "unknown-route-recovery-1440.png"), animations:"disabled" });
 
   await recovery.getByRole("link", { name:"Search", exact:true }).click();
-  await expect(page).toHaveURL(/#operator-search$/);
-  await expect(page.locator("main#app").getByRole("heading", { level:1 }).first()).toBeVisible();
+  await expect(page).toHaveURL(/#search$/);
+  await expect(page.getByRole("dialog", { name:"Search" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveURL(/#old-incomplete-link$/);
   await setHash(page, "another-old-link");
   await expect(page.locator("[data-vnext-route-recovery]")).toBeVisible();
   await page.getByRole("link", { name:"Go to Today", exact:true }).click();

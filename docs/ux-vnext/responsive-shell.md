@@ -35,7 +35,8 @@ The compact top bar contains:
 
 - an accessible **Open navigation** trigger;
 - the current resolved destination as page context;
-- the existing Search, Help, and Profile controls in compact accessible form; and
+- the shared CCX-104 Search, Help, and Profile controls in compact accessible form;
+  and
 - the persistent orange **Create** action.
 
 Create uses the same CCX-103 contract as desktop: **Social post**, **Outreach
@@ -49,6 +50,13 @@ drawer overlay, inert state, and drawer scroll lock before opening the shared Cr
 surface, so the two modal layers never overlap.
 Persistent folders remain truthfully disabled because the current Files system has no
 folder model.
+
+Search remains visibly labelled at responsive widths and opens the same six-group
+palette as desktop. While the navigation drawer is open, the persistent Search
+control remains operable like Create. Activating it closes the drawer, removes its
+overlay, inert state, and scroll lock, then opens exactly one full-width Search sheet
+with focus in the labelled input. Search also safely dismisses the Create menu/sheet
+and Profile menu so modal and popover layers do not overlap.
 
 ## Navigation drawer
 

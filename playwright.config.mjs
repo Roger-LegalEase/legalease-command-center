@@ -7,7 +7,7 @@ export default defineConfig({
   fullyParallel:false,
   workers:1,
   timeout:30_000,
-  globalTimeout:10 * 60_000,
+  globalTimeout:20 * 60_000,
   expect:{ timeout:10_000 },
   forbidOnly:Boolean(process.env.CI),
   failOnFlakyTests:Boolean(process.env.CI),

@@ -69,25 +69,77 @@ function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCred
 }
 
 function browserFixtureState(seed) {
+  const post = Object.freeze({
+    id:"browser-post-search-001",
+    title:"Café launch update",
+    hook:"A founder-ready résumé of the launch",
+    body:"Draft-only search fixture.",
+    channel:"linkedin",
+    status:"draft",
+    updatedAt:"2026-07-16T12:00:00.000Z"
+  });
+  const hiddenPost = Object.freeze({
+    id:"browser-post-owner-only-001",
+    title:"Owner-only launch plan",
+    status:"draft",
+    visibility:"owner_only",
+    updatedAt:"2026-07-16T13:00:00.000Z"
+  });
   const campaign = Object.freeze({
     id:"browser-campaign-001",
     name:"Example outreach campaign",
     title:"Example outreach campaign",
+    campaignType:"announcement",
+    goal:"Share the browser launch update.",
     status:"draft",
     channel:"email",
-    createdAt:"2026-07-15T12:00:00.000Z"
+    createdAt:"2026-07-15T12:00:00.000Z",
+    updatedAt:"2026-07-15T12:00:00.000Z"
   });
   const partner = Object.freeze({
     id:"browser-partner-001",
     name:"Example community partner",
     organization:"Example community partner",
+    primaryContactName:"Example Partner",
+    geography:"Québec",
+    nextAction:"Review the launch plan.",
     status:"qualified",
-    createdAt:"2026-07-15T12:00:00.000Z"
+    createdAt:"2026-07-15T12:00:00.000Z",
+    updatedAt:"2026-07-15T12:00:00.000Z"
+  });
+  const file = Object.freeze({
+    id:"browser-file-search-001",
+    name:"Launch readiness brief",
+    section:"Company overview",
+    notes:"Browser fixture file record.",
+    status:"current",
+    updatedAt:"2026-07-14T12:00:00.000Z"
+  });
+  const task = Object.freeze({
+    id:"browser-task-search-001",
+    title:"Finish launch checklist",
+    description:"Confirm the browser search experience.",
+    nextAction:"Open the exact Task.",
+    status:"open",
+    priority:"high",
+    updatedAt:"2026-07-13T12:00:00.000Z"
+  });
+  const report = Object.freeze({
+    id:"browser-report-search-001",
+    reportTitle:"Launch results report",
+    summary:"Representative browser Search report.",
+    reportingPeriod:"Q3 2026",
+    status:"current",
+    generatedAt:"2026-07-12T12:00:00.000Z"
   });
   return {
     ...seed,
+    posts:[post, hiddenPost, ...(Array.isArray(seed.posts) ? seed.posts : []).filter((item) => ![post.id, hiddenPost.id].includes(item?.id))],
     campaigns:[campaign, ...(Array.isArray(seed.campaigns) ? seed.campaigns : []).filter((item) => item?.id !== campaign.id)],
-    partners:[partner, ...(Array.isArray(seed.partners) ? seed.partners : []).filter((item) => item?.id !== partner.id)]
+    partners:[partner, ...(Array.isArray(seed.partners) ? seed.partners : []).filter((item) => item?.id !== partner.id)],
+    dataRoomItems:[file, ...(Array.isArray(seed.dataRoomItems) ? seed.dataRoomItems : []).filter((item) => item?.id !== file.id)],
+    tasks:[task, ...(Array.isArray(seed.tasks) ? seed.tasks : []).filter((item) => item?.id !== task.id)],
+    reports:[report, ...(Array.isArray(seed.reports) ? seed.reports : []).filter((item) => item?.id !== report.id)]
   };
 }
 

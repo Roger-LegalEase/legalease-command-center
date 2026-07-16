@@ -170,26 +170,40 @@ body.vnext-app-shell {
   box-shadow: var(--le-shadow-sm);
 }
 
-.vnext-search-link {
+.vnext-search-trigger {
   min-width: 14rem;
   min-height: var(--le-control-md);
   display: flex;
   align-items: center;
+  gap: var(--le-space-2);
   padding: 0 var(--le-space-4);
   border: var(--le-border-strong);
   border-radius: var(--le-radius-md);
   background: var(--le-surface-warm);
   color: var(--le-text-muted);
+  font: inherit;
   font-size: var(--le-type-sm);
   font-weight: var(--le-weight-medium);
-  text-decoration: none;
+  cursor: pointer;
 }
 
-.vnext-search-link:hover,
-.vnext-search-link.is-selected {
+.vnext-search-trigger:hover,
+.vnext-search-trigger.is-selected,
+.vnext-search-trigger[aria-expanded="true"] {
   border-color: var(--le-teal-600);
   background: var(--le-teal-100);
   color: var(--le-navy-950);
+}
+
+.vnext-search-shortcut {
+  margin-left: auto;
+  padding: 0.1rem var(--le-space-2);
+  border: var(--le-border-subtle);
+  border-radius: var(--le-radius-sm);
+  background: var(--le-surface);
+  color: var(--le-text-muted);
+  font-family: inherit;
+  font-size: var(--le-type-xs);
 }
 
 .vnext-topbar-actions {
@@ -320,7 +334,7 @@ body.vnext-app-shell {
     padding-inline: var(--le-space-4);
   }
 
-  .vnext-search-link {
+  .vnext-search-trigger {
     min-width: 10rem;
   }
 }
@@ -344,6 +358,14 @@ body.vnext-app-shell {
     position: fixed;
     top: var(--le-space-2);
     right: var(--le-space-3);
+    z-index: calc(var(--le-z-modal) + 1);
+    pointer-events: auto;
+  }
+
+  .vnext-app-shell.vnext-navigation-open .vnext-search-trigger {
+    position: fixed;
+    top: var(--le-space-2);
+    right: 7rem;
     z-index: calc(var(--le-z-modal) + 1);
     pointer-events: auto;
   }
@@ -480,12 +502,12 @@ body.vnext-app-shell {
     white-space: nowrap;
   }
 
-  .vnext-search-link {
-    width: var(--le-touch-target);
-    min-width: var(--le-touch-target);
+  .vnext-search-trigger {
+    width: auto;
+    min-width: 5.5rem;
     min-height: var(--le-touch-target);
     justify-content: center;
-    padding: 0;
+    padding: 0 var(--le-space-3);
   }
 
   .vnext-topbar-actions {
@@ -519,7 +541,6 @@ body.vnext-app-shell {
     font-weight: var(--le-weight-bold);
   }
 
-  .vnext-search-link .vnext-topbar-label,
   .vnext-topbar-link .vnext-topbar-label,
   .vnext-profile-trigger .vnext-topbar-label {
     position: absolute;
@@ -528,6 +549,10 @@ body.vnext-app-shell {
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+
+  .vnext-search-shortcut {
+    display: none;
   }
 
   .vnext-menu-panel {
@@ -569,6 +594,249 @@ body.vnext-app-shell {
 
 .vnext-app-shell.vnext-create-open {
   overflow: hidden;
+}
+
+.vnext-app-shell.vnext-search-open {
+  overflow: hidden;
+}
+
+.vnext-search-backdrop:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: var(--le-z-overlay);
+  display: block;
+  background: var(--le-backdrop);
+}
+
+.vnext-search-dialog:not([hidden]) {
+  position: fixed;
+  top: clamp(var(--le-space-4), 8vh, 5rem);
+  left: 50%;
+  z-index: var(--le-z-modal);
+  width: min(52rem, calc(100vw - var(--le-space-8)));
+  max-height: min(48rem, calc(100dvh - var(--le-space-8)));
+  display: flex;
+  flex-direction: column;
+  gap: var(--le-space-4);
+  overflow: hidden;
+  padding: var(--le-space-5);
+  border: var(--le-border-thin);
+  border-radius: var(--le-radius-xl);
+  background: var(--le-surface);
+  box-shadow: var(--le-shadow-lg);
+  transform: translateX(-50%);
+}
+
+.vnext-search-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--le-space-4);
+}
+
+.vnext-search-header h2 {
+  display: block !important;
+  margin: 0 0 var(--le-space-1);
+  color: var(--le-text);
+  font-size: var(--le-type-2xl);
+  line-height: var(--le-line-tight);
+}
+
+.vnext-search-header p {
+  margin: 0;
+  color: var(--le-text-muted);
+  font-size: var(--le-type-sm);
+}
+
+.vnext-search-close {
+  width: var(--le-touch-target);
+  min-width: var(--le-touch-target);
+  min-height: var(--le-touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: var(--le-border-thin);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface);
+  color: var(--le-text);
+  font: inherit;
+  font-size: var(--le-type-xl);
+  cursor: pointer;
+}
+
+.vnext-search-field {
+  display: grid;
+  gap: var(--le-space-2);
+}
+
+.vnext-search-field label,
+.vnext-search-filters legend {
+  color: var(--le-text);
+  font-size: var(--le-type-sm);
+  font-weight: var(--le-weight-semibold);
+}
+
+.vnext-search-field input {
+  width: 100%;
+  min-height: var(--le-touch-target);
+  padding: var(--le-space-3) var(--le-space-4);
+  border: var(--le-border-strong);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface);
+  color: var(--le-text);
+  font: inherit;
+}
+
+.vnext-search-filters {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.vnext-search-filters > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--le-space-2);
+  margin-top: var(--le-space-2);
+}
+
+.vnext-search-filters label {
+  min-height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--le-space-1);
+  padding: var(--le-space-1) var(--le-space-2);
+  border: var(--le-border-subtle);
+  border-radius: var(--le-radius-pill);
+  color: var(--le-text);
+  font-size: var(--le-type-xs);
+  cursor: pointer;
+}
+
+.vnext-search-state {
+  padding: var(--le-space-4);
+  border: var(--le-border-subtle);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface-muted);
+  color: var(--le-text-muted);
+}
+
+.vnext-search-state[data-state="loading"] {
+  border-color: var(--le-teal-600);
+  color: var(--le-text);
+}
+
+.vnext-search-state[data-state="error"] {
+  border-color: var(--le-danger-border);
+  background: var(--le-danger-100);
+  color: var(--le-danger-700);
+}
+
+.vnext-search-state strong,
+.vnext-search-state p {
+  display: block;
+  margin: 0;
+}
+
+.vnext-search-state p + div,
+.vnext-search-state strong + p {
+  margin-top: var(--le-space-2);
+}
+
+.vnext-search-state div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--le-space-2);
+}
+
+.vnext-search-state button,
+.vnext-search-more {
+  min-height: var(--le-touch-target);
+  padding: 0 var(--le-space-4);
+  border: var(--le-border-strong);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface);
+  color: var(--le-text);
+  font: inherit;
+  font-weight: var(--le-weight-semibold);
+  cursor: pointer;
+}
+
+.vnext-search-results {
+  min-height: 0;
+  display: grid;
+  gap: var(--le-space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.vnext-search-group {
+  display: grid;
+  gap: var(--le-space-1);
+}
+
+.vnext-search-group h3 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: var(--le-space-2) var(--le-space-3);
+  background: var(--le-surface);
+  color: var(--le-text-muted);
+  font-size: var(--le-type-xs);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.vnext-search-result {
+  width: 100%;
+  min-height: var(--le-touch-target);
+  display: grid;
+  gap: var(--le-space-1);
+  padding: var(--le-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--le-radius-md);
+  background: transparent;
+  color: var(--le-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vnext-search-result:hover,
+.vnext-search-result[aria-selected="true"] {
+  border-color: var(--le-teal-600);
+  background: var(--le-teal-100);
+}
+
+.vnext-search-result-context,
+.vnext-search-result-meta {
+  color: var(--le-text-muted);
+  font-size: var(--le-type-sm);
+}
+
+.vnext-search-result-meta {
+  font-size: var(--le-type-xs);
+}
+
+.vnext-search-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--le-space-4);
+  padding-top: var(--le-space-3);
+  border-top: var(--le-border-subtle);
+  color: var(--le-text-muted);
+  font-size: var(--le-type-xs);
+}
+
+.vnext-search-footer kbd {
+  padding: 0.1rem var(--le-space-1);
+  border: var(--le-border-subtle);
+  border-radius: var(--le-radius-sm);
+  background: var(--le-surface-muted);
+  font: inherit;
 }
 
 .vnext-create-backdrop:not([hidden]) {
@@ -715,6 +983,21 @@ body.vnext-app-shell {
 
   .vnext-create-form footer .ui-button {
     min-height: var(--le-touch-target);
+  }
+
+  .vnext-search-dialog:not([hidden]) {
+    top: 0;
+    width: 100vw;
+    height: 100dvh;
+    max-height: none;
+    padding: var(--le-space-4);
+    border: 0;
+    border-radius: 0;
+  }
+
+  .vnext-search-filters label {
+    min-height: var(--le-touch-target);
+    padding-inline: var(--le-space-3);
   }
 }
 
