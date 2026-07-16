@@ -3,6 +3,12 @@ import { escapeAttribute, escapeHtml } from "./html.mjs";
 import { renderButton, renderPageHeader } from "./primitives.mjs";
 import { routeCompatibilityBrowserSource } from "./route-compatibility.mjs";
 import {
+  GLOBAL_CREATE_MENU_ID,
+  globalCreateBrowserSource,
+  renderGlobalCreateMenu,
+  renderGlobalCreateWorkspace
+} from "./global-create.mjs";
+import {
   CREATE_MENU_OPTIONS,
   PRIMARY_SHELL_DESTINATIONS,
   SECONDARY_SHELL_CONTROLS,
@@ -54,11 +60,7 @@ function secondaryNavigationHtml() {
 }
 
 function createMenuHtml() {
-  return CREATE_MENU_OPTIONS.map((item) => `
-            <a role="menuitem" href="${escapeAttribute(routeHref(item.route))}" data-shell-create-option="${escapeAttribute(item.id)}">
-              <strong>${escapeHtml(item.label)}</strong>
-              <span>${escapeHtml(item.description)}</span>
-            </a>`).join("");
+  return renderGlobalCreateMenu();
 }
 
 export function renderVNextDesktopShellChrome() {
@@ -91,8 +93,8 @@ export function renderVNextDesktopShellChrome() {
         </a>
         <div class="vnext-topbar-actions">
           <div class="vnext-menu">
-            <button class="vnext-create-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="vnext-create-menu">Create</button>
-            <div class="vnext-menu-panel vnext-create-menu" id="vnext-create-menu" role="menu" aria-label="Create" hidden>${createMenuHtml()}
+            <button class="vnext-create-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="${GLOBAL_CREATE_MENU_ID}">Create</button>
+            <div class="vnext-menu-panel vnext-create-menu" id="${GLOBAL_CREATE_MENU_ID}" role="menu" aria-label="Create" hidden>${createMenuHtml()}
             </div>
           </div>
           <a class="vnext-topbar-link" href="${escapeAttribute(routeHref(help.route))}" aria-label="${escapeAttribute(help.label)}"><span class="vnext-topbar-icon" aria-hidden="true">?</span><span class="vnext-topbar-label">${escapeHtml(help.label)}</span></a>
@@ -107,6 +109,7 @@ export function renderVNextDesktopShellChrome() {
       </header>
       <div class="vnext-routed-content">`,
     end:`</div>
+      ${renderGlobalCreateWorkspace()}
     </div>
   </div>`
   });
@@ -119,7 +122,6 @@ function shellClientScript() {
     "use strict";
     const routeRecoveryHtml = ${recovery};
     const menuPairs = [
-      [document.querySelector(".vnext-create-trigger"), document.querySelector("#vnext-create-menu")],
       [document.querySelector(".vnext-profile-trigger"), document.querySelector("#vnext-profile-menu")]
     ].filter((pair) => pair[0] && pair[1]);
     const drawer = document.querySelector("[data-shell-drawer]");
@@ -338,6 +340,7 @@ function shellClientScript() {
       if (event.key === "Escape") closeAllMenus(true);
     });
     window.addEventListener("hashchange", () => setTimeout(syncShell, 0));
+    document.addEventListener("vnext:close-navigation", () => closeNavigationDrawer(false));
     navigationMedia.addEventListener("change", syncResponsiveMode);
     const app = document.querySelector("main#app");
     if (app) new MutationObserver(syncShell).observe(app, { childList:true, subtree:false });
@@ -402,7 +405,7 @@ export function renderVNextDesktopShell(legacyHtml = "") {
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n</body>`);
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${globalCreateBrowserSource()}</script>\n</body>`);
   return html;
 }
 

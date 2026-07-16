@@ -34,7 +34,7 @@ assert.deepEqual(RESPONSIVE_SHELL_CONTRACT.primaryDestinations.map((item) => ite
   "Today", "Social", "Outreach", "Partners", "Files"
 ]);
 assert.deepEqual(RESPONSIVE_SHELL_CONTRACT.secondaryControls.map((item) => item.label), ["Inbox", "Le-E", "Settings"]);
-assert.deepEqual(RESPONSIVE_SHELL_CONTRACT.createOptions.map((item) => item.label), ["Social post", "Task"]);
+assert.deepEqual(RESPONSIVE_SHELL_CONTRACT.createOptions.map((item) => item.label), ["Social post", "Outreach campaign", "Partner", "File or folder", "Quick note"]);
 assert.equal(Object.isFrozen(RESPONSIVE_SHELL_CONTRACT), true);
 assert.equal(Object.isFrozen(RESPONSIVE_SHELL_CONTRACT.requiredWidths), true);
 
@@ -50,9 +50,7 @@ assert.equal((chrome.start.match(/class="vnext-primary-navigation"/g) || []).len
 for (const label of ["Today", "Social", "Outreach", "Partners", "Files", "Inbox", "Le-E", "Settings"]) {
   assert.match(chrome.start, new RegExp(`>${label}<`), `${label} must remain in the responsive navigation.`);
 }
-for (const unsupported of ["Quick capture", "Campaign", "Partner", "File or document record"]) {
-  assert.doesNotMatch(chrome.start, new RegExp(`>${unsupported}<`), `${unsupported} must remain deferred.`);
-}
+assert.doesNotMatch(chrome.start, />Task</, "Task remains available in Today and Tasks, not Global Create.");
 assert.doesNotMatch(chrome.start, /monogram|data-short-label|LegalEase mark/i, "The responsive shell must not invent a compact brand mark.");
 
 for (const contract of [
@@ -97,7 +95,7 @@ assert.equal(resolveShellDestination("#item/reports/report-1"), "Files");
 assert.equal(resolveShellDestination("#unknown-responsive-route"), "Today");
 assert.deepEqual(PRIMARY_SHELL_DESTINATIONS.map((item) => item.label), ["Today", "Social", "Outreach", "Partners", "Files"]);
 assert.deepEqual(SECONDARY_SHELL_CONTROLS.map((item) => item.label), ["Inbox", "Le-E", "Settings"]);
-assert.deepEqual(CREATE_MENU_OPTIONS.map((item) => item.label), ["Social post", "Task"]);
+assert.deepEqual(CREATE_MENU_OPTIONS.map((item) => item.label), ["Social post", "Outreach campaign", "Partner", "File or folder", "Quick note"]);
 
 const legacyFixture = `<!doctype html><html><head><link rel="stylesheet" href="/assets/ui/tokens.css" /></head><body>
   <div class="shell"><header class="app-topbar"><nav class="top-nav" aria-label="Primary"><a href="#today">Today</a></nav></header><main id="app"><h1>Current page</h1></main></div>

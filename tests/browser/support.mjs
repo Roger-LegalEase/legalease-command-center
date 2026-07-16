@@ -14,7 +14,9 @@ const criticalPaths = new Set([
 function allowedOrigins(baseURL) {
   return new Set([
     baseURL,
-    process.env.BROWSER_TEST_VNEXT_BASE_URL
+    process.env.BROWSER_TEST_VNEXT_BASE_URL,
+    process.env.BROWSER_TEST_CREATE_BASE_URL,
+    process.env.BROWSER_TEST_RESTRICTED_BASE_URL
   ].filter(Boolean).map((value) => new URL(value).origin));
 }
 

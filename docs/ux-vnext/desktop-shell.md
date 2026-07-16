@@ -47,17 +47,19 @@ The white top bar provides four working controls:
 
 - Search opens the existing `#operator-search` capability. It is a destination link,
   not a dead input and not a claim of new cross-object search.
-- Create opens an accessible menu. Its current working options are Social post
-  (`#content-bank`) and Task (`#tasks`). Quick capture, Campaign, Partner, and File or
-  document creation are deferred because the current routed application does not
-  expose a safe equivalent creation flow.
+- Create opens the shared CCX-103 Global Create menu with Social post, Outreach
+  campaign, Partner, File or folder, and Quick note in that order. Each item starts a
+  real server-authorized creation workflow documented in `global-create.md`. Task
+  remains available in Today and Tasks but is not a global option. Persistent folders
+  are truthfully deferred.
 - Help opens the existing Guide at `#operator-manual`.
 - Profile opens an accessible menu with the existing Settings destination and Sign
   out behavior. It exposes no session data, role token, credential, or auth detail.
 
-Create and Profile expose `aria-expanded` and `aria-controls`, support Arrow keys,
-Home, End, Escape, outside-click dismissal, and focus return. Visible items always
-reach a real current route or action.
+Create and Profile expose `aria-expanded` and `aria-controls`. Global Create supports
+Arrow keys, Home, End, Enter, Space, Escape, outside-click dismissal, focus return,
+and one shared accessible creation sheet on desktop and mobile. Profile retains its
+existing menu behavior.
 
 ## Inbox, Le-E, and Settings
 

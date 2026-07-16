@@ -127,24 +127,24 @@ test("aliases, record links, unknown routes, utilities, and top-bar controls rem
   await expect(page).toHaveURL(/#operator-manual$/);
 });
 
-test("Create and Profile menus are keyboard-operable and expose only working flows", async ({ page }) => {
+test("Create and Profile menus are keyboard-operable and Global Create opens a real workflow", async ({ page }) => {
   await openVNext(page);
   const create = page.getByRole("button", { name:"Create", exact:true });
   await create.focus();
   await page.keyboard.press("ArrowDown");
   await expect(create).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("menu", { name:"Create" })).toBeVisible();
-  await expect(page.getByRole("menuitem")).toHaveCount(2);
+  await expect(page.getByRole("menu", { name:"Create" }).getByRole("menuitem")).toHaveCount(5);
   await page.keyboard.press("Escape");
   await expect(create).toBeFocused();
   await expect(create).toHaveAttribute("aria-expanded", "false");
 
   await create.click();
   await page.getByRole("menuitem", { name:/Social post/ }).click();
-  await expect(page).toHaveURL(/#content-bank$/);
-  await create.click();
-  await page.getByRole("menuitem", { name:/Task/ }).click();
-  await expect(page).toHaveURL(/#tasks$/);
+  await expect(page.getByRole("dialog", { name:"Create" })).toBeVisible();
+  await expect(page.getByRole("heading", { name:"Social post" })).toBeVisible();
+  await page.getByRole("button", { name:"Cancel" }).click();
+  await expect(page.getByRole("dialog", { name:"Create" })).toBeHidden();
   const profile = page.getByRole("button", { name:"Profile", exact:true });
   await profile.click();
   await expect(profile).toHaveAttribute("aria-expanded", "true");

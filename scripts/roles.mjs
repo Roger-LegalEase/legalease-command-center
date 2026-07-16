@@ -174,6 +174,9 @@ function isFinalArtifactState(input = {}) {
 export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", input = {}) {
   const verb = String(method || "GET").toUpperCase();
   const path = String(pathname || "/");
+  if (verb === "POST" && path === "/api/ui/create/post") return ["manage_content_drafts"];
+  if (verb === "POST" && ["/api/ui/create/campaign", "/api/ui/create/partner", "/api/ui/create/file"].includes(path)) return ["manage_growth"];
+  if (verb === "POST" && path === "/api/ui/create/note") return ["route_captures"];
   if (verb === "GET" && path === "/api/reports/aggregate") return ["view_aggregate_reports"];
   if (verb === "GET" && (["/api/ready", "/api/metrics", "/api/auth/diagnostics", "/api/production/readiness", "/api/health/supabase"].includes(path) || path.startsWith("/api/storage"))) return ["view_diagnostics"];
   if (path.startsWith("/api/assets/") || /^\/assets\/uploads\//.test(path) || /^\/data\/(exports|assets|backups)\//.test(path) || /\/final-png$/.test(path)) return ["view_private_assets"];
