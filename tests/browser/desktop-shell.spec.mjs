@@ -106,7 +106,8 @@ test("aliases, record links, unknown routes, utilities, and top-bar controls rem
   await expect(page.locator("main#app #item").getByRole("heading", { level:1 })).toBeVisible();
 
   await page.goto(`${baseURL}/#not-a-real-command-center-route`);
-  await expect(page).toHaveURL(/#today$/);
+  await expect(page).toHaveURL(/#not-a-real-command-center-route$/);
+  await expect(page.getByRole("heading", { name:"Page not found", level:1 })).toBeVisible();
   await expect(primaryNavigation(page).getByRole("link", { name:"Today", exact:true })).toHaveAttribute("aria-current", "page");
 
   await page.goto(`${baseURL}/#rcap`);

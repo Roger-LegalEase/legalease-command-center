@@ -125,7 +125,8 @@ test("mobile aliases, record links, unknown fallback, and the legacy shell stay 
   await expect(page.locator("[data-shell-current-context]")).toHaveText("Social");
 
   await page.goto(`${vnextURL}/#not-a-responsive-route`);
-  await expect(page).toHaveURL(/#today$/);
+  await expect(page).toHaveURL(/#not-a-responsive-route$/);
+  await expect(page.getByRole("heading", { name:"Page not found", level:1 })).toBeVisible();
   await expect(page.locator("[data-shell-current-context]")).toHaveText("Today");
 
   await page.goto(`${baseURL}/#today`, { waitUntil:"domcontentloaded" });

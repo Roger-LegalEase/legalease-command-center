@@ -536,6 +536,23 @@ body.vnext-app-shell {
   }
 }
 
+.vnext-route-recovery {
+  width: min(100%, var(--le-content-reading));
+  margin: var(--le-space-8) auto;
+  padding: var(--le-space-8);
+  border: var(--le-border-subtle);
+  border-radius: var(--le-radius-lg);
+  background: var(--le-surface);
+  box-shadow: var(--le-shadow-sm);
+}
+
+.vnext-route-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--le-space-3);
+  margin-top: var(--le-space-6);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .vnext-app-shell *,
   .vnext-app-shell *::before,

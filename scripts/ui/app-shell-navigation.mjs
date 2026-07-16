@@ -1,5 +1,8 @@
 import { GLOBAL_UTILITIES, PRIMARY_DESTINATIONS } from "./labels.mjs";
 import { routeRegistry } from "./navigation.mjs";
+import { resolveRouteCompatibility } from "./route-compatibility.mjs";
+
+export { ITEM_COLLECTION_DESTINATIONS } from "./route-compatibility.mjs";
 
 const list = (values) => Object.freeze(values.map((value) => Object.freeze({ ...value })));
 
@@ -46,72 +49,9 @@ export const DEFERRED_CREATE_OPTIONS = Object.freeze([
   "File or document record"
 ]);
 
-// Exact collection ownership for the generic #item/<collection>/<id> bridge. This
-// deliberately avoids substring guessing and changes only shell highlighting.
-export const ITEM_COLLECTION_DESTINATIONS = Object.freeze({
-  posts:"Social",
-  postImages:"Social",
-  approvalQueue:"Social",
-  contentBank:"Social",
-  sources:"Social",
-  publishEvents:"Social",
-  postingKits:"Social",
-  campaigns:"Outreach",
-  campaignKits:"Outreach",
-  outreachContacts:"Outreach",
-  outreachAttempts:"Outreach",
-  outreachApprovalQueue:"Outreach",
-  reactivationCampaign:"Outreach",
-  reactivationContacts:"Outreach",
-  prospectCandidates:"Outreach",
-  companyContacts:"Outreach",
-  partners:"Partners",
-  partnerPrograms:"Partners",
-  partnerProgramArtifacts:"Partners",
-  pilots:"Partners",
-  meetingBriefs:"Partners",
-  reports:"Files",
-  dataRoomItems:"Files",
-  evidencePackNotes:"Files",
-  soc2Evidence:"Files",
-  soc2Policies:"Files",
-  brandAssets:"Files",
-  localAssets:"Files",
-  queueItems:"Inbox",
-  inboxSignals:"Inbox",
-  tasks:"Inbox",
-  captureInbox:"Inbox",
-  growthInbox:"Inbox",
-  supportIssues:"Inbox",
-  alerts:"Inbox",
-  automationSuggestions:"Inbox",
-  morningBriefs:"Today",
-  eveningReflections:"Today",
-  dailyCloseouts:"Today",
-  operatingMemory:"Today",
-  milestones:"Today",
-  roleAssignments:"Settings",
-  soc2AccessReviews:"Settings",
-  soc2Changes:"Settings",
-  soc2Vendors:"Settings",
-  soc2Incidents:"Settings"
-});
-
-const canonicalEntries = new Map(routeRegistry.map((entry) => [entry.canonicalRoute, entry]));
 const aliasTargets = new Map(
   routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [alias, entry.canonicalRoute]))
 );
-
-const destinationOverrides = Object.freeze({
-  lee:"Le-E",
-  "operator-search":"Search",
-  more:"Settings",
-  "safe-mode":"Settings",
-  "smoke-test":"Settings",
-  "soc2-audit":"Settings",
-  "handoff-contract":"Partners",
-  "conversation-notes":"Today"
-});
 
 export const SHELL_DESTINATION_LABELS = Object.freeze([
   ...Object.values(PRIMARY_DESTINATIONS),
@@ -121,37 +61,14 @@ export const SHELL_DESTINATION_LABELS = Object.freeze([
   GLOBAL_UTILITIES.search
 ]);
 
-function routeValue(input = "") {
-  const raw = String(input ?? "").trim();
-  if (raw === "/sources/import-social-calendar" || raw === "sources/import-social-calendar") return "sources";
-  const hashValue = raw.includes("#") ? raw.slice(raw.indexOf("#") + 1) : raw;
-  return hashValue.replace(/^\/+/, "").split("?")[0];
-}
-
-function itemReference(value = "") {
-  if (!value.startsWith("item/")) return null;
-  const parts = value.split("/");
-  const collection = String(parts[1] || "").replace(/[^a-zA-Z0-9_-]/g, "");
-  return collection && parts.slice(2).join("/") ? Object.freeze({ collection }) : null;
-}
-
 export function canonicalRouteForShell(input = "") {
-  const requested = routeValue(input);
-  if (!requested) return "today";
-  if (itemReference(requested)) return "item";
-  const canonical = aliasTargets.get(requested) || requested;
-  return canonicalEntries.has(canonical) ? canonical : "today";
+  const result = resolveRouteCompatibility(input);
+  if (result.kind === "object") return "item";
+  return result.kind === "page" ? result.canonicalRoute : "today";
 }
 
 export function resolveShellDestination(input = "") {
-  const requested = routeValue(input);
-  const reference = itemReference(requested);
-  if (reference) return ITEM_COLLECTION_DESTINATIONS[reference.collection] || "Today";
-  const canonicalRoute = canonicalRouteForShell(requested);
-  const override = destinationOverrides[canonicalRoute];
-  if (override) return override;
-  const destination = canonicalEntries.get(canonicalRoute)?.vnextDestination;
-  return SHELL_DESTINATION_LABELS.includes(destination) ? destination : "Settings";
+  return resolveRouteCompatibility(input).destination;
 }
 
 export const SHELL_ROUTE_DESTINATIONS = Object.freeze(

@@ -77,5 +77,18 @@ planning destination from the master plan, not current runtime behavior.
 
 `/privacy` and `/terms` are standalone public legal pages outside the authenticated
 hash renderer. They are not aliases and must not be confused with the current
-`#privacy` → `#settings` hash alias. Unknown hashes currently recover to `#today`;
-CCX-001 does not change that fallback.
+`#privacy` → `#settings` hash alias.
+
+## Implemented vNext compatibility contract
+
+CCX-102 implements these 53 mappings from the machine registry without deleting or
+retargeting any alias. In vNext mode only, a successfully resolved alias is canonicalized
+with `history.replaceState`, preserving browser history without a reload. Generic item
+links remain valid. Founder-facing exact links now use `#social/post/<id>`,
+`#outreach/campaign/<id>`, `#partners/partner/<id>`, and
+`#files/<source-kind>/<id>`; the full source mapping and rejection rules are in
+`docs/ux-vnext/route-compatibility.md`.
+
+Unknown safe hashes now show the vNext recovery screen without changing the requested
+hash. Unsafe hashes fail closed and are not echoed. The legacy flag-off shell retains
+its prior fallback to `#today` unchanged.

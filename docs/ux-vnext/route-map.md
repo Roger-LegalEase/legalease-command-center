@@ -2,6 +2,12 @@
 
 Source SHA: `8812c2f31328cf1e8e36d36efc22bac55e1f0498`
 
+CCX-102 implementation note: all 75 entries below remain in the renderer registry.
+The vNext compatibility resolver canonicalizes the 53 inventoried aliases, supports
+exact Post/Campaign/Partner/File hashes, and preserves generic `#item` links. It does not
+remove or rename a route. See `docs/ux-vnext/route-compatibility.md` for the implemented
+parser, history, recovery, and source-mapping contract.
+
 This inventory describes the legacy hash renderer without changing it. The source of
 truth remains the `routeAliases` object, `knownPages` whitelist, primary-navigation
 markup, `navSectionForPage(...)`, and render dispatcher in
