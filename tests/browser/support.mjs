@@ -9,8 +9,26 @@ const criticalPaths = new Set([
   "/api/capture-inbox",
   "/api/daily-run/quick-capture",
   "/api/runway-inputs",
-  "/api/ui/search"
+  "/api/ui/search",
+  "/api/ui/route-access"
 ]);
+
+const expectedCriticalResponses = new WeakMap();
+
+export function allowExpectedCriticalResponse(page, pathname, count = 1) {
+  const current = expectedCriticalResponses.get(page) || new Map();
+  current.set(pathname, (current.get(pathname) || 0) + Math.max(1, Number(count) || 1));
+  expectedCriticalResponses.set(page, current);
+}
+
+function consumeExpectedCriticalResponse(page, pathname) {
+  const current = expectedCriticalResponses.get(page);
+  const remaining = current?.get(pathname) || 0;
+  if (!remaining) return false;
+  if (remaining === 1) current.delete(pathname);
+  else current.set(pathname, remaining - 1);
+  return true;
+}
 
 function allowedOrigins(baseURL) {
   return new Set([
@@ -51,6 +69,7 @@ export const test = playwrightTest.extend({
     page.on("response", (response) => {
       const url = new URL(response.url());
       if (origins.has(url.origin) && criticalPaths.has(url.pathname) && response.status() >= 400) {
+        if (consumeExpectedCriticalResponse(page, url.pathname)) return;
         failures.push(`critical response: ${response.status()} ${url.pathname}`);
       }
     });

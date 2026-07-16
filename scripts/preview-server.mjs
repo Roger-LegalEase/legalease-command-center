@@ -125,6 +125,7 @@ import { buildFounderCapacityPulse } from "./operator-pulse-feeders.mjs";
 import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
 import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex } from "./operator-search.mjs";
 import { searchGlobalRecords } from "./global-search-service.mjs";
+import { buildRouteAccessView, ROUTE_ACCESS_ENDPOINT } from "./shell-resilience-service.mjs";
 import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegritySnapshot } from "./state-integrity.mjs";
 import { buildEndpointInventory, guardForbiddenEndpoint, safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
 import { buildSmokeTestChecklist, buildSmokeTestStatus, finishSmokeTestRun, markSmokeTestItem, saveSmokeTestRun, startSmokeTestRun } from "./smoke-test-center.mjs";
@@ -35061,6 +35062,12 @@ async function handleRequest(request, response) {
       }
       if (!ownerStarted.ok || providerError || !verified.ok) return;
     }
+    else if (url.pathname === ROUTE_ACCESS_ENDPOINT) {
+      sendJson(response, accessDecision.status === 401
+        ? { ok:false, allowed:false, outcome:"session_expired" }
+        : { ok:false, allowed:false, outcome:"unauthorized", permissionLabel:"additional access" }, accessDecision.status || 403);
+      return;
+    }
     else if (url.pathname === "/api/ui/search") {
       sendJson(response, { error:"Search is unavailable for this account. No records were changed." }, accessDecision.status || 403);
       return;
@@ -35146,6 +35153,23 @@ async function handleRequest(request, response) {
           ? error.message
           : "Search could not load. No records were changed. Try again."
       }, Number(error?.status || 500));
+    }
+    return;
+  }
+
+  if (url.pathname === ROUTE_ACCESS_ENDPOINT && request.method === "GET") {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { error:"Route access is unavailable." }, 404);
+      return;
+    }
+    try {
+      const currentState = await store.readState();
+      const actor = publicActor(accessDecision.actor);
+      sendJson(response, buildRouteAccessView(currentState, url.searchParams.get("target") || "#today", {
+        role:actor?.role || "viewer"
+      }));
+    } catch {
+      sendJson(response, { error:"This page could not be checked. No records were changed." }, 500);
     }
     return;
   }

@@ -5,7 +5,9 @@
 CCX-005 added Chromium tests for the current Command Center, CCX-006 extended the
 suite to the protected design-system showcase, CCX-100 added the production vNext
 desktop shell, CCX-101 covers its responsive navigation drawer, CCX-102 covers route
-compatibility, CCX-103 covers Global Create, and CCX-104 covers Global Search. The
+compatibility, CCX-103 covers Global Create, CCX-104 covers Global Search, and
+CCX-105 covers resilient loading, module failure, authorization, session, and
+Recovery Mode states. The
 suite exercises the served
 application in a real browser; it does not replace the existing Node, route, security,
 migration, restore, or source-level contracts.
@@ -155,6 +157,22 @@ The six CCX-104 tests additionally cover:
 - mobile drawer/Create/Profile handoff, one active Search sheet, zero serious/critical
   axe findings, no overflow at 1440/1024/768/390, and eight deterministic screenshots.
 
+The seven CCX-105 tests additionally cover:
+
+- delayed initial boot with visible shell chrome, an accessible truthful skeleton,
+  transition to Today, and no extra full-state request;
+- a delayed real Decisions read, scoped loading, malformed-response failure, one
+  reauthorized retry, immediate Working feedback, and zero duplicate retry requests;
+- caught route-module exceptions, preserved shell utilities, successful restoration,
+  and repeated-failure behavior without a loop;
+- restricted page and exact-record behavior with founder-facing permission copy and
+  no protected title, ID, count, or Search disclosure;
+- session-expiration cleanup of authenticated overlays and sensitive main content;
+- Recovery Mode with truthful publishing-off status, duplicate-safe full-app retry,
+  and responsive Sign out access; and
+- zero serious/critical axe findings and no overflow for loading, error,
+  unauthorized, and recovery states, with nine deterministic screenshots.
+
 `Review Desk` remains the underlying current workspace for Social. CCX-100 changes
 the enabled shell label while leaving that page renderer and its behavior intact.
 
@@ -166,7 +184,7 @@ Today summary, campaign command, and tested local-action workflow endpoints. Opt
 diagnostics may honestly return unavailable without being classified as a broken user
 workflow.
 
-`/api/ui/search` is a critical same-origin path. An aborted Search request caused by a
+`/api/ui/search` and `/api/ui/route-access` are critical same-origin paths. An aborted Search request caused by a
 new query is an expected cancellation and is not treated as a page error; any other
 Search request failure or HTTP error remains test-failing.
 
@@ -207,7 +225,8 @@ The design-system test writes review screenshots to
 to `docs/ux-vnext/screenshots/ccx-100/`. CCX-101 writes eight responsive-shell review
 images to `docs/ux-vnext/screenshots/ccx-101/`. CCX-103 writes eight Global Create
 review images to `docs/ux-vnext/screenshots/ccx-103/`. CCX-104 writes eight Global
-Search review images to `docs/ux-vnext/screenshots/ccx-104/`. These PNGs are intentional
+Search review images to `docs/ux-vnext/screenshots/ccx-104/`. CCX-105 writes nine
+resilience-state images to `docs/ux-vnext/screenshots/ccx-105/`. These PNGs are intentional
 documentation artifacts rather than failure artifacts; the HTML report, traces,
 videos, and failure screenshots remain generated and ignored.
 

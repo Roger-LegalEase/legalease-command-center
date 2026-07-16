@@ -13,6 +13,8 @@ import {
   renderGlobalSearchDialog,
   renderGlobalSearchTrigger
 } from "./global-search.mjs";
+import { shellResilienceBrowserSource } from "./shell-resilience.mjs";
+import { INITIAL_VNEXT_LOADING_HTML } from "./shell-states.mjs";
 import {
   CREATE_MENU_OPTIONS,
   PRIMARY_SHELL_DESTINATIONS,
@@ -405,6 +407,18 @@ function removeLegacyPrimaryHeader(html) {
   return end < 0 ? html : html.slice(0, start) + html.slice(end + "</header>".length);
 }
 
+function replaceInitialLoadingSurface(html) {
+  const startMarker = '<main id="app">';
+  const start = html.indexOf(startMarker);
+  const end = html.indexOf("</main>", start);
+  if (start < 0 || end < 0) return html;
+  const currentContent = html.slice(start + startMarker.length, end);
+  if (!currentContent.includes('class="panel loading-panel"') || !currentContent.includes("Loading LegalEase")) return html;
+  return html.slice(0, start + startMarker.length)
+    + INITIAL_VNEXT_LOADING_HTML
+    + html.slice(end);
+}
+
 export function renderVNextDesktopShell(legacyHtml = "") {
   const source = String(legacyHtml || "");
   const bodyMarker = "<body>";
@@ -415,6 +429,7 @@ export function renderVNextDesktopShell(legacyHtml = "") {
   const chrome = renderVNextDesktopShellChrome();
   let html = removeLegacyPrimaryHeader(source);
   html = applyVNextRouteParser(html);
+  html = replaceInitialLoadingSurface(html);
   html = html.replace(
     "</head>",
     `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
@@ -423,7 +438,7 @@ export function renderVNextDesktopShell(legacyHtml = "") {
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${globalCreateBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n</body>`);
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n</body>`);
   return html;
 }
 
