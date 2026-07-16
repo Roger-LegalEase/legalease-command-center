@@ -4,8 +4,9 @@ Source main SHA: `7898dddde76b65f12c754c15a27286e675e186e9`
 
 CCX-003 created the deployment boundary between the current Command Center shell and
 the future vNext shell. CCX-100 uses that same boundary to compose the production
-desktop vNext shell around the shared routed content, and CCX-101 adds its responsive
-drawer without changing shell selection. The default branch still returns
+desktop vNext shell around the shared routed content, CCX-101 adds its responsive
+drawer, and CCX-105 adds vNext-only shell resilience without changing shell
+selection. The default branch still returns
 the complete unchanged legacy application. Both branches retain the same routes,
 aliases, deep links, safe boot, authentication, authorization, state, endpoints, and
 business behavior.
@@ -102,8 +103,9 @@ client cleanup is required.
 
 ## Scope boundary
 
-CCX-100 and CCX-101 change only the enabled top-level shell composition. They do not
+CCX-100 through CCX-105 change only the enabled vNext shell composition and its
+shared utility/resilience contracts. They do not
 redesign Today, Social, Outreach, Partners, Files, Inbox, Search, Settings, or Le-E;
 migrate a route; or change an endpoint, record, safety gate, permission, sending rule,
-or publishing rule. The full responsive drawer preserves this rollback path; CCX-102
-owns future route canonicalization.
+or publishing rule. The full responsive drawer and resilient states preserve this
+rollback path. The 75 canonical routes and 53 aliases remain intact.

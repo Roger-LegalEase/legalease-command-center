@@ -93,6 +93,13 @@ sending, publishing, storage, encryption, audit, and business rules remain outsi
 the UI modules and unchanged. Navigation itself performs no mutation or external
 action.
 
+CCX-105 adds the vNext-only shell-state boundary documented in
+`shell-resilience.md`. The approved chrome now appears before route data is ready,
+while `main#app` shows a truthful skeleton. A route/module exception replaces only
+the failed main-region content; Search, Create, Help, Profile, navigation, and safe
+Le-E access remain available. Unauthorized, session-expired, and Recovery Mode
+surfaces use the same compositor and do not add a second router or page renderer.
+
 ## Accessibility and desktop widths
 
 The shell supplies semantic `aside`, `nav`, `header`, and `main` landmarks; an
@@ -133,7 +140,7 @@ redeploy. Rollback requires no data migration, route change, cache cleanup, or b
 preference reset because the flag is server-side and the underlying data contract is
 shared.
 
-CCX-101 through CCX-104 keep the same route inventory, five destinations, direct logo
+CCX-101 through CCX-105 keep the same route inventory, five destinations, direct logo
 asset, feature-flag rollback, and unchanged business and safety boundaries. CCX-105
-may simplify Today while preserving Global Search, Global Create, exact links, and
-the unchanged flag-off shell.
+adds resilience without simplifying or redesigning Today. CCX-200 may begin only
+after CCX-105 review and merge.

@@ -58,6 +58,13 @@ overlay, inert state, and scroll lock, then opens exactly one full-width Search 
 with focus in the labelled input. Search also safely dismisses the Create menu/sheet
 and Profile menu so modal and popover layers do not overlap.
 
+CCX-105 uses the same shell-state implementation at responsive widths. Loading,
+module-error, unauthorized, session-expired, and Recovery Mode content stays inside
+the viewport below the persistent compact top bar. Session or shell failure closes
+the drawer and authenticated overlays, removes inert/scroll-lock residue, and leaves
+exactly one active state surface. Search and Create are disabled only when the
+authenticated full state they require is unavailable.
+
 ## Navigation drawer
 
 The drawer renders the exact official white wordmark directly from
@@ -133,12 +140,12 @@ shell at 1440, 1280, 1024, 768, and 390 pixels under
 390-pixel Social view. Fixture state is temporary, providers are blocked, credentials
 are scrubbed, and all live-action gates remain off.
 
-## Rollback and CCX-102 handoff
+## Rollback and Phase 1 handoff
 
 Unset `COMMAND_CENTER_UX_VNEXT` or set it to the exact string `false`, then restart or
 redeploy. No migration, storage rollback, route cleanup, browser preference, or state
 conversion is required.
 
-CCX-102 remains responsible for future canonical vNext hashes and typed deep-link
-parsing. CCX-101 preserves the current 75 canonical routes, 53 aliases, generic item
-links, and Today fallback exactly; it does not begin canonicalization.
+CCX-102 preserves the 75 canonical routes, 53 aliases, generic item links, and exact
+record links. CCX-105 completes the responsive Phase 1 shell-state contract without
+beginning CCX-200.

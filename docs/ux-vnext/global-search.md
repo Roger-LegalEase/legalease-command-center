@@ -180,6 +180,11 @@ serious and zero critical axe findings, zero unexpected console/page errors, zer
 failed critical same-origin requests, and no horizontal overflow at 1440, 1024, 768,
 or 390 pixels.
 
+CCX-105 keeps this error state scoped to the Search dialog. A shell or session
+failure closes the palette before replacing authenticated main content; Search does
+not bypass route authorization or remain enabled in Recovery Mode when required
+full state is unavailable.
+
 Representative fixture responses must stay below 250 KB and normally below 100 KB;
 the isolated response target is below 750ms. Browser metrics record response bytes,
 response time, request count, aborted/ignored stale requests, duplicate suppression,
@@ -195,6 +200,6 @@ Rollback requires only unsetting `COMMAND_CENTER_UX_VNEXT` or setting it to `fal
 and restarting. No migration, state cleanup, query cleanup, or storage rollback is
 needed because Search is read-only and memory-only.
 
-CCX-105 is unblocked to simplify Today against this stable global Search contract. It
-must not add Search mutations, persist queries, retire the legacy Operator Search
-page, redesign destination workspaces, or weaken authorization and exact-link safety.
+CCX-105 now supplies the surrounding shell resilience contract without adding Search
+mutations, persisting queries, retiring the legacy Operator Search page, redesigning
+destination workspaces, or weakening authorization and exact-link safety.

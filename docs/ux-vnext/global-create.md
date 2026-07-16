@@ -163,6 +163,12 @@ audience, grants approval, runs AI, changes suppression, changes a live gate, ch
 authorization, or calls an external provider. All browser fixtures use temporary JSON
 state with live sending and publishing disabled and outbound network blocked.
 
+CCX-105 leaves action failures scoped to this creation sheet. A validation,
+authorization, or write failure creates zero records and is never retried
+automatically. Session expiration closes the sheet, clears sensitive form values,
+and returns to the vetted sign-in path; Recovery Mode disables Create until required
+authenticated state is available.
+
 ## Verification, screenshots, rollback, and Global Search
 
 Run `npm run test:vnext-global-create` for the focused contract and `npm run
@@ -176,7 +182,6 @@ Rollback is the existing server-only boundary: unset `COMMAND_CENTER_UX_VNEXT` o
 it to `false` and restart. The legacy flag-off `htmlShell()` remains byte-for-byte
 unchanged. Existing records need no migration or cleanup.
 
-CCX-104 Global Search now reuses these exact link contracts and safely dismisses the
-Create layer before opening. Search does not move creation authority to the browser,
-create a second router, or broaden a Create endpoint. CCX-105 may simplify Today
-without changing either global utility.
+CCX-104 Global Search reuses these exact link contracts and safely dismisses the
+Create layer before opening. CCX-105 adds surrounding shell resilience without
+changing either global utility, creation authority, or endpoint scope.

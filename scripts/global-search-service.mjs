@@ -94,7 +94,7 @@ function normalizedCursor(value) {
   return Number(value);
 }
 
-function recordVisibleToActor(record = {}, role = "viewer") {
+export function recordVisibleToActor(record = {}, role = "viewer") {
   const allowedRoles = list(record.allowedRoles || record.allowed_roles).map(normalize);
   if (allowedRoles.length && !allowedRoles.includes(normalize(role))) return false;
   const visibility = normalize(record.visibility || record.access || "");
