@@ -30,6 +30,7 @@
     "test:vnext-global-search": "node scripts/test-vnext-global-search.mjs",
     "test:vnext-global-create": "node scripts/test-vnext-global-create.mjs",
     "test:vnext-shell-resilience": "node scripts/test-vnext-shell-resilience.mjs",
+    "test:vnext-inbox-projection": "node scripts/test-vnext-inbox-projection.mjs",
     "test:browser": "node scripts/run-browser-tests.mjs",
     "test:browser:install": "playwright install --with-deps chromium",
     "test:extended": "node scripts/run-extended-tests.mjs",
