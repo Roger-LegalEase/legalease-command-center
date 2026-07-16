@@ -36,6 +36,13 @@ reason. Unsafe input is never copied into the result.
 - Route context after `?` is preserved during safe page canonicalization.
 - `/sources/import-social-calendar` continues to render the existing `#sources` flow.
 
+CCX-104 adds `#search` as a documented vNext-only utility entry without adding it to
+the legacy canonical-route or alias inventory. `#search` and the existing
+`#operator-search` open the shared Global Search palette over Today in vNext mode.
+Closing returns to a safe previous hash or `#today`; opening an exact result uses a
+normal history entry. In flag-off mode, `#operator-search` still renders the legacy
+Operator Search page.
+
 In vNext mode, a successfully resolved alias is replaced with its canonical hash by
 `history.replaceState`. This does not reload the document and does not add a history
 entry. Back and Forward therefore move between the user's actual navigation entries.
@@ -109,7 +116,7 @@ shell:
 - **Page not found**
 - “The link may be old or incomplete. No data was changed.”
 - **Go to Today**
-- **Search**
+- **Search**, which opens the CCX-104 Global Search palette
 
 The state uses the shared page-header and button primitives. Search, Create, Help,
 Profile, the sidebar or drawer, and the existing Le-E control remain usable. Recovery

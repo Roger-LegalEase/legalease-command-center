@@ -5,7 +5,8 @@
 CCX-005 added Chromium tests for the current Command Center, CCX-006 extended the
 suite to the protected design-system showcase, CCX-100 added the production vNext
 desktop shell, CCX-101 covers its responsive navigation drawer, CCX-102 covers route
-compatibility, and CCX-103 covers Global Create. The suite exercises the served
+compatibility, CCX-103 covers Global Create, and CCX-104 covers Global Search. The
+suite exercises the served
 application in a real browser; it does not replace the existing Node, route, security,
 migration, restore, or source-level contracts.
 
@@ -51,7 +52,8 @@ empty local response, so the test never contacts a provider or font host.
 Every email, outreach, alert, social-publishing, provider-webhook, and discovery gate
 is explicitly off. Mutating coverage is limited to the Daily Run runway-input save and
 CCX-103's inert Post, Campaign, Partner, document-record, and internal-note creation
-flows. Each writes only to disposable fixture state; tests verify that sending,
+flows. CCX-104 Search is read-only. Each mutation writes only to disposable fixture
+state; tests verify that sending,
 publishing, approvals, recipient enrollment, and live gates remain unchanged.
 
 ## Browser configuration
@@ -137,6 +139,22 @@ The four CCX-103 tests additionally cover:
 - zero serious/critical axe findings, no menu or sheet overflow, and eight
   deterministic Global Create screenshots.
 
+The six CCX-104 tests additionally cover:
+
+- shared click, Control+K, macOS Command+K, focus, Escape, outside-click, and
+  typing-guard behavior;
+- exact six-group order, type filters, Arrow Up/Down, Home, End, Enter, and exact
+  Post, Campaign, Partner, File, Task, and Report links;
+- immediate loading, no-results, recoverable error and Retry, query preservation,
+  stale-response invalidation, duplicate-request suppression, no full-state refetch,
+  response-size/timing metrics, and memory-only recents;
+- `#search`, `#operator-search`, direct bookmark, Back, and unchanged flag-off
+  Operator Search behavior;
+- owner and restricted-role results, unauthorized stable-ID nondisclosure, and
+  server-authoritative counts; and
+- mobile drawer/Create/Profile handoff, one active Search sheet, zero serious/critical
+  axe findings, no overflow at 1440/1024/768/390, and eight deterministic screenshots.
+
 `Review Desk` remains the underlying current workspace for Social. CCX-100 changes
 the enabled shell label while leaving that page renderer and its behavior intact.
 
@@ -147,6 +165,10 @@ Same-origin request failures fail, as do HTTP failures from the boot state, full
 Today summary, campaign command, and tested local-action workflow endpoints. Optional health
 diagnostics may honestly return unavailable without being classified as a broken user
 workflow.
+
+`/api/ui/search` is a critical same-origin path. An aborted Search request caused by a
+new query is an expected cancellation and is not treated as a page error; any other
+Search request failure or HTTP error remains test-failing.
 
 The console baseline is empty. CCX-006 removed the dead Google-hosted Geist request
 without weakening Content Security Policy or adding a replacement network request.
@@ -184,7 +206,8 @@ The design-system test writes review screenshots to
 `docs/ux-vnext/screenshots/ccx-006/`. CCX-100 writes seven desktop-shell review images
 to `docs/ux-vnext/screenshots/ccx-100/`. CCX-101 writes eight responsive-shell review
 images to `docs/ux-vnext/screenshots/ccx-101/`. CCX-103 writes eight Global Create
-review images to `docs/ux-vnext/screenshots/ccx-103/`. These PNGs are intentional
+review images to `docs/ux-vnext/screenshots/ccx-103/`. CCX-104 writes eight Global
+Search review images to `docs/ux-vnext/screenshots/ccx-104/`. These PNGs are intentional
 documentation artifacts rather than failure artifacts; the HTML report, traces,
 videos, and failure screenshots remain generated and ignored.
 

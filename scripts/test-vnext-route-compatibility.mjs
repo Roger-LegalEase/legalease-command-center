@@ -210,7 +210,7 @@ assert.doesNotMatch(vnextFixture, /location\.(?:reload|replace|assign)\s*\(/);
 assert.match(vnextFixture, /Page not found/);
 assert.match(vnextFixture, /The link may be old or incomplete\. No data was changed\./);
 assert.match(vnextFixture, /href="#today"/);
-assert.match(vnextFixture, /href="#operator-search"/);
+assert.match(vnextFixture, /id="vnext-global-search-trigger"/);
 assert.match(shellSource, /syncRouteRecovery/);
 assert.match(shellSource, /renderPageHeader/);
 assert.match(shellSource, /renderButton/);

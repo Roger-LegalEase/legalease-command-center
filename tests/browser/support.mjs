@@ -8,7 +8,8 @@ const criticalPaths = new Set([
   "/api/campaign/command",
   "/api/capture-inbox",
   "/api/daily-run/quick-capture",
-  "/api/runway-inputs"
+  "/api/runway-inputs",
+  "/api/ui/search"
 ]);
 
 function allowedOrigins(baseURL) {
@@ -44,6 +45,7 @@ export const test = playwrightTest.extend({
     });
     page.on("requestfailed", (request) => {
       const url = new URL(request.url());
+      if (origins.has(url.origin) && url.pathname === "/api/ui/search" && /abort/i.test(request.failure()?.errorText || "")) return;
       if (origins.has(url.origin)) failures.push(`requestfailed: ${url.pathname} (${request.failure()?.errorText || "unknown"})`);
     });
     page.on("response", (response) => {

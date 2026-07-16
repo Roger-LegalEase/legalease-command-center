@@ -45,8 +45,10 @@ selected.
 
 The white top bar provides four working controls:
 
-- Search opens the existing `#operator-search` capability. It is a destination link,
-  not a dead input and not a claim of new cross-object search.
+- Search opens the shared CCX-104 Global Search palette documented in
+  `global-search.md`. It searches Posts, Campaigns, Partners, Files, Tasks, and
+  Reports through one compact authorized endpoint and opens exact records. The
+  accurate `Ctrl K` or `⌘ K` hint uses the same desktop/mobile interaction contract.
 - Create opens the shared CCX-103 Global Create menu with Social post, Outreach
   campaign, Partner, File or folder, and Quick note in that order. Each item starts a
   real server-authorized creation workflow documented in `global-create.md`. Task
@@ -56,10 +58,12 @@ The white top bar provides four working controls:
 - Profile opens an accessible menu with the existing Settings destination and Sign
   out behavior. It exposes no session data, role token, credential, or auth detail.
 
-Create and Profile expose `aria-expanded` and `aria-controls`. Global Create supports
-Arrow keys, Home, End, Enter, Space, Escape, outside-click dismissal, focus return,
-and one shared accessible creation sheet on desktop and mobile. Profile retains its
-existing menu behavior.
+Search, Create, and Profile expose the appropriate expanded/control relationships.
+Global Search supports Arrow keys, Home, End, Enter, Escape, focus containment and
+return, result-count announcements, type filters, and memory-only recently opened
+records. Global Create supports Arrow keys, Home, End, Enter, Space, Escape,
+outside-click dismissal, focus return, and one shared accessible creation sheet on
+desktop and mobile. Profile retains its existing menu behavior.
 
 ## Inbox, Le-E, and Settings
 
@@ -122,14 +126,14 @@ chrome. Hash navigation continues through the existing client renderer and issue
 second document request or full-state fetch. Exact HTML, CSS, request, load-time, and
 state-payload measurements are recorded in the CCX-100 pull request.
 
-## Rollback and CCX-102 handoff
+## Rollback and later packet handoff
 
 Unset `COMMAND_CENTER_UX_VNEXT` or set it to the exact string `false`, then restart or
 redeploy. Rollback requires no data migration, route change, cache cleanup, or browser
 preference reset because the flag is server-side and the underlying data contract is
 shared.
 
-CCX-101 keeps the same route registry, five destinations, functional controls, focus
-rules, direct logo asset, feature-flag rollback, and unchanged business and safety
-boundaries across the responsive drawer. CCX-102 may introduce canonical vNext route
-parsing only after preserving every current alias and exact-object link.
+CCX-101 through CCX-104 keep the same route inventory, five destinations, direct logo
+asset, feature-flag rollback, and unchanged business and safety boundaries. CCX-105
+may simplify Today while preserving Global Search, Global Create, exact links, and
+the unchanged flag-off shell.

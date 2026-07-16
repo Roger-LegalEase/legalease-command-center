@@ -9,6 +9,11 @@ import {
   renderGlobalCreateWorkspace
 } from "./global-create.mjs";
 import {
+  globalSearchBrowserSource,
+  renderGlobalSearchDialog,
+  renderGlobalSearchTrigger
+} from "./global-search.mjs";
+import {
   CREATE_MENU_OPTIONS,
   PRIMARY_SHELL_DESTINATIONS,
   SECONDARY_SHELL_CONTROLS,
@@ -29,7 +34,7 @@ const routeRecoveryHtml = `<section class="vnext-route-recovery" data-vnext-rout
   })}
   <div class="vnext-route-recovery-actions">
     ${renderButton({ label:"Go to Today", variant:"link", intent:"primary", link:{ kind:"page", target:"#today" } })}
-    ${renderButton({ label:"Search", variant:"link", intent:"secondary", link:{ kind:"page", target:"#operator-search" } })}
+    ${renderButton({ label:"Search", variant:"link", intent:"secondary", link:{ kind:"page", target:"#search" } })}
   </div>
 </section>`;
 
@@ -64,7 +69,6 @@ function createMenuHtml() {
 }
 
 export function renderVNextDesktopShellChrome() {
-  const search = TOP_BAR_CONTROLS.find((item) => item.id === "search");
   const help = TOP_BAR_CONTROLS.find((item) => item.id === "help");
   return Object.freeze({
     start:`<div class="vnext-shell" data-vnext-shell="desktop">
@@ -88,9 +92,7 @@ export function renderVNextDesktopShellChrome() {
           </button>
           <strong class="vnext-current-context" data-shell-current-context aria-live="polite">Today</strong>
         </div>
-        <a class="vnext-search-link" href="${escapeAttribute(routeHref(search.route))}" data-shell-destination="${escapeAttribute(search.label)}">
-          <span class="vnext-topbar-icon" aria-hidden="true">⌕</span><span class="vnext-topbar-label">${escapeHtml(search.label)}</span>
-        </a>
+        ${renderGlobalSearchTrigger()}
         <div class="vnext-topbar-actions">
           <div class="vnext-menu">
             <button class="vnext-create-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="${GLOBAL_CREATE_MENU_ID}">Create</button>
@@ -110,6 +112,7 @@ export function renderVNextDesktopShellChrome() {
       <div class="vnext-routed-content">`,
     end:`</div>
       ${renderGlobalCreateWorkspace()}
+      ${renderGlobalSearchDialog()}
     </div>
   </div>`
   });
@@ -131,7 +134,6 @@ function shellClientScript() {
     const createTrigger = document.querySelector(".vnext-create-trigger");
     const drawerBackgroundTargets = [
       document.querySelector(".vnext-mobile-leading"),
-      document.querySelector(".vnext-search-link"),
       document.querySelector(".vnext-routed-content"),
       ...[...document.querySelectorAll(".vnext-topbar-actions > *")].filter((control) => !control.contains(createTrigger))
     ].filter(Boolean);
@@ -214,6 +216,7 @@ function shellClientScript() {
     }
 
     function openMenu(trigger, menu) {
+      document.dispatchEvent(new CustomEvent("vnext:request-close-global-search"));
       menuPairs.forEach(([otherTrigger, otherMenu]) => {
         if (otherMenu !== menu) closeMenu(otherTrigger, otherMenu, false);
       });
@@ -351,6 +354,7 @@ function shellClientScript() {
     });
     window.addEventListener("hashchange", () => setTimeout(syncShell, 0));
     document.addEventListener("vnext:close-navigation", () => closeNavigationDrawer(false));
+    document.addEventListener("vnext:close-shell-popovers", () => closeAllMenus(false));
     navigationMedia.addEventListener("change", syncResponsiveMode);
     const app = document.querySelector("main#app");
     if (app) new MutationObserver(syncShell).observe(app, { childList:true, subtree:false });
@@ -373,14 +377,18 @@ function applyVNextRouteParser(html) {
       const artifactRef = vnextRouteResolution.kind === "object"
         ? { collection:vnextRouteResolution.sourceKind, itemId:vnextRouteResolution.sourceId }
         : null;
+      const isGlobalSearchRoute = vnextRouteResolution.kind === "page"
+        && ["search", "operator-search"].includes(vnextRouteResolution.canonicalRoute);
       const normalizedPage = artifactRef
         ? "item"
+        : isGlobalSearchRoute ? "today"
         : vnextRouteResolution.kind === "page" ? vnextRouteResolution.canonicalRoute : "today";
       const pageId = normalizedPage;
       currentPageId = pageId;
       document.body.classList.toggle("ck-wash", ["today", "overview"].includes(pageId));
       if (pageId === "decisions" && !companyQueue && !companyQueueLoading) loadDecisionsQueue();
       const canCanonicalize = !pathRoute
+        && !isGlobalSearchRoute
         && (vnextRouteResolution.kind === "page" || vnextRouteResolution.kind === "object")
         && vnextRouteResolution.safeHash;
       if (canCanonicalize && location.hash !== vnextRouteResolution.safeHash) {
@@ -415,7 +423,7 @@ export function renderVNextDesktopShell(legacyHtml = "") {
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${globalCreateBrowserSource()}</script>\n</body>`);
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${globalCreateBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n</body>`);
   return html;
 }
 

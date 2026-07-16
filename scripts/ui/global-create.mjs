@@ -243,6 +243,8 @@ export function globalCreateBrowserSource() {
 
     async function openMenu({ focusFirst = false } = {}) {
       document.dispatchEvent(new CustomEvent("vnext:close-navigation"));
+      document.dispatchEvent(new CustomEvent("vnext:request-close-global-search"));
+      document.dispatchEvent(new CustomEvent("vnext:close-shell-popovers"));
       await loadCapabilities();
       menu.hidden = false;
       trigger.setAttribute("aria-expanded", "true");
@@ -395,6 +397,10 @@ export function globalCreateBrowserSource() {
       if (!first || !last) return;
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    });
+    document.addEventListener("vnext:request-close-global-create", (event) => {
+      closeMenu({ returnFocus:false });
+      if (!closeWorkspace({ force:false, returnFocus:false })) event.preventDefault();
     });
   })();`;
 }

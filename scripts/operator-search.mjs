@@ -1,5 +1,6 @@
 import { routeCaptureInboxItem } from "./lee-quick-capture.mjs";
 import { rcapHandoffPacketKey, rcapReviewQueue } from "./review-approval-engine.mjs";
+import { compactSearchText, searchRecordUpdatedAt } from "./search-index-helpers.mjs";
 import { updateTaskInState } from "./tasks-engine.mjs";
 
 const forbiddenActions = new Set([
@@ -16,15 +17,8 @@ function list(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function compact(value = "", fallback = "Untitled") {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
-  if (!text) return fallback;
-  return text.length > 220 ? `${text.slice(0, 217).trim()}...` : text;
-}
-
-function updatedAt(item = {}) {
-  return item.updated_at || item.updatedAt || item.review_updated_at || item.generated_at || item.generatedAt || item.created_at || item.createdAt || item.timestamp || "";
-}
+export const compact = compactSearchText;
+export const updatedAt = searchRecordUpdatedAt;
 
 function result({
   id,

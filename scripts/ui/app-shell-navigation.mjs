@@ -22,7 +22,7 @@ export const SECONDARY_SHELL_CONTROLS = list([
 ]);
 
 export const TOP_BAR_CONTROLS = list([
-  { id:"search", label:GLOBAL_UTILITIES.search, kind:"route", route:"operator-search" },
+  { id:"search", label:GLOBAL_UTILITIES.search, kind:"dialog" },
   { id:"create", label:GLOBAL_UTILITIES.create, kind:"menu" },
   { id:"help", label:GLOBAL_UTILITIES.help, kind:"route", route:"operator-manual" },
   { id:"profile", label:GLOBAL_UTILITIES.profile, kind:"menu" }
