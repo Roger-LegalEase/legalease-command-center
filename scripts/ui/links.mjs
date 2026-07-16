@@ -1,4 +1,5 @@
 import { escapeAttribute, escapeHtml } from "./html.mjs";
+import { buildGenericItemLink, resolveRouteCompatibility } from "./route-compatibility.mjs";
 
 const clean = (value = "") => String(value ?? "").trim();
 
@@ -17,13 +18,11 @@ export function normalizeSourceLink(input) {
 
 export function normalizeRecordDeepLink(input = {}) {
   if (!input || typeof input !== "object") return null;
-  const collection = clean(input.collection);
-  const itemId = clean(input.itemId);
-  if (!collection || !itemId || !/^[a-z0-9_-]+$/i.test(collection)) return null;
-  return {
-    kind: "record",
-    target: `#item/${collection}/${encodeURIComponent(itemId)}`
-  };
+  if (clean(input.target)) {
+    const resolved = resolveRouteCompatibility(clean(input.target));
+    return resolved.kind === "object" ? { kind:"record", target:resolved.safeHash } : null;
+  }
+  return buildGenericItemLink({ collection:clean(input.collection), sourceId:clean(input.itemId) });
 }
 
 export function safeLinkDetails(input) {

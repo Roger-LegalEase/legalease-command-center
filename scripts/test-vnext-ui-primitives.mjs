@@ -262,7 +262,7 @@ for (const [file, source] of Object.entries(moduleSources)) {
   assert.doesNotMatch(source, /\b(?:readFile|writeFile|createServer|listen|setTimeout|setInterval)\s*\(/);
   assert.doesNotMatch(source, /\bconsole\s*\.|\bimport\s*\(/);
   for (const importLine of source.match(/^\s*import[^\n]+$/gm) || []) {
-    assert.match(importLine, /from "\.\/(?:html|links)\.mjs";/, `${file} imports a non-UI runtime layer: ${importLine}`);
+    assert.match(importLine, /from "\.\/(?:html|links|route-compatibility)\.mjs";/, `${file} imports a non-UI runtime layer: ${importLine}`);
   }
   assert.doesNotMatch(source, /from ["'][^"']*(?:preview-server|storage|database|network|state|server|outreach|sending|publish|business-engine)[^"']*["']/i);
 }

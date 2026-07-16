@@ -1,12 +1,11 @@
 import { APPROVED_WHITE_LOGO_PATH, TOKEN_STYLESHEET_PATH } from "./brand-contract.mjs";
 import { escapeAttribute, escapeHtml } from "./html.mjs";
+import { renderButton, renderPageHeader } from "./primitives.mjs";
+import { routeCompatibilityBrowserSource } from "./route-compatibility.mjs";
 import {
   CREATE_MENU_OPTIONS,
-  ITEM_COLLECTION_DESTINATIONS,
   PRIMARY_SHELL_DESTINATIONS,
   SECONDARY_SHELL_CONTROLS,
-  SHELL_ALIAS_TARGETS,
-  SHELL_ROUTE_DESTINATIONS,
   TOP_BAR_CONTROLS
 } from "./app-shell-navigation.mjs";
 
@@ -16,6 +15,17 @@ export const RESPONSIVE_NAVIGATION_DRAWER_ID = "vnext-navigation-drawer";
 
 const assetUrl = (path) => `/${String(path || "").replace(/^\/+/, "")}`;
 const routeHref = (route) => `#${String(route || "today").replace(/^#/, "")}`;
+
+const routeRecoveryHtml = `<section class="vnext-route-recovery" data-vnext-route-recovery aria-label="Route recovery">
+  ${renderPageHeader({
+    title:"Page not found",
+    description:"The link may be old or incomplete. No data was changed."
+  })}
+  <div class="vnext-route-recovery-actions">
+    ${renderButton({ label:"Go to Today", variant:"link", intent:"primary", link:{ kind:"page", target:"#today" } })}
+    ${renderButton({ label:"Search", variant:"link", intent:"secondary", link:{ kind:"page", target:"#operator-search" } })}
+  </div>
+</section>`;
 
 function primaryNavigationHtml() {
   return PRIMARY_SHELL_DESTINATIONS.map((item, index) => `
@@ -103,15 +113,11 @@ export function renderVNextDesktopShellChrome() {
 }
 
 function shellClientScript() {
-  const routeDestinations = JSON.stringify(SHELL_ROUTE_DESTINATIONS).replaceAll("<", "\\u003c");
-  const aliasTargets = JSON.stringify(SHELL_ALIAS_TARGETS).replaceAll("<", "\\u003c");
-  const itemDestinations = JSON.stringify(ITEM_COLLECTION_DESTINATIONS).replaceAll("<", "\\u003c");
+  const recovery = JSON.stringify(routeRecoveryHtml).replaceAll("<", "\\u003c");
   return `<script>
   (() => {
     "use strict";
-    const routeDestinations = Object.freeze(${routeDestinations});
-    const aliasTargets = Object.freeze(${aliasTargets});
-    const itemDestinations = Object.freeze(${itemDestinations});
+    const routeRecoveryHtml = ${recovery};
     const menuPairs = [
       [document.querySelector(".vnext-create-trigger"), document.querySelector("#vnext-create-menu")],
       [document.querySelector(".vnext-profile-trigger"), document.querySelector("#vnext-profile-menu")]
@@ -123,19 +129,12 @@ function shellClientScript() {
     const shellStage = document.querySelector(".vnext-shell-stage");
     const navigationMedia = window.matchMedia("(max-width: ${RESPONSIVE_SHELL_BREAKPOINT_PX}px)");
     const drawerFocusableSelector = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
-    function requestedRoute() {
+    function currentRouteResolution() {
       const path = String(location.pathname || "/").replace(/^\\/+|\\/+$/g, "");
-      return String(location.hash || (path === "sources/import-social-calendar" ? "#sources" : "#cockpit")).replace(/^#/, "").split("?")[0];
-    }
-
-    function destinationForLocation() {
-      const requested = requestedRoute();
-      if (requested.startsWith("item/")) {
-        const collection = String(requested.split("/")[1] || "").replace(/[^a-zA-Z0-9_-]/g, "");
-        return itemDestinations[collection] || "Today";
-      }
-      const canonical = aliasTargets[requested] || requested;
-      return routeDestinations[canonical] || "Today";
+      const requested = String(location.hash || (path === "sources/import-social-calendar" ? "#sources" : "#cockpit"));
+      const active = window.__LE_VNEXT_ACTIVE_ROUTE;
+      if (active && (active.kind === "unknown" || active.kind === "unsafe" || active.safeHash === location.hash)) return active;
+      return window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve(requested);
     }
 
     function realInboxCount() {
@@ -165,9 +164,22 @@ function shellClientScript() {
       app.querySelectorAll("main").forEach((nested) => nested.setAttribute("role", "presentation"));
     }
 
+    function syncRouteRecovery(resolution) {
+      const app = document.querySelector("main#app");
+      if (!app) return;
+      const needsRecovery = resolution.kind === "unknown" || resolution.kind === "unsafe";
+      if (needsRecovery && !app.querySelector("[data-vnext-route-recovery]")) {
+        app.innerHTML = routeRecoveryHtml;
+        app.dataset.vnextRouteState = resolution.kind;
+      } else if (!needsRecovery) {
+        delete app.dataset.vnextRouteState;
+      }
+    }
+
     function syncShell() {
       normalizeNestedMainRegions();
-      const destination = destinationForLocation();
+      const resolution = currentRouteResolution();
+      const destination = resolution.destination || "Today";
       document.body.dataset.shellDestination = destination;
       const currentContext = document.querySelector("[data-shell-current-context]");
       if (currentContext) currentContext.textContent = destination;
@@ -178,6 +190,7 @@ function shellClientScript() {
         else control.removeAttribute("aria-current");
       });
       syncInboxCount();
+      syncRouteRecovery(resolution);
     }
 
     function closeMenu(trigger, menu, returnFocus = false) {
@@ -334,6 +347,36 @@ function shellClientScript() {
   </script>`;
 }
 
+function applyVNextRouteParser(html) {
+  const startMarker = '      const pathRoute = String(location.pathname || "/").replace(';
+  const endMarker = '      if (pageId === "safe-mode") {';
+  const start = html.indexOf(startMarker);
+  const end = html.indexOf(endMarker, start);
+  if (start < 0 || end < 0) return html;
+  const parser = `      const pathRoute = String(location.pathname || "/").replace(/^\\/+|\\/+$/g, "");
+      const requestedHash = String(location.hash || (pathRoute === "sources/import-social-calendar" ? "#sources" : "#cockpit"));
+      const vnextRouteResolution = window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve(requestedHash);
+      window.__LE_VNEXT_ACTIVE_ROUTE = vnextRouteResolution;
+      const artifactRef = vnextRouteResolution.kind === "object"
+        ? { collection:vnextRouteResolution.sourceKind, itemId:vnextRouteResolution.sourceId }
+        : null;
+      const normalizedPage = artifactRef
+        ? "item"
+        : vnextRouteResolution.kind === "page" ? vnextRouteResolution.canonicalRoute : "today";
+      const pageId = normalizedPage;
+      currentPageId = pageId;
+      document.body.classList.toggle("ck-wash", ["today", "overview"].includes(pageId));
+      if (pageId === "decisions" && !companyQueue && !companyQueueLoading) loadDecisionsQueue();
+      const canCanonicalize = !pathRoute
+        && (vnextRouteResolution.kind === "page" || vnextRouteResolution.kind === "object")
+        && vnextRouteResolution.safeHash;
+      if (canCanonicalize && location.hash !== vnextRouteResolution.safeHash) {
+        history.replaceState(null, "", vnextRouteResolution.safeHash);
+      }
+`;
+  return html.slice(0, start) + parser + html.slice(end);
+}
+
 function removeLegacyPrimaryHeader(html) {
   const start = html.indexOf('<header class="app-topbar">');
   if (start < 0) return html;
@@ -350,9 +393,10 @@ export function renderVNextDesktopShell(legacyHtml = "") {
 
   const chrome = renderVNextDesktopShellChrome();
   let html = removeLegacyPrimaryHeader(source);
+  html = applyVNextRouteParser(html);
   html = html.replace(
     "</head>",
-    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n</head>`
+    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
   );
   html = html.replace(bodyMarker, '<body class="vnext-app-shell" data-command-center-shell="vnext">');
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);

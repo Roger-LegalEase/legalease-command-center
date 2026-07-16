@@ -65,6 +65,29 @@ function serverEnvironment({ dataPath, vnext }) {
   };
 }
 
+function browserFixtureState(seed) {
+  const campaign = Object.freeze({
+    id:"browser-campaign-001",
+    name:"Example outreach campaign",
+    title:"Example outreach campaign",
+    status:"draft",
+    channel:"email",
+    createdAt:"2026-07-15T12:00:00.000Z"
+  });
+  const partner = Object.freeze({
+    id:"browser-partner-001",
+    name:"Example community partner",
+    organization:"Example community partner",
+    status:"qualified",
+    createdAt:"2026-07-15T12:00:00.000Z"
+  });
+  return {
+    ...seed,
+    campaigns:[campaign, ...(Array.isArray(seed.campaigns) ? seed.campaigns : []).filter((item) => item?.id !== campaign.id)],
+    partners:[partner, ...(Array.isArray(seed.partners) ? seed.partners : []).filter((item) => item?.id !== partner.id)]
+  };
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -174,10 +197,16 @@ function runPlaywright(env, args) {
   });
 }
 
-await readFile(seedPath, "utf8");
+const fixtureState = browserFixtureState(JSON.parse(await readFile(seedPath, "utf8")));
 await rm(path.join(projectRoot, "playwright-report"), { recursive:true, force:true });
 await rm(artifactDir, { recursive:true, force:true });
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "legalease-browser-tests-"));
+const legacyDataPath = path.join(tempRoot, "legacy-state.json");
+const vnextDataPath = path.join(tempRoot, "vnext-state.json");
+await Promise.all([
+  writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 })
+]);
 const servers = [];
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
@@ -191,12 +220,12 @@ let exitCode = 1;
 try {
   servers.push(await startServer({
     name:"legacy",
-    dataPath:path.join(tempRoot, "legacy-state.json"),
+    dataPath:legacyDataPath,
     vnext:false
   }));
   servers.push(await startServer({
     name:"vnext",
-    dataPath:path.join(tempRoot, "vnext-state.json"),
+    dataPath:vnextDataPath,
     vnext:true
   }));
   const runnerEnv = {
