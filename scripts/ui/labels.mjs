@@ -45,6 +45,14 @@ export const GLOBAL_UTILITIES = record({
   profile: "Profile"
 });
 
+export const GLOBAL_CREATE_LABELS = record({
+  socialPost: "Social post",
+  outreachCampaign: "Outreach campaign",
+  partner: "Partner",
+  fileOrFolder: "File or folder",
+  quickNote: "Quick note"
+});
+
 export const CORE_OBJECTS = record({
   post: "Post",
   campaign: "Campaign",
@@ -202,6 +210,7 @@ export const founderLanguageRegistry = record({
   productSentence: PRODUCT_SENTENCE,
   primaryDestinations: PRIMARY_DESTINATIONS,
   globalUtilities: GLOBAL_UTILITIES,
+  globalCreate: GLOBAL_CREATE_LABELS,
   coreObjects: CORE_OBJECTS,
   workflowStatuses: WORKFLOW_STATUSES,
   readinessAndSafety: READINESS_AND_SAFETY_LABELS,

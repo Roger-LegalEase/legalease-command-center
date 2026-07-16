@@ -34,7 +34,7 @@ assert.deepEqual(RESPONSIVE_SHELL_CONTRACT.primaryDestinations.map((item) => ite
   "Today", "Social", "Outreach", "Partners", "Files"
 ]);
 assert.deepEqual(RESPONSIVE_SHELL_CONTRACT.secondaryControls.map((item) => item.label), ["Inbox", "Le-E", "Settings"]);
-assert.deepEqual(RESPONSIVE_SHELL_CONTRACT.createOptions.map((item) => item.label), ["Social post", "Task"]);
+assert.deepEqual(RESPONSIVE_SHELL_CONTRACT.createOptions.map((item) => item.label), ["Social post", "Outreach campaign", "Partner", "File or folder", "Quick note"]);
 assert.equal(Object.isFrozen(RESPONSIVE_SHELL_CONTRACT), true);
 assert.equal(Object.isFrozen(RESPONSIVE_SHELL_CONTRACT.requiredWidths), true);
 
@@ -50,9 +50,7 @@ assert.equal((chrome.start.match(/class="vnext-primary-navigation"/g) || []).len
 for (const label of ["Today", "Social", "Outreach", "Partners", "Files", "Inbox", "Le-E", "Settings"]) {
   assert.match(chrome.start, new RegExp(`>${label}<`), `${label} must remain in the responsive navigation.`);
 }
-for (const unsupported of ["Quick capture", "Campaign", "Partner", "File or document record"]) {
-  assert.doesNotMatch(chrome.start, new RegExp(`>${unsupported}<`), `${unsupported} must remain deferred.`);
-}
+assert.doesNotMatch(chrome.start, />Task</, "Task remains available in Today and Tasks, not Global Create.");
 assert.doesNotMatch(chrome.start, /monogram|data-short-label|LegalEase mark/i, "The responsive shell must not invent a compact brand mark.");
 
 for (const contract of [
@@ -65,22 +63,26 @@ for (const contract of [
   ["body lock", /document\.body\.classList\.add\("vnext-navigation-open"\)/],
   ["overlay", /drawerOverlay\.hidden = false/],
   ["route close", /event\.target\.closest\?\.\("\.vnext-sidebar a, \.vnext-sidebar \[data-shell-action\]"\)/],
-  ["responsive reset", /navigationMedia\.addEventListener\("change", syncResponsiveMode\)/]
+  ["responsive reset", /navigationMedia\.addEventListener\("change", syncResponsiveMode\)/],
+  ["Create handoff", /document\.addEventListener\("vnext:close-navigation", \(\) => closeNavigationDrawer\(false\)\)/]
 ]) {
   assert.match(shellSource, contract[1], `The responsive client must implement ${contract[0]}.`);
 }
-assert.match(shellSource, /if \(shellStage\) shellStage\.inert = true/);
+assert.match(shellSource, /function setDrawerBackgroundInert\(inert\)/);
+assert.match(shellSource, /setDrawerBackgroundInert\(true\)/);
+assert.match(shellSource, /setDrawerBackgroundInert\(false\)/);
 assert.match(shellSource, /drawer\.setAttribute\("aria-modal", "true"\)/);
 assert.match(shellSource, /drawer\.setAttribute\("inert", ""\)/);
 
 assert.match(cssSource, /@media \(max-width: 860px\)/);
-assert.match(cssSource, /width:\s*var\(--le-sidebar-mobile\)/);
+assert.match(cssSource, /width:\s*min\(var\(--le-sidebar-mobile\), calc\(100vw - 6rem\)\)/);
 assert.match(cssSource, /background:\s*var\(--le-navy-950\)/);
 assert.match(cssSource, /background:\s*var\(--le-orange-600\)/);
 assert.match(cssSource, /min-height:\s*var\(--le-touch-target\)/);
 assert.match(cssSource, /overflow:\s*hidden/);
 assert.match(cssSource, /transform:\s*translateX\(-100%\)/);
 assert.match(cssSource, /\.vnext-app-shell\.vnext-navigation-open \.vnext-sidebar/);
+assert.match(cssSource, /\.vnext-app-shell\.vnext-navigation-open \.vnext-create-trigger/);
 assert.match(cssSource, /@media \(prefers-reduced-motion: reduce\)/);
 assert.doesNotMatch(cssSource, /#[0-9a-fA-F]{3,8}\b/, "Responsive styling must use approved tokens.");
 assert.doesNotMatch(cssSource, /(?:linear|radial)-gradient|backdrop-filter|glass/i);
@@ -97,7 +99,7 @@ assert.equal(resolveShellDestination("#item/reports/report-1"), "Files");
 assert.equal(resolveShellDestination("#unknown-responsive-route"), "Today");
 assert.deepEqual(PRIMARY_SHELL_DESTINATIONS.map((item) => item.label), ["Today", "Social", "Outreach", "Partners", "Files"]);
 assert.deepEqual(SECONDARY_SHELL_CONTROLS.map((item) => item.label), ["Inbox", "Le-E", "Settings"]);
-assert.deepEqual(CREATE_MENU_OPTIONS.map((item) => item.label), ["Social post", "Task"]);
+assert.deepEqual(CREATE_MENU_OPTIONS.map((item) => item.label), ["Social post", "Outreach campaign", "Partner", "File or folder", "Quick note"]);
 
 const legacyFixture = `<!doctype html><html><head><link rel="stylesheet" href="/assets/ui/tokens.css" /></head><body>
   <div class="shell"><header class="app-topbar"><nav class="top-nav" aria-label="Primary"><a href="#today">Today</a></nav></header><main id="app"><h1>Current page</h1></main></div>

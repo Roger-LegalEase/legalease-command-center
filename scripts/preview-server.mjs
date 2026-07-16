@@ -146,10 +146,15 @@ import { renderShellBoundary } from "./ui/shell-boundary.mjs";
 import { DESIGN_SYSTEM_SHOWCASE_PATH } from "./ui/brand-contract.mjs";
 import { renderDesignSystemShowcase } from "./ui/design-system-showcase.mjs";
 import { renderVNextDesktopShell } from "./ui/app-shell.mjs";
+import { buildGlobalCreateViewModel, GLOBAL_CREATE_OPTIONS } from "./ui/global-create.mjs";
+import { createGlobalObject, GLOBAL_CREATE_ENDPOINTS, globalCreateSafeError } from "./global-create-service.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
 const commandCenterVNextConfig = readCommandCenterVNextConfig(process.env);
+const globalCreateKindsByPath = Object.freeze(Object.fromEntries(
+  Object.entries(GLOBAL_CREATE_ENDPOINTS).map(([kind, endpoint]) => [endpoint, kind])
+));
 const port = Number(process.env.PORT ?? 3001);
 function productionBindHost() {
   if (process.env.HOST) return process.env.HOST;
@@ -34903,6 +34908,16 @@ function renderCommandCenterApp() {
   });
 }
 
+function globalCreateCapabilityViewModel(role = "viewer") {
+  return buildGlobalCreateViewModel(Object.fromEntries(GLOBAL_CREATE_OPTIONS.map((option) => {
+    const decision = canPerformEndpoint(role, "POST", option.endpoint);
+    return [option.id, {
+      enabled:decision.ok,
+      reason:decision.ok ? "" : `Your current access does not allow creating ${option.label.toLowerCase()} records.`
+    }];
+  })));
+}
+
 // Company-memory projection memo (2026-07-12 latency fix). projectCompanyMemory is pure over
 // the domain ledgers, but /api/queue, /api/today/summary, and every queue transition re-ran it
 // per request — a full re-derivation over thousands of contact/org rows on top of the state
@@ -35045,6 +35060,10 @@ async function handleRequest(request, response) {
       }
       if (!ownerStarted.ok || providerError || !verified.ok) return;
     }
+    else if (url.pathname.startsWith("/api/ui/create/")) {
+      sendJson(response, { error:"Your current access does not allow this creation action. Nothing was saved." }, accessDecision.status || 403);
+      return;
+    }
     else {
       if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") sendAuthRequired(response, accessDecision, { status:200, headOnly:request.method === "HEAD", message:url.searchParams.get("linkedinConnectionMessage") || url.searchParams.get("xConnectionMessage") || url.searchParams.get("metaConnectionMessage") || url.searchParams.get("googleConnectionMessage") || "" });
       else sendJson(response, { error: accessDecision.reason, requiredPermission: accessDecision.requiredPermission, actor: publicActor(accessDecision.actor) }, accessDecision.status || 403);
@@ -35097,6 +35116,46 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/auth/diagnostics" && request.method === "GET") {
     sendJson(response, { hostedMode: isHostedProduction(process.env), sessionAuthenticated: true, role: accessDecision.actor.role });
+    return;
+  }
+
+  if (url.pathname === "/api/ui/create/capabilities" && request.method === "GET") {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { error:"Create options are unavailable." }, 404);
+      return;
+    }
+    const actor = publicActor(accessDecision.actor);
+    sendJson(response, globalCreateCapabilityViewModel(actor?.role || "viewer"));
+    return;
+  }
+
+  const globalCreateKind = globalCreateKindsByPath[url.pathname] || "";
+  if (globalCreateKind && request.method === "POST") {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { error:"Create workflow is unavailable." }, 404);
+      return;
+    }
+    const input = await readJson(request);
+    const actor = publicActor(accessDecision.actor);
+    const bodyRoleDecision = canPerformEndpoint(actor?.role || "viewer", request.method, url.pathname, input);
+    if (!bodyRoleDecision.ok) {
+      sendJson(response, { error:"Your current access does not allow this creation action. Nothing was saved." }, 403);
+      return;
+    }
+    try {
+      const created = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = createGlobalObject(currentState, globalCreateKind, input, {
+          actor,
+          now:new Date().toISOString()
+        });
+        if (!result.result.alreadyExisted) await writeChangedCollections(currentState, result.state);
+        return result;
+      });
+      sendJson(response, created.result);
+    } catch (error) {
+      sendJson(response, { error:globalCreateSafeError(globalCreateKind, error) }, Number(error?.status || 400));
+    }
     return;
   }
 

@@ -48,7 +48,8 @@ test("the tablet and mobile drawer traps focus and closes through Escape or the 
     await openResponsive(page, width);
     const { drawer, trigger } = await openDrawer(page);
     await expect(page.locator("body")).toHaveClass(/\bvnext-navigation-open\b/);
-    await expect(page.locator(".vnext-shell-stage")).toHaveAttribute("inert", "");
+    await expect(page.locator(".vnext-routed-content")).toHaveAttribute("inert", "");
+    await expect(page.getByRole("button", { name:"Create", exact:true })).not.toHaveAttribute("inert", "");
     await drawer.getByRole("link", { name:"LegalEase Command Center home" }).focus();
     await page.keyboard.press("Shift+Tab");
     await expect(drawer.getByRole("link", { name:"Settings", exact:true })).toBeFocused();
@@ -83,7 +84,7 @@ test("all five destinations navigate through the mobile drawer and keep active s
   await expect(page.locator(".app-topbar")).toHaveCount(0);
 });
 
-test("mobile utilities and the two supported Create flows remain reachable", async ({ page }) => {
+test("mobile utilities and the shared Global Create workflow remain reachable", async ({ page }) => {
   await openResponsive(page, 390);
   let opened = await openDrawer(page);
   await opened.drawer.getByRole("link", { name:"Inbox", exact:true }).click();
@@ -104,12 +105,11 @@ test("mobile utilities and the two supported Create flows remain reachable", asy
   await expect(create).toBeVisible();
   await create.click();
   await expect(page.getByRole("menu", { name:"Create" })).toBeVisible();
-  await expect(page.getByRole("menuitem")).toHaveCount(2);
-  await page.getByRole("menuitem", { name:/Social post/ }).click();
-  await expect(page).toHaveURL(/#content-bank$/);
-  await create.click();
-  await page.getByRole("menuitem", { name:/Task/ }).click();
-  await expect(page).toHaveURL(/#tasks$/);
+  await expect(page.getByRole("menu", { name:"Create" }).getByRole("menuitem")).toHaveCount(5);
+  await page.getByRole("menuitem", { name:/Quick note/ }).click();
+  await expect(page.getByRole("dialog", { name:"Create" })).toBeVisible();
+  await expect(page.getByRole("heading", { name:"Quick note" })).toBeVisible();
+  await page.getByRole("button", { name:"Cancel" }).click();
 });
 
 test("mobile aliases, record links, unknown fallback, and the legacy shell stay compatible", async ({ page, baseURL }) => {

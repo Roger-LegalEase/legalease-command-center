@@ -4,9 +4,10 @@
 
 CCX-005 added Chromium tests for the current Command Center, CCX-006 extended the
 suite to the protected design-system showcase, CCX-100 added the production vNext
-desktop shell, and CCX-101 covers its responsive navigation drawer. The suite exercises the
-served application in a real browser; it does not replace the existing Node, route,
-security, migration, restore, or source-level contracts.
+desktop shell, CCX-101 covers its responsive navigation drawer, CCX-102 covers route
+compatibility, and CCX-103 covers Global Create. The suite exercises the served
+application in a real browser; it does not replace the existing Node, route, security,
+migration, restore, or source-level contracts.
 
 ## Dependencies and commands
 
@@ -28,8 +29,10 @@ complete suite twice with `npm run test:browser -- --repeat-each=2`.
 
 1. It removes only generated `test-results/` and `playwright-report/` output.
 2. It creates an operating-system temporary directory.
-3. It starts two copies of the existing `scripts/preview-server.mjs` on port `0`
-   at `127.0.0.1`: the default shell and the server-enabled vNext shell.
+3. It starts four copies of the existing `scripts/preview-server.mjs` on port `0`
+   at `127.0.0.1`: the default shell, the server-enabled vNext shell, a disposable
+   owner fixture for creation mutations, and an isolated restricted-role vNext
+   fixture used for authorization checks.
 4. Each server bootstraps an independent mutable JSON state file from the tracked
    `data/seed/social-command-center.seed.json` seed.
 5. It waits for the real `/api/health` contract to return `{ "status": "ok" }`.
@@ -46,9 +49,10 @@ fetch deterministically. Chromium fulfills non-loopback resource requests with a
 empty local response, so the test never contacts a provider or font host.
 
 Every email, outreach, alert, social-publishing, provider-webhook, and discovery gate
-is explicitly off. The Daily Run runway-input save is the only mutating smoke action.
-It writes only to the disposable fixture and the test proves the safety posture is
-unchanged.
+is explicitly off. Mutating coverage is limited to the Daily Run runway-input save and
+CCX-103's inert Post, Campaign, Partner, document-record, and internal-note creation
+flows. Each writes only to disposable fixture state; tests verify that sending,
+publishing, approvals, recipient enrollment, and live gates remain unchanged.
 
 ## Browser configuration
 
@@ -123,6 +127,16 @@ The five CCX-101 tests additionally cover:
   768, or 390 pixels, direct undistorted logo use, and eight deterministic responsive
   screenshots.
 
+The four CCX-103 tests additionally cover:
+
+- the exact five-item Create contract and desktop/mobile keyboard behavior;
+- real inert creation of one Post, Campaign, Partner, document record, and internal
+  note with exact-record navigation and no sending or publishing;
+- server-derived restricted-role behavior, validation, dirty-close confirmation,
+  and idempotent retry; and
+- zero serious/critical axe findings, no menu or sheet overflow, and eight
+  deterministic Global Create screenshots.
+
 `Review Desk` remains the underlying current workspace for Social. CCX-100 changes
 the enabled shell label while leaving that page renderer and its behavior intact.
 
@@ -160,16 +174,19 @@ uploads `playwright-report/` and `test-results/` for 14 days. Mutable fixture st
 outside those directories and is deleted, so it cannot become an artifact.
 
 Locally, open `playwright-report/index.html` for the HTML report or inspect the trace
-path printed by Playwright. Server logs are `test-results/browser-server-legacy.log`
-and `test-results/browser-server-vnext.log`; they are redacted and do
-not contain request payloads.
+path printed by Playwright. Server logs are `test-results/browser-server-legacy.log`,
+`test-results/browser-server-vnext.log`,
+`test-results/browser-server-create.log`, and
+`test-results/browser-server-restricted.log`; they are redacted and do not contain
+request payloads.
 
 The design-system test writes review screenshots to
 `docs/ux-vnext/screenshots/ccx-006/`. CCX-100 writes seven desktop-shell review images
 to `docs/ux-vnext/screenshots/ccx-100/`. CCX-101 writes eight responsive-shell review
-images to `docs/ux-vnext/screenshots/ccx-101/`. These PNGs are intentional documentation
-artifacts rather than failure artifacts; the HTML report, traces, videos, and failure
-screenshots remain generated and ignored.
+images to `docs/ux-vnext/screenshots/ccx-101/`. CCX-103 writes eight Global Create
+review images to `docs/ux-vnext/screenshots/ccx-103/`. These PNGs are intentional
+documentation artifacts rather than failure artifacts; the HTML report, traces,
+videos, and failure screenshots remain generated and ignored.
 
 If Chromium is missing, rerun `npm run test:browser:install`. If startup fails, inspect
 the server logs. A clean checkout needs no untracked local state file and no service

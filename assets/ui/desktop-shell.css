@@ -285,6 +285,11 @@ body.vnext-app-shell {
   font-size: var(--le-type-xs);
 }
 
+.vnext-menu-panel button[disabled] {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 .vnext-profile-menu {
   width: 12rem;
 }
@@ -330,15 +335,24 @@ body.vnext-app-shell {
     display: block;
   }
 
-  .vnext-app-shell.vnext-navigation-open .vnext-shell-stage {
-    pointer-events: none;
+  .vnext-app-shell.vnext-navigation-open .vnext-topbar {
+    position: static;
+    z-index: auto;
+  }
+
+  .vnext-app-shell.vnext-navigation-open .vnext-create-trigger {
+    position: fixed;
+    top: var(--le-space-2);
+    right: var(--le-space-3);
+    z-index: calc(var(--le-z-modal) + 1);
+    pointer-events: auto;
   }
 
   .vnext-app-shell .vnext-sidebar {
     position: fixed;
     inset: 0 auto 0 0;
     z-index: var(--le-z-modal);
-    width: var(--le-sidebar-mobile);
+    width: min(var(--le-sidebar-mobile), calc(100vw - 6rem));
     height: 100dvh;
     padding: var(--le-space-5) var(--le-space-4);
     border-right: 1px solid var(--le-navy-800);
@@ -551,6 +565,157 @@ body.vnext-app-shell {
   flex-wrap: wrap;
   gap: var(--le-space-3);
   margin-top: var(--le-space-6);
+}
+
+.vnext-app-shell.vnext-create-open {
+  overflow: hidden;
+}
+
+.vnext-create-backdrop:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: var(--le-z-overlay);
+  display: block;
+  background: var(--le-backdrop);
+}
+
+.vnext-create-workspace:not([hidden]) {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: var(--le-z-modal);
+  width: min(36rem, 100vw);
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--le-space-4);
+  overflow-y: auto;
+  padding: var(--le-space-6);
+  border-left: var(--le-border-thin);
+  background: var(--le-surface);
+  box-shadow: var(--le-shadow-lg);
+}
+
+.vnext-create-close {
+  position: absolute;
+  top: var(--le-space-4);
+  right: var(--le-space-4);
+  width: var(--le-touch-target);
+  min-height: var(--le-touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--le-border-thin);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface);
+  color: var(--le-text);
+  font: inherit;
+  font-size: var(--le-type-xl);
+  cursor: pointer;
+}
+
+.vnext-create-status {
+  margin-right: calc(var(--le-touch-target) + var(--le-space-2));
+}
+
+.vnext-create-form {
+  display: grid;
+  gap: var(--le-space-5);
+}
+
+.vnext-create-form-header {
+  padding-right: calc(var(--le-touch-target) + var(--le-space-2));
+}
+
+.vnext-create-form-header h2 {
+  margin: 0 0 var(--le-space-2);
+  color: var(--le-text);
+  font-size: var(--le-type-2xl);
+  line-height: var(--le-line-tight);
+}
+
+.vnext-create-form-header p,
+.vnext-folder-deferral p {
+  margin: 0;
+  color: var(--le-text-muted);
+}
+
+.vnext-create-fields {
+  display: grid;
+  gap: var(--le-space-3);
+}
+
+.vnext-create-fields label {
+  margin-bottom: calc(var(--le-space-1) * -1);
+  color: var(--le-text);
+  font-size: var(--le-type-sm);
+  font-weight: var(--le-weight-semibold);
+}
+
+.vnext-create-fields input,
+.vnext-create-fields textarea,
+.vnext-create-fields select {
+  width: 100%;
+  min-height: var(--le-touch-target);
+  padding: var(--le-space-2) var(--le-space-3);
+  border: var(--le-border-strong);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface);
+  color: var(--le-text);
+  font: inherit;
+}
+
+.vnext-create-fields textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.vnext-create-form footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--le-space-3);
+  padding-top: var(--le-space-4);
+  border-top: var(--le-border-subtle);
+}
+
+.vnext-create-inline-error:not([hidden]) {
+  padding: var(--le-space-3);
+  border: 1px solid var(--le-danger-border);
+  border-radius: var(--le-radius-md);
+  background: var(--le-danger-100);
+  color: var(--le-danger-700);
+}
+
+.vnext-folder-deferral {
+  display: grid;
+  gap: var(--le-space-2);
+  padding: var(--le-space-3);
+  border: var(--le-border-subtle);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface-muted);
+}
+
+.vnext-folder-deferral button {
+  width: fit-content;
+  min-height: var(--le-touch-target);
+  padding: 0 var(--le-space-4);
+  border: var(--le-border-strong);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface);
+  color: var(--le-text-muted);
+}
+
+@media (max-width: 53.75rem) {
+  .vnext-create-workspace:not([hidden]) {
+    width: 100vw;
+    padding: var(--le-space-4);
+    border-left: 0;
+  }
+
+  .vnext-create-form footer .ui-button {
+    min-height: var(--le-touch-target);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

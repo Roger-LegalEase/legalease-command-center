@@ -40,8 +40,8 @@ for (const forbidden of ["Work", "Queue", "Review Desk", "Reports", "Proof", "Gr
 assert.deepEqual(SECONDARY_SHELL_CONTROLS.map((item) => item.label), ["Inbox", "Le-E", "Settings"]);
 assert.deepEqual(TOP_BAR_CONTROLS.map((item) => item.label), ["Search", "Create", "Help", "Profile"]);
 assert.deepEqual(Object.values(GLOBAL_UTILITIES), ["Inbox", "Search", "Create", "Le-E", "Settings", "Help", "Profile"]);
-assert.deepEqual(CREATE_MENU_OPTIONS.map((item) => item.label), ["Social post", "Task"]);
-assert.deepEqual(DEFERRED_CREATE_OPTIONS, ["Quick capture", "Campaign", "Partner", "File or document record"]);
+assert.deepEqual(CREATE_MENU_OPTIONS.map((item) => item.label), ["Social post", "Outreach campaign", "Partner", "File or folder", "Quick note"]);
+assert.deepEqual(DEFERRED_CREATE_OPTIONS, ["Persistent folders"]);
 
 assert.equal(APPROVED_WHITE_LOGO_PATH, "assets/brand/logos/legalease-logo-white-2025.png");
 assert.equal(DESKTOP_SHELL_CONTRACT.approvedLogoPath, APPROVED_WHITE_LOGO_PATH);
@@ -55,7 +55,7 @@ assert.match(chrome.start, /<aside class="vnext-sidebar" aria-label="Command Cen
 assert.match(chrome.start, /<nav class="vnext-primary-navigation" aria-label="Primary destinations">/);
 assert.match(chrome.start, /<header class="vnext-topbar" aria-label="Application controls">/);
 assert.match(chrome.start, /src="\/assets\/brand\/logos\/legalease-logo-white-2025\.png" width="1920" height="1080"/);
-assert.match(chrome.start, /aria-haspopup="menu" aria-expanded="false" aria-controls="vnext-create-menu"/);
+assert.match(chrome.start, /aria-haspopup="menu" aria-expanded="false" aria-controls="vnext-global-create-menu"/);
 assert.match(chrome.start, /aria-haspopup="menu" aria-expanded="false" aria-controls="vnext-profile-menu"/);
 assert.match(chrome.start, /data-shell-action="open-lee"/);
 assert.match(chrome.start, /data-shell-action="sign-out"/);
@@ -101,9 +101,10 @@ assert.equal(resolveShellDestination("/sources/import-social-calendar"), "Social
 assert.equal(resolveShellDestination("#rcap"), "Partners");
 
 const canonicalRoutes = new Set(routeRegistry.map((entry) => entry.canonicalRoute));
-for (const item of [...PRIMARY_SHELL_DESTINATIONS, ...CREATE_MENU_OPTIONS]) {
+for (const item of PRIMARY_SHELL_DESTINATIONS) {
   assert.ok(canonicalRoutes.has(item.route), `${item.label} must reach a real current route.`);
 }
+for (const item of CREATE_MENU_OPTIONS) assert.match(item.endpoint, /^\/api\/ui\/create\/(?:post|campaign|partner|file|note)$/);
 for (const item of SECONDARY_SHELL_CONTROLS.filter((entry) => entry.kind === "route")) {
   assert.ok(canonicalRoutes.has(item.route), `${item.label} must reach a real current route.`);
 }

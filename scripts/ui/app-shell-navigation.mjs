@@ -1,4 +1,5 @@
 import { GLOBAL_UTILITIES, PRIMARY_DESTINATIONS } from "./labels.mjs";
+import { GLOBAL_CREATE_OPTIONS } from "./global-create.mjs";
 import { routeRegistry } from "./navigation.mjs";
 import { resolveRouteCompatibility } from "./route-compatibility.mjs";
 
@@ -27,26 +28,10 @@ export const TOP_BAR_CONTROLS = list([
   { id:"profile", label:GLOBAL_UTILITIES.profile, kind:"menu" }
 ]);
 
-export const CREATE_MENU_OPTIONS = list([
-  {
-    id:"social-post",
-    label:"Social post",
-    route:"content-bank",
-    description:"Open the existing draft and idea workflow."
-  },
-  {
-    id:"task",
-    label:"Task",
-    route:"tasks",
-    description:"Open the existing task creation workflow."
-  }
-]);
+export const CREATE_MENU_OPTIONS = GLOBAL_CREATE_OPTIONS;
 
 export const DEFERRED_CREATE_OPTIONS = Object.freeze([
-  "Quick capture",
-  "Campaign",
-  "Partner",
-  "File or document record"
+  "Persistent folders"
 ]);
 
 const aliasTargets = new Map(

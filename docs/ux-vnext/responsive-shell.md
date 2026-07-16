@@ -38,10 +38,17 @@ The compact top bar contains:
 - the existing Search, Help, and Profile controls in compact accessible form; and
 - the persistent orange **Create** action.
 
-Create continues to expose only the two current working flows: **Social post** and
-**Task**. Quick capture, Campaign, Partner, and File/document creation remain deferred
-until real safe workflows exist. Menus are kept inside the viewport and retain their
-existing keyboard, Escape, outside-click, and focus-return behavior.
+Create uses the same CCX-103 contract as desktop: **Social post**, **Outreach
+campaign**, **Partner**, **File or folder**, and **Quick note**. Task remains in Today
+and Tasks rather than the global menu. The shared mobile creation sheet closes the
+navigation drawer first, stays inside the viewport, contains focus, supports dirty
+close confirmation, and preserves Escape, outside-click, and focus-return behavior.
+The drawer keeps routed content and non-Create top-bar controls inert while leaving
+the single persistent orange Create trigger operable. Activating it removes the
+drawer overlay, inert state, and drawer scroll lock before opening the shared Create
+surface, so the two modal layers never overlap.
+Persistent folders remain truthfully disabled because the current Files system has no
+folder model.
 
 ## Navigation drawer
 

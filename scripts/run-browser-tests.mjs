@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -25,7 +26,7 @@ function sanitizedLog(value = "") {
     .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[REDACTED]");
 }
 
-function serverEnvironment({ dataPath, vnext }) {
+function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCredential = "", sessionSecret = "" }) {
   return {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -38,8 +39,10 @@ function serverEnvironment({ dataPath, vnext }) {
     STORAGE_BACKEND:"json",
     COMMAND_CENTER_ALLOW_JSON:"true",
     LOCAL_DEMO_MODE:"true",
-    COMMAND_CENTER_AUTH_DISABLED:"true",
-    COMMAND_CENTER_REQUIRE_AUTH:"false",
+    COMMAND_CENTER_AUTH_DISABLED:restricted ? "false" : "true",
+    COMMAND_CENTER_REQUIRE_AUTH:restricted ? "true" : "false",
+    COMMAND_CENTER_OPERATOR_TOKEN:restricted ? restrictedCredential : "",
+    COMMAND_CENTER_SESSION_SECRET:restricted ? sessionSecret : "",
     COMMAND_CENTER_DATA_PATH:dataPath,
     COMMAND_CENTER_SEED_PATH:seedPath,
     COMMAND_CENTER_UX_VNEXT:vnext ? "true" : "false",
@@ -116,10 +119,10 @@ async function stopChild(child) {
   activeChildren.delete(child);
 }
 
-async function startServer({ name, dataPath, vnext }) {
+async function startServer({ name, dataPath, vnext, restricted = false, restrictedCredential = "", sessionSecret = "" }) {
   const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
     cwd:projectRoot,
-    env:serverEnvironment({ dataPath, vnext }),
+    env:serverEnvironment({ dataPath, vnext, restricted, restrictedCredential, sessionSecret }),
     stdio:["ignore", "pipe", "pipe"]
   });
   activeChildren.add(child);
@@ -203,10 +206,16 @@ await rm(artifactDir, { recursive:true, force:true });
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "legalease-browser-tests-"));
 const legacyDataPath = path.join(tempRoot, "legacy-state.json");
 const vnextDataPath = path.join(tempRoot, "vnext-state.json");
+const createDataPath = path.join(tempRoot, "create-state.json");
+const restrictedDataPath = path.join(tempRoot, "restricted-state.json");
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
-  writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 })
+  writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(createDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(restrictedDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 })
 ]);
+const restrictedCredential = crypto.randomBytes(32).toString("base64url");
+const restrictedSessionSecret = crypto.randomBytes(32).toString("base64url");
 const servers = [];
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
@@ -228,6 +237,19 @@ try {
     dataPath:vnextDataPath,
     vnext:true
   }));
+  servers.push(await startServer({
+    name:"create",
+    dataPath:createDataPath,
+    vnext:true
+  }));
+  servers.push(await startServer({
+    name:"restricted",
+    dataPath:restrictedDataPath,
+    vnext:true,
+    restricted:true,
+    restrictedCredential,
+    sessionSecret:restrictedSessionSecret
+  }));
   const runnerEnv = {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -235,7 +257,10 @@ try {
     SKIP_ENV_LOCAL_FILE:"1",
     CI:process.env.CI || "",
     BROWSER_TEST_BASE_URL:servers[0].baseURL,
-    BROWSER_TEST_VNEXT_BASE_URL:servers[1].baseURL
+    BROWSER_TEST_VNEXT_BASE_URL:servers[1].baseURL,
+    BROWSER_TEST_CREATE_BASE_URL:servers[2].baseURL,
+    BROWSER_TEST_RESTRICTED_BASE_URL:servers[3].baseURL,
+    BROWSER_TEST_RESTRICTED_CREDENTIAL:restrictedCredential
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));
 } finally {
