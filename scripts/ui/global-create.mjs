@@ -295,7 +295,7 @@ export function globalCreateBrowserSource() {
       const id = form.dataset.globalCreateForm;
       const option = byId.get(id);
       const errorNode = form.querySelector(".vnext-create-inline-error");
-      if (!option) return;
+      if (!option || form.dataset.submitting === "true") return;
       errorNode.hidden = true;
       if (!form.checkValidity()) {
         errorNode.textContent = "Add the required information and try again. Nothing has been saved.";
@@ -305,6 +305,7 @@ export function globalCreateBrowserSource() {
       }
       const submit = form.querySelector('[type="submit"]');
       const payload = Object.fromEntries(new FormData(form).entries());
+      form.dataset.submitting = "true";
       submit.disabled = true;
       submit.setAttribute("aria-busy", "true");
       setStatus("working", "Working", option.label + " is being created safely.");
@@ -328,6 +329,7 @@ export function globalCreateBrowserSource() {
         errorNode.hidden = false;
         setStatus("error", option.label + " was not created", message);
       } finally {
+        delete form.dataset.submitting;
         submit.disabled = false;
         submit.removeAttribute("aria-busy");
       }
@@ -358,6 +360,11 @@ export function globalCreateBrowserSource() {
       } else if (["Home", "End"].includes(event.key)) {
         event.preventDefault();
         items[event.key === "Home" ? 0 : items.length - 1]?.focus();
+      } else if (["Enter", " "].includes(event.key)) {
+        const control = event.target.closest("[data-global-create-option]");
+        if (!control || control.disabled) return;
+        event.preventDefault();
+        openWorkflow(control.dataset.globalCreateOption);
       } else if (event.key === "Escape") {
         event.preventDefault();
         closeMenu({ returnFocus:true });

@@ -51,6 +51,10 @@ and endpoints. The orange Create trigger exposes `aria-expanded` and `aria-contr
 and supports mouse, touch, Enter, Space, and Arrow Down. The menu supports Arrow Up,
 Arrow Down, Home, End, Enter, Space, Escape, outside-click dismissal, and focus return.
 The responsive navigation drawer is closed before Global Create opens.
+While that drawer is open, its background controls and routed content remain inert,
+but the single persistent orange Create trigger stays operable. Activating it clears
+the drawer overlay, inert state, and navigation scroll lock before the shared Create
+menu or sheet opens; no second trigger, menu, or modal is rendered.
 
 Selection opens one labelled modal creation workspace. Desktop presents it as a
 focused side sheet; mobile uses the same sheet at full viewport width. Focus moves to
@@ -92,7 +96,9 @@ Creation does not touch `reactivationCampaign`, release a batch, or send email.
 Organization name is required. Partner type, contact name/email, geography, and first
 next action are optional. Email is validated only when present. The existing partner
 lifecycle normalizer preserves detailed internal fields while the founder-facing
-stage starts at New. Creation does not qualify the record, send email, schedule a
+stage starts at New. Choosing **Not selected** leaves both Partner type fields omitted;
+it does not invent `nonprofit` or any other type. Explicit supported selections are
+preserved unchanged. Creation does not qualify the record, send email, schedule a
 meeting, create a Campaign or proposal, or activate a Partner page.
 
 ### File or folder
@@ -121,7 +127,9 @@ The browser creates one validated `creationRequestId` per fresh form. The servic
 derives the record's stable collision-safe ID from it without exposing a separate
 request-token field. A repeat of the same request returns the original record
 with `alreadyExisted: true`; it does not overwrite it, append duplicate audit evidence,
-or create another record. Authorization and validation still run on every request.
+or create another record. The form also locks immediately on submission, so a literal
+rapid double-click produces one accepted activation and one record/evidence pair.
+Authorization and validation still run on every request.
 
 Server validation trims required values; enforces length limits, enum membership,
 optional email syntax, HTTPS-only safe source links, request-ID shape, and request-size

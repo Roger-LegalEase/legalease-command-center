@@ -48,7 +48,8 @@ test("the tablet and mobile drawer traps focus and closes through Escape or the 
     await openResponsive(page, width);
     const { drawer, trigger } = await openDrawer(page);
     await expect(page.locator("body")).toHaveClass(/\bvnext-navigation-open\b/);
-    await expect(page.locator(".vnext-shell-stage")).toHaveAttribute("inert", "");
+    await expect(page.locator(".vnext-routed-content")).toHaveAttribute("inert", "");
+    await expect(page.getByRole("button", { name:"Create", exact:true })).not.toHaveAttribute("inert", "");
     await drawer.getByRole("link", { name:"LegalEase Command Center home" }).focus();
     await page.keyboard.press("Shift+Tab");
     await expect(drawer.getByRole("link", { name:"Settings", exact:true })).toBeFocused();

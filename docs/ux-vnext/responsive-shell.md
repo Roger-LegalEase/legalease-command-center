@@ -43,6 +43,10 @@ campaign**, **Partner**, **File or folder**, and **Quick note**. Task remains in
 and Tasks rather than the global menu. The shared mobile creation sheet closes the
 navigation drawer first, stays inside the viewport, contains focus, supports dirty
 close confirmation, and preserves Escape, outside-click, and focus-return behavior.
+The drawer keeps routed content and non-Create top-bar controls inert while leaving
+the single persistent orange Create trigger operable. Activating it removes the
+drawer overlay, inert state, and drawer scroll lock before opening the shared Create
+surface, so the two modal layers never overlap.
 Persistent folders remain truthfully disabled because the current Files system has no
 folder model.
 

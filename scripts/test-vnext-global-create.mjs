@@ -92,8 +92,28 @@ const partner = createGlobalObject(state, "partner", { creationRequestId:ids.par
 state = partner.state;
 assert.equal(partner.record.status, "new");
 assert.equal(partner.record.stage, "new");
+assert.equal(partner.record.type, "nonprofit");
+assert.equal(partner.record.partnerType, "nonprofit");
 assert.equal(partner.record.email, "person@example.com");
 assert.equal(partner.result.canonicalHref, `#partners/partner/partner-${ids.partner}`);
+
+const untypedPartner = createGlobalObject(baseState, "partner", {
+  creationRequestId:"66666666-6666-4666-8666-666666666666",
+  organizationName:"No invented type",
+  partnerType:""
+}, { now, actor });
+assert.equal(Object.hasOwn(untypedPartner.record, "type"), false);
+assert.equal(Object.hasOwn(untypedPartner.record, "partnerType"), false);
+
+for (const [index, explicitType] of ["legal_aid", "government", "workforce", "funder", "enterprise", "other"].entries()) {
+  const explicitPartner = createGlobalObject(baseState, "partner", {
+    creationRequestId:`77777777-7777-4777-8777-${String(index + 1).padStart(12, "0")}`,
+    organizationName:`Explicit ${explicitType}`,
+    partnerType:explicitType
+  }, { now, actor });
+  assert.equal(explicitPartner.record.type, explicitType);
+  assert.equal(explicitPartner.record.partnerType, explicitType);
+}
 
 const file = createGlobalObject(state, "file", { creationRequestId:ids.file, name:"Readiness notes", section:"Compliance", sourceLink:"https://example.com/document", notes:"Internal draft." }, { now, actor });
 state = file.state;

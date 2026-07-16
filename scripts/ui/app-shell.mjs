@@ -128,7 +128,13 @@ function shellClientScript() {
     const drawerTrigger = document.querySelector(".vnext-navigation-trigger");
     const drawerClose = document.querySelector(".vnext-drawer-close");
     const drawerOverlay = document.querySelector(".vnext-drawer-overlay");
-    const shellStage = document.querySelector(".vnext-shell-stage");
+    const createTrigger = document.querySelector(".vnext-create-trigger");
+    const drawerBackgroundTargets = [
+      document.querySelector(".vnext-mobile-leading"),
+      document.querySelector(".vnext-search-link"),
+      document.querySelector(".vnext-routed-content"),
+      ...[...document.querySelectorAll(".vnext-topbar-actions > *")].filter((control) => !control.contains(createTrigger))
+    ].filter(Boolean);
     const navigationMedia = window.matchMedia("(max-width: ${RESPONSIVE_SHELL_BREAKPOINT_PX}px)");
     const drawerFocusableSelector = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
     function currentRouteResolution() {
@@ -227,6 +233,10 @@ function shellClientScript() {
       });
     }
 
+    function setDrawerBackgroundInert(inert) {
+      drawerBackgroundTargets.forEach((target) => { target.inert = inert; });
+    }
+
     function closeNavigationDrawer(returnFocus = false) {
       if (!drawer || !drawerTrigger || !drawerOverlay) return;
       document.body.classList.remove("vnext-navigation-open");
@@ -234,7 +244,7 @@ function shellClientScript() {
       drawer.setAttribute("aria-hidden", navigationMedia.matches ? "true" : "false");
       drawer.toggleAttribute("inert", navigationMedia.matches);
       drawerOverlay.hidden = true;
-      if (shellStage) shellStage.inert = false;
+      setDrawerBackgroundInert(false);
       if (returnFocus && navigationMedia.matches) setTimeout(() => drawerTrigger.focus(), 0);
     }
 
@@ -246,7 +256,7 @@ function shellClientScript() {
       drawer.setAttribute("aria-hidden", "false");
       drawer.removeAttribute("inert");
       drawerOverlay.hidden = false;
-      if (shellStage) shellStage.inert = true;
+      setDrawerBackgroundInert(true);
       setTimeout(() => (drawerClose || drawerFocusableControls()[0])?.focus(), 0);
     }
 

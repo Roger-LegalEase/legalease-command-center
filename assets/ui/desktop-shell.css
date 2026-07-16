@@ -335,15 +335,24 @@ body.vnext-app-shell {
     display: block;
   }
 
-  .vnext-app-shell.vnext-navigation-open .vnext-shell-stage {
-    pointer-events: none;
+  .vnext-app-shell.vnext-navigation-open .vnext-topbar {
+    position: static;
+    z-index: auto;
+  }
+
+  .vnext-app-shell.vnext-navigation-open .vnext-create-trigger {
+    position: fixed;
+    top: var(--le-space-2);
+    right: var(--le-space-3);
+    z-index: calc(var(--le-z-modal) + 1);
+    pointer-events: auto;
   }
 
   .vnext-app-shell .vnext-sidebar {
     position: fixed;
     inset: 0 auto 0 0;
     z-index: var(--le-z-modal);
-    width: var(--le-sidebar-mobile);
+    width: min(var(--le-sidebar-mobile), calc(100vw - 6rem));
     height: 100dvh;
     padding: var(--le-space-5) var(--le-space-4);
     border-right: 1px solid var(--le-navy-800);

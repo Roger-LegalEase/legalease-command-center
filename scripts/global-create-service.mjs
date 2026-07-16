@@ -178,11 +178,11 @@ function partnerRecord(input, requestId, now, actor = {}) {
   const primaryContactEmail = email(input.primaryContactEmail);
   const geography = text(input.geography, { label:"Geography or jurisdiction", maxLength:160 });
   const nextAction = text(input.nextAction, { label:"First next action", maxLength:1000 });
-  return normalizePartnerLifecycle({
+  const normalized = normalizePartnerLifecycle({
     id:identifier("partner", requestId),
     organizationName,
     name:organizationName,
-    partnerType:partnerType || "nonprofit",
+    partnerType,
     primaryContactName,
     email:primaryContactEmail,
     geography,
@@ -201,6 +201,9 @@ function partnerRecord(input, requestId, now, actor = {}) {
     createdAt:now,
     updatedAt:now
   }, { now });
+  if (partnerType) return normalized;
+  const { type:unusedType, partnerType:unusedPartnerType, ...untypedPartner } = normalized;
+  return untypedPartner;
 }
 
 function fileRecord(input, requestId, now) {

@@ -63,22 +63,26 @@ for (const contract of [
   ["body lock", /document\.body\.classList\.add\("vnext-navigation-open"\)/],
   ["overlay", /drawerOverlay\.hidden = false/],
   ["route close", /event\.target\.closest\?\.\("\.vnext-sidebar a, \.vnext-sidebar \[data-shell-action\]"\)/],
-  ["responsive reset", /navigationMedia\.addEventListener\("change", syncResponsiveMode\)/]
+  ["responsive reset", /navigationMedia\.addEventListener\("change", syncResponsiveMode\)/],
+  ["Create handoff", /document\.addEventListener\("vnext:close-navigation", \(\) => closeNavigationDrawer\(false\)\)/]
 ]) {
   assert.match(shellSource, contract[1], `The responsive client must implement ${contract[0]}.`);
 }
-assert.match(shellSource, /if \(shellStage\) shellStage\.inert = true/);
+assert.match(shellSource, /function setDrawerBackgroundInert\(inert\)/);
+assert.match(shellSource, /setDrawerBackgroundInert\(true\)/);
+assert.match(shellSource, /setDrawerBackgroundInert\(false\)/);
 assert.match(shellSource, /drawer\.setAttribute\("aria-modal", "true"\)/);
 assert.match(shellSource, /drawer\.setAttribute\("inert", ""\)/);
 
 assert.match(cssSource, /@media \(max-width: 860px\)/);
-assert.match(cssSource, /width:\s*var\(--le-sidebar-mobile\)/);
+assert.match(cssSource, /width:\s*min\(var\(--le-sidebar-mobile\), calc\(100vw - 6rem\)\)/);
 assert.match(cssSource, /background:\s*var\(--le-navy-950\)/);
 assert.match(cssSource, /background:\s*var\(--le-orange-600\)/);
 assert.match(cssSource, /min-height:\s*var\(--le-touch-target\)/);
 assert.match(cssSource, /overflow:\s*hidden/);
 assert.match(cssSource, /transform:\s*translateX\(-100%\)/);
 assert.match(cssSource, /\.vnext-app-shell\.vnext-navigation-open \.vnext-sidebar/);
+assert.match(cssSource, /\.vnext-app-shell\.vnext-navigation-open \.vnext-create-trigger/);
 assert.match(cssSource, /@media \(prefers-reduced-motion: reduce\)/);
 assert.doesNotMatch(cssSource, /#[0-9a-fA-F]{3,8}\b/, "Responsive styling must use approved tokens.");
 assert.doesNotMatch(cssSource, /(?:linear|radial)-gradient|backdrop-filter|glass/i);
