@@ -140,3 +140,7 @@ Rollback removes the CCX-201 page/view/service modules, endpoint branch, stylesh
 ## CCX-202 integration and CCX-203 handoff
 
 The reviewed action registry, wired/deferred matrix, endpoint, idempotency, evidence, and no-execution guarantees are documented in `inbox-actions.md`. CCX-203 may use compact authorized Inbox summaries when defining Today, but must not duplicate projection or action rules. CCX-203 is unblocked only after CCX-202 review and merge.
+
+## CCX-204 Today integration
+
+The refined Today page consumes only CCX-203 summaries derived from this projection. Needs You shows the full Needs me count and at most three supplied references after Now/Next exclusion; it does not copy filters or action dialogs. Progress uses supplied current-week Updates and links to `#inbox?group=updates`. Open Inbox uses `#inbox?group=needs-me`; shell badge ownership, pagination, and CCX-202 action execution remain entirely here. See `today-page.md`.

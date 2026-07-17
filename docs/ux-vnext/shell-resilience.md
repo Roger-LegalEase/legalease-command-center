@@ -216,3 +216,7 @@ the shared shell, responsive navigation, canonical links, Global Create, Global
 Search, and resilient states are covered together. CCX-200 may begin only after this
 packet is reviewed and merged; CCX-105 does not begin the universal Inbox or redesign
 any destination.
+
+## CCX-204 Today module states
+
+Today reuses this boundary for boot, route authorization, session expiration, and Recovery Mode, then owns only its compact read states. A Today failure persists across legacy background refreshes without automatically issuing another request. Explicit Try again resets the Today scaffold and retries one authenticated GET. Unauthorized state first clears stale Today/legacy content, and session expiration delegates to “Your session ended” while the shell clears overlays and the Inbox badge. See `today-page.md`.

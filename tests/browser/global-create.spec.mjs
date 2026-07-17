@@ -49,7 +49,8 @@ async function stateOf(page, baseURL) {
 async function returnToToday(page, baseURL) {
   await page.goto(`${baseURL}/#today`, { waitUntil:"domcontentloaded" });
   await expect.poll(() => page.evaluate(() => Boolean(window.__LE_BOOT?.ready))).toBe(true);
-  await expect(page.getByRole("heading", { name:/Good (morning|afternoon|evening)/ }).first()).toBeVisible();
+  await expect(page.locator("[data-today-page]").getByRole("heading", { name:"Today", exact:true })).toBeVisible();
+  await expect(page.locator("[data-today-content]")).toHaveAttribute("aria-busy", "false");
 }
 
 test("Global Create exposes the exact shared menu and complete keyboard behavior", async ({ page }) => {

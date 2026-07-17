@@ -58,7 +58,7 @@ test("initial vNext loading keeps the shell visible and transitions without anot
   });
   await page.goto(`${baseURL}/#today`, { waitUntil:"domcontentloaded" });
   const shell = page.locator("[data-vnext-shell='desktop']");
-  const skeleton = page.locator("[data-vnext-shell-state='loading'][data-state-scope='boot']");
+  const skeleton = page.locator("[data-today-content][aria-busy='true']");
   await expect(shell).toBeVisible();
   await expect(page.locator(".vnext-sidebar")).toBeVisible();
   await expect(page.locator(".vnext-topbar")).toBeVisible();
@@ -70,7 +70,7 @@ test("initial vNext loading keeps the shell visible and transitions without anot
   releaseBoot();
   await expect.poll(() => page.evaluate(() => Boolean(window.__LE_BOOT?.ready))).toBe(true);
   await expect(page.locator("main#app").getByRole("heading", { level:1 }).first()).toBeVisible();
-  await expect(skeleton).toHaveCount(0);
+  await expect(page.locator("[data-today-content]")).toHaveAttribute("aria-busy", "false");
   await expect.poll(() => fullStateRequests).toBe(1);
   expect(bootRequests).toBe(1);
   const metrics = await page.evaluate(() => ({ ...window.__LE_SHELL_RESILIENCE_METRICS }));

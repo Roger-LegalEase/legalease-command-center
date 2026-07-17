@@ -136,3 +136,7 @@ CCX-203 adds no Today endpoint, renderer import, route, HTML, CSS, browser modul
 Rollback removes the Today view-model module, its focused test and package script, and this document. No data rollback is required because CCX-203 adds no collection, migration, write, or runtime wiring.
 
 After review and merge, CCX-204 can consume the compact model to refine the Today interface. CCX-204 must retain server-authoritative authorization, exact navigation, the four-question hierarchy, and all no-mutation guarantees; it must separately review any Start/Open presentation. CCX-203 does not begin that interface work.
+
+## CCX-204 consumption
+
+The merged model is now consumed by the vNext-only service documented in `today-page.md`. That service invokes `buildTodayView` once per authenticated read, removes internal identity fields from the wire response, and adds presentation-only Start/Resume labels without changing rank or source state. The no-visible-change guarantee above remains the historical CCX-203 packet guarantee; CCX-204 is the separately flagged renderer that introduces the reviewed page.
