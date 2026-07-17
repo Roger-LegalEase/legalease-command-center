@@ -200,6 +200,10 @@ and requires:
 - zero network requests;
 - zero storage writes.
 
+The measured 256,581-byte fixture is a detailed projection benchmark for the
+pure adapter. It is not a proposed unpaginated list-endpoint payload; any future
+list endpoint must define its own summary and pagination contract separately.
+
 Run it with:
 
 ```bash
