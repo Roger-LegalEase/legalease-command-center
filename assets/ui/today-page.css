@@ -243,6 +243,10 @@
   cursor: pointer;
 }
 
+.vnext-today-quick-capture .vnext-today-text-action.is-busy {
+  opacity: 1;
+}
+
 .vnext-today-counts {
   display: grid;
   gap: 7px;

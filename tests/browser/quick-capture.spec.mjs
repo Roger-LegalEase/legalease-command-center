@@ -15,6 +15,22 @@ const screenshotDirectory = path.resolve("docs/ux-vnext/screenshots/ccx-205");
 const fixedTime = new Date("2026-07-17T12:00:00-04:00");
 const intentLabels = ["Task", "Decision", "Blocker", "Post idea", "Partner note", "Campaign idea", "File/report note"];
 
+function reportSevereAxeFindings(width, violations) {
+  const findings = violations
+    .filter((violation) => violation.impact === "serious" || violation.impact === "critical")
+    .map((violation) => ({
+      id:violation.id,
+      impact:violation.impact,
+      help:violation.help,
+      nodes:violation.nodes.map((node) => ({
+        target:node.target,
+        failureSummary:node.failureSummary
+      }))
+    }));
+  if (findings.length > 0) console.error("CCX205_AXE_FINDINGS", JSON.stringify({ width, findings }));
+  return findings;
+}
+
 async function openCaptureToday(page, width = 1440) {
   const baseURL = process.env.BROWSER_TEST_CREATE_BASE_URL;
   expect(baseURL).toBeTruthy();
@@ -351,8 +367,9 @@ test("Quick Capture is keyboard-contained, responsive, accessible, and absent fr
       .include("body")
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
       .analyze();
-    const serious = axe.violations.filter((violation) => violation.impact === "serious").length;
-    const critical = axe.violations.filter((violation) => violation.impact === "critical").length;
+    const findings = reportSevereAxeFindings(width, axe.violations);
+    const serious = findings.filter((violation) => violation.impact === "serious").length;
+    const critical = findings.filter((violation) => violation.impact === "critical").length;
     accessibility.push({ width, serious, critical });
     expect(serious).toBe(0);
     expect(critical).toBe(0);

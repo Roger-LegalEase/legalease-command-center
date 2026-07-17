@@ -297,7 +297,7 @@ function sha256(source) {
   return createHash("sha256").update(source).digest("hex");
 }
 assert.equal(sha256(readFileSync("scripts/ui/route-compatibility.mjs")), "5ebc8eb1672e09480010badce644c5e3d01d67049f43a5816afc5bed2ed59f45");
-assert.equal(sha256(serverSource), "85f85279154fc7953a1898a59ec33e527a5987474bd89e8fc2ca6b4a2094332c");
+assert.equal(sha256(serverSource), "2fdf7b0c9db7e587a2f26f7f1f4ab05b5c7a951dd1eade6f1c379b6460281012");
 assert.deepEqual(ROUTE_COMPATIBILITY_TOTALS, { canonicalRoutes: 75, aliases: 53, objectFamilies: 4 });
 
 function performanceFixture(count = 100) {
