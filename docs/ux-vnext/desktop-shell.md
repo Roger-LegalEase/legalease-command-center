@@ -145,5 +145,6 @@ shared.
 CCX-101 through CCX-105 keep the same route inventory, five destinations, direct logo
 asset, feature-flag rollback, and unchanged business and safety boundaries. CCX-105
 adds resilience without simplifying or redesigning Today. CCX-201 adds the universal
-Inbox read surface without changing the five primary destinations. CCX-202 action
-execution remains deferred until CCX-201 review and merge.
+Inbox read surface without changing the five primary destinations. CCX-202 adds only
+server-declared actions backed by existing queue/Task operations; Open remains exact,
+the badge refreshes from the compact read, and the shell duplicates no domain action.

@@ -209,7 +209,7 @@ assert.match(serviceSource, /search-index-helpers\.mjs/);
 assert.match(serverSource, /url\.pathname === "\/api\/ui\/search"/);
 assert.match(serverSource, /searchGlobalRecords\(currentState/);
 assert.match(serverSource, /role:actor\?\.role \|\| "viewer"/);
-assert.doesNotMatch(serverSource.slice(serverSource.indexOf('url.pathname === "/api/ui/search"'), serverSource.indexOf('url.pathname === "/api/ui/create/capabilities"')), /writeChangedCollections|serializeStateMutation|withPublicChannelSetup|publish|approval|mutation/i);
+assert.doesNotMatch(serverSource.slice(serverSource.indexOf('url.pathname === "/api/ui/search" && request.method === "GET"'), serverSource.indexOf('url.pathname === "/api/ui/inbox" && request.method === "GET"')), /writeChangedCollections|serializeStateMutation|withPublicChannelSetup|publish|approval|mutation/i);
 assert.equal((shellSource.match(/id="vnext-global-search-trigger"/g) || []).length, 0, "The shared trigger is rendered from one pure module rather than duplicated shell markup.");
 assert.match(shellSource, /renderGlobalSearchTrigger/);
 assert.match(shellSource, /globalSearchBrowserSource/);

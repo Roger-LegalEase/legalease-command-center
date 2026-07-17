@@ -513,7 +513,7 @@ function decisionCandidates(state, actorContext, nowMs, indexes, output) {
       href,
       relatedObject: linked.relatedObject,
       actionIntents: group === "needs_me"
-        ? ["open", ...(item.requiresApproval ? ["approve"] : []), "snooze"]
+        ? ["open", ...(item.requiresApproval ? ["approve"] : ["complete"]), "snooze"]
         : ["open"],
       precedence: 300
     });

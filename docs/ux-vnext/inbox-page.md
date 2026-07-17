@@ -1,9 +1,9 @@
 # Universal Inbox page
 
-Status: CCX-201 contract
+Status: CCX-201 read contract with CCX-202 action integration
 Route: `#inbox`
 Read endpoint: `GET /api/ui/inbox`
-Mutation adapter: deferred to CCX-202
+Mutation adapter: `POST /api/ui/inbox/action` (see `inbox-actions.md`)
 
 ## Objective and architecture
 
@@ -17,7 +17,7 @@ The implementation is split into small layers:
 - `GET /api/ui/inbox` authenticates, authorizes, reads current state once, supplies one server timestamp, and invokes the service.
 - `assets/ui/inbox-page.css` provides the responsive work-list presentation.
 
-There is no Inbox collection, migration, page-specific source cache, business-engine adapter, or generic mutation endpoint.
+There is no Inbox collection, migration, page-specific source cache, Inbox business engine, or generic mutation endpoint. CCX-202 adds only a narrow adapter to existing queue and Task operations.
 
 ## Route and shell placement
 
@@ -79,7 +79,7 @@ The page is a semantic ordered work list, not a card dashboard. Each row include
 
 Open is an ordinary exact hash link from CCX-200. It opens the authoritative record, creates no mutation, and preserves browser Back navigation. Source-derived text is assigned through DOM `textContent`; no source HTML is inserted.
 
-CCX-201 does not render clickable Approve, Complete, or Snooze controls. When an existing declarative intent is useful, the page may state that approval or completion is available in the source record. It never calls an action.
+CCX-202 keeps Open exact and adds Approve, Complete, or Snooze only when the compact server-authorized registry declares a reviewed source operation. Unsupported records and Updates remain Open-only; no disabled future control is shown. The client submits only the stable Inbox ID, intent, request ID, rendered version, and a real snooze date when required. Full safety behavior is documented in `inbox-actions.md`.
 
 ## Shell badge
 
@@ -127,9 +127,9 @@ The page does not expose hidden titles, IDs, summaries, counts, raw capability v
 
 ## Performance and no-mutation guarantee
 
-The deterministic focused production-like fixture projects 129 authorized items and returns a 30-item compact page in 68.020 ms and 14,986 bytes on the reference local run. The browser fixture remains below the 750 ms endpoint target and typical response target of 100 KB. These are local isolated measurements, not hosted claims.
+The deterministic focused production-like fixture projects 129 authorized items and returns a 30-item compact page in 82.729 ms and 17,682 bytes on the reference local run. The browser fixture remains below the 750 ms endpoint target and typical response target of 100 KB. These are local isolated measurements, not hosted claims.
 
-The projection and page view perform zero network requests and zero writes. Runtime requests are authenticated GET reads only. Opening, filtering, paginating, retrying, and leaving Inbox execute zero sends, publications, approvals, completions, snoozes, releases, provider actions, source mutations, storage writes, enrollments, or live-gate changes.
+The projection and page view perform zero network requests and zero writes. Opening, filtering, paginating, retrying the read, and leaving Inbox remain authenticated GET-only behavior. An explicit CCX-202 action may perform one existing scoped source transition; it never executes sends, publications, Campaign execution, provider actions, enrollment, Partner/File state changes, suppression, or live-gate changes.
 
 ## Legacy behavior and rollback
 
@@ -137,8 +137,6 @@ Flag-off mode does not load the route, endpoint UI client, stylesheet, or badge 
 
 Rollback removes the CCX-201 page/view/service modules, endpoint branch, stylesheet, focused/browser tests, documentation, and the vNext `inbox` utility route entry, then points the vNext secondary Inbox link back to Decisions. No migration, state repair, cache cleanup, or source rollback is required.
 
-## CCX-202 handoff
+## CCX-202 integration and CCX-203 handoff
 
-CCX-202 owns every action-execution adapter. Deferred families are decisions/approvals, Task completion, and source-domain snooze. CCX-202 must reauthorize, re-read authoritative state, map only to an existing reviewed domain operation, preserve validation/audit/idempotency/live gates, and return safe errors. It must not treat CCX-201’s noninteractive source context as authority.
-
-CCX-202 is unblocked only after CCX-201 is reviewed and merged.
+The reviewed action registry, wired/deferred matrix, endpoint, idempotency, evidence, and no-execution guarantees are documented in `inbox-actions.md`. CCX-203 may use compact authorized Inbox summaries when defining Today, but must not duplicate projection or action rules. CCX-203 is unblocked only after CCX-202 review and merge.

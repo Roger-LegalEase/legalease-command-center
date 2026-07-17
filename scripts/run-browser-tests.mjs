@@ -68,7 +68,7 @@ function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCred
   };
 }
 
-function browserFixtureState(seed) {
+function browserFixtureState(seed, { includeActions = false } = {}) {
   const post = Object.freeze({
     id:"browser-post-search-001",
     title:"Café launch update",
@@ -215,14 +215,150 @@ function browserFixtureState(seed) {
     metadata:{ decisionType:"review_social_post" },
     updatedAt:"2026-07-15T15:30:00.000Z"
   });
+  const mobileApprovalPost = Object.freeze({
+    id:"browser-action-mobile-post-001",
+    title:"Mobile approval review",
+    status:"needs_review",
+    approvalStatus:"needs_review",
+    priority:"high",
+    owner:"Roger",
+    updatedAt:"2026-07-17T14:20:00.000Z"
+  });
+  const mobileApproval = Object.freeze({
+    id:"browser-action-mobile-approval-001",
+    action_type:"review_social_post",
+    queue_item_id:"browser-action-mobile-queue-001",
+    preview:"Review the mobile approval post",
+    risk_level:"caution",
+    state:"requested",
+    requested_at:"2026-07-17T14:30:00.000Z"
+  });
+  const actionQueueItems = Object.freeze([
+    Object.freeze({
+      id:"browser-action-mobile-queue-001",
+      sourceRef:{ collection:"posts", itemId:mobileApprovalPost.id },
+      type:"approval",
+      status:"needs_roger",
+      title:mobileApprovalPost.title,
+      summary:"This post needs a recorded approval before it can move forward.",
+      priority:15,
+      owner:"Roger",
+      requiresApproval:true,
+      approvalId:mobileApproval.id,
+      metadata:{ decisionType:"review_social_post" },
+      updatedAt:"2026-07-17T14:30:00.000Z"
+    }),
+    Object.freeze({
+      id:"browser-action-queue-complete-001",
+      type:"support",
+      status:"needs_roger",
+      title:"Complete the reviewed support follow-up",
+      summary:"The reviewed support follow-up is ready to be marked complete.",
+      priority:26,
+      owner:"Roger",
+      requiresApproval:false,
+      updatedAt:"2026-07-17T14:10:00.000Z"
+    }),
+    Object.freeze({
+      id:"browser-action-queue-snooze-001",
+      type:"meeting",
+      status:"needs_roger",
+      title:"Revisit the meeting brief",
+      summary:"This meeting brief needs a decision or a real revisit date.",
+      priority:27,
+      owner:"Roger",
+      requiresApproval:false,
+      updatedAt:"2026-07-17T14:00:00.000Z"
+    }),
+    Object.freeze({
+      id:"browser-action-queue-stale-001",
+      type:"report",
+      status:"needs_roger",
+      title:"Resolve the two-tab report review",
+      summary:"This report review is ready for one current decision.",
+      priority:28,
+      owner:"Roger",
+      requiresApproval:false,
+      updatedAt:"2026-07-17T13:50:00.000Z"
+    }),
+    Object.freeze({
+      id:"browser-action-queue-failure-001",
+      type:"support",
+      status:"needs_roger",
+      title:"Retry the temporary follow-up update",
+      summary:"This follow-up remains unchanged until a safe request succeeds.",
+      priority:29,
+      owner:"Roger",
+      requiresApproval:false,
+      updatedAt:"2026-07-17T13:40:00.000Z"
+    }),
+    Object.freeze({
+      id:"browser-action-queue-mobile-snooze-001",
+      type:"meeting",
+      status:"needs_roger",
+      title:"Mobile snooze review",
+      summary:"This mobile review can use an existing dated snooze.",
+      priority:31,
+      owner:"Roger",
+      requiresApproval:false,
+      updatedAt:"2026-07-17T13:30:00.000Z"
+    }),
+    Object.freeze({
+      id:"browser-action-queue-hidden-001",
+      type:"approval",
+      status:"needs_roger",
+      title:"Confidential owner action",
+      summary:"This action is private to its owner.",
+      priority:99,
+      owner:"Roger",
+      requiresApproval:true,
+      visibility:"owner_only",
+      updatedAt:"2026-07-17T15:00:00.000Z"
+    })
+  ]);
   const hiddenInboxPost = Object.freeze({
     id:"browser-inbox-hidden-001",
     title:"Confidential acquisition post",
     status:"needs_review",
     visibility:"owner_only",
-    priority:"urgent",
+    priority:includeActions ? "low" : "urgent",
     updatedAt:"2026-07-15T16:00:00.000Z"
   });
+  const repeatInboxPost = Object.freeze({ ...inboxPost, id:"browser-inbox-post-002", title:`${inboxPost.title} (repeat fixture)`, priority:"low" });
+  const repeatInboxApproval = Object.freeze({
+    ...inboxApproval,
+    id:"browser-inbox-approval-002",
+    queue_item_id:"browser-inbox-queue-002",
+    preview:"Review the repeat Fulton County post"
+  });
+  const repeatInboxQueueItem = Object.freeze({
+    ...inboxQueueItem,
+    id:"browser-inbox-queue-002",
+    sourceRef:{ collection:"posts", itemId:repeatInboxPost.id },
+    title:repeatInboxPost.title,
+    approvalId:repeatInboxApproval.id,
+    priority:99
+  });
+  const repeatMobileApprovalPost = Object.freeze({ ...mobileApprovalPost, id:"browser-action-mobile-post-002", title:`${mobileApprovalPost.title} (repeat fixture)`, priority:"low" });
+  const repeatMobileApproval = Object.freeze({
+    ...mobileApproval,
+    id:"browser-action-mobile-approval-002",
+    queue_item_id:"browser-action-mobile-queue-002",
+    preview:"Review the repeat mobile approval post"
+  });
+  const repeatActionQueueItems = Object.freeze(actionQueueItems
+    .filter((item) => item.id !== "browser-action-queue-hidden-001")
+    .map((item) => Object.freeze({
+      ...item,
+      id:item.id.replace(/-001$/, "-002"),
+      title:`${item.title} (repeat fixture)`,
+      priority:99,
+      ...(item.id === "browser-action-mobile-queue-001" ? {
+        sourceRef:{ collection:"posts", itemId:repeatMobileApprovalPost.id },
+        approvalId:repeatMobileApproval.id
+      } : {})
+    })));
+  const repeatInboxTask = Object.freeze({ ...inboxTask, id:"browser-inbox-task-002", title:`${inboxTask.title} (repeat fixture)`, priority:"low", important:true });
   const recentUpdate = Object.freeze({
     id:"browser-inbox-update-001",
     title:"Partner milestone announcement",
@@ -243,13 +379,13 @@ function browserFixtureState(seed) {
   })));
   return {
     ...seed,
-    approvals:[inboxApproval, ...(Array.isArray(seed.approvals) ? seed.approvals : []).filter((item) => item?.id !== inboxApproval.id)],
-    queueItems:[inboxQueueItem, ...(Array.isArray(seed.queueItems) ? seed.queueItems : []).filter((item) => item?.id !== inboxQueueItem.id)],
-    posts:[post, hiddenPost, inboxPost, hiddenInboxPost, recentUpdate, ...(Array.isArray(seed.posts) ? seed.posts : []).filter((item) => ![post.id, hiddenPost.id, inboxPost.id, hiddenInboxPost.id, recentUpdate.id].includes(item?.id))],
+    approvals:[inboxApproval, ...(includeActions ? [repeatInboxApproval, mobileApproval, repeatMobileApproval] : []), ...(Array.isArray(seed.approvals) ? seed.approvals : []).filter((item) => ![inboxApproval.id, repeatInboxApproval.id, mobileApproval.id, repeatMobileApproval.id].includes(item?.id))],
+    queueItems:[inboxQueueItem, ...(includeActions ? [repeatInboxQueueItem, ...actionQueueItems, ...repeatActionQueueItems] : []), ...(Array.isArray(seed.queueItems) ? seed.queueItems : []).filter((item) => ![inboxQueueItem.id, repeatInboxQueueItem.id, ...actionQueueItems.map((candidate) => candidate.id), ...repeatActionQueueItems.map((candidate) => candidate.id)].includes(item?.id))],
+    posts:[post, hiddenPost, inboxPost, ...(includeActions ? [repeatInboxPost, mobileApprovalPost, repeatMobileApprovalPost] : []), hiddenInboxPost, recentUpdate, ...(Array.isArray(seed.posts) ? seed.posts : []).filter((item) => ![post.id, hiddenPost.id, inboxPost.id, repeatInboxPost.id, mobileApprovalPost.id, repeatMobileApprovalPost.id, hiddenInboxPost.id, recentUpdate.id].includes(item?.id))],
     campaigns:[campaign, inboxCampaign, ...(Array.isArray(seed.campaigns) ? seed.campaigns : []).filter((item) => ![campaign.id, inboxCampaign.id].includes(item?.id))],
     partners:[partner, inboxPartner, waitingPartner, ...(Array.isArray(seed.partners) ? seed.partners : []).filter((item) => ![partner.id, inboxPartner.id, waitingPartner.id].includes(item?.id))],
     dataRoomItems:[file, inboxFile, ...(Array.isArray(seed.dataRoomItems) ? seed.dataRoomItems : []).filter((item) => ![file.id, inboxFile.id].includes(item?.id))],
-    tasks:[task, inboxTask, ...paginationTasks, ...(Array.isArray(seed.tasks) ? seed.tasks : []).filter((item) => ![task.id, inboxTask.id, ...paginationTasks.map((candidate) => candidate.id)].includes(item?.id))],
+    tasks:[task, inboxTask, ...(includeActions ? [repeatInboxTask] : paginationTasks), ...(Array.isArray(seed.tasks) ? seed.tasks : []).filter((item) => ![task.id, inboxTask.id, repeatInboxTask.id, ...paginationTasks.map((candidate) => candidate.id)].includes(item?.id))],
     reports:[report, ...(Array.isArray(seed.reports) ? seed.reports : []).filter((item) => item?.id !== report.id)]
   };
 }
@@ -363,18 +499,22 @@ function runPlaywright(env, args) {
   });
 }
 
-const fixtureState = browserFixtureState(JSON.parse(await readFile(seedPath, "utf8")));
+const seedState = JSON.parse(await readFile(seedPath, "utf8"));
+const fixtureState = browserFixtureState(seedState);
+const actionFixtureState = browserFixtureState(seedState, { includeActions:true });
 await rm(path.join(projectRoot, "playwright-report"), { recursive:true, force:true });
 await rm(artifactDir, { recursive:true, force:true });
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "legalease-browser-tests-"));
 const legacyDataPath = path.join(tempRoot, "legacy-state.json");
 const vnextDataPath = path.join(tempRoot, "vnext-state.json");
 const createDataPath = path.join(tempRoot, "create-state.json");
+const actionDataPath = path.join(tempRoot, "action-state.json");
 const restrictedDataPath = path.join(tempRoot, "restricted-state.json");
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(createDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(actionDataPath, `${JSON.stringify(actionFixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(restrictedDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
@@ -406,6 +546,11 @@ try {
     vnext:true
   }));
   servers.push(await startServer({
+    name:"actions",
+    dataPath:actionDataPath,
+    vnext:true
+  }));
+  servers.push(await startServer({
     name:"restricted",
     dataPath:restrictedDataPath,
     vnext:true,
@@ -422,7 +567,8 @@ try {
     BROWSER_TEST_BASE_URL:servers[0].baseURL,
     BROWSER_TEST_VNEXT_BASE_URL:servers[1].baseURL,
     BROWSER_TEST_CREATE_BASE_URL:servers[2].baseURL,
-    BROWSER_TEST_RESTRICTED_BASE_URL:servers[3].baseURL,
+    BROWSER_TEST_ACTIONS_BASE_URL:servers[3].baseURL,
+    BROWSER_TEST_RESTRICTED_BASE_URL:servers[4].baseURL,
     BROWSER_TEST_RESTRICTED_CREDENTIAL:restrictedCredential
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));

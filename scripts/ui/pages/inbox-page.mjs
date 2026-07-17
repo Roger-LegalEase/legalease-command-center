@@ -1,4 +1,5 @@
 import { escapeAttribute, escapeHtml } from "../html.mjs";
+import { renderInboxActionLayer } from "../inbox-action-ui.mjs";
 import {
   INBOX_PAGE_DUE_CONTRACT,
   INBOX_PAGE_ENDPOINT,
@@ -37,6 +38,7 @@ export function renderInboxPageLoading() {
       <button type="button" class="vnext-inbox-clear" data-inbox-clear>Clear filters</button>
     </form>
     <div class="vnext-inbox-result-summary" data-inbox-result-summary role="status" aria-live="polite"></div>
+    ${renderInboxActionLayer()}
     <div class="vnext-inbox-content" data-inbox-content aria-busy="true">
       <div class="vnext-inbox-loading" data-inbox-loading role="status">
         <span class="vnext-inbox-loading-mark" aria-hidden="true"></span>
@@ -236,6 +238,7 @@ export function inboxPageBrowserSource() {
       row.className = "vnext-inbox-item";
       row.dataset.inboxItem = "true";
       row.dataset.inboxItemId = item.id;
+      row.dataset.inboxItemVersion = item.expectedUpdatedAt;
       const body = document.createElement("div");
       body.className = "vnext-inbox-item-body";
       const badges = document.createElement("div");
@@ -269,11 +272,29 @@ export function inboxPageBrowserSource() {
       const actions = document.createElement("div");
       actions.className = "vnext-inbox-item-actions";
       const open = document.createElement("a");
-      open.className = "vnext-inbox-open" + (index === 0 ? " is-primary" : "");
+      open.className = "vnext-inbox-open" + (index === 0 && !(item.actions || []).length ? " is-primary" : "");
       open.href = item.href;
       open.textContent = "Open";
       open.setAttribute("aria-label", "Open " + item.title + " in " + item.type.label);
+      const actionControls = (item.actions || []).map((action) => {
+        const control = document.createElement("button");
+        control.type = "button";
+        control.className = "vnext-inbox-item-action vnext-inbox-item-action-" + action.tone;
+        control.dataset.inboxAction = action.intent;
+        control.textContent = action.label;
+        control.setAttribute("aria-label", action.label + " " + item.title);
+        return { control, tone:action.tone };
+      });
+      actions.append(...actionControls.filter((entry) => entry.tone !== "quiet").map((entry) => entry.control));
       actions.append(open);
+      actions.append(...actionControls.filter((entry) => entry.tone === "quiet").map((entry) => entry.control));
+      const actionStatus = document.createElement("div");
+      actionStatus.className = "vnext-inbox-item-action-status";
+      actionStatus.dataset.inboxItemActionStatus = "true";
+      actionStatus.setAttribute("role", "status");
+      actionStatus.setAttribute("aria-live", "polite");
+      actionStatus.tabIndex = -1;
+      actions.append(actionStatus);
       row.append(body, actions);
       return row;
     }

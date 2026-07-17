@@ -262,10 +262,11 @@ Titles and summaries use source truth after visibility filtering, then normalize
 Only `open`, `approve`, `complete`, and `snooze` can appear.
 
 - `approve` is emitted only for an existing reviewed approval/suggestion operation.
-- `complete` and `snooze` are emitted only for current Task/decision operations that already support them.
+- `complete` is emitted for an actionable Task or a non-approval Company queue item whose existing transition supports completion.
+- `snooze` is emitted only for current Task/decision projections with an existing source-domain hint; CCX-202 deliberately wires only normalized Company queue snooze and leaves relative Task snooze Open/Complete-only.
 - Sources requiring more context emit only `open`.
 
-There is no `send`, `publish`, `launch`, `delete`, `release`, `resume`, `apply`, provider, or other external action intent. CCX-200 supplies no executor.
+There is no `send`, `publish`, `launch`, `delete`, `release`, `resume`, `apply`, provider, or other external action intent. CCX-200 supplies no executor; CCX-202 filters hints through its stricter reviewed source matrix before showing or executing an action.
 
 ## Side-effect guarantees
 

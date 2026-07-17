@@ -1,4 +1,5 @@
 import { INBOX_GROUP_CONTRACT } from "./inbox-view.mjs";
+import { inboxActionsForProjectionItem } from "../../ui-actions/inbox-actions.mjs";
 
 const PRIORITIES = Object.freeze(["urgent", "high", "normal", "low"]);
 const GROUP_QUERY = Object.freeze({
@@ -105,11 +106,7 @@ function publicType(item = {}) {
 function compactItem(item, generatedAt) {
   const type = publicType(item);
   if (!type) return null;
-  const availableInSource = item.actionIntents.includes("approve")
-    ? "Approval is available in the source record."
-    : item.actionIntents.includes("complete")
-      ? "This can be completed from the source record."
-      : "";
+  const actions = inboxActionsForProjectionItem(item);
   return {
     id:item.id,
     type,
@@ -124,7 +121,9 @@ function compactItem(item, generatedAt) {
     requiresApproval:item.requiresApproval,
     href:item.href,
     relatedObject:item.relatedObject,
-    availableInSource
+    expectedUpdatedAt:item.updatedAt,
+    actions,
+    availableInSource:""
   };
 }
 
