@@ -289,10 +289,16 @@ export function todayPageBrowserSource() {
       aside.className = "vnext-today-quick-capture";
       aside.setAttribute("aria-label", "Quick Capture");
       const copy = document.createElement("div");
-      copy.append(text("h2", "Quick Capture"), text("p", "Capture a thought in the existing reviewed workspace."));
-      const action = routeLink("Open Quick Capture", "#capture-inbox", "vnext-today-text-action");
+      copy.append(text("h2", "Quick Capture"), text("p", "Choose a clear intent and confirm where it will be saved."));
+      const action = document.createElement("button");
+      action.type = "button";
+      action.className = "vnext-today-text-action";
+      action.textContent = "Open Quick Capture";
+      action.addEventListener("click", () => {
+        document.dispatchEvent(new CustomEvent("vnext:open-quick-capture", { detail:{ returnTarget:action } }));
+      });
       aside.append(copy);
-      if (action) aside.append(action);
+      aside.append(action);
       host.append(aside);
     }
     function renderPayload(payload) {

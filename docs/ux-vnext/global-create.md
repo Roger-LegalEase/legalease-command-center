@@ -38,11 +38,12 @@ after the body is parsed. The current mapping is:
 | Outreach campaign | Growth management | Disabled with a plain-English access explanation |
 | Partner | Growth management | Disabled with a plain-English access explanation |
 | File or folder | Growth management | Disabled with a plain-English access explanation |
-| Quick note | Capture routing | Disabled with a plain-English access explanation |
+| Quick note | Per selected CCX-205 destination | Each intent is enabled or disabled with a plain-English access explanation |
 
-Owner and admin fixtures can use all five workflows. The restricted operator fixture
-can create a Quick note but cannot use the other four. A hidden or disabled browser
-control never grants authority; the endpoint remains authoritative.
+Owner and admin fixtures can use all five menu workflows. A restricted actor may use
+only the Quick Capture intents whose existing destination policy authorizes them; for
+example, Capture Inbox permission does not grant Social draft permission. A hidden or
+disabled browser control never grants authority; the endpoint remains authoritative.
 
 ## Desktop, mobile, keyboard, and focus
 
@@ -75,7 +76,7 @@ collection, or endpoint detail.
 | Outreach campaign | `POST /api/ui/create/campaign` | `campaigns` | `Draft`, no recipients, audience, sends, approval, or live mode | `#outreach/campaign/<id>` |
 | Partner | `POST /api/ui/create/partner` | `partners` | founder stage `New`; lifecycle stage `new` | `#partners/partner/<id>` |
 | File or folder | `POST /api/ui/create/file` | `dataRoomItems` | `Draft` document record; no binary upload or external sharing | `#files/data-room-item/<id>` |
-| Quick note | `POST /api/ui/create/note` | `captureInbox` | internal `conversation_note` awaiting review | `#item/captureInbox/<id>` |
+| Quick note | `POST /api/ui/quick-capture` | selected existing collection | explicit CCX-205 intent default | server-returned exact destination hash |
 
 ### Social post
 
@@ -116,10 +117,13 @@ not create a canonical Files collection or simulate folders.
 
 ### Quick note
 
-Note is required. The record uses `captureInbox` with the existing internal
-conversation-note classification and review state. It is not routed automatically,
-converted to a Task, applied to a Partner, sent, published, or expanded into a
-Campaign. Its audit/activity summary never includes the note body.
+CCX-205 keeps the **Quick note** menu label but opens the shared Unified Quick Capture
+sheet used by Today. The user explicitly selects Task, Decision, Blocker, Post idea,
+Partner note, Campaign idea, or File/report note and sees its destination before Save.
+No intent is silently converted, and Le-E suggestions require explicit acceptance.
+See `quick-capture.md` for the authoritative destination, exact-link, idempotency,
+authorization, and safety contract. The original `/api/ui/create/note` route remains
+unchanged for compatibility and rollback; the vNext menu no longer uses it.
 
 ## Idempotency, validation, and writes
 

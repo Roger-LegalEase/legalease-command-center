@@ -16,6 +16,10 @@ import {
 import { shellResilienceBrowserSource } from "./shell-resilience.mjs";
 import { inboxActionBrowserSource } from "./inbox-action-ui.mjs";
 import {
+  QUICK_CAPTURE_STYLESHEET_PATH,
+  quickCaptureBrowserSource
+} from "./quick-capture.mjs";
+import {
   INBOX_PAGE_STYLESHEET_PATH,
   inboxPageBrowserSource
 } from "./pages/inbox-page.mjs";
@@ -483,13 +487,13 @@ export function renderVNextDesktopShell(legacyHtml = "") {
   html = replaceInitialLoadingSurface(html);
   html = html.replace(
     "</head>",
-    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
+    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
   );
   html = html.replace(bodyMarker, '<body class="vnext-app-shell" data-command-center-shell="vnext">');
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n</body>`);
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n</body>`);
   return html;
 }
 

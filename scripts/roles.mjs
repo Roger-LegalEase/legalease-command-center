@@ -178,6 +178,8 @@ export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", 
   if (verb === "GET" && path === "/api/ui/search") return ["read_internal"];
   if (verb === "GET" && path === "/api/ui/today") return ["read_internal"];
   if (verb === "GET" && path === "/api/ui/inbox") return ["read_internal"];
+  if (verb === "GET" && path === "/api/ui/quick-capture/capabilities") return ["read_internal"];
+  if (verb === "POST" && path === "/api/ui/quick-capture") return ["read_internal"];
   if (verb === "POST" && path === "/api/ui/inbox/action") return ["read_internal"];
   if (verb === "POST" && path === "/api/ui/create/post") return ["manage_content_drafts"];
   if (verb === "POST" && ["/api/ui/create/campaign", "/api/ui/create/partner", "/api/ui/create/file"].includes(path)) return ["manage_growth"];

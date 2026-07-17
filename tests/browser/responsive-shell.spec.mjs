@@ -109,7 +109,7 @@ test("mobile utilities and the shared Global Create workflow remain reachable", 
   await expect(page.getByRole("menu", { name:"Create" }).getByRole("menuitem")).toHaveCount(5);
   await page.getByRole("menuitem", { name:/Quick note/ }).click();
   await expect(page.getByRole("dialog", { name:"Create" })).toBeVisible();
-  await expect(page.getByRole("heading", { name:"Quick note" })).toBeVisible();
+  await expect(page.getByRole("heading", { name:"Quick Capture" })).toBeVisible();
   await page.getByRole("button", { name:"Cancel" }).click();
 });
 

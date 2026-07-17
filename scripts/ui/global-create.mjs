@@ -2,6 +2,7 @@ import { escapeAttribute, escapeHtml } from "./html.mjs";
 import { GLOBAL_CREATE_LABELS, GLOBAL_UTILITIES } from "./labels.mjs";
 import { renderActionStatus } from "./feedback.mjs";
 import { renderButton } from "./primitives.mjs";
+import { renderQuickCaptureForm } from "./quick-capture.mjs";
 
 const freezeList = (values) => Object.freeze(values.map((value) => Object.freeze({ ...value })));
 
@@ -44,10 +45,10 @@ export const GLOBAL_CREATE_OPTIONS = freezeList([
   {
     id:"quick-note",
     label:GLOBAL_CREATE_LABELS.quickNote,
-    endpoint:"/api/ui/create/note",
+    endpoint:"/api/ui/quick-capture",
     objectType:"Note",
-    destination:"Inbox",
-    description:"Save an internal note for later review. It will not become a task."
+    destination:"Selected before save",
+    description:"Choose one of seven reviewed capture intents and confirm its destination before saving."
   }
 ]);
 
@@ -167,12 +168,7 @@ export function renderGlobalCreateWorkspace() {
         field({ label:"Notes", name:"notes", type:"textarea", maxLength:2000 }),
       extra:`<section class="vnext-folder-deferral" aria-label="Folder availability"><button type="button" disabled aria-disabled="true">Create folder</button><p>${escapeHtml(GLOBAL_CREATE_CONTRACT.folderDeferral)}</p></section>`
     }),
-    workflowForm({
-      id:"quick-note",
-      title:"Quick note",
-      description:"Save an internal note to Capture for review. It will not be sent, published, or converted into a task.",
-      fields:field({ label:"Note", name:"note", type:"textarea", required:true, maxLength:5000 })
-    })
+    renderQuickCaptureForm()
   ].join("");
   return `<div class="vnext-create-backdrop" data-global-create-backdrop hidden></div>
   <section class="vnext-create-workspace" id="${GLOBAL_CREATE_WORKSPACE_ID}" role="dialog" aria-modal="true" aria-labelledby="vnext-create-active-title" hidden tabindex="-1">
@@ -274,7 +270,7 @@ export function globalCreateBrowserSource() {
       return true;
     }
 
-    function openWorkflow(id) {
+    function openWorkflow(id, openOptions = {}) {
       const option = byId.get(id);
       const form = workspace.querySelector('[data-global-create-form="' + CSS.escape(id) + '"]');
       if (!option || !form) return;
@@ -285,12 +281,17 @@ export function globalCreateBrowserSource() {
       form.elements.creationRequestId.value = requestId();
       form.querySelector(".vnext-create-inline-error").hidden = true;
       activeForm = form;
-      returnTarget = trigger;
+      returnTarget = openOptions.returnTarget || trigger;
       workspace.hidden = false;
       backdrop.hidden = false;
       document.body.classList.add("vnext-create-open");
       setStatus("informational", "Nothing has been saved yet", option.description);
       setTimeout(() => form.querySelector("input:not([type=hidden]), textarea, select")?.focus(), 0);
+      if (id === "quick-note") {
+        document.dispatchEvent(new CustomEvent("vnext:quick-capture-opened", {
+          detail:{ suggestedIntent:openOptions.suggestedIntent || "" }
+        }));
+      }
     }
 
     async function submitForm(form) {
@@ -298,6 +299,10 @@ export function globalCreateBrowserSource() {
       const option = byId.get(id);
       const errorNode = form.querySelector(".vnext-create-inline-error");
       if (!option || form.dataset.submitting === "true") return;
+      if (id === "quick-note" && window.__LE_QUICK_CAPTURE?.submit) {
+        await window.__LE_QUICK_CAPTURE.submit();
+        return;
+      }
       errorNode.hidden = true;
       if (!form.checkValidity()) {
         errorNode.textContent = "Add the required information and try again. Nothing has been saved.";
@@ -401,6 +406,11 @@ export function globalCreateBrowserSource() {
     document.addEventListener("vnext:request-close-global-create", (event) => {
       closeMenu({ returnFocus:false });
       if (!closeWorkspace({ force:false, returnFocus:false })) event.preventDefault();
+    });
+    window.__LE_GLOBAL_CREATE = Object.freeze({
+      openWorkflow,
+      closeWorkspace,
+      setStatus
     });
   })();`;
 }

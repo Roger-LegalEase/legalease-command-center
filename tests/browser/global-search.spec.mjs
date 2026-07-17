@@ -72,7 +72,7 @@ test("Search trigger, shortcuts, focus, dismissal, and typing guard share one co
   await create.click();
   await page.getByRole("menu", { name:"Create" }).getByRole("menuitem", { name:/Quick note/ }).click();
   const createDialog = page.getByRole("dialog", { name:"Create" });
-  const note = createDialog.getByRole("textbox", { name:"Note", exact:true });
+  const note = createDialog.getByRole("textbox", { name:"Title", exact:true });
   await note.fill("Typing here must not open Search.");
   await note.focus();
   await page.keyboard.press("Control+k");

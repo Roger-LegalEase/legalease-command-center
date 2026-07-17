@@ -157,7 +157,8 @@ assert.match(browserSource, /checked\.safeHash === href/);
 assert.match(browserSource, /method:"GET"/);
 assert.doesNotMatch(browserSource, /method:\s*"(?:POST|PUT|PATCH|DELETE)"/);
 assert.doesNotMatch(browserSource, /localStorage|sessionStorage|\/api\/state|\/api\/boot-state/);
-assert.equal((browserSource.match(/"#capture-inbox"/g) || []).length, 1, "Today may expose only one Quick Capture route.");
+assert.equal((browserSource.match(/vnext:open-quick-capture/g) || []).length, 1, "Today may expose only one shared Quick Capture entry.");
+assert.doesNotMatch(browserSource, /"#capture-inbox"/, "Today should open the shared CCX-205 sheet instead of a second capture route.");
 assert.doesNotMatch(browserSource, /quick-capture[^\n]{0,200}(?:input|textarea)|\/api\/daily-run\/quick-capture/i, "Today must not duplicate or replace the reviewed Quick Capture form.");
 assert.doesNotMatch(browserSource, /textContent\s*=\s*"(?:Approve|Complete|Snooze|Send|Publish|Launch|Release)"/i);
 
@@ -229,6 +230,6 @@ console.log("TODAY_PAGE_FIXTURE", JSON.stringify({
   next:payload.nextItems.map((item) => ({ title:item.title, href:item.href })),
   needsYou:{ count:payload.needsMeSummary.count, urgent:payload.needsMeSummary.urgentCount, high:payload.needsMeSummary.highCount },
   progress:{ count:payload.progressSummary.count, shown:payload.progressSummary.items.length },
-  quickCapture:"one subordinate route to the existing capture workspace"
+  quickCapture:"one subordinate entry to the shared seven-intent capture sheet"
 }));
 console.log("PASS test-vnext-today-page");

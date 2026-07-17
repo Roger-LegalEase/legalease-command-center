@@ -122,7 +122,7 @@ test("Today is a four-question command surface with exact read-only navigation",
   await expect(progress.locator(".vnext-today-progress-list > li")).toHaveCount(payload.progressSummary.items.length);
   await expect(pageRoot).not.toContainText(/queueItems|sourceKind|workKind|capability|review_required|technical status|health ping|Provider sync/i);
   await expect(page.locator("[data-today-quick-capture]")).toHaveCount(0);
-  await expect(page.getByRole("link", { name:"Open Quick Capture" })).toHaveCount(1);
+  await expect(page.getByRole("button", { name:"Open Quick Capture" })).toHaveCount(1);
   await expect(pageRoot).not.toContainText(/System health|Live gates|Telemetry|Revenue|Full calendar|Today Flow/i);
 
   await page.screenshot({ path:path.join(screenshotDirectory, "today-command-surface-1440.png"), fullPage:true, animations:"disabled" });
@@ -205,10 +205,10 @@ test("Today compatibility aliases and retained utilities remain usable without d
   await expect(page).toHaveURL(/#today$/);
   await expect(page.locator("[data-today-page]")).toBeVisible();
 
-  await page.getByRole("link", { name:"Open Quick Capture" }).click();
-  await expect(page).toHaveURL(/#capture-inbox$/);
-  await expect(page.locator("main#app").getByRole("heading", { level:1 }).first()).toBeVisible();
-  await page.goBack();
+  await page.getByRole("button", { name:"Open Quick Capture" }).click();
+  await expect(page).toHaveURL(/#today$/);
+  await expect(page.getByRole("dialog", { name:"Create" }).getByRole("heading", { name:"Quick Capture" })).toBeVisible();
+  await page.getByRole("dialog", { name:"Create" }).getByRole("button", { name:"Cancel" }).click();
   await expect(page.locator("[data-today-page]")).toBeVisible();
   await page.getByRole("button", { name:"Search", exact:true }).click();
   await expect(page.getByRole("dialog", { name:"Search" })).toBeVisible();
