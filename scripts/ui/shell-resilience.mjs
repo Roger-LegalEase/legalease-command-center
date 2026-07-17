@@ -170,6 +170,7 @@ export function shellResilienceBrowserSource() {
       } catch {}
       document.querySelectorAll("input, textarea").forEach((control) => { control.value = ""; });
       renderTemplate(templates.sessionExpired, { kind:"session_expired" });
+      document.dispatchEvent(new CustomEvent("vnext:session-expired"));
     }
 
     function showRecovery() {
@@ -182,6 +183,7 @@ export function shellResilienceBrowserSource() {
         if (typeof fullStateLoaded !== "undefined") fullStateLoaded = false;
       } catch {}
       renderTemplate(templates.recovery, { kind:"recovery" });
+      document.dispatchEvent(new CustomEvent("vnext:recovery-mode"));
     }
 
     function showPageError() {

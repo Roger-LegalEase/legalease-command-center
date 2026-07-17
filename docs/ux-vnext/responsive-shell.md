@@ -131,6 +131,11 @@ authorization, origin, CSRF, approval, suppression, hold, sending, publishing,
 storage, audit, and safety behavior. Opening the drawer cannot enable vNext or grant
 authority.
 
+CCX-201 uses the same authorized Needs me badge value in the persistent desktop
+sidebar and responsive drawer. Zero hides the badge; session expiration and Recovery
+Mode clear it. The responsive Inbox list, group controls, filters, and 44-pixel Open
+targets are documented in `inbox-page.md` and introduce no drawer-specific request.
+
 ## Verification and screenshots
 
 Run the focused contract with `npm run test:vnext-responsive-shell` and the isolated

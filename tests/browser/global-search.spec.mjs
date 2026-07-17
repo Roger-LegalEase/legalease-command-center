@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { expect, openToday, test } from "./support.mjs";
+import { authenticateRestricted, expect, openToday, test } from "./support.mjs";
 
 const screenshotDirectory = path.resolve("docs/ux-vnext/screenshots/ccx-104");
 const groups = ["Posts", "Campaigns", "Partners", "Files", "Tasks", "Reports"];
@@ -290,10 +290,7 @@ test("compatibility routes, restricted visibility, and browser Back remain under
   await expect(page).toHaveURL(/#operator-search$/);
   await expect(page.getByRole("dialog", { name:"Search" })).toBeVisible();
 
-  const restrictedURL = process.env.BROWSER_TEST_RESTRICTED_BASE_URL;
-  const credential = process.env.BROWSER_TEST_RESTRICTED_CREDENTIAL;
-  const login = await page.request.post(`${restrictedURL}/api/auth/login`, { data:{ credential } });
-  expect(login.ok()).toBe(true);
+  const restrictedURL = await authenticateRestricted(page);
   await page.route(`${restrictedURL}/api/**`, async (route) => {
     const request = route.request();
     const requested = new URL(request.url());

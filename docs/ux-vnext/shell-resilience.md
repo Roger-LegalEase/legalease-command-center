@@ -154,6 +154,13 @@ Global Search and Global Create retain their scoped loading/error contracts. A S
 read failure does not replace the page. A Create validation, authorization, or write
 failure creates zero records and is never retried automatically by CCX-105.
 
+CCX-201 applies the same boundary to Inbox. The shell remains visible during the
+compact read; a failure replaces only Inbox content and retries only
+`GET /api/ui/inbox` while preserving safe group/filter state. Unauthorized reads
+render no protected page data or counts. Session expiration clears Inbox items and
+the shell badge, while Recovery Mode clears a stale badge and keeps “Publishing is
+off.” Retry never invokes a projected action intent.
+
 ## Accessibility and responsive behavior
 
 Loading uses `aria-busy` and one restrained live announcement. Error and status

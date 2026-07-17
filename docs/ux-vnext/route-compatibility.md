@@ -99,6 +99,14 @@ Non-core collections continue to use the existing exact-item viewer. The explici
 collection destination table selects Today, Inbox, Settings, or a primary destination;
 no collection is classified by substring guessing.
 
+## vNext Inbox utility route
+
+CCX-201 adds `#inbox` to the vNext compatibility parser as an Inbox utility page.
+Safe hash-query state may carry `group`, `type`, `priority`, `owner`, and `due`
+selections. It does not enter the 75-route legacy registry, add an alias, become a
+primary destination, or rewrite existing Decisions, Tasks, queue, Automation, or
+captured-follow-up bookmarks. Flag-off unknown-route behavior is unchanged.
+
 Examples:
 
 ```text

@@ -1,0 +1,136 @@
+.vnext-inbox-page {
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  padding: 36px clamp(20px, 4vw, 52px) 64px;
+  color: var(--ink, #172033);
+}
+
+.vnext-inbox-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 26px;
+}
+
+.vnext-inbox-header h1 { margin: 2px 0 8px; font-size: clamp(2rem, 4vw, 3rem); line-height: 1; }
+.vnext-inbox-header p { max-width: 680px; margin: 0; color: #536076; line-height: 1.55; }
+.vnext-inbox-eyebrow { color: var(--le-warning-700, #8a5700) !important; font-size: .75rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.vnext-inbox-orientation,
+.vnext-inbox-open.is-primary { background: var(--le-orange-600, #f04800); border-color: var(--le-orange-700, #d84100); color: var(--le-navy-950, #071e33); }
+
+.vnext-inbox-orientation,
+.vnext-inbox-open,
+.vnext-inbox-load-more,
+.vnext-inbox-clear,
+.vnext-inbox-state-actions a,
+.vnext-inbox-state-actions button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #ccd3df;
+  border-radius: 9px;
+  padding: 9px 15px;
+  background: #fff;
+  color: #22304a;
+  font: inherit;
+  font-weight: 750;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.vnext-inbox-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 18px; }
+.vnext-inbox-tab {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid #d6dce6;
+  border-radius: 10px;
+  background: #fff;
+  color: #3d4a61;
+  font-weight: 800;
+  text-decoration: none;
+}
+.vnext-inbox-tab.is-selected { border-color: #c95f12; box-shadow: inset 0 -3px #c95f12; color: #8c3d08; }
+.vnext-inbox-tab-count { min-width: 25px; border-radius: 999px; padding: 2px 7px; background: #eef1f5; color: #27334a; font-size: .78rem; text-align: center; }
+.vnext-inbox-tab.is-selected .vnext-inbox-tab-count { background: #fff0e5; color: #963f08; }
+
+.vnext-inbox-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr)) auto;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 16px;
+  border: 1px solid #dde2ea;
+  border-radius: 12px;
+  background: #f8f9fb;
+}
+.vnext-inbox-filters label { display: grid; gap: 6px; color: #435068; font-size: .78rem; font-weight: 800; }
+.vnext-inbox-filters select { min-width: 0; min-height: 44px; border: 1px solid #c9d0dc; border-radius: 8px; padding: 8px 32px 8px 10px; background: #fff; color: #172033; font: inherit; }
+.vnext-inbox-clear:disabled { cursor: default; opacity: .55; }
+.vnext-inbox-result-summary { min-height: 25px; margin: 0 2px 10px; color: #5d687a; font-size: .9rem; }
+
+.vnext-inbox-content { min-height: 260px; }
+.vnext-inbox-loading { display: flex; min-height: 220px; align-items: center; justify-content: center; gap: 14px; color: #4e5b71; text-align: left; }
+.vnext-inbox-loading p { margin: 3px 0 0; }
+.vnext-inbox-loading-mark { width: 24px; height: 24px; border: 3px solid #edd1bd; border-top-color: #c95f12; border-radius: 50%; animation: vnext-inbox-spin .8s linear infinite; }
+@keyframes vnext-inbox-spin { to { transform: rotate(360deg); } }
+
+.vnext-inbox-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.vnext-inbox-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 22px; align-items: center; border: 1px solid #dce1e9; border-radius: 12px; padding: 19px 20px; background: #fff; box-shadow: 0 2px 10px rgb(28 42 66 / 5%); }
+.vnext-inbox-item h2 { margin: 7px 0 5px; color: #172033; font-size: 1.08rem; line-height: 1.32; }
+.vnext-inbox-item-summary { margin: 0; color: #4e5b70; line-height: 1.48; }
+.vnext-inbox-item-badges,
+.vnext-inbox-item-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 14px; }
+.vnext-inbox-type,
+.vnext-inbox-priority { border-radius: 999px; padding: 4px 9px; background: #edf1f6; color: #3e4a60; font-size: .74rem; font-weight: 850; }
+.vnext-inbox-priority.priority-urgent { background: #f9dfdc; color: #9c2822; }
+.vnext-inbox-priority.priority-high { background: #fff0e5; color: #963f08; }
+.vnext-inbox-priority.priority-low { background: #eef4ef; color: #41604a; }
+.vnext-inbox-item-meta { margin-top: 12px; color: #606b7c; font-size: .8rem; }
+.vnext-inbox-item-meta .is-overdue { color: #a42c25; }
+.vnext-inbox-source-context { margin: 10px 0 0; color: #6b5a4d; font-size: .82rem; }
+.vnext-inbox-item-actions { display: flex; align-items: center; }
+.vnext-inbox-load-more { margin: 22px auto 0; }
+
+.vnext-inbox-state { min-height: 240px; border: 1px dashed #ccd3df; border-radius: 12px; padding: 48px 24px; background: #fbfcfd; text-align: center; }
+.vnext-inbox-state h2 { margin: 0 0 8px; font-size: 1.35rem; }
+.vnext-inbox-state p { max-width: 580px; margin: 0 auto; color: #59667a; line-height: 1.5; }
+.vnext-inbox-state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
+.vnext-inbox-state[data-state="error"],
+.vnext-inbox-state[data-state="unauthorized"] { border-style: solid; border-color: #e1c7b4; background: #fffaf6; }
+
+.vnext-inbox-page :focus-visible { outline: 3px solid #1e6fc7; outline-offset: 3px; }
+
+@media (max-width: 1024px) {
+  .vnext-inbox-page { padding-inline: 28px; }
+  .vnext-inbox-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vnext-inbox-clear { width: max-content; }
+}
+
+@media (max-width: 768px) {
+  .vnext-inbox-page { padding: 24px 18px 48px; }
+  .vnext-inbox-header { display: grid; }
+  .vnext-inbox-orientation { width: max-content; }
+  .vnext-inbox-item { grid-template-columns: 1fr; gap: 16px; }
+  .vnext-inbox-item-actions, .vnext-inbox-open { width: 100%; }
+}
+
+@media (max-width: 520px) {
+  .vnext-inbox-page { padding-inline: 14px; }
+  .vnext-inbox-tabs { gap: 5px; }
+  .vnext-inbox-tab { min-width: 0; gap: 5px; padding: 6px; font-size: .82rem; }
+  .vnext-inbox-tab-count { min-width: 21px; padding-inline: 5px; }
+  .vnext-inbox-filters { grid-template-columns: 1fr; padding: 13px; }
+  .vnext-inbox-clear { width: 100%; }
+  .vnext-inbox-item { padding: 16px; }
+  .vnext-inbox-item-meta { display: grid; gap: 7px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vnext-inbox-loading-mark { animation: none; }
+}

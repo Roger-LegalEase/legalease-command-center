@@ -21,6 +21,7 @@ import {
   renderVNextDesktopShell,
   renderVNextDesktopShellChrome
 } from "./ui/app-shell.mjs";
+import { resolveRouteCompatibility } from "./ui/route-compatibility.mjs";
 
 const serverSource = readFileSync("scripts/preview-server.mjs", "utf8");
 const navigationSource = readFileSync("scripts/ui/app-shell-navigation.mjs", "utf8");
@@ -106,7 +107,8 @@ for (const item of PRIMARY_SHELL_DESTINATIONS) {
 }
 for (const item of CREATE_MENU_OPTIONS) assert.match(item.endpoint, /^\/api\/ui\/create\/(?:post|campaign|partner|file|note)$/);
 for (const item of SECONDARY_SHELL_CONTROLS.filter((entry) => entry.kind === "route")) {
-  assert.ok(canonicalRoutes.has(item.route), `${item.label} must reach a real current route.`);
+  const resolved = resolveRouteCompatibility(`#${item.route}`);
+  assert.ok(canonicalRoutes.has(item.route) || (resolved.kind === "page" && resolved.canonicalRoute === item.route), `${item.label} must reach a real current or vNext utility route.`);
 }
 for (const item of TOP_BAR_CONTROLS.filter((entry) => entry.kind === "route")) {
   assert.ok(canonicalRoutes.has(item.route), `${item.label} must reach a real current route.`);

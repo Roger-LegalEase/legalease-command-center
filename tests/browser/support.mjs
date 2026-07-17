@@ -10,15 +10,32 @@ const criticalPaths = new Set([
   "/api/daily-run/quick-capture",
   "/api/runway-inputs",
   "/api/ui/search",
+  "/api/ui/inbox",
   "/api/ui/route-access"
 ]);
 
 const expectedCriticalResponses = new WeakMap();
+const expectedConsoleErrors = new WeakMap();
+let restrictedSessionCookies = null;
 
 export function allowExpectedCriticalResponse(page, pathname, count = 1) {
   const current = expectedCriticalResponses.get(page) || new Map();
   current.set(pathname, (current.get(pathname) || 0) + Math.max(1, Number(count) || 1));
   expectedCriticalResponses.set(page, current);
+}
+
+export function allowExpectedConsoleError(page, pattern, count = 1) {
+  const current = expectedConsoleErrors.get(page) || [];
+  current.push({ pattern, remaining:Math.max(1, Number(count) || 1) });
+  expectedConsoleErrors.set(page, current);
+}
+
+function consumeExpectedConsoleError(page, text) {
+  const current = expectedConsoleErrors.get(page) || [];
+  const expected = current.find((entry) => entry.remaining > 0 && entry.pattern.test(text));
+  if (!expected) return false;
+  expected.remaining -= 1;
+  return true;
 }
 
 function consumeExpectedCriticalResponse(page, pathname) {
@@ -57,6 +74,7 @@ export const test = playwrightTest.extend({
     page.on("console", (message) => {
       if (message.type() !== "error") return;
       const text = message.text();
+      if (consumeExpectedConsoleError(page, text)) return;
       if (!consoleErrorBaseline.some((entry) => entry.pattern.test(text))) {
         failures.push(`console.error: ${text}`);
       }
@@ -86,6 +104,21 @@ export const test = playwrightTest.extend({
 });
 
 export { expect };
+
+export async function authenticateRestricted(page) {
+  const restrictedURL = process.env.BROWSER_TEST_RESTRICTED_BASE_URL;
+  const credential = process.env.BROWSER_TEST_RESTRICTED_CREDENTIAL;
+  expect(restrictedURL, "The restricted browser fixture URL is required.").toBeTruthy();
+  expect(credential, "The synthetic restricted fixture credential is required.").toBeTruthy();
+  if (!restrictedSessionCookies) {
+    const login = await page.request.post(`${restrictedURL}/api/auth/login`, { data:{ credential } });
+    expect(login.ok(), "The restricted browser fixture must authenticate.").toBe(true);
+    restrictedSessionCookies = await page.context().cookies(restrictedURL);
+  } else {
+    await page.context().addCookies(restrictedSessionCookies);
+  }
+  return restrictedURL;
+}
 
 export async function openToday(page, target = "/#today") {
   await page.goto(target, { waitUntil:"domcontentloaded" });

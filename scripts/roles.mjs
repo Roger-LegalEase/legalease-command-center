@@ -176,6 +176,7 @@ export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", 
   const path = String(pathname || "/");
   if (verb === "GET" && path === "/api/ui/route-access") return ["read_internal"];
   if (verb === "GET" && path === "/api/ui/search") return ["read_internal"];
+  if (verb === "GET" && path === "/api/ui/inbox") return ["read_internal"];
   if (verb === "POST" && path === "/api/ui/create/post") return ["manage_content_drafts"];
   if (verb === "POST" && ["/api/ui/create/campaign", "/api/ui/create/partner", "/api/ui/create/file"].includes(path)) return ["manage_growth"];
   if (verb === "POST" && path === "/api/ui/create/note") return ["route_captures"];
