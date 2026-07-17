@@ -157,6 +157,14 @@ import { renderDesignSystemShowcase } from "./ui/design-system-showcase.mjs";
 import { renderVNextDesktopShell } from "./ui/app-shell.mjs";
 import { buildGlobalCreateViewModel, GLOBAL_CREATE_OPTIONS } from "./ui/global-create.mjs";
 import { createGlobalObject, GLOBAL_CREATE_ENDPOINTS, globalCreateSafeError } from "./global-create-service.mjs";
+import {
+  buildQuickCaptureCapabilities,
+  createQuickCapture,
+  QUICK_CAPTURE_BODY_LIMIT,
+  QUICK_CAPTURE_CAPABILITIES_ENDPOINT,
+  QUICK_CAPTURE_ENDPOINT,
+  quickCaptureSafeError
+} from "./quick-capture-service.mjs";
 
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
@@ -35091,6 +35099,16 @@ async function handleRequest(request, response) {
       sendJson(response, { error:"Today is unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
       return;
     }
+    else if (url.pathname === QUICK_CAPTURE_ENDPOINT || url.pathname === QUICK_CAPTURE_CAPABILITIES_ENDPOINT) {
+      sendJson(response, {
+        ok:false,
+        outcome:accessDecision.status === 401 ? "session_expired" : "not_authorized",
+        message:accessDecision.status === 401
+          ? "Your session ended. Sign in again before saving."
+          : "Quick Capture is unavailable for this account. Nothing was saved."
+      }, accessDecision.status || 403);
+      return;
+    }
     else if (url.pathname.startsWith("/api/ui/create/")) {
       sendJson(response, { error:"Your current access does not allow this creation action. Nothing was saved." }, accessDecision.status || 403);
       return;
@@ -35267,6 +35285,39 @@ async function handleRequest(request, response) {
     }
     const actor = publicActor(accessDecision.actor);
     sendJson(response, globalCreateCapabilityViewModel(actor?.role || "viewer"));
+    return;
+  }
+
+  if (url.pathname === QUICK_CAPTURE_CAPABILITIES_ENDPOINT && request.method === "GET") {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { ok:false, outcome:"not_available", message:"Quick Capture is unavailable." }, 404);
+      return;
+    }
+    const actor = publicActor(accessDecision.actor);
+    sendJson(response, buildQuickCaptureCapabilities(actor?.role || "viewer"));
+    return;
+  }
+
+  if (url.pathname === QUICK_CAPTURE_ENDPOINT && request.method === "POST") {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { ok:false, outcome:"not_available", message:"Quick Capture is unavailable. Nothing was saved." }, 404);
+      return;
+    }
+    try {
+      const input = await readBoundedJson(request, { limit:QUICK_CAPTURE_BODY_LIMIT });
+      const actor = publicActor(accessDecision.actor);
+      const now = new Date().toISOString();
+      const captured = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const result = createQuickCapture(currentState, input, { actor, now });
+        if (result.state !== currentState) await writeChangedCollections(currentState, result.state);
+        return result;
+      });
+      sendJson(response, captured.body);
+    } catch (error) {
+      const safe = quickCaptureSafeError(error);
+      sendJson(response, safe.body, safe.status);
+    }
     return;
   }
 

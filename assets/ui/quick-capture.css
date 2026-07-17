@@ -1,0 +1,249 @@
+.vnext-quick-capture-form {
+  gap: var(--le-space-4);
+}
+
+.vnext-quick-capture-editor {
+  display: grid;
+  gap: var(--le-space-4);
+}
+
+.vnext-quick-capture-form .vnext-create-fields label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--le-space-1);
+}
+
+.vnext-quick-capture-intents {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.vnext-quick-capture-intents legend {
+  margin-bottom: var(--le-space-3);
+  color: var(--le-text);
+  font-size: var(--le-type-sm);
+  font-weight: var(--le-weight-semibold);
+}
+
+.vnext-quick-capture-intent-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--le-space-2);
+}
+
+.vnext-quick-capture-intent {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 4.5rem;
+  align-items: center;
+  gap: var(--le-space-3);
+  padding: var(--le-space-3);
+  border: var(--le-border-thin);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface);
+  cursor: pointer;
+}
+
+.vnext-quick-capture-intent:has(input:checked) {
+  border-color: var(--le-teal-500);
+  background: var(--le-teal-100);
+  box-shadow: 0 0 0 2px rgba(42, 137, 139, 0.12);
+}
+
+.vnext-quick-capture-intent:focus-within {
+  outline: 2px solid var(--le-navy-950);
+  outline-offset: 2px;
+  box-shadow: var(--le-focus-ring);
+}
+
+.vnext-quick-capture-intent.is-disabled {
+  background: var(--le-surface-muted);
+  color: var(--le-text-muted);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.vnext-quick-capture-intent input {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: 0 0 auto;
+  accent-color: var(--le-teal-600);
+}
+
+.vnext-quick-capture-intent span {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.vnext-quick-capture-intent strong {
+  color: var(--le-navy-900);
+  font-size: var(--le-type-sm);
+}
+
+.vnext-quick-capture-intent small {
+  color: var(--le-text-muted);
+  font-size: var(--le-type-xs);
+  line-height: 1.35;
+}
+
+.vnext-quick-capture-destination {
+  display: grid;
+  gap: 0.25rem;
+  padding: var(--le-space-3) var(--le-space-4);
+  border: 1px solid rgba(42, 137, 139, 0.28);
+  border-radius: var(--le-radius-md);
+  background: var(--le-teal-100);
+}
+
+.vnext-quick-capture-destination > span {
+  color: var(--le-information-700);
+  font-size: var(--le-type-xs);
+  font-weight: var(--le-weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vnext-quick-capture-destination strong {
+  color: var(--le-navy-900);
+  font-size: var(--le-type-lg);
+}
+
+.vnext-quick-capture-destination p,
+.vnext-create-fields [data-quick-capture-field] p {
+  margin: 0;
+  color: var(--le-text-muted);
+  font-size: var(--le-type-sm);
+  line-height: 1.45;
+}
+
+.vnext-create-fields [data-quick-capture-field]:not([hidden]) {
+  display: grid;
+  gap: var(--le-space-3);
+  padding: var(--le-space-3);
+  border: var(--le-border-subtle);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface-muted);
+}
+
+.vnext-field-optional {
+  color: var(--le-text-muted);
+  font-size: var(--le-type-xs);
+  font-weight: var(--le-weight-medium);
+}
+
+.vnext-quick-capture-suggestion:not([hidden]) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--le-space-2) var(--le-space-3);
+  padding: var(--le-space-3);
+  border: var(--le-border-subtle);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface-muted);
+}
+
+.vnext-quick-capture-suggestion span {
+  color: var(--le-navy-900);
+  font-weight: var(--le-weight-semibold);
+}
+
+.vnext-quick-capture-suggestion small {
+  grid-column: 1 / -1;
+  color: var(--le-text-muted);
+}
+
+.vnext-quick-capture-suggestion-action {
+  min-height: var(--le-touch-target);
+  padding: 0 var(--le-space-3);
+  border: var(--le-border-strong);
+  border-radius: var(--le-radius-md);
+  background: var(--le-surface);
+  color: var(--le-navy-900);
+  font: inherit;
+  font-weight: var(--le-weight-semibold);
+  cursor: pointer;
+}
+
+.vnext-quick-capture-success:not([hidden]) {
+  display: grid;
+  justify-items: start;
+  gap: var(--le-space-3);
+  padding: var(--le-space-5);
+  border: 1px solid rgba(42, 137, 139, 0.32);
+  border-radius: var(--le-radius-lg);
+  background: var(--le-teal-100);
+}
+
+.vnext-quick-capture-success:focus {
+  outline: 2px solid var(--le-navy-950);
+  outline-offset: 2px;
+  box-shadow: var(--le-focus-ring);
+}
+
+.vnext-quick-capture-success-mark {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--le-teal-600);
+  color: #fff;
+  font-size: var(--le-type-lg);
+  font-weight: var(--le-weight-bold);
+}
+
+.vnext-quick-capture-success h3,
+.vnext-quick-capture-success p {
+  margin: 0;
+}
+
+.vnext-quick-capture-success h3 {
+  color: var(--le-navy-900);
+  font-size: var(--le-type-xl);
+}
+
+.vnext-quick-capture-success p {
+  color: var(--le-text-muted);
+  line-height: 1.5;
+}
+
+.vnext-quick-capture-success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--le-space-3);
+}
+
+@media (max-width: 35rem) {
+  .vnext-quick-capture-intent-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vnext-quick-capture-suggestion:not([hidden]) {
+    grid-template-columns: 1fr;
+  }
+
+  .vnext-quick-capture-suggestion small {
+    grid-column: auto;
+  }
+
+  .vnext-quick-capture-success-actions,
+  .vnext-quick-capture-success-actions .ui-button,
+  .vnext-quick-capture-form footer .ui-button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vnext-quick-capture-form *,
+  .vnext-quick-capture-form *::before,
+  .vnext-quick-capture-form *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

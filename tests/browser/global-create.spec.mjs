@@ -36,7 +36,7 @@ async function selectCreate(page, label) {
   await menu.getByRole("menuitem", { name:new RegExp(`^${label}`) }).click();
   const dialog = page.getByRole("dialog", { name:"Create" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("heading", { name:label, exact:true })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name:label === "Quick note" ? "Quick Capture" : label, exact:true })).toBeVisible();
   return dialog;
 }
 
@@ -64,8 +64,8 @@ test("Global Create exposes the exact shared menu and complete keyboard behavior
   await expect(opened.menu.getByRole("menuitem", { name:/Quick note/ })).toBeFocused();
   await page.keyboard.press("Space");
   const spaceDialog = page.getByRole("dialog", { name:"Create" });
-  await expect(spaceDialog.getByRole("heading", { name:"Quick note" })).toBeVisible();
-  await expect(spaceDialog.getByRole("textbox", { name:"Note", exact:true })).toBeFocused();
+  await expect(spaceDialog.getByRole("heading", { name:"Quick Capture" })).toBeVisible();
+  await expect(spaceDialog.getByRole("radio", { name:/Task/ })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(opened.trigger).toBeFocused();
 
@@ -92,7 +92,7 @@ test("Global Create exposes the exact shared menu and complete keyboard behavior
   await page.screenshot({ path:path.join(screenshotDirectory, "global-create-menu-390.png"), animations:"disabled" });
   await page.keyboard.press("End");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("heading", { name:"Quick note" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name:"Create" }).getByRole("heading", { name:"Quick Capture" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(opened.trigger).toBeFocused();
 });
@@ -126,7 +126,7 @@ test("all five workflows create one inert real record and open its exact link", 
 
   dialog = await selectCreate(page, "Outreach campaign");
   await dialog.getByLabel("Campaign name").fill("Browser fixture outreach");
-  await dialog.getByLabel("Campaign type").selectOption("partner_outreach");
+  await dialog.locator("#global-create-campaignType").selectOption("partner_outreach");
   await dialog.getByLabel("Goal or desired outcome").fill("Prepare an internal draft for later review.");
   await page.screenshot({ path:path.join(screenshotDirectory, "create-outreach-campaign-1440.png"), animations:"disabled" });
   await dialog.getByRole("button", { name:"Create outreach campaign" }).click();
@@ -156,9 +156,15 @@ test("all five workflows create one inert real record and open its exact link", 
   await returnToToday(page, baseURL);
 
   dialog = await selectCreate(page, "Quick note");
-  await dialog.getByRole("textbox", { name:"Note", exact:true }).fill("Browser fixture internal note. Do not convert this into a task.");
+  await dialog.getByRole("radio", { name:/Decision/ }).check();
+  await expect(dialog.getByLabel("Selected destination").getByText("Capture Inbox", { exact:true })).toBeVisible();
+  await dialog.getByRole("textbox", { name:"Title", exact:true }).fill("Browser fixture internal decision");
+  await dialog.getByRole("textbox", { name:/Details/ }).fill("Do not convert this into a task.");
   await page.screenshot({ path:path.join(screenshotDirectory, "create-quick-note-1440.png"), animations:"disabled" });
-  await dialog.getByRole("button", { name:"Create quick note" }).click();
+  await dialog.getByRole("button", { name:"Save", exact:true }).click();
+  await expect(dialog.getByRole("heading", { name:"Saved" })).toBeVisible();
+  await expect(dialog.getByRole("link", { name:"Open", exact:true })).toHaveAttribute("href", /#item\/captureInbox\/capture-/);
+  await dialog.getByRole("link", { name:"Open", exact:true }).click();
   await expect(page).toHaveURL(/#item\/captureInbox\/capture-/);
 
   const state = await stateOf(page, baseURL);
@@ -166,7 +172,7 @@ test("all five workflows create one inert real record and open its exact link", 
   const createdCampaigns = state.campaigns.filter((item) => item.createdVia === "Global Create" && !beforeIds.campaigns.has(item.id));
   const createdPartners = state.partners.filter((item) => item.createdVia === "Global Create" && !beforeIds.partners.has(item.id));
   const createdFiles = state.dataRoomItems.filter((item) => item.createdVia === "Global Create" && !beforeIds.dataRoomItems.has(item.id));
-  const createdNotes = state.captureInbox.filter((item) => item.createdVia === "Global Create" && !beforeIds.captureInbox.has(item.id));
+  const createdNotes = state.captureInbox.filter((item) => item.source_label === "Unified Quick Capture" && !beforeIds.captureInbox.has(item.id));
   expect([createdPosts.length, createdCampaigns.length, createdPartners.length, createdFiles.length, createdNotes.length]).toEqual([1, 1, 1, 1, 1]);
   expect(createdPosts[0]).toMatchObject({ status:"draft", scheduledFor:"", publishedAt:"" });
   expect(createdCampaigns[0]).toMatchObject({ status:"draft", recipientCount:0, sendCount:0, liveMode:false });
@@ -175,7 +181,7 @@ test("all five workflows create one inert real record and open its exact link", 
   expect(createdPartners[0]).not.toHaveProperty("type");
   expect(createdPartners[0]).not.toHaveProperty("partnerType");
   expect(createdFiles[0]).toMatchObject({ status:"draft", binaryUploaded:false, externallyShared:false });
-  expect(createdNotes[0]).toMatchObject({ capture_type:"conversation_note", review_state:"review_required" });
+  expect(createdNotes[0]).toMatchObject({ capture_type:"decision", review_state:"review_required" });
   expect(state.tasks.some((item) => item.sourceId === createdNotes[0].id)).toBe(false);
   expect(externalMutations).toEqual([]);
 

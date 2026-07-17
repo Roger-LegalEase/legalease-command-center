@@ -124,16 +124,17 @@ function creationResult(mapping, record, { alreadyExisted = false } = {}) {
   });
 }
 
-function postRecord(input, requestId, now) {
+function postRecord(input, requestId, now, _actor = {}, options = {}) {
   const title = text(input.title, { label:"Working title or idea", required:true, maxLength:160 });
   const draftCopy = text(input.draftCopy, { label:"Draft copy or notes", maxLength:5000 });
   const platform = choice(input.channel, allowedChannels, "channel preference");
+  const ideaOnly = options.initialPostStatus === "idea";
   return {
     id:identifier("post", requestId),
     title,
     platform,
-    status:draftCopy ? "draft" : "idea",
-    body:draftCopy,
+    status:ideaOnly ? "idea" : draftCopy ? "draft" : "idea",
+    body:ideaOnly ? "" : draftCopy,
     notes:draftCopy,
     contentType:"idea",
     approvalStatus:"not_requested",
@@ -268,7 +269,7 @@ export function createGlobalObject(state = {}, kind = "", input = {}, options = 
   const current = list(state[mapping.collection]);
   const expectedId = identifier(recordIdPrefixes[kind], creationRequestId);
   const now = clean(options.now) || new Date().toISOString();
-  const record = build(input, creationRequestId, now, options.actor || {});
+  const record = build(input, creationRequestId, now, options.actor || {}, options);
   const existing = current.find((record) => record.id === expectedId);
   if (existing && existing.createdVia !== "Global Create") {
     throw failure("Creation request conflicts with an existing record. Nothing was saved.", 409);

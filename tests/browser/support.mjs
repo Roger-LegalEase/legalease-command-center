@@ -13,6 +13,8 @@ const criticalPaths = new Set([
   "/api/ui/today",
   "/api/ui/inbox",
   "/api/ui/inbox/action",
+  "/api/ui/quick-capture",
+  "/api/ui/quick-capture/capabilities",
   "/api/ui/route-access"
 ]);
 

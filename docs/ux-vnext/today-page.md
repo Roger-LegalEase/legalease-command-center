@@ -50,7 +50,7 @@ Today uses the exact model links for Post, Campaign, Partner, Task, File, and Re
 
 ## Quick Capture boundary
 
-Today exposes one visually subordinate Quick Capture route only when the server declares the existing capture permission as `quickCaptureAvailable`. The large legacy component cannot be embedded without importing the legacy dashboard/runtime boundary, so CCX-204 links to the existing `#capture-inbox` workspace instead. The current form, endpoint, intents, Le-E routing, and saved-destination behavior are unchanged. No inline capture field or Global Create Quick note is duplicated, and unused Quick Capture makes zero requests.
+CCX-205 upgrades Today's single visually subordinate entry to open the shared Unified Quick Capture sheet when the server declares capture available. The same form and compact endpoints power Global Create **Quick note**; Today renders no inline field or duplicate modal. Intent remains explicit, destination is visible before Save, and unused Quick Capture performs no write or destination request. See `quick-capture.md` for the seven-intent contract.
 
 ## Calendar and planning deferrals
 
@@ -82,10 +82,10 @@ The focused production-like fixture enforces a response below 750 ms and substan
 
 The browser runner uses temporary synthetic JSON data, ephemeral loopback ports, blocked provider networking, scrubbed credentials, and every live-action gate off. Ten unedited screenshots live under `docs/ux-vnext/screenshots/ccx-204/` at 1440, 1280, 1024, 768, and 390 pixels, including focused and empty states.
 
-## Legacy preservation, rollback, and CCX-205 handoff
+## Legacy preservation and rollback
 
 Focused hashes protect the complete legacy `htmlShell` and `commandCenterOverviewHtml` blocks. The 75 canonical routes and 53 aliases remain unchanged. Flag-off HTML loads no Today stylesheet, controller, or endpoint request.
 
 Rollback removes the service, page module, stylesheet, endpoint/role wiring, focused/browser tests, this document, and vNext shell inclusions, or disables the exact server flag. No data repair, migration rollback, source transition, or cache cleanup is required.
 
-CCX-205 is not implemented here. After Roger reviews the real CCX-204 screenshots and the draft PR is merged, CCX-205 may address its separately reviewed Quick Capture scope. CCX-204 does not add intents, unify capture routing, or change Global Create.
+CCX-205 is layered only into the vNext utility entry. Disabling vNext restores this documented CCX-204/legacy boundary without changing legacy Today data or markup.

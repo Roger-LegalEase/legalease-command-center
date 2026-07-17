@@ -105,7 +105,11 @@ const canonicalRoutes = new Set(routeRegistry.map((entry) => entry.canonicalRout
 for (const item of PRIMARY_SHELL_DESTINATIONS) {
   assert.ok(canonicalRoutes.has(item.route), `${item.label} must reach a real current route.`);
 }
-for (const item of CREATE_MENU_OPTIONS) assert.match(item.endpoint, /^\/api\/ui\/create\/(?:post|campaign|partner|file|note)$/);
+for (const item of CREATE_MENU_OPTIONS) {
+  assert.match(item.endpoint, item.id === "quick-note"
+    ? /^\/api\/ui\/quick-capture$/
+    : /^\/api\/ui\/create\/(?:post|campaign|partner|file)$/);
+}
 for (const item of SECONDARY_SHELL_CONTROLS.filter((entry) => entry.kind === "route")) {
   const resolved = resolveRouteCompatibility(`#${item.route}`);
   assert.ok(canonicalRoutes.has(item.route) || (resolved.kind === "page" && resolved.canonicalRoute === item.route), `${item.label} must reach a real current or vNext utility route.`);

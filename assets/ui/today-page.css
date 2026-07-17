@@ -236,7 +236,11 @@
 
 .vnext-today-text-action {
   padding: 0 5px;
+  border: 0;
+  background: transparent;
   color: var(--le-information-700);
+  font: inherit;
+  cursor: pointer;
 }
 
 .vnext-today-counts {
