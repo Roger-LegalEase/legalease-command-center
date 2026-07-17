@@ -10,6 +10,7 @@ const criticalPaths = new Set([
   "/api/daily-run/quick-capture",
   "/api/runway-inputs",
   "/api/ui/search",
+  "/api/ui/today",
   "/api/ui/inbox",
   "/api/ui/inbox/action",
   "/api/ui/route-access"
@@ -17,6 +18,7 @@ const criticalPaths = new Set([
 
 const expectedCriticalResponses = new WeakMap();
 const expectedConsoleErrors = new WeakMap();
+const expectedRequestFailures = new WeakMap();
 let restrictedSessionCookies = null;
 
 export function allowExpectedCriticalResponse(page, pathname, count = 1) {
@@ -29,6 +31,12 @@ export function allowExpectedConsoleError(page, pattern, count = 1) {
   const current = expectedConsoleErrors.get(page) || [];
   current.push({ pattern, remaining:Math.max(1, Number(count) || 1) });
   expectedConsoleErrors.set(page, current);
+}
+
+export function allowExpectedRequestFailure(page, pathname, pattern = /abort/i, count = 1) {
+  const current = expectedRequestFailures.get(page) || [];
+  current.push({ pathname, pattern, remaining:Math.max(1, Number(count) || 1) });
+  expectedRequestFailures.set(page, current);
 }
 
 function consumeExpectedConsoleError(page, text) {
@@ -48,13 +56,22 @@ function consumeExpectedCriticalResponse(page, pathname) {
   return true;
 }
 
+function consumeExpectedRequestFailure(page, pathname, errorText) {
+  const current = expectedRequestFailures.get(page) || [];
+  const expected = current.find((entry) => entry.remaining > 0 && entry.pathname === pathname && entry.pattern.test(errorText));
+  if (!expected) return false;
+  expected.remaining -= 1;
+  return true;
+}
+
 function allowedOrigins(baseURL) {
   return new Set([
     baseURL,
     process.env.BROWSER_TEST_VNEXT_BASE_URL,
     process.env.BROWSER_TEST_CREATE_BASE_URL,
     process.env.BROWSER_TEST_ACTIONS_BASE_URL,
-    process.env.BROWSER_TEST_RESTRICTED_BASE_URL
+    process.env.BROWSER_TEST_RESTRICTED_BASE_URL,
+    process.env.BROWSER_TEST_TODAY_BASE_URL
   ].filter(Boolean).map((value) => new URL(value).origin));
 }
 
@@ -83,7 +100,9 @@ export const test = playwrightTest.extend({
     });
     page.on("requestfailed", (request) => {
       const url = new URL(request.url());
-      if (origins.has(url.origin) && url.pathname === "/api/ui/search" && /abort/i.test(request.failure()?.errorText || "")) return;
+      const errorText = request.failure()?.errorText || "unknown";
+      if (origins.has(url.origin) && url.pathname === "/api/ui/search" && /abort/i.test(errorText)) return;
+      if (origins.has(url.origin) && consumeExpectedRequestFailure(page, url.pathname, errorText)) return;
       if (origins.has(url.origin)) failures.push(`requestfailed: ${url.pathname} (${request.failure()?.errorText || "unknown"})`);
     });
     page.on("response", (response) => {

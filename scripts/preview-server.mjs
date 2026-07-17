@@ -126,6 +126,7 @@ import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
 import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex } from "./operator-search.mjs";
 import { searchGlobalRecords } from "./global-search-service.mjs";
 import { buildAuthorizedInboxPage } from "./inbox-page-service.mjs";
+import { buildAuthorizedTodayPage } from "./today-page-service.mjs";
 import {
   INBOX_ACTION_BODY_LIMIT,
   executeAuthorizedInboxAction,
@@ -35086,6 +35087,10 @@ async function handleRequest(request, response) {
       sendJson(response, { error:"Inbox is unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
       return;
     }
+    else if (url.pathname === "/api/ui/today") {
+      sendJson(response, { error:"Today is unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
+      return;
+    }
     else if (url.pathname.startsWith("/api/ui/create/")) {
       sendJson(response, { error:"Your current access does not allow this creation action. Nothing was saved." }, accessDecision.status || 403);
       return;
@@ -35195,6 +35200,22 @@ async function handleRequest(request, response) {
           ? "The Inbox view could not be read. Check the selected filters."
           : "Inbox could not load. No records were changed. Try again."
       }, Number(error?.status || 500));
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/ui/today" && request.method === "GET") {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { error:"Today is unavailable." }, 404);
+      return;
+    }
+    try {
+      const currentState = await store.readState();
+      const actor = publicActor(accessDecision.actor);
+      const now = new Date().toISOString();
+      sendJson(response, buildAuthorizedTodayPage(currentState, actor, now));
+    } catch {
+      sendJson(response, { error:"Today could not load. No records were changed. Try again." }, 500);
     }
     return;
   }

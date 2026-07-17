@@ -159,3 +159,5 @@ conversion is required.
 CCX-102 preserves the 75 canonical routes, 53 aliases, generic item links, and exact
 record links. CCX-105 completes the responsive Phase 1 shell-state contract without
 beginning CCX-200.
+
+CCX-204 uses this unchanged shell at 768 and 390 pixels. Its content stacks strictly Now, Next, Needs You, and Progress; Start/Resume remains a labelled full-width mobile target, explanations remain visible, and the existing Quick Capture route appears once. Le-E remains available from the drawer; the redundant floating pill is suppressed on Today so it cannot cover page content. See `today-page.md`.

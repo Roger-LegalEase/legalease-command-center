@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   allowExpectedConsoleError,
   allowExpectedCriticalResponse,
+  allowExpectedRequestFailure,
   authenticateRestricted,
   expect,
   openToday,
@@ -335,6 +336,7 @@ test("restricted and unauthorized Inbox reads reveal no hidden work, and session
     allowExpectedConsoleError(page, /Failed to load resource.*401/i);
     await route.fulfill({ status:401, contentType:"application/json", body:JSON.stringify({ error:"session" }) });
   });
+  allowExpectedRequestFailure(page, "/api/ui/inbox");
   await page.evaluate(() => window.__LE_INBOX_PAGE.refresh());
   await expect(page.locator("[data-vnext-shell-state='session_expired']")).toBeVisible();
   await expect(page.locator("[data-inbox-item]")).toHaveCount(0);

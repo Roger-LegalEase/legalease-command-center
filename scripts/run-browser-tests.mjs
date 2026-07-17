@@ -390,6 +390,56 @@ function browserFixtureState(seed, { includeActions = false } = {}) {
   };
 }
 
+function todayFixtureState(seed) {
+  const base = browserFixtureState(seed);
+  return {
+    ...base,
+    approvals:[],
+    queueItems:[],
+    approvalQueue:[],
+    posts:[
+      { id:"today-browser-social-next", title:"Review the access guide post", status:"needs_review", approvalStatus:"needs_review", priority:"critical", updatedAt:"2026-07-17T14:00:00.000Z" },
+      { id:"today-browser-social-later-one", title:"Review the Partner resource post", status:"needs_review", priority:"normal", updatedAt:"2026-07-17T06:30:00.000Z" },
+      { id:"today-browser-social-later-two", title:"Review the community workshop post", status:"needs_review", priority:"normal", updatedAt:"2026-07-17T06:00:00.000Z" },
+      { id:"today-browser-social-progress", title:"Access guide published", status:"posted", postedAt:"2026-07-17T13:00:00.000Z", updatedAt:"2026-07-17T13:00:00.000Z" },
+      { id:"today-browser-hidden", title:"Hidden acquisition post", status:"needs_review", priority:"critical", allowedRoles:["admin"], updatedAt:"2026-07-17T15:00:00.000Z" }
+    ],
+    campaigns:[
+      { id:"today-browser-campaign-next", campaignName:"July Partner outreach campaign", name:"July Partner outreach campaign", title:"July Partner outreach campaign", status:"ready", owner:"Roger", priority:"high", complianceStatus:"approved", partnerApprovalStatus:"approved", startDate:"2026-07-17", updatedAt:"2026-07-17T12:00:00.000Z" },
+      { id:"today-browser-campaign-progress", campaignName:"Partner education outreach", name:"Partner education outreach", status:"completed", owner:"Roger", completedAt:"2026-07-17T11:00:00.000Z", updatedAt:"2026-07-17T11:00:00.000Z" }
+    ],
+    partners:[
+      { id:"today-browser-partner-next", organizationName:"Philadelphia Reentry Coalition", name:"Philadelphia Reentry Coalition", organization:"Philadelphia Reentry Coalition", owner:"Roger", priority:"high", nextAction:"Confirm the next Partner conversation.", nextFollowUpDate:"2026-07-17", updatedAt:"2026-07-17T10:00:00.000Z" },
+      { id:"today-browser-partner-progress", organizationName:"Synthetic Community Partner", name:"Synthetic Community Partner", owner:"Roger", responseReceivedAt:"2026-07-17T09:30:00.000Z", responseSummary:"The Partner confirmed the next milestone.", updatedAt:"2026-07-17T09:30:00.000Z" }
+    ],
+    tasks:[
+      { id:"today-browser-now-task", title:"Prepare the current Partner brief", description:"Prepare the reviewed brief for the next Partner conversation.", status:"open", owner:"Roger", priority:"normal", important:true, dueDate:"2026-07-17", nextAction:"Prepare the short Partner brief.", updatedAt:"2026-07-17T08:00:00.000Z" },
+      { id:"today-browser-progress-task", title:"Finish the Partner report", status:"done", owner:"Roger", completionNote:"The Partner report is complete.", completedAt:"2026-07-17T09:00:00.000Z", updatedAt:"2026-07-17T09:00:00.000Z" }
+    ],
+    automationSuggestions:[],
+    inboxSignals:[],
+    growthInbox:[],
+    supportIssues:[],
+    reports:[],
+    dataRoomItems:[],
+    evidencePackNotes:[],
+    soc2Evidence:[],
+    soc2Policies:[],
+    dailyRunSessions:[{
+      session_id:"today-browser-current-run",
+      status:"active",
+      started_at:"2026-07-17T12:00:00.000Z",
+      last_active_at:"2026-07-17T16:30:00.000Z",
+      current_bucket_key:"due_today",
+      bucket_snapshot:{ buckets:[{ key:"due_today", items:[{ id:"today-browser-now-task", type:"task", route:"tasks", source:"tasks" }] }] },
+      completed_bucket_keys:[], completed_items:[], skipped_bucket_keys:[], parked_items:[]
+    }],
+    morningBriefs:[],
+    auditHistory:[{ id:"today-browser-audit-noise", timestamp:"2026-07-17T15:45:00.000Z", action:"health ping" }],
+    activityEvents:[{ id:"today-browser-provider-noise", createdAt:"2026-07-17T15:40:00.000Z", title:"Provider sync" }]
+  };
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -502,6 +552,7 @@ function runPlaywright(env, args) {
 const seedState = JSON.parse(await readFile(seedPath, "utf8"));
 const fixtureState = browserFixtureState(seedState);
 const actionFixtureState = browserFixtureState(seedState, { includeActions:true });
+const todayState = todayFixtureState(seedState);
 await rm(path.join(projectRoot, "playwright-report"), { recursive:true, force:true });
 await rm(artifactDir, { recursive:true, force:true });
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "legalease-browser-tests-"));
@@ -510,12 +561,14 @@ const vnextDataPath = path.join(tempRoot, "vnext-state.json");
 const createDataPath = path.join(tempRoot, "create-state.json");
 const actionDataPath = path.join(tempRoot, "action-state.json");
 const restrictedDataPath = path.join(tempRoot, "restricted-state.json");
+const todayDataPath = path.join(tempRoot, "today-state.json");
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(createDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(actionDataPath, `${JSON.stringify(actionFixtureState, null, 2)}\n`, { mode:0o600 }),
-  writeFile(restrictedDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 })
+  writeFile(restrictedDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(todayDataPath, `${JSON.stringify(todayState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
 const restrictedSessionSecret = crypto.randomBytes(32).toString("base64url");
@@ -558,6 +611,11 @@ try {
     restrictedCredential,
     sessionSecret:restrictedSessionSecret
   }));
+  servers.push(await startServer({
+    name:"today",
+    dataPath:todayDataPath,
+    vnext:true
+  }));
   const runnerEnv = {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -569,7 +627,8 @@ try {
     BROWSER_TEST_CREATE_BASE_URL:servers[2].baseURL,
     BROWSER_TEST_ACTIONS_BASE_URL:servers[3].baseURL,
     BROWSER_TEST_RESTRICTED_BASE_URL:servers[4].baseURL,
-    BROWSER_TEST_RESTRICTED_CREDENTIAL:restrictedCredential
+    BROWSER_TEST_RESTRICTED_CREDENTIAL:restrictedCredential,
+    BROWSER_TEST_TODAY_BASE_URL:servers[5].baseURL
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));
 } finally {

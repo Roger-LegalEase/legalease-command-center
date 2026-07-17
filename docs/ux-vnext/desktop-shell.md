@@ -148,3 +148,5 @@ adds resilience without simplifying or redesigning Today. CCX-201 adds the unive
 Inbox read surface without changing the five primary destinations. CCX-202 adds only
 server-declared actions backed by existing queue/Task operations; Open remains exact,
 the badge refreshes from the compact read, and the shell duplicates no domain action.
+
+CCX-204 adds the vNext-only Today stylesheet and controller to this compositor. At 1440 and 1280 pixels, Today uses one dominant Now surface, a weighted Next/Needs You row, and full-width Progress. At 1024 pixels the supporting row stacks for readability. The five destinations, top controls, logo, Inbox badge ownership, and legacy flag-off HTML remain unchanged. See `today-page.md`.
