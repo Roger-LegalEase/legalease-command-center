@@ -111,7 +111,8 @@ function destinationForEntry(entry) {
 
 const ROUTE_DESTINATIONS = Object.freeze({
   ...Object.fromEntries(routeRegistry.map((entry) => [entry.canonicalRoute, destinationForEntry(entry)])),
-  search:"Search"
+  search:"Search",
+  inbox:"Inbox"
 });
 const ALIAS_TARGETS = Object.freeze(Object.fromEntries(
   routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [alias, entry.canonicalRoute]))

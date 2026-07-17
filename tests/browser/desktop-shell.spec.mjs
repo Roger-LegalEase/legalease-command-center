@@ -115,8 +115,9 @@ test("aliases, record links, unknown routes, utilities, and top-bar controls rem
   await expect(primaryNavigation(page).getByRole("link", { name:"Partners", exact:true })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("main")).toHaveCount(1);
 
-  await page.getByRole("navigation", { name:"Command Center utilities" }).getByRole("link", { name:"Inbox", exact:true }).click();
-  await expect(page).toHaveURL(/#decisions$/);
+  await page.getByRole("navigation", { name:"Command Center utilities" }).getByRole("link", { name:/^Inbox/ }).click();
+  await expect(page).toHaveURL(/#inbox(?:\?group=needs-me)?$/);
+  await expect(page.getByRole("heading", { name:"Inbox", level:1 })).toBeVisible();
   await page.getByRole("button", { name:"Le-E", exact:true }).click();
   await expect(page.getByLabel("Le-E chat panel")).toBeVisible();
   await page.getByRole("navigation", { name:"Command Center utilities" }).getByRole("link", { name:"Settings", exact:true }).click();

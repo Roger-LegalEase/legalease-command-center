@@ -67,10 +67,12 @@ desktop and mobile. Profile retains its existing menu behavior.
 
 ## Inbox, Le-E, and Settings
 
-Inbox opens the existing Decisions surface. Its badge is hidden unless the current
-decision projection exposes an actual positive `needsRoger` count; the existing local
-queue status is a safe fallback when that projection is not loaded. No count is
-fabricated and CCX-100 does not create a new Inbox model.
+As of CCX-201, Inbox opens the vNext-only `#inbox` utility route documented in
+`inbox-page.md`. It remains secondary navigation and never becomes a sixth primary
+destination. Its badge is the authorized CCX-200 Needs me count from the compact
+`/api/ui/inbox` read; Waiting and Updates do not inflate it, zero hides it, and the
+shell does not read full state to calculate it. The Decisions bookmark remains
+available at its existing route.
 
 Le-E invokes the existing `openLeeBubble()` function and therefore retains the same
 assistant, stored context, permissions, and propose-only boundary. The existing
@@ -142,5 +144,6 @@ shared.
 
 CCX-101 through CCX-105 keep the same route inventory, five destinations, direct logo
 asset, feature-flag rollback, and unchanged business and safety boundaries. CCX-105
-adds resilience without simplifying or redesigning Today. CCX-200 may begin only
-after CCX-105 review and merge.
+adds resilience without simplifying or redesigning Today. CCX-201 adds the universal
+Inbox read surface without changing the five primary destinations. CCX-202 action
+execution remains deferred until CCX-201 review and merge.

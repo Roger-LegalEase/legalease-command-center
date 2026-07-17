@@ -312,9 +312,11 @@ No state rollback, migration rollback, data repair, route rollback, or provider 
 
 ## CCX-201 handoff
 
-After review and merge, CCX-201 may consume only the frozen normalized view and the exact three groups. It must not reinterpret source state, bypass authorization, replace source engines, change the current shell Inbox destination prematurely, or introduce persistence merely to render the page.
-
-CCX-201 remains blocked until CCX-200 is reviewed and merged.
+CCX-201 now consumes the frozen normalized view and exact three groups through the
+compact authorized `GET /api/ui/inbox` read documented in `inbox-page.md`. Filtering
+and pagination occur only after projection authorization. The page does not
+reinterpret source state, replace source engines, or introduce persistence; its
+`#inbox` route and real Needs me badge are vNext-only presentation changes.
 
 ## CCX-202 action-adapter handoff
 

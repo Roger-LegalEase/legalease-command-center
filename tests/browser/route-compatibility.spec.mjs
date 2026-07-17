@@ -45,9 +45,11 @@ test("canonical pages and aliases resolve identically without reload and preserv
   for (const [canonical, alias, destination] of routePairs) {
     await setHash(page, canonical);
     await expect(page).toHaveURL(new RegExp(`#${canonical}$`));
+    await expect(page.locator("[data-vnext-shell-state='loading']")).toHaveCount(0);
     const canonicalHeading = await page.locator("main#app").getByRole("heading", { level:1 }).first().textContent();
     await setHash(page, alias);
     await expect(page).toHaveURL(new RegExp(`#${canonical}$`));
+    await expect(page.locator("[data-vnext-shell-state='loading']")).toHaveCount(0);
     await expect(primaryNavigation(page).getByRole("link", { name:destination, exact:true })).toHaveAttribute("aria-current", "page");
     await expect(page.locator("main#app").getByRole("heading", { level:1 }).first()).toHaveText(canonicalHeading || "");
   }

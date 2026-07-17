@@ -14,6 +14,10 @@ import {
   renderGlobalSearchTrigger
 } from "./global-search.mjs";
 import { shellResilienceBrowserSource } from "./shell-resilience.mjs";
+import {
+  INBOX_PAGE_STYLESHEET_PATH,
+  inboxPageBrowserSource
+} from "./pages/inbox-page.mjs";
 import { INITIAL_VNEXT_LOADING_HTML } from "./shell-states.mjs";
 import {
   CREATE_MENU_OPTIONS,
@@ -149,26 +153,62 @@ function shellClientScript() {
       return window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve(requested);
     }
 
-    function realInboxCount() {
-      try {
-        if (typeof companyQueue !== "undefined" && Number.isFinite(Number(companyQueue?.counts?.needsRoger))) {
-          return Math.max(0, Number(companyQueue.counts.needsRoger));
-        }
-        if (typeof state !== "undefined" && Array.isArray(state?.queueItems)) {
-          return state.queueItems.filter((item) => ["needs_roger", "new"].includes(String(item?.status || ""))).length;
-        }
-      } catch {}
-      return null;
-    }
-
-    function syncInboxCount() {
+    let inboxBadgeCount = null;
+    let pendingInboxBadge = null;
+    const inboxBadgeMetrics = { requests:0, duplicateRequests:0, lastResponseMs:0, lastResponseBytes:0 };
+    window.__LE_INBOX_BADGE_METRICS = inboxBadgeMetrics;
+    function setInboxCount(value) {
+      const count = Number(value);
+      inboxBadgeCount = Number.isFinite(count) ? Math.max(0, count) : null;
       const badge = document.querySelector("[data-shell-inbox-count]");
       if (!badge) return;
-      const count = realInboxCount();
-      badge.hidden = !(Number.isFinite(count) && count > 0);
-      badge.textContent = Number.isFinite(count) && count > 0 ? String(count) : "";
-      badge.setAttribute("aria-label", Number.isFinite(count) && count > 0 ? String(count) + " items need attention" : "");
+      badge.hidden = !(Number.isFinite(inboxBadgeCount) && inboxBadgeCount > 0);
+      badge.textContent = Number.isFinite(inboxBadgeCount) && inboxBadgeCount > 0 ? String(inboxBadgeCount) : "";
+      badge.setAttribute("aria-label", Number.isFinite(inboxBadgeCount) && inboxBadgeCount > 0 ? String(inboxBadgeCount) + " items need attention" : "");
     }
+    function clearInboxCount() {
+      setInboxCount(null);
+    }
+    async function refreshInboxCount({ force = false } = {}) {
+      const resolution = currentRouteResolution();
+      if (resolution.kind === "page" && resolution.canonicalRoute === "inbox") return;
+      if (pendingInboxBadge) {
+        inboxBadgeMetrics.duplicateRequests += 1;
+        return pendingInboxBadge;
+      }
+      if (!force && inboxBadgeCount !== null) return inboxBadgeCount;
+      inboxBadgeMetrics.requests += 1;
+      const startedAt = performance.now();
+      pendingInboxBadge = fetch("/api/ui/inbox?group=needs-me&limit=1", {
+        method:"GET",
+        credentials:"same-origin",
+        headers:{ accept:"application/json" }
+      }).then(async (response) => {
+        const text = await response.text();
+        inboxBadgeMetrics.lastResponseBytes = new TextEncoder().encode(text).byteLength;
+        inboxBadgeMetrics.lastResponseMs = Math.round((performance.now() - startedAt) * 10) / 10;
+        if (!response.ok) {
+          clearInboxCount();
+          return null;
+        }
+        const payload = JSON.parse(text || "{}");
+        if (payload.ok !== true) {
+          clearInboxCount();
+          return null;
+        }
+        setInboxCount(payload.counts?.needsMe);
+        return inboxBadgeCount;
+      }).catch(() => {
+        clearInboxCount();
+        return null;
+      }).finally(() => { pendingInboxBadge = null; });
+      return pendingInboxBadge;
+    }
+    window.__LE_INBOX_BADGE = Object.freeze({
+      clear:clearInboxCount,
+      set:setInboxCount,
+      refresh:() => refreshInboxCount({ force:true })
+    });
 
     function normalizeNestedMainRegions() {
       const app = document.querySelector("main#app");
@@ -201,7 +241,6 @@ function shellClientScript() {
         if (selected) control.setAttribute("aria-current", "page");
         else control.removeAttribute("aria-current");
       });
-      syncInboxCount();
       syncRouteRecovery(resolution);
     }
 
@@ -355,6 +394,9 @@ function shellClientScript() {
       if (event.key === "Escape") closeAllMenus(true);
     });
     window.addEventListener("hashchange", () => setTimeout(syncShell, 0));
+    document.addEventListener("vnext:inbox-count", (event) => setInboxCount(event.detail?.count));
+    document.addEventListener("vnext:session-expired", clearInboxCount);
+    document.addEventListener("vnext:recovery-mode", clearInboxCount);
     document.addEventListener("vnext:close-navigation", () => closeNavigationDrawer(false));
     document.addEventListener("vnext:close-shell-popovers", () => closeAllMenus(false));
     navigationMedia.addEventListener("change", syncResponsiveMode);
@@ -362,6 +404,7 @@ function shellClientScript() {
     if (app) new MutationObserver(syncShell).observe(app, { childList:true, subtree:false });
     syncResponsiveMode();
     syncShell();
+    setTimeout(() => refreshInboxCount(), 0);
   })();
   </script>`;
 }
@@ -381,9 +424,11 @@ function applyVNextRouteParser(html) {
         : null;
       const isGlobalSearchRoute = vnextRouteResolution.kind === "page"
         && ["search", "operator-search"].includes(vnextRouteResolution.canonicalRoute);
+      const isInboxRoute = vnextRouteResolution.kind === "page"
+        && vnextRouteResolution.canonicalRoute === "inbox";
       const normalizedPage = artifactRef
         ? "item"
-        : isGlobalSearchRoute ? "today"
+        : (isGlobalSearchRoute || isInboxRoute) ? "today"
         : vnextRouteResolution.kind === "page" ? vnextRouteResolution.canonicalRoute : "today";
       const pageId = normalizedPage;
       currentPageId = pageId;
@@ -391,6 +436,7 @@ function applyVNextRouteParser(html) {
       if (pageId === "decisions" && !companyQueue && !companyQueueLoading) loadDecisionsQueue();
       const canCanonicalize = !pathRoute
         && !isGlobalSearchRoute
+        && !isInboxRoute
         && (vnextRouteResolution.kind === "page" || vnextRouteResolution.kind === "object")
         && vnextRouteResolution.safeHash;
       if (canCanonicalize && location.hash !== vnextRouteResolution.safeHash) {
@@ -432,13 +478,13 @@ export function renderVNextDesktopShell(legacyHtml = "") {
   html = replaceInitialLoadingSurface(html);
   html = html.replace(
     "</head>",
-    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
+    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
   );
   html = html.replace(bodyMarker, '<body class="vnext-app-shell" data-command-center-shell="vnext">');
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n</body>`);
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n</body>`);
   return html;
 }
 

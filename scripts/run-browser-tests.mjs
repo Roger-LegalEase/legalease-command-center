@@ -132,13 +132,124 @@ function browserFixtureState(seed) {
     status:"current",
     generatedAt:"2026-07-12T12:00:00.000Z"
   });
+  const inboxPost = Object.freeze({
+    id:"browser-inbox-post-001",
+    title:"Fulton County post needs two fixes",
+    status:"needs_review",
+    approvalStatus:"needs_review",
+    priority:"high",
+    owner:"Roger",
+    updatedAt:"2026-07-15T14:00:00.000Z"
+  });
+  const inboxCampaign = Object.freeze({
+    id:"browser-inbox-campaign-001",
+    name:"July Partner outreach campaign",
+    title:"July Partner outreach campaign",
+    status:"ready_to_approve",
+    priority:"high",
+    owner:"Roger",
+    launchDate:"2026-07-18",
+    updatedAt:"2026-07-15T13:00:00.000Z"
+  });
+  const inboxPartner = Object.freeze({
+    id:"browser-inbox-partner-001",
+    name:"Philadelphia Reentry Coalition",
+    organization:"Philadelphia Reentry Coalition",
+    owner:"Roger",
+    nextAction:"Confirm the next Partner conversation.",
+    nextActionDueDate:"2026-07-15",
+    status:"qualified",
+    priority:"normal",
+    updatedAt:"2026-07-15T12:00:00.000Z"
+  });
+  const waitingPartner = Object.freeze({
+    id:"browser-inbox-partner-waiting-001",
+    name:"Example Future Partner",
+    owner:"Roger",
+    nextAction:"Follow up after the scheduled response date.",
+    nextActionDueDate:"2026-07-25",
+    status:"qualified",
+    priority:"normal",
+    updatedAt:"2026-07-15T11:00:00.000Z"
+  });
+  const inboxFile = Object.freeze({
+    id:"browser-inbox-file-001",
+    title:"Investor Room operating plan",
+    name:"Investor Room operating plan",
+    status:"needs_update",
+    owner:"Roger",
+    priority:"high",
+    nextReviewDate:"2026-07-15",
+    updatedAt:"2026-07-15T10:00:00.000Z"
+  });
+  const inboxTask = Object.freeze({
+    id:"browser-inbox-task-001",
+    title:"Finish the Partner launch checklist",
+    description:"The launch checklist is assigned and ready for attention.",
+    status:"open",
+    owner:"Roger",
+    priority:"urgent",
+    important:true,
+    dueDate:"2026-07-16",
+    updatedAt:"2026-07-15T15:00:00.000Z"
+  });
+  const inboxApproval = Object.freeze({
+    id:"browser-inbox-approval-001",
+    action_type:"review_social_post",
+    queue_item_id:"browser-inbox-queue-001",
+    preview:"Review the Fulton County post",
+    risk_level:"caution",
+    state:"requested",
+    requested_at:"2026-07-15T15:30:00.000Z"
+  });
+  const inboxQueueItem = Object.freeze({
+    id:"browser-inbox-queue-001",
+    sourceRef:{ collection:"posts", itemId:inboxPost.id },
+    type:"approval",
+    status:"needs_roger",
+    title:inboxPost.title,
+    summary:"The post needs copy and safety review before it can move forward.",
+    priority:20,
+    requiresApproval:true,
+    approvalId:inboxApproval.id,
+    metadata:{ decisionType:"review_social_post" },
+    updatedAt:"2026-07-15T15:30:00.000Z"
+  });
+  const hiddenInboxPost = Object.freeze({
+    id:"browser-inbox-hidden-001",
+    title:"Confidential acquisition post",
+    status:"needs_review",
+    visibility:"owner_only",
+    priority:"urgent",
+    updatedAt:"2026-07-15T16:00:00.000Z"
+  });
+  const recentUpdate = Object.freeze({
+    id:"browser-inbox-update-001",
+    title:"Partner milestone announcement",
+    status:"posted",
+    postedAt:"2026-07-16T14:00:00.000Z",
+    updatedAt:"2026-07-16T14:00:00.000Z"
+  });
+  const paginationTasks = Object.freeze(Array.from({ length:45 }, (_, index) => Object.freeze({
+    id:`browser-inbox-page-task-${String(index).padStart(2, "0")}`,
+    title:`Synthetic important task ${String(index + 1).padStart(2, "0")}`,
+    description:"This deterministic Task is assigned and ready for attention.",
+    status:"open",
+    owner:"Roger",
+    priority:index % 7 === 0 ? "high" : "normal",
+    important:true,
+    dueDate:index % 4 === 0 ? "" : `2026-07-${String(16 + (index % 9)).padStart(2, "0")}`,
+    updatedAt:`2026-07-15T${String(index % 24).padStart(2, "0")}:30:00.000Z`
+  })));
   return {
     ...seed,
-    posts:[post, hiddenPost, ...(Array.isArray(seed.posts) ? seed.posts : []).filter((item) => ![post.id, hiddenPost.id].includes(item?.id))],
-    campaigns:[campaign, ...(Array.isArray(seed.campaigns) ? seed.campaigns : []).filter((item) => item?.id !== campaign.id)],
-    partners:[partner, ...(Array.isArray(seed.partners) ? seed.partners : []).filter((item) => item?.id !== partner.id)],
-    dataRoomItems:[file, ...(Array.isArray(seed.dataRoomItems) ? seed.dataRoomItems : []).filter((item) => item?.id !== file.id)],
-    tasks:[task, ...(Array.isArray(seed.tasks) ? seed.tasks : []).filter((item) => item?.id !== task.id)],
+    approvals:[inboxApproval, ...(Array.isArray(seed.approvals) ? seed.approvals : []).filter((item) => item?.id !== inboxApproval.id)],
+    queueItems:[inboxQueueItem, ...(Array.isArray(seed.queueItems) ? seed.queueItems : []).filter((item) => item?.id !== inboxQueueItem.id)],
+    posts:[post, hiddenPost, inboxPost, hiddenInboxPost, recentUpdate, ...(Array.isArray(seed.posts) ? seed.posts : []).filter((item) => ![post.id, hiddenPost.id, inboxPost.id, hiddenInboxPost.id, recentUpdate.id].includes(item?.id))],
+    campaigns:[campaign, inboxCampaign, ...(Array.isArray(seed.campaigns) ? seed.campaigns : []).filter((item) => ![campaign.id, inboxCampaign.id].includes(item?.id))],
+    partners:[partner, inboxPartner, waitingPartner, ...(Array.isArray(seed.partners) ? seed.partners : []).filter((item) => ![partner.id, inboxPartner.id, waitingPartner.id].includes(item?.id))],
+    dataRoomItems:[file, inboxFile, ...(Array.isArray(seed.dataRoomItems) ? seed.dataRoomItems : []).filter((item) => ![file.id, inboxFile.id].includes(item?.id))],
+    tasks:[task, inboxTask, ...paginationTasks, ...(Array.isArray(seed.tasks) ? seed.tasks : []).filter((item) => ![task.id, inboxTask.id, ...paginationTasks.map((candidate) => candidate.id)].includes(item?.id))],
     reports:[report, ...(Array.isArray(seed.reports) ? seed.reports : []).filter((item) => item?.id !== report.id)]
   };
 }

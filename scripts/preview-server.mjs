@@ -125,6 +125,7 @@ import { buildFounderCapacityPulse } from "./operator-pulse-feeders.mjs";
 import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
 import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex } from "./operator-search.mjs";
 import { searchGlobalRecords } from "./global-search-service.mjs";
+import { buildAuthorizedInboxPage } from "./inbox-page-service.mjs";
 import { buildRouteAccessView, ROUTE_ACCESS_ENDPOINT } from "./shell-resilience-service.mjs";
 import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegritySnapshot } from "./state-integrity.mjs";
 import { buildEndpointInventory, guardForbiddenEndpoint, safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
@@ -35072,6 +35073,10 @@ async function handleRequest(request, response) {
       sendJson(response, { error:"Search is unavailable for this account. No records were changed." }, accessDecision.status || 403);
       return;
     }
+    else if (url.pathname === "/api/ui/inbox") {
+      sendJson(response, { error:"Inbox is unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
+      return;
+    }
     else if (url.pathname.startsWith("/api/ui/create/")) {
       sendJson(response, { error:"Your current access does not allow this creation action. Nothing was saved." }, accessDecision.status || 403);
       return;
@@ -35152,6 +35157,34 @@ async function handleRequest(request, response) {
         error:error?.status === 400
           ? error.message
           : "Search could not load. No records were changed. Try again."
+      }, Number(error?.status || 500));
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/ui/inbox" && request.method === "GET") {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { error:"Inbox is unavailable." }, 404);
+      return;
+    }
+    try {
+      const currentState = await store.readState();
+      const actor = publicActor(accessDecision.actor);
+      const now = new Date().toISOString();
+      sendJson(response, buildAuthorizedInboxPage(currentState, actor, now, {
+        group:url.searchParams.get("group") || undefined,
+        type:url.searchParams.get("type") || undefined,
+        priority:url.searchParams.get("priority") || undefined,
+        owner:url.searchParams.get("owner") || undefined,
+        due:url.searchParams.get("due") || undefined,
+        limit:url.searchParams.get("limit") || undefined,
+        cursor:url.searchParams.get("cursor") || undefined
+      }));
+    } catch (error) {
+      sendJson(response, {
+        error:Number(error?.status) === 400
+          ? "The Inbox view could not be read. Check the selected filters."
+          : "Inbox could not load. No records were changed. Try again."
       }, Number(error?.status || 500));
     }
     return;

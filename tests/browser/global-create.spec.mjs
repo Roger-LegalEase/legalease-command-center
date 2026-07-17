@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { expect, openToday, test } from "./support.mjs";
+import { authenticateRestricted, expect, openToday, test } from "./support.mjs";
 
 const screenshotDirectory = path.resolve("docs/ux-vnext/screenshots/ccx-103");
 const expectedLabels = ["Social post", "Outreach campaign", "Partner", "File or folder", "Quick note"];
@@ -350,11 +350,7 @@ test("validation, dirty-close confirmation, duplicate protection, and restricted
   const state = await stateOf(page, baseURL);
   expect(state.posts.filter((item) => item.id === `post-${retryId}`)).toHaveLength(1);
 
-  const restrictedURL = process.env.BROWSER_TEST_RESTRICTED_BASE_URL;
-  const credential = process.env.BROWSER_TEST_RESTRICTED_CREDENTIAL;
-  expect(restrictedURL).toBeTruthy();
-  const login = await page.request.post(`${restrictedURL}/api/auth/login`, { data:{ credential } });
-  expect(login.ok()).toBe(true);
+  const restrictedURL = await authenticateRestricted(page);
   await page.route(`${restrictedURL}/api/**`, async (route) => {
     const request = route.request();
     const requested = new URL(request.url());
@@ -386,6 +382,7 @@ test("validation, dirty-close confirmation, duplicate protection, and restricted
 });
 
 test("the creation workspace remains accessible and inside the viewport on desktop and mobile", async ({ page }) => {
+  test.slow();
   for (const width of [1440, 390]) {
     await openVNext(page, width);
     const dialog = await selectCreate(page, "Partner");

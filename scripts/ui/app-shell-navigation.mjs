@@ -16,7 +16,7 @@ export const PRIMARY_SHELL_DESTINATIONS = list([
 ]);
 
 export const SECONDARY_SHELL_CONTROLS = list([
-  { id:"inbox", label:GLOBAL_UTILITIES.inbox, kind:"route", route:"decisions" },
+  { id:"inbox", label:GLOBAL_UTILITIES.inbox, kind:"route", route:"inbox" },
   { id:"lee", label:GLOBAL_UTILITIES.lee, kind:"action", action:"open-lee" },
   { id:"settings", label:GLOBAL_UTILITIES.settings, kind:"route", route:"settings" }
 ]);

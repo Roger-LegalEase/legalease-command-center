@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  authenticateRestricted,
   expect,
   openToday,
   test
@@ -202,15 +203,12 @@ test("a client module exception is contained, retryable, and never becomes a whi
 test("restricted routes and exact records disclose no protected data", async ({ page }) => {
   test.slow();
   await mkdir(screenshotDirectory, { recursive:true });
-  const restrictedURL = process.env.BROWSER_TEST_RESTRICTED_BASE_URL;
-  const credential = process.env.BROWSER_TEST_RESTRICTED_CREDENTIAL;
+  const restrictedURL = await authenticateRestricted(page);
   const ownerURL = process.env.BROWSER_TEST_VNEXT_BASE_URL;
-  const login = await page.request.post(`${restrictedURL}/api/auth/login`, { data:{ credential } });
-  expect(login.ok()).toBe(true);
   await page.route(`${restrictedURL}/api/**`, async (route) => {
     const request = route.request();
     const requested = new URL(request.url());
-    if (request.method() !== "GET" || ["/api/ui/search", "/api/ui/route-access"].includes(requested.pathname)) {
+    if (request.method() !== "GET" || ["/api/ui/search", "/api/ui/inbox", "/api/ui/route-access"].includes(requested.pathname)) {
       await route.continue();
       return;
     }

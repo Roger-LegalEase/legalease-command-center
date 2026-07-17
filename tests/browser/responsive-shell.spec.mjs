@@ -87,8 +87,9 @@ test("all five destinations navigate through the mobile drawer and keep active s
 test("mobile utilities and the shared Global Create workflow remain reachable", async ({ page }) => {
   await openResponsive(page, 390);
   let opened = await openDrawer(page);
-  await opened.drawer.getByRole("link", { name:"Inbox", exact:true }).click();
-  await expect(page).toHaveURL(/#decisions$/);
+  await opened.drawer.getByRole("link", { name:/^Inbox/ }).click();
+  await expect(page).toHaveURL(/#inbox(?:\?group=needs-me)?$/);
+  await expect(page.getByRole("heading", { name:"Inbox", level:1 })).toBeVisible();
 
   opened = await openDrawer(page);
   await opened.drawer.getByRole("button", { name:"Le-E", exact:true }).click();
