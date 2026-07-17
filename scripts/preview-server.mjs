@@ -126,6 +126,11 @@ import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
 import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex } from "./operator-search.mjs";
 import { searchGlobalRecords } from "./global-search-service.mjs";
 import { buildAuthorizedInboxPage } from "./inbox-page-service.mjs";
+import {
+  INBOX_ACTION_BODY_LIMIT,
+  executeAuthorizedInboxAction,
+  inboxActionSafeError
+} from "./inbox-action-service.mjs";
 import { buildRouteAccessView, ROUTE_ACCESS_ENDPOINT } from "./shell-resilience-service.mjs";
 import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegritySnapshot } from "./state-integrity.mjs";
 import { buildEndpointInventory, guardForbiddenEndpoint, safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
@@ -35073,6 +35078,10 @@ async function handleRequest(request, response) {
       sendJson(response, { error:"Search is unavailable for this account. No records were changed." }, accessDecision.status || 403);
       return;
     }
+    else if (url.pathname === "/api/ui/inbox/action") {
+      sendJson(response, { ok:false, outcome:accessDecision.status === 401 ? "session_expired" : "not_available", message:"This Inbox action is unavailable. No records were changed." }, accessDecision.status || 403);
+      return;
+    }
     else if (url.pathname === "/api/ui/inbox") {
       sendJson(response, { error:"Inbox is unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
       return;
@@ -35186,6 +35195,29 @@ async function handleRequest(request, response) {
           ? "The Inbox view could not be read. Check the selected filters."
           : "Inbox could not load. No records were changed. Try again."
       }, Number(error?.status || 500));
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/ui/inbox/action" && request.method === "POST") {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { ok:false, outcome:"not_available", message:"Inbox actions are unavailable. No records were changed." }, 404);
+      return;
+    }
+    try {
+      const payload = await readBoundedJson(request, { limit:INBOX_ACTION_BODY_LIMIT });
+      const actor = publicActor(accessDecision.actor);
+      const now = new Date().toISOString();
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const action = executeAuthorizedInboxAction(currentState, actor, now, payload);
+        if (Object.keys(action.collections).length) await store.writeCollections(action.collections);
+        return action;
+      });
+      sendJson(response, result.body, result.status);
+    } catch (error) {
+      const safe = inboxActionSafeError(error);
+      sendJson(response, safe.body, safe.status);
     }
     return;
   }

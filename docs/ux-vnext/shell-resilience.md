@@ -161,6 +161,13 @@ render no protected page data or counts. Session expiration clears Inbox items a
 the shell badge, while Recovery Mode clears a stale badge and keeps “Publishing is
 off.” Retry never invokes a projected action intent.
 
+CCX-202 applies the boundary independently to an explicit Inbox action. Working
+feedback never removes the item or changes the badge optimistically. A temporary
+failure keeps the item and offers one safe Retry; stale state refreshes only the
+compact Inbox; authorization refusal discloses no item; and session expiration
+closes confirmation/snooze UI, clears its values, page data, and badge. No failure
+path retries automatically or claims a source mutation.
+
 ## Accessibility and responsive behavior
 
 Loading uses `aria-busy` and one restrained live announcement. Error and status

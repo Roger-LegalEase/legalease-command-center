@@ -136,6 +136,11 @@ sidebar and responsive drawer. Zero hides the badge; session expiration and Reco
 Mode clear it. The responsive Inbox list, group controls, filters, and 44-pixel Open
 targets are documented in `inbox-page.md` and introduce no drawer-specific request.
 
+CCX-202 uses the same compact authorized action declarations on desktop and mobile.
+At 390 pixels confirmation and dated Snooze use the accessible full-width dialog,
+preserve drawer/Search/Create/Profile/Le-E behavior, and refresh the shared badge
+through the compact Inbox response without a second mobile request.
+
 ## Verification and screenshots
 
 Run the focused contract with `npm run test:vnext-responsive-shell` and the isolated

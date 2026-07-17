@@ -21,6 +21,8 @@
 
 .vnext-inbox-orientation,
 .vnext-inbox-open,
+.vnext-inbox-item-action,
+.vnext-inbox-action-retry,
 .vnext-inbox-load-more,
 .vnext-inbox-clear,
 .vnext-inbox-state-actions a,
@@ -95,6 +97,58 @@
 .vnext-inbox-item-meta .is-overdue { color: #a42c25; }
 .vnext-inbox-source-context { margin: 10px 0 0; color: #6b5a4d; font-size: .82rem; }
 .vnext-inbox-item-actions { display: flex; align-items: center; }
+.vnext-inbox-item-actions { flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.vnext-inbox-item-action,
+.vnext-inbox-action-retry,
+.vnext-inbox-action-cancel,
+.vnext-inbox-action-confirm {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c9d0dc;
+  border-radius: 9px;
+  padding: 9px 15px;
+  background: #fff;
+  color: #22304a;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.vnext-inbox-item-action-primary,
+.vnext-inbox-action-confirm { border-color: #d84100; background: var(--le-orange-600, #f04800); color: var(--le-navy-950, #071e33); }
+.vnext-inbox-item-action-quiet { border-color: transparent; background: transparent; color: #5e4e43; }
+.vnext-inbox-item-action:disabled,
+.vnext-inbox-action-confirm:disabled { cursor: wait; opacity: .68; }
+.vnext-inbox-item-action-status { flex-basis: 100%; max-width: 360px; color: #873b15; font-size: .82rem; line-height: 1.4; text-align: right; }
+.vnext-inbox-item-action-status:empty { display: none; }
+.vnext-inbox-action-retry { min-height: 36px; margin: 7px 0 0 8px; padding-block: 6px; }
+.vnext-inbox-action-announcer { margin: 0 0 12px; border: 1px solid #bbd6c3; border-radius: 10px; padding: 12px 14px; background: #f1f8f3; color: #294e34; font-weight: 750; }
+.vnext-inbox-action-announcer:empty { display: none; }
+
+.vnext-inbox-action-dialog {
+  width: min(92vw, 520px);
+  max-height: min(84vh, 680px);
+  overflow: auto;
+  border: 1px solid #cfd6e1;
+  border-radius: 16px;
+  padding: 0;
+  background: #fff;
+  color: #172033;
+  box-shadow: 0 24px 80px rgb(7 30 51 / 28%);
+}
+.vnext-inbox-action-dialog::backdrop { background: rgb(7 30 51 / 58%); }
+.vnext-inbox-action-dialog form { display: grid; gap: 22px; padding: 28px; }
+.vnext-inbox-action-dialog-heading h2 { margin: 4px 0 8px; font-size: 1.55rem; }
+.vnext-inbox-action-dialog-heading p:last-child { margin: 0; color: #536076; line-height: 1.55; }
+.vnext-inbox-snooze-options { display: grid; gap: 10px; margin: 0; border: 0; padding: 0; }
+.vnext-inbox-snooze-options legend { margin-bottom: 10px; font-weight: 850; }
+.vnext-inbox-snooze-options > label:not(.vnext-inbox-snooze-date) { display: flex; min-height: 44px; align-items: center; gap: 10px; border: 1px solid #d8dee8; border-radius: 9px; padding: 9px 12px; }
+.vnext-inbox-snooze-options input[type="radio"] { width: 20px; height: 20px; }
+.vnext-inbox-snooze-date { display: grid; gap: 6px; font-weight: 750; }
+.vnext-inbox-snooze-date input { min-height: 44px; border: 1px solid #c9d0dc; border-radius: 8px; padding: 8px 10px; font: inherit; }
+.vnext-inbox-action-validation { min-height: 20px; margin: 0; color: #a42c25; }
+.vnext-inbox-action-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .vnext-inbox-load-more { margin: 22px auto 0; }
 
 .vnext-inbox-state { min-height: 240px; border: 1px dashed #ccd3df; border-radius: 12px; padding: 48px 24px; background: #fbfcfd; text-align: center; }
@@ -118,6 +172,10 @@
   .vnext-inbox-orientation { width: max-content; }
   .vnext-inbox-item { grid-template-columns: 1fr; gap: 16px; }
   .vnext-inbox-item-actions, .vnext-inbox-open { width: 100%; }
+  .vnext-inbox-item-actions { justify-content: stretch; }
+  .vnext-inbox-item-action,
+  .vnext-inbox-item-actions .vnext-inbox-open { flex: 1 1 140px; }
+  .vnext-inbox-item-action-status { max-width: none; text-align: left; }
 }
 
 @media (max-width: 520px) {
@@ -129,6 +187,11 @@
   .vnext-inbox-clear { width: 100%; }
   .vnext-inbox-item { padding: 16px; }
   .vnext-inbox-item-meta { display: grid; gap: 7px; }
+  .vnext-inbox-action-dialog { width: calc(100vw - 20px); max-height: calc(100vh - 20px); margin: auto; }
+  .vnext-inbox-action-dialog form { padding: 22px 18px; }
+  .vnext-inbox-action-dialog-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .vnext-inbox-action-cancel,
+  .vnext-inbox-action-confirm { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

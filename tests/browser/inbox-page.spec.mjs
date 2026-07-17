@@ -371,7 +371,8 @@ test("responsive Inbox remains accessible, overflow-free, and keeps shell utilit
   await expectNoHorizontalOverflow(page, 390);
   await page.screenshot({ path:path.join(screenshotDirectory, "inbox-filtered-390.png"), animations:"disabled" });
   await expect(page.getByRole("link", { name:/^Approve|^Complete|^Snooze/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name:/^Approve|^Complete|^Snooze/ })).toHaveCount(0);
+  await expect.poll(() => page.locator("[data-inbox-action]").count()).toBeGreaterThan(0);
+  expect(await page.locator("[data-inbox-action]").evaluateAll((controls) => controls.every((control) => control.getAttribute("aria-disabled") !== "true"))).toBe(true);
   const violations = await seriousAxeViolations(page);
   expect(violations).toEqual([]);
   console.log("CCX201_ACCESSIBILITY", JSON.stringify({ serious:0, critical:0, widths:[1440, 1024, 768, 390] }));

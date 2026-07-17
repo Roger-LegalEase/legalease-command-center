@@ -11,6 +11,7 @@ const criticalPaths = new Set([
   "/api/runway-inputs",
   "/api/ui/search",
   "/api/ui/inbox",
+  "/api/ui/inbox/action",
   "/api/ui/route-access"
 ]);
 
@@ -52,6 +53,7 @@ function allowedOrigins(baseURL) {
     baseURL,
     process.env.BROWSER_TEST_VNEXT_BASE_URL,
     process.env.BROWSER_TEST_CREATE_BASE_URL,
+    process.env.BROWSER_TEST_ACTIONS_BASE_URL,
     process.env.BROWSER_TEST_RESTRICTED_BASE_URL
   ].filter(Boolean).map((value) => new URL(value).origin));
 }

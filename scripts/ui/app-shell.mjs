@@ -14,6 +14,7 @@ import {
   renderGlobalSearchTrigger
 } from "./global-search.mjs";
 import { shellResilienceBrowserSource } from "./shell-resilience.mjs";
+import { inboxActionBrowserSource } from "./inbox-action-ui.mjs";
 import {
   INBOX_PAGE_STYLESHEET_PATH,
   inboxPageBrowserSource
@@ -484,7 +485,7 @@ export function renderVNextDesktopShell(legacyHtml = "") {
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n</body>`);
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n</body>`);
   return html;
 }
 
