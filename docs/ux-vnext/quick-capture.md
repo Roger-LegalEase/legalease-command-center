@@ -80,6 +80,12 @@ hash. The exact new object is immediately routable, and ordinary browser Back/Fo
 behavior remains intact. Source-derived copy is assigned with safe DOM text methods;
 the browser accepts only a shared route-policy hash and never rebuilds an exact link.
 
+The compact save result is retained only in page memory long enough to render the
+exact newly created route immediately. Quick Capture does not refetch boot or full
+application state after Save. A later normal page load reads the authoritative record
+through the unchanged boot contract; the in-memory result is not persistence or a
+second source of domain truth.
+
 ## Idempotency, audit, and persistence
 
 Each fresh form receives one UUID `creationRequestId`. Submission locks synchronously
