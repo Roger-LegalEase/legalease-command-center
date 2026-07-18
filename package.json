@@ -40,6 +40,7 @@
     "test:vnext-quick-capture": "node scripts/test-vnext-quick-capture.mjs",
     "test:vnext-partner-stage": "node scripts/test-vnext-partner-stage.mjs",
     "test:vnext-file-projection": "node scripts/test-vnext-file-projection.mjs",
+    "test:vnext-partner-activity": "node scripts/test-vnext-partner-activity.mjs",
     "test:browser": "node scripts/run-browser-tests.mjs",
     "test:browser:install": "playwright install --with-deps chromium",
     "test:extended": "node scripts/run-extended-tests.mjs",
