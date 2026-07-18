@@ -13,6 +13,7 @@ const criticalPaths = new Set([
   "/api/ui/today",
   "/api/ui/inbox",
   "/api/ui/inbox/action",
+  "/api/ui/social",
   "/api/ui/quick-capture",
   "/api/ui/quick-capture/capabilities",
   "/api/ui/route-access"
@@ -75,7 +76,9 @@ function allowedOrigins(baseURL) {
     process.env.BROWSER_TEST_RESTRICTED_BASE_URL,
     process.env.BROWSER_TEST_TODAY_BASE_URL,
     process.env.BROWSER_TEST_PHASE2_BASE_URL,
-    process.env.BROWSER_TEST_PHASE2_RESTRICTED_BASE_URL
+    process.env.BROWSER_TEST_PHASE2_RESTRICTED_BASE_URL,
+    process.env.BROWSER_TEST_SOCIAL_BASE_URL,
+    process.env.BROWSER_TEST_SOCIAL_RESTRICTED_BASE_URL
   ].filter(Boolean).map((value) => new URL(value).origin));
 }
 

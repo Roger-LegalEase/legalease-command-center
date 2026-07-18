@@ -27,6 +27,10 @@ import {
   TODAY_PAGE_STYLESHEET_PATH,
   todayPageBrowserSource
 } from "./pages/today-page.mjs";
+import {
+  SOCIAL_HOME_STYLESHEET_PATH,
+  socialHomeBrowserSource
+} from "./pages/social-home.mjs";
 import { INITIAL_VNEXT_LOADING_HTML } from "./shell-states.mjs";
 import {
   CREATE_MENU_OPTIONS,
@@ -435,9 +439,11 @@ function applyVNextRouteParser(html) {
         && ["search", "operator-search"].includes(vnextRouteResolution.canonicalRoute);
       const isInboxRoute = vnextRouteResolution.kind === "page"
         && vnextRouteResolution.canonicalRoute === "inbox";
+      const isSocialRoute = vnextRouteResolution.kind === "page"
+        && vnextRouteResolution.canonicalRoute === "queue";
       const normalizedPage = artifactRef
         ? "item"
-        : (isGlobalSearchRoute || isInboxRoute) ? "today"
+        : (isGlobalSearchRoute || isInboxRoute || isSocialRoute) ? "today"
         : vnextRouteResolution.kind === "page" ? vnextRouteResolution.canonicalRoute : "today";
       const pageId = normalizedPage;
       currentPageId = pageId;
@@ -446,6 +452,7 @@ function applyVNextRouteParser(html) {
       const canCanonicalize = !pathRoute
         && !isGlobalSearchRoute
         && !isInboxRoute
+        && !isSocialRoute
         && (vnextRouteResolution.kind === "page" || vnextRouteResolution.kind === "object")
         && vnextRouteResolution.safeHash;
       if (canCanonicalize && location.hash !== vnextRouteResolution.safeHash) {
@@ -474,6 +481,13 @@ function replaceInitialLoadingSurface(html) {
     + html.slice(end);
 }
 
+function disableSocialFullStateRefresh(html) {
+  const marker = "      loadFullStateInBackground();";
+  if (!html.includes(marker)) return html;
+  return html.replace(marker, `      const compactSocialRoute = window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve(location.hash || "#today");
+      if (!(compactSocialRoute.kind === "page" && compactSocialRoute.canonicalRoute === "queue")) loadFullStateInBackground();`);
+}
+
 export function renderVNextDesktopShell(legacyHtml = "") {
   const source = String(legacyHtml || "");
   const bodyMarker = "<body>";
@@ -484,16 +498,17 @@ export function renderVNextDesktopShell(legacyHtml = "") {
   const chrome = renderVNextDesktopShellChrome();
   let html = removeLegacyPrimaryHeader(source);
   html = applyVNextRouteParser(html);
+  html = disableSocialFullStateRefresh(html);
   html = replaceInitialLoadingSurface(html);
   html = html.replace(
     "</head>",
-    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
+    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
   );
   html = html.replace(bodyMarker, '<body class="vnext-app-shell" data-command-center-shell="vnext">');
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n</body>`);
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n</body>`);
   return html;
 }
 

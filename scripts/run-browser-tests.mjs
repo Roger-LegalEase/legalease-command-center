@@ -443,6 +443,83 @@ function todayFixtureState(seed) {
   };
 }
 
+function socialFixtureState(seed) {
+  const base = browserFixtureState(seed);
+  const socialPost = (id, status, extra = {}) => ({
+    id,
+    title:`Social home ${id.replaceAll("-", " ")}`,
+    hook:`A truthful Social summary for ${id}.`,
+    body:`Stored synthetic Post copy for ${id}.`,
+    status,
+    targetChannels:["linkedin"],
+    channelVariants:{ linkedin:{ body:`LinkedIn copy for ${id}.` } },
+    imageIntentionallyOmitted:true,
+    guidelinesGate:{ passed:true, hardFails:[] },
+    approvalRequired:false,
+    scheduledFor:"",
+    topic:"Access guide",
+    owner:"Roger",
+    createdAt:"2026-07-10T12:00:00.000Z",
+    updatedAt:"2026-07-17T12:00:00.000Z",
+    ...extra
+  });
+  const ideaPosts = Array.from({ length:28 }, (_, index) => socialPost(`idea-${String(index + 1).padStart(2, "0")}`, index % 4 === 0 ? "idea" : "draft", {
+    title:index === 0 ? "A clear path through an access request" : `Social idea ${String(index + 1).padStart(2, "0")}`,
+    body:index % 4 === 0 ? "" : `Draft copy ${index + 1}.`,
+    topic:index % 3 === 0 ? "Community" : "Access guide",
+    targetChannels:index % 2 === 0 ? ["linkedin"] : ["instagram"],
+    channelVariants:index % 2 === 0 ? { linkedin:{ body:`LinkedIn draft ${index + 1}.` } } : { instagram:{ body:`Instagram draft ${index + 1}.` } },
+    contentBankIdeaId:index === 0 ? "social-source-converted" : undefined,
+    updatedAt:`2026-07-${String(17 - (index % 7)).padStart(2, "0")}T${String(index % 24).padStart(2, "0")}:00:00.000Z`
+  }));
+  const reviewPosts = Array.from({ length:8 }, (_, index) => socialPost(`review-${String(index + 1).padStart(2, "0")}`, "needs_review", {
+    title:`Needs review ${String(index + 1).padStart(2, "0")}`,
+    approvalRequired:true,
+    approvalStatus:"needs_review",
+    updatedAt:`2026-07-16T${String(index + 8).padStart(2, "0")}:00:00.000Z`
+  }));
+  const scheduleTruth = [
+    { scheduledFor:"2026-07-20T14:00:00.000Z", timezone:"America/New_York" },
+    { scheduledFor:"2026-07-21T00:30:00.000Z", timezone:"America/New_York" },
+    { scheduledFor:"2026-07-22T16:00:00.000Z" },
+    { scheduledFor:"2026-07-23T16:00:00.000Z", timezone:"Not/A_Zone" },
+    { scheduledFor:"2026-07-24T14:00:00", timezone:"America/New_York" },
+    { scheduledFor:"2026-07-25", timezone:"America/New_York" },
+    { scheduledFor:"2026-07-26T15:00:00.000Z", timezone:"America/New_York" },
+    { scheduledFor:"2026-07-27T15:00:00-04:00" }
+  ];
+  const scheduledPosts = Array.from({ length:8 }, (_, index) => socialPost(`scheduled-${String(index + 1).padStart(2, "0")}`, "scheduled", {
+    title:index === 0 ? "Community access checklist" : index === 1 ? "Midnight boundary Post" : `Scheduled Post ${String(index + 1).padStart(2, "0")}`,
+    ...scheduleTruth[index],
+    updatedAt:`2026-07-15T${String(index + 8).padStart(2, "0")}:00:00.000Z`
+  }));
+  const publishedPosts = Array.from({ length:8 }, (_, index) => socialPost(`published-${String(index + 1).padStart(2, "0")}`, "published", {
+    title:index === 0 ? "Published community guide" : index === 1 ? "Published guide awaiting metrics" : `Published Post ${String(index + 1).padStart(2, "0")}`,
+    publishedAt:`2026-07-${String(16 - index).padStart(2, "0")}T15:00:00.000Z`,
+    publishedUrl:`https://example.com/social/published-${index + 1}`,
+    ...(index === 1 ? {} : { performance:{ impressions:1200 + index * 100, likes:44 + index, comments:7 + index, clicks:15 + index } }),
+    updatedAt:`2026-07-${String(16 - index).padStart(2, "0")}T15:00:00.000Z`
+  }));
+  const hidden = socialPost("hidden-owner-work", "draft", { title:"Hidden Social plan", allowedRoles:["admin"], visibility:"owner_only" });
+  return {
+    ...base,
+    posts:[...ideaPosts, ...reviewPosts, ...scheduledPosts, ...publishedPosts, hidden],
+    contentBank:[
+      { id:"social-source-converted", title:"Converted source should appear once", status:"idea", updatedAt:"2026-07-17T10:00:00.000Z" },
+      { id:"social-source-community", title:"Community workshop questions", summary:"An unconverted Content Bank idea.", topic:"Community", owner:"Roger", updatedAt:"2026-07-17T11:00:00.000Z" },
+      { id:"social-source-rights", title:"Know your next step", summary:"A second unconverted Content Bank idea.", topic:"Access guide", owner:"Roger", updatedAt:"2026-07-17T09:00:00.000Z" },
+      { id:"social-source-hidden", title:"Hidden source", allowedRoles:["admin"], visibility:"owner_only" }
+    ],
+    postImages:[], brandAssets:[], postingKits:[], approvals:[], approvalQueue:[], queueItems:[], publishEvents:[], activityEvents:[], auditHistory:[], generationBatches:[],
+    socialAccounts:[
+      { id:"social-account-linkedin", channel:"linkedin", connected:true, connectedAt:"2026-07-01T00:00:00.000Z", accountName:"Synthetic LinkedIn" },
+      { id:"social-account-instagram", channel:"instagram", connected:true, connectedAt:"2026-07-01T00:00:00.000Z", accountName:"Synthetic Instagram" }
+    ],
+    runtime:{ ...(base.runtime || {}), livePostingGates:{ linkedin:false, instagram:false } },
+    settings:{ ...(base.settings || {}), sourceItems:[] }
+  };
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -556,6 +633,7 @@ const seedState = JSON.parse(await readFile(seedPath, "utf8"));
 const fixtureState = browserFixtureState(seedState);
 const actionFixtureState = browserFixtureState(seedState, { includeActions:true });
 const todayState = todayFixtureState(seedState);
+const socialState = socialFixtureState(seedState);
 await rm(path.join(projectRoot, "playwright-report"), { recursive:true, force:true });
 await rm(artifactDir, { recursive:true, force:true });
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "legalease-browser-tests-"));
@@ -567,6 +645,8 @@ const restrictedDataPath = path.join(tempRoot, "restricted-state.json");
 const todayDataPath = path.join(tempRoot, "today-state.json");
 const phase2DataPath = path.join(tempRoot, "phase2-state.json");
 const phase2RestrictedDataPath = path.join(tempRoot, "phase2-restricted-state.json");
+const socialDataPath = path.join(tempRoot, "social-state.json");
+const socialRestrictedDataPath = path.join(tempRoot, "social-restricted-state.json");
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
@@ -575,7 +655,9 @@ await Promise.all([
   writeFile(restrictedDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(todayDataPath, `${JSON.stringify(todayState, null, 2)}\n`, { mode:0o600 }),
   writeFile(phase2DataPath, `${JSON.stringify(actionFixtureState, null, 2)}\n`, { mode:0o600 }),
-  writeFile(phase2RestrictedDataPath, `${JSON.stringify(actionFixtureState, null, 2)}\n`, { mode:0o600 })
+  writeFile(phase2RestrictedDataPath, `${JSON.stringify(actionFixtureState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(socialDataPath, `${JSON.stringify(socialState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(socialRestrictedDataPath, `${JSON.stringify(socialState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
 const restrictedSessionSecret = crypto.randomBytes(32).toString("base64url");
@@ -636,6 +718,19 @@ try {
     restrictedCredential,
     sessionSecret:restrictedSessionSecret
   }));
+  servers.push(await startServer({
+    name:"social",
+    dataPath:socialDataPath,
+    vnext:true
+  }));
+  servers.push(await startServer({
+    name:"social-restricted",
+    dataPath:socialRestrictedDataPath,
+    vnext:true,
+    restricted:true,
+    restrictedCredential,
+    sessionSecret:restrictedSessionSecret
+  }));
   const runnerEnv = {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -650,7 +745,9 @@ try {
     BROWSER_TEST_RESTRICTED_CREDENTIAL:restrictedCredential,
     BROWSER_TEST_TODAY_BASE_URL:servers[5].baseURL,
     BROWSER_TEST_PHASE2_BASE_URL:servers[6].baseURL,
-    BROWSER_TEST_PHASE2_RESTRICTED_BASE_URL:servers[7].baseURL
+    BROWSER_TEST_PHASE2_RESTRICTED_BASE_URL:servers[7].baseURL,
+    BROWSER_TEST_SOCIAL_BASE_URL:servers[8].baseURL,
+    BROWSER_TEST_SOCIAL_RESTRICTED_BASE_URL:servers[9].baseURL
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));
 } finally {

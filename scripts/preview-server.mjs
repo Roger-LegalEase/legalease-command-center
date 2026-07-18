@@ -127,6 +127,7 @@ import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex 
 import { searchGlobalRecords } from "./global-search-service.mjs";
 import { buildAuthorizedInboxPage } from "./inbox-page-service.mjs";
 import { buildAuthorizedTodayPage } from "./today-page-service.mjs";
+import { buildAuthorizedSocialHome } from "./social-home-service.mjs";
 import {
   INBOX_ACTION_BODY_LIMIT,
   executeAuthorizedInboxAction,
@@ -35099,6 +35100,10 @@ async function handleRequest(request, response) {
       sendJson(response, { error:"Today is unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
       return;
     }
+    else if (url.pathname === "/api/ui/social") {
+      sendJson(response, { error:"Social is unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
+      return;
+    }
     else if (url.pathname === QUICK_CAPTURE_ENDPOINT || url.pathname === QUICK_CAPTURE_CAPABILITIES_ENDPOINT) {
       sendJson(response, {
         ok:false,
@@ -35234,6 +35239,36 @@ async function handleRequest(request, response) {
       sendJson(response, buildAuthorizedTodayPage(currentState, actor, now));
     } catch {
       sendJson(response, { error:"Today could not load. No records were changed. Try again." }, 500);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/ui/social" && request.method === "GET") {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { error:"Social is unavailable." }, 404);
+      return;
+    }
+    try {
+      const currentState = await store.readState();
+      const actor = publicActor(accessDecision.actor);
+      const now = new Date().toISOString();
+      sendJson(response, buildAuthorizedSocialHome(currentState, actor, now, {
+        view:url.searchParams.get("view") || undefined,
+        status:url.searchParams.get("status") || undefined,
+        channel:url.searchParams.get("channel") || undefined,
+        topic:url.searchParams.get("topic") || undefined,
+        owner:url.searchParams.get("owner") || undefined,
+        dateFrom:url.searchParams.get("dateFrom") || undefined,
+        dateTo:url.searchParams.get("dateTo") || undefined,
+        limit:url.searchParams.get("limit") || undefined,
+        cursor:url.searchParams.get("cursor") || undefined
+      }));
+    } catch (error) {
+      sendJson(response, {
+        error:Number(error?.status) === 400
+          ? "The Social view could not be read. Check the selected filters."
+          : "Social could not load. No records were changed. Try again."
+      }, Number(error?.status || 500));
     }
     return;
   }
