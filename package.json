@@ -43,6 +43,7 @@
     "test:vnext-partner-activity": "node scripts/test-vnext-partner-activity.mjs",
     "test:vnext-social-readiness": "node scripts/test-vnext-social-readiness.mjs",
     "test:vnext-phase2-acceptance": "node scripts/test-vnext-phase2-acceptance.mjs",
+    "test:vnext-social-creative-catalog": "node scripts/test-vnext-social-creative-catalog.mjs",
     "test:browser": "node scripts/run-browser-tests.mjs",
     "test:browser:install": "playwright install --with-deps chromium",
     "test:extended": "node scripts/run-extended-tests.mjs",
