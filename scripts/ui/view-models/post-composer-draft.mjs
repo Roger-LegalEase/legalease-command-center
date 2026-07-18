@@ -311,6 +311,7 @@ export function buildPostComposerDraft(state = {}, actor = {}, postId = "", cont
     postId: source.postView.id,
     href: source.postView.href,
     generatedAt: source.generatedAt,
+    version: source.version,
     sharedContent: source.variants.shared,
     selectedChannels: [...source.variants.selectedChannels],
     channelVariants: source.variants.variants.map((variant) => ({ ...variant })),

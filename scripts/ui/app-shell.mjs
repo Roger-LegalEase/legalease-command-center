@@ -31,6 +31,7 @@ import {
   SOCIAL_HOME_STYLESHEET_PATH,
   socialHomeBrowserSource
 } from "./pages/social-home.mjs";
+import { POST_COMPOSER_STYLESHEET_PATH, postComposerBrowserSource } from "./pages/post-composer.mjs";
 import { INITIAL_VNEXT_LOADING_HTML } from "./shell-states.mjs";
 import {
   CREATE_MENU_OPTIONS,
@@ -441,8 +442,12 @@ function applyVNextRouteParser(html) {
         && vnextRouteResolution.canonicalRoute === "inbox";
       const isSocialRoute = vnextRouteResolution.kind === "page"
         && vnextRouteResolution.canonicalRoute === "queue";
+      const isSocialPostRoute = vnextRouteResolution.kind === "object"
+        && vnextRouteResolution.objectType === "Post"
+        && vnextRouteResolution.sourceKind === "posts"
+        && vnextRouteResolution.requestedRoute === "social/post";
       const normalizedPage = artifactRef
-        ? "item"
+        ? (isSocialPostRoute ? "social-post" : "item")
         : (isGlobalSearchRoute || isInboxRoute || isSocialRoute) ? "today"
         : vnextRouteResolution.kind === "page" ? vnextRouteResolution.canonicalRoute : "today";
       const pageId = normalizedPage;
@@ -453,6 +458,7 @@ function applyVNextRouteParser(html) {
         && !isGlobalSearchRoute
         && !isInboxRoute
         && !isSocialRoute
+        && !isSocialPostRoute
         && (vnextRouteResolution.kind === "page" || vnextRouteResolution.kind === "object")
         && vnextRouteResolution.safeHash;
       if (canCanonicalize && location.hash !== vnextRouteResolution.safeHash) {
@@ -502,13 +508,13 @@ export function renderVNextDesktopShell(legacyHtml = "") {
   html = replaceInitialLoadingSurface(html);
   html = html.replace(
     "</head>",
-    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
+    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
   );
   html = html.replace(bodyMarker, '<body class="vnext-app-shell" data-command-center-shell="vnext">');
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n</body>`);
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n</body>`);
   return html;
 }
 

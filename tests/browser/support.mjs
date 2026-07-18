@@ -78,6 +78,9 @@ function allowedOrigins(baseURL) {
     process.env.BROWSER_TEST_PHASE2_BASE_URL,
     process.env.BROWSER_TEST_PHASE2_RESTRICTED_BASE_URL,
     process.env.BROWSER_TEST_SOCIAL_BASE_URL,
+    process.env.BROWSER_TEST_COMPOSER_BASE_URL,
+    process.env.BROWSER_TEST_COMPOSER_RESTRICTED_BASE_URL,
+    process.env.BROWSER_TEST_COMPOSER_RESTRICTED_READONLY_BASE_URL,
     process.env.BROWSER_TEST_SOCIAL_RESTRICTED_BASE_URL
   ].filter(Boolean).map((value) => new URL(value).origin));
 }

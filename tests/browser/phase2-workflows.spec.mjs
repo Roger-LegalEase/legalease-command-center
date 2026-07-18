@@ -258,9 +258,8 @@ test("Today, Inbox actions, and Quick Capture form one exact, duplicate-safe fou
   expect(captureBodies).toHaveLength(1);
   await openCapture.click();
   await expect(page).toHaveURL(exactHashPattern(captureResult.canonicalHref));
-  await expect(page.locator("main#app #item.page-section.active")).toBeVisible();
-  await expect(page.getByRole("heading", { name:captureTitle, level:1 })).toBeVisible();
-  await expect(page.locator("[data-quick-capture-exact-result]")).toContainText("Destination: Social.");
+  await expect(page.locator("[data-post-composer]")).toBeVisible();
+  await expect(page.getByRole("heading", { name:captureTitle, level:2 })).toBeVisible();
 
   const finalState = await readState(page);
   const capturedPostId = captureResult.canonicalHref.split("/").at(-1);

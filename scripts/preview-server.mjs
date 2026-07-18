@@ -128,6 +128,7 @@ import { searchGlobalRecords } from "./global-search-service.mjs";
 import { buildAuthorizedInboxPage } from "./inbox-page-service.mjs";
 import { buildAuthorizedTodayPage } from "./today-page-service.mjs";
 import { buildAuthorizedSocialHome } from "./social-home-service.mjs";
+import { buildPostComposerContract, composerSavePath, normalizeComposerPatch } from "./post-composer-service.mjs";
 import {
   INBOX_ACTION_BODY_LIMIT,
   executeAuthorizedInboxAction,
@@ -35104,6 +35105,10 @@ async function handleRequest(request, response) {
       sendJson(response, { error:"Social is unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
       return;
     }
+    else if (/^\/api\/ui\/social\/post\/[^/]+\/(?:composer|save)$/.test(url.pathname)) {
+      sendJson(response, { ok:false, outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized", message:accessDecision.status === 401 ? "Your session ended. Sign in again before opening this Post." : "This Post is unavailable for this account." }, accessDecision.status || 403);
+      return;
+    }
     else if (url.pathname === QUICK_CAPTURE_ENDPOINT || url.pathname === QUICK_CAPTURE_CAPABILITIES_ENDPOINT) {
       sendJson(response, {
         ok:false,
@@ -35170,6 +35175,11 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/auth/diagnostics" && request.method === "GET") {
     sendJson(response, { hostedMode: isHostedProduction(process.env), sessionAuthenticated: true, role: accessDecision.actor.role });
+    return;
+  }
+
+  if (url.pathname === "/api/test/fixture-state" && request.method === "GET" && process.env.COMMAND_CENTER_TEST_MODE === "true") {
+    sendJson(response, await store.readState());
     return;
   }
 
@@ -35269,6 +35279,49 @@ async function handleRequest(request, response) {
           ? "The Social view could not be read. Check the selected filters."
           : "Social could not load. No records were changed. Try again."
       }, Number(error?.status || 500));
+    }
+    return;
+  }
+
+  const composerRead = url.pathname.match(/^\/api\/ui\/social\/post\/([^/]+)\/composer$/);
+  if (composerRead && request.method === "GET") {
+    if (!commandCenterVNextConfig.enabled) { sendJson(response, { ok:false, outcome:"not_available", message:"Social composer is unavailable." }, 404); return; }
+    try {
+      const currentState = await store.readState();
+      const actor = publicActor(accessDecision.actor);
+      const body = buildPostComposerContract(currentState, actor, decodeURIComponent(composerRead[1]), new Date().toISOString());
+      sendJson(response, body, body.ok ? 200 : 404);
+    } catch {
+      sendJson(response, { ok:false, outcome:"recoverable_error", message:"This Post could not load. No records were changed. Try again safely." }, 500);
+    }
+    return;
+  }
+
+  const composerSave = url.pathname.match(/^\/api\/ui\/social\/post\/([^/]+)\/save$/);
+  if (composerSave && request.method === "POST") {
+    if (!commandCenterVNextConfig.enabled) { sendJson(response, { ok:false, outcome:"not_available", message:"Social composer is unavailable. Nothing was saved." }, 404); return; }
+    try {
+      const input = await readBoundedJson(request, { limit: 32_000 });
+      const id = decodeURIComponent(composerSave[1]);
+      const actor = publicActor(accessDecision.actor);
+      const decision = canPerformEndpoint(actor?.role || "viewer", "POST", url.pathname);
+      if (!decision.ok) { sendJson(response, { ok:false, outcome:"unauthorized", message:"This account can view Social but cannot edit Posts." }, 403); return; }
+      const currentState = await store.readState();
+      const visible = buildPostComposerContract(currentState, actor, id, new Date().toISOString());
+      const duplicateCount = (currentState.posts || []).filter((item) => String(item?.id || "") === id).length;
+      if (!visible.ok || visible.post?.id !== id || duplicateCount !== 1) { sendJson(response, { ok:false, outcome:"unavailable", message:"This Post is unavailable." }, 404); return; }
+      const expectedVersion = input.expectedVersion;
+      if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) { sendJson(response, { ok:false, outcome:"validation_error", field:"expectedVersion", message:"The current Post version is required before saving." }, 400); return; }
+      if (!Number.isSafeInteger(visible.version)) { sendJson(response, { ok:false, outcome:"unavailable", message:"This Post cannot be safely saved right now." }, 404); return; }
+      if (expectedVersion !== visible.version) { sendJson(response, { ok:false, outcome:"conflict", currentVersion:visible.version, message:"The saved Post changed. Reload the saved copy or keep editing." }, 409); return; }
+      const patch = normalizeComposerPatch(input);
+      const nextState = (await store.mutateCollectionItem("posts", id, (post) => ({ ...post, ...patch }), { expectedVersion })).state;
+      sendJson(response, buildPostComposerContract(nextState, actor, id, new Date().toISOString()));
+    } catch (error) {
+      const status = Number(error?.status);
+      if (status === 400 || status === 413 || error instanceof RequestLimitError) sendJson(response, { ok:false, outcome:"validation_error", field:error?.field || null, message:status === 413 || error instanceof RequestLimitError ? "The save request is too large." : error?.message || "The shared copy is invalid." }, 400);
+      else if (status === 409) sendJson(response, { ok:false, outcome:"conflict", currentVersion:Number.isSafeInteger(error?.actualVersion) ? error.actualVersion : null, message:"The saved Post changed. Reload the saved copy or keep editing." }, 409);
+      else sendJson(response, { ok:false, outcome:"recoverable_error", message:"The Post could not be saved. Your edits are still here; try again safely." }, 500);
     }
     return;
   }
