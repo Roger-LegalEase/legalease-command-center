@@ -47,6 +47,7 @@
     "test:vnext-post-channel-variants": "node scripts/test-vnext-post-channel-variants.mjs",
     "test:vnext-post-composer-draft": "node scripts/test-vnext-post-composer-draft.mjs",
     "test:vnext-post-schedule-plan": "node scripts/test-vnext-post-schedule-plan.mjs",
+    "test:vnext-post-review-plan": "node scripts/test-vnext-post-review-plan.mjs",
     "test:browser": "node scripts/run-browser-tests.mjs",
     "test:browser:install": "playwright install --with-deps chromium",
     "test:extended": "node scripts/run-extended-tests.mjs",
