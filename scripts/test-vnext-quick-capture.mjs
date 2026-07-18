@@ -216,6 +216,9 @@ assert.match(browserSource, /submitButton\.disabled = true/);
 assert.match(browserSource, /vnext:session-expired/);
 assert.match(browserSource, /safeExactHash/);
 assert.match(browserSource, /textContent/);
+assert.doesNotMatch(browserSource, /typeof load === "function"|\/api\/state|\/api\/boot-state/, "Quick Capture must not refresh broad state after a compact save.");
+assert.match(browserSource, /recentResults/);
+assert.match(browserSource, /dataset\.quickCaptureExactResult/);
 assert.doesNotMatch(browserSource, /innerHTML\s*=|localStorage|sessionStorage|\/api\/(?:send|publish|launch|release|enroll|approve)|\b(?:send|publish|launch|release|enroll|approve)\w*\s*\(/i);
 
 const uiSource = await readFile(new URL("./ui/quick-capture.mjs", import.meta.url), "utf8");

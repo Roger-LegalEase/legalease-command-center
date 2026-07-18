@@ -258,18 +258,19 @@ test("validation, duplicate clicks, repeated requests, authorization, and sessio
   const { baseURL, dialog } = await openCaptureToday(page);
   const before = await stateOf(page, baseURL);
   await selectIntent(dialog, "Task");
-  await dialog.getByRole("button", { name:"Save", exact:true }).click();
+  const submit = dialog.getByRole("button", { name:"Save", exact:true });
+  await submit.click();
   await expect(dialog.getByRole("alert")).toContainText("required information");
   await screenshotBoth(page, "quick-capture-validation", dialog, dialog.getByRole("alert"));
   const afterValidation = await stateOf(page, baseURL);
   expect(afterValidation.tasks).toEqual(before.tasks);
+  await expect(submit).not.toHaveAttribute("aria-busy", "true");
 
   await dialog.getByRole("textbox", { name:"Title", exact:true }).fill(`Duplicate click capture ${testInfo.repeatEachIndex}`);
   const requestBodies = [];
   page.on("request", (request) => {
     if (request.method() === "POST" && new URL(request.url()).pathname === "/api/ui/quick-capture") requestBodies.push(request.postDataJSON());
   });
-  const submit = dialog.getByRole("button", { name:"Save", exact:true });
   await submit.evaluate((button) => {
     button.click();
     button.click();

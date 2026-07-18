@@ -69,6 +69,8 @@ function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCred
 }
 
 function browserFixtureState(seed, { includeActions = false } = {}) {
+  const fixtureNow = new Date();
+  const futureDate = (days) => new Date(fixtureNow.getTime() + (days * 24 * 60 * 60 * 1_000)).toISOString().slice(0, 10);
   const post = Object.freeze({
     id:"browser-post-search-001",
     title:"Café launch update",
@@ -374,7 +376,7 @@ function browserFixtureState(seed, { includeActions = false } = {}) {
     owner:"Roger",
     priority:index % 7 === 0 ? "high" : "normal",
     important:true,
-    dueDate:index % 4 === 0 ? "" : `2026-07-${String(16 + (index % 9)).padStart(2, "0")}`,
+    dueDate:index % 4 === 0 ? "" : futureDate(2 + (index % 9)),
     updatedAt:`2026-07-15T${String(index % 24).padStart(2, "0")}:30:00.000Z`
   })));
   return {
@@ -392,6 +394,7 @@ function browserFixtureState(seed, { includeActions = false } = {}) {
 
 function todayFixtureState(seed) {
   const base = browserFixtureState(seed);
+  const fixtureNow = new Date();
   return {
     ...base,
     approvals:[],
@@ -428,8 +431,8 @@ function todayFixtureState(seed) {
     dailyRunSessions:[{
       session_id:"today-browser-current-run",
       status:"active",
-      started_at:"2026-07-17T12:00:00.000Z",
-      last_active_at:"2026-07-17T16:30:00.000Z",
+      started_at:new Date(fixtureNow.getTime() - (4 * 60 * 60 * 1_000)).toISOString(),
+      last_active_at:fixtureNow.toISOString(),
       current_bucket_key:"due_today",
       bucket_snapshot:{ buckets:[{ key:"due_today", items:[{ id:"today-browser-now-task", type:"task", route:"tasks", source:"tasks" }] }] },
       completed_bucket_keys:[], completed_items:[], skipped_bucket_keys:[], parked_items:[]
@@ -562,13 +565,17 @@ const createDataPath = path.join(tempRoot, "create-state.json");
 const actionDataPath = path.join(tempRoot, "action-state.json");
 const restrictedDataPath = path.join(tempRoot, "restricted-state.json");
 const todayDataPath = path.join(tempRoot, "today-state.json");
+const phase2DataPath = path.join(tempRoot, "phase2-state.json");
+const phase2RestrictedDataPath = path.join(tempRoot, "phase2-restricted-state.json");
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(createDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(actionDataPath, `${JSON.stringify(actionFixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(restrictedDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
-  writeFile(todayDataPath, `${JSON.stringify(todayState, null, 2)}\n`, { mode:0o600 })
+  writeFile(todayDataPath, `${JSON.stringify(todayState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(phase2DataPath, `${JSON.stringify(actionFixtureState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(phase2RestrictedDataPath, `${JSON.stringify(actionFixtureState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
 const restrictedSessionSecret = crypto.randomBytes(32).toString("base64url");
@@ -616,6 +623,19 @@ try {
     dataPath:todayDataPath,
     vnext:true
   }));
+  servers.push(await startServer({
+    name:"phase2",
+    dataPath:phase2DataPath,
+    vnext:true
+  }));
+  servers.push(await startServer({
+    name:"phase2-restricted",
+    dataPath:phase2RestrictedDataPath,
+    vnext:true,
+    restricted:true,
+    restrictedCredential,
+    sessionSecret:restrictedSessionSecret
+  }));
   const runnerEnv = {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -628,7 +648,9 @@ try {
     BROWSER_TEST_ACTIONS_BASE_URL:servers[3].baseURL,
     BROWSER_TEST_RESTRICTED_BASE_URL:servers[4].baseURL,
     BROWSER_TEST_RESTRICTED_CREDENTIAL:restrictedCredential,
-    BROWSER_TEST_TODAY_BASE_URL:servers[5].baseURL
+    BROWSER_TEST_TODAY_BASE_URL:servers[5].baseURL,
+    BROWSER_TEST_PHASE2_BASE_URL:servers[6].baseURL,
+    BROWSER_TEST_PHASE2_RESTRICTED_BASE_URL:servers[7].baseURL
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));
 } finally {

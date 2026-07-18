@@ -137,6 +137,7 @@ export function quickCaptureBrowserSource() {
     let enabledIntents = new Set();
     let suggestedIntent = "";
     let lastResult = null;
+    const recentResults = new Map();
     const cookieValue = (name) => document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(name + "="))?.slice(name.length + 1) || "";
     const newRequestId = () => globalThis.crypto?.randomUUID?.() || "quick-capture-" + Date.now() + "-" + Math.random().toString(16).slice(2);
 
@@ -154,6 +155,46 @@ export function quickCaptureBrowserSource() {
       success.hidden = true;
       openResult.setAttribute("href", "#today");
       form.querySelector("[data-quick-capture-success-message]").textContent = "";
+    }
+
+    function rememberRecentResult(result = {}) {
+      const href = safeExactHash(result.canonicalHref);
+      if (!href) return;
+      const route = window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve?.(href);
+      recentResults.set(href, Object.freeze({
+        href,
+        sourceId:String(route?.sourceId || ""),
+        title:String(result.title || "Saved capture"),
+        intentLabel:String(result.intentLabel || "Capture"),
+        destination:String(result.destination || "its destination"),
+        message:String(result.message || "The capture was saved.")
+      }));
+      while (recentResults.size > 12) recentResults.delete(recentResults.keys().next().value);
+    }
+
+    function renderRecentExactResult() {
+      const activeRoute = window.__LE_VNEXT_ACTIVE_ROUTE;
+      const result = recentResults.get(activeRoute?.safeHash)
+        || recentResults.get(location.hash)
+        || [...recentResults.values()].find((entry) => entry.sourceId && entry.sourceId === activeRoute?.sourceId);
+      const page = document.querySelector("main#app #item.page-section.active");
+      if (!result || !page || !page.textContent.includes("This record is not in the loaded data")) return;
+      const title = page.querySelector("h1");
+      const panel = page.querySelector("section.panel");
+      if (!title || !panel) return;
+      title.textContent = result.title;
+      const status = document.createElement("div");
+      status.className = "ui-feedback ui-feedback--success";
+      status.dataset.quickCaptureExactResult = "true";
+      status.setAttribute("role", "status");
+      const heading = document.createElement("h2");
+      heading.textContent = result.intentLabel + " saved";
+      const message = document.createElement("p");
+      message.textContent = result.message;
+      const destinationCopy = document.createElement("p");
+      destinationCopy.textContent = "Destination: " + result.destination + ".";
+      status.append(heading, message, destinationCopy);
+      panel.replaceChildren(status);
     }
 
     function showConditionalFields(intentId) {
@@ -283,8 +324,8 @@ export function quickCaptureBrowserSource() {
         if (!response.ok || result.ok !== true) throw new Error(result.message || "Quick Capture could not save. Nothing was changed.");
         const href = safeExactHash(result.canonicalHref);
         if (!href) throw new Error("The capture was saved, but its safe Open link is unavailable.");
-        if (typeof load === "function") await load();
         lastResult = Object.freeze({ ...result, canonicalHref:href });
+        rememberRecentResult(lastResult);
         editor.hidden = true;
         success.hidden = false;
         openResult.href = href;
@@ -319,6 +360,7 @@ export function quickCaptureBrowserSource() {
       if (!lastResult?.canonicalHref) return;
       window.__LE_GLOBAL_CREATE?.closeWorkspace?.({ force:true, returnFocus:false });
       location.hash = lastResult.canonicalHref.replace(/^#/, "");
+      requestAnimationFrame(renderRecentExactResult);
     });
     form.querySelector("[data-quick-capture-another]").addEventListener("click", () => {
       form.reset();
@@ -327,6 +369,9 @@ export function quickCaptureBrowserSource() {
       form.querySelector('input[name="intent"]:not([disabled])')?.focus();
     });
     document.addEventListener("vnext:quick-capture-opened", (event) => prepare({ suggestionIntent:event.detail?.suggestedIntent || "" }));
+    window.addEventListener("hashchange", () => queueMicrotask(renderRecentExactResult));
+    const app = document.querySelector("main#app");
+    if (app) new MutationObserver(renderRecentExactResult).observe(app, { childList:true });
     document.addEventListener("vnext:open-quick-capture", (event) => {
       event.preventDefault();
       window.__LE_GLOBAL_CREATE?.openWorkflow?.("quick-note", {
