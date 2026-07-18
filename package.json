@@ -49,6 +49,7 @@
     "test:vnext-post-schedule-plan": "node scripts/test-vnext-post-schedule-plan.mjs",
     "test:vnext-post-review-plan": "node scripts/test-vnext-post-review-plan.mjs",
     "test:vnext-social-home": "node scripts/test-vnext-social-home.mjs",
+    "test:vnext-post-publishing-controls": "node scripts/test-vnext-post-publishing-controls.mjs",
     "test:browser": "node scripts/run-browser-tests.mjs",
     "test:browser:install": "playwright install --with-deps chromium",
     "test:extended": "node scripts/run-extended-tests.mjs",
