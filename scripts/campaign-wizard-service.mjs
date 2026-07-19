@@ -98,7 +98,7 @@ const STEP_KEYS = Object.freeze({
   schedule:new Set(["mode", "scheduledAt", "timezone", "weekdayWindow", "batchPlan", "scheduleSelected"]),
   review:new Set(["acknowledgements"])
 });
-const FORBIDDEN_KEYS = /send|launch|approve|execute|release|provider|live|suppressionOverride|recipientOverride/i;
+const FORBIDDEN_KEYS = /^(?:send|sendNow|launch|launchCampaign|approve|execute|release|provider|live|suppressionOverride|recipientOverride)$/i;
 
 function normalizePatch(step, fields = {}) {
   const allowed = STEP_KEYS[step];

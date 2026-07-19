@@ -72,3 +72,11 @@ Later packet sections extend this manifest without changing the CCX-401 boundary
 - Persist selection references through `createCampaignAudienceSavePlan`; never accept included/excluded counts, eligibility, delivery addresses, or an execution recipient list from the browser.
 - Register `test:vnext-campaign-audience-step` as `node scripts/test-vnext-campaign-audience-step.mjs`.
 - Compact page target: 25 recipients by default, 50 maximum, under 150 KB and 300 ms per page.
+
+## CCX-405 wiring
+
+- Compose `buildCampaignMessageStep` and `renderCampaignMessageStep` for `step=message`; persist validated fields through `createCampaignMessageSavePlan`.
+- Register dedicated bounded test-send and Le-E-assistance action endpoints. Test send must require `manage_growth`, CSRF/session checks, one authorized test-recipient ID, a server idempotency key, and the existing safe sending adapter; it must never accept or derive the full audience.
+- Le-E assistance runs only for `requested:true`, never auto-applies, and passes no recipient content, credentials, or provider payload.
+- Sender identities are server-filtered verified projections. Existing provider and UPL/content review gates remain authoritative.
+- Register `test:vnext-campaign-message-step` as `node scripts/test-vnext-campaign-message-step.mjs`.
