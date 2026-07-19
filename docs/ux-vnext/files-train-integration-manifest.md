@@ -85,3 +85,17 @@ Further packet wiring is appended by CCX-602 through CCX-607.
   `filesReportBrowserSource`. No separate report destination is required.
 - Package script: `test:vnext-files-reports` →
   `node scripts/test-vnext-files-reports.mjs`.
+
+## CCX-606 wiring
+
+- Compose `createFilesSharingService` from
+  `scripts/ui-actions/files-sharing.mjs` with the scoped store ports.
+- Register `POST /api/ui/files/:sourceKind/:sourceId/access/grant` and
+  `/access/revoke` with `manage_roles`, CSRF/origin, current-record, and
+  idempotency enforcement. Never infer public access from storage metadata.
+- Render `renderFileSharingControls` inside the Sharing tab only when the server
+  grants `manage_roles`; register `fileSharingBrowserSource` on that page.
+- Expiring/public links remain disabled because the current model has no reviewed
+  authority for them.
+- Package script: `test:vnext-files-sharing` →
+  `node scripts/test-vnext-files-sharing.mjs`.
