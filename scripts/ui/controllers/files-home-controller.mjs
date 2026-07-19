@@ -13,6 +13,19 @@ export function filesHomeBrowserSource() {
       create?.click();
       requestAnimationFrame(() => document.querySelector('[data-global-create-option="file-or-folder"]')?.click());
     }
+    async function organize(control, action, value = "") {
+      const [sourceKind, ...sourceParts] = String(control.dataset.fileStar || control.dataset.fileMove || "").split(":");
+      const sourceId = sourceParts.join(":");
+      if (!sourceKind || !sourceId) return;
+      control.disabled = true;
+      try {
+        const response = await fetch("/api/ui/files/" + encodeURIComponent(sourceKind) + "/" + encodeURIComponent(sourceId) + "/organize", { method:"POST", credentials:"same-origin", headers:{ "content-type":"application/json" }, body:JSON.stringify({ action, value, requestId:crypto.randomUUID() }) });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.ok !== true) throw new Error(payload.error || "File organization did not complete.");
+        document.dispatchEvent(new CustomEvent("vnext:files-organized", { detail:payload }));
+      } catch (error) { document.dispatchEvent(new CustomEvent("vnext:files-error", { detail:{ message:error.message } })); }
+      finally { control.disabled = false; }
+    }
     async function load({ append = false } = {}) {
       if (pending || !root()) return pending;
       const params = query();
@@ -34,9 +47,12 @@ export function filesHomeBrowserSource() {
     }
     document.addEventListener("click", (event) => {
       if (event.target.closest("[data-files-new]")) openNew();
+      const star = event.target.closest("[data-file-star]");
+      if (star) organize(star, star.getAttribute("aria-pressed") === "true" ? "unstar" : "star");
       const more = event.target.closest("[data-files-more]");
       if (more) load({ append:true });
     });
+    document.addEventListener("change", (event) => { const move = event.target.closest("[data-file-move]"); if (move?.value) organize(move, "move", move.value); });
     document.addEventListener("submit", (event) => {
       const form = event.target.closest("[data-files-filters]");
       if (!form) return;
