@@ -64,3 +64,11 @@ Later packet sections extend this manifest without changing the CCX-401 boundary
 - Validate saves with `createCampaignGoalSavePlan`; never trust browser-provided type labels, related-record labels, owner labels, identity, or scope.
 - Related Partner programs, products, and owners must be compact and visibility-filtered server-side.
 - Register `test:vnext-campaign-goal-step` as `node scripts/test-vnext-campaign-goal-step.mjs`.
+
+## CCX-404 wiring
+
+- Compose `buildCampaignAudienceStep` into `step=audience` reads and render with `renderCampaignAudienceStep`.
+- Accept only vetted source references, saved segment ID, supported filters, selection confirmation, limit, and filter-bound cursor. Re-resolve visibility and eligibility from current state on every read and before Review/launch.
+- Persist selection references through `createCampaignAudienceSavePlan`; never accept included/excluded counts, eligibility, delivery addresses, or an execution recipient list from the browser.
+- Register `test:vnext-campaign-audience-step` as `node scripts/test-vnext-campaign-audience-step.mjs`.
+- Compact page target: 25 recipients by default, 50 maximum, under 150 KB and 300 ms per page.
