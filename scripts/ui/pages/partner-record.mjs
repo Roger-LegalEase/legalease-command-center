@@ -28,12 +28,19 @@ function outreach(view) {
   return `${campaigns}${suggestions}`;
 }
 
+function files(view) {
+  if (!view.files.available) return `<div class="partner-record-state"><h2>Files unavailable</h2><p>This account cannot read Partner Files.</p></div>`;
+  const actions = `<div class="partner-file-actions"><button type="button" data-partner-artifact="proposal">Create proposal</button><button type="button" data-partner-artifact="landing_page">Create co-branded landing page</button><button type="button" data-partner-artifact="weekly_report">Create weekly report</button><button type="button" data-partner-artifact="final_report">Create final impact report</button><button type="button" data-partner-artifact="program">Create program record</button></div>`;
+  const items = view.files.items.length ? `<ul class="partner-file-list">${view.files.items.map((file) => `<li><div><strong>${display(file.name, "File")}</strong><span>${display(file.status?.label)} · ${display(file.fileType?.label)}</span></div><a href="${escapeAttribute(file.href)}" aria-label="Open File: ${escapeAttribute(file.name || "File")}">Open File</a></li>`).join("")}</ul>` : `<div class="partner-record-state"><h2>No Files yet</h2><p>Add a File record or create a reviewed program artifact.</p></div>`;
+  return `${actions}${items}`;
+}
+
 function deferred(title, action) { return `<div class="partner-record-state"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(action)} integration is ready for shared-shell registration. No external action has occurred.</p></div>`; }
 
 export function partnerRecordPageHtml(view = null) {
   if (!view) return `<section class="partner-record-page" data-partner-record aria-busy="true"><div role="status">Loading Partner record</div></section>`;
   if (!view.available) return `<section class="partner-record-page" data-partner-record><div class="partner-record-state" role="alert"><h1>Partner not available</h1><p>The record was not found or this account cannot view it.</p></div></section>`;
-  const tabContent = view.selectedTab === "activity" ? activity(view) : view.selectedTab === "outreach" ? outreach(view) : view.selectedTab === "files" ? deferred("No Files to show", "Files") : overview(view);
+  const tabContent = view.selectedTab === "activity" ? activity(view) : view.selectedTab === "outreach" ? outreach(view) : view.selectedTab === "files" ? files(view) : overview(view);
   return `<section class="partner-record-page" data-partner-record aria-labelledby="partner-record-title" aria-busy="false">
     <a class="partner-record-back" href="#partners">← All Partners</a>
     <header class="partner-record-header"><div><p class="eyebrow">Partner</p><h1 id="partner-record-title">${escapeHtml(view.header.name)}</h1><div class="partner-record-badges"><span>${escapeHtml(view.header.stage.label)}</span><span>${escapeHtml(view.header.health.label)}</span><span>${display(view.header.owner)}</span></div></div><div class="partner-next-action"><p>Next action</p><strong>${display(view.header.nextAction.summary, "No next action recorded")}</strong><span>Due ${date(view.header.nextAction.dueAt)}</span>${view.header.nextAction.available ? `<button type="button" data-partner-action="complete_next_action" data-endpoint="${escapeAttribute(view.header.nextAction.completeEndpoint)}">Complete next action</button>` : ""}</div></header>
