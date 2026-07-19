@@ -71,3 +71,17 @@ Further packet wiring is appended by CCX-602 through CCX-607.
   `/assets/ui/investor-room.css`.
 - Package script: `test:vnext-investor-room` →
   `node scripts/test-vnext-investor-room.mjs`.
+
+## CCX-605 wiring
+
+- Compose `createFilesReportService` from
+  `scripts/ui-actions/files-reports.mjs` with the current reviewed report
+  generator and scoped store ports. The generator must persist and return one
+  stable authoritative report record before the adapter resolves its FileView.
+- Register `POST /api/ui/files/reports/generate` and
+  `POST /api/ui/files/reports/:id/collection` with `manage_growth`, CSRF/origin,
+  idempotency, and current-record checks.
+- Render `renderFilesReportActions` in Files New and register
+  `filesReportBrowserSource`. No separate report destination is required.
+- Package script: `test:vnext-files-reports` →
+  `node scripts/test-vnext-files-reports.mjs`.
