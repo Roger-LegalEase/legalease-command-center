@@ -40,3 +40,22 @@ Further packet wiring is appended by CCX-602 through CCX-607.
 - Include `/assets/ui/file-details.css` after shared tokens.
 - Package script: `test:vnext-file-details` →
   `node scripts/test-vnext-file-details.mjs`.
+
+## CCX-603 wiring
+
+- Compose `createFilesUploadService` from
+  `scripts/ui-actions/files-upload.mjs` with the existing scoped store
+  (`readState` plus `writeCollections`) and one storage adapter from
+  `scripts/files-storage-adapter.mjs`.
+- Hosted mode must construct `createSupabaseFilesStorage` with server-only
+  Supabase credentials and a private bucket. Local/demo mode must construct
+  `createLocalFilesStorage` beneath an explicit app-owned data directory.
+- Register `POST /api/ui/files/upload` and
+  `POST /api/ui/files/:sourceKind/:sourceId/replace` with `manage_growth`, CSRF,
+  origin, multipart byte, and request-size enforcement. Replacement is limited
+  to authoritative `dataRoomItems` uploads.
+- Render `renderFileUploadDialog`, register `fileUploadBrowserSource`, and include
+  `/assets/ui/file-upload.css`. Add a visible `data-files-upload` action inside
+  the Files New menu; do not bypass the existing Global Create fallback.
+- Package script: `test:vnext-files-upload` →
+  `node scripts/test-vnext-files-upload.mjs`.
