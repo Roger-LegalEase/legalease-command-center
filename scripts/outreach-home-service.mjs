@@ -59,10 +59,13 @@ function compactCount(value) {
 }
 
 function compactCampaign(view) {
+  const href = view.source.kind === "canonical"
+    ? view.exactSafeSourceLink
+    : `#outreach/campaign/${encodeURIComponent(view.stableIdentity)}`;
   return {
     id:view.stableIdentity,
     name:view.name,
-    href:view.exactSafeSourceLink,
+    href,
     campaignType:view.campaignType,
     deliveryMode:view.deliveryMode,
     audience:{
