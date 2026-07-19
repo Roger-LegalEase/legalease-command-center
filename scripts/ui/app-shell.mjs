@@ -39,10 +39,15 @@ import {
   partnersHomeBrowserSource
 } from "./pages/partners-home.mjs";
 import { PARTNER_RECORD_STYLESHEET_PATHS, partnerRecordBrowserSource } from "./pages/partner-record.mjs";
+import { OUTREACH_HOME_STYLESHEET_PATH, outreachHomeBrowserSource } from "./pages/outreach-home.mjs";
+import { CAMPAIGN_WIZARD_STYLESHEET_PATH, campaignWizardBrowserSource } from "./pages/campaign-wizard.mjs";
+import { CAMPAIGN_DETAIL_STYLESHEET_PATH, campaignDetailBrowserSource } from "./pages/campaign-detail.mjs";
+import { campaignReviewBrowserSource } from "./pages/campaign-review-step.mjs";
 import { INITIAL_VNEXT_LOADING_HTML } from "./shell-states.mjs";
 import {
   CREATE_MENU_OPTIONS,
   PRIMARY_SHELL_DESTINATIONS,
+  primaryShellDestinations,
   SECONDARY_SHELL_CONTROLS,
   TOP_BAR_CONTROLS
 } from "./app-shell-navigation.mjs";
@@ -65,8 +70,8 @@ const routeRecoveryHtml = `<section class="vnext-route-recovery" data-vnext-rout
   </div>
 </section>`;
 
-function primaryNavigationHtml() {
-  return PRIMARY_SHELL_DESTINATIONS.map((item, index) => `
+function primaryNavigationHtml(options = {}) {
+  return primaryShellDestinations(options).map((item, index) => `
         <a class="vnext-nav-link${index === 0 ? " is-selected" : ""}" href="${escapeAttribute(routeHref(item.route))}" data-shell-destination="${escapeAttribute(item.label)}"${index === 0 ? ' aria-current="page"' : ""}>
           <span class="vnext-nav-indicator" aria-hidden="true"></span>
           <span>${escapeHtml(item.label)}</span>
@@ -95,7 +100,7 @@ function createMenuHtml() {
   return renderGlobalCreateMenu();
 }
 
-export function renderVNextDesktopShellChrome() {
+export function renderVNextDesktopShellChrome(options = {}) {
   const help = TOP_BAR_CONTROLS.find((item) => item.id === "help");
   return Object.freeze({
     start:`<div class="vnext-shell" data-vnext-shell="desktop">
@@ -105,7 +110,7 @@ export function renderVNextDesktopShellChrome() {
         <img class="vnext-shell-logo" src="${escapeAttribute(assetUrl(APPROVED_WHITE_LOGO_PATH))}" width="1920" height="1080" alt="LegalEase">
       </a>
       <button class="vnext-drawer-close" type="button" data-shell-action="close-navigation" aria-label="Close navigation"><span aria-hidden="true">×</span></button>
-      <nav class="vnext-primary-navigation" aria-label="Primary destinations">${primaryNavigationHtml()}
+      <nav class="vnext-primary-navigation" aria-label="Primary destinations">${primaryNavigationHtml(options)}
       </nav>
       <div class="vnext-sidebar-divider" aria-hidden="true"></div>
       <nav class="vnext-secondary-navigation" aria-label="Command Center utilities">${secondaryNavigationHtml()}
@@ -430,7 +435,7 @@ function shellClientScript() {
   </script>`;
 }
 
-function applyVNextRouteParser(html) {
+function applyVNextRouteParser(html, { outreachEnabled = false, filesEnabled = false } = {}) {
   const startMarker = '      const pathRoute = String(location.pathname || "/").replace(';
   const endMarker = '      if (pageId === "safe-mode") {';
   const start = html.indexOf(startMarker);
@@ -453,9 +458,13 @@ function applyVNextRouteParser(html) {
         && vnextRouteResolution.objectType === "Post"
         && vnextRouteResolution.sourceKind === "posts"
         && vnextRouteResolution.requestedRoute === "social/post";
+      const isOutreachRoute = ${outreachEnabled ? "vnextRouteResolution.kind === \"page\" && vnextRouteResolution.canonicalRoute === \"outreach\"" : "false"};
+      const isFilesRoute = ${filesEnabled ? "vnextRouteResolution.kind === \"page\" && vnextRouteResolution.canonicalRoute === \"files\"" : "false"};
       const normalizedPage = artifactRef
         ? (isSocialPostRoute ? "social-post" : "item")
         : (isGlobalSearchRoute || isInboxRoute || isSocialRoute) ? "today"
+        : isOutreachRoute ? "campaigns"
+        : isFilesRoute ? "proof"
         : vnextRouteResolution.kind === "page" ? vnextRouteResolution.canonicalRoute : "today";
       const pageId = normalizedPage;
       currentPageId = pageId;
@@ -494,37 +503,39 @@ function replaceInitialLoadingSurface(html) {
     + html.slice(end);
 }
 
-function disableSocialFullStateRefresh(html) {
+function disableSocialFullStateRefresh(html, { outreachEnabled = false, filesEnabled = false } = {}) {
   const marker = "      loadFullStateInBackground();";
   if (!html.includes(marker)) return html;
   return html.replace(marker, `      const compactSocialRoute = window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve(location.hash || "#today");
       const onCompactSocial = compactSocialRoute.kind === "page" && compactSocialRoute.canonicalRoute === "queue";
       const onCompactPartners = (compactSocialRoute.kind === "page" && compactSocialRoute.canonicalRoute === "partners")
         || (compactSocialRoute.kind === "object" && compactSocialRoute.objectType === "Partner" && compactSocialRoute.sourceKind === "partners");
-      if (!(onCompactSocial || onCompactPartners)) loadFullStateInBackground();`);
+      const onCompactOutreach = ${outreachEnabled ? "(compactSocialRoute.kind === \"page\" && compactSocialRoute.canonicalRoute === \"outreach\") || (compactSocialRoute.kind === \"object\" && compactSocialRoute.objectType === \"Campaign\")" : "false"};
+      const onCompactFiles = ${filesEnabled ? "(compactSocialRoute.kind === \"page\" && compactSocialRoute.canonicalRoute === \"files\") || (compactSocialRoute.kind === \"object\" && compactSocialRoute.objectType === \"File\")" : "false"};
+      if (!(onCompactSocial || onCompactPartners || onCompactOutreach || onCompactFiles)) loadFullStateInBackground();`);
 }
 
-export function renderVNextDesktopShell(legacyHtml = "") {
+export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
   const source = String(legacyHtml || "");
   const bodyMarker = "<body>";
   const shellMarker = '<div class="shell">';
   const toastMarker = '<div id="toast"';
   if (!source.includes(bodyMarker) || !source.includes(shellMarker) || !source.includes(toastMarker)) return source;
 
-  const chrome = renderVNextDesktopShellChrome();
+  const chrome = renderVNextDesktopShellChrome(options);
   let html = removeLegacyPrimaryHeader(source);
-  html = applyVNextRouteParser(html);
-  html = disableSocialFullStateRefresh(html);
+  html = applyVNextRouteParser(html, options);
+  html = disableSocialFullStateRefresh(html, options);
   html = replaceInitialLoadingSurface(html);
   html = html.replace(
     "</head>",
-    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_HOME_STYLESHEET_PATH))}" />\n  ${PARTNER_RECORD_STYLESHEET_PATHS.map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ")}\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_ACCESSIBILITY_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
+    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_HOME_STYLESHEET_PATH))}" />\n  ${PARTNER_RECORD_STYLESHEET_PATHS.map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ")}\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_ACCESSIBILITY_STYLESHEET_PATH))}" />\n  ${options.outreachEnabled ? [OUTREACH_HOME_STYLESHEET_PATH, CAMPAIGN_WIZARD_STYLESHEET_PATH, CAMPAIGN_DETAIL_STYLESHEET_PATH].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  <script>${routeCompatibilityBrowserSource(options)}</script>\n</head>`
   );
   html = html.replace(bodyMarker, '<body class="vnext-app-shell" data-command-center-shell="vnext">');
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource()}</script>\n<script>${partnerRecordBrowserSource()}</script>\n</body>`);
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource()}</script>\n<script>${partnerRecordBrowserSource()}</script>\n${options.outreachEnabled ? `<script>${outreachHomeBrowserSource()}</script>\n<script>${campaignWizardBrowserSource()}</script>\n<script>${campaignReviewBrowserSource()}</script>\n<script>${campaignDetailBrowserSource()}</script>` : ""}\n</body>`);
   return html;
 }
 

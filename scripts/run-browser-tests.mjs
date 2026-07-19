@@ -28,7 +28,7 @@ function sanitizedLog(value = "") {
     .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[REDACTED]");
 }
 
-function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCredential = "", restrictedCredentials = {}, sessionSecret = "" }) {
+function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCredential = "", restrictedCredentials = {}, sessionSecret = "", productFlags = {} }) {
   return {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -51,6 +51,8 @@ function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCred
     COMMAND_CENTER_DATA_PATH:dataPath,
     COMMAND_CENTER_SEED_PATH:seedPath,
     COMMAND_CENTER_UX_VNEXT:vnext ? "true" : "false",
+    COMMAND_CENTER_UX_VNEXT_OUTREACH:productFlags.outreach === true ? "true" : "false",
+    COMMAND_CENTER_UX_VNEXT_FILES:productFlags.files === true ? "true" : "false",
     LIVE_POSTING_ENABLED:"false",
     ENABLE_LIVE_LINKEDIN_POSTING:"false",
     ENABLE_LIVE_FACEBOOK_POSTING:"false",
@@ -589,10 +591,10 @@ async function stopChild(child) {
   activeChildren.delete(child);
 }
 
-async function startServer({ name, dataPath, vnext, restricted = false, restrictedCredential = "", restrictedCredentials = {}, sessionSecret = "" }) {
+async function startServer({ name, dataPath, vnext, restricted = false, restrictedCredential = "", restrictedCredentials = {}, sessionSecret = "", productFlags = {} }) {
   const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
     cwd:projectRoot,
-    env:serverEnvironment({ dataPath, vnext, restricted, restrictedCredential, restrictedCredentials, sessionSecret }),
+    env:serverEnvironment({ dataPath, vnext, restricted, restrictedCredential, restrictedCredentials, sessionSecret, productFlags }),
     stdio:["ignore", "pipe", "pipe"]
   });
   activeChildren.add(child);
@@ -699,6 +701,7 @@ const socialRestrictedDataPath = path.join(tempRoot, "social-restricted-state.js
 const composerRestrictedDataPath = path.join(tempRoot, "composer-restricted-state.json");
 const composerRestrictedReadonlyDataPath = path.join(tempRoot, "composer-restricted-readonly-state.json");
 const partnersDataPath = path.join(tempRoot, "partners-state.json");
+const outreachDataPath = path.join(tempRoot, "outreach-state.json");
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
@@ -712,7 +715,8 @@ await Promise.all([
   writeFile(socialRestrictedDataPath, `${JSON.stringify(socialState, null, 2)}\n`, { mode:0o600 }),
   writeFile(composerRestrictedDataPath, `${JSON.stringify(composerRestrictedState, null, 2)}\n`, { mode:0o600 }),
   writeFile(composerRestrictedReadonlyDataPath, `${JSON.stringify(composerRestrictedState, null, 2)}\n`, { mode:0o600 }),
-  writeFile(partnersDataPath, `${JSON.stringify(partnersState, null, 2)}\n`, { mode:0o600 })
+  writeFile(partnersDataPath, `${JSON.stringify(partnersState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(outreachDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
 const restrictedSessionSecret = crypto.randomBytes(32).toString("base64url");
@@ -808,6 +812,12 @@ try {
     dataPath:partnersDataPath,
     vnext:true
   }));
+  servers.push(await startServer({
+    name:"outreach",
+    dataPath:outreachDataPath,
+    vnext:true,
+    productFlags:{ outreach:true }
+  }));
   const runnerEnv = {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -829,6 +839,7 @@ try {
     BROWSER_TEST_COMPOSER_RESTRICTED_BASE_URL:servers[10].baseURL,
     BROWSER_TEST_COMPOSER_RESTRICTED_READONLY_BASE_URL:servers[11].baseURL,
     BROWSER_TEST_PARTNERS_BASE_URL:servers[12].baseURL,
+    BROWSER_TEST_OUTREACH_BASE_URL:servers[13].baseURL,
     BROWSER_TEST_COMPOSER_RESTRICTED_CREDENTIALS:JSON.stringify(composerRestrictedCredentials)
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));

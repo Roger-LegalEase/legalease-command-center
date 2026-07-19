@@ -130,6 +130,7 @@ import { buildAuthorizedTodayPage } from "./today-page-service.mjs";
 import { buildAuthorizedSocialHome } from "./social-home-service.mjs";
 import { buildSocialResultsView } from "./ui/view-models/social-results.mjs";
 import { PARTNER_API_BODY_LIMIT, handlePartnerApiRequest, isPartnerApiPath } from "./partner-api-integration.mjs";
+import { OUTREACH_API_BODY_LIMIT, handleOutreachApiRequest, isOutreachApiPath } from "./outreach-api-integration.mjs";
 import { buildPostComposerContract, composerSavePath, normalizeComposerPatch } from "./post-composer-service.mjs";
 import {
   INBOX_ACTION_BODY_LIMIT,
@@ -155,6 +156,7 @@ import { incrementSecurityMetric, operationalMetrics } from "./observability.mjs
 import { oauthSigningSecret, signOAuthState, verifyOAuthState, verifyOwnerStartedOAuthState } from "./oauth-state.mjs";
 import { escapeHtml } from "./ui/html.mjs";
 import { readCommandCenterVNextConfig } from "./ui/vnext-config.mjs";
+import { readCommandCenterVNextProductConfig } from "./ui/vnext-config.mjs";
 import { renderShellBoundary } from "./ui/shell-boundary.mjs";
 import { DESIGN_SYSTEM_SHOWCASE_PATH } from "./ui/brand-contract.mjs";
 import { renderDesignSystemShowcase } from "./ui/design-system-showcase.mjs";
@@ -173,6 +175,8 @@ import {
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
 const commandCenterVNextConfig = readCommandCenterVNextConfig(process.env);
+const outreachVNextConfig = readCommandCenterVNextProductConfig(process.env, "outreach");
+const filesVNextConfig = readCommandCenterVNextProductConfig(process.env, "files");
 const globalCreateKindsByPath = Object.freeze(Object.fromEntries(
   Object.entries(GLOBAL_CREATE_ENDPOINTS).map(([kind, endpoint]) => [endpoint, kind])
 ));
@@ -34918,6 +34922,12 @@ function renderLegacyApp() {
 function renderVNextApp() {
   // CCX-100 composes one new navigation shell around the same routed application.
   // Page renderers, state, actions, authorization, and safety systems remain shared.
+  if (outreachVNextConfig.enabled || filesVNextConfig.enabled) {
+    return renderVNextDesktopShell(renderLegacyApp(), {
+      outreachEnabled:outreachVNextConfig.enabled,
+      filesEnabled:filesVNextConfig.enabled
+    });
+  }
   return renderVNextDesktopShell(renderLegacyApp());
 }
 
@@ -35111,6 +35121,16 @@ async function handleRequest(request, response) {
       sendJson(response, { error:"Social Results are unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
       return;
     }
+    else if (isOutreachApiPath(url.pathname)) {
+      sendJson(response, {
+        ok:false,
+        outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
+        error:accessDecision.status === 401
+          ? "Your session ended. Sign in again before opening Outreach."
+          : "Outreach is unavailable for this account. No protected details were loaded."
+      }, accessDecision.status || 403);
+      return;
+    }
     else if (isPartnerApiPath(url.pathname)) {
       sendJson(response, {
         ok:false,
@@ -35217,6 +35237,28 @@ async function handleRequest(request, response) {
       ? await execute()
       : await serializeStateMutation(execute);
     sendJson(response, result.body || { ok:false, error:"Partner route not found." }, result.status || 404);
+    return;
+  }
+
+  if (isOutreachApiPath(url.pathname)) {
+    const input = ["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase())
+      ? {}
+      : await readBoundedJson(request, { limit:OUTREACH_API_BODY_LIMIT });
+    const execute = () => handleOutreachApiRequest({
+      enabled:outreachVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString(),
+      environment:process.env
+    });
+    const result = ["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase())
+      ? await execute()
+      : await serializeStateMutation(execute);
+    sendJson(response, result.body || { ok:false, error:"Outreach route not found." }, result.status || 404);
     return;
   }
 

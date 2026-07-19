@@ -254,7 +254,7 @@ export async function handlePartnerApiRequest({
     }
     if (route.kind === "campaign" && verb === "POST") {
       noQuery(searchParams);
-      const result = await runMutation({ store, actor, now, input, apply:(state, options) => createPartnerCampaignDraft(state, input, options), allowedCollections:["campaigns", "activityEvents", "auditHistory"], response:(saved) => ({ campaignId:saved.record?.id || null, eligiblePartners:saved.selection?.eligibleCount || 0 }) });
+      const result = await runMutation({ store, actor, now, input, apply:(state, options) => createPartnerCampaignDraft(state, input, options), allowedCollections:["campaigns", "activityEvents", "auditHistory"], response:(saved) => ({ campaignId:saved.record?.id || null, campaignHref:saved.record?.id ? `#outreach/campaign/${encodeURIComponent(saved.record.id)}` : null, eligiblePartners:saved.selection?.eligibleCount || 0 }) });
       return { matched:true, ...result };
     }
     if (route.kind === "stage" && verb === "POST") {

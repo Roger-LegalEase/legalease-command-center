@@ -371,8 +371,21 @@ export function createObjectNotAvailableContract(resolution = {}) {
   });
 }
 
-export function routeCompatibilityBrowserSource() {
-  const contract = JSON.stringify(ROUTE_COMPATIBILITY_CONTRACT).replaceAll("<", "\\u003c");
+export function routeCompatibilityBrowserSource({ outreachEnabled = false, filesEnabled = false } = {}) {
+  const contractValue = {
+    ...ROUTE_COMPATIBILITY_CONTRACT,
+    routeDestinations:{
+      ...ROUTE_COMPATIBILITY_CONTRACT.routeDestinations,
+      ...(outreachEnabled ? { outreach:"Outreach" } : {}),
+      ...(filesEnabled ? { files:"Files" } : {})
+    },
+    aliasTargets:{
+      ...ROUTE_COMPATIBILITY_CONTRACT.aliasTargets,
+      ...(outreachEnabled ? { campaigns:"outreach", campaign:"outreach", "campaign-control":"outreach", "campaigns-control":"outreach" } : {}),
+      ...(filesEnabled ? { proof:"files" } : {})
+    }
+  };
+  const contract = JSON.stringify(contractValue).replaceAll("<", "\\u003c");
   return `(() => {\n    "use strict";\n    const deepFreeze = (value) => {\n      if (value && typeof value === "object" && !Object.isFrozen(value)) {\n        Object.values(value).forEach(deepFreeze);\n        Object.freeze(value);\n      }\n      return value;\n    };\n    const contract = deepFreeze(${contract});\n    const resolveRouteWithContract = ${resolveRouteWithContract.toString()};\n    window.__LE_VNEXT_ROUTE_COMPATIBILITY = Object.freeze({\n      contract,\n      resolve:(input) => resolveRouteWithContract(input, contract)\n    });\n  })();`;
 }
 

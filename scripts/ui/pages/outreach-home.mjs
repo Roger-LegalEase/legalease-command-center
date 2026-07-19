@@ -50,8 +50,10 @@ export function outreachHomeBrowserSource() {
     let nextCursor = null;
     let renderedIds = new Set();
     let sessionEnded = false;
+    let loadedKey = "";
+    let lastPayload = null;
 
-    function app() { return document.querySelector("main#app"); }
+    function app() { return document.querySelector("main#app #campaigns.page-section.active") || document.querySelector("main#app"); }
     function resolution() { return window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(location.hash || "#today"); }
     function onRoute() { const value = resolution(); return value?.kind === "page" && value.canonicalRoute === contract.route; }
     function routeState() {
@@ -65,10 +67,9 @@ export function outreachHomeBrowserSource() {
       const target = app();
       if (!target || sessionEnded || target.querySelector("[data-vnext-shell-state='session_expired']")) return false;
       if (!target.querySelector("[data-outreach-page]")) {
-        const lee = target.querySelector(".lee-bubble-wrap");
         target.innerHTML = loadingHtml;
-        if (lee) target.append(lee);
         bind();
+        if (lastPayload) render(lastPayload, false);
       }
       return true;
     }
@@ -173,6 +174,7 @@ export function outreachHomeBrowserSource() {
       const view = routeState().view;
       const query = new URLSearchParams({ view, limit:String(contract.pageSize) }); if (cursor) query.set("cursor", cursor);
       const key = query.toString();
+      if (!force && !cursor && loadedKey === key) return null;
       if (pending) { metrics.duplicateRequests += 1; return pending; }
       const requestId = ++sequence; metrics.requests += 1; if (cursor) metrics.paginationRequests += 1; metrics.activeRequests += 1; metrics.maximumActiveRequests = Math.max(metrics.maximumActiveRequests, metrics.activeRequests);
       if (!cursor) { setBusy(true); setCreate(false, "Checking whether this account can create campaigns.", true); }
@@ -181,7 +183,7 @@ export function outreachHomeBrowserSource() {
         if (response.status === 401 || response.status === 403) { sessionEnded = response.status === 401; setCreate(false, "This account cannot create campaigns."); showState("unauthorized", "Outreach is not available", "Sign in with an account that can view Outreach."); return; }
         if (!response.ok) throw new Error("request_failed");
         const payload = JSON.parse(body || "{}"); if (payload.ok !== true || payload.authorized !== true) throw new Error("request_failed");
-        if (requestId === sequence) render(payload, Boolean(cursor));
+        if (requestId === sequence) { render(payload, Boolean(cursor)); if (!cursor) { loadedKey = key; lastPayload = payload; } }
       }).catch(() => { if (requestId === sequence) { setBusy(false); setCreate(false, "Create campaign availability could not be confirmed."); showState("error", "Outreach could not load", "No records were changed. Try again.", true); } }).finally(() => { metrics.activeRequests = Math.max(0, metrics.activeRequests - 1); pending = null; });
       return pending;
     }
@@ -190,10 +192,10 @@ export function outreachHomeBrowserSource() {
       node("[data-outreach-load-more]")?.addEventListener("click", () => { if (nextCursor) load({ cursor:nextCursor }); });
       node("[data-outreach-create]")?.addEventListener("click", () => { if (node("[data-outreach-create]")?.disabled) return; window.__LE_GLOBAL_CREATE?.openWorkflow("outreach-campaign", { returnTarget:node("[data-outreach-create]") }); });
     }
-    function routeChanged() { if (onRoute()) load({ force:true }); }
+    function routeChanged() { if (onRoute()) load(); }
     window.addEventListener("hashchange", () => setTimeout(routeChanged, 0));
     document.addEventListener("vnext:session-expired", () => { sessionEnded = true; });
-    new MutationObserver(() => { if (onRoute() && !app()?.querySelector("[data-outreach-page]") && !sessionEnded) load({ force:true }); }).observe(document.documentElement, { childList:true, subtree:true });
+    new MutationObserver(() => { if (onRoute() && !app()?.querySelector("[data-outreach-page]") && !sessionEnded) load(); }).observe(document.documentElement, { childList:true, subtree:true });
     setTimeout(routeChanged, 0);
   })();`;
 }

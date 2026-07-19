@@ -2,6 +2,10 @@
 // the server environment, and no browser- or request-controlled input is read here.
 
 export const COMMAND_CENTER_UX_VNEXT_ENV_KEY = "COMMAND_CENTER_UX_VNEXT";
+export const COMMAND_CENTER_UX_VNEXT_PRODUCT_FLAGS = Object.freeze({
+  outreach:"COMMAND_CENTER_UX_VNEXT_OUTREACH",
+  files:"COMMAND_CENTER_UX_VNEXT_FILES"
+});
 
 export function parseCommandCenterVNextFlag(value) {
   return typeof value === "string" && value === "true";
@@ -20,5 +24,20 @@ export function readCommandCenterVNextConfig(serverEnvironment = {}) {
     enabled,
     mode: enabled ? "vnext" : "legacy",
     source: "server-environment"
+  });
+}
+
+export function readCommandCenterVNextProductConfig(serverEnvironment = {}, product = "") {
+  const environment = serverEnvironment && typeof serverEnvironment === "object" ? serverEnvironment : {};
+  const key = COMMAND_CENTER_UX_VNEXT_PRODUCT_FLAGS[String(product || "").trim().toLowerCase()];
+  const global = readCommandCenterVNextConfig(environment);
+  const productEnabled = Boolean(key)
+    && Object.prototype.hasOwnProperty.call(environment, key)
+    && parseCommandCenterVNextFlag(environment[key]);
+  return Object.freeze({
+    enabled:global.enabled && productEnabled,
+    mode:global.enabled && productEnabled ? "vnext" : "legacy",
+    product:String(product || "").trim().toLowerCase(),
+    source:"server-environment"
   });
 }
