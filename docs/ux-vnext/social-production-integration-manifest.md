@@ -19,4 +19,6 @@ Status: additive Lane A contract. Reserved runtime, role, shell, navigation, pac
 ## Registration backlog
 
 - Package script: `test:vnext-social-creative-actions` → `node scripts/test-vnext-social-creative-actions.mjs`.
-- Later packet commits extend this manifest with variants, scheduling, review, publishing, browser specs, fixtures, performance budgets, and rollback.
+- `POST /api/ui/social/post/:postId/variants` → `saveSocialVariants` from `scripts/social-variant-actions.mjs`. Supply the same atomic `commitPostMutation` adapter; preserve stored deselected variants, stable IDs, creative references, explicit blanks, and fallback absence exactly.
+- Package script: `test:vnext-social-variant-actions` → `node scripts/test-vnext-social-variant-actions.mjs`.
+- Later packet commits extend this manifest with scheduling, review, publishing, browser specs, fixtures, performance budgets, and rollback.

@@ -4,6 +4,7 @@ import { buildPostSchedulePlan } from "./ui/view-models/post-schedule-plan.mjs";
 import { buildPostReviewPlan } from "./ui/view-models/post-review-plan.mjs";
 import { buildPostPublishingControls } from "./ui/view-models/post-publishing-controls.mjs";
 import { buildSocialCreativeCatalog } from "./ui/view-models/social-creative-catalog.mjs";
+import { buildPostChannelVariants } from "./ui/view-models/post-channel-variants.mjs";
 
 export const POST_COMPOSER_ENDPOINT = "/api/ui/social/post";
 export const POST_COMPOSER_SAVE_SUFFIX = "/save";
@@ -37,6 +38,7 @@ export function buildPostComposerContract(state, actor, postId, now = new Date()
   const reviewPlan = buildPostReviewPlan(state, actor, postId, now);
   const publishingControls = buildPostPublishingControls(state, actor, postId, now);
   const creativeCatalog = buildSocialCreativeCatalog(state, actor, { postId, surfaceTone:draft.creative?.surfaceTone || "unspecified", generatedAt:now });
+  const channelProjection = buildPostChannelVariants(state, actor, postId);
   const editable = canPerformEndpoint(actor?.role || "viewer", "POST", composerSavePath(postId)).ok;
   if (!draft.postId) return { ok:false, outcome:"unavailable", generatedAt:now, capabilities:{ edits:false } };
   const compactAsset = (value) => value?.value ? { name:value.value.name || "Selected asset", sourceReference:value.value.sourceReference || value.sourceReference || null, available:true } : { name:null, sourceReference:null, available:false, issue:value?.availability?.reason || "unavailable" };
@@ -48,12 +50,12 @@ export function buildPostComposerContract(state, actor, postId, now = new Date()
       surfaceTone:draft.creative?.surfaceTone || "unspecified",
       catalog:{ categories:(creativeCatalog.categories || []).map((item) => ({ key:item.key, label:item.label, templateCount:item.templateCount })), templates:(creativeCatalog.templates || []).map((item) => ({ id:item.id, name:item.name, category:item.category, description:item.description, sourceReference:item.sourceReference, availability:item.availability })), groups:(creativeCatalog.assetGroups || []).map((group) => ({ key:group.key, label:group.label, assets:(group.assets || []).map((asset) => ({ id:asset.id, name:asset.name, role:asset.role, sourceReference:asset.sourceReference, usageGuidance:asset.usageGuidance, suitableSurface:asset.suitableSurface })) })), guidance:(creativeCatalog.brandGuidance || []).map((item) => ({ name:item.name, summary:item.summary })), availability:creativeCatalog.availability }
     },
-    channels:{ selected:(draft.selectedChannels || []).map((x) => ({ key:x.key || x.channel, label:x.label || x.channel })), customizedCount:(draft.channelVariants || []).filter((x) => x.customized).length },
+    channels:{ selected:(draft.selectedChannels || []).map((x) => ({ key:x.key || x.channel, label:x.label || x.channel })), customizedCount:(draft.channelVariants || []).filter((x) => x.customized).length, variants:(channelProjection.variants || []).map((variant) => ({ channel:variant.channel, label:variant.label, selected:variant.selected, customized:variant.customized, stored:variant.stored, content:Object.fromEntries(Object.entries(variant.content || {}).map(([field, value]) => [field, { value:value.value, source:value.source, state:value.state, explicitlyBlank:value.explicitlyBlank }])), creativeReferences:variant.assetReferences, guidance:variant.formatGuidance, availability:variant.availability })), availability:channelProjection.availability },
     schedule:{ state:schedulePlan.state?.key || draft.schedule?.state || "unavailable", display:schedulePlan.state?.label || "Unavailable", timezone:schedulePlan.timezone || null, scheduledAt:schedulePlan.scheduledAt || null },
     readiness:{ state:draft.readiness?.state?.key || draft.readiness?.state || "unavailable", label:draft.readiness?.state?.label || null, checks:(draft.readiness?.checks || []).map((x) => ({ label:x.label || x.key, state:x.state?.key || x.state || "unavailable" })) },
     review:{ state:reviewPlan.state?.key || draft.approval?.status || draft.approval?.state || "unavailable", label:reviewPlan.state?.label || null },
     publishing:{ state:publishingControls.state?.key || "unavailable", label:publishingControls.state?.label || "Unavailable", publication:publishingControls.publicationSummary?.state || "unavailable", connectedChannels:publishingControls.availability?.counts?.connectedChannels ?? null },
-    availability:draft.availability, capabilities:{ reads:true, edits:editable && draft.version !== null, creative:editable && draft.version !== null && creativeCatalog.availability.key !== "unavailable", editReason:draft.version === null ? "This Post cannot be safely saved because its current version is unavailable." : null, mutatesSource:false, schedules:false, approves:false, publishes:false, regenerates:editable && draft.version !== null },
+    availability:draft.availability, capabilities:{ reads:true, edits:editable && draft.version !== null, creative:editable && draft.version !== null && creativeCatalog.availability.key !== "unavailable", variants:editable && draft.version !== null && channelProjection.availability.key !== "unavailable", editReason:draft.version === null ? "This Post cannot be safely saved because its current version is unavailable." : null, mutatesSource:false, schedules:false, approves:false, publishes:false, regenerates:editable && draft.version !== null },
     sourceUnavailable:draft.availability?.key !== "available"
   };
 }
