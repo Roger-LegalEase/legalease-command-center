@@ -6,4 +6,6 @@ Action plans cover classification, a Partner follow-up task, meeting/next-step a
 
 ## Lane B dependency
 
-The Partner train is currently unmerged at `origin/codex/train-partners-ccx-501-506` SHA `e35c39f5122a7b0aac17e7c240c598b6f639c524`. No published Partner integration manifest exists there. Integration must adapt `partner_log_activity` to `logPartnerActivity` and `partner_set_next_action` to `setPartnerNextAction` from that branch’s `scripts/partner-record-actions.mjs`, or their merged equivalents. `partner_stage_suggestion` requires the Partner train’s reviewed stage-suggestion operation; no silent stage mutation fallback is permitted.
+The reviewed Partner train contract is PR #100 head `0300f052fad33451a62c952e4ea3c5fd61fb651d`, documented in `docs/ux-vnext/partners-train-integration-manifest.md`. Integration maps `partner_log_activity` to `logPartnerActivity`, `partner_set_next_action` to `setPartnerNextAction`, and `partner_stage_suggestion` to `applyPartnerStageSuggestion` without copying those adapters.
+
+The stage action carries only the reviewed Partner suggestion ID, explicit confirmation, Partner ID, reply reference, and idempotent request ID. The Partner operation performs the fresh current-state lookup and rechecks reviewed classification, visible evidence, authorization, and suggestion availability before its scoped write and activity/audit evidence. No browser-supplied stage or evidence is trusted, and no silent stage mutation fallback is permitted.

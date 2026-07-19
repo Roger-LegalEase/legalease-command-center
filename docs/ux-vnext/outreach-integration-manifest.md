@@ -68,6 +68,7 @@ Later packet sections extend this manifest without changing the CCX-401 boundary
 ## CCX-404 wiring
 
 - Compose `buildCampaignAudienceStep` into `step=audience` reads and render with `renderCampaignAudienceStep`.
+- For an existing canonical Campaign wizard draft, pass requested canonical Partner IDs through Partner PR #100's `buildPartnerCampaignSelection` contract before saving source references. Use its server-revalidated IDs and exact record source references to form the existing draft's `{ sourceKind:"partner", sourceId }` selection; do not call `createPartnerCampaignDraft` and do not create a second Campaign.
 - Accept only vetted source references, saved segment ID, supported filters, selection confirmation, limit, and filter-bound cursor. Re-resolve visibility and eligibility from current state on every read and before Review/launch.
 - Persist selection references through `createCampaignAudienceSavePlan`; never accept included/excluded counts, eligibility, delivery addresses, or an execution recipient list from the browser.
 - Register `test:vnext-campaign-audience-step` as `node scripts/test-vnext-campaign-audience-step.mjs`.
@@ -109,8 +110,9 @@ Later packet sections extend this manifest without changing the CCX-401 boundary
 
 - Compose `buildCampaignRepliesOutcomes` and `renderCampaignRepliesOutcomes` into the Replies tab. Preserve `read_sensitive` behavior and never include raw reply bodies in unrelated records.
 - Register a bounded reply/outcome action endpoint accepting only reply ID, supported action fields, and request ID. Re-resolve the reply and Campaign server-side, enforce capability, scope writes, append audit, and return zero external actions.
-- Adapter map: `partner_log_activity` → Lane B `logPartnerActivity`; `partner_set_next_action` → Lane B `setPartnerNextAction`; `partner_stage_suggestion` → the reviewed Partner suggestion operation; `scoped_reply_classification` → a versioned single-reply update.
-- Exact dependency observed: `origin/codex/train-partners-ccx-501-506` at `e35c39f5122a7b0aac17e7c240c598b6f639c524`, `scripts/partner-record-actions.mjs`. That branch has no integration manifest. Do not substitute a silent Partner-stage update.
+- Adapter map: `partner_log_activity` → Partner `logPartnerActivity`; `partner_set_next_action` → Partner `setPartnerNextAction`; `partner_stage_suggestion` → Partner `applyPartnerStageSuggestion`; `scoped_reply_classification` → a versioned single-reply update. Use thin composition wrappers for the authoritative state, actor, server timestamp, and request ID; do not copy or rewrite Partner adapters.
+- For stage application, pass `plan.fields.partnerId`, `plan.fields.suggestionId`, `plan.fields.confirmed`, and `plan.requestId` to `applyPartnerStageSuggestion`. Do not pass or trust a browser-supplied destination stage or evidence. That Partner operation must freshly resolve the reviewed classification, visible evidence, Partner authorization, suggestion availability, current Partner state, scoped write, activity/audit evidence, and idempotency.
+- Exact dependency: Partner PR #100 head `0300f052fad33451a62c952e4ea3c5fd61fb651d`, `scripts/partner-outreach-integration.mjs`, `scripts/partner-record-actions.mjs`, and `docs/ux-vnext/partners-train-integration-manifest.md`. A reply never silently changes Partner stage.
 - Register `test:vnext-campaign-replies-outcomes` as `node scripts/test-vnext-campaign-replies-outcomes.mjs`.
 
 ## CCX-410 wiring
@@ -120,3 +122,68 @@ Later packet sections extend this manifest without changing the CCX-401 boundary
 - Never serialize provider payloads, recipients, addresses, credentials, tokens, secrets, or editable safety controls. Missing telemetry stays null/unavailable.
 - Do not add an Advanced mutation endpoint. Existing safety limits and sending authority remain server-owned.
 - Register `test:vnext-campaign-advanced-delivery` as `node scripts/test-vnext-campaign-advanced-delivery.mjs`.
+
+## CCX-411 acceptance and final registrations
+
+- Register `test:vnext-outreach-acceptance` as `SKIP_ENV_LOCAL_FILE=1 node scripts/test-vnext-outreach-acceptance.mjs` and include it in the syntax gate.
+- Include `tests/browser/outreach-train-acceptance.spec.mjs` in browser discovery after every manifest item below is composed. The spec uses only synthetic state and controlled injected adapters.
+- Register `campaignReviewBrowserSource()` with the Review page. Its dialog emits only the `campaign:review-action` intent; the shell controller must then call the bounded Review endpoint with the current server-projected fingerprint and an idempotency key. Never put recipient references, approval state, or execution authority into that event.
+- Register `renderCampaignWizardState()` for loading, unavailable, error, unauthorized, and session-expired Campaign draft responses. Preserve the current saved draft on any failed write.
+- Use the existing page-specific stylesheets `/assets/ui/campaign-wizard.css` and `/assets/ui/campaign-detail.css`; no global CSS or token changes are required.
+
+## Consolidated server imports and compact reads
+
+Integration must import the Outreach home, wizard, Goal, Audience, Message, Schedule, Review, detail, Replies/outcomes, and Advanced modules named in CCX-401 through CCX-410 above. Required reads are:
+
+- `GET /api/ui/outreach`
+- `GET /api/ui/outreach/campaign/:encoded-stable-identity/draft`
+- `GET /api/ui/outreach/campaign/:encoded-stable-identity/draft?step=<goal|audience|message|schedule|review>`
+- `GET /api/ui/outreach/campaign/:encoded-stable-identity?tab=<overview|messages|audience|replies|results|activity>`
+
+All reads require an authenticated `read_internal` decision, one bounded state read, visibility-filtered projections, and flag-off 404 before state access. No read returns a full Campaign source record, recipient address, provider payload, credential, or company state.
+
+## Consolidated scoped writes and actions
+
+- Campaign draft save: versioned single-record `campaigns` fields plus audit append.
+- Test send: one explicit authorized test-recipient reference, existing safe test-send adapter, durable idempotency, all current content and environment gates.
+- Review action: current server audience fingerprint plus durable idempotency; existing approval or execution operation according to current policy.
+- Pause/resume: current server policy plus durable idempotency; existing engine and approval operation.
+- Reply/outcome: one authorized reply reference, bounded action fields, appropriate Lane B/scoped-reply adapter, and audit append.
+
+Every mutation requires session and CSRF enforcement, exact endpoint authorization, body limits, server-side identity resolution, current-state safety revalidation, and normal audit behavior. There is no generic patch endpoint, browser-provided collection, suppression override, provider call path, or approval-and-execute shortcut.
+
+## Consolidated routes, aliases, pages, and controllers
+
+- Canonical home: `#outreach`.
+- Preserve `#campaigns`, `#campaign`, `#campaign-control`, and `#campaigns-control` through the vetted compatibility parser.
+- Canonical Campaign source link: `#outreach/campaign/<encoded-source-id>`.
+- Adapted CCX-400 Campaign identities remain encoded as one vetted route value and must never be split or interpolated as raw HTML.
+- Register Outreach home, Campaign wizard, Goal, Audience, Message, Schedule, Review, Campaign detail, Replies/outcomes, and Advanced page renderers.
+- Register only the focused Outreach home, wizard, Review-confirmation, detail, and reply-action controllers. All link navigation stays internal and history-compatible.
+- Suppress browser `/api/state` reads for Outreach home, wizard, and detail after boot.
+- When the global vNext flag is off, no new endpoint, route, controller, or stylesheet changes legacy behavior.
+
+## Final package and browser registration
+
+Register these direct scripts in `package.json`: `test:vnext-outreach-home`, `test:vnext-campaign-wizard`, `test:vnext-campaign-goal-step`, `test:vnext-campaign-audience-step`, `test:vnext-campaign-message-step`, `test:vnext-campaign-schedule-step`, `test:vnext-campaign-review-step`, `test:vnext-campaign-detail`, `test:vnext-campaign-replies-outcomes`, `test:vnext-campaign-advanced-delivery`, and `test:vnext-outreach-acceptance`. Add all new JavaScript modules to the syntax gate. Browser discovery must include `outreach-home.spec.mjs` and `outreach-train-acceptance.spec.mjs` without changing shared fixture authority.
+
+## Cross-lane dependency
+
+Partner PR #100 is complete at `0300f052fad33451a62c952e4ea3c5fd61fb651d`; its integration contract is `docs/ux-vnext/partners-train-integration-manifest.md`.
+
+- Existing Campaign Audience: call `buildPartnerCampaignSelection` only to validate canonical Partner IDs/source references for the already-created Campaign, then persist those references through the Outreach scoped draft path. Recheck eligibility and suppression from authoritative current state. Never create another Campaign to populate Audience.
+- Partner record “Create outreach”: call `createPartnerCampaignDraft` once, then open its exact returned canonical Campaign link in the Outreach wizard. Do not also call Global Create. The result must remain Draft, audience unconfirmed, zero sends/enrollments/approvals/schedules, and `liveMode:false`.
+- Reply/outcome actions: use `logPartnerActivity`, `setPartnerNextAction`, and `applyPartnerStageSuggestion` through thin Integration-owned composition. Stage application requires a reviewed classification, visible evidence, current authorization, explicit confirmation, fresh current-state lookup, one scoped Partner write, activity/audit evidence, and idempotency.
+
+## Final performance and payload budgets
+
+- Outreach home: under 150 KB and 250 ms, 24 rows by default and 40 maximum.
+- Wizard shell and each step: under 150 KB and 300 ms; save bodies under 32 KB.
+- Audience preview: 25 recipients by default and 50 maximum, under 150 KB and 300 ms.
+- Campaign detail and each tab: under 150 KB and 300 ms; Advanced event references capped at 100.
+- Actions: bounded request under 32 KB and initial safe response under 64 KB; provider/existing-engine time is governed by existing operation timeouts.
+- Browser: no `/api/state` after boot, at most one active compact page request plus an explicit user action, and zero background mutation/provider requests.
+
+## Rollback
+
+Disable the existing global vNext flag, remove the additive server/page/controller/stylesheet/test registrations, and leave every authoritative Campaign, recipient, attempt, reply, suppression, approval, event, audit, and claim collection untouched. No migration or data rollback is required. If an action adapter is unavailable, fail that action closed while retaining read-only Campaign access and saved canonical drafts.
