@@ -27,6 +27,15 @@ Status: additive Lane A contract. Integration-owned runtime, shell, route, role,
 - Social connections route requirement: `#settings?view=social-connections`. If Social Integration selects a different vetted query key, update this one static manifest/action value during final rebase and its focused assertion; never infer it from browser content.
 - Package registration: `test:vnext-discovery-checklist` → `node scripts/test-vnext-discovery-checklist.mjs`.
 
+## CCX-702 — Guided empty states
+
+- Import `buildGuidedEmptyState` and `renderGuidedEmptyState`; register `discoveryEmptyStateBrowserSource` and `/assets/ui/discovery-empty-states.css`.
+- Replace only the generic primary-workflow empty/filtered-empty markup in Today, Inbox, Social, Outreach, Partners, Files, Investor Room, and Global Search with the matching contract. Preserve each page's existing loading, unavailable, unauthorized, session-expired, and error handling; pass `state:"unavailable"` or `state:"unauthorized"` instead of presenting a normal empty state when source truth is missing or forbidden.
+- Integration insertion points are the existing page functions that currently emit `No … yet`, `No … in this view`, `You’re all caught up`, or filter-only empty containers. Do not change their projection counts, filtering, authorization, compact endpoints, pagination, or actions.
+- Primary actions reuse existing Global Create, Global Search, route compatibility, and Files upload. `retry` and `clear-filters` dispatch `vnext:guided-retry` and `vnext:guided-clear-filters` for the owning page controller to handle with its current request/filter logic.
+- No example text is a record. It is reviewed instructional copy only, contains no identity, count, status, or completion claim, and is omitted for unavailable/unauthorized states.
+- Package registration: `test:vnext-discovery-empty-states` → `node scripts/test-vnext-discovery-empty-states.mjs`.
+
 ## Shared feature and rollback contract
 
 - Gate every Discovery registration server-side behind `COMMAND_CENTER_UX_VNEXT_DISCOVERY`, default false until Phase 7 acceptance passes. Browser state, hashes, query strings, cookies, and storage cannot enable it.
