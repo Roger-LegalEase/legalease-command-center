@@ -8,8 +8,124 @@ import { canPerformEndpoint } from "./roles.mjs";
 import { jsonRequest, loginWithCredential, startPreviewServer } from "./test-support/preview-server-harness.mjs";
 
 const NOW = "2026-07-18T12:00:00.000Z";
+const POST_ID = "composer-fixture-post";
 const FIELD_KEYS = ["headline", "body", "hook", "cta", "hashtags"];
-const sourceState = JSON.parse(readFileSync(new URL("../data/social-command-center.json", import.meta.url), "utf8"));
+function fixtureState() {
+  return {
+    posts: [{
+      id:POST_ID,
+      _version:7,
+      title:"Synthetic education Post",
+      headline:"A deterministic fixture headline",
+      body:"Synthetic shared copy for composer verification.",
+      hook:"Start with a clear synthetic example",
+      cta:"Review the synthetic guide",
+      hashtags:["#SyntheticFixture", "#TestOwned"],
+      targetChannels:["linkedin", "instagram"],
+      channelVariants:[{
+        id:"composer-fixture-linkedin-variant",
+        channel:"linkedin",
+        body:"Synthetic LinkedIn variant copy.",
+        assetIds:["composer-fixture-accent"]
+      }],
+      selectedTemplateId:"composer-fixture-template",
+      logoAssetId:"brand-contract-white-wordmark",
+      wilmaAssetId:"composer-fixture-character",
+      backgroundAssetId:"composer-fixture-background",
+      disclaimerIds:["composer-fixture-disclaimer"],
+      assetIds:["composer-fixture-accent"],
+      creativeSurfaceTone:"dark",
+      scheduledFor:"2026-07-20T14:00:00.000Z",
+      timezone:"America/New_York",
+      scheduleStatus:"valid",
+      approvalRequired:true,
+      approvalStatus:"approved",
+      approvedAt:"2026-07-18T11:00:00.000Z",
+      status:"approved",
+      guidelinesGate:{ passed:true, hardFails:[] },
+      copyReviewed:true,
+      finalPreviewConfirmed:true,
+      updatedAt:"2026-07-18T11:30:00.000Z"
+    }],
+    generationProfiles:[{
+      id:"composer-fixture-template",
+      displayName:"Synthetic education template",
+      templateCategory:"Synthetic education",
+      description:"A deterministic test-owned layout.",
+      supportedChannels:["linkedin", "instagram"],
+      surfaceTone:"dark",
+      requiredAssetRoles:["logo", "wilma_pose", "background"],
+      assetIds:[
+        "brand-contract-white-wordmark",
+        "composer-fixture-character",
+        "composer-fixture-background",
+        "composer-fixture-accent"
+      ],
+      defaultDisclaimerId:"composer-fixture-disclaimer",
+      active:true,
+      approved:true
+    }],
+    brandAssets:[
+      { id:"composer-fixture-character", name:"Synthetic character pose", assetType:"wilma_pose", approved:true },
+      { id:"composer-fixture-background", name:"Synthetic navy background", assetType:"background", approved:true },
+      { id:"composer-fixture-accent", name:"Synthetic accent", assetType:"visual_reference", approved:true }
+    ],
+    postImages:[{
+      id:"composer-fixture-final-image",
+      postId:POST_ID,
+      generationStatus:"generated",
+      finalImageReady:true,
+      renderQa:{ passed:true },
+      styleGate:{ passed:true },
+      versionNumber:1,
+      createdAt:"2026-07-18T10:30:00.000Z"
+    }],
+    library:[{
+      id:"composer-fixture-disclaimer",
+      title:"Synthetic informational disclaimer",
+      category:"disclaimer",
+      status:"approved",
+      body:"Synthetic information only."
+    }],
+    socialAccounts:[
+      { id:"composer-fixture-linkedin-account", platform:"linkedin", status:"connected", connected:true },
+      { id:"composer-fixture-instagram-account", platform:"instagram", status:"connected", connected:true }
+    ],
+    approvals:[{
+      id:"composer-fixture-approval",
+      type:"post",
+      sourceId:POST_ID,
+      status:"approved",
+      updatedAt:"2026-07-18T11:00:00.000Z"
+    }],
+    postingKits:[],
+    approvalQueue:[],
+    queueItems:[],
+    publishEvents:[],
+    publishClaims:[],
+    contentBank:[],
+    reports:[],
+    dataRoomItems:[],
+    evidencePackNotes:[],
+    activityEvents:[],
+    auditHistory:[],
+    generationBatches:[],
+    assetBundles:[],
+    brandRules:[],
+    postVersions:[],
+    copyVersions:[],
+    reviewFeedback:[],
+    reviewFeedbackRecords:[],
+    postReviewFeedback:[],
+    scheduleConflicts:[],
+    settings:{ sourceItems:[], localAssets:[] },
+    runtime:{ livePostingGates:{ linkedin:true, instagram:true } }
+  };
+}
+
+const testSource = readFileSync(new URL(import.meta.url), "utf8");
+assert.doesNotMatch(testSource, new RegExp(["data", "social-command-center\\.json"].join("/")), "Focused verification must not reference ignored operational state.");
+const sourceState = fixtureState();
 const state = structuredClone(sourceState);
 const source = state.posts[0];
 source._version = 7;
