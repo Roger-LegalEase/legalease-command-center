@@ -22,6 +22,15 @@ function repeatedTitle(value, testInfo) {
   return testInfo.repeatEachIndex === 1 ? `${value} (repeat fixture)` : value;
 }
 
+function futureEasternDate(days = 7) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone:"America/New_York",
+    year:"numeric",
+    month:"2-digit",
+    day:"2-digit"
+  }).format(new Date(Date.now() + days * 86_400_000));
+}
+
 function exactHashPattern(href) {
   return new RegExp(`${href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
 }
@@ -218,6 +227,8 @@ test("Today, Inbox actions, and Quick Capture form one exact, duplicate-safe fou
   await snoozeRow.getByRole("button", { name:/^Snooze / }).click();
   const snoozeDialog = page.locator("[data-inbox-action-dialog]");
   await expect(snoozeDialog.getByLabel("Tomorrow")).toBeChecked();
+  await snoozeDialog.getByRole("radio", { name:"Choose a date" }).check();
+  await snoozeDialog.locator('input[type="date"]').fill(futureEasternDate());
   await snoozeDialog.getByRole("button", { name:"Snooze" }).click();
   await expect(page.locator("[data-inbox-action-announcer]")).toContainText("Item snoozed");
   await expect(page.locator("[data-inbox-content]")).toHaveAttribute("aria-busy", "false");

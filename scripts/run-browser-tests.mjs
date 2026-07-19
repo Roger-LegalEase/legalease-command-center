@@ -498,11 +498,30 @@ function socialFixtureState(seed) {
   }));
   const publishedPosts = Array.from({ length:8 }, (_, index) => socialPost(`published-${String(index + 1).padStart(2, "0")}`, "published", {
     title:index === 0 ? "Published community guide" : index === 1 ? "Published guide awaiting metrics" : `Published Post ${String(index + 1).padStart(2, "0")}`,
+    approvalStatus:"approved",
+    approvalRevision:`published-${String(index + 1).padStart(2, "0")}-revision-1`,
+    campaignId:index % 2 ? "results-campaign-community" : "results-campaign-education",
+    selectedTemplateId:index % 2 ? "results-template-story" : "results-template-guide",
+    theme:index % 2 ? "Community Stories" : "Know Your Options",
+    topic:index === 2 ? "Partial publication" : "Access guide",
+    disclaimerIds:["results-disclaimer"],
+    ...(index === 0 ? { dataRoomItemId:"browser-file-search-001" } : {}),
+    ...(index === 2 ? { targetChannels:["linkedin", "facebook"] } : {}),
     publishedAt:`2026-07-${String(16 - index).padStart(2, "0")}T15:00:00.000Z`,
     publishedUrl:`https://example.com/social/published-${index + 1}`,
     ...(index === 1 ? {} : { performance:{ impressions:1200 + index * 100, likes:44 + index, comments:7 + index, clicks:15 + index } }),
     updatedAt:`2026-07-${String(16 - index).padStart(2, "0")}T15:00:00.000Z`
   }));
+  const publishEvents = publishedPosts.flatMap((post, index) => [
+    {
+      id:`results-published-${index + 1}-linkedin`, postId:post.id, approvalRevision:post.approvalRevision,
+      channel:"linkedin", eventType:"published", publishedAt:post.publishedAt, publishedUrl:post.publishedUrl
+    },
+    ...(index === 2 ? [{
+      id:"results-published-3-facebook-failed", postId:post.id, approvalRevision:post.approvalRevision,
+      channel:"facebook", eventType:"publish_failed", status:"failed_terminal", publishedAt:post.publishedAt
+    }] : [])
+  ]);
   const hidden = socialPost("hidden-owner-work", "draft", { title:"Hidden Social plan", allowedRoles:["admin"], visibility:"owner_only" });
   return {
     ...base,
@@ -513,7 +532,21 @@ function socialFixtureState(seed) {
       { id:"social-source-rights", title:"Know your next step", summary:"A second unconverted Content Bank idea.", topic:"Access guide", owner:"Roger", updatedAt:"2026-07-17T09:00:00.000Z" },
       { id:"social-source-hidden", title:"Hidden source", allowedRoles:["admin"], visibility:"owner_only" }
     ],
-    postImages:[], brandAssets:[], postingKits:[], approvals:[], approvalQueue:[], queueItems:[], publishEvents:[], activityEvents:[], auditHistory:[], generationBatches:[],
+    campaigns:[
+      { id:"results-campaign-education", name:"Education campaign" },
+      { id:"results-campaign-community", name:"Community campaign" },
+      ...(Array.isArray(base.campaigns) ? base.campaigns : []).filter((item) => !["results-campaign-education", "results-campaign-community"].includes(item?.id))
+    ],
+    generationProfiles:[
+      { id:"results-template-guide", profileName:"Guide", category:"Education", supportedChannels:["linkedin", "facebook"], defaultDisclaimerId:"results-disclaimer", active:true, approved:true },
+      { id:"results-template-story", profileName:"Community story", category:"Community", supportedChannels:["linkedin"], defaultDisclaimerId:"results-disclaimer", active:true, approved:true },
+      ...(Array.isArray(base.generationProfiles) ? base.generationProfiles : []).filter((item) => !["results-template-guide", "results-template-story"].includes(item?.id))
+    ],
+    library:[
+      { id:"results-disclaimer", category:"disclaimer", title:"Synthetic information disclaimer", body:"Synthetic information only.", status:"approved" },
+      ...(Array.isArray(base.library) ? base.library : []).filter((item) => item?.id !== "results-disclaimer")
+    ],
+    postImages:[], brandAssets:[], postingKits:[], approvals:[], approvalQueue:[], queueItems:[], publishEvents, activityEvents:[], auditHistory:[], generationBatches:[],
     socialAccounts:[
       { id:"social-account-linkedin", platform:"linkedin", channel:"linkedin", connected:true, status:"connected", connectedAt:"2026-07-01T00:00:00.000Z", accountName:"Synthetic LinkedIn" },
       { id:"social-account-instagram", platform:"instagram", channel:"instagram", connected:true, status:"connected", connectedAt:"2026-07-01T00:00:00.000Z", accountName:"Synthetic Instagram" },

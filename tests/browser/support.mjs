@@ -14,6 +14,7 @@ const criticalPaths = new Set([
   "/api/ui/inbox",
   "/api/ui/inbox/action",
   "/api/ui/social",
+  "/api/ui/social/results",
   "/api/ui/quick-capture",
   "/api/ui/quick-capture/capabilities",
   "/api/ui/route-access"

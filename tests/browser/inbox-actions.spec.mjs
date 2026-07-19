@@ -25,6 +25,15 @@ function repeatedTitle(value, testInfo) {
   return testInfo.repeatEachIndex === 1 ? `${value} (repeat fixture)` : value;
 }
 
+function futureEasternDate(days = 7) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone:"America/New_York",
+    year:"numeric",
+    month:"2-digit",
+    day:"2-digit"
+  }).format(new Date(Date.now() + days * 86_400_000));
+}
+
 async function openActionInbox(page, { width = 1440, hash = "inbox?group=needs-me" } = {}) {
   expect(actionURL()).toBeTruthy();
   await page.setViewportSize({ width, height:width === 390 ? 844 : 900 });
@@ -214,6 +223,9 @@ test("Queue completion, dated snooze, safe failure retry, and stale two-tab stat
   const snoozeDialog = page.locator("[data-inbox-action-dialog]");
   await expect(snoozeDialog.getByRole("heading", { name:"Snooze this item" })).toBeVisible();
   await expect(snoozeDialog.getByLabel("Tomorrow")).toBeChecked();
+  const snoozeDate = futureEasternDate();
+  await snoozeDialog.getByRole("radio", { name:"Choose a date" }).check();
+  await snoozeDialog.locator('input[type="date"]').fill(snoozeDate);
   if (testInfo.repeatEachIndex === 0) await page.screenshot({ path:path.join(screenshotDirectory, "inbox-snooze-dialog-1440.png"), animations:"disabled" });
   await snoozeDialog.getByRole("button", { name:"Snooze" }).click();
   await expect(page.locator("[data-inbox-action-announcer]")).toContainText("Item snoozed");
@@ -248,7 +260,10 @@ test("Queue completion, dated snooze, safe failure retry, and stale two-tab stat
   const staleVersion = await staleRowSecond.getAttribute("data-inbox-item-version");
   const staleRowFirst = rowWithTitle(page, repeatedTitle("Resolve the two-tab report review", testInfo));
   await staleRowFirst.getByRole("button", { name:/^Snooze / }).click();
-  await page.locator("[data-inbox-action-dialog]").getByRole("button", { name:"Snooze" }).click();
+  const staleSnoozeDialog = page.locator("[data-inbox-action-dialog]");
+  await staleSnoozeDialog.getByRole("radio", { name:"Choose a date" }).check();
+  await staleSnoozeDialog.locator('input[type="date"]').fill(futureEasternDate());
+  await staleSnoozeDialog.getByRole("button", { name:"Snooze" }).click();
   await expect(page.locator("[data-inbox-action-announcer]")).toContainText("Item snoozed");
   const staleResponse = await second.request.post(`${actionURL()}/api/ui/inbox/action`, {
     data:{
@@ -265,7 +280,7 @@ test("Queue completion, dated snooze, safe failure retry, and stale two-tab stat
   const after = await readState(page);
   expect(after.queueItems.find((item) => item.id === repeatedValue("browser-action-queue-complete-001", testInfo)).status).toBe("completed");
   expect(after.queueItems.find((item) => item.id === repeatedValue("browser-action-queue-snooze-001", testInfo)).status).toBe("snoozed");
-  expect(after.queueItems.find((item) => item.id === repeatedValue("browser-action-queue-snooze-001", testInfo)).snoozedUntil).toMatch(/^2026-07-18T23:59:59\.999-04:00$/);
+  expect(after.queueItems.find((item) => item.id === repeatedValue("browser-action-queue-snooze-001", testInfo)).snoozedUntil).toBe(`${snoozeDate}T23:59:59.999-04:00`);
   expect(after.queueItems.find((item) => item.id === repeatedValue("browser-action-queue-stale-001", testInfo)).status).toBe("snoozed");
   expect(after.queueItems.find((item) => item.id === repeatedValue("browser-action-queue-failure-001", testInfo)).status).toBe("completed");
   expect((after.companyEvents || []).length - (before.companyEvents || []).length).toBe(4);

@@ -318,6 +318,24 @@ function publicationEvidence(state, post, controls) {
   return { output, excluded };
 }
 
+function postsWithPotentialPublishedEvidence(state) {
+  const postIds = new Set();
+  for (const collection of [state.publishEvents, state.publishClaims]) {
+    for (const record of list(collection)) {
+      if (recordLifecycle(record) !== "published") continue;
+      const postId = relatedPostId(record);
+      if (postId) postIds.add(postId);
+    }
+  }
+  for (const post of list(state.posts)) {
+    const postId = safeId(post.id);
+    if (!postId) continue;
+    const attempts = [...list(post.publishAttempts), ...list(post.publish_attempts)];
+    if (attempts.some((record) => recordLifecycle(record) === "published")) postIds.add(postId);
+  }
+  return postIds;
+}
+
 function selectedTemplateId(post = {}) {
   return safeId(
     post.selectedTemplateId || post.creativeTemplateId || post.generationProfileId || post.templateId || post.templateKey
@@ -395,11 +413,12 @@ export function collectSocialResultsSources(state = {}, actor = {}, now = "") {
   const authorizedState = visibleState(state, role);
   const catalog = buildSocialCreativeCatalog(authorizedState, actor, { generatedAt });
   const policy = reusePolicy(role);
+  const potentialPublishedPostIds = postsWithPotentialPublishedEvidence(authorizedState);
   const contexts = [];
   const excludedChannels = {};
   for (const post of authorizedState.posts) {
     const id = safeId(post.id);
-    if (!id) continue;
+    if (!id || !potentialPublishedPostIds.has(id)) continue;
     const postView = buildPostView(authorizedState, post);
     if (!postView?.id || !postView.href) continue;
     const controls = buildPostPublishingControls(authorizedState, actor, id, generatedAt);

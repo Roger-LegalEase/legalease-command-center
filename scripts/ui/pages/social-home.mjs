@@ -162,7 +162,7 @@ export function socialHomeBrowserSource() {
       if (!payload.items?.length && !append) renderEmpty(payload);
     }
     async function load({ append = false, force = false } = {}) {
-      if (!onSocialRoute() || sessionEnded || !ensureScaffold()) return;
+      if (!onSocialRoute() || sessionEnded || routeState().view === "results" || !ensureScaffold()) return;
       const requestedQuery = queryString(append ? nextCursor : "");
       if (pending) { metrics.suppressedDuplicateLoads += 1; if (requestedQuery !== pendingQuery) queuedRouteReload = true; return pending; }
       if (!append && !force && currentPayload && currentPayload.selectedView === routeState().view && !activeFilters(currentPayload)) { renderPayload(currentPayload, false); return currentPayload; }
@@ -188,7 +188,7 @@ export function socialHomeBrowserSource() {
       node("[data-social-page]")?.addEventListener("keydown", (event) => { const tab = event.target.closest("[data-social-view]"); if (!tab || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return; event.preventDefault(); const tabs = [...app().querySelectorAll("[data-social-view]")]; const index = tabs.indexOf(tab); const next = event.key === "Home" ? tabs[0] : event.key === "End" ? tabs.at(-1) : tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length]; next.focus(); next.click(); });
     }
     function activate() {
-      if (!onSocialRoute() || sessionEnded) return;
+      if (!onSocialRoute() || sessionEnded || routeState().view === "results") return;
       if (window.__LE_BOOT && window.__LE_BOOT.ready !== true) {
         if (bootWaitTimer === null) bootWaitTimer = setTimeout(() => { bootWaitTimer = null; activate(); }, 20);
         return;
@@ -199,7 +199,7 @@ export function socialHomeBrowserSource() {
       if (settledPageState === "loaded" && currentPayload) { renderPayload(currentPayload, false); return; }
       load({ force:true });
     }
-    function routeChanged() { if (!onSocialRoute() || sessionEnded) return; currentPayload = null; settledPageState = ""; activate(); }
+    function routeChanged() { if (!onSocialRoute() || sessionEnded || routeState().view === "results") return; currentPayload = null; settledPageState = ""; activate(); }
     window.addEventListener("hashchange", routeChanged);
     document.addEventListener("vnext:session-expired", () => { sessionEnded = true; pending = null; pendingQuery = ""; queuedRouteReload = false; currentPayload = null; renderedKeys.clear(); if (bootWaitTimer !== null) clearTimeout(bootWaitTimer); bootWaitTimer = null; });
     const observedApp = app();
