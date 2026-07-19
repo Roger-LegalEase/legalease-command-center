@@ -59,3 +59,15 @@ Further packet wiring is appended by CCX-602 through CCX-607.
   the Files New menu; do not bypass the existing Global Create fallback.
 - Package script: `test:vnext-files-upload` →
   `node scripts/test-vnext-files-upload.mjs`.
+
+## CCX-604 wiring
+
+- Import `readInvestorRoom` from `scripts/ui-api/investor-room-read.mjs` for
+  `GET /api/ui/files/investor-room`; require `read_internal`.
+- Supply the reviewed explicit requirement configuration and the server clock.
+  Do not derive requirements by filename/title and do not persist a second copy
+  of a File. With no reviewed configuration, expose readiness as unavailable.
+- Render `renderInvestorRoom` for `#files?collection=investor-room` and include
+  `/assets/ui/investor-room.css`.
+- Package script: `test:vnext-investor-room` →
+  `node scripts/test-vnext-investor-room.mjs`.
