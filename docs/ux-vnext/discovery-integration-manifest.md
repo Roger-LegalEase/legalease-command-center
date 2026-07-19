@@ -15,6 +15,18 @@ Status: additive Lane A contract. Integration-owned runtime, shell, route, role,
 - On `401`, disable the surface and show the session-expired copy. On reload, the server preference is authoritative. Do not read or write cookies, local storage, or session storage for completion.
 - Package registration: `test:vnext-discovery-onboarding` → `node scripts/test-vnext-discovery-onboarding.mjs`.
 
+## CCX-701 — Setup checklist
+
+- Import `buildSetupChecklist` from `scripts/discovery-checklist-service.mjs` and add compact authenticated `GET /api/ui/discovery/checklist` with `read_internal`.
+- Build its `sources` argument server-side from one current authorized state read and the existing projections: Social creative catalog, integrated Social connection contract, Partners home, Social home/Post projection, Outreach home/Campaign projection, and Investor Room requirements. The browser must never submit completion booleans.
+- Normalize only the bounded counts/references required by `buildSetupChecklist`; do not return full state, asset metadata, account secrets, recipient content, Partner communications, File content, or raw requirement records.
+- A brand asset counts only when its reviewed projection says it is approved and selectable with an exact source reference. A Social connection counts only for the integrated server-verified `connected_publishing_off` or `ready_to_publish` state; an account row, token row, provider label, or browser assertion alone does not count.
+- Partner, Post, and Campaign completion uses the respective authorized projection count. Unavailable and unauthorized remain distinct. Hidden records cannot affect completion or counts.
+- Investor Room completion requires at least one explicit requirement projected as current. Merely storing, uploading, or sharing an unrelated File does not count.
+- Register `renderDiscoveryChecklist`, `discoveryChecklistBrowserSource`, and `/assets/ui/discovery-checklist.css` in the authenticated profile/getting-started surface. Every action uses the vetted parser or existing Global Create; Investor Room upload opens `#files?collection=investor-room`, waits for the integrated Files controller, opens the existing upload dialog, and selects the Investor Room collection without submitting it.
+- Social connections route requirement: `#settings?view=social-connections`. If Social Integration selects a different vetted query key, update this one static manifest/action value during final rebase and its focused assertion; never infer it from browser content.
+- Package registration: `test:vnext-discovery-checklist` → `node scripts/test-vnext-discovery-checklist.mjs`.
+
 ## Shared feature and rollback contract
 
 - Gate every Discovery registration server-side behind `COMMAND_CENTER_UX_VNEXT_DISCOVERY`, default false until Phase 7 acceptance passes. Browser state, hashes, query strings, cookies, and storage cannot enable it.
