@@ -3,6 +3,18 @@ import { escapeAttribute, escapeHtml } from "../html.mjs";
 
 export const CAMPAIGN_WIZARD_STYLESHEET_PATH = "assets/ui/campaign-wizard.css";
 
+export function renderCampaignWizardState(kind = "loading") {
+  const states = {
+    loading:["Loading Campaign draft", "The latest saved Campaign draft is loading."],
+    empty:["Campaign draft unavailable", "Create or open an authorized Campaign draft to continue."],
+    error:["Campaign draft could not load", "Nothing was changed. Try again when the service is available."],
+    unauthorized:["Campaign access required", "This account cannot view or change this Campaign draft."],
+    session_expired:["Session expired", "Sign in again before continuing. Unsaved changes were not sent."]
+  };
+  const [title, message] = states[kind] || states.error;
+  return `<section class="campaign-wizard-state" data-wizard-state="${escapeAttribute(kind)}" role="${kind === "error" || kind === "session_expired" ? "alert" : "status"}"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p></section>`;
+}
+
 export function renderCampaignWizardShell({ stableIdentity = "", activeStep = "goal" } = {}) {
   const selected = CAMPAIGN_WIZARD_STEPS.some((step) => step.key === activeStep) ? activeStep : "goal";
   const progress = CAMPAIGN_WIZARD_STEPS.map((step) => `<li class="campaign-wizard-progress__step${step.key === selected ? " is-active" : ""}" data-wizard-progress="${escapeAttribute(step.key)}"${step.key === selected ? ' aria-current="step"' : ""}><span>${step.order}</span>${escapeHtml(step.label)}</li>`).join("");
