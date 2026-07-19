@@ -210,7 +210,7 @@ test("all seven intents save once, return exact Open links, and execute no exter
     await page.goto(new URL(result.canonicalHref, `${baseURL}/`).href, { waitUntil:"domcontentloaded" });
     await expect.poll(() => page.evaluate(() => Boolean(window.__LE_BOOT?.ready))).toBe(true);
     await expect(page).toHaveURL(new RegExp(result.canonicalHref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"));
-    const exactObject = page.locator("main#app #item.page-section.active");
+    const exactObject = index === 3 ? page.locator("[data-post-composer]") : page.locator("main#app #item.page-section.active");
     await expect(exactObject).toBeVisible();
     if (index === 0) await screenshotBoth(page, "quick-capture-exact-open", exactObject);
   }

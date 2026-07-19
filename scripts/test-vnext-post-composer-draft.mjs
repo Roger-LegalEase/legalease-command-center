@@ -17,6 +17,7 @@ function fixtureState() {
   return {
     posts: [{
       id: POST_ID,
+      _version: 4,
       title: "Know the next step",
       body: "Stored shared caption with no outcome promise.",
       hook: "Clarity starts here",
@@ -133,6 +134,7 @@ assert.deepEqual(state, before, "Composer projection must not mutate any source.
 assert.equal(draft.postId, POST_ID);
 assert.equal(draft.href, "#social/post/composer-post-01");
 assert.equal(draft.generatedAt, NOW);
+assert.equal(draft.version, 4);
 assert.equal(draft.availability.key, "available");
 
 // Shared content is canonical CCX-304A fallback truth, not duplicated storage.

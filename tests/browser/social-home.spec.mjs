@@ -110,7 +110,7 @@ test("Social defaults to Ideas and keeps four read-only views on canonical ident
   await expect(firstLink).toHaveAttribute("href", "#social/post/idea-01");
   await firstLink.click();
   await expect(page).toHaveURL(/#social\/post\/idea-01$/);
-  await expect(page.locator("main#app #item.page-section.active")).toBeVisible();
+  await expect(page.locator("[data-post-composer]")).toBeVisible();
   await page.goBack();
   await expect(page.locator("[data-social-page]")).toBeVisible();
   fullStateRequests.length = 0;

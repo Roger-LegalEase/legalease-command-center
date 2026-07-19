@@ -26,7 +26,7 @@ function sanitizedLog(value = "") {
     .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[REDACTED]");
 }
 
-function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCredential = "", sessionSecret = "" }) {
+function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCredential = "", restrictedCredentials = {}, sessionSecret = "" }) {
   return {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -41,7 +41,10 @@ function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCred
     LOCAL_DEMO_MODE:"true",
     COMMAND_CENTER_AUTH_DISABLED:restricted ? "false" : "true",
     COMMAND_CENTER_REQUIRE_AUTH:restricted ? "true" : "false",
-    COMMAND_CENTER_OPERATOR_TOKEN:restricted ? restrictedCredential : "",
+    COMMAND_CENTER_OWNER_TOKEN:restricted ? (restrictedCredentials.owner || "") : "",
+    COMMAND_CENTER_ADMIN_TOKEN:restricted ? (restrictedCredentials.admin || "") : "",
+    COMMAND_CENTER_OPERATOR_TOKEN:restricted ? (restrictedCredentials.operator || restrictedCredential) : "",
+    COMMAND_CENTER_VIEWER_TOKEN:restricted ? (restrictedCredentials.viewer || "") : "",
     COMMAND_CENTER_SESSION_SECRET:restricted ? sessionSecret : "",
     COMMAND_CENTER_DATA_PATH:dataPath,
     COMMAND_CENTER_SEED_PATH:seedPath,
@@ -383,7 +386,7 @@ function browserFixtureState(seed, { includeActions = false } = {}) {
     ...seed,
     approvals:[inboxApproval, ...(includeActions ? [repeatInboxApproval, mobileApproval, repeatMobileApproval] : []), ...(Array.isArray(seed.approvals) ? seed.approvals : []).filter((item) => ![inboxApproval.id, repeatInboxApproval.id, mobileApproval.id, repeatMobileApproval.id].includes(item?.id))],
     queueItems:[inboxQueueItem, ...(includeActions ? [repeatInboxQueueItem, ...actionQueueItems, ...repeatActionQueueItems] : []), ...(Array.isArray(seed.queueItems) ? seed.queueItems : []).filter((item) => ![inboxQueueItem.id, repeatInboxQueueItem.id, ...actionQueueItems.map((candidate) => candidate.id), ...repeatActionQueueItems.map((candidate) => candidate.id)].includes(item?.id))],
-    posts:[post, hiddenPost, inboxPost, ...(includeActions ? [repeatInboxPost, mobileApprovalPost, repeatMobileApprovalPost] : []), hiddenInboxPost, recentUpdate, ...(Array.isArray(seed.posts) ? seed.posts : []).filter((item) => ![post.id, hiddenPost.id, inboxPost.id, repeatInboxPost.id, mobileApprovalPost.id, repeatMobileApprovalPost.id, hiddenInboxPost.id, recentUpdate.id].includes(item?.id))],
+    posts:[post, hiddenPost, inboxPost, ...(includeActions ? [repeatInboxPost, mobileApprovalPost, repeatMobileApprovalPost] : []), hiddenInboxPost, recentUpdate, ...(Array.isArray(seed.posts) ? seed.posts : []).filter((item) => ![post.id, hiddenPost.id, inboxPost.id, repeatInboxPost.id, mobileApprovalPost.id, repeatMobileApprovalPost.id, hiddenInboxPost.id, recentUpdate.id].includes(item?.id))].map((item) => ({ ...item, _version:Number.isSafeInteger(item?._version) ? item._version : 1 })),
     campaigns:[campaign, inboxCampaign, ...(Array.isArray(seed.campaigns) ? seed.campaigns : []).filter((item) => ![campaign.id, inboxCampaign.id].includes(item?.id))],
     partners:[partner, inboxPartner, waitingPartner, ...(Array.isArray(seed.partners) ? seed.partners : []).filter((item) => ![partner.id, inboxPartner.id, waitingPartner.id].includes(item?.id))],
     dataRoomItems:[file, inboxFile, ...(Array.isArray(seed.dataRoomItems) ? seed.dataRoomItems : []).filter((item) => ![file.id, inboxFile.id].includes(item?.id))],
@@ -406,7 +409,7 @@ function todayFixtureState(seed) {
       { id:"today-browser-social-later-two", title:"Review the community workshop post", status:"needs_review", priority:"normal", updatedAt:"2026-07-17T06:00:00.000Z" },
       { id:"today-browser-social-progress", title:"Access guide published", status:"posted", postedAt:"2026-07-17T13:00:00.000Z", updatedAt:"2026-07-17T13:00:00.000Z" },
       { id:"today-browser-hidden", title:"Hidden acquisition post", status:"needs_review", priority:"critical", allowedRoles:["admin"], updatedAt:"2026-07-17T15:00:00.000Z" }
-    ],
+    ].map((item) => ({ ...item, _version:1 })),
     campaigns:[
       { id:"today-browser-campaign-next", campaignName:"July Partner outreach campaign", name:"July Partner outreach campaign", title:"July Partner outreach campaign", status:"ready", owner:"Roger", priority:"high", complianceStatus:"approved", partnerApprovalStatus:"approved", startDate:"2026-07-17", updatedAt:"2026-07-17T12:00:00.000Z" },
       { id:"today-browser-campaign-progress", campaignName:"Partner education outreach", name:"Partner education outreach", status:"completed", owner:"Roger", completedAt:"2026-07-17T11:00:00.000Z", updatedAt:"2026-07-17T11:00:00.000Z" }
@@ -503,7 +506,7 @@ function socialFixtureState(seed) {
   const hidden = socialPost("hidden-owner-work", "draft", { title:"Hidden Social plan", allowedRoles:["admin"], visibility:"owner_only" });
   return {
     ...base,
-    posts:[...ideaPosts, ...reviewPosts, ...scheduledPosts, ...publishedPosts, hidden],
+    posts:[...ideaPosts, ...reviewPosts, ...scheduledPosts, ...publishedPosts, hidden].map((item) => ({ ...item, _version:1 })),
     contentBank:[
       { id:"social-source-converted", title:"Converted source should appear once", status:"idea", updatedAt:"2026-07-17T10:00:00.000Z" },
       { id:"social-source-community", title:"Community workshop questions", summary:"An unconverted Content Bank idea.", topic:"Community", owner:"Roger", updatedAt:"2026-07-17T11:00:00.000Z" },
@@ -512,8 +515,11 @@ function socialFixtureState(seed) {
     ],
     postImages:[], brandAssets:[], postingKits:[], approvals:[], approvalQueue:[], queueItems:[], publishEvents:[], activityEvents:[], auditHistory:[], generationBatches:[],
     socialAccounts:[
-      { id:"social-account-linkedin", channel:"linkedin", connected:true, connectedAt:"2026-07-01T00:00:00.000Z", accountName:"Synthetic LinkedIn" },
-      { id:"social-account-instagram", channel:"instagram", connected:true, connectedAt:"2026-07-01T00:00:00.000Z", accountName:"Synthetic Instagram" }
+      { id:"social-account-linkedin", platform:"linkedin", channel:"linkedin", connected:true, status:"connected", connectedAt:"2026-07-01T00:00:00.000Z", accountName:"Synthetic LinkedIn" },
+      { id:"social-account-instagram", platform:"instagram", channel:"instagram", connected:true, status:"connected", connectedAt:"2026-07-01T00:00:00.000Z", accountName:"Synthetic Instagram" },
+      { id:"social-account-x", platform:"x", channel:"x", connected:false, status:"not_connected" },
+      { id:"social-account-facebook", platform:"facebook", channel:"facebook", connected:false, status:"not_connected" },
+      { id:"social-account-threads", platform:"threads", channel:"threads", connected:false, status:"not_connected" }
     ],
     runtime:{ ...(base.runtime || {}), livePostingGates:{ linkedin:false, instagram:false } },
     settings:{ ...(base.settings || {}), sourceItems:[] }
@@ -548,10 +554,10 @@ async function stopChild(child) {
   activeChildren.delete(child);
 }
 
-async function startServer({ name, dataPath, vnext, restricted = false, restrictedCredential = "", sessionSecret = "" }) {
+async function startServer({ name, dataPath, vnext, restricted = false, restrictedCredential = "", restrictedCredentials = {}, sessionSecret = "" }) {
   const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
     cwd:projectRoot,
-    env:serverEnvironment({ dataPath, vnext, restricted, restrictedCredential, sessionSecret }),
+    env:serverEnvironment({ dataPath, vnext, restricted, restrictedCredential, restrictedCredentials, sessionSecret }),
     stdio:["ignore", "pipe", "pipe"]
   });
   activeChildren.add(child);
@@ -634,6 +640,13 @@ const fixtureState = browserFixtureState(seedState);
 const actionFixtureState = browserFixtureState(seedState, { includeActions:true });
 const todayState = todayFixtureState(seedState);
 const socialState = socialFixtureState(seedState);
+const composerRestrictedState = structuredClone(socialState);
+const composerTemplate = composerRestrictedState.posts.find((post) => post.id === "idea-01");
+composerRestrictedState.posts.push(
+  { ...structuredClone(composerTemplate), id:"composer-hidden", title:"Nondisclosed composer Post", visibility:"owner_only", allowedRoles:["owner"], _version:3 },
+  { ...structuredClone(composerTemplate), id:"composer-duplicate", title:"Duplicate composer Post A", _version:4 },
+  { ...structuredClone(composerTemplate), id:"composer-duplicate", title:"Duplicate composer Post B", _version:9 }
+);
 await rm(path.join(projectRoot, "playwright-report"), { recursive:true, force:true });
 await rm(artifactDir, { recursive:true, force:true });
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "legalease-browser-tests-"));
@@ -647,6 +660,8 @@ const phase2DataPath = path.join(tempRoot, "phase2-state.json");
 const phase2RestrictedDataPath = path.join(tempRoot, "phase2-restricted-state.json");
 const socialDataPath = path.join(tempRoot, "social-state.json");
 const socialRestrictedDataPath = path.join(tempRoot, "social-restricted-state.json");
+const composerRestrictedDataPath = path.join(tempRoot, "composer-restricted-state.json");
+const composerRestrictedReadonlyDataPath = path.join(tempRoot, "composer-restricted-readonly-state.json");
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
@@ -657,10 +672,13 @@ await Promise.all([
   writeFile(phase2DataPath, `${JSON.stringify(actionFixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(phase2RestrictedDataPath, `${JSON.stringify(actionFixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(socialDataPath, `${JSON.stringify(socialState, null, 2)}\n`, { mode:0o600 }),
-  writeFile(socialRestrictedDataPath, `${JSON.stringify(socialState, null, 2)}\n`, { mode:0o600 })
+  writeFile(socialRestrictedDataPath, `${JSON.stringify(socialState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(composerRestrictedDataPath, `${JSON.stringify(composerRestrictedState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(composerRestrictedReadonlyDataPath, `${JSON.stringify(composerRestrictedState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
 const restrictedSessionSecret = crypto.randomBytes(32).toString("base64url");
+const composerRestrictedCredentials = Object.fromEntries(["owner", "admin", "operator", "viewer"].map((role) => [role, crypto.randomBytes(32).toString("base64url")]));
 const servers = [];
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
@@ -731,6 +749,22 @@ try {
     restrictedCredential,
     sessionSecret:restrictedSessionSecret
   }));
+  servers.push(await startServer({
+    name:"composer-restricted",
+    dataPath:composerRestrictedDataPath,
+    vnext:true,
+    restricted:true,
+    restrictedCredentials:composerRestrictedCredentials,
+    sessionSecret:crypto.randomBytes(32).toString("base64url")
+  }));
+  servers.push(await startServer({
+    name:"composer-restricted-readonly",
+    dataPath:composerRestrictedReadonlyDataPath,
+    vnext:true,
+    restricted:true,
+    restrictedCredentials:composerRestrictedCredentials,
+    sessionSecret:crypto.randomBytes(32).toString("base64url")
+  }));
   const runnerEnv = {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -747,7 +781,11 @@ try {
     BROWSER_TEST_PHASE2_BASE_URL:servers[6].baseURL,
     BROWSER_TEST_PHASE2_RESTRICTED_BASE_URL:servers[7].baseURL,
     BROWSER_TEST_SOCIAL_BASE_URL:servers[8].baseURL,
-    BROWSER_TEST_SOCIAL_RESTRICTED_BASE_URL:servers[9].baseURL
+    BROWSER_TEST_COMPOSER_BASE_URL:servers[8].baseURL,
+    BROWSER_TEST_SOCIAL_RESTRICTED_BASE_URL:servers[9].baseURL,
+    BROWSER_TEST_COMPOSER_RESTRICTED_BASE_URL:servers[10].baseURL,
+    BROWSER_TEST_COMPOSER_RESTRICTED_READONLY_BASE_URL:servers[11].baseURL,
+    BROWSER_TEST_COMPOSER_RESTRICTED_CREDENTIALS:JSON.stringify(composerRestrictedCredentials)
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));
 } finally {

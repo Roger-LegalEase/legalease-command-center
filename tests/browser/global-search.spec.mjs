@@ -145,7 +145,8 @@ test("grouped Search supports filters and complete result keyboard navigation", 
     if (screenshot) await page.screenshot({ path:path.join(screenshotDirectory, screenshot), animations:"disabled" });
     await row.click();
     await expect(page).toHaveURL(href);
-    await expect(page.locator("main#app #item").getByRole("heading", { level:1 })).toHaveText(heading);
+    if (href.test("#social/post/browser-post-search-001")) await expect(page.locator("[data-post-composer]").getByRole("heading", { level:2, name:heading })).toBeVisible();
+    else await expect(page.locator("main#app #item").getByRole("heading", { level:1 })).toHaveText(heading);
   }
 
   await page.evaluate(() => { location.hash = "today"; });

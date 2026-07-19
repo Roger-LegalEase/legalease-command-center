@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { expect, openToday, test } from "./support.mjs";
+import { allowExpectedConsoleError, expect, openToday, test } from "./support.mjs";
 
 const screenshotDirectory = path.resolve("docs/ux-vnext/screenshots/ccx-102");
 
@@ -89,11 +89,16 @@ test("canonical Post, Campaign, Partner, and File links open exact fixture recor
     ["partner", `partners/partner/${encodeURIComponent(partner.id)}`, partner.name, "Partners", "partner-deep-link-1440.png"],
     ["file", `files/report/${encodeURIComponent(file.id)}`, file.reportTitle, "Files", "file-deep-link-1440.png"]
   ];
-  for (const [, hash, title, destination, screenshot] of fixtures) {
+  for (const [kind, hash, title, destination, screenshot] of fixtures) {
     await setHash(page, hash);
     await expect(page).toHaveURL(new RegExp(`#${hash.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
-    await expect(page.locator("main#app #item.page-section.active")).toBeVisible();
-    await expect(page.locator("main#app #item").getByRole("heading", { level:1 })).toHaveText(title);
+    if (kind === "post") {
+      await expect(page.locator("[data-post-composer]")).toBeVisible();
+      await expect(page.locator("[data-post-composer]").getByRole("heading", { level:2, name:title })).toBeVisible();
+    } else {
+      await expect(page.locator("main#app #item.page-section.active")).toBeVisible();
+      await expect(page.locator("main#app #item").getByRole("heading", { level:1 })).toHaveText(title);
+    }
     await expect(primaryNavigation(page).getByRole("link", { name:destination, exact:true })).toHaveAttribute("aria-current", "page");
     await page.screenshot({ path:path.join(screenshotDirectory, screenshot), animations:"disabled" });
   }
@@ -108,11 +113,11 @@ test("generic item links retain exact identity and missing records show a truthf
   await expect(page.locator("main#app #item").getByRole("heading", { level:1 })).toHaveText(post.title);
   await expect(primaryNavigation(page).getByRole("link", { name:"Social", exact:true })).toHaveAttribute("aria-current", "page");
 
+  allowExpectedConsoleError(page, /404 \(Not Found\)/, 1);
   await setHash(page, "social/post/missing-post-record");
   await expect(page).toHaveURL(/#social\/post\/missing-post-record$/);
-  await expect(page.locator("main#app #item.page-section.active")).toBeVisible();
-  await expect(page.getByText(/This record is not in the loaded data/i)).toBeVisible();
-  await expect(page.getByText(/Nothing on this page sends or publishes/i)).toBeVisible();
+  await expect(page.locator("[data-composer-unavailable]")).toBeVisible();
+  await expect(page.locator("[data-post-composer]")).not.toContainText("missing-post-record");
 });
 
 test("unknown safe routes show recovery with working Today and Search actions", async ({ page }) => {
@@ -181,8 +186,8 @@ test("route recovery and exact links remain accessible, synchronized, and overfl
 
   for (const width of [1440, 1024, 768, 390]) {
     await page.setViewportSize({ width, height:width === 390 ? 844 : 900 });
-    await setHash(page, "social/post/post-001");
-    await expect(page.locator("main#app #item.page-section.active")).toBeVisible();
+    await setHash(page, "social/post/browser-post-search-001");
+    await expect(page.locator("[data-post-composer]")).toBeVisible();
     if (width <= 768) await expect(page.locator("[data-shell-current-context]")).toHaveText("Social");
     else await expect(primaryNavigation(page).getByRole("link", { name:"Social", exact:true })).toHaveAttribute("aria-current", "page");
     const overflow = await page.evaluate(() => ({

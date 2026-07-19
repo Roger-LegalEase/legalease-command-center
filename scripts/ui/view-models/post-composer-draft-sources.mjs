@@ -271,6 +271,7 @@ export function collectPostComposerDraftSources(state = {}, actor = {}, postId =
     creativeSelections,
     schedule: scheduleFacts(post, variantSource.postView, variants.selectedChannels),
     approval: approvalFacts(readinessSource),
+    version: Number.isSafeInteger(Number(post._version ?? post.version)) ? Number(post._version ?? post.version) : null,
     diagnostics: {
       postsExamined: variantSource.diagnostics.postsExamined,
       variantsExamined: variantSource.diagnostics.variantsExamined,
