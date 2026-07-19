@@ -80,3 +80,10 @@ Later packet sections extend this manifest without changing the CCX-401 boundary
 - Le-E assistance runs only for `requested:true`, never auto-applies, and passes no recipient content, credentials, or provider payload.
 - Sender identities are server-filtered verified projections. Existing provider and UPL/content review gates remain authoritative.
 - Register `test:vnext-campaign-message-step` as `node scripts/test-vnext-campaign-message-step.mjs`.
+
+## CCX-406 wiring
+
+- Compose `buildCampaignScheduleStep` and `renderCampaignScheduleStep` for `step=schedule`; persist only through `createCampaignScheduleSavePlan`.
+- Do not create an execution endpoint in this packet. Schedule persistence is planning only and must not toggle live mode, approval, sending, provider, or heartbeat state.
+- Keep existing `withinSendingWindow`, Eastern Time caps, and send-time engine checks authoritative. Reject invalid, ambiguous, and nonexistent times before persistence.
+- Register `test:vnext-campaign-schedule-step` as `node scripts/test-vnext-campaign-schedule-step.mjs`.
