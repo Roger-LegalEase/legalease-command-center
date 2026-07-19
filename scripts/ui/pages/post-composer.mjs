@@ -54,6 +54,17 @@ function composerClient(loadingHtml) {
   function inputMarkup(key, readOnly) {
     return '<label for="composer-' + key + '">' + labelFor(key) + '</label><textarea id="composer-' + key + '" data-composer-field="' + key + '" ' + (readOnly ? "readonly" : "") + ' aria-describedby="composer-' + key + '-error">' + escapeHtml(draftValue(key)) + '</textarea><p id="composer-' + key + '-error" class="vnext-composer-field-error" data-field-error="' + key + '" aria-live="polite"></p>';
   }
+  function creativeOptions(groupKey, role) {
+    const group = (model.creative?.catalog?.groups || []).find((item) => item.key === groupKey);
+    const current = model.creative?.[role]?.sourceReference;
+    return '<option value="">None selected</option>' + (group?.assets || []).map((item) => '<option value="' + escapeHtml(item.sourceReference.collection + ":" + item.sourceReference.sourceId) + '" data-source-collection="' + escapeHtml(item.sourceReference.collection) + '" data-source-id="' + escapeHtml(item.sourceReference.sourceId) + '" ' + (current?.collection === item.sourceReference.collection && current?.sourceId === item.sourceReference.sourceId ? "selected" : "") + '>' + escapeHtml(item.name) + '</option>').join("");
+  }
+  function creativeDrawer(readOnly) {
+    const templates = (model.creative?.catalog?.templates || []).filter((item) => item.availability?.key === "available");
+    const current = model.creative?.template?.sourceReference;
+    const templateOptions = '<option value="">Choose a reviewed template</option>' + templates.map((item) => '<option value="' + escapeHtml(item.sourceReference.collection + ":" + item.sourceReference.sourceId) + '" data-source-collection="' + escapeHtml(item.sourceReference.collection) + '" data-source-id="' + escapeHtml(item.sourceReference.sourceId) + '" ' + (current?.collection === item.sourceReference.collection && current?.sourceId === item.sourceReference.sourceId ? "selected" : "") + '>' + escapeHtml(item.category?.label || "Other") + ' — ' + escapeHtml(item.name) + '</option>').join("");
+    return '<details class="vnext-creative-drawer" open><summary>Choose creative</summary><p class="vnext-composer-guidance">Reviewed templates and exact approved assets only. Unavailable items cannot be selected.</p><label>Template<select data-creative-ref="template" ' + (readOnly ? "disabled" : "") + '>' + templateOptions + '</select></label><label>Logo<select data-creative-ref="logo" ' + (readOnly ? "disabled" : "") + '>' + creativeOptions("logos", "logo") + '</select></label><label>Wilma pose<select data-creative-ref="wilma" ' + (readOnly ? "disabled" : "") + '>' + creativeOptions("wilma_poses", "wilma") + '</select></label><label>Background<select data-creative-ref="background" ' + (readOnly ? "disabled" : "") + '>' + creativeOptions("backgrounds", "background") + '</select></label><label>Disclaimer<select data-creative-ref="disclaimer" ' + (readOnly ? "disabled" : "") + '>' + creativeOptions("disclaimer_blocks", "disclaimer") + '</select></label><div class="vnext-composer-actions"><button type="button" data-save-creative ' + (readOnly ? "disabled" : "") + '>Save creative</button><button type="button" class="vnext-secondary" data-render-creative ' + (readOnly ? "disabled" : "") + '>Render image</button></div><p data-creative-message role="status"></p></details>';
+  }
   function render() {
     ensureScaffold();
     if (!model || !localDraft) return;
@@ -61,7 +72,7 @@ function composerClient(loadingHtml) {
     const left = app().querySelector("[data-composer-left]");
     const center = app().querySelector("[data-composer-center]");
     const right = app().querySelector("[data-composer-right]");
-    left.innerHTML = '<h2>Creative</h2><dl>' + ["template","logo","wilma","background","disclaimer"].map((key) => '<div><dt>' + key[0].toUpperCase() + key.slice(1) + '</dt><dd>' + escapeHtml(model.creative?.[key]?.name || "Unavailable") + '</dd></div>').join("") + '<div><dt>Availability</dt><dd>' + escapeHtml(model.creative?.availability || "Unavailable") + '</dd></div></dl>';
+    left.innerHTML = '<h2>Creative</h2><dl>' + ["template","logo","wilma","background","disclaimer"].map((key) => '<div><dt>' + key[0].toUpperCase() + key.slice(1) + '</dt><dd>' + escapeHtml(model.creative?.[key]?.name || "Unavailable") + '</dd></div>').join("") + '<div><dt>Availability</dt><dd>' + escapeHtml(model.creative?.availability || "Unavailable") + '</dd></div></dl>' + creativeDrawer(!model.capabilities?.creative);
     center.innerHTML = '<h2>' + escapeHtml(model.post?.title || "Post") + '</h2><div class="vnext-composer-preview" data-composer-preview aria-label="Internal Post preview"><strong data-preview-headline></strong><p data-preview-body></p><p data-preview-hook></p><p><span data-preview-cta></span> <span data-preview-hashtags></span></p></div><form data-composer-form novalidate data-expected-version="' + escapeHtml(model.version) + '">' + FIELD_KEYS.map((key) => inputMarkup(key, readOnly)).join("") + '<div class="vnext-composer-save"><button type="submit" data-composer-save>Save draft</button><p data-composer-message role="status">' + (readOnly ? "This account can view Social but cannot edit Posts." : conflict ? "The saved Post changed. Your edits are still here." : dirty ? "Unsaved changes" : "Clean") + '</p><div data-conflict-actions data-current-version="' + escapeHtml(conflictVersion ?? "") + '" ' + (conflict ? "" : "hidden") + '><button type="button" class="vnext-secondary" data-keep-editing>Keep editing</button><button type="button" class="vnext-secondary" data-reload-copy>Reload saved copy</button></div></div></form>';
     right.innerHTML = '<h2>Status</h2><dl><div><dt>Channels</dt><dd>' + escapeHtml((model.channels?.selected || []).map((item) => item.label).join(", ") || "None selected") + '</dd></div><div><dt>Customized channels</dt><dd>' + Number(model.channels?.customizedCount || 0) + '</dd></div><div><dt>Schedule</dt><dd>' + escapeHtml(model.schedule?.display || "Unavailable") + '</dd></div><div><dt>Timezone</dt><dd>' + escapeHtml(model.schedule?.timezone || "Unavailable") + '</dd></div><div><dt>Readiness</dt><dd>' + escapeHtml(model.readiness?.state || "Unavailable") + '</dd></div><div><dt>Review</dt><dd>' + escapeHtml(model.review?.label || model.review?.state || "Unavailable") + '</dd></div><div><dt>Connection and publication</dt><dd>' + escapeHtml(model.publishing?.label || model.publishing?.state || "Unavailable") + '</dd></div></dl>';
     bind(); updatePreview(); updateSaveState();
@@ -75,6 +86,21 @@ function composerClient(loadingHtml) {
     app().querySelector("[data-composer-back]")?.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); if (dirty) openDiscardDialog("#queue?view=ideas", "click"); else navigate("#queue?view=ideas", "click"); });
     app().querySelector("[data-keep-editing]")?.addEventListener("click", () => setMessage("The saved Post changed. Your edits are still here.", "version_conflict"));
     app().querySelector("[data-reload-copy]")?.addEventListener("click", () => openDiscardDialog("reload", "control"));
+    app().querySelector("[data-save-creative]")?.addEventListener("click", () => creativeAction("creative"));
+    app().querySelector("[data-render-creative]")?.addEventListener("click", () => creativeAction("render"));
+  }
+  async function creativeAction(kind) {
+    const message = app()?.querySelector("[data-creative-message]");
+    const selected = {};
+    app()?.querySelectorAll("[data-creative-ref]").forEach((select) => { if (!select.value) return; const option = select.selectedOptions[0]; selected[select.dataset.creativeRef] = { collection:option.dataset.sourceCollection, sourceId:option.dataset.sourceId }; });
+    const payload = kind === "creative" ? { template:selected.template, assets:Object.fromEntries(Object.entries(selected).filter(([key]) => key !== "template")), surfaceTone:model.creative?.surfaceTone, expectedVersion:model.version, requestId:crypto.randomUUID() } : { expectedVersion:model.version, requestId:crypto.randomUUID() };
+    if (message) message.textContent = kind === "creative" ? "Saving creative…" : "Rendering…";
+    try {
+      const response = await fetch("/api/ui/social/post/" + encodeURIComponent(postId()) + "/" + kind, { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify(payload) });
+      const body = await response.json(); if (!response.ok || !body.ok) throw new Error(body.message || "The creative action could not be completed.");
+      if (message) message.textContent = kind === "creative" ? "Creative saved." : (body.reused ? "Current image reused safely." : "Image rendered for review.");
+      await load(true);
+    } catch (error) { if (message) message.textContent = error.message; }
   }
   async function save(event) {
     event.preventDefault();
