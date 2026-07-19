@@ -99,3 +99,64 @@ Further packet wiring is appended by CCX-602 through CCX-607.
   authority for them.
 - Package script: `test:vnext-files-sharing` →
   `node scripts/test-vnext-files-sharing.mjs`.
+
+## CCX-607 and final integration
+
+### Imports and endpoints
+
+- Add `createFilesOrganizationService` and register scoped, idempotent
+  `POST /api/ui/files/:sourceKind/:sourceId/organize` with `manage_growth`.
+  Supported actions are star/unstar, move between reviewed collections,
+  trash/restore, and exact Partner/Campaign/Post relation. It never creates a
+  folder copy.
+- All read, upload, report, organization, and access imports/endpoints are listed
+  in the packet sections above. Reads require `read_internal`; writes retain the
+  stronger action-specific capabilities, CSRF/origin checks, current-state
+  lookup, and scoped collection persistence.
+
+### Rendering, controllers, and CSS
+
+- Register Files home, exact detail, Investor Room, upload, report, organization,
+  and sharing renderers/controllers only while
+  `COMMAND_CENTER_UX_VNEXT_FILES=true`.
+- Stylesheets: `/assets/ui/files-home.css`, `/assets/ui/files-organization.css`,
+  `/assets/ui/file-details.css`, `/assets/ui/file-upload.css`, and
+  `/assets/ui/investor-room.css` after shared tokens.
+- Keep all route parsing in the vetted compatibility parser. Preserve exact
+  `#files/<source-kind>/<encoded-id>` links and the legacy aliases listed under
+  CCX-601. Flag off retains legacy routes and performs no Files API call.
+
+### Package and browser registration
+
+- Add the six packet scripts listed above plus:
+  `test:vnext-files-acceptance` →
+  `node scripts/test-vnext-files-acceptance.mjs`.
+- Include `tests/browser/files-acceptance.spec.mjs` in the focused and full
+  browser matrices without changing shared fixture behavior.
+
+### Cross-lane dependencies
+
+- Partner relation uses only the existing exact Partner ID/link contract. No
+  Partner adapter is copied or modified.
+- Report generation is dependency-injected and must use the currently reviewed
+  authoritative generator selected by Integration.
+- Investor Room requirements require a reviewed Integration-owned configuration;
+  absence intentionally produces Unavailable readiness.
+
+### Performance and payload budgets
+
+- `GET /api/ui/files`: 24 rows by default, 50 maximum, target under 250 KB and
+  p95 under 750 ms in hosted mode.
+- Exact detail/Investor Room: target under 150 KB and p95 under 750 ms.
+- Content preview: text capped at 200 KB; binary content streams without entering
+  page JSON. Multipart upload maximum is 25 MB.
+- No endpoint returns full company state, raw source records, credentials, public
+  storage URLs, or provider payloads.
+
+### Rollback
+
+- Disable `COMMAND_CENTER_UX_VNEXT_FILES` to restore legacy renderers and stop all
+  new Files endpoint/controller composition.
+- Remove the additive modules, styles, tests, docs, and endpoint registrations.
+  Uploaded `dataRoomItems`, authoritative reports, activity, and audit records
+  remain valid existing-source data and must not be deleted during UI rollback.
