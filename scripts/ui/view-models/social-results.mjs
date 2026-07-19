@@ -145,7 +145,15 @@ function topicProjection(post = {}) {
 }
 
 function proofProjection(postView) {
-  const references = list(postView.sourceReferences).filter((reference) => reference.relationship === "proof");
+  const sourceKinds = { reports: "report", dataRoomItems: "data-room-item", evidencePackNotes: "evidence-note" };
+  const references = list(postView.sourceReferences).filter((reference) => reference.relationship === "proof").map((reference) => ({
+    ...reference,
+    href: reference.href || buildExactObjectLink({
+      objectType: "File",
+      sourceKind: sourceKinds[reference.sourceCollection || reference.collection] || reference.sourceKind,
+      sourceId: reference.sourceId
+    })?.target || null
+  }));
   return {
     linked: references.length > 0,
     references: uniqueReferences(references),
@@ -365,7 +373,19 @@ function filters(items) {
     topics: optionList(items, (item) => item.topic),
     campaigns: optionList(items, (item) => ({ key: item.campaign.key, label: item.campaign.label })),
     templates: optionList(items, (item) => ({ key: item.template.id, label: item.template.name })),
-    themes: optionList(items, (item) => item.theme)
+    themes: optionList(items, (item) => item.theme),
+    metrics: [
+      { key: "available", label: "Metrics available", count: items.filter((item) => item.metricAvailability.availableFields.length > 0).length },
+      { key: "unavailable", label: "Metrics unavailable", count: items.filter((item) => item.metricAvailability.availableFields.length === 0).length }
+    ],
+    proof: [
+      { key: "linked", label: "Proof linked", count: items.filter((item) => item.proof.linked).length },
+      { key: "unavailable", label: "Proof unavailable", count: items.filter((item) => !item.proof.linked).length }
+    ],
+    reuse: [
+      { key: "available", label: "Reuse available", count: items.filter((item) => item.reuse.available).length },
+      { key: "unavailable", label: "Reuse unavailable", count: items.filter((item) => !item.reuse.available).length }
+    ]
   };
 }
 
@@ -392,7 +412,7 @@ function unavailableResult(generatedAt, reason) {
     generatedAt,
     items: [],
     summaries: null,
-    filters: { channels: [], topics: [], campaigns: [], templates: [], themes: [] },
+    filters: { channels: [], topics: [], campaigns: [], templates: [], themes: [], metrics: [], proof: [], reuse: [] },
     activeFilters: {},
     pagination: { limit: DEFAULT_LIMIT, returned: 0, total: null, nextCursor: null, cursorValid: false },
     sourceAvailability: { key: "unavailable", reason, counts: null },

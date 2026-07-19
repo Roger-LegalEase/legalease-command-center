@@ -128,6 +128,7 @@ import { searchGlobalRecords } from "./global-search-service.mjs";
 import { buildAuthorizedInboxPage } from "./inbox-page-service.mjs";
 import { buildAuthorizedTodayPage } from "./today-page-service.mjs";
 import { buildAuthorizedSocialHome } from "./social-home-service.mjs";
+import { buildSocialResultsView } from "./ui/view-models/social-results.mjs";
 import { buildPostComposerContract, composerSavePath, normalizeComposerPatch } from "./post-composer-service.mjs";
 import {
   INBOX_ACTION_BODY_LIMIT,
@@ -35105,6 +35106,10 @@ async function handleRequest(request, response) {
       sendJson(response, { error:"Social is unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
       return;
     }
+    else if (url.pathname === "/api/ui/social/results") {
+      sendJson(response, { error:"Social Results are unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
+      return;
+    }
     else if (/^\/api\/ui\/social\/post\/[^/]+\/(?:composer|save)$/.test(url.pathname)) {
       sendJson(response, { ok:false, outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized", message:accessDecision.status === 401 ? "Your session ended. Sign in again before opening this Post." : "This Post is unavailable for this account." }, accessDecision.status || 403);
       return;
@@ -35279,6 +35284,46 @@ async function handleRequest(request, response) {
           ? "The Social view could not be read. Check the selected filters."
           : "Social could not load. No records were changed. Try again."
       }, Number(error?.status || 500));
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/ui/social/results" && request.method === "GET") {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { error:"Social Results are unavailable." }, 404);
+      return;
+    }
+    try {
+      const requestStartedAt = performance.now();
+      const currentState = await store.readState();
+      const stateReadMs = performance.now() - requestStartedAt;
+      const actor = publicActor(accessDecision.actor);
+      const now = new Date().toISOString();
+      const projectionStartedAt = performance.now();
+      const view = buildSocialResultsView(currentState, actor, now, {
+        channel:url.searchParams.get("channel") || undefined,
+        topic:url.searchParams.get("topic") || undefined,
+        campaign:url.searchParams.get("campaign") || undefined,
+        template:url.searchParams.get("template") || undefined,
+        theme:url.searchParams.get("theme") || undefined,
+        metrics:url.searchParams.get("metrics") || undefined,
+        proof:url.searchParams.get("proof") || undefined,
+        reuse:url.searchParams.get("reuse") || undefined,
+        limit:url.searchParams.get("limit") || undefined,
+        cursor:url.searchParams.get("cursor") || undefined
+      });
+      const projectionMs = performance.now() - projectionStartedAt;
+      const payload = { ok:true, ...view };
+      if (process.env.COMMAND_CENTER_TEST_MODE === "true") {
+        const serializationStartedAt = performance.now();
+        const serialized = sanitizeOutboundText(JSON.stringify(payload));
+        const serializationMs = performance.now() - serializationStartedAt;
+        response.setHeader("server-timing", `store;dur=${stateReadMs.toFixed(2)}, projection;dur=${projectionMs.toFixed(2)}, serialization;dur=${serializationMs.toFixed(2)}`);
+        response.setHeader("x-ccx-response-bytes", String(Buffer.byteLength(serialized)));
+      }
+      sendJson(response, payload);
+    } catch {
+      sendJson(response, { ok:false, error:"Social Results could not load. No records were changed. Try again." }, 500);
     }
     return;
   }

@@ -9,7 +9,7 @@ The views are always ordered `Ideas`, `Calendar`, `Library`, `Results`; `Ideas` 
 - Ideas combines canonical Post identities in Idea or Draft state with truthful, unconverted Content Bank records. A Content Bank record related to a canonical Post is omitted so the same idea is not shown twice.
 - Calendar contains all authorized canonical Posts in two semantic groups: Scheduled first, then Unscheduled. It cannot drag, reschedule, approve, or publish. Pagination appends each Post to its existing group without duplicating identity.
 - Library contains canonical Draft, Needs review, Scheduled, and Published Posts.
-- Results contains only Posts with explicit publication truth. Missing stored metrics remain `null` in the contract and display as `Unavailable`.
+- Results remains available in the Social-home service contract for compatibility. In the enabled browser shell, `view=results` hands off to the CCX-309B compact Results endpoint and dedicated surface, which preserves stricter CCX-309A per-channel publication truth and explicit metric availability.
 
 Every canonical Post links to its server-vetted `#social/post/<id>` route. Unconverted Content Bank ideas link to their exact existing item route. Channel names and customization truth come from CCX-304A; readiness summaries come from CCX-305.
 
@@ -29,4 +29,4 @@ The page performs one deduplicated GET for each selected route state and one GET
 
 Loading, true empty, filtered empty, source unavailable, recoverable error, unauthorized, and session-expired states preserve the shell. A recoverable failure offers one safe retry. Session expiry clears the Social surface through the shared authenticated-shell boundary.
 
-The browser suite verifies exact identity links, Back/Forward behavior, deduplication, pagination, keyboard navigation, visible focus, Axe findings, client errors, horizontal overflow at 1440/1280/1024/768/390, external-action counters, and the unchanged flag-off queue.
+The browser suite verifies exact identity links, Back/Forward behavior, deduplication, pagination, keyboard navigation, visible focus, Axe findings, client errors, horizontal overflow at 1440/1280/1024/768/390, external-action counters, the CCX-309B Results handoff, and the unchanged flag-off queue.

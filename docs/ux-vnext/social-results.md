@@ -1,6 +1,26 @@
 # CCX-309A Social Results intelligence
 
-CCX-309A defines a pure, authorization-aware read model for published Social results. It does not modify the current Social Results UI and adds no endpoint, browser controller, provider integration, refresh job, or mutation.
+CCX-309A defines a pure, authorization-aware read model for published Social results. CCX-309B consumes that unchanged truth contract through a compact authenticated endpoint and a dedicated read-only Results surface; it adds no provider integration, refresh job, or mutation.
+
+## CCX-309B Results surface
+
+The enabled vNext Social route hands `#queue?view=results` to a dedicated Results browser controller. The other Social views remain owned by Social home. Back and Forward navigation restore the exact channel, topic, campaign, template, theme, metric-availability, proof, and reuse filters from the route. The controller issues one active compact request at a time, reuses a settled payload if the shell replaces its scaffold during boot, and never requests `/api/state`.
+
+`GET /api/ui/social/results` requires authenticated `read_internal` access and accepts the reviewed filters plus `limit` and an opaque query-bound cursor. The endpoint reads state once, projects through `buildSocialResultsView`, and returns only the compact Results contract. Test mode exposes read, projection, and serialization timing plus response bytes for the exact browser fixture; production does not expose those diagnostic headers.
+
+The page renders:
+
+- a six-value summary row;
+- confirmed per-channel published-result cards only;
+- explicit available metric values and an equally explicit `Metrics unavailable` state;
+- informational, non-executable reuse eligibility;
+- canonical Post, reviewed external-result, Campaign, and exact proof/File links;
+- opaque pagination without source identities;
+- loading, true-empty, filtered-empty, retryable error, unauthorized, session-expired, and flag-off states.
+
+The browser fixture includes explicit current-revision publication events, one partial publication with a failed sibling channel, mixed metric availability, exact Campaign and template relationships, and one reviewed proof File. Status-only published Posts remain excluded. The ten CCX-309B screenshots cover the full, filtered, metrics-unavailable, partial-publication, empty, responsive, and mobile-filter states under `docs/ux-vnext/screenshots/ccx-309b/`.
+
+The focused endpoint regression first measured a 2.15-second projection directly and an 8.53-second wait during concurrent browser startup. State read and serialization were negligible. The source adapter had been running the complete PostView, readiness, and publishing-control stack for every visible Social Post, including Posts with no visible explicit success evidence. CCX-309B now safely preselects only authorized Posts with visible explicit published events, claims, or attempts before running the unchanged CCX-309A revision, ambiguity, metric, proof, and reuse contracts. On the verification fixture, the endpoint returned 22,047 bytes in about 410 ms, including about 403 ms of projection. Timing is environment-dependent.
 
 ## Contract
 

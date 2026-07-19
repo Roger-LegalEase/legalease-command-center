@@ -32,6 +32,7 @@ import {
   socialHomeBrowserSource
 } from "./pages/social-home.mjs";
 import { POST_COMPOSER_STYLESHEET_PATH, postComposerBrowserSource } from "./pages/post-composer.mjs";
+import { socialResultsBrowserSource } from "./pages/social-results.mjs";
 import { INITIAL_VNEXT_LOADING_HTML } from "./shell-states.mjs";
 import {
   CREATE_MENU_OPTIONS,
@@ -514,7 +515,7 @@ export function renderVNextDesktopShell(legacyHtml = "") {
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n</body>`);
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n</body>`);
   return html;
 }
 

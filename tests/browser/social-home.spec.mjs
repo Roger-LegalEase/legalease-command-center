@@ -146,14 +146,14 @@ test("Social defaults to Ideas and keeps four read-only views on canonical ident
   await expect(page.locator("[data-social-kind='source_idea']")).toHaveCount(0);
 
   await page.getByRole("tab", { name:/^Results/ }).click();
-  await expect(page.locator("[data-social-current-view='results']")).toBeVisible();
+  await expect(page.locator("[data-social-results-page]")).toBeVisible();
   await expect(page.getByText("Published guide awaiting metrics")).toBeVisible();
-  await expect(page.locator("[data-social-item='post:published-02']").getByText("Unavailable").first()).toBeVisible();
-  await expect(page.locator("[data-social-grid] > li")).toHaveCount(8);
+  await expect(page.locator("[data-results-card]")).toHaveCount(8);
+  await expect(page.getByText("Metrics unavailable", { exact:true })).toBeVisible();
   await page.goBack();
   await expect(page.locator("[data-social-current-view='library']")).toBeVisible();
   await page.goForward();
-  await expect(page.locator("[data-social-current-view='results']")).toBeVisible();
+  await expect(page.locator("[data-social-results-page]")).toBeVisible();
 
   const metrics = await page.evaluate(() => ({ ...window.__LE_SOCIAL_METRICS }));
   expect(metrics.duplicateRequests).toBe(0);
@@ -325,12 +325,14 @@ test("Social is accessible and overflow-free at every required width", async ({ 
   expect(timezoneRenders[1]).toEqual(timezoneRenders[0]);
   await openSocial(page);
 
-  for (const view of ["ideas", "calendar", "library", "results"]) {
+  for (const view of ["ideas", "calendar", "library"]) {
     await page.goto(`${process.env.BROWSER_TEST_SOCIAL_BASE_URL}/#queue?view=${view}`);
     await expect(page.locator(`[data-social-current-view='${view}']`)).toBeVisible();
     await page.setViewportSize({ width:1440, height:900 });
     await page.screenshot({ path:path.join(screenshotDirectory, `social-${view}-1440.png`), fullPage:true, animations:"disabled" });
   }
+  await page.goto(`${process.env.BROWSER_TEST_SOCIAL_BASE_URL}/#queue?view=results`);
+  await expect(page.locator("[data-social-results-page]")).toBeVisible();
   await page.goto(`${process.env.BROWSER_TEST_SOCIAL_BASE_URL}/#queue?view=ideas&status=draft`);
   await expect(page.locator("[data-social-current-view='ideas']")).toBeVisible();
   await page.screenshot({ path:path.join(screenshotDirectory, "social-filtered-1440.png"), fullPage:true, animations:"disabled" });

@@ -7,7 +7,7 @@ suite to the protected design-system showcase, CCX-100 added the production vNex
 desktop shell, CCX-101 covers its responsive navigation drawer, CCX-102 covers route
 compatibility, CCX-103 covers Global Create, CCX-104 covers Global Search, and
 CCX-105 covers resilient loading, module failure, authorization, session, and
-Recovery Mode states. The
+Recovery Mode states. CCX-309B covers the compact Social Results surface. The
 suite exercises the served
 application in a real browser; it does not replace the existing Node, route, security,
 migration, restore, or source-level contracts.
@@ -172,6 +172,13 @@ The seven CCX-105 tests additionally cover:
   and responsive Sign out access; and
 - zero serious/critical axe findings and no overflow for loading, error,
   unauthorized, and recovery states, with nine deterministic screenshots.
+
+The CCX-309B tests additionally cover:
+
+- direct compact-endpoint status, response-size, state-read, projection, and serialization measurements against the exact Social browser fixture;
+- confirmed per-channel publication truth, all reviewed filters, opaque paging, exact proof/File links, informational reuse, metric availability, and Back/Forward restoration;
+- one active Results request, no `/api/state` read, no write or provider action, and safe loading, empty, retry, unauthorized, session-expired, and flag-off states; and
+- zero serious or critical Axe findings, no horizontal overflow at 1440/1024/768/390, and ten deterministic screenshots.
 
 `Review Desk` remains the underlying current workspace for Social. CCX-100 changes
 the enabled shell label while leaving that page renderer and its behavior intact.
