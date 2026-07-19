@@ -1,0 +1,27 @@
+# Files release-train integration manifest
+
+Base: `3e660e165a9f31d0d1f50305ec51f89359ca417c`
+
+This branch is additive. It intentionally does not edit shared shell, routing,
+role, server-composition, package, global-CSS, or browser-fixture files.
+
+## CCX-601 wiring
+
+- Import `readFilesHome` from `scripts/ui-api/files-read.mjs`.
+- Register authorized compact read `GET /api/ui/files` with `read_internal`.
+- Supply a server-only cursor secret of at least 16 characters; never return it.
+- Render `renderFilesLoading()` and `renderFilesHome(payload)` from
+  `scripts/ui/pages/files-home.mjs` for canonical `#files`.
+- Include `/assets/ui/files-home.css` after shared tokens.
+- Register `filesHomeBrowserSource()` from
+  `scripts/ui/controllers/files-home-controller.mjs` once in the vNext client.
+- Preserve aliases `#proof`, `#data-room`, `#dataroom`, `#evidence-room`,
+  `#reports`, `#assets`, `#metrics`, and `#kpis`; direct them to the relevant
+  Files collection while exact links remain
+  `#files/<source-kind>/<encoded-id>` through the vetted parser.
+- Gate all Files wiring with server flag `COMMAND_CENTER_UX_VNEXT_FILES`; flag
+  off retains the current legacy renderers and aliases.
+- Package script to add: `test:vnext-files-home` →
+  `node scripts/test-vnext-files-home.mjs`.
+
+Further packet wiring is appended by CCX-602 through CCX-607.
