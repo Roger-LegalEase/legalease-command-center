@@ -826,7 +826,8 @@ try {
   servers.push(await startServer({
     name:"partners",
     dataPath:partnersDataPath,
-    vnext:true
+    vnext:true,
+    productFlags:{ outreach:true }
   }));
   servers.push(await startServer({
     name:"outreach",

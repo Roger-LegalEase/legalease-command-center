@@ -8,6 +8,7 @@ const state={ campaigns:[{ id:"campaign-1", name:"Synthetic campaign", status:"d
 assert.deepEqual(CAMPAIGN_WIZARD_STEPS.map((step)=>step.label),["Goal","Audience","Message","Schedule","Review"]);
 const view=buildCampaignWizardView(state,actor,"campaign:campaign-1");
 assert.equal(view.available,true); assert.equal(view.campaign.stableIdentity,"campaign:campaign-1"); assert.equal(view.draftVersion,0); assert.equal(view.capabilities.savesDraft,true); assert.equal(view.capabilities.launches,false);
+assert.equal(buildCampaignWizardView(state,actor,"campaign-1").campaign.stableIdentity,"campaign:campaign-1","Exact Campaign routes must resolve their canonical source ID without browser reconstruction.");
 assert.equal(campaignWizardHasUnsavedChanges(view.draft,structuredClone(view.draft)),false);
 const changed=structuredClone(view.draft); changed.goal.campaignName="Synthetic update"; assert.equal(campaignWizardHasUnsavedChanges(view.draft,changed),true);
 const plan=createCampaignWizardSavePlan(state,actor,"campaign:campaign-1",{step:"goal",fields:{campaignName:"Synthetic update"},expectedVersion:0},"2026-07-19T16:00:00.000Z");

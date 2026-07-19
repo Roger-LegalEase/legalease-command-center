@@ -41,11 +41,6 @@ test("Partners train preserves exact links, safe actions, history, and accessibi
   await page.getByRole("navigation", { name:"Partner record sections" }).getByRole("link", { name:"Outreach", exact:true }).click();
   await expect(page.getByRole("link", { name:"Open Campaign: Community planning outreach" })).toHaveAttribute("href", "#outreach/campaign/campaign-community");
   const mutationsBeforeOpening = requests.filter((request) => request.method !== "GET").length;
-  await page.getByRole("button", { name:"Create outreach" }).click();
-  await expect(page.getByRole("heading", { name:"Outreach campaign" })).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name:"Close creation workspace" }).click();
-  await expect(page.getByRole("heading", { name:"Outreach campaign" })).toBeHidden();
   await page.getByRole("button", { name:"Add file" }).click();
   await expect(page.getByRole("heading", { name:"File or folder" })).toBeVisible();
   page.once("dialog", (dialog) => dialog.accept());
@@ -70,6 +65,27 @@ test("Partners train preserves exact links, safe actions, history, and accessibi
   });
   const axe = await new AxeBuilder({ page }).analyze();
   expect(axe.violations.filter((violation) => ["serious", "critical"].includes(violation.impact))).toEqual([]);
+});
+
+test("Partner Create outreach makes one inert Draft and opens its exact Campaign wizard link", async ({ page }) => {
+  const requests = [];
+  page.on("request", (request) => requests.push({ method:request.method(), pathname:new URL(request.url()).pathname }));
+  await openPartners(page, "#partners/partner/partner-community?tab=outreach");
+
+  await page.getByRole("button", { name:"Create outreach" }).click();
+  await expect(page).toHaveURL(/#outreach\/campaign\/campaign-partner[_-]/);
+  await expect(page.getByRole("region", { name:"Campaign draft", exact:true })).toBeVisible();
+  expect(requests.filter((request) => request.method !== "GET")).toEqual([
+    { method:"POST", pathname:"/api/ui/partners/outreach/campaign" }
+  ]);
+  expect(requests.some((request) => /send|launch|enroll|approve|schedule|provider/i.test(request.pathname))).toBe(false);
+  expect(await page.evaluate(() => window.__LE_PARTNER_RECORD_METRICS)).toMatchObject({
+    fullStateReads:0, mutations:1, externalActions:0, sends:0, enrollments:0, providerCalls:0
+  });
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { name:"Community Justice Network", level:1 })).toBeVisible();
+  await waitForPartnerReads(page);
 });
 
 test("Partners train covers responsive and availability states without overflow", async ({ page }) => {

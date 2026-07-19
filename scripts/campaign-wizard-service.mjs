@@ -36,6 +36,17 @@ function canonicalRecord(state, view) {
   return (Array.isArray(state?.campaigns) ? state.campaigns : []).find((record) => clean(record?.id) === view.source.sourceId) || null;
 }
 
+function resolveCampaignIdentity(state, actor, value = "") {
+  const identity = clean(value);
+  if (!identity) return null;
+  const candidates = identity.includes(":") ? [identity] : [`campaign:${identity}`, identity];
+  for (const candidate of candidates) {
+    const campaign = buildCampaignView(state, candidate, actor);
+    if (campaign) return campaign;
+  }
+  return null;
+}
+
 function emptyDraft() {
   return {
     schemaVersion:CAMPAIGN_WIZARD_DRAFT_VERSION,
@@ -74,7 +85,7 @@ export function buildCampaignWizardView(state = {}, actor = {}, stableIdentity =
   if (actor?.authenticated !== true || !roleHasCapability(actor.role, "read_internal")) {
     return deepFreeze({ ok:false, authorized:false, available:false, campaign:null, draft:null, steps:CAMPAIGN_WIZARD_STEPS, capabilities:{ savesDraft:false, sends:false, launches:false } });
   }
-  const campaign = buildCampaignView(state, clean(stableIdentity), actor);
+  const campaign = resolveCampaignIdentity(state, actor, stableIdentity);
   const record = canonicalRecord(state, campaign);
   if (!campaign || !record) {
     return deepFreeze({ ok:true, authorized:true, available:false, campaign:null, draft:null, steps:CAMPAIGN_WIZARD_STEPS, capabilities:{ savesDraft:false, sends:false, launches:false } });
