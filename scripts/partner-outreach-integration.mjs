@@ -142,7 +142,12 @@ function reviewedReplySuggestions(state, actor, partnerId, now) {
     const adapted = internalStage ? adaptPartnerStage({ stage:internalStage }) : null;
     if (!adapted || adapted.uiStageKey === "unavailable") return null;
     const event = replyEvents.get(replyId);
-    return { id:`partner-stage-suggestion:${partnerId}:${replyId}:${internalStage}`, classification, proposedInternalStage:internalStage, proposedUiStage:{ key:adapted.uiStageKey, label:adapted.uiStageLabel }, evidence:{ sourceCollection:"outreachReplies", sourceId:replyId, sourceHref:event.sourceHref, summary:event.summary, occurredAt:event.occurredAt }, reviewed:true, applied:false, changesPartnerStage:false, requiresExplicitApply:true };
+    const applied = list(state.activityEvents).some((activity) => activity.metadata?.explicitlyApplied === true
+      && clean(activity.partnerId) === partnerId
+      && clean(activity.toStage) === internalStage
+      && clean(activity.sourceRef?.collection) === "outreachReplies"
+      && clean(activity.sourceRef?.itemId || activity.sourceRef?.sourceId) === replyId);
+    return { id:`partner-stage-suggestion:${partnerId}:${replyId}:${internalStage}`, classification, proposedInternalStage:internalStage, proposedUiStage:{ key:adapted.uiStageKey, label:adapted.uiStageLabel }, evidence:{ sourceCollection:"outreachReplies", sourceId:replyId, sourceHref:event.sourceHref, summary:event.summary, occurredAt:event.occurredAt }, reviewed:true, applied, changesPartnerStage:false, requiresExplicitApply:!applied };
   }).filter(Boolean);
 }
 
@@ -161,12 +166,12 @@ export function applyPartnerStageSuggestion(state = {}, partnerId = "", input = 
   const id = clean(partnerId);
   const request = requestId(input.requestId);
   if (input.confirmed !== true) throw new PartnerOutreachError("Review and explicitly confirm the stage update. Nothing was saved.");
-  const suggestion = reviewedReplySuggestions(state, options.actor, id, options.now).find((item) => item.id === clean(input.suggestionId));
+  const existingEventId = `activity-partner-stage-suggestion-${request}`;
+  if (list(state.activityEvents).some((event) => event.id === existingEventId)) return Object.freeze({ state, alreadyExisted:true, mutations:0, externalActions:0 });
+  const suggestion = reviewedReplySuggestions(state, options.actor, id, options.now).find((item) => item.id === clean(input.suggestionId) && !item.applied);
   if (!suggestion) throw new PartnerOutreachError("The reviewed stage suggestion is no longer available. Nothing was saved.", 409);
   const partnerIndex = list(state.partners).findIndex((record) => clean(record.id || record.partnerId) === id && recordVisibleToActor(record, role));
   if (partnerIndex < 0) throw new PartnerOutreachError("Partner was not found or is not available for this account.", 404);
-  const existingEventId = `activity-partner-stage-suggestion-${request}`;
-  if (list(state.activityEvents).some((event) => event.id === existingEventId)) return Object.freeze({ state, alreadyExisted:true, mutations:0, externalActions:0 });
   const current = state.partners[partnerIndex];
   const now = clean(options.now);
   const updated = { ...current, stage:suggestion.proposedInternalStage, status:suggestion.proposedInternalStage, updatedAt:now, history:[{ id:`history-stage-suggestion-${request}`, action:"stage_changed", fromStage:clean(current.stage || current.status), toStage:suggestion.proposedInternalStage, at:now, sourceRef:{ collection:"outreachReplies", itemId:suggestion.evidence.sourceId }, explicitlyApplied:true }, ...list(current.history)] };
