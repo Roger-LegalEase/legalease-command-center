@@ -24,4 +24,8 @@ Status: additive Lane A contract. Reserved runtime, role, shell, navigation, pac
 - `GET /api/ui/social/calendar` → `buildSocialCalendarContract`; return only the compact contract. Register `renderSocialCalendarPage` and `assets/ui/social-calendar.css` for the canonical calendar route while preserving existing aliases through the vetted parser.
 - `POST /api/ui/social/post/:postId/schedule` → `saveSocialSchedule`; provide atomic `commitPostMutation`. The adapter must persist only `scheduledFor`, `timezone`, and `scheduleStatus`, expected-version/request-id truth, plus supplied activity/audit evidence. It must not approve, publish, retry, or call a provider.
 - Package script: `test:vnext-social-schedule-actions` → `node scripts/test-vnext-social-schedule-actions.mjs`.
-- Later packet commits extend this manifest with review, publishing, browser specs, fixtures, performance budgets, and rollback.
+- `POST /api/ui/social/post/:postId/approve` → `approveSocialPost`; provide the existing reviewed approval operation as `applyApproval`. It must independently authorize, use the supplied freshly rebuilt plan, record approval/audit evidence, and never schedule or publish.
+- `POST /api/ui/social/post/:postId/request-changes` → `requestSocialPostChanges`; provide `recordRequestedChanges`, preserving the stable feedback ID, exact Post relationship, historical feedback, idempotency, and bounded summary only.
+- `POST /api/ui/social/post/:postId/regenerate` → `regenerateSocialPostImage`; provide the same reviewed render adapter as CCX-303B. A failed regeneration retains the previous current image and no regeneration approves an image.
+- Package script: `test:vnext-social-review-actions` → `node scripts/test-vnext-social-review-actions.mjs`.
+- Later packet commits extend this manifest with publishing, browser specs, fixtures, performance budgets, and rollback.
