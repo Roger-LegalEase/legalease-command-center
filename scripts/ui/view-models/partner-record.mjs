@@ -1,4 +1,5 @@
 import { recordVisibleToActor } from "../../global-search-service.mjs";
+import { buildPartnerOutreachIntegration } from "../../partner-outreach-integration.mjs";
 import { roleHasCapability } from "../../roles.mjs";
 import { buildPartnerActivity } from "./partner-activity.mjs";
 import { buildPartnerStageView } from "./partner-stage.mjs";
@@ -109,7 +110,7 @@ export function buildPartnerRecordView(state = {}, actor = {}, partnerId = "", n
     tabs:PARTNER_RECORD_TABS,
     overview:{ relationship:relationship(record), contacts:contacts(record, actor), notes:notes(record, actor), programs:programCards(stageView), sourceReferences:stageView.sourceReferences },
     activity,
-    outreach:{ available:false, state:"integration_pending", campaigns:[] },
+    outreach:buildPartnerOutreachIntegration(state, actor, id, now),
     files:{ available:false, state:"integration_pending", items:[] },
     safety:{ internalStageChanged:false, externalActions:0, fullStateReturned:false, sensitiveContentAuthorized:roleHasCapability(actor.role, "read_sensitive") }
   });
