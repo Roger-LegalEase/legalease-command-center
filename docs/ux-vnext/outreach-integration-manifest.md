@@ -46,3 +46,14 @@ All Outreach pages and endpoints use the existing global `COMMAND_CENTER_UX_VNEX
 - Browser: one active compact request, no `/api/state` dependency after boot, no mutation or provider request during normal rendering.
 
 Later packet sections extend this manifest without changing the CCX-401 boundary.
+
+## CCX-402 wiring
+
+- Import `buildCampaignWizardView` and `persistCampaignWizardDraft` from `scripts/campaign-wizard-service.mjs`.
+- Register compact `GET /api/ui/outreach/campaign/:encoded-stable-identity/draft` with authenticated `read_internal`.
+- Register scoped `POST /api/ui/outreach/campaign/:encoded-stable-identity/draft` with `manage_growth`, bounded JSON, CSRF/session enforcement, expected-version conflict handling, and a scoped single-record `campaigns` persistence adapter plus existing audit append.
+- Never accept a collection, record ID, execution flag, or arbitrary patch path from the browser. Resolve the vetted stable identity server-side.
+- Import the Campaign wizard page/controller and `/assets/ui/campaign-wizard.css` in the reserved shell composer. Route wizard entry through the vetted exact Campaign identity and a bounded `step` query.
+- Register `test:vnext-campaign-wizard` as `node scripts/test-vnext-campaign-wizard.mjs`.
+- Flag off: both endpoints return 404 before state access; the legacy Campaign flow remains unchanged.
+- Response target: under 100 KB and 250 ms. Save body target: under 32 KB.
