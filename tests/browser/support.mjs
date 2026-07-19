@@ -15,6 +15,7 @@ const criticalPaths = new Set([
   "/api/ui/inbox/action",
   "/api/ui/social",
   "/api/ui/social/results",
+  "/api/ui/partners",
   "/api/ui/quick-capture",
   "/api/ui/quick-capture/capabilities",
   "/api/ui/route-access"
@@ -82,7 +83,8 @@ function allowedOrigins(baseURL) {
     process.env.BROWSER_TEST_COMPOSER_BASE_URL,
     process.env.BROWSER_TEST_COMPOSER_RESTRICTED_BASE_URL,
     process.env.BROWSER_TEST_COMPOSER_RESTRICTED_READONLY_BASE_URL,
-    process.env.BROWSER_TEST_SOCIAL_RESTRICTED_BASE_URL
+    process.env.BROWSER_TEST_SOCIAL_RESTRICTED_BASE_URL,
+    process.env.BROWSER_TEST_PARTNERS_BASE_URL
   ].filter(Boolean).map((value) => new URL(value).origin));
 }
 
@@ -118,7 +120,7 @@ export const test = playwrightTest.extend({
     });
     page.on("response", (response) => {
       const url = new URL(response.url());
-      if (origins.has(url.origin) && criticalPaths.has(url.pathname) && response.status() >= 400) {
+      if (origins.has(url.origin) && (criticalPaths.has(url.pathname) || url.pathname.startsWith("/api/ui/partners/")) && response.status() >= 400) {
         if (consumeExpectedCriticalResponse(page, url.pathname)) return;
         failures.push(`critical response: ${response.status()} ${url.pathname}`);
       }

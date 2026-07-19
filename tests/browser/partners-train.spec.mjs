@@ -1,24 +1,27 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
 
-import { visualDocument, visualFixture, partnersHomePageHtml, partnerRecordPageHtml } from "../../scripts/partners-visual-harness.mjs";
+import { allowExpectedConsoleError, allowExpectedCriticalResponse, expect, openToday, test } from "./support.mjs";
 
 const widths = [1440, 1280, 1024, 768, 390];
+const baseURL = () => {
+  expect(process.env.BROWSER_TEST_PARTNERS_BASE_URL, "The integrated Partners fixture URL is required.").toBeTruthy();
+  return process.env.BROWSER_TEST_PARTNERS_BASE_URL;
+};
 
-async function setFixture(page, html, width = 1440) {
-  await page.setViewportSize({ width, height:width === 390 ? 844 : 900 });
-  await page.setContent(visualDocument(html), { waitUntil:"domcontentloaded" });
+async function openPartners(page, hash = "#partners") {
+  await openToday(page, `${baseURL()}/${hash}`);
+  await expect(page.locator("main#app").getByRole("heading", { name:hash.startsWith("#partners/partner/") ? /.+/ : "Partners", level:1 })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => Math.max(window.__LE_PARTNERS_HOME_METRICS?.activeRequests || 0, window.__LE_PARTNER_RECORD_METRICS?.activeRequests || 0))).toBe(0);
+}
+
+async function waitForPartnerReads(page) {
+  await expect.poll(() => page.evaluate(() => Math.max(window.__LE_PARTNERS_HOME_METRICS?.activeRequests || 0, window.__LE_PARTNER_RECORD_METRICS?.activeRequests || 0))).toBe(0);
 }
 
 test("Partners train preserves exact links, safe actions, history, and accessibility", async ({ page }) => {
-  const fixture = visualFixture();
   const requests = [];
-  const consoleErrors = [];
-  const pageErrors = [];
-  page.on("request", (request) => requests.push(`${request.method()} ${request.url()}`));
-  page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
-  page.on("pageerror", (error) => pageErrors.push(error.message));
-  await setFixture(page, partnersHomePageHtml(fixture.home("list")));
+  page.on("request", (request) => requests.push({ method:request.method(), pathname:new URL(request.url()).pathname }));
+  await openPartners(page);
 
   const partnerLink = page.getByRole("link", { name:"Open Partner: Community Justice Network" });
   await expect(partnerLink).toHaveAttribute("href", "#partners/partner/partner-community");
@@ -26,49 +29,100 @@ test("Partners train preserves exact links, safe actions, history, and accessibi
   await expect(partnerLink).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/#partners\/partner\/partner-community$/);
+  await expect(page.getByRole("heading", { name:"Community Justice Network", level:1 })).toBeVisible();
+  await waitForPartnerReads(page);
   await page.goBack();
-  await expect(page).not.toHaveURL(/#partners\/partner\/partner-community$/);
+  await expect(page.getByRole("heading", { name:"Partners", level:1 })).toBeVisible();
+  await waitForPartnerReads(page);
   await page.goForward();
-  await expect(page).toHaveURL(/#partners\/partner\/partner-community$/);
+  await expect(page.getByRole("heading", { name:"Community Justice Network", level:1 })).toBeVisible();
+  await waitForPartnerReads(page);
 
-  await setFixture(page, partnerRecordPageHtml(fixture.record("outreach")));
+  await page.getByRole("navigation", { name:"Partner record sections" }).getByRole("link", { name:"Outreach", exact:true }).click();
   await expect(page.getByRole("link", { name:"Open Campaign: Community planning outreach" })).toHaveAttribute("href", "#outreach/campaign/campaign-community");
+  const mutationsBeforeOpening = requests.filter((request) => request.method !== "GET").length;
   await page.getByRole("button", { name:"Create outreach" }).click();
+  await expect(page.getByRole("heading", { name:"Outreach campaign" })).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name:"Close creation workspace" }).click();
+  await expect(page.getByRole("heading", { name:"Outreach campaign" })).toBeHidden();
   await page.getByRole("button", { name:"Add file" }).click();
-  expect(requests.filter((request) => !request.startsWith("GET about:"))).toEqual([]);
+  await expect(page.getByRole("heading", { name:"File or folder" })).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name:"Close creation workspace" }).click();
+  expect(requests.filter((request) => request.method !== "GET")).toHaveLength(mutationsBeforeOpening);
 
-  await setFixture(page, partnerRecordPageHtml(fixture.record("files")));
+  await page.getByRole("navigation", { name:"Partner record sections" }).getByRole("link", { name:"Files", exact:true }).click();
   await expect(page.getByRole("link", { name:"Open File: Community scope brief" })).toHaveAttribute("href", "#files/data-room-item/file-partner-brief");
   await expect(page.getByRole("button", { name:"Create proposal" })).toBeVisible();
-  const appliedRecord = fixture.record("outreach", fixture.scenario.state, fixture.scenario.newPartnerId);
-  await setFixture(page, partnerRecordPageHtml(appliedRecord));
+
+  await openPartners(page, "#partners/partner/partner-train-partner-example-01?tab=outreach");
   await expect(page.getByText("Applied stage: In conversation", { exact:true })).toBeVisible();
   await expect(page.getByText("Applied", { exact:true })).toBeVisible();
   await expect(page.getByRole("button", { name:"Review and apply" })).toHaveCount(0);
+
+  const partnerRequests = requests.filter((request) => request.pathname === "/api/ui/partners" || request.pathname.startsWith("/api/ui/partners/"));
+  expect(partnerRequests.length).toBeGreaterThan(0);
+  expect(requests.filter((request) => request.pathname === "/api/state")).toEqual([]);
+  expect(await page.evaluate(() => ({ home:window.__LE_PARTNERS_HOME_METRICS, record:window.__LE_PARTNER_RECORD_METRICS }))).toMatchObject({
+    home:{ fullStateReads:0, mutations:0, externalActions:0, maximumActiveRequests:1 },
+    record:{ fullStateReads:0, mutations:0, externalActions:0, maximumActiveRequests:1 }
+  });
   const axe = await new AxeBuilder({ page }).analyze();
   expect(axe.violations.filter((violation) => ["serious", "critical"].includes(violation.impact))).toEqual([]);
-  expect(consoleErrors).toEqual([]);
-  expect(pageErrors).toEqual([]);
 });
 
 test("Partners train covers responsive and availability states without overflow", async ({ page }) => {
-  const fixture = visualFixture();
   for (const width of widths) {
-    await setFixture(page, partnersHomePageHtml(fixture.home("pipeline")), width);
+    await page.setViewportSize({ width, height:width === 390 ? 844 : 900 });
+    await openPartners(page, "#partners?view=pipeline");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${width}px home overflow`).toBeLessThanOrEqual(0);
-    await setFixture(page, partnerRecordPageHtml(fixture.record("overview")), width);
+    await openPartners(page, "#partners/partner/partner-community");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${width}px record overflow`).toBeLessThanOrEqual(0);
   }
-  await setFixture(page, partnersHomePageHtml(null));
-  await expect(page.getByRole("status")).toContainText("Loading Partners");
-  await setFixture(page, partnersHomePageHtml(fixture.empty));
+
+  const homeResponse = await page.request.get(`${baseURL()}/api/ui/partners?view=list&limit=24`);
+  expect(homeResponse.ok()).toBe(true);
+  const home = await homeResponse.json();
+  await page.route("**/api/ui/partners?*", async (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    const filtered = Boolean(query.get("search"));
+    await route.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({
+      ...home,
+      selectedView:"list",
+      query:{ ...home.query, search:filtered ? "No match" : "" },
+      availability:{ ...home.availability, state:filtered ? "filtered_empty" : "available_empty" },
+      items:[],
+      pipeline:[],
+      summary:{ ...home.summary, matchingPartners:0 },
+      emptyState:filtered
+        ? { title:"No Partners match these filters", message:"Clear or change a filter to see Partners." }
+        : { title:"No Partners yet", message:"Add a Partner when a real relationship begins." }
+    }) });
+  });
+  await openPartners(page);
   await expect(page.getByRole("heading", { name:"No Partners yet" })).toBeVisible();
-  await setFixture(page, partnersHomePageHtml(fixture.filteredEmpty));
+  await page.evaluate(() => { location.hash = "partners?view=list&search=No+match"; });
   await expect(page.getByRole("heading", { name:"No Partners match these filters" })).toBeVisible();
-  await setFixture(page, partnersHomePageHtml({ available:false }));
-  await expect(page.getByRole("alert")).toContainText("Partners are unavailable");
-  await setFixture(page, partnerRecordPageHtml({ available:false }));
-  await expect(page.getByRole("alert")).toContainText("not found or this account cannot view");
-  await page.setContent(visualDocument('<section role="alert"><h1>Session expired</h1><p>Sign in again. No changes were made.</p></section>'));
-  await expect(page.getByRole("heading", { name:"Session expired" })).toBeVisible();
+  await page.unroute("**/api/ui/partners?*");
+
+  const requestsBeforeReset = await page.evaluate(() => window.__LE_PARTNERS_HOME_METRICS.requests);
+  await page.evaluate(() => { location.hash = "partners"; });
+  await expect.poll(() => page.evaluate(() => window.__LE_PARTNERS_HOME_METRICS.requests)).toBeGreaterThan(requestsBeforeReset);
+  await expect(page.getByRole("heading", { name:"Partners", level:1 })).toBeVisible();
+  await waitForPartnerReads(page);
+  await page.route("**/api/ui/partners?*", (route) => route.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ ok:false }) }));
+  await page.evaluate(() => window.__LE_PARTNERS_HOME.load());
+  await expect(page.getByRole("heading", { name:"Partners could not load" })).toBeVisible();
+  await page.unroute("**/api/ui/partners?*");
+
+  allowExpectedCriticalResponse(page, "/api/ui/partners");
+  allowExpectedConsoleError(page, /status of 403/);
+  await page.route("**/api/ui/partners?*", (route) => route.fulfill({ status:403, contentType:"application/json", body:JSON.stringify({ ok:false, outcome:"unauthorized" }) }));
+  await page.evaluate(() => window.__LE_PARTNERS_HOME.load());
+  await expect(page.getByRole("heading", { name:"Partners need additional access" })).toBeVisible();
+  await page.unroute("**/api/ui/partners?*");
+
+  await page.evaluate(() => window.__LE_SHELL_RESILIENCE.showSessionExpired());
+  await expect(page.getByRole("heading", { name:"Your session ended" })).toBeVisible();
 });

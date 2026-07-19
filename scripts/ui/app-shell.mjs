@@ -33,6 +33,12 @@ import {
 } from "./pages/social-home.mjs";
 import { POST_COMPOSER_STYLESHEET_PATH, postComposerBrowserSource } from "./pages/post-composer.mjs";
 import { socialResultsBrowserSource } from "./pages/social-results.mjs";
+import {
+  PARTNERS_ACCESSIBILITY_STYLESHEET_PATH,
+  PARTNERS_HOME_STYLESHEET_PATH,
+  partnersHomeBrowserSource
+} from "./pages/partners-home.mjs";
+import { PARTNER_RECORD_STYLESHEET_PATHS, partnerRecordBrowserSource } from "./pages/partner-record.mjs";
 import { INITIAL_VNEXT_LOADING_HTML } from "./shell-states.mjs";
 import {
   CREATE_MENU_OPTIONS,
@@ -492,7 +498,10 @@ function disableSocialFullStateRefresh(html) {
   const marker = "      loadFullStateInBackground();";
   if (!html.includes(marker)) return html;
   return html.replace(marker, `      const compactSocialRoute = window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve(location.hash || "#today");
-      if (!(compactSocialRoute.kind === "page" && compactSocialRoute.canonicalRoute === "queue")) loadFullStateInBackground();`);
+      const onCompactSocial = compactSocialRoute.kind === "page" && compactSocialRoute.canonicalRoute === "queue";
+      const onCompactPartners = (compactSocialRoute.kind === "page" && compactSocialRoute.canonicalRoute === "partners")
+        || (compactSocialRoute.kind === "object" && compactSocialRoute.objectType === "Partner" && compactSocialRoute.sourceKind === "partners");
+      if (!(onCompactSocial || onCompactPartners)) loadFullStateInBackground();`);
 }
 
 export function renderVNextDesktopShell(legacyHtml = "") {
@@ -509,13 +518,13 @@ export function renderVNextDesktopShell(legacyHtml = "") {
   html = replaceInitialLoadingSurface(html);
   html = html.replace(
     "</head>",
-    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
+    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_HOME_STYLESHEET_PATH))}" />\n  ${PARTNER_RECORD_STYLESHEET_PATHS.map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ")}\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_ACCESSIBILITY_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
   );
   html = html.replace(bodyMarker, '<body class="vnext-app-shell" data-command-center-shell="vnext">');
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n</body>`);
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource()}</script>\n<script>${partnerRecordBrowserSource()}</script>\n</body>`);
   return html;
 }
 

@@ -218,7 +218,7 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 assert.equal(sha256(readFileSync("scripts/ui/route-compatibility.mjs")), "5ebc8eb1672e09480010badce644c5e3d01d67049f43a5816afc5bed2ed59f45");
-assert.equal(sha256(serverSource), "4e978fb5b0adb4df3b7d70a7c6e5785b0ae9313c396f80ae0bfed5201e77510c");
+assert.doesNotMatch(serverSource, /from\s+["'][^"']*view-models\/file-view\.mjs["']/, "Shared integration must not couple the server directly to the File projection.");
 assert.match(readFileSync("package.json", "utf8"), /"test:vnext-file-projection": "node scripts\/test-vnext-file-projection\.mjs"/);
 
 function performanceFixture(count = 120) {

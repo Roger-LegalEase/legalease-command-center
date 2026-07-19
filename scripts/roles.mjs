@@ -180,6 +180,12 @@ export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", 
   if (verb === "GET" && path === "/api/ui/inbox") return ["read_internal"];
   if (verb === "GET" && path === "/api/ui/social") return ["read_internal"];
   if (verb === "GET" && path === "/api/ui/social/results") return ["read_internal"];
+  if (verb === "GET" && (path === "/api/ui/partners" || /^\/api\/ui\/partners\/[^/]+(?:\/(?:outreach|files))?$/.test(path))) return ["read_internal"];
+  if (verb === "POST" && path === "/api/ui/partners/outreach/selection") return ["read_internal"];
+  if (verb === "POST" && /^\/api\/ui\/partners\/[^/]+\/activity$/.test(path)) return ["add_notes"];
+  if (verb === "POST" && /^\/api\/ui\/partners\/[^/]+\/next-action(?:\/complete)?$/.test(path)) return ["manage_tasks"];
+  if (verb === "POST" && (path === "/api/ui/partners/outreach/campaign"
+    || /^\/api\/ui\/partners\/[^/]+\/(?:outreach\/follow-up|stage-suggestions\/[^/]+\/apply|programs(?:\/[^/]+\/artifacts)?|files)$/.test(path))) return ["manage_growth"];
   if (verb === "GET" && /^\/api\/ui\/social\/post\/[^/]+\/composer$/.test(path)) return ["read_internal"];
   if (verb === "POST" && /^\/api\/ui\/social\/post\/[^/]+\/save$/.test(path)) return ["manage_content_drafts"];
   if (verb === "GET" && path === "/api/ui/quick-capture/capabilities") return ["read_internal"];

@@ -129,6 +129,7 @@ import { buildAuthorizedInboxPage } from "./inbox-page-service.mjs";
 import { buildAuthorizedTodayPage } from "./today-page-service.mjs";
 import { buildAuthorizedSocialHome } from "./social-home-service.mjs";
 import { buildSocialResultsView } from "./ui/view-models/social-results.mjs";
+import { PARTNER_API_BODY_LIMIT, handlePartnerApiRequest, isPartnerApiPath } from "./partner-api-integration.mjs";
 import { buildPostComposerContract, composerSavePath, normalizeComposerPatch } from "./post-composer-service.mjs";
 import {
   INBOX_ACTION_BODY_LIMIT,
@@ -35110,6 +35111,16 @@ async function handleRequest(request, response) {
       sendJson(response, { error:"Social Results are unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
       return;
     }
+    else if (isPartnerApiPath(url.pathname)) {
+      sendJson(response, {
+        ok:false,
+        outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
+        error:accessDecision.status === 401
+          ? "Your session ended. Sign in again before opening Partners."
+          : "Partners are unavailable for this account. No protected details were loaded."
+      }, accessDecision.status || 403);
+      return;
+    }
     else if (/^\/api\/ui\/social\/post\/[^/]+\/(?:composer|save)$/.test(url.pathname)) {
       sendJson(response, { ok:false, outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized", message:accessDecision.status === 401 ? "Your session ended. Sign in again before opening this Post." : "This Post is unavailable for this account." }, accessDecision.status || 403);
       return;
@@ -35185,6 +35196,27 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/test/fixture-state" && request.method === "GET" && process.env.COMMAND_CENTER_TEST_MODE === "true") {
     sendJson(response, await store.readState());
+    return;
+  }
+
+  if (isPartnerApiPath(url.pathname)) {
+    const input = ["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase())
+      ? {}
+      : await readBoundedJson(request, { limit:PARTNER_API_BODY_LIMIT });
+    const execute = () => handlePartnerApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = ["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase())
+      ? await execute()
+      : await serializeStateMutation(execute);
+    sendJson(response, result.body || { ok:false, error:"Partner route not found." }, result.status || 404);
     return;
   }
 
