@@ -21,4 +21,7 @@ Status: additive Lane A contract. Reserved runtime, role, shell, navigation, pac
 - Package script: `test:vnext-social-creative-actions` → `node scripts/test-vnext-social-creative-actions.mjs`.
 - `POST /api/ui/social/post/:postId/variants` → `saveSocialVariants` from `scripts/social-variant-actions.mjs`. Supply the same atomic `commitPostMutation` adapter; preserve stored deselected variants, stable IDs, creative references, explicit blanks, and fallback absence exactly.
 - Package script: `test:vnext-social-variant-actions` → `node scripts/test-vnext-social-variant-actions.mjs`.
-- Later packet commits extend this manifest with scheduling, review, publishing, browser specs, fixtures, performance budgets, and rollback.
+- `GET /api/ui/social/calendar` → `buildSocialCalendarContract`; return only the compact contract. Register `renderSocialCalendarPage` and `assets/ui/social-calendar.css` for the canonical calendar route while preserving existing aliases through the vetted parser.
+- `POST /api/ui/social/post/:postId/schedule` → `saveSocialSchedule`; provide atomic `commitPostMutation`. The adapter must persist only `scheduledFor`, `timezone`, and `scheduleStatus`, expected-version/request-id truth, plus supplied activity/audit evidence. It must not approve, publish, retry, or call a provider.
+- Package script: `test:vnext-social-schedule-actions` → `node scripts/test-vnext-social-schedule-actions.mjs`.
+- Later packet commits extend this manifest with review, publishing, browser specs, fixtures, performance budgets, and rollback.
