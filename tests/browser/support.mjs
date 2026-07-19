@@ -84,8 +84,9 @@ function allowedOrigins(baseURL) {
     process.env.BROWSER_TEST_COMPOSER_RESTRICTED_BASE_URL,
     process.env.BROWSER_TEST_COMPOSER_RESTRICTED_READONLY_BASE_URL,
     process.env.BROWSER_TEST_SOCIAL_RESTRICTED_BASE_URL,
-    process.env.BROWSER_TEST_PARTNERS_BASE_URL
-    ,process.env.BROWSER_TEST_OUTREACH_BASE_URL
+    process.env.BROWSER_TEST_PARTNERS_BASE_URL,
+    process.env.BROWSER_TEST_OUTREACH_BASE_URL,
+    process.env.BROWSER_TEST_FILES_BASE_URL
   ].filter(Boolean).map((value) => new URL(value).origin));
 }
 
@@ -121,7 +122,7 @@ export const test = playwrightTest.extend({
     });
     page.on("response", (response) => {
       const url = new URL(response.url());
-      if (origins.has(url.origin) && (criticalPaths.has(url.pathname) || url.pathname.startsWith("/api/ui/partners/") || url.pathname.startsWith("/api/ui/outreach/")) && response.status() >= 400) {
+      if (origins.has(url.origin) && (criticalPaths.has(url.pathname) || url.pathname.startsWith("/api/ui/partners/") || url.pathname.startsWith("/api/ui/outreach/") || url.pathname.startsWith("/api/ui/files")) && response.status() >= 400) {
         if (consumeExpectedCriticalResponse(page, url.pathname)) return;
         failures.push(`critical response: ${response.status()} ${url.pathname}`);
       }

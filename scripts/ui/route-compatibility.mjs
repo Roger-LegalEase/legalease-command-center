@@ -304,6 +304,7 @@ export function resolveRouteWithContract(input = "", contract = ROUTE_COMPATIBIL
 
   if (parts.length !== 1 || !/^[a-z0-9-]+$/i.test(rawRoute)) return unsafe("malformed_route");
   const canonicalRoute = contract.aliasTargets[rawRoute] || rawRoute;
+  const canonicalSuffix = contract.aliasQueries?.[rawRoute] || suffix;
   if (contract.routeDestinations[canonicalRoute]) {
     const aliasUsed = contract.aliasTargets[rawRoute] && rawRoute !== canonicalRoute ? rawRoute : null;
     return freeze({
@@ -316,7 +317,7 @@ export function resolveRouteWithContract(input = "", contract = ROUTE_COMPATIBIL
       objectType:null,
       sourceKind:null,
       sourceId:null,
-      safeHash:`#${canonicalRoute}${suffix}`,
+      safeHash:`#${canonicalRoute}${canonicalSuffix}`,
       recoveryReason:null
     });
   }
@@ -382,8 +383,18 @@ export function routeCompatibilityBrowserSource({ outreachEnabled = false, files
     aliasTargets:{
       ...ROUTE_COMPATIBILITY_CONTRACT.aliasTargets,
       ...(outreachEnabled ? { campaigns:"outreach", campaign:"outreach", "campaign-control":"outreach", "campaigns-control":"outreach" } : {}),
-      ...(filesEnabled ? { proof:"files" } : {})
-    }
+      ...(filesEnabled ? { proof:"files", "data-room":"files", dataroom:"files", "evidence-room":"files", reports:"files", assets:"files", metrics:"files", kpis:"files" } : {})
+    },
+    aliasQueries:filesEnabled ? {
+      proof:"",
+      "data-room":"?collection=investor-room",
+      dataroom:"?collection=investor-room",
+      "evidence-room":"?collection=compliance-evidence",
+      reports:"?view=all",
+      assets:"?collection=brand-assets",
+      metrics:"?collection=investor-room",
+      kpis:"?collection=investor-room"
+    } : {}
   };
   const contract = JSON.stringify(contractValue).replaceAll("<", "\\u003c");
   return `(() => {\n    "use strict";\n    const deepFreeze = (value) => {\n      if (value && typeof value === "object" && !Object.isFrozen(value)) {\n        Object.values(value).forEach(deepFreeze);\n        Object.freeze(value);\n      }\n      return value;\n    };\n    const contract = deepFreeze(${contract});\n    const resolveRouteWithContract = ${resolveRouteWithContract.toString()};\n    window.__LE_VNEXT_ROUTE_COMPATIBILITY = Object.freeze({\n      contract,\n      resolve:(input) => resolveRouteWithContract(input, contract)\n    });\n  })();`;

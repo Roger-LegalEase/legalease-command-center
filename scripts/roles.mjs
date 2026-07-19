@@ -182,6 +182,9 @@ export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", 
   if (verb === "GET" && path === "/api/ui/social/results") return ["read_internal"];
   if (verb === "GET" && (path === "/api/ui/outreach" || /^\/api\/ui\/outreach\/campaign\/[^/]+(?:\/draft)?$/.test(path))) return ["read_internal"];
   if (verb === "POST" && /^\/api\/ui\/outreach\/campaign\/[^/]+\/(?:draft|test-send|assist|review-action|status-action|reply-action)$/.test(path)) return ["manage_growth"];
+  if (verb === "GET" && (path === "/api/ui/files" || path === "/api/ui/files/investor-room" || /^\/api\/ui\/files\/[^/]+\/[^/]+(?:\/content)?$/.test(path))) return ["read_internal"];
+  if (verb === "POST" && (path === "/api/ui/files/upload" || path === "/api/ui/files/reports/generate" || /^\/api\/ui\/files\/(?:reports\/[^/]+\/collection|[^/]+\/[^/]+\/(?:replace|organize))$/.test(path))) return ["manage_growth"];
+  if (verb === "POST" && /^\/api\/ui\/files\/[^/]+\/[^/]+\/access\/(?:grant|revoke)$/.test(path)) return ["manage_roles"];
   if (verb === "GET" && (path === "/api/ui/partners" || /^\/api\/ui\/partners\/[^/]+(?:\/(?:outreach|files))?$/.test(path))) return ["read_internal"];
   if (verb === "POST" && path === "/api/ui/partners/outreach/selection") return ["read_internal"];
   if (verb === "POST" && /^\/api\/ui\/partners\/[^/]+\/activity$/.test(path)) return ["add_notes"];

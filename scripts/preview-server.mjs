@@ -131,6 +131,10 @@ import { buildAuthorizedSocialHome } from "./social-home-service.mjs";
 import { buildSocialResultsView } from "./ui/view-models/social-results.mjs";
 import { PARTNER_API_BODY_LIMIT, handlePartnerApiRequest, isPartnerApiPath } from "./partner-api-integration.mjs";
 import { OUTREACH_API_BODY_LIMIT, handleOutreachApiRequest, isOutreachApiPath } from "./outreach-api-integration.mjs";
+import { FILES_JSON_BODY_LIMIT, FILES_MULTIPART_BODY_LIMIT, handleFilesApiRequest, isFilesApiPath, parseFilesMultipart } from "./files-api-integration.mjs";
+import { createLocalFilesStorage, createSupabaseFilesStorage } from "./files-storage-adapter.mjs";
+import { INVESTOR_ROOM_REQUIREMENTS } from "./investor-room-requirements.mjs";
+import { generatePartnerArtifact } from "./partner-artifact-service.mjs";
 import { buildPostComposerContract, composerSavePath, normalizeComposerPatch } from "./post-composer-service.mjs";
 import {
   INBOX_ACTION_BODY_LIMIT,
@@ -8059,6 +8063,41 @@ async function writeChangedCollections(before = {}, after = {}) {
   }
   await store.writeCollections(patch);
   return after;
+}
+
+function filesStorageAdapter() {
+  if (isHostedProduction(process.env)) {
+    return createSupabaseFilesStorage({
+      baseUrl:process.env.SUPABASE_URL,
+      serviceRoleKey:process.env.SUPABASE_SERVICE_ROLE_KEY,
+      bucket:process.env.COMMAND_CENTER_FILES_STORAGE_BUCKET || "command-center-files-private"
+    });
+  }
+  return createLocalFilesStorage({ rootDir:process.env.COMMAND_CENTER_FILES_DATA_DIR || path.resolve(process.cwd(), "data/files") });
+}
+
+async function generateReviewedFilesReport({ reportType, requestId:filesRequestId, actor }) {
+  const artifactType = ({ weekly_operating:"weekly_report", investor_update:"final_report" })[String(reportType || "").trim()];
+  if (!artifactType) throw new Error("No reviewed authoritative generator is available for this report type.");
+  const state = await store.readState();
+  const programs = serverList(state.partnerPrograms).slice().sort((left, right) => String(left.id || "").localeCompare(String(right.id || "")));
+  if (programs.length !== 1) throw new Error("Choose a Partner program before generating this report. No File was created.");
+  const program = programs[0];
+  const partnerId = String(program.relatedPartnerId || program.partnerId || "").trim();
+  if (!partnerId) throw new Error("The reviewed Partner program does not have an authoritative Partner identity.");
+  const generated = generatePartnerArtifact(state, partnerId, String(program.id || ""), {
+    requestId:filesRequestId,
+    artifactType
+  }, { actor, now:new Date().toISOString() });
+  const report = { ...generated.file, filesGenerationRequestId:filesRequestId };
+  const reports = generated.state.reports.map((item) => item.id === report.id ? report : item);
+  await store.writeCollections({
+    partnerProgramArtifacts:generated.state.partnerProgramArtifacts,
+    reports,
+    activityEvents:generated.state.activityEvents,
+    auditHistory:generated.state.auditHistory
+  });
+  return { report };
 }
 
 async function readJson(request) {
@@ -35131,6 +35170,16 @@ async function handleRequest(request, response) {
       }, accessDecision.status || 403);
       return;
     }
+    else if (isFilesApiPath(url.pathname)) {
+      sendJson(response, {
+        ok:false,
+        outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
+        error:accessDecision.status === 401
+          ? "Your session ended. Sign in again before opening Files."
+          : "Files are unavailable for this account. No protected details were loaded."
+      }, accessDecision.status || 403);
+      return;
+    }
     else if (isPartnerApiPath(url.pathname)) {
       sendJson(response, {
         ok:false,
@@ -35259,6 +35308,48 @@ async function handleRequest(request, response) {
       ? await execute()
       : await serializeStateMutation(execute);
     sendJson(response, result.body || { ok:false, error:"Outreach route not found." }, result.status || 404);
+    return;
+  }
+
+  if (isFilesApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const multipart = /^multipart\/form-data;/i.test(String(request.headers["content-type"] || ""));
+    const upload = mutation && multipart
+      ? parseFilesMultipart(await readBoundedBody(request, { limit:FILES_MULTIPART_BODY_LIMIT }), request.headers["content-type"])
+      : null;
+    const input = mutation && !multipart ? await readBoundedJson(request, { limit:FILES_JSON_BODY_LIMIT }) : {};
+    let storage;
+    try { storage = filesStorageAdapter(); } catch { storage = null; }
+    const execute = () => handleFilesApiRequest({
+      enabled:filesVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      upload,
+      store,
+      storage,
+      reportGenerator:generateReviewedFilesReport,
+      cursorSecret:process.env.COMMAND_CENTER_FILES_CURSOR_SECRET || "",
+      requirements:INVESTOR_ROOM_REQUIREMENTS,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
+    if (result.raw) {
+      const allowedTypes = new Set(["application/pdf", "image/png", "image/jpeg", "image/webp", "image/gif", "text/plain", "text/markdown", "text/csv"]);
+      const contentType = allowedTypes.has(result.raw.contentType) ? result.raw.contentType : "application/octet-stream";
+      const fileName = String(result.raw.fileName || "file").replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 200) || "file";
+      response.writeHead(result.status || 200, {
+        ...securityHeaders({ env:process.env, sensitive:true }),
+        "content-type":contentType,
+        "content-length":result.raw.body.length,
+        ...(result.raw.download ? { "content-disposition":`attachment; filename="${fileName}"` } : {})
+      });
+      response.end(result.raw.body);
+      return;
+    }
+    sendJson(response, result.body || { ok:false, error:"Files route not found." }, result.status || 404);
     return;
   }
 

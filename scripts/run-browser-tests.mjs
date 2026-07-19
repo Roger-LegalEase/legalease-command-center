@@ -53,6 +53,7 @@ function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCred
     COMMAND_CENTER_UX_VNEXT:vnext ? "true" : "false",
     COMMAND_CENTER_UX_VNEXT_OUTREACH:productFlags.outreach === true ? "true" : "false",
     COMMAND_CENTER_UX_VNEXT_FILES:productFlags.files === true ? "true" : "false",
+    COMMAND_CENTER_FILES_CURSOR_SECRET:productFlags.files === true ? "synthetic-browser-files-cursor-secret" : "",
     LIVE_POSTING_ENABLED:"false",
     ENABLE_LIVE_LINKEDIN_POSTING:"false",
     ENABLE_LIVE_FACEBOOK_POSTING:"false",
@@ -679,6 +680,19 @@ const todayState = todayFixtureState(seedState);
 const socialState = socialFixtureState(seedState);
 const composerRestrictedState = structuredClone(socialState);
 const partnersState = structuredClone(buildPartnersTrainScenario().state);
+const filesState = structuredClone(fixtureState);
+filesState.dataRoomItems = [{
+  id:"company-overview",
+  title:"Synthetic company overview",
+  status:"approved",
+  owner:"Founder",
+  collection:"investor-room",
+  mimeType:"text/markdown",
+  storageRef:"files/synthetic/company-overview.md",
+  verifiedAt:"2026-07-18T12:00:00.000Z",
+  updatedAt:"2026-07-18T12:00:00.000Z",
+  allowedRoles:["owner", "admin", "operator", "viewer"]
+}];
 const composerTemplate = composerRestrictedState.posts.find((post) => post.id === "idea-01");
 composerRestrictedState.posts.push(
   { ...structuredClone(composerTemplate), id:"composer-hidden", title:"Nondisclosed composer Post", visibility:"owner_only", allowedRoles:["owner"], _version:3 },
@@ -702,6 +716,7 @@ const composerRestrictedDataPath = path.join(tempRoot, "composer-restricted-stat
 const composerRestrictedReadonlyDataPath = path.join(tempRoot, "composer-restricted-readonly-state.json");
 const partnersDataPath = path.join(tempRoot, "partners-state.json");
 const outreachDataPath = path.join(tempRoot, "outreach-state.json");
+const filesDataPath = path.join(tempRoot, "files-state.json");
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
@@ -716,7 +731,8 @@ await Promise.all([
   writeFile(composerRestrictedDataPath, `${JSON.stringify(composerRestrictedState, null, 2)}\n`, { mode:0o600 }),
   writeFile(composerRestrictedReadonlyDataPath, `${JSON.stringify(composerRestrictedState, null, 2)}\n`, { mode:0o600 }),
   writeFile(partnersDataPath, `${JSON.stringify(partnersState, null, 2)}\n`, { mode:0o600 }),
-  writeFile(outreachDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 })
+  writeFile(outreachDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(filesDataPath, `${JSON.stringify(filesState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
 const restrictedSessionSecret = crypto.randomBytes(32).toString("base64url");
@@ -818,6 +834,12 @@ try {
     vnext:true,
     productFlags:{ outreach:true }
   }));
+  servers.push(await startServer({
+    name:"files",
+    dataPath:filesDataPath,
+    vnext:true,
+    productFlags:{ files:true }
+  }));
   const runnerEnv = {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -840,6 +862,7 @@ try {
     BROWSER_TEST_COMPOSER_RESTRICTED_READONLY_BASE_URL:servers[11].baseURL,
     BROWSER_TEST_PARTNERS_BASE_URL:servers[12].baseURL,
     BROWSER_TEST_OUTREACH_BASE_URL:servers[13].baseURL,
+    BROWSER_TEST_FILES_BASE_URL:servers[14].baseURL,
     BROWSER_TEST_COMPOSER_RESTRICTED_CREDENTIALS:JSON.stringify(composerRestrictedCredentials)
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));

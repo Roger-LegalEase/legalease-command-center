@@ -64,14 +64,15 @@ export function createSupabaseFilesStorage({ baseUrl, serviceRoleKey, bucket = "
       body
     });
     if (!response.ok) throw new Error("Secure file storage did not complete.");
-    return safe;
+    return { safe, response };
   };
   return Object.freeze({
     mode:"hosted",
     async put({ objectPath, bytes, contentType }) {
-      const safe = await request("POST", objectPath, bytes, contentType);
+      const { safe } = await request("POST", objectPath, bytes, contentType);
       return { objectRef:`supabase://${bucketName}/${safe}`, publicUrl:null };
     },
+    async get({ objectPath }) { const { response } = await request("GET", objectPath); return Buffer.from(await response.arrayBuffer()); },
     async remove({ objectPath }) { await request("DELETE", objectPath); }
   });
 }

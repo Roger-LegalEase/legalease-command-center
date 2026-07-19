@@ -12,7 +12,7 @@ function previewHtml(preview, name) {
   return `<a class="file-detail-primary" href="${escapeAttribute(preview.href)}">Open reviewed source</a>`;
 }
 
-export function renderFileDetails(details = {}) {
+export function renderFileDetails(details = {}, { sharingControls = "" } = {}) {
   if (!details?.file) return `<section class="file-detail-state" role="alert"><h1>File not available</h1><p>The file may not exist or this account may not have access.</p><a href="#files">Back to Files</a></section>`;
   const file = details.file;
   return `<section class="file-detail-page" data-file-details aria-labelledby="file-detail-title">
@@ -21,7 +21,7 @@ export function renderFileDetails(details = {}) {
     <div class="file-detail-panel" role="tabpanel" data-file-panel="preview">${previewHtml(details.preview, file.name)}</div>
     <div class="file-detail-panel" role="tabpanel" data-file-panel="details" hidden><dl><div><dt>Status</dt><dd>${unavailable(file.status?.label)}</dd></div><div><dt>Owner</dt><dd>${unavailable(file.owner)}</dd></div><div><dt>Modified</dt><dd>${unavailable(file.modifiedAt)}</dd></div><div><dt>Verified</dt><dd>${unavailable(file.verifiedAt)}</dd></div><div><dt>Authoritative source</dt><dd>${escapeHtml(file.sourceRef.collection)}</dd></div></dl></div>
     <div class="file-detail-panel" role="tabpanel" data-file-panel="activity" hidden>${details.activity.length ? `<ol class="file-activity">${details.activity.map((event) => `<li><strong>${escapeHtml(event.label)}</strong><time datetime="${escapeAttribute(event.occurredAt)}">${escapeHtml(event.occurredAt)}</time></li>`).join("")}</ol>` : '<p class="file-detail-unavailable">No authorized activity is available.</p>'}</div>
-    <div class="file-detail-panel" role="tabpanel" data-file-panel="sharing" hidden><p><strong>Visibility:</strong> ${escapeHtml(details.sharing.visibility)}</p><p><strong>Access:</strong> ${details.sharing.allowedRoles.length ? escapeHtml(details.sharing.allowedRoles.join(", ")) : '<span class="file-detail-unavailable">Unavailable</span>'}</p><p>Storage location does not grant public access.</p></div>
+    <div class="file-detail-panel" role="tabpanel" data-file-panel="sharing" hidden><p><strong>Visibility:</strong> ${escapeHtml(details.sharing.visibility)}</p><p><strong>Access:</strong> ${details.sharing.allowedRoles.length ? escapeHtml(details.sharing.allowedRoles.join(", ")) : '<span class="file-detail-unavailable">Unavailable</span>'}</p><p>Storage location does not grant public access.</p>${sharingControls}</div>
     <div class="file-detail-panel" role="tabpanel" data-file-panel="related" hidden>${details.related.length ? `<ul class="file-related">${details.related.map((item) => `<li><a href="${escapeAttribute(item.href)}">Open related ${escapeHtml(item.kind)}</a></li>`).join("")}</ul>` : '<p class="file-detail-unavailable">No related records are available.</p>'}</div>
   </section>`;
 }
