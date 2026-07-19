@@ -36,6 +36,16 @@ Status: additive Lane A contract. Integration-owned runtime, shell, route, role,
 - No example text is a record. It is reviewed instructional copy only, contains no identity, count, status, or completion claim, and is omitted for unavailable/unauthorized states.
 - Package registration: `test:vnext-discovery-empty-states` → `node scripts/test-vnext-discovery-empty-states.mjs`.
 
+## CCX-703 — Contextual help
+
+- Import `buildContextualHelp`, render `renderContextualHelp` once inside the authenticated shell, and register `discoveryHelpBrowserSource` plus `/assets/ui/discovery-help.css`.
+- Replace the top-bar Help route link with a button carrying `data-shell-action="open-contextual-help"`. Keep Help a global contextual utility; do not add it to primary or secondary navigation and do not create a new route.
+- Build the compact Help contract from the server-authorized actor and current vetted route destination. The drawer selects the matching Social, Outreach, Partners, or Files topic while retaining all seven required topics.
+- Escape closes the drawer, Tab/Shift+Tab remain inside it, and close restores focus to the opening control. Topic changes are browser-local presentation only and grant no data or action authority.
+- All workflow buttons pass their static hash through the existing route parser before navigation. Product tour dispatches the CCX-700 onboarding event. There are no external links in normal Help.
+- Preserve the legacy `#operator-manual` compatibility route under Settings for advanced technical guidance; it is no longer the normal top-bar Help action.
+- Package registration: `test:vnext-discovery-help` → `node scripts/test-vnext-discovery-help.mjs`.
+
 ## Shared feature and rollback contract
 
 - Gate every Discovery registration server-side behind `COMMAND_CENTER_UX_VNEXT_DISCOVERY`, default false until Phase 7 acceptance passes. Browser state, hashes, query strings, cookies, and storage cannot enable it.
