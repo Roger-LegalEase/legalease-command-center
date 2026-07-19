@@ -87,3 +87,11 @@ Later packet sections extend this manifest without changing the CCX-401 boundary
 - Do not create an execution endpoint in this packet. Schedule persistence is planning only and must not toggle live mode, approval, sending, provider, or heartbeat state.
 - Keep existing `withinSendingWindow`, Eastern Time caps, and send-time engine checks authoritative. Reject invalid, ambiguous, and nonexistent times before persistence.
 - Register `test:vnext-campaign-schedule-step` as `node scripts/test-vnext-campaign-schedule-step.mjs`.
+
+## CCX-407 wiring
+
+- Compose `buildCampaignReviewStep` and `renderCampaignReviewStep` for `step=review`.
+- Register a bounded review-action endpoint accepting only the vetted stable identity, current audience fingerprint, and request idempotency key. Rebuild Review from current state; never accept recipient refs, counts, message, schedule, readiness, approval, or safety flags from the browser.
+- Connect `executeCampaignLaunch` only to the existing approval operation, durable send-claim/idempotency store, and authoritative campaign execution engines. Run suppression, hold, send-window, cap, approval, connection, compliance, and environment gates again immediately before execution.
+- Approval requests must return `executed:false`. Duplicate claims return the recorded prior outcome without another engine call. Preserve zero/some/all outcome detail in safe response and audit evidence.
+- Register `test:vnext-campaign-review-step` as `node scripts/test-vnext-campaign-review-step.mjs`.
