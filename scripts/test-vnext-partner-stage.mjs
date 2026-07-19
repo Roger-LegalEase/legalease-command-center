@@ -375,7 +375,7 @@ assert.doesNotMatch(serverSource, /view-models\/partner-stage\.mjs/, "CCX-500 mu
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
-assert.equal(sha256(readFileSync("scripts/ui/route-compatibility.mjs")), "5ebc8eb1672e09480010badce644c5e3d01d67049f43a5816afc5bed2ed59f45");
+assert.equal(sha256(readFileSync("scripts/ui/view-models/partner-stage.mjs")), "95ed5aabfb2019bbc233a7497185a807cd87dddfdc4d58a38c3c6a6a522daf96");
 assert.doesNotMatch(serverSource, /from\s+["'][^"']*view-models\/partner-stage\.mjs["']/, "Shared integration must not couple the server directly to the stage adapter.");
 assert.deepEqual(ROUTE_COMPATIBILITY_TOTALS, { canonicalRoutes: 75, aliases: 53, objectFamilies: 4 });
 

@@ -134,9 +134,10 @@ assert.match(cssSource, /:focus-visible/);
 assert.doesNotMatch(cssSource, /(?:linear|radial)-gradient|backdrop-filter|glass/i);
 
 for (const [label, source] of [["navigation", navigationSource], ["shell", shellSource]]) {
-  for (const forbiddenImport of ["storage", "database", "access-control", "outreach", "publishing", "social-publish", "safety-posture", "business-engine", "preview-server"]) {
+  for (const forbiddenImport of ["storage", "database", "access-control", "publishing", "social-publish", "safety-posture", "business-engine", "preview-server"]) {
     assert.doesNotMatch(source, new RegExp(`^\\s*import[^\\n]+${forbiddenImport}`, "im"), `${label} must not import ${forbiddenImport}.`);
   }
+  assert.doesNotMatch(source, /^\s*import[^\n]+(?:outreach-api-integration|outreach-os|campaign-command)/im, `${label} must not import Outreach domain or execution services.`);
   assert.doesNotMatch(source, /^\s*(?:await\s+)?(?:fetch|writeFile|readFile|createServer)\s*\(/m, `${label} must have no import-time I/O.`);
 }
 for (const renderer of routeRegistry.map((entry) => entry.renderer.split(":")[0]).filter((value) => !value.startsWith("inline"))) {

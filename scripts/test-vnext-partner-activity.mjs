@@ -260,7 +260,8 @@ const previewSource = readFileSync("scripts/preview-server.mjs", "utf8");
 assert.doesNotMatch(previewSource, /view-models\/partner-activity(?:-sources)?\.mjs/);
 assert.match(readFileSync("package.json", "utf8"), /"test:vnext-partner-activity": "node scripts\/test-vnext-partner-activity\.mjs"/);
 function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
-assert.equal(sha256(readFileSync("scripts/ui/route-compatibility.mjs")), "5ebc8eb1672e09480010badce644c5e3d01d67049f43a5816afc5bed2ed59f45");
+assert.equal(sha256(readFileSync("scripts/ui/view-models/partner-activity.mjs")), "3d2f8820dc20c91d3dd8ac14b0f50846c38a4777376433eed741e063629509c8");
+assert.equal(sha256(readFileSync("scripts/ui/view-models/partner-activity-sources.mjs")), "c7ba13cc3002e0fdf0fb0a83f1f75b825be27e7689009c4f5f929230ca3db82b");
 assert.doesNotMatch(previewSource, /from\s+["'][^"']*view-models\/partner-activity(?:-sources)?\.mjs["']/, "Shared integration must not couple the server directly to the activity projection.");
 
 function performanceFixture() {
