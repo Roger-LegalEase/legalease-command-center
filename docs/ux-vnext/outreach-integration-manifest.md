@@ -112,3 +112,11 @@ Later packet sections extend this manifest without changing the CCX-401 boundary
 - Adapter map: `partner_log_activity` → Lane B `logPartnerActivity`; `partner_set_next_action` → Lane B `setPartnerNextAction`; `partner_stage_suggestion` → the reviewed Partner suggestion operation; `scoped_reply_classification` → a versioned single-reply update.
 - Exact dependency observed: `origin/codex/train-partners-ccx-501-506` at `e35c39f5122a7b0aac17e7c240c598b6f639c524`, `scripts/partner-record-actions.mjs`. That branch has no integration manifest. Do not substitute a silent Partner-stage update.
 - Register `test:vnext-campaign-replies-outcomes` as `node scripts/test-vnext-campaign-replies-outcomes.mjs`.
+
+## CCX-410 wiring
+
+- Compose `buildCampaignAdvancedDelivery` and `renderCampaignAdvancedDelivery` into an Advanced section that is closed by default.
+- Require `read_internal` for the Campaign and `read_sensitive` for detail; include raw event references only with `view_diagnostics`. Reapply record visibility to every supporting record.
+- Never serialize provider payloads, recipients, addresses, credentials, tokens, secrets, or editable safety controls. Missing telemetry stays null/unavailable.
+- Do not add an Advanced mutation endpoint. Existing safety limits and sending authority remain server-owned.
+- Register `test:vnext-campaign-advanced-delivery` as `node scripts/test-vnext-campaign-advanced-delivery.mjs`.
