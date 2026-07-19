@@ -95,3 +95,12 @@ Later packet sections extend this manifest without changing the CCX-401 boundary
 - Connect `executeCampaignLaunch` only to the existing approval operation, durable send-claim/idempotency store, and authoritative campaign execution engines. Run suppression, hold, send-window, cap, approval, connection, compliance, and environment gates again immediately before execution.
 - Approval requests must return `executed:false`. Duplicate claims return the recorded prior outcome without another engine call. Preserve zero/some/all outcome detail in safe response and audit evidence.
 - Register `test:vnext-campaign-review-step` as `node scripts/test-vnext-campaign-review-step.mjs`.
+
+## CCX-408 wiring
+
+- Import `buildCampaignDetailView` and register compact `GET /api/ui/outreach/campaign/:encoded-identity` with `read_internal`, a bounded `tab`, one state read, and calm unauthorized/not-found responses.
+- Register `renderCampaignDetail`, its focused controller, and `/assets/ui/campaign-detail.css` in the reserved shell composition.
+- The vetted parser must keep canonical `#outreach/campaign/<encoded-source-id>` behavior and additionally accept encoded CCX-400 stable identities for adapted `outreach:` and `reactivation:` detail links without treating them as canonical collection IDs.
+- Compose tab payloads from the detail service; do not expose raw source records or full state.
+- Register a bounded pause/resume action endpoint that accepts only action and idempotency key, rebuilds policy server-side, and connects `executeCampaignStatusAction` to the existing durable claim, approval, pause, and resume operations. Never infer capability from the browser.
+- Register `test:vnext-campaign-detail` as `node scripts/test-vnext-campaign-detail.mjs`.
