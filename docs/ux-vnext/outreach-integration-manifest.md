@@ -57,3 +57,10 @@ Later packet sections extend this manifest without changing the CCX-401 boundary
 - Register `test:vnext-campaign-wizard` as `node scripts/test-vnext-campaign-wizard.mjs`.
 - Flag off: both endpoints return 404 before state access; the legacy Campaign flow remains unchanged.
 - Response target: under 100 KB and 250 ms. Save body target: under 32 KB.
+
+## CCX-403 wiring
+
+- Compose `buildCampaignGoalStep` into the Campaign draft GET response when `step=goal` and render it with `renderCampaignGoalStep`.
+- Validate saves with `createCampaignGoalSavePlan`; never trust browser-provided type labels, related-record labels, owner labels, identity, or scope.
+- Related Partner programs, products, and owners must be compact and visibility-filtered server-side.
+- Register `test:vnext-campaign-goal-step` as `node scripts/test-vnext-campaign-goal-step.mjs`.
