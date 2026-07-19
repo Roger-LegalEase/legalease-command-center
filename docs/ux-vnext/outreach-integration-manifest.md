@@ -104,3 +104,11 @@ Later packet sections extend this manifest without changing the CCX-401 boundary
 - Compose tab payloads from the detail service; do not expose raw source records or full state.
 - Register a bounded pause/resume action endpoint that accepts only action and idempotency key, rebuilds policy server-side, and connects `executeCampaignStatusAction` to the existing durable claim, approval, pause, and resume operations. Never infer capability from the browser.
 - Register `test:vnext-campaign-detail` as `node scripts/test-vnext-campaign-detail.mjs`.
+
+## CCX-409 wiring and Lane B dependency
+
+- Compose `buildCampaignRepliesOutcomes` and `renderCampaignRepliesOutcomes` into the Replies tab. Preserve `read_sensitive` behavior and never include raw reply bodies in unrelated records.
+- Register a bounded reply/outcome action endpoint accepting only reply ID, supported action fields, and request ID. Re-resolve the reply and Campaign server-side, enforce capability, scope writes, append audit, and return zero external actions.
+- Adapter map: `partner_log_activity` → Lane B `logPartnerActivity`; `partner_set_next_action` → Lane B `setPartnerNextAction`; `partner_stage_suggestion` → the reviewed Partner suggestion operation; `scoped_reply_classification` → a versioned single-reply update.
+- Exact dependency observed: `origin/codex/train-partners-ccx-501-506` at `e35c39f5122a7b0aac17e7c240c598b6f639c524`, `scripts/partner-record-actions.mjs`. That branch has no integration manifest. Do not substitute a silent Partner-stage update.
+- Register `test:vnext-campaign-replies-outcomes` as `node scripts/test-vnext-campaign-replies-outcomes.mjs`.
