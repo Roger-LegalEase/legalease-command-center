@@ -25,3 +25,18 @@ role, server-composition, package, global-CSS, or browser-fixture files.
   `node scripts/test-vnext-files-home.mjs`.
 
 Further packet wiring is appended by CCX-602 through CCX-607.
+
+## CCX-602 wiring
+
+- Import `readFileDetails` from `scripts/ui-api/file-details-read.mjs` for
+  `GET /api/ui/files/:sourceKind/:sourceId`; require `read_internal` and pass
+  route values through the existing vetted parser before lookup.
+- Add an authorized, bounded content handler at
+  `GET /api/ui/files/:sourceKind/:sourceId/content`. It must resolve storage only
+  after the same File read succeeds, set safe content headers, cap text previews
+  at 200 KB, and never return local paths, unsigned private URLs, or secrets.
+- Render `renderFileDetails` for exact File routes and register
+  `fileDetailsBrowserSource()` only on that page.
+- Include `/assets/ui/file-details.css` after shared tokens.
+- Package script: `test:vnext-file-details` →
+  `node scripts/test-vnext-file-details.mjs`.
