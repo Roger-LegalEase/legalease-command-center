@@ -112,6 +112,7 @@
     "start:production": "env NODE_DISABLE_COMPILE_CACHE=1 node scripts/preview-server.mjs",
     "migrate:supabase": "node scripts/sync-local-json-to-supabase.mjs",
     "verify:production": "node scripts/verify-production.mjs",
+    "verify:vnext-production": "SKIP_ENV_LOCAL_FILE=1 node scripts/verify-vnext-production.mjs",
     "test:state-integrity": "node scripts/test-state-integrity.mjs",
     "export:state-snapshot": "node scripts/export-state-snapshot.mjs",
     "restore:state-dry-run": "node scripts/restore-state-dry-run.mjs",
