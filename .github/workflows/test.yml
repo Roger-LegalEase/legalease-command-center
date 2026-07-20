@@ -94,8 +94,6 @@ jobs:
       NODE_ENV: test
       SKIP_ENV_LOCAL_FILE: "1"
       COMMAND_CENTER_TEST_MODE: "true"
-      COMMAND_CENTER_DATA_PATH: ${{ runner.temp }}/vnext-production-state.json
-      COMMAND_CENTER_SEED_PATH: ${{ runner.temp }}/vnext-production-seed.json
       NODE_DISABLE_COMPILE_CACHE: "1"
       COMMAND_CENTER_UX_VNEXT: "false"
       COMMAND_CENTER_UX_VNEXT_SOCIAL: "false"
@@ -115,6 +113,10 @@ jobs:
       COMMAND_CENTER_TEST_SOCIAL_PUBLISH_ADAPTER: inert
       COMMAND_CENTER_TEST_SOCIAL_MANUAL_ADAPTER: inert
     steps:
+      - name: Configure temporary production-verification data
+        run: |
+          printf 'COMMAND_CENTER_DATA_PATH=%s\n' "$RUNNER_TEMP/vnext-production-state.json" >> "$GITHUB_ENV"
+          printf 'COMMAND_CENTER_SEED_PATH=%s\n' "$RUNNER_TEMP/vnext-production-seed.json" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: npm }
