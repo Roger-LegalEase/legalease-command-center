@@ -54,6 +54,7 @@ function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCred
     COMMAND_CENTER_UX_VNEXT_SOCIAL:productFlags.social === true ? "true" : "false",
     COMMAND_CENTER_UX_VNEXT_OUTREACH:productFlags.outreach === true ? "true" : "false",
     COMMAND_CENTER_UX_VNEXT_FILES:productFlags.files === true ? "true" : "false",
+    COMMAND_CENTER_UX_VNEXT_DISCOVERY:productFlags.discovery === true ? "true" : "false",
     COMMAND_CENTER_FILES_CURSOR_SECRET:productFlags.files === true ? "synthetic-browser-files-cursor-secret" : "",
     LIVE_POSTING_ENABLED:"false",
     ENABLE_LIVE_LINKEDIN_POSTING:"false",
@@ -810,6 +811,7 @@ const composerRestrictedReadonlyDataPath = path.join(tempRoot, "composer-restric
 const partnersDataPath = path.join(tempRoot, "partners-state.json");
 const outreachDataPath = path.join(tempRoot, "outreach-state.json");
 const filesDataPath = path.join(tempRoot, "files-state.json");
+const discoveryDataPath = path.join(tempRoot, "discovery-state.json");
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
@@ -826,7 +828,8 @@ await Promise.all([
   writeFile(composerRestrictedReadonlyDataPath, `${JSON.stringify(composerRestrictedState, null, 2)}\n`, { mode:0o600 }),
   writeFile(partnersDataPath, `${JSON.stringify(partnersState, null, 2)}\n`, { mode:0o600 }),
   writeFile(outreachDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
-  writeFile(filesDataPath, `${JSON.stringify(filesState, null, 2)}\n`, { mode:0o600 })
+  writeFile(filesDataPath, `${JSON.stringify(filesState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(discoveryDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
 const restrictedSessionSecret = crypto.randomBytes(32).toString("base64url");
@@ -941,6 +944,12 @@ try {
     vnext:true,
     productFlags:{ social:true }
   }));
+  servers.push(await startServer({
+    name:"discovery",
+    dataPath:discoveryDataPath,
+    vnext:true,
+    productFlags:{ discovery:true }
+  }));
   const runnerEnv = {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -965,6 +974,7 @@ try {
     BROWSER_TEST_OUTREACH_BASE_URL:servers[13].baseURL,
     BROWSER_TEST_FILES_BASE_URL:servers[14].baseURL,
     BROWSER_TEST_SOCIAL_PRODUCTION_BASE_URL:servers[15].baseURL,
+    BROWSER_TEST_DISCOVERY_BASE_URL:servers[16].baseURL,
     BROWSER_TEST_COMPOSER_RESTRICTED_CREDENTIALS:JSON.stringify(composerRestrictedCredentials)
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));
