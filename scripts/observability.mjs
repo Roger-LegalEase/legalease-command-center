@@ -9,7 +9,7 @@ export async function incrementSecurityMetric(store, name, amount = 1) {
     ...(current || {}), id:"singleton",
     counters:{ ...(current?.counters || {}), [name]:Number(current?.counters?.[name] || 0) + Number(amount || 0) },
     updatedAt:new Date().toISOString()
-  }), { createIfMissing:true, maxRetries:2 });
+  }), { createIfMissing:true, maxRetries:2, returnState:false });
 }
 
 export function operationalMetrics(state = {}, writeHealth = {}) {

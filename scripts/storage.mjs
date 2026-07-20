@@ -250,6 +250,24 @@ export class StorageConflictError extends Error {
   }
 }
 
+export class SupabaseRequestTimeoutError extends Error {
+  constructor() {
+    super("Supabase request timed out.");
+    this.name = "SupabaseRequestTimeoutError";
+    this.code = "SUPABASE_TIMEOUT";
+    this.status = 503;
+  }
+}
+
+export class SupabaseRequestAbortedError extends Error {
+  constructor() {
+    super("Supabase request was aborted.");
+    this.name = "SupabaseRequestAbortedError";
+    this.code = "SUPABASE_ABORTED";
+    this.status = 503;
+  }
+}
+
 function validateMutableRecord(collection, itemId, record) {
   if (!coreStateCollections.includes(collection)) throw new Error("Unsupported storage collection.");
   if (!itemId || String(itemId).length > 240) throw new Error("A stable record identifier is required.");
@@ -307,20 +325,55 @@ function supabaseHeaders(extra = {}) {
   };
 }
 
+const DEFAULT_SUPABASE_REQUEST_TIMEOUT_MS = 8_000;
+const MIN_SUPABASE_REQUEST_TIMEOUT_MS = 100;
+const MAX_SUPABASE_REQUEST_TIMEOUT_MS = 15_000;
+
+function supabaseRequestTimeoutMs(env = process.env) {
+  const raw = String(env.SUPABASE_REQUEST_TIMEOUT_MS ?? "").trim();
+  if (!raw) return DEFAULT_SUPABASE_REQUEST_TIMEOUT_MS;
+  const configured = Number(raw);
+  if (!Number.isFinite(configured)) return DEFAULT_SUPABASE_REQUEST_TIMEOUT_MS;
+  return Math.min(MAX_SUPABASE_REQUEST_TIMEOUT_MS, Math.max(MIN_SUPABASE_REQUEST_TIMEOUT_MS, Math.trunc(configured)));
+}
+
 async function supabaseRestRequest(pathname, options = {}) {
   if (!process.env.SUPABASE_URL || !(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
     throw new Error("Supabase database env vars are missing.");
   }
-  const response = await fetch(supabaseRestBaseUrl() + "/" + String(pathname || "").replace(/^\/+/, ""), {
-    method: options.method || "GET",
-    headers: supabaseHeaders({
-      ...(options.body ? { "content-type":"application/json" } : {}),
-      ...(options.prefer ? { prefer: options.prefer } : {}),
-      ...(options.headers || {})
-    }),
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
-  const text = await response.text();
+  const timeoutMs = supabaseRequestTimeoutMs();
+  const controller = new AbortController();
+  let timedOut = false;
+  const onCallerAbort = () => controller.abort(options.signal?.reason);
+  if (options.signal?.aborted) onCallerAbort();
+  else options.signal?.addEventListener("abort", onCallerAbort, { once:true });
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  timeout.unref?.();
+  let response;
+  let text;
+  try {
+    response = await fetch(supabaseRestBaseUrl() + "/" + String(pathname || "").replace(/^\/+/, ""), {
+      method: options.method || "GET",
+      headers: supabaseHeaders({
+        ...(options.body ? { "content-type":"application/json" } : {}),
+        ...(options.prefer ? { prefer: options.prefer } : {}),
+        ...(options.headers || {})
+      }),
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: controller.signal
+    });
+    text = await response.text();
+  } catch (error) {
+    if (timedOut) throw new SupabaseRequestTimeoutError();
+    if (controller.signal.aborted || error?.name === "AbortError") throw new SupabaseRequestAbortedError();
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", onCallerAbort);
+  }
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
   if (!response.ok) {
@@ -808,7 +861,9 @@ export class JsonStore {
       const nextValue = singleton ? record : index >= 0 ? rows.map((item, i) => i === index ? record : item) : [record, ...rows];
       const nextState = { ...state, [collection]: nextValue };
       await this.writeStateNow(nextState);
-      return { state: nextState, record, version: record._version };
+      return options.returnState === false
+        ? { record, version:record._version }
+        : { state:nextState, record, version:record._version };
     });
   }
 
@@ -1219,8 +1274,11 @@ export class SupabaseCoreStore extends JsonStore {
         });
         const resultRow = Array.isArray(returned) ? returned[0] : returned;
         this._writeGen += 1;
+        const version = Number(resultRow?.version || actualVersion + 1);
+        const record = { ...payloadWithoutVersion(changed), _version:version };
+        if (options.returnState === false) return { record, version };
         const state = await this.readState();
-        return { state, record: { ...payloadWithoutVersion(changed), _version: Number(resultRow?.version || actualVersion + 1) }, version: Number(resultRow?.version || actualVersion + 1) };
+        return { state, record, version };
       } catch (error) {
         if (!(error instanceof StorageConflictError) || options.expectedVersion !== undefined || attempt >= maxRetries) throw error;
       }
@@ -1255,4 +1313,4 @@ export function storageRuntimeConfig() {
   };
 }
 
-export { coreStateCollections, singletonCollections, appendOnlyCollections, coreRecordsFromState, coreMutationsBetween, supabaseRestRequest };
+export { coreStateCollections, singletonCollections, appendOnlyCollections, coreRecordsFromState, coreMutationsBetween, supabaseRequestTimeoutMs, supabaseRestRequest };
