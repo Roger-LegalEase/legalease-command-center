@@ -52,8 +52,7 @@ function dueState(dueAt, now) {
   return { key:overdue ? "overdue" : "upcoming", label:overdue ? "Overdue" : "Upcoming", overdue };
 }
 
-function compactPartner(view, state, actor, now) {
-  const activity = buildPartnerActivity(state, actor, view.source.sourceId, now);
+function compactPartner(view, now) {
   const programs = list(view.pilotAndProgramContext?.programs).map((program) => ({
     id:program.id,
     name:program.name,
@@ -72,12 +71,17 @@ function compactPartner(view, state, actor, now) {
     nextAction:view.nextAction?.summary || null,
     dueAt,
     dueState:dueState(dueAt, now),
-    lastContact:lastContact(activity, view.lastMeaningfulActivity),
+    lastContact:lastContact({}, view.lastMeaningfulActivity),
     programs,
     programOrOpportunity:programs[0]?.name || list(view.pilotAndProgramContext?.pilots)[0]?.name || null,
     sourceReferences:view.sourceReferences,
     changesInternalLifecycle:false
   };
+}
+
+function enrichPartner(item, state, actor, now) {
+  const activity = buildPartnerActivity(state, actor, item.id, now);
+  return { ...item, lastContact:lastContact(activity, item.lastContact) };
 }
 
 function options(items, field, labelFor = (value) => value) {
@@ -126,11 +130,14 @@ export function buildPartnersHomeView(state = {}, actor = {}, now = "", query = 
   const sourceAvailable = Array.isArray(state.partners);
   const views = buildPartnerStageViews(state, actor);
   if (!sourceAvailable) return deepFreeze({ available:false, availability:{ state:"unavailable", reason:"source_data_absent" }, generatedAt:now || null, items:[], pipeline:[], filters:null, summary:null });
-  const allItems = views.map((view) => compactPartner(view, state, actor, now));
+  // Partner activity is a detail-grade ledger projection. Keep filtering, counts, and
+  // visibility over the full authorized summary set, then enrich only the requested page.
+  const allItems = views.map((view) => compactPartner(view, now));
   const filtered = sorted(allItems.filter((item) => matches(item, query)), query.view);
   const offset = Number(query.offset || 0);
   const limit = Number(query.limit || 24);
-  const items = filtered.slice(offset, offset + limit);
+  const items = filtered.slice(offset, offset + limit)
+    .map((item) => enrichPartner(item, state, actor, now));
   return deepFreeze({
     available:true,
     availability:{ state:allItems.length ? filtered.length ? "available" : "filtered_empty" : "empty", reason:null },
