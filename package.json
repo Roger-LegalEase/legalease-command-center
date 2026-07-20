@@ -95,6 +95,7 @@
     "test:vnext-performance": "SKIP_ENV_LOCAL_FILE=1 node scripts/test-vnext-performance-contract.mjs",
     "test:vnext-accessibility": "SKIP_ENV_LOCAL_FILE=1 node scripts/test-vnext-accessibility-contract.mjs",
     "test:vnext-recovery": "SKIP_ENV_LOCAL_FILE=1 node scripts/test-vnext-recovery-contract.mjs",
+    "test:vnext-legacy-deprecation": "SKIP_ENV_LOCAL_FILE=1 node scripts/test-vnext-legacy-deprecation.mjs",
     "test:browser": "node scripts/run-browser-tests.mjs",
     "test:browser:install": "playwright install --with-deps chromium",
     "test:extended": "node scripts/run-extended-tests.mjs",
