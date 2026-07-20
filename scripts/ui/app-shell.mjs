@@ -74,7 +74,11 @@ export const RESPONSIVE_SHELL_BREAKPOINT_PX = 860;
 export const RESPONSIVE_NAVIGATION_DRAWER_ID = "vnext-navigation-drawer";
 
 const assetUrl = (path) => `/${String(path || "").replace(/^\/+/, "")}`;
-const routeHref = (route) => `#${String(route || "today").replace(/^#/, "")}`;
+const PUBLIC_ROUTE_HREFS = Object.freeze({ queue:"social" });
+const routeHref = (route) => {
+  const normalized = String(route || "today").replace(/^#/, "");
+  return `#${PUBLIC_ROUTE_HREFS[normalized] || normalized}`;
+};
 
 const routeRecoveryHtml = `<section class="vnext-route-recovery" data-vnext-route-recovery aria-label="Route recovery">
   ${renderPageHeader({
@@ -542,6 +546,7 @@ function protectSocialPostSurfaceFromLegacyRender(html, { socialEnabled = false 
       const compactSocialView = new URLSearchParams(String(location.hash || "").split("?")[1] || "").get("view") || "ideas";
       const compactSocialSurface = compactSocialRenderRoute?.kind === "page"
         && compactSocialRenderRoute.canonicalRoute === "queue"
+        && /^#social(?:[?]|$)/.test(location.hash)
         && (compactSocialView === "results"
           ? document.querySelector("main#app [data-social-results-page]")
           : document.querySelector("main#app [data-social-page]"));
