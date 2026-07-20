@@ -136,6 +136,13 @@ import { createLocalFilesStorage, createSupabaseFilesStorage } from "./files-sto
 import { INVESTOR_ROOM_REQUIREMENTS } from "./investor-room-requirements.mjs";
 import { generatePartnerArtifact } from "./partner-artifact-service.mjs";
 import { buildPostComposerContract, composerSavePath, normalizeComposerPatch } from "./post-composer-service.mjs";
+import { renderSocialCreative, saveSocialCreativeSelection } from "./social-creative-actions.mjs";
+import { saveSocialVariants } from "./social-variant-actions.mjs";
+import { saveSocialSchedule } from "./social-schedule-actions.mjs";
+import { approveSocialPost, regenerateSocialPostImage, requestSocialPostChanges } from "./social-review-actions.mjs";
+import { createSocialManualPackage, publishSocialPost } from "./social-publishing-actions.mjs";
+import { buildSocialCalendarContract } from "./social-calendar-service.mjs";
+import { buildSocialConnectionsContract } from "./social-connections-service.mjs";
 import {
   INBOX_ACTION_BODY_LIMIT,
   executeAuthorizedInboxAction,
@@ -181,6 +188,7 @@ loadLocalEnv();
 const commandCenterVNextConfig = readCommandCenterVNextConfig(process.env);
 const outreachVNextConfig = readCommandCenterVNextProductConfig(process.env, "outreach");
 const filesVNextConfig = readCommandCenterVNextProductConfig(process.env, "files");
+const socialVNextConfig = readCommandCenterVNextProductConfig(process.env, "social");
 const globalCreateKindsByPath = Object.freeze(Object.fromEntries(
   Object.entries(GLOBAL_CREATE_ENDPOINTS).map(([kind, endpoint]) => [endpoint, kind])
 ));
@@ -3874,7 +3882,7 @@ async function markManualPostingKitReady(postId, patch = {}) {
   return { state: nextState, finalExportKit: kit, message: "Manual posting kit ready." };
 }
 
-async function exportPostingPackage(postId) {
+async function exportPostingPackage(postId, options = {}) {
   const state = await store.readState();
   const post = state.posts.find((item) => item.id === postId);
   if (!post) throw new Error("Post not found.");
@@ -3942,6 +3950,9 @@ async function exportPostingPackage(postId) {
   const fileList = ["final.png", ...files.map(([filename]) => filename)];
   const zipRecord = await writePostingPackageZip(packageDir, post.id);
   const packageRecord = {
+    ...(options.packageId ? { id:String(options.packageId) } : {}),
+    ...(options.requestId ? { requestId:String(options.requestId) } : {}),
+    manualOnly:true,
     generated: true,
     path: packagePath,
     relativePath: packageDir,
@@ -11829,6 +11840,9 @@ async function generateImageForPost(postId, overrides = {}) {
   }
   const image = {
     id: crypto.randomUUID(),
+    ...(overrides.socialRenderIdempotencyKey ? { socialRenderIdempotencyKey:String(overrides.socialRenderIdempotencyKey) } : {}),
+    ...(overrides.socialRequestId ? { requestId:String(overrides.socialRequestId) } : {}),
+    ...(Array.isArray(overrides.socialSourceReferences) ? { sourceReferences:overrides.socialSourceReferences.map((reference) => ({ collection:String(reference?.collection || ""), sourceId:String(reference?.sourceId || "") })) } : {}),
     postId,
     imageUrl: localFallbackUsed ? fallbackImageUrl : "",
     privateAssetPath: generatedImageFile?.privateAssetPath || "",
@@ -34961,8 +34975,9 @@ function renderLegacyApp() {
 function renderVNextApp() {
   // CCX-100 composes one new navigation shell around the same routed application.
   // Page renderers, state, actions, authorization, and safety systems remain shared.
-  if (outreachVNextConfig.enabled || filesVNextConfig.enabled) {
+  if (socialVNextConfig.enabled || outreachVNextConfig.enabled || filesVNextConfig.enabled) {
     return renderVNextDesktopShell(renderLegacyApp(), {
+      socialEnabled:socialVNextConfig.enabled,
       outreachEnabled:outreachVNextConfig.enabled,
       filesEnabled:filesVNextConfig.enabled
     });
@@ -34986,6 +35001,253 @@ function globalCreateCapabilityViewModel(role = "viewer") {
       reason:decision.ok ? "" : `Your current access does not allow creating ${option.label.toLowerCase()} records.`
     }];
   })));
+}
+
+const SOCIAL_PRODUCTION_ACTIONS = new Set([
+  "creative", "render", "variants", "schedule", "approve",
+  "request-changes", "regenerate", "publish", "manual-package"
+]);
+
+function socialProductionActionRoute(pathname = "") {
+  const match = String(pathname || "").match(/^\/api\/ui\/social\/post\/([^/]+)\/([^/]+)$/);
+  if (!match || !SOCIAL_PRODUCTION_ACTIONS.has(match[2])) return null;
+  let postId = "";
+  try { postId = decodeURIComponent(match[1]); } catch { return null; }
+  if (!postId || postId.length > 240 || postId !== postId.trim()
+    || /[\u0000-\u001f\u007f<>"'`\\]/u.test(postId)
+    || /^(?:javascript|data|vbscript)\s*:/i.test(postId)
+    || /(?:^|\/)\.{1,2}(?:\/|$)/.test(postId)) return null;
+  return { postId, action:match[2] };
+}
+
+function socialEvidenceId(prefix, ...parts) {
+  return `${prefix}-${crypto.createHash("sha256").update(parts.map((part) => String(part ?? "")).join("\u0000")).digest("hex").slice(0, 28)}`;
+}
+
+function socialActionAlreadyApplied(state = {}, requestId = "") {
+  const id = String(requestId || "").trim();
+  if (!id) return false;
+  const evidence = [
+    ...(Array.isArray(state.activityEvents) ? state.activityEvents : []),
+    ...(Array.isArray(state.auditHistory) ? state.auditHistory : []),
+    ...(Array.isArray(state.publishClaims) ? state.publishClaims : []),
+    ...(Array.isArray(state.publishEvents) ? state.publishEvents : []),
+    ...(Array.isArray(state.postImages) ? state.postImages : [])
+  ];
+  if (evidence.some((item) => String(item?.requestId || "") === id)) return true;
+  return (Array.isArray(state.posts) ? state.posts : []).some((post) =>
+    String(post?.postingPackage?.requestId || post?.postingPackage?.socialRequestId || "") === id
+    || [post?.reviewFeedback, post?.requestedChanges, post?.requested_changes]
+      .some((items) => Array.isArray(items) && items.some((item) => String(item?.requestId || "") === id))
+  );
+}
+
+function socialActionEvidence({ requestId, actorId, postId, action, summary, now, sourceReferences = [] }) {
+  const activityId = socialEvidenceId("activity-social", action, postId, requestId);
+  const auditId = socialEvidenceId("audit-social", action, postId, requestId);
+  return {
+    activity:{
+      id:activityId,
+      requestId,
+      type:action,
+      eventType:action,
+      postId,
+      relatedObjectType:"post",
+      relatedObjectId:postId,
+      resourceType:"post",
+      resourceId:postId,
+      summary:String(summary || "Social Post updated.").slice(0, 280),
+      actorId,
+      createdAt:now
+    },
+    audit:{
+      id:auditId,
+      requestId,
+      action,
+      resourceType:"post",
+      resourceId:postId,
+      actorId,
+      sourceReferences:Array.isArray(sourceReferences) ? sourceReferences : [],
+      createdAt:now
+    }
+  };
+}
+
+async function writeSocialPostMutation({ postId, expectedVersion, requestId, actorId, patch, activity, audit }) {
+  if (typeof store?.writeChanges !== "function") throw Object.assign(new Error("Scoped Social persistence is unavailable."), { status:503, outcome:"unavailable" });
+  const current = await store.readState();
+  const matches = (Array.isArray(current.posts) ? current.posts : []).filter((post) => String(post?.id || "") === postId);
+  if (matches.length !== 1) throw Object.assign(new Error("This Post is unavailable."), { status:404, outcome:"unavailable" });
+  const post = matches[0];
+  if (socialActionAlreadyApplied(current, requestId)) return { version:Number(post._version || 0), reused:true };
+  if (!Number.isSafeInteger(expectedVersion) || Number(post._version || 0) !== expectedVersion) {
+    throw Object.assign(new Error("The Post changed. Reload before continuing."), { status:409, outcome:"version_conflict", actualVersion:Number(post._version || 0) });
+  }
+  const now = new Date().toISOString();
+  const suppliedActivity = activity && typeof activity === "object" ? activity : {};
+  const suppliedAudit = audit && typeof audit === "object" ? audit : {};
+  const evidence = socialActionEvidence({
+    requestId,
+    actorId,
+    postId,
+    action:String(suppliedAudit.action || suppliedActivity.type || "social_post_updated"),
+    summary:suppliedActivity.summary,
+    now,
+    sourceReferences:suppliedAudit.sourceReferences
+  });
+  const nextPost = { ...post, ...(patch || {}), updatedAt:now };
+  const after = {
+    ...current,
+    posts:current.posts.map((item) => item === post ? nextPost : item),
+    activityEvents:[evidence.activity, ...(Array.isArray(current.activityEvents) ? current.activityEvents : [])],
+    auditHistory:[{ ...evidence.audit, ...suppliedAudit, id:evidence.audit.id, requestId, actorId, resourceType:"post", resourceId:postId, createdAt:now }, ...(Array.isArray(current.auditHistory) ? current.auditHistory : [])]
+  };
+  await store.writeChanges(current, after);
+  return { version:expectedVersion + 1, reused:false };
+}
+
+async function applySocialApproval({ postId, expectedVersion, requestId, actorId, reviewedPlan }) {
+  const approvalId = socialEvidenceId("approval-social", postId, requestId);
+  const approvedAt = new Date().toISOString();
+  const result = await writeSocialPostMutation({
+    postId, expectedVersion, requestId, actorId,
+    patch:{
+      approvalStatus:"approved",
+      approvalState:"approved",
+      reviewState:"approved",
+      status:"approved",
+      approvedAt,
+      approved_at:approvedAt,
+      approvalRevision:approvalId,
+      approval_revision:approvalId
+    },
+    activity:{ type:"approved", summary:"Post approved after explicit review. Nothing was scheduled or published." },
+    audit:{ action:"social_post_approved", reviewedState:reviewedPlan?.state?.key || "ready_for_review" }
+  });
+  return { ok:true, version:result.version, approvalId, reused:result.reused };
+}
+
+async function recordSocialRequestedChanges({ id, postId, expectedVersion, requestId, actorId, summary, sourceReference }) {
+  const current = await store.readState();
+  const post = (Array.isArray(current.posts) ? current.posts : []).find((item) => String(item?.id || "") === postId);
+  const existing = [post?.reviewFeedback, post?.requestedChanges, post?.requested_changes]
+    .flatMap((items) => Array.isArray(items) ? items : [])
+    .find((item) => String(item?.id || "") === id || String(item?.requestId || "") === requestId);
+  if (existing) return { ok:true, reused:true, version:Number(post?._version || 0) };
+  const createdAt = new Date().toISOString();
+  const feedback = {
+    id,
+    postId,
+    type:"post",
+    status:"changes_requested",
+    lifecycleStatus:"current",
+    summary,
+    requestId,
+    requestedBy:actorId,
+    sourceReference,
+    createdAt
+  };
+  const result = await writeSocialPostMutation({
+    postId, expectedVersion, requestId, actorId,
+    patch:{
+      approvalStatus:"changes_requested",
+      approvalState:"changes_requested",
+      reviewState:"changes_requested",
+      reviewFeedback:[feedback, ...(Array.isArray(post?.reviewFeedback) ? post.reviewFeedback : [])]
+    },
+    activity:{ type:"changes_requested", summary:"Changes requested after explicit Post review." },
+    audit:{ action:"social_post_changes_requested", sourceReferences:[sourceReference] }
+  });
+  return { ok:true, reused:result.reused, version:result.version };
+}
+
+async function renderSocialPostAdapter({ post, requestId, idempotencyKey, sourceReferences }) {
+  const state = await store.readState();
+  const reused = (Array.isArray(state.postImages) ? state.postImages : []).find((image) => image?.socialRenderIdempotencyKey === idempotencyKey && image?.generationStatus === "generated");
+  if (reused) return { ok:true, imageId:reused.id, reused:true };
+  const result = await generateImageForPost(post.id, { trigger:"vnext_social_production", socialRenderIdempotencyKey:idempotencyKey, socialSourceReferences:sourceReferences, socialRequestId:requestId });
+  if (!result?.ok || !result?.image?.id) return { ok:false };
+  const evidence = socialActionEvidence({ requestId, actorId:"social-render", postId:post.id, action:"social_image_rendered", summary:"A new Post image was rendered for review.", now:new Date().toISOString(), sourceReferences });
+  await store.claimCollectionItems("activityEvents", [evidence.activity]);
+  await store.claimCollectionItems("auditHistory", [evidence.audit]);
+  return { ok:true, imageId:result.image.id, reused:false };
+}
+
+async function buildSocialManualPackageAdapter({ postId, expectedVersion, requestId, actorId }) {
+  const state = await store.readState();
+  const post = (Array.isArray(state.posts) ? state.posts : []).find((item) => String(item?.id || "") === postId);
+  const previousId = post?.postingPackage?.id;
+  if (post?.postingPackage?.requestId === requestId && previousId) return { ok:true, packageId:previousId, reused:true };
+  const packageId = socialEvidenceId("manual-package", postId, requestId);
+  if (process.env.COMMAND_CENTER_TEST_MODE === "true" && process.env.COMMAND_CENTER_TEST_SOCIAL_MANUAL_ADAPTER === "inert") {
+    await writeSocialPostMutation({
+      postId, expectedVersion, requestId, actorId,
+      patch:{ postingPackage:{ id:packageId, requestId, manualOnly:true, generatedAt:new Date().toISOString() } },
+      activity:{ type:"social_manual_package_created", summary:"Manual publishing package created. No channel was marked Published." },
+      audit:{ action:"social_manual_package_created" }
+    });
+    return { ok:true, packageId };
+  }
+  const result = await exportPostingPackage(postId, { packageId, requestId });
+  return { ok:Boolean(result?.postingPackage), packageId:result?.postingPackage?.id || packageId };
+}
+
+async function publishSocialChannelAdapter({ postId, channel, approvedRevision, idempotencyKey, claimId }, actor) {
+  if (!socialVNextConfig.enabled || !canPerformEndpoint(actor?.role || "viewer", "POST", `/api/ui/social/post/${encodeURIComponent(postId)}/publish`).ok) {
+    return { ok:false, state:"failed_terminal", errorCode:"not_authorized" };
+  }
+  const state = await store.readState();
+  const postMatches = (Array.isArray(state.posts) ? state.posts : []).filter((post) => String(post?.id || "") === postId);
+  const claimMatches = (Array.isArray(state.publishClaims) ? state.publishClaims : []).filter((claim) => String(claim?.id || "") === claimId);
+  if (postMatches.length !== 1 || claimMatches.length !== 1) return { ok:false, state:"reconciliation_required", errorCode:"current_truth_unavailable" };
+  const post = postMatches[0];
+  const claim = claimMatches[0];
+  const revision = String(post.approvalRevision || post.approval_revision || post.approvedAt || post.approved_at || "");
+  if (!approvedRevision || revision !== approvedRevision || String(claim.channel || "") !== channel || String(claim.postId || "") !== postId) {
+    return { ok:false, state:"reconciliation_required", errorCode:"claim_truth_changed" };
+  }
+  if (process.env.COMMAND_CENTER_TEST_MODE === "true" && process.env.COMMAND_CENTER_TEST_SOCIAL_PUBLISH_ADAPTER === "inert") {
+    await store.claimCollectionItems("activityEvents", [{
+      id:socialEvidenceId("activity-social-provider", claimId),
+      type:"social_provider_adapter_called",
+      eventType:"social_provider_adapter_called",
+      postId,
+      channel,
+      claimId,
+      idempotencyKey,
+      createdAt:new Date().toISOString()
+    }]);
+    const failedChannels = new Set(String(process.env.COMMAND_CENTER_TEST_SOCIAL_PUBLISH_FAILURE_CHANNELS || "").split(",").map((value) => value.trim()).filter(Boolean));
+    if (failedChannels.has(channel)) return { ok:false, state:"failed_retryable", errorCode:"synthetic_channel_failure" };
+    return { ok:true, publishedUrl:`https://social.example.com/${encodeURIComponent(channel)}/${encodeURIComponent(postId)}`, providerReference:`synthetic-${claimId}` };
+  }
+  try {
+    const result = await publishToChannel({ state, post:{ ...post, targetChannels:[channel] }, channel });
+    return { ok:true, publishedUrl:result.externalPostUrl || null, providerReference:result.externalPostId || null };
+  } catch {
+    return { ok:false, state:"reconciliation_required", errorCode:"provider_result_unavailable" };
+  }
+}
+
+async function recordSocialPublicationResult(result, actor) {
+  const now = new Date().toISOString();
+  const event = {
+    id:socialEvidenceId("publish-event-social", result.claimId, result.status),
+    requestId:result.requestId,
+    postId:result.postId,
+    channel:result.channel,
+    approvalRevision:result.approvalRevision,
+    claimId:result.claimId,
+    eventType:result.status,
+    status:result.status,
+    statusAfter:result.status,
+    ...(result.status === "published" ? { publishedAt:now, publishedUrl:result.publishedUrl || null } : { attemptedAt:now }),
+    createdAt:now
+  };
+  await store.claimCollectionItems("publishEvents", [event]);
+  const evidence = socialActionEvidence({ requestId:result.requestId, actorId:actor?.id || actor?.actorId || "", postId:result.postId, action:result.status === "published" ? "social_post_published" : "social_publication_failed", summary:result.status === "published" ? `${result.channel} publication confirmed.` : `${result.channel} publication did not complete.`, now });
+  await store.claimCollectionItems("activityEvents", [evidence.activity]);
+  await store.claimCollectionItems("auditHistory", [evidence.audit]);
 }
 
 // Company-memory projection memo (2026-07-12 latency fix). projectCompanyMemory is pure over
@@ -35158,6 +35420,11 @@ async function handleRequest(request, response) {
     }
     else if (url.pathname === "/api/ui/social/results") {
       sendJson(response, { error:"Social Results are unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
+      return;
+    }
+    else if (["/api/ui/social/calendar", "/api/ui/social/connections"].includes(url.pathname)
+      || socialProductionActionRoute(url.pathname)) {
+      sendJson(response, { ok:false, outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized", message:accessDecision.status === 401 ? "Your session ended. Sign in again before opening Social production." : "Social production is unavailable for this account." }, accessDecision.status || 403);
       return;
     }
     else if (isOutreachApiPath(url.pathname)) {
@@ -35493,13 +35760,37 @@ async function handleRequest(request, response) {
     return;
   }
 
+  if (url.pathname === "/api/ui/social/calendar" && request.method === "GET") {
+    if (!socialVNextConfig.enabled) { sendJson(response, { ok:false, outcome:"not_available", message:"The Social calendar is unavailable." }, 404); return; }
+    try {
+      const currentState = await store.readState();
+      const body = buildSocialCalendarContract(currentState, publicActor(accessDecision.actor), { generatedAt:new Date().toISOString() });
+      sendJson(response, body, body.ok ? 200 : 404);
+    } catch {
+      sendJson(response, { ok:false, outcome:"recoverable_error", message:"The Social calendar could not load. No records were changed." }, 500);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/ui/social/connections" && request.method === "GET") {
+    if (!socialVNextConfig.enabled) { sendJson(response, { ok:false, outcome:"not_available", message:"Social connections are unavailable." }, 404); return; }
+    try {
+      const currentState = await store.readState();
+      const body = buildSocialConnectionsContract(currentState, publicActor(accessDecision.actor), new Date().toISOString());
+      sendJson(response, body, body.ok ? 200 : 404);
+    } catch {
+      sendJson(response, { ok:false, outcome:"recoverable_error", message:"Social connections could not load. No private connection details were returned." }, 500);
+    }
+    return;
+  }
+
   const composerRead = url.pathname.match(/^\/api\/ui\/social\/post\/([^/]+)\/composer$/);
   if (composerRead && request.method === "GET") {
     if (!commandCenterVNextConfig.enabled) { sendJson(response, { ok:false, outcome:"not_available", message:"Social composer is unavailable." }, 404); return; }
     try {
       const currentState = await store.readState();
       const actor = publicActor(accessDecision.actor);
-      const body = buildPostComposerContract(currentState, actor, decodeURIComponent(composerRead[1]), new Date().toISOString());
+      const body = buildPostComposerContract(currentState, actor, decodeURIComponent(composerRead[1]), new Date().toISOString(), { productionEnabled:socialVNextConfig.enabled });
       sendJson(response, body, body.ok ? 200 : 404);
     } catch {
       sendJson(response, { ok:false, outcome:"recoverable_error", message:"This Post could not load. No records were changed. Try again safely." }, 500);
@@ -35517,7 +35808,7 @@ async function handleRequest(request, response) {
       const decision = canPerformEndpoint(actor?.role || "viewer", "POST", url.pathname);
       if (!decision.ok) { sendJson(response, { ok:false, outcome:"unauthorized", message:"This account can view Social but cannot edit Posts." }, 403); return; }
       const currentState = await store.readState();
-      const visible = buildPostComposerContract(currentState, actor, id, new Date().toISOString());
+      const visible = buildPostComposerContract(currentState, actor, id, new Date().toISOString(), { productionEnabled:socialVNextConfig.enabled });
       const duplicateCount = (currentState.posts || []).filter((item) => String(item?.id || "") === id).length;
       if (!visible.ok || visible.post?.id !== id || duplicateCount !== 1) { sendJson(response, { ok:false, outcome:"unavailable", message:"This Post is unavailable." }, 404); return; }
       const expectedVersion = input.expectedVersion;
@@ -35526,12 +35817,64 @@ async function handleRequest(request, response) {
       if (expectedVersion !== visible.version) { sendJson(response, { ok:false, outcome:"conflict", currentVersion:visible.version, message:"The saved Post changed. Reload the saved copy or keep editing." }, 409); return; }
       const patch = normalizeComposerPatch(input);
       const nextState = (await store.mutateCollectionItem("posts", id, (post) => ({ ...post, ...patch }), { expectedVersion })).state;
-      sendJson(response, buildPostComposerContract(nextState, actor, id, new Date().toISOString()));
+      sendJson(response, buildPostComposerContract(nextState, actor, id, new Date().toISOString(), { productionEnabled:socialVNextConfig.enabled }));
     } catch (error) {
       const status = Number(error?.status);
       if (status === 400 || status === 413 || error instanceof RequestLimitError) sendJson(response, { ok:false, outcome:"validation_error", field:error?.field || null, message:status === 413 || error instanceof RequestLimitError ? "The save request is too large." : error?.message || "The shared copy is invalid." }, 400);
       else if (status === 409) sendJson(response, { ok:false, outcome:"conflict", currentVersion:Number.isSafeInteger(error?.actualVersion) ? error.actualVersion : null, message:"The saved Post changed. Reload the saved copy or keep editing." }, 409);
       else sendJson(response, { ok:false, outcome:"recoverable_error", message:"The Post could not be saved. Your edits are still here; try again safely." }, 500);
+    }
+    return;
+  }
+
+  const socialProductionRoute = socialProductionActionRoute(url.pathname);
+  if (socialProductionRoute && request.method === "POST") {
+    if (!socialVNextConfig.enabled) { sendJson(response, { ok:false, outcome:"not_available", message:"Social production is unavailable. Nothing was changed." }, 404); return; }
+    let input = {};
+    try { input = await readBoundedJson(request, { limit:32_000 }); }
+    catch (error) { sendJson(response, { ok:false, outcome:"validation_error", message:error instanceof RequestLimitError ? "The Social action request is too large." : "The Social action request is invalid." }, error instanceof RequestLimitError ? 413 : 400); return; }
+    const actor = publicActor(accessDecision.actor);
+    const execute = async () => {
+      const currentState = await store.readState();
+      if (socialActionAlreadyApplied(currentState, input.requestId)) return { ok:true, outcome:"already_applied", reused:true };
+      const dependencies = {
+        now:() => new Date().toISOString(),
+        commitPostMutation:writeSocialPostMutation,
+        renderPost:renderSocialPostAdapter,
+        applyApproval:applySocialApproval,
+        recordRequestedChanges:recordSocialRequestedChanges,
+        loadState:() => store.readState(),
+        store,
+        acquireClaim:(details) => acquireSocialPublishClaim({ claimCollectionItems:(collection, rows) => store.claimCollectionItems(collection, rows) }, details),
+        transitionClaim:(claimId, status, details) => transitionSocialPublishClaim(store, claimId, status, details),
+        publishChannel:(details) => publishSocialChannelAdapter(details, actor),
+        recordPublicationResult:(details) => recordSocialPublicationResult(details, actor),
+        buildManualPackage:buildSocialManualPackageAdapter
+      };
+      if (socialProductionRoute.action === "creative") return saveSocialCreativeSelection(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "render") return renderSocialCreative(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "variants") return saveSocialVariants(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "schedule") return saveSocialSchedule(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "approve") return approveSocialPost(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "request-changes") return requestSocialPostChanges(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "regenerate") return regenerateSocialPostImage(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "publish") return publishSocialPost(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "manual-package") return createSocialManualPackage(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      throw Object.assign(new Error("Social action not found."), { status:404, outcome:"not_available" });
+    };
+    try {
+      const result = socialProductionRoute.action === "publish" ? await execute() : await serializeStateMutation(execute);
+      const serialized = JSON.stringify(result || {});
+      if (Buffer.byteLength(serialized) >= 16 * 1024) throw Object.assign(new Error("Social action response exceeded its compact boundary."), { status:500 });
+      sendJson(response, result || { ok:false, outcome:"recoverable_error" }, 200);
+    } catch (error) {
+      const status = Number(error?.status || 500);
+      sendJson(response, {
+        ok:false,
+        outcome:error?.outcome || (status === 403 ? "unauthorized" : status === 404 ? "not_available" : status === 409 ? "conflict" : status === 400 ? "validation_error" : "recoverable_error"),
+        ...(Number.isSafeInteger(error?.actualVersion) ? { currentVersion:error.actualVersion } : {}),
+        message:status >= 500 ? "The Social action could not be completed safely. No unconfirmed success was returned." : String(error?.message || "The Social action was rejected.").slice(0, 300)
+      }, [400, 403, 404, 409, 413, 503].includes(status) ? status : 500);
     }
     return;
   }

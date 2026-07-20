@@ -193,6 +193,15 @@ assert.equal(browserAlias.destination, "Social");
 const browserObject = browserContext.window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve("#files/data-room-item/file-1");
 assert.equal(browserObject.sourceKind, "dataRoomItems");
 assert.equal(browserObject.sourceId, "file-1");
+const socialBrowserContext = { window:{}, URLSearchParams };
+vm.runInNewContext(routeCompatibilityBrowserSource({ socialEnabled:true }), socialBrowserContext, { timeout:1000 });
+const socialCalendar = socialBrowserContext.window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve("#social-calendar");
+assert.equal(socialCalendar.canonicalRoute, "queue");
+assert.equal(socialCalendar.safeHash, "#queue?view=calendar");
+const socialConnections = socialBrowserContext.window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve("#settings/social/linkedin");
+assert.equal(socialConnections.canonicalRoute, "settings");
+assert.equal(socialConnections.safeHash, "#settings?view=social-connections&channel=linkedin");
+assert.equal(socialBrowserContext.window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve("#settings/social/unknown").kind, "unsafe");
 
 const legacyFixture = `<!doctype html><html><head></head><body>
   <div class="shell"><header class="app-topbar"></header><main id="app"><h1>Legacy</h1></main></div>

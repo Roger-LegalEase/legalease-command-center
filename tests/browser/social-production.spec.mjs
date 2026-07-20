@@ -68,3 +68,104 @@ test("calendar and connection production surfaces use the real additive renderer
   await page.setViewportSize({ width:1440, height:900 }); await page.setContent(`<style>${calendarCss}</style>${renderSocialCalendarPage(calendar)}<script>${socialCalendarBrowserSource()}</script>`); await shot(page, "calendar-month.png"); await page.getByRole("button", { name:"Week" }).click(); await expect(page.getByRole("button", { name:"Week" })).toHaveAttribute("aria-pressed", "true"); await expect(page.locator("[data-calendar-view-status]")).toContainText("Week view"); await page.setViewportSize({ width:390, height:844 }); await shot(page, "calendar-week-mobile.png");
   const connectionsState = { socialAccounts:[{ id:"linkedin-safe", platform:"linkedin", status:"connected", connected:true, accessToken:"never-render" },{ id:"instagram-safe", platform:"instagram", status:"connected", connected:true }], runtime:{ livePostingGates:{ linkedin:false, instagram:true } } }; const connections = buildSocialConnectionsContract(connectionsState, actor, "2026-07-19T12:00:00.000Z"); const connectionCss = await readFile("assets/ui/social-connections.css", "utf8"); await page.setViewportSize({ width:1280, height:900 }); await page.setContent(`<style>${connectionCss}</style>${renderSocialConnectionsPage(connections)}`); expect(await page.textContent("body")).not.toContain("never-render"); await shot(page, "social-connections.png");
 });
+
+test("integrated Social production fixture preserves exact truth and controlled publication claims", async ({ page }) => {
+  test.slow();
+  const baseURL = process.env.BROWSER_TEST_SOCIAL_PRODUCTION_BASE_URL;
+  expect(baseURL).toBeTruthy();
+  const fullStateRequests = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (["/api/state", "/api/state/full", "/api/company-state"].includes(pathname)) fullStateRequests.push(pathname);
+  });
+
+  await page.goto(`${baseURL}/#social/post/production-post`, { waitUntil:"domcontentloaded" });
+  await expect(page.locator("[data-composer-form]")).toBeVisible();
+  await expect(page.locator('[data-creative-ref="template"]')).toBeEnabled();
+  await page.locator('[data-creative-ref="template"]').selectOption("generationProfiles:production-template");
+  await page.locator('[data-creative-ref="logo"]').selectOption("brandContract:shellLogo");
+  await page.locator('[data-creative-ref="wilma"]').selectOption("brandAssets:production-wilma");
+  await page.evaluate(() => {
+    if (typeof window.render !== "function") throw new Error("The shared legacy renderer is unavailable.");
+    window.render();
+  });
+  await expect(page.locator('[data-creative-ref="template"]')).toHaveValue("generationProfiles:production-template");
+  await expect(page.locator('[data-creative-ref="logo"]')).toHaveValue("brandContract:shellLogo");
+  await expect(page.locator('[data-creative-ref="wilma"]')).toHaveValue("brandAssets:production-wilma");
+  await page.locator('[data-creative-ref="background"]').selectOption("brandAssets:production-background");
+  await page.locator('[data-creative-ref="disclaimer"]').selectOption("library:production-disclaimer");
+  await page.locator("[data-save-creative]").click();
+  await expect(page.locator("[data-creative-message]")).toHaveText("Creative saved.");
+  await reloadComposer(page);
+  await expect(page.locator('[data-creative-ref="template"]')).toHaveValue("generationProfiles:production-template");
+  await expect(page.locator('[data-creative-ref="wilma"]')).toHaveValue("brandAssets:production-wilma");
+
+  for (const [channel, copy] of [["linkedin", "Independent integrated LinkedIn copy."], ["instagram", "Independent integrated Instagram copy."]]) {
+    const editor = page.locator(`[data-channel-variant="${channel}"]`);
+    await editor.locator("[data-channel-selected]").check();
+    await editor.locator("[data-variant-mode]").selectOption("custom");
+    await editor.locator("[data-variant-body]").fill(copy);
+  }
+  await page.locator("[data-save-variants]").click();
+  await expect(page.locator("[data-variant-message]")).toHaveText("Channels saved.");
+  await reloadComposer(page);
+  await expect(page.locator('[data-channel-variant="linkedin"] [data-variant-body]')).toHaveValue("Independent integrated LinkedIn copy.");
+  await expect(page.locator('[data-channel-variant="instagram"] [data-variant-body]')).toHaveValue("Independent integrated Instagram copy.");
+
+  const scheduledAt = new Date(Date.now() + (2 * 24 * 60 * 60 * 1_000)).toISOString();
+  await page.locator(".vnext-schedule-editor").evaluate((details) => { details.open = true; });
+  await page.locator("[data-schedule-at]").fill(scheduledAt);
+  await page.locator("[data-schedule-zone]").fill("Etc/UTC");
+  await page.locator("[data-save-schedule]").click();
+  await expect(page.locator("[data-schedule-message]")).toContainText("Nothing was published");
+  let state = await (await page.request.get(`${baseURL}/api/test/fixture-state`)).json();
+  expect(state.publishEvents).toEqual([]);
+
+  await expect(page.locator("[data-approve-post]")).toBeEnabled();
+  await page.locator("[data-approve-post]").click();
+  await expect(page.locator("[data-review-message]")).toContainText("Nothing was scheduled or published");
+  state = await (await page.request.get(`${baseURL}/api/test/fixture-state`)).json();
+  expect(state.publishEvents).toEqual([]);
+
+  const currentModel = await (await page.request.get(`${baseURL}/api/ui/social/post/production-publish/composer`)).json();
+  const publishResults = await page.evaluate(async ({ version }) => Promise.all([
+    fetch("/api/ui/social/post/production-publish/publish", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ expectedVersion:version, requestId:"production-browser-publish-one" }) }).then((response) => response.json()),
+    fetch("/api/ui/social/post/production-publish/publish", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ expectedVersion:version, requestId:"production-browser-publish-two" }) }).then((response) => response.json())
+  ]), { version:currentModel.version });
+  expect(publishResults.some((result) => result.outcome === "partial"), JSON.stringify(publishResults)).toBe(true);
+
+  state = await (await page.request.get(`${baseURL}/api/test/fixture-state`)).json();
+  const providerCalls = state.activityEvents.filter((event) => event.type === "social_provider_adapter_called");
+  expect(providerCalls.map((event) => event.channel).sort()).toEqual(["instagram", "linkedin"]);
+  expect(state.publishClaims.filter((claim) => claim.postId === "production-publish")).toHaveLength(2);
+  expect(state.publishEvents.find((event) => event.postId === "production-publish" && event.channel === "linkedin")?.status).toBe("published");
+  expect(state.publishEvents.find((event) => event.postId === "production-publish" && event.channel === "instagram")?.status).toBe("failed_retryable");
+  const saved = state.posts.find((post) => post.id === "production-post");
+  expect(saved.selectedTemplateId).toBe("production-template");
+  expect(saved.wilmaAssetReference).toEqual({ collection:"brandAssets", sourceId:"production-wilma" });
+  expect(saved.channelVariants.find((variant) => variant.channel === "linkedin").body).toBe("Independent integrated LinkedIn copy.");
+  expect(saved.channelVariants.find((variant) => variant.channel === "instagram").body).toBe("Independent integrated Instagram copy.");
+  expect(saved.scheduledFor).toBe(scheduledAt);
+
+  const blocked = await (await page.request.get(`${baseURL}/api/ui/social/post/production-blocked/composer`)).json();
+  expect(blocked.capabilities.approves).toBe(false);
+  const blockedApproval = await page.request.post(`${baseURL}/api/ui/social/post/production-blocked/approve`, { data:{ expectedVersion:blocked.version, requestId:"production-browser-blocked-approval" } });
+  expect(blockedApproval.status()).toBe(409);
+
+  await page.goto(`${baseURL}/#social/post/production-manual`, { waitUntil:"domcontentloaded" });
+  await expect(page.locator("[data-composer-form]")).toBeVisible();
+  await expect(page.locator("[data-manual-package]")).toBeEnabled();
+  await page.locator("[data-manual-package]").click();
+  await expect(page.locator("[data-publishing-message]")).toContainText("No channel was marked Published");
+  state = await (await page.request.get(`${baseURL}/api/test/fixture-state`)).json();
+  expect(state.posts.find((post) => post.id === "production-manual").status).toBe("approved");
+  expect(state.posts.find((post) => post.id === "production-manual").postingPackage.manualOnly).toBe(true);
+
+  await page.goto(`${baseURL}/#social-calendar`, { waitUntil:"domcontentloaded" });
+  await expect(page.getByRole("heading", { name:"Calendar", exact:true })).toBeVisible();
+  await expect(page.locator("[data-social-production-surface='calendar']")).toBeVisible();
+  await page.goto(`${baseURL}/#social-connections`, { waitUntil:"domcontentloaded" });
+  await expect(page.getByRole("heading", { name:"Social connections", exact:true })).toBeVisible();
+  expect(await page.locator("body").textContent()).not.toContain("accessToken");
+  expect(fullStateRequests).toEqual([]);
+});

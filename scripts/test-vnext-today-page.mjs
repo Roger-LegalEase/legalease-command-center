@@ -172,7 +172,7 @@ assert.equal((serviceSource.match(/buildTodayView\(state, actor, now\)/g) || [])
 assert.match(serverSource, /url\.pathname === "\/api\/ui\/today" && request\.method === "GET"/);
 assert.match(serverSource, /buildAuthorizedTodayPage\(currentState, actor, now\)/);
 const endpointStart = serverSource.indexOf('url.pathname === "/api/ui/today" && request.method === "GET"');
-const endpointEnd = serverSource.indexOf('url.pathname === "/api/ui/inbox/action" && request.method === "POST"', endpointStart);
+const endpointEnd = serverSource.indexOf('url.pathname === "/api/ui/social" && request.method === "GET"', endpointStart);
 assert.ok(endpointStart >= 0 && endpointEnd > endpointStart);
 const endpointSource = serverSource.slice(endpointStart, endpointEnd);
 assert.doesNotMatch(endpointSource, /writeCollections|writeChangedCollections|serializeStateMutation|fetch\(|provider|sendEmail|publish\w*\(|approve\w*\(|complete\w*\(|snooze\w*\(|launch\w*\(|release\w*\(/i);

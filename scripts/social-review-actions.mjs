@@ -7,10 +7,10 @@ export const SOCIAL_REQUEST_CHANGES_ENDPOINT = "/api/ui/social/post/:postId/requ
 export const SOCIAL_REGENERATE_ENDPOINT = "/api/ui/social/post/:postId/regenerate";
 const clean = (value = "") => String(value ?? "").trim();
 function fail(message, status = 400, outcome = "validation_error") { throw Object.assign(new Error(message), { status, outcome }); }
-function authorize(actor) { if (actor?.authenticated !== true || !roleHasCapability(actor.role, "manage_approval_queue")) fail("This review action is not available.", 403, "forbidden"); }
+function authorize(actor, capability = "manage_approval_queue") { if (actor?.authenticated !== true || !roleHasCapability(actor.role, capability)) fail("This review action is not available.", 403, "forbidden"); }
 
-function current(state, actor, postId, input, now) {
-  authorize(actor);
+function current(state, actor, postId, input, now, capability = "manage_approval_queue") {
+  authorize(actor, capability);
   const posts = (Array.isArray(state?.posts) ? state.posts : []).filter((post) => clean(post?.id) === clean(postId));
   if (posts.length !== 1) fail("This Post is unavailable.", 404, "unavailable");
   if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion !== Number(posts[0]._version)) fail("The Post changed. Reload before reviewing.", 409, "version_conflict");
@@ -41,7 +41,7 @@ function safeFeedback(input = {}) {
 
 export async function requestSocialPostChanges(dependencies, state, actor, postId, input = {}) {
   const now = typeof dependencies?.now === "function" ? dependencies.now() : new Date().toISOString();
-  const { plan } = current(state, actor, postId, input, now);
+  const { plan } = current(state, actor, postId, input, now, "manage_content_drafts");
   const feedback = safeFeedback(input);
   if (typeof dependencies?.recordRequestedChanges !== "function") fail("Review feedback is unavailable.", 503, "unavailable");
   const result = await dependencies.recordRequestedChanges({ id:feedback.feedbackId, postId:clean(postId), expectedVersion:input.expectedVersion, requestId:clean(input.requestId), actorId:clean(actor.id || actor.actorId), summary:feedback.summary, status:"changes_requested", sourceReference:{ collection:"posts", sourceId:clean(postId), relationship:"requested_change" }, reviewedPlan:plan });

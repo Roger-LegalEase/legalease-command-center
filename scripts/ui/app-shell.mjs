@@ -33,6 +33,9 @@ import {
 } from "./pages/social-home.mjs";
 import { POST_COMPOSER_STYLESHEET_PATH, postComposerBrowserSource } from "./pages/post-composer.mjs";
 import { socialResultsBrowserSource } from "./pages/social-results.mjs";
+import { SOCIAL_CALENDAR_STYLESHEET_PATH } from "./pages/social-calendar.mjs";
+import { SOCIAL_CONNECTIONS_STYLESHEET_PATH } from "./pages/social-connections.mjs";
+import { socialProductionControllerBrowserSource } from "./controllers/social-production-controller.mjs";
 import {
   PARTNERS_ACCESSIBILITY_STYLESHEET_PATH,
   PARTNERS_HOME_STYLESHEET_PATH,
@@ -440,7 +443,7 @@ function shellClientScript() {
   </script>`;
 }
 
-function applyVNextRouteParser(html, { outreachEnabled = false, filesEnabled = false } = {}) {
+function applyVNextRouteParser(html, { socialEnabled = false, outreachEnabled = false, filesEnabled = false } = {}) {
   const startMarker = '      const pathRoute = String(location.pathname || "/").replace(';
   const endMarker = '      if (pageId === "safe-mode") {';
   const start = html.indexOf(startMarker);
@@ -508,16 +511,31 @@ function replaceInitialLoadingSurface(html) {
     + html.slice(end);
 }
 
-function disableSocialFullStateRefresh(html, { outreachEnabled = false, filesEnabled = false } = {}) {
+function protectSocialPostSurfaceFromLegacyRender(html, { socialEnabled = false } = {}) {
+  if (!socialEnabled) return html;
+  const marker = "    function render() {";
+  if (!html.includes(marker)) return html;
+  return html.replace(marker, `${marker}
+      const compactRenderRoute = window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(location.hash || "#today");
+      const compactPostSurface = compactRenderRoute?.kind === "object"
+        && compactRenderRoute.objectType === "Post"
+        && compactRenderRoute.sourceKind === "posts"
+        && compactRenderRoute.requestedRoute === "social/post";
+      if (compactPostSurface && document.querySelector("main#app [data-post-composer]")) return;`);
+}
+
+function disableSocialFullStateRefresh(html, { socialEnabled = false, outreachEnabled = false, filesEnabled = false } = {}) {
   const marker = "      loadFullStateInBackground();";
   if (!html.includes(marker)) return html;
   return html.replace(marker, `      const compactSocialRoute = window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve(location.hash || "#today");
-      const onCompactSocial = compactSocialRoute.kind === "page" && compactSocialRoute.canonicalRoute === "queue";
+      const onCompactSocial = (compactSocialRoute.kind === "page" && compactSocialRoute.canonicalRoute === "queue")
+        || (compactSocialRoute.kind === "object" && compactSocialRoute.objectType === "Post" && compactSocialRoute.sourceKind === "posts");
+      const onCompactSocialConnections = ${socialEnabled ? "compactSocialRoute.kind === \"page\" && compactSocialRoute.canonicalRoute === \"settings\" && new URLSearchParams(String(compactSocialRoute.safeHash || location.hash || \"\").split(\"?\")[1] || \"\").get(\"view\") === \"social-connections\"" : "false"};
       const onCompactPartners = (compactSocialRoute.kind === "page" && compactSocialRoute.canonicalRoute === "partners")
         || (compactSocialRoute.kind === "object" && compactSocialRoute.objectType === "Partner" && compactSocialRoute.sourceKind === "partners");
       const onCompactOutreach = ${outreachEnabled ? "(compactSocialRoute.kind === \"page\" && compactSocialRoute.canonicalRoute === \"outreach\") || (compactSocialRoute.kind === \"object\" && compactSocialRoute.objectType === \"Campaign\")" : "false"};
       const onCompactFiles = ${filesEnabled ? "(compactSocialRoute.kind === \"page\" && compactSocialRoute.canonicalRoute === \"files\") || (compactSocialRoute.kind === \"object\" && compactSocialRoute.objectType === \"File\")" : "false"};
-      if (!(onCompactSocial || onCompactPartners || onCompactOutreach || onCompactFiles)) loadFullStateInBackground();`);
+      if (!(onCompactSocial || onCompactSocialConnections || onCompactPartners || onCompactOutreach || onCompactFiles)) loadFullStateInBackground();`);
 }
 
 export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
@@ -530,17 +548,33 @@ export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
   const chrome = renderVNextDesktopShellChrome(options);
   let html = removeLegacyPrimaryHeader(source);
   html = applyVNextRouteParser(html, options);
+  html = protectSocialPostSurfaceFromLegacyRender(html, options);
   html = disableSocialFullStateRefresh(html, options);
   html = replaceInitialLoadingSurface(html);
   html = html.replace(
     "</head>",
     `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_HOME_STYLESHEET_PATH))}" />\n  ${PARTNER_RECORD_STYLESHEET_PATHS.map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ")}\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_ACCESSIBILITY_STYLESHEET_PATH))}" />\n  ${options.outreachEnabled ? [OUTREACH_HOME_STYLESHEET_PATH, CAMPAIGN_WIZARD_STYLESHEET_PATH, CAMPAIGN_DETAIL_STYLESHEET_PATH].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  ${options.filesEnabled ? [FILES_HOME_STYLESHEET, "/assets/ui/files-organization.css", FILE_DETAILS_STYLESHEET, FILE_UPLOAD_STYLESHEET, INVESTOR_ROOM_STYLESHEET].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  <script>${routeCompatibilityBrowserSource(options)}</script>\n</head>`
   );
+  if (options.socialEnabled) {
+    const socialStyles = [SOCIAL_CALENDAR_STYLESHEET_PATH, SOCIAL_CONNECTIONS_STYLESHEET_PATH]
+      .map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`)
+      .join("\n  ");
+    html = html.replace(
+      `  <script>${routeCompatibilityBrowserSource(options)}</script>`,
+      `  ${socialStyles}\n  <script>${routeCompatibilityBrowserSource(options)}</script>`
+    );
+  }
   html = html.replace(bodyMarker, '<body class="vnext-app-shell" data-command-center-shell="vnext">');
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
   html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource()}</script>\n<script>${partnerRecordBrowserSource()}</script>\n${options.outreachEnabled ? `<script>${outreachHomeBrowserSource()}</script>\n<script>${campaignWizardBrowserSource()}</script>\n<script>${campaignReviewBrowserSource()}</script>\n<script>${campaignDetailBrowserSource()}</script>` : ""}\n${options.filesEnabled ? `<script>${filesIntegrationBrowserSource()}</script>` : ""}\n</body>`);
+  if (options.socialEnabled) {
+    html = html.replace(
+      `<script>${partnersHomeBrowserSource()}</script>`,
+      `<script>${socialProductionControllerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource()}</script>`
+    );
+  }
   return html;
 }
 

@@ -192,7 +192,12 @@ export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", 
   if (verb === "POST" && (path === "/api/ui/partners/outreach/campaign"
     || /^\/api\/ui\/partners\/[^/]+\/(?:outreach\/follow-up|stage-suggestions\/[^/]+\/apply|programs(?:\/[^/]+\/artifacts)?|files)$/.test(path))) return ["manage_growth"];
   if (verb === "GET" && /^\/api\/ui\/social\/post\/[^/]+\/composer$/.test(path)) return ["read_internal"];
+  if (verb === "GET" && ["/api/ui/social/calendar", "/api/ui/social/connections"].includes(path)) return ["read_internal"];
   if (verb === "POST" && /^\/api\/ui\/social\/post\/[^/]+\/save$/.test(path)) return ["manage_content_drafts"];
+  if (verb === "POST" && /^\/api\/ui\/social\/post\/[^/]+\/(?:creative|render|variants|schedule)$/.test(path)) return ["manage_content_drafts"];
+  if (verb === "POST" && /^\/api\/ui\/social\/post\/[^/]+\/request-changes$/.test(path)) return ["manage_content_drafts"];
+  if (verb === "POST" && /^\/api\/ui\/social\/post\/[^/]+\/(?:approve|regenerate)$/.test(path)) return ["manage_approval_queue"];
+  if (verb === "POST" && /^\/api\/ui\/social\/post\/[^/]+\/(?:publish|manual-package)$/.test(path)) return ["social_publish"];
   if (verb === "GET" && path === "/api/ui/quick-capture/capabilities") return ["read_internal"];
   if (verb === "POST" && path === "/api/ui/quick-capture") return ["read_internal"];
   if (verb === "POST" && path === "/api/ui/inbox/action") return ["read_internal"];
