@@ -88,9 +88,11 @@ for (const entry of routeRegistry) {
   assert.ok(SHELL_DESTINATION_LABELS.includes(destination), `${entry.canonicalRoute} lacks a deterministic shell destination.`);
 }
 for (const [alias, target] of aliases) {
-  assert.equal(canonicalRouteForShell(alias), target, `Alias ${alias} must retain canonical target ${target}.`);
+  const expectedTarget = target === "growth" ? "queue" : target;
+  assert.equal(canonicalRouteForShell(alias), expectedTarget, `Alias ${alias} must retain final canonical target ${expectedTarget}.`);
   assert.ok(SHELL_DESTINATION_LABELS.includes(resolveShellDestination(alias)), `Alias ${alias} lacks a shell destination.`);
 }
+assert.equal(canonicalRouteForShell("growth"), "queue");
 assert.equal(resolveShellDestination("#item/posts/post-1"), "Social");
 assert.equal(resolveShellDestination("#item/campaigns/campaign-1"), "Outreach");
 assert.equal(resolveShellDestination("#item/partners/partner-1"), "Partners");

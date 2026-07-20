@@ -18,6 +18,7 @@ assert.match(css, /:focus-visible/, "The primary UI must provide a visible keybo
 assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/, "Primary CSS must honor reduced motion.");
 assert.match(css, /min-height:\s*44px/, "Primary controls must include practical 44px targets.");
 assert.match(css, /@media\s*\(max-width:\s*(?:768|720|640|600|560|520|480)px\)/, "Primary surfaces must define narrow-screen alternatives.");
+assert.match(css, /\.vnext-search-shortcut\s*\{[^}]*color:\s*var\(--le-navy-800\)/s, "The visible Search shortcut must use the approved high-contrast navy token.");
 assert.match(shell, /aria-label="Primary destinations"/);
 assert.match(shell, /aria-live="polite"/);
 assert.match(shell, /aria-modal="true"/);

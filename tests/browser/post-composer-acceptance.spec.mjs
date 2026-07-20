@@ -129,7 +129,10 @@ test("restricted composer enforces the real role, visibility, duplicate-ID, and 
   allowExpectedCriticalResponse(page, "/api/state", 1);
   allowExpectedConsoleError(page, /403/, 4);
   await openComposer(page, "idea-23", readonlyBaseURL);
-  await page.locator('[data-composer-field="headline"]').fill("Client capability tampering");
+  await expect(async () => {
+    await page.locator('[data-composer-field="headline"]').fill("Client capability tampering");
+    await expect(page.locator("[data-composer-save]")).toBeEnabled();
+  }).toPass();
   await page.locator("[data-composer-save]").click();
   await expect(page.locator("[data-composer-message]")).toHaveAttribute("data-state", "authorization_error");
   await expect(page.locator('[data-composer-field="headline"]')).toHaveValue("Client capability tampering");
@@ -241,7 +244,7 @@ test("Back, sidebar, and exact-object navigation each support Stay, Escape, focu
   test.slow();
   const scenarios = [
     {
-      id:"idea-09", destination:"#queue?view=ideas",
+      id:"idea-09", destination:"#social?view=ideas",
       trigger:async () => page.getByRole("button", { name:"Back to Social" }).click(),
       focus:() => page.getByRole("button", { name:"Back to Social" })
     },
@@ -337,7 +340,7 @@ test("guarded browser Back preserves Forward history; clean hash navigation and 
   await expect(page.locator("[data-composer-message]")).toHaveText("Saved");
   expect(saves).toBe(1);
   await page.getByRole("button", { name:"Back to Social" }).click();
-  await expect(page).toHaveURL(/#queue\?view=ideas$/);
+  await expect(page).toHaveURL(/#social\?view=ideas$/);
   await expect(page.getByRole("dialog", { name:"Unsaved changes" })).toHaveCount(0);
   console.log("CCX302B_HISTORY", JSON.stringify({ backStay:true, backLeave:true, forward:true, ordinaryHash:true, saveClearsGuard:true, duplicateDialogs:0, duplicateHistory:0 }));
 });

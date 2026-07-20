@@ -91,7 +91,11 @@ const aliases = routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [a
 assert.equal(routeRegistry.length, 75);
 assert.equal(aliases.length, 53);
 for (const entry of routeRegistry) assert.notEqual(resolveShellDestination(entry.canonicalRoute), "", `${entry.canonicalRoute} needs a destination.`);
-for (const [alias, target] of aliases) assert.equal(canonicalRouteForShell(alias), target, `${alias} must retain ${target}.`);
+for (const [alias, target] of aliases) {
+  const expectedTarget = target === "growth" ? "queue" : target;
+  assert.equal(canonicalRouteForShell(alias), expectedTarget, `${alias} must retain final target ${expectedTarget}.`);
+}
+assert.equal(canonicalRouteForShell("growth"), "queue");
 assert.equal(resolveShellDestination("#item/posts/post-1"), "Social");
 assert.equal(resolveShellDestination("#item/campaigns/campaign-1"), "Outreach");
 assert.equal(resolveShellDestination("#item/partners/partner-1"), "Partners");

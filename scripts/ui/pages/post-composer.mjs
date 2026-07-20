@@ -106,7 +106,7 @@ function composerClient(loadingHtml) {
       dirty = true; conflict = false; conflictVersion = null; updatePreview(); updateSaveState(); setMessage("Unsaved changes", "unsaved_changes");
     }));
     app().querySelector("[data-composer-form]")?.addEventListener("submit", save);
-    app().querySelector("[data-composer-back]")?.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); if (dirty) openDiscardDialog("#queue?view=ideas", "click"); else navigate("#queue?view=ideas", "click"); });
+    app().querySelector("[data-composer-back]")?.addEventListener("click", (event) => { event.preventDefault(); event.stopImmediatePropagation(); if (dirty) openDiscardDialog("#social?view=ideas", "click"); else navigate("#social?view=ideas", "click"); });
     app().querySelector("[data-keep-editing]")?.addEventListener("click", () => setMessage("The saved Post changed. Your edits are still here.", "version_conflict"));
     app().querySelector("[data-reload-copy]")?.addEventListener("click", () => openDiscardDialog("reload", "control"));
     app().querySelector("[data-save-creative]")?.addEventListener("click", () => creativeAction("creative"));
@@ -231,7 +231,7 @@ function composerClient(loadingHtml) {
     if (postId() !== requestedPostId) return;
     if (response.status === 401) { sessionExpired = true; model = null; localDraft = null; dirty = false; pendingDestination = null; closeGuard(false); app().innerHTML = '<section data-vnext-shell-state="session_expired"><h1>Session expired</h1></section>'; return; }
     loadedPostId = requestedPostId;
-    if (!response.ok || !body.ok) { ensureScaffold(); const shell = app()?.querySelector("[data-post-composer]"); if (shell) shell.innerHTML = '<header><a href="#queue?view=ideas">Back to Social</a><h1>Post unavailable</h1><p data-composer-unavailable role="status">This Post is unavailable. No protected details were loaded.</p></header>'; return; }
+    if (!response.ok || !body.ok) { ensureScaffold(); const shell = app()?.querySelector("[data-post-composer]"); if (shell) shell.innerHTML = '<header><a href="#social?view=ideas">Back to Social</a><h1>Post unavailable</h1><p data-composer-unavailable role="status">This Post is unavailable. No protected details were loaded.</p></header>'; return; }
     model = body; localDraft = structuredClone(body.fields); if (force) dirty = false; lastAcceptedHash = location.hash; render();
     })();
     loadPromise = currentLoad; loadPostId = requestedPostId;

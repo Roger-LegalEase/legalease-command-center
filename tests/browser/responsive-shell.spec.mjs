@@ -8,7 +8,7 @@ const screenshotDirectory = path.resolve("docs/ux-vnext/screenshots/ccx-101");
 const drawerId = "#vnext-navigation-drawer";
 const primaryDestinations = [
   ["Today", "today"],
-  ["Social", "queue"],
+  ["Social", "social"],
   ["Outreach", "campaigns"],
   ["Partners", "partners"],
   ["Files", "proof"]
@@ -114,8 +114,8 @@ test("mobile utilities and the shared Global Create workflow remain reachable", 
 });
 
 test("mobile aliases, record links, unknown fallback, and the legacy shell stay compatible", async ({ page, baseURL }) => {
-  const vnextURL = await openResponsive(page, 390, "social");
-  await expect(page).toHaveURL(/#growth$/);
+  const vnextURL = await openResponsive(page, 390, "growth");
+  await expect(page).toHaveURL(/#social$/);
   await expect(page.locator("[data-shell-current-context]")).toHaveText("Social");
 
   const state = await page.request.get(`${vnextURL}/api/state`).then((response) => response.json());
@@ -130,8 +130,9 @@ test("mobile aliases, record links, unknown fallback, and the legacy shell stay 
   await expect(page.getByRole("heading", { name:"Page not found", level:1 })).toBeVisible();
   await expect(page.locator("[data-shell-current-context]")).toHaveText("Today");
 
-  await page.goto(`${baseURL}/#today`, { waitUntil:"domcontentloaded" });
+  await page.goto(`${baseURL}/#growth`, { waitUntil:"domcontentloaded" });
   await expect.poll(() => page.evaluate(() => Boolean(window.__LE_BOOT?.ready))).toBe(true);
+  await expect(page).toHaveURL(/#growth$/);
   await expect(page.locator("body[data-command-center-shell='vnext']")).toHaveCount(0);
   await expect(page.getByRole("navigation", { name:"Primary" })).toBeVisible();
 });
@@ -187,7 +188,7 @@ test("the responsive shell has no overflow or serious accessibility findings and
   await openResponsive(page, 390);
   const opened = await openDrawer(page);
   await opened.drawer.getByRole("link", { name:"Social", exact:true }).click();
-  await expect(page).toHaveURL(/#queue$/);
+  await expect(page).toHaveURL(/#social$/);
   await page.screenshot({
     path:path.join(screenshotDirectory, "responsive-shell-social-390.png"),
     animations:"disabled"

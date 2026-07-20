@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -7,8 +7,11 @@ import { pathToFileURL } from "node:url";
 export const VNEXT_LAUNCH_GATE_COMMANDS = Object.freeze([
   Object.freeze(["npm", "run", "check"]),
   Object.freeze(["npm", "test"]),
-  Object.freeze(["npm", "run", "test:extended"]),
+  Object.freeze(["node", "scripts/compare-extended-tests.mjs"]),
   Object.freeze(["npm", "run", "test:browser"]),
+  Object.freeze(["npm", "run", "test:vnext-performance"]),
+  Object.freeze(["npm", "run", "test:vnext-accessibility"]),
+  Object.freeze(["npm", "run", "test:vnext-recovery"]),
   Object.freeze(["npm", "run", "verify:vnext-production"]),
   Object.freeze(["npm", "run", "test:security-hardening"]),
   Object.freeze(["npm", "run", "secret:scan"]),
@@ -17,6 +20,8 @@ export const VNEXT_LAUNCH_GATE_COMMANDS = Object.freeze([
   Object.freeze(["npm", "run", "restore:drill"]),
   Object.freeze(["npm", "audit", "--audit-level=high"])
 ]);
+
+export const VNEXT_LAUNCH_GATE_BASE_SHA = "c6089bb571aa2a3e9b31a1c8aed8706e10e05586";
 
 const FORCED_OFF = Object.freeze([
   "COMMAND_CENTER_UX_VNEXT",
@@ -37,10 +42,12 @@ const FORCED_OFF = Object.freeze([
 ]);
 
 export function buildLaunchGateEnvironment(environment = process.env) {
+  const temporaryDirectory = environment.TMPDIR || "/tmp";
+  const headSha = String(environment.VNEXT_LAUNCH_GATE_HEAD_SHA || execFileSync("git", ["rev-parse", "HEAD"], { encoding:"utf8" })).trim();
   const safe = {
     PATH: environment.PATH,
     HOME: environment.HOME,
-    TMPDIR: environment.TMPDIR || "/tmp",
+    TMPDIR: temporaryDirectory,
     LANG: environment.LANG || "C.UTF-8",
     TERM: environment.TERM || "dumb",
     CI: environment.CI || "",
@@ -50,6 +57,11 @@ export function buildLaunchGateEnvironment(environment = process.env) {
     STORAGE_BACKEND: "json",
     LOCAL_DEMO_MODE: "true",
     COMMAND_CENTER_ALLOW_JSON: "true",
+    COMMAND_CENTER_DATA_PATH: path.join(temporaryDirectory, `legalease-vnext-launch-gate-${process.pid}.json`),
+    COMMAND_CENTER_SEED_PATH: path.join(temporaryDirectory, `legalease-vnext-launch-gate-seed-${process.pid}.json`),
+    EXTENDED_PARITY_EVENT_NAME: "pull_request",
+    EXTENDED_PARITY_BASE_SHA: String(environment.VNEXT_LAUNCH_GATE_BASE_SHA || VNEXT_LAUNCH_GATE_BASE_SHA).trim(),
+    EXTENDED_PARITY_HEAD_SHA: headSha,
     SENDGRID_WEBHOOK_ENABLED: "false",
     PRODUCT_EVENT_WEBHOOK_ENABLED: "false",
     ALLOW_LOCAL_IMAGE_FALLBACK: "false",

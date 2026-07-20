@@ -50,7 +50,13 @@ export function parseExtendedOutput(output, exitStatus, label) {
   const headers = [...source.matchAll(/^Extended tests: (\d+) to run, (\d+) quarantined \((\d+) covered by npm test\)\.$/gm)];
   if (headers.length !== 1) throw new Error(`${label} output did not contain exactly one extended-suite header.`);
   const discoveredCount = Number(headers[0][1]);
-  const failLines = sorted([...source.matchAll(/^FAIL (test-[a-z0-9-]+\.mjs)\s*$/gm)].map((match) => match[1]));
+  const quarantinedCount = Number(headers[0][2]);
+  const executionLines = [...source.matchAll(/^(PASS|FAIL) (test-[a-z0-9-]+\.mjs)\s*$/gm)];
+  const discoveredTests = sorted(executionLines.map((match) => match[2]));
+  const failLines = sorted(executionLines.filter((match) => match[1] === "FAIL").map((match) => match[2]));
+  if (executionLines.length !== discoveredCount || discoveredTests.length !== discoveredCount) {
+    throw new Error(`${label} executed test identities did not match its discovered count.`);
+  }
   const failureSummaries = [...source.matchAll(/^(\d+) extended test\(s\) failed: (.+)$/gm)];
   const successSummaries = [...source.matchAll(/^All (\d+) extended tests passed\.$/gm)];
   if (failureSummaries.length + successSummaries.length !== 1) {
@@ -68,13 +74,13 @@ export function parseExtendedOutput(output, exitStatus, label) {
     if (JSON.stringify(summaryIds) !== JSON.stringify(failLines)) {
       throw new Error(`${label} FAIL lines did not match its completion summary.`);
     }
-    return { discoveredCount, failures:summaryIds };
+    return { discoveredCount, discoveredTests, quarantinedCount, failures:summaryIds };
   }
 
   if (exitStatus !== 0) throw new Error(`${label} reported success but exited with status ${exitStatus}.`);
   if (failLines.length) throw new Error(`${label} reported success while FAIL lines were present.`);
   if (Number(successSummaries[0][1]) !== discoveredCount) throw new Error(`${label} success count did not match its suite header.`);
-  return { discoveredCount, failures:[] };
+  return { discoveredCount, discoveredTests, quarantinedCount, failures:[] };
 }
 
 function addWorktree(root, label, sha) {
@@ -131,7 +137,9 @@ function main() {
       headDirectory = addWorktree(root, "head", headSha);
       const head = runExtendedDirectory(headDirectory, "head", headSha);
       console.log(`Extended strict head failure count: ${head.failures.length}`);
+      console.log(`Extended strict head quarantined count: ${head.quarantinedCount}`);
       printList("Extended strict head failures", head.failures);
+      if (head.quarantinedCount) throw new Error("Extended tests may not be quarantined.");
       if (head.failures.length) throw new Error("Strict extended head suite is not clean.");
       return;
     }
@@ -142,8 +150,10 @@ function main() {
     const head = runExtendedDirectory(headDirectory, "head", headSha);
     const baseFailures = new Set(base.failures);
     const headFailures = new Set(head.failures);
+    const headTests = new Set(head.discoveredTests);
     const added = sorted(head.failures.filter((id) => !baseFailures.has(id)));
     const missing = sorted(base.failures.filter((id) => !headFailures.has(id)));
+    const removedTests = sorted(base.discoveredTests.filter((id) => !headTests.has(id)));
 
     console.log("\nExtended failure-set parity summary");
     console.log(`Extended parity base SHA: ${baseSha}`);
@@ -152,8 +162,14 @@ function main() {
     console.log(`Extended parity head discovered count: ${head.discoveredCount}`);
     console.log(`Extended parity base failure count: ${base.failures.length}`);
     console.log(`Extended parity head failure count: ${head.failures.length}`);
+    console.log(`Extended parity base quarantined count: ${base.quarantinedCount}`);
+    console.log(`Extended parity head quarantined count: ${head.quarantinedCount}`);
     printList("Extended parity added failures", added);
     printList("Extended parity missing failures", missing);
+    printList("Extended parity removed tests", removedTests);
+    if (base.quarantinedCount || head.quarantinedCount) throw new Error("Extended tests may not be quarantined.");
+    if (head.discoveredCount < base.discoveredCount) throw new Error("Extended discovery count dropped.");
+    if (removedTests.length) throw new Error("Previously discovered extended tests disappeared.");
     if (added.length || missing.length) throw new Error("Extended failure-set parity changed.");
   } finally {
     removeWorktree(headDirectory);

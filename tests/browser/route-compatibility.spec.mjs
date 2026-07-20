@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { allowExpectedConsoleError, expect, openToday, test } from "./support.mjs";
+import { allowExpectedConsoleErrorForPath, expect, openToday, test } from "./support.mjs";
 
 const screenshotDirectory = path.resolve("docs/ux-vnext/screenshots/ccx-102");
 
@@ -37,7 +37,7 @@ test("canonical pages and aliases resolve identically without reload and preserv
 
   const routePairs = [
     ["today", "overview", "Today"],
-    ["growth", "social", "Social"],
+    ["social", "growth", "Social"],
     ["campaigns", "campaign", "Outreach"],
     ["partners", "partner", "Partners"],
     ["proof", "metrics", "Files"]
@@ -61,11 +61,11 @@ test("canonical pages and aliases resolve identically without reload and preserv
   await setHash(page, "today");
   await expect(page).toHaveURL(/#today$/);
   await setHash(page, "social");
-  await expect(page).toHaveURL(/#growth$/);
+  await expect(page).toHaveURL(/#social$/);
   await page.goBack();
   await expect(page).toHaveURL(/#today$/);
   await page.goForward();
-  await expect(page).toHaveURL(/#growth$/);
+  await expect(page).toHaveURL(/#social$/);
   expect(documentRequests).toBe(0);
   expect(fullStateRequests).toBe(0);
 });
@@ -113,7 +113,7 @@ test("generic item links retain exact identity and missing records show a truthf
   await expect(page.locator("main#app #item").getByRole("heading", { level:1 })).toHaveText(post.title);
   await expect(primaryNavigation(page).getByRole("link", { name:"Social", exact:true })).toHaveAttribute("aria-current", "page");
 
-  allowExpectedConsoleError(page, /404 \(Not Found\)/, 1);
+  allowExpectedConsoleErrorForPath(page, "/api/ui/social/post/missing-post-record/composer", /404 \(Not Found\)/, 2);
   await setHash(page, "social/post/missing-post-record");
   await expect(page).toHaveURL(/#social\/post\/missing-post-record$/);
   await expect(page.locator("[data-composer-unavailable]")).toBeVisible();

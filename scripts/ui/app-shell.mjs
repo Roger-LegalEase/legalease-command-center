@@ -505,7 +505,6 @@ function applyVNextRouteParser(html, { socialEnabled = false, outreachEnabled = 
       const canCanonicalize = !pathRoute
         && !isGlobalSearchRoute
         && !isInboxRoute
-        && !isSocialRoute
         && !isSocialPostRoute
         && (vnextRouteResolution.kind === "page" || vnextRouteResolution.kind === "object")
         && vnextRouteResolution.safeHash;
@@ -536,16 +535,23 @@ function replaceInitialLoadingSurface(html) {
 }
 
 function protectSocialPostSurfaceFromLegacyRender(html, { socialEnabled = false } = {}) {
-  if (!socialEnabled) return html;
   const marker = "    function render() {";
   if (!html.includes(marker)) return html;
   return html.replace(marker, `${marker}
+      const compactSocialRenderRoute = window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(location.hash || "#today");
+      const compactSocialView = new URLSearchParams(String(location.hash || "").split("?")[1] || "").get("view") || "ideas";
+      const compactSocialSurface = compactSocialRenderRoute?.kind === "page"
+        && compactSocialRenderRoute.canonicalRoute === "queue"
+        && (compactSocialView === "results"
+          ? document.querySelector("main#app [data-social-results-page]")
+          : document.querySelector("main#app [data-social-page]"));
+      if (compactSocialSurface) return;${socialEnabled ? `
       const compactRenderRoute = window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(location.hash || "#today");
       const compactPostSurface = compactRenderRoute?.kind === "object"
         && compactRenderRoute.objectType === "Post"
         && compactRenderRoute.sourceKind === "posts"
         && compactRenderRoute.requestedRoute === "social/post";
-      if (compactPostSurface && document.querySelector("main#app [data-post-composer]")) return;`);
+      if (compactPostSurface && document.querySelector("main#app [data-post-composer]")) return;` : ""}`);
 }
 
 function disableSocialFullStateRefresh(html, { socialEnabled = false, outreachEnabled = false, filesEnabled = false } = {}) {

@@ -71,7 +71,7 @@ test("generic item stays legacy and unsaved navigation is guarded on mobile", as
   await page.getByRole("button", { name:"Back to Social" }).click();
   const dialog = page.getByRole("dialog", { name:"Unsaved changes" }); await expect(dialog).toBeVisible(); await shot(page, "composer-unsaved-dialog-390.png");
   await dialog.getByRole("button", { name:"Stay" }).click(); await expect(page).toHaveURL(/#social\/post\/idea-01$/); await expect(page.locator('[data-composer-field="body"]')).toHaveValue("Unsaved mobile caption");
-  await page.getByRole("button", { name:"Back to Social" }).click(); await dialog.getByRole("button", { name:"Leave without saving" }).click(); await expect(page).toHaveURL(/#queue\?view=ideas$/);
+  await page.getByRole("button", { name:"Back to Social" }).click(); await dialog.getByRole("button", { name:"Leave without saving" }).click(); await expect(page).toHaveURL(/#social\?view=ideas$/);
   await page.goto(`${baseURL}/#item/posts/${postId}`); await expect(page.locator("main#app #item.page-section.active")).toBeVisible();
 });
 

@@ -86,6 +86,47 @@ jobs:
           EXTENDED_PARITY_HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: node scripts/compare-extended-tests.mjs
 
+  phase-8-production-verification:
+    name: Phase 8 / production verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      SKIP_ENV_LOCAL_FILE: "1"
+      COMMAND_CENTER_TEST_MODE: "true"
+      COMMAND_CENTER_DATA_PATH: ${{ runner.temp }}/vnext-production-state.json
+      COMMAND_CENTER_SEED_PATH: ${{ runner.temp }}/vnext-production-seed.json
+      NODE_DISABLE_COMPILE_CACHE: "1"
+      COMMAND_CENTER_UX_VNEXT: "false"
+      COMMAND_CENTER_UX_VNEXT_SOCIAL: "false"
+      COMMAND_CENTER_UX_VNEXT_OUTREACH: "false"
+      COMMAND_CENTER_UX_VNEXT_FILES: "false"
+      COMMAND_CENTER_UX_VNEXT_DISCOVERY: "false"
+      LIVE_POSTING_ENABLED: "false"
+      ENABLE_LIVE_LINKEDIN_POSTING: "false"
+      ENABLE_LIVE_FACEBOOK_POSTING: "false"
+      ENABLE_LIVE_INSTAGRAM_POSTING: "false"
+      ENABLE_LIVE_X_POSTING: "false"
+      ENABLE_LIVE_THREADS_POSTING: "false"
+      ENABLE_LIVE_TIKTOK_POSTING: "false"
+      REACTIVATION_LIVE_SEND: "false"
+      OUTREACH_LIVE_SEND: "false"
+      ALERT_EMAIL_LIVE_SEND: "false"
+      COMMAND_CENTER_TEST_SOCIAL_PUBLISH_ADAPTER: inert
+      COMMAND_CENTER_TEST_SOCIAL_MANUAL_ADAPTER: inert
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run test:vnext-performance
+      - run: npm run test:vnext-accessibility
+      - run: npm run test:vnext-recovery
+      - run: npm run verify:vnext-production
+      - run: npm run test:vnext-legacy-deprecation
+      - run: npm run test:vnext-demo-contract
+      - run: npm run test:vnext-launch-gate-contract
+
   security:
     runs-on: ubuntu-latest
     steps:

@@ -115,9 +115,12 @@ const ROUTE_DESTINATIONS = Object.freeze({
   inbox:"Inbox"
 });
 const ALIAS_TARGETS = Object.freeze({
-  ...Object.fromEntries(routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [alias, entry.canonicalRoute]))),
-  social:"queue"
+  ...Object.fromEntries(routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [
+    alias,
+    entry.canonicalRoute === "growth" ? "queue" : entry.canonicalRoute
+  ])))
 });
+const CANONICAL_HASHES = Object.freeze({ queue:"social" });
 
 const CORE_COLLECTION_OBJECT_TYPES = Object.freeze({
   posts:"Post",
@@ -138,6 +141,7 @@ const COLLECTION_FILE_SOURCE_KINDS = Object.freeze(Object.fromEntries(
 export const ROUTE_COMPATIBILITY_CONTRACT = Object.freeze({
   routeDestinations:ROUTE_DESTINATIONS,
   aliasTargets:ALIAS_TARGETS,
+  canonicalHashes:CANONICAL_HASHES,
   itemDestinations:ITEM_COLLECTION_DESTINATIONS,
   coreCollectionObjectTypes:CORE_COLLECTION_OBJECT_TYPES,
   collectionFileSourceKinds:COLLECTION_FILE_SOURCE_KINDS,
@@ -325,10 +329,11 @@ export function resolveRouteWithContract(input = "", contract = ROUTE_COMPATIBIL
   }
 
   if (parts.length !== 1 || !/^[a-z0-9-]+$/i.test(rawRoute)) return unsafe("malformed_route");
-  const canonicalRoute = contract.aliasTargets[rawRoute] || rawRoute;
+  const aliasTarget = rawRoute === "growth" ? "queue" : contract.aliasTargets[rawRoute];
+  const canonicalRoute = aliasTarget || rawRoute;
   const canonicalSuffix = contract.aliasQueries?.[rawRoute] || suffix;
   if (contract.routeDestinations[canonicalRoute]) {
-    const aliasUsed = contract.aliasTargets[rawRoute] && rawRoute !== canonicalRoute ? rawRoute : null;
+    const aliasUsed = aliasTarget && rawRoute !== canonicalRoute ? rawRoute : null;
     return freeze({
       kind:"page",
       requestedHash,
@@ -339,7 +344,7 @@ export function resolveRouteWithContract(input = "", contract = ROUTE_COMPATIBIL
       objectType:null,
       sourceKind:null,
       sourceId:null,
-      safeHash:`#${canonicalRoute}${canonicalSuffix}`,
+      safeHash:`#${contract.canonicalHashes?.[canonicalRoute] || canonicalRoute}${canonicalSuffix}`,
       recoveryReason:null
     });
   }

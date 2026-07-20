@@ -40,7 +40,7 @@ const [surface, shell, roles, server, packageJson] = await Promise.all([
   readFile(new URL("../package.json", import.meta.url), "utf8")
 ]);
 assert.match(surface, /\/api\/ui\/social\/results/);
-assert.match(surface, /#queue\?view=results/);
+assert.match(surface, /#social\?view=results/);
 assert.match(surface, /Clear filters/);
 assert.match(surface, /Load more/);
 assert.match(shell, /routeState\(\)\.view === "results"/);
