@@ -56,7 +56,8 @@ test("Files train renders truthful accessible responsive evidence", async ({ pag
   await page.screenshot({ path:path.join(screenshotDirectory, "files-mobile-390.png"), fullPage:true, animations:"disabled" });
   const filtered = buildFilesHome(state, actor, { search:"no matching file" }, { cursorSecret:"browser-files-cursor-secret" });
   await render(page, renderFilesHome(filtered), homeCss, 1440);
-  await expect(page.getByRole("heading", { name:"No files match this view" })).toBeVisible();
+  await expect(page.getByRole("heading", { name:"No matches in this view" })).toBeVisible();
+  await expect(page.getByRole("button", { name:"Clear filters" })).toHaveCount(1);
   await page.screenshot({ path:path.join(screenshotDirectory, "files-filtered-empty-1440.png"), fullPage:true, animations:"disabled" });
   const unavailable = buildFilesHome(state, actor, { search:"Unclassified" }, { cursorSecret:"browser-files-cursor-secret" });
   await render(page, renderFilesHome(unavailable), homeCss, 1440);

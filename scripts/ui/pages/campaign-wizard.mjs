@@ -36,7 +36,10 @@ export function campaignWizardBrowserSource() {
   return `(() => {
     "use strict";
     const steps=${steps}; const endpointPrefix=${endpointPrefix}; const shellHtml=${shellHtml};
-    let payload=null; let candidate=null; let saving=false;
+    let payload=null; let candidate=null; let saving=false; let analyticsActive=false;
+    const analyticsReference=Object.freeze({workflowId:"outreach-campaign",destinationId:"outreach"});
+    function analyticsEvent(type,detail=analyticsReference){document.dispatchEvent(new CustomEvent(type,{detail}));}
+    function startAnalytics(){if(!analyticsActive){analyticsActive=true;analyticsEvent("vnext:workflow-started");}}
     const resolution=()=>window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(location.hash||"");
     const route=()=>{const value=resolution();const query=new URLSearchParams(String(location.hash||"").split("?")[1]||"");return value?.kind==="object"&&value.objectType==="Campaign"&&query.has("step")?{identity:value.sourceId,step:query.get("step")||"goal"}:null;};
     const target=()=>document.querySelector("main#app #item.page-section.active");
@@ -51,13 +54,13 @@ export function campaignWizardBrowserSource() {
     function sync(){const position=index();root().querySelector("[data-wizard-back]").disabled=position===0;root().querySelector("[data-wizard-next]").disabled=position===steps.length-1;}
     function dirty(){return JSON.stringify(candidate)!==JSON.stringify(payload?.draft);}
     function csrf(){return document.cookie.split(";").map((value)=>value.trim()).find((value)=>value.startsWith("leos_csrf="))?.slice("leos_csrf=".length)||"";}
-    async function save(){if(saving||!dirty())return; saving=true;status("Saving draft…");const step=active();const response=await fetch(endpoint(),{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json","x-csrf-token":csrf()},body:JSON.stringify({step,fields:candidate[step]||{},expectedVersion:payload.draftVersion})});if(!response.ok){status("Draft was not saved. No Campaign action ran.");saving=false;return;}const result=await response.json();payload={...payload,draft:structuredClone(candidate),draftVersion:result.draftVersion};status("Draft saved.");saving=false;}
+    async function save(){if(saving||!dirty())return;startAnalytics();saving=true;status("Saving draft…");const step=active();try{const response=await fetch(endpoint(),{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json","x-csrf-token":csrf()},body:JSON.stringify({step,fields:candidate[step]||{},expectedVersion:payload.draftVersion})});if(!response.ok)throw new Error("Draft was not saved. No Campaign action ran.");const result=await response.json();payload={...payload,draft:structuredClone(candidate),draftVersion:result.draftVersion};status("Draft saved.");analyticsEvent("vnext:workflow-completed");analyticsActive=false;}catch(error){status(error.message||"Draft was not saved. No Campaign action ran.");analyticsEvent("vnext:action-failed",{...analyticsReference,actionId:"save-draft",reasonCode:"write-unavailable"});}finally{saving=false;}}
     async function load(){const response=await fetch(endpoint(),{credentials:"same-origin",headers:{accept:"application/json"}});if(!response.ok){status("Campaign draft is unavailable.");return;}payload=await response.json();candidate=structuredClone(payload.draft);setStep(new URLSearchParams(String(location.hash).split("?")[1]||"").get("step")||payload.draft.lastStep||"goal",{recordHistory:false});status(payload.draft.savedAt?"Saved draft restored.":"Draft ready. Nothing has been saved yet.");}
     function bind(){root()?.querySelector("[data-wizard-back]")?.addEventListener("click",()=>setStep(steps[index()-1]?.key));root()?.querySelector("[data-wizard-next]")?.addEventListener("click",()=>setStep(steps[index()+1]?.key));root()?.querySelector("[data-wizard-save]")?.addEventListener("click",save);window.addEventListener("popstate",(event)=>setStep(event.state?.wizardStep||new URLSearchParams(String(location.hash).split("?")[1]||"").get("step")||"goal",{recordHistory:false}));window.addEventListener("beforeunload",(event)=>{if(!dirty())return;event.preventDefault();event.returnValue="";});}
     function activate(){const current=route();const host=target();if(!current||!host)return;if(!root()){host.innerHTML=shellHtml;root().dataset.campaignIdentity=current.identity;root().dataset.wizardStep=steps.some((step)=>step.key===current.step)?current.step:"goal";bind();renderFields();sync();load();}}
-    window.addEventListener("hashchange",()=>setTimeout(activate,0));
+    window.addEventListener("hashchange",()=>{if(!route()&&analyticsActive){analyticsEvent("vnext:workflow-abandoned",{...analyticsReference,reasonCode:"navigation"});analyticsActive=false;}setTimeout(activate,0);});
     new MutationObserver(()=>{if(route()&&!root())activate();}).observe(document.documentElement,{childList:true,subtree:true});
     setTimeout(activate,0);
-    window.__LE_CAMPAIGN_WIZARD={setStep,hasUnsavedChanges:dirty,setCandidate:(value)=>{candidate=structuredClone(value);}};
+    window.__LE_CAMPAIGN_WIZARD={setStep,hasUnsavedChanges:dirty,setCandidate:(value)=>{candidate=structuredClone(value);startAnalytics();}};
   })();`;
 }

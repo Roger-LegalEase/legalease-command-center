@@ -47,7 +47,9 @@ const active = buildAuthorizedPartnersHome(state, OWNER, NOW, { view:"active_pro
 assert.deepEqual(active.items.map((item) => item.id), ["partner/overdue"]);
 const filtered = buildAuthorizedPartnersHome(state, OWNER, NOW, { view:"list", search:"no match" });
 assert.equal(filtered.availability.state, "filtered_empty");
-assert.match(partnersHomePageHtml(filtered), /No Partners match these filters/);
+assert.match(partnersHomePageHtml(filtered), /data-guided-empty-kind="filtered-empty"/);
+assert.match(partnersHomePageHtml(filtered), /No matches in this view/);
+assert.match(partnersHomePageHtml(filtered), /data-guided-empty-action="clear-filters"/);
 assert.match(partnersHomePageHtml(view), /data-partners-add/);
 assert.match(partnersHomePageHtml(view), /\/api\/ui\/create\/partner/);
 assert.doesNotMatch(JSON.stringify(view), /Hidden Example|partner-hidden|internalStage|primaryContact|email/i);

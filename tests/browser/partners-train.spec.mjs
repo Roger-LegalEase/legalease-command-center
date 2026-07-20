@@ -117,9 +117,12 @@ test("Partners train covers responsive and availability states without overflow"
     }) });
   });
   await openPartners(page);
-  await expect(page.getByRole("heading", { name:"No Partners yet" })).toBeVisible();
+  const guidedPartnerState = page.locator('[data-guided-empty-state="partners"]');
+  await expect(guidedPartnerState.getByRole("heading", { name:"Add the first Partner relationship" })).toBeVisible();
+  await expect(guidedPartnerState.getByRole("button", { name:"Add Partner" })).toHaveCount(1);
   await page.evaluate(() => { location.hash = "partners?view=list&search=No+match"; });
-  await expect(page.getByRole("heading", { name:"No Partners match these filters" })).toBeVisible();
+  await expect(guidedPartnerState.getByRole("heading", { name:"No matches in this view" })).toBeVisible();
+  await expect(guidedPartnerState.getByRole("button", { name:"Clear filters" })).toHaveCount(1);
   await page.unroute("**/api/ui/partners?*");
 
   const requestsBeforeReset = await page.evaluate(() => window.__LE_PARTNERS_HOME_METRICS.requests);

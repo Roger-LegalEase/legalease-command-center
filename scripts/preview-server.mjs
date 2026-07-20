@@ -143,6 +143,24 @@ import { approveSocialPost, regenerateSocialPostImage, requestSocialPostChanges 
 import { createSocialManualPackage, publishSocialPost } from "./social-publishing-actions.mjs";
 import { buildSocialCalendarContract } from "./social-calendar-service.mjs";
 import { buildSocialConnectionsContract } from "./social-connections-service.mjs";
+import { buildSocialCreativeCatalog } from "./ui/view-models/social-creative-catalog.mjs";
+import { buildAuthorizedPartnersHome } from "./partners-home-service.mjs";
+import { buildAuthorizedOutreachHome } from "./outreach-home-service.mjs";
+import { readInvestorRoom } from "./ui-api/investor-room-read.mjs";
+import {
+  DISCOVERY_ONBOARDING_ENDPOINT,
+  buildFirstRunOnboarding,
+  saveFirstRunOnboarding
+} from "./discovery-onboarding-service.mjs";
+import {
+  DISCOVERY_CHECKLIST_ENDPOINT,
+  buildSetupChecklist
+} from "./discovery-checklist-service.mjs";
+import { buildContextualHelp } from "./discovery-help.mjs";
+import {
+  DISCOVERY_ANALYTICS_ENDPOINT,
+  buildPrivacySafeAnalyticsEvent
+} from "./discovery-product-analytics.mjs";
 import {
   INBOX_ACTION_BODY_LIMIT,
   executeAuthorizedInboxAction,
@@ -189,6 +207,7 @@ const commandCenterVNextConfig = readCommandCenterVNextConfig(process.env);
 const outreachVNextConfig = readCommandCenterVNextProductConfig(process.env, "outreach");
 const filesVNextConfig = readCommandCenterVNextProductConfig(process.env, "files");
 const socialVNextConfig = readCommandCenterVNextProductConfig(process.env, "social");
+const discoveryVNextConfig = readCommandCenterVNextProductConfig(process.env, "discovery");
 const globalCreateKindsByPath = Object.freeze(Object.fromEntries(
   Object.entries(GLOBAL_CREATE_ENDPOINTS).map(([kind, endpoint]) => [endpoint, kind])
 ));
@@ -8023,6 +8042,8 @@ const initialState = {
       createdAt: "2026-05-19T00:00:00.000Z"
     }
   ],
+  userDiscoveryPreferences: [],
+  discoveryAnalyticsEvents: [],
   autonomyActions: [],
   autonomyDecisions: [],
   autonomyRuns: [],
@@ -8074,6 +8095,92 @@ async function writeChangedCollections(before = {}, after = {}) {
   }
   await store.writeCollections(patch);
   return after;
+}
+
+function discoveryEvidenceId(prefix = "discovery", ...parts) {
+  return `${prefix}-${crypto.createHash("sha256").update(parts.map((part) => String(part ?? "")).join("\u0000")).digest("hex").slice(0, 32)}`;
+}
+
+async function commitDiscoveryPreference(currentState = {}, command = {}) {
+  if (typeof store?.writeChanges !== "function") return { ok:false, status:503, safeMessage:"Onboarding persistence is unavailable." };
+  const actorId = String(command.actorId || "");
+  const preferences = Array.isArray(currentState.userDiscoveryPreferences) ? currentState.userDiscoveryPreferences : [];
+  const matches = preferences.filter((item) => String(item?.id || "") === actorId);
+  if (matches.length > 1) return { ok:false, status:503, safeMessage:"Onboarding preference truth is unavailable." };
+  const current = matches[0] || null;
+  const currentVersion = Number.isSafeInteger(current?._version) ? current._version : 0;
+  const prior = (Array.isArray(currentState.auditEvents) ? currentState.auditEvents : []).find((item) =>
+    item?.action === "discovery_onboarding_update" && item?.actorId === actorId && item?.requestId === command.requestId
+  );
+  if (prior) {
+    const same = prior.summary?.status === command.patch?.status
+      && (prior.summary?.choiceId || null) === (command.patch?.choiceId || null);
+    return same
+      ? { ok:true, version:currentVersion, reused:true }
+      : { ok:false, status:409, safeMessage:"The onboarding request identifier was already used." };
+  }
+  if (currentVersion !== command.expectedVersion) return { ok:false, status:409, safeMessage:"Onboarding changed in another session. Reload and try again." };
+  const preference = {
+    id:actorId,
+    status:command.patch.status,
+    choiceId:command.patch.choiceId,
+    completedAt:command.patch.completedAt,
+    deferredAt:command.patch.deferredAt
+  };
+  const activity = {
+    id:discoveryEvidenceId("activity-discovery", actorId, command.requestId),
+    requestId:command.requestId,
+    actorId,
+    type:command.evidence.activity.type,
+    summary:command.evidence.activity.summary,
+    createdAt:command.evidence.activity.occurredAt
+  };
+  const audit = {
+    id:discoveryEvidenceId("audit-discovery", actorId, command.requestId),
+    occurredAt:command.evidence.audit.occurredAt,
+    actorId,
+    role:"authenticated",
+    action:"discovery_onboarding_update",
+    targetType:"user_discovery_preference",
+    targetId:actorId,
+    requestId:command.requestId,
+    outcome:"success",
+    summary:{ status:command.patch.status, choiceId:command.patch.choiceId || null, externalSideEffects:false },
+    source:"http"
+  };
+  const after = {
+    ...currentState,
+    userDiscoveryPreferences:current
+      ? preferences.map((item) => item === current ? { ...preference, _version:current._version } : item)
+      : [preference, ...preferences],
+    activityEvents:[activity, ...(Array.isArray(currentState.activityEvents) ? currentState.activityEvents : [])],
+    auditEvents:[audit, ...(Array.isArray(currentState.auditEvents) ? currentState.auditEvents : [])]
+  };
+  try {
+    await store.writeChanges(currentState, after);
+    return { ok:true, version:currentVersion + 1, reused:false };
+  } catch (error) {
+    if (Number(error?.status) === 409 || error?.code === "STORAGE_VERSION_CONFLICT") return { ok:false, status:409, safeMessage:"Onboarding changed in another session. Reload and try again." };
+    return { ok:false, status:503, safeMessage:"Onboarding could not be saved. Nothing was changed." };
+  }
+}
+
+function discoveryAnalyticsSubject(actorId = "") {
+  const secret = process.env.COMMAND_CENTER_SESSION_SECRET || "local-discovery-analytics";
+  return crypto.createHmac("sha256", secret).update(String(actorId || "")).digest("hex").slice(0, 32);
+}
+
+async function appendDiscoveryAnalyticsEvent({ event, actor = {}, analyticsRequestId = "" } = {}) {
+  if (!Object.isFrozen(event) || typeof store?.claimCollectionItems !== "function") throw Object.assign(new Error("Analytics persistence is unavailable."), { status:503 });
+  const subjectId = discoveryAnalyticsSubject(actor.id);
+  const row = {
+    id:discoveryEvidenceId("analytics-discovery", subjectId, analyticsRequestId),
+    requestId:String(analyticsRequestId).slice(0, 96),
+    subjectId,
+    ...event
+  };
+  const result = await store.claimCollectionItems("discoveryAnalyticsEvents", [row]);
+  return { ok:true, accepted:true, reused:!result.inserted?.length };
 }
 
 function filesStorageAdapter() {
@@ -34972,24 +35079,91 @@ function renderLegacyApp() {
   return htmlShell();
 }
 
-function renderVNextApp() {
+function discoveryPreference(state = {}, actorId = "") {
+  const matches = (Array.isArray(state.userDiscoveryPreferences) ? state.userDiscoveryPreferences : [])
+    .filter((item) => String(item?.id || "") === String(actorId || ""));
+  if (matches.length > 1) throw new Error("Discovery preference truth is unavailable.");
+  const current = matches[0] || {};
+  return {
+    status:current.status || "new",
+    choiceId:current.choiceId || null,
+    completedAt:current.completedAt || null,
+    deferredAt:current.deferredAt || null,
+    version:Number.isSafeInteger(current._version) ? current._version : 0
+  };
+}
+
+function discoveryChecklistSources(state = {}, actor = {}, now = "") {
+  const unavailable = (reason) => ({ authorized:true, available:false, reason });
+  let brandAssets = unavailable("Approved brand assets could not be verified.");
+  let socialConnections = unavailable("Social connection truth could not be verified.");
+  let partners = unavailable("Partner setup truth could not be verified.");
+  let socialPosts = unavailable("Social Post setup truth could not be verified.");
+  let outreachCampaigns = unavailable("Outreach Campaign setup truth could not be verified.");
+  let investorRoom = unavailable("Investor Room requirement truth could not be verified.");
+  try {
+    const catalog = buildSocialCreativeCatalog(state, actor, { generatedAt:now, surfaceTone:"unspecified" });
+    const seen = new Set();
+    const items = (catalog.assetGroups || []).flatMap((group) => group.assets || []).filter((item) => {
+      const key = `${item?.sourceReference?.collection || ""}:${item?.sourceReference?.sourceId || ""}`;
+      if (!item?.approved || !item?.sourceReference?.collection || !item?.sourceReference?.sourceId || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).map((item) => ({ approved:true, selectable:true, sourceReference:{ collection:item.sourceReference.collection, sourceId:item.sourceReference.sourceId } }));
+    brandAssets = { authorized:true, available:["available", "partial"].includes(catalog.availability?.key), items };
+  } catch {}
+  try {
+    const contract = buildSocialConnectionsContract(state, actor, now);
+    socialConnections = { authorized:true, available:contract.ok === true, items:(contract.connections || []).map((item) => ({ state:item.state?.key || "not_connected", serverVerified:["connected_publishing_off", "ready_to_publish"].includes(item.state?.key) })) };
+  } catch {}
+  try {
+    const projection = buildAuthorizedPartnersHome(state, actor, now, { view:"list", limit:1 });
+    partners = { authorized:true, available:projection.available === true, total:Number.isSafeInteger(projection.summary?.authorizedPartners) ? projection.summary.authorizedPartners : null };
+  } catch {}
+  try {
+    const projection = buildAuthorizedSocialHome(state, actor, now, { view:"calendar", limit:1 });
+    socialPosts = { authorized:true, available:projection.ok === true && projection.sourceAvailability?.posts === true, total:Number.isSafeInteger(projection.counts?.total) ? projection.counts.total : null };
+  } catch {}
+  try {
+    const projection = buildAuthorizedOutreachHome(state, actor, now, { view:"all", limit:1 });
+    const total = projection.views?.find((item) => item.key === "all")?.count;
+    outreachCampaigns = { authorized:true, available:projection.ok === true && Number.isSafeInteger(total), total:Number.isSafeInteger(total) ? total : null };
+  } catch {}
+  try {
+    const projection = readInvestorRoom({ state, actor, requirements:INVESTOR_ROOM_REQUIREMENTS, now });
+    investorRoom = { authorized:true, available:projection.readiness?.available === true, currentRequirements:Number.isSafeInteger(projection.readiness?.current) ? projection.readiness.current : null };
+  } catch {}
+  return { brandAssets, socialConnections, partners, socialPosts, outreachCampaigns, investorRoom };
+}
+
+function buildDiscoveryShellContracts(state = {}, actor = {}, now = "") {
+  return Object.freeze({
+    onboarding:buildFirstRunOnboarding({ actor, preference:discoveryPreference(state, actor.id), now }),
+    checklist:buildSetupChecklist({ actor, sources:discoveryChecklistSources(state, actor, now), now }),
+    help:buildContextualHelp({ actor, destination:"Today", now })
+  });
+}
+
+function renderVNextApp(options = {}) {
   // CCX-100 composes one new navigation shell around the same routed application.
   // Page renderers, state, actions, authorization, and safety systems remain shared.
-  if (socialVNextConfig.enabled || outreachVNextConfig.enabled || filesVNextConfig.enabled) {
+  if (socialVNextConfig.enabled || outreachVNextConfig.enabled || filesVNextConfig.enabled || discoveryVNextConfig.enabled) {
     return renderVNextDesktopShell(renderLegacyApp(), {
       socialEnabled:socialVNextConfig.enabled,
       outreachEnabled:outreachVNextConfig.enabled,
-      filesEnabled:filesVNextConfig.enabled
+      filesEnabled:filesVNextConfig.enabled,
+      discoveryEnabled:discoveryVNextConfig.enabled && Boolean(options.discovery),
+      discovery:options.discovery || null
     });
   }
   return renderVNextDesktopShell(renderLegacyApp());
 }
 
-function renderCommandCenterApp() {
+function renderCommandCenterApp(options = {}) {
   return renderShellBoundary({
     config: commandCenterVNextConfig,
     renderLegacyApp,
-    renderVNextApp
+    renderVNextApp:() => renderVNextApp(options)
   });
 }
 
@@ -35532,6 +35706,72 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/test/fixture-state" && request.method === "GET" && process.env.COMMAND_CENTER_TEST_MODE === "true") {
     sendJson(response, await store.readState());
+    return;
+  }
+
+  if (url.pathname === DISCOVERY_ONBOARDING_ENDPOINT && request.method === "GET") {
+    if (!discoveryVNextConfig.enabled) { sendJson(response, { ok:false, message:"Onboarding is unavailable." }, 404); return; }
+    try {
+      const actor = publicActor(accessDecision.actor);
+      const currentState = await store.readState();
+      sendJson(response, buildFirstRunOnboarding({ actor, preference:discoveryPreference(currentState, actor.id), now:new Date().toISOString() }));
+    } catch (error) {
+      sendJson(response, { ok:false, message:"Onboarding could not load. No choice was changed." }, Number(error?.status) === 403 ? 403 : 500);
+    }
+    return;
+  }
+
+  if (url.pathname === DISCOVERY_ONBOARDING_ENDPOINT && request.method === "POST") {
+    if (!discoveryVNextConfig.enabled) { sendJson(response, { ok:false, message:"Onboarding is unavailable. Nothing was changed." }, 404); return; }
+    try {
+      const input = await readBoundedJson(request, { limit:4_096 });
+      const actor = publicActor(accessDecision.actor);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        return saveFirstRunOnboarding({
+          actor,
+          currentPreference:discoveryPreference(currentState, actor.id),
+          input,
+          now:new Date().toISOString(),
+          commitPreference:(command) => commitDiscoveryPreference(currentState, command)
+        });
+      });
+      sendJson(response, result);
+    } catch (error) {
+      const status = [400, 403, 409, 413, 503].includes(Number(error?.status)) ? Number(error.status) : 500;
+      sendJson(response, { ok:false, message:status >= 500 ? "Onboarding could not be saved. Nothing was changed." : String(error?.safeMessage || error?.message || "Onboarding was not saved.").slice(0, 240) }, status);
+    }
+    return;
+  }
+
+  if (url.pathname === DISCOVERY_CHECKLIST_ENDPOINT && request.method === "GET") {
+    if (!discoveryVNextConfig.enabled) { sendJson(response, { ok:false, message:"The setup checklist is unavailable." }, 404); return; }
+    try {
+      const actor = publicActor(accessDecision.actor);
+      const now = new Date().toISOString();
+      const currentState = await store.readState();
+      sendJson(response, buildSetupChecklist({ actor, sources:discoveryChecklistSources(currentState, actor, now), now }));
+    } catch (error) {
+      sendJson(response, { ok:false, message:"Setup progress could not load. No setup state changed." }, Number(error?.status) === 403 ? 403 : 500);
+    }
+    return;
+  }
+
+  if (url.pathname === DISCOVERY_ANALYTICS_ENDPOINT && request.method === "POST") {
+    if (!discoveryVNextConfig.enabled) { sendJson(response, { ok:false, accepted:false }, 404); return; }
+    try {
+      const input = await readBoundedJson(request, { limit:4_096 });
+      const event = buildPrivacySafeAnalyticsEvent(input, { now:new Date().toISOString() });
+      const result = await appendDiscoveryAnalyticsEvent({
+        event,
+        actor:publicActor(accessDecision.actor),
+        analyticsRequestId:request.requestId
+      });
+      sendJson(response, result, result.reused ? 200 : 202);
+    } catch (error) {
+      const status = [400, 413, 503].includes(Number(error?.status)) ? Number(error.status) : 500;
+      sendJson(response, { ok:false, accepted:false, message:status === 400 ? "Analytics event was rejected." : "Analytics is temporarily unavailable." }, status);
+    }
     return;
   }
 
@@ -41111,7 +41351,17 @@ async function handleRequest(request, response) {
     return;
   }
 
-  const html = sanitizeOutboundText(renderCommandCenterApp());
+  let discovery = null;
+  if (discoveryVNextConfig.enabled && request.method === "GET") {
+    try {
+      const actor = publicActor(accessDecision.actor);
+      const now = new Date().toISOString();
+      discovery = buildDiscoveryShellContracts(await store.readState(), actor, now);
+    } catch {
+      discovery = null;
+    }
+  }
+  const html = sanitizeOutboundText(renderCommandCenterApp({ discovery }));
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
   response.end(html);
 }

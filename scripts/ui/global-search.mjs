@@ -161,6 +161,14 @@ export function globalSearchBrowserSource() {
       row.className = "vnext-search-result";
       row.dataset.globalSearchResult = "true";
       row.dataset.href = result.canonicalHref;
+      const analyticsType = ({ Post:"post", Campaign:"campaign", Partner:"partner", File:"file", Report:"report", Task:"task" })[result.objectType] || "destination";
+      const analyticsDestination = String(result.destination || "search").trim().toLowerCase();
+      if (["today", "social", "outreach", "partners", "files", "inbox", "settings", "search"].includes(analyticsDestination)) {
+        row.dataset.analyticsSearchResult = "true";
+        row.dataset.analyticsDestination = analyticsDestination;
+        row.dataset.analyticsResultType = analyticsType;
+        row.dataset.analyticsResultPosition = String(index);
+      }
       resultByHref.set(result.canonicalHref, result);
       row.setAttribute("role", "option");
       row.setAttribute("aria-selected", "false");
@@ -210,6 +218,14 @@ export function globalSearchBrowserSource() {
 
     function renderNoResults() {
       clearResults();
+      if (window.__LE_DISCOVERY_EMPTY_STATES?.render) {
+        stateNode.dataset.state = "empty";
+        window.__LE_DISCOVERY_EMPTY_STATES.render(stateNode, "search-results", "empty");
+        stateNode.hidden = false;
+        input.setAttribute("aria-expanded", "false");
+        liveNode.textContent = "No results found.";
+        return;
+      }
       stateNode.replaceChildren();
       stateNode.dataset.state = "empty";
       const title = document.createElement("strong");

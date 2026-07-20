@@ -195,10 +195,18 @@ export function globalCreateBrowserSource() {
     let capabilitiesLoaded = false;
     let capabilitiesLoading = null;
     let activeForm = null;
+    let activeAnalytics = null;
     let returnTarget = trigger;
     const focusableSelector = 'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
     const cookieValue = (name) => document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(name + "="))?.slice(name.length + 1) || "";
     const requestId = () => globalThis.crypto?.randomUUID?.() || "create-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+    const analyticsContracts = Object.freeze({
+      "social-post":Object.freeze({ workflowId:"social-post", destinationId:"social" }),
+      "outreach-campaign":Object.freeze({ workflowId:"outreach-campaign", destinationId:"outreach" }),
+      partner:Object.freeze({ workflowId:"partner-action", destinationId:"partners" }),
+      "file-or-folder":Object.freeze({ workflowId:"file-upload", destinationId:"files" })
+    });
+    function analyticsEvent(type, detail) { document.dispatchEvent(new CustomEvent(type, { detail })); }
 
     function setStatus(kind, title, message = "") {
       const status = workspace.querySelector(".vnext-create-status");
@@ -265,6 +273,8 @@ export function globalCreateBrowserSource() {
       workspace.hidden = true;
       backdrop.hidden = true;
       document.body.classList.remove("vnext-create-open");
+      if (activeAnalytics && !force) analyticsEvent("vnext:workflow-abandoned", { ...activeAnalytics, reasonCode:"navigation" });
+      activeAnalytics = null;
       activeForm = null;
       if (returnFocus) returnTarget?.focus?.();
       return true;
@@ -281,6 +291,8 @@ export function globalCreateBrowserSource() {
       form.elements.creationRequestId.value = requestId();
       form.querySelector(".vnext-create-inline-error").hidden = true;
       activeForm = form;
+      activeAnalytics = analyticsContracts[id] || null;
+      if (activeAnalytics) analyticsEvent("vnext:workflow-started", activeAnalytics);
       returnTarget = openOptions.returnTarget || trigger;
       workspace.hidden = false;
       backdrop.hidden = false;
@@ -305,6 +317,7 @@ export function globalCreateBrowserSource() {
       }
       errorNode.hidden = true;
       if (!form.checkValidity()) {
+        if (activeAnalytics) analyticsEvent("vnext:validation-blocked", { ...activeAnalytics, actionId:"submit", reasonCode:"missing-required-field" });
         errorNode.textContent = "Add the required information and try again. Nothing has been saved.";
         errorNode.hidden = false;
         form.reportValidity();
@@ -328,9 +341,11 @@ export function globalCreateBrowserSource() {
         setStatus("success", result.alreadyExisted ? "Already created" : "Created", result.title + " is ready to open.");
         if (typeof toast === "function") toast(result.alreadyExisted ? result.title + " was already created." : result.title + " created.");
         if (typeof load === "function") await load();
+        if (activeAnalytics) analyticsEvent("vnext:workflow-completed", activeAnalytics);
         closeWorkspace({ force:true, returnFocus:false });
         if (result.canonicalHref) location.hash = String(result.canonicalHref).replace(/^#/, "");
       } catch (error) {
+        if (activeAnalytics) analyticsEvent("vnext:action-failed", { ...activeAnalytics, actionId:"create", reasonCode:"write-unavailable" });
         const message = error?.message || option.label + " was not created. Nothing was saved.";
         errorNode.textContent = message;
         errorNode.hidden = false;

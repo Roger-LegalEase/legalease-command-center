@@ -51,6 +51,15 @@ import { FILE_DETAILS_STYLESHEET } from "./pages/file-details.mjs";
 import { FILE_UPLOAD_STYLESHEET } from "./pages/file-upload.mjs";
 import { INVESTOR_ROOM_STYLESHEET } from "./pages/investor-room.mjs";
 import { filesIntegrationBrowserSource } from "./controllers/files-integration-controller.mjs";
+import { renderDiscoveryOnboarding, DISCOVERY_ONBOARDING_STYLESHEET } from "./pages/discovery-onboarding.mjs";
+import { renderDiscoveryChecklist, DISCOVERY_CHECKLIST_STYLESHEET } from "./pages/discovery-checklist.mjs";
+import { renderContextualHelp, DISCOVERY_HELP_STYLESHEET } from "./pages/discovery-help.mjs";
+import { discoveryOnboardingBrowserSource } from "./controllers/discovery-onboarding-controller.mjs";
+import { discoveryChecklistBrowserSource } from "./controllers/discovery-checklist-controller.mjs";
+import { discoveryEmptyStateBrowserSource } from "./controllers/discovery-empty-state-controller.mjs";
+import { discoveryHelpBrowserSource } from "./controllers/discovery-help-controller.mjs";
+import { discoveryAnalyticsBrowserSource } from "./controllers/discovery-analytics-controller.mjs";
+import { DISCOVERY_ANALYTICS_ENDPOINT } from "../discovery-product-analytics.mjs";
 import { INITIAL_VNEXT_LOADING_HTML } from "./shell-states.mjs";
 import {
   CREATE_MENU_OPTIONS,
@@ -110,6 +119,10 @@ function createMenuHtml() {
 
 export function renderVNextDesktopShellChrome(options = {}) {
   const help = TOP_BAR_CONTROLS.find((item) => item.id === "help");
+  const discovery = options.discovery || {};
+  const helpControl = options.discoveryEnabled
+    ? `<button class="vnext-topbar-link" type="button" data-shell-action="open-contextual-help" aria-label="${escapeAttribute(help.label)}"><span class="vnext-topbar-icon" aria-hidden="true">?</span><span class="vnext-topbar-label">${escapeHtml(help.label)}</span></button>`
+    : `<a class="vnext-topbar-link" href="${escapeAttribute(routeHref(help.route))}" aria-label="${escapeAttribute(help.label)}"><span class="vnext-topbar-icon" aria-hidden="true">?</span><span class="vnext-topbar-label">${escapeHtml(help.label)}</span></a>`;
   return Object.freeze({
     start:`<div class="vnext-shell" data-vnext-shell="desktop">
     <button class="vnext-drawer-overlay" type="button" data-shell-action="close-navigation" aria-label="Close navigation" tabindex="-1" hidden></button>
@@ -139,11 +152,12 @@ export function renderVNextDesktopShellChrome(options = {}) {
             <div class="vnext-menu-panel vnext-create-menu" id="${GLOBAL_CREATE_MENU_ID}" role="menu" aria-label="Create" hidden>${createMenuHtml()}
             </div>
           </div>
-          <a class="vnext-topbar-link" href="${escapeAttribute(routeHref(help.route))}" aria-label="${escapeAttribute(help.label)}"><span class="vnext-topbar-icon" aria-hidden="true">?</span><span class="vnext-topbar-label">${escapeHtml(help.label)}</span></a>
+          ${helpControl}
           <div class="vnext-menu">
             <button class="vnext-profile-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="vnext-profile-menu"><span class="vnext-topbar-icon" aria-hidden="true">●</span><span class="vnext-topbar-label">Profile</span></button>
             <div class="vnext-menu-panel vnext-profile-menu" id="vnext-profile-menu" role="menu" aria-label="Profile" hidden>
               <a role="menuitem" href="#settings">Settings</a>
+              ${options.discoveryEnabled ? '<button role="menuitem" type="button" data-shell-action="open-discovery-checklist">Getting started</button><button role="menuitem" type="button" data-shell-action="start-product-tour-again">Start product tour again</button>' : ""}
               <button role="menuitem" type="button" data-shell-action="sign-out">Sign out</button>
             </div>
           </div>
@@ -153,9 +167,19 @@ export function renderVNextDesktopShellChrome(options = {}) {
     end:`</div>
       ${renderGlobalCreateWorkspace()}
       ${renderGlobalSearchDialog()}
+      ${options.discoveryEnabled ? `<section class="discovery-checklist-panel" data-discovery-checklist-panel hidden><div class="discovery-checklist-dialog" role="dialog" aria-modal="true" aria-label="Getting started"><button class="discovery-checklist-close" type="button" data-checklist-close aria-label="Close getting started">×</button>${renderDiscoveryChecklist(discovery.checklist || {})}</div></section>${renderContextualHelp(discovery.help || {})}${renderDiscoveryOnboarding(discovery.onboarding || {})}` : ""}
     </div>
   </div>`
   });
+}
+
+function discoveryCaptureSinkBrowserSource() {
+  const endpoint = JSON.stringify(DISCOVERY_ANALYTICS_ENDPOINT);
+  return `(() => { "use strict";
+    window.__LE_CSRF_TOKEN=()=>{try{return typeof cookieValue==="function"?cookieValue("leos_csrf"):"";}catch{return"";}};
+    window.__LE_DISCOVERY_ANALYTICS_CAPTURE=(event)=>{try{const id="discovery-analytics-"+crypto.randomUUID().replaceAll("-","");void fetch(${endpoint},{method:"POST",credentials:"same-origin",keepalive:true,headers:{accept:"application/json","content-type":"application/json","x-csrf-token":window.__LE_CSRF_TOKEN(),"x-request-id":id},body:JSON.stringify(event)}).catch(()=>{});}catch{}};
+    document.addEventListener("click",event=>{const trigger=event.target.closest?.('[data-shell-action="start-product-tour-again"]');if(trigger){event.preventDefault();document.dispatchEvent(new CustomEvent("vnext:open-onboarding",{detail:{returnTarget:trigger}}));}});
+  })();`;
 }
 
 function shellClientScript() {
@@ -555,6 +579,15 @@ export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
     "</head>",
     `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_HOME_STYLESHEET_PATH))}" />\n  ${PARTNER_RECORD_STYLESHEET_PATHS.map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ")}\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_ACCESSIBILITY_STYLESHEET_PATH))}" />\n  ${options.outreachEnabled ? [OUTREACH_HOME_STYLESHEET_PATH, CAMPAIGN_WIZARD_STYLESHEET_PATH, CAMPAIGN_DETAIL_STYLESHEET_PATH].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  ${options.filesEnabled ? [FILES_HOME_STYLESHEET, "/assets/ui/files-organization.css", FILE_DETAILS_STYLESHEET, FILE_UPLOAD_STYLESHEET, INVESTOR_ROOM_STYLESHEET].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  <script>${routeCompatibilityBrowserSource(options)}</script>\n</head>`
   );
+  if (options.discoveryEnabled) {
+    const discoveryStyles = [DISCOVERY_ONBOARDING_STYLESHEET, DISCOVERY_CHECKLIST_STYLESHEET, "/assets/ui/discovery-empty-states.css", DISCOVERY_HELP_STYLESHEET]
+      .map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`)
+      .join("\n  ");
+    html = html.replace(
+      `  <script>${routeCompatibilityBrowserSource(options)}</script>`,
+      `  ${discoveryStyles}\n  <script>${routeCompatibilityBrowserSource(options)}</script>`
+    );
+  }
   if (options.socialEnabled) {
     const socialStyles = [SOCIAL_CALENDAR_STYLESHEET_PATH, SOCIAL_CONNECTIONS_STYLESHEET_PATH]
       .map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`)
@@ -574,6 +607,10 @@ export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
       `<script>${partnersHomeBrowserSource()}</script>`,
       `<script>${socialProductionControllerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource()}</script>`
     );
+  }
+  if (options.discoveryEnabled) {
+    const discovery = options.discovery || {};
+    html = html.replace("</body>", `<script>${discoveryCaptureSinkBrowserSource()}</script>\n<script>${discoveryOnboardingBrowserSource()}</script>\n<script>${discoveryChecklistBrowserSource(discovery.checklist || null)}</script>\n<script>${discoveryEmptyStateBrowserSource()}</script>\n<script>${discoveryHelpBrowserSource()}</script>\n<script>${discoveryAnalyticsBrowserSource()}</script>\n</body>`);
   }
   return html;
 }

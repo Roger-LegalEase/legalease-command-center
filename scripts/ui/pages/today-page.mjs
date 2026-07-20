@@ -164,6 +164,11 @@ export function todayPageBrowserSource() {
     function renderNow(payload) {
       const item = payload.nowItem;
       if (!item) {
+        const guided = document.createElement("div");
+        if (window.__LE_DISCOVERY_EMPTY_STATES?.render?.(guided, "today", "empty")) {
+          replaceAnswer("now", [...guided.children]);
+          return;
+        }
         const children = answerHeading("now", "You’re clear to plan the day");
         children.push(text("p", "Nothing is currently ranked as your next action.", "vnext-today-empty-copy"));
         const actions = document.createElement("div");

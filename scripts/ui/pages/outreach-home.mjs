@@ -92,6 +92,11 @@ export function outreachHomeBrowserSource() {
       if (table) table.hidden = true;
       if (loadMore) loadMore.hidden = true;
       if (!state) return;
+      if (kind === "empty" && window.__LE_DISCOVERY_EMPTY_STATES?.render) {
+        state.hidden = false;
+        window.__LE_DISCOVERY_EMPTY_STATES.render(state, "outreach", routeState().view === "all" ? "empty" : "filtered-empty");
+        return;
+      }
       state.replaceChildren(); state.dataset.state = kind; state.hidden = false;
       state.setAttribute("role", kind === "error" || kind === "unauthorized" ? "alert" : "status");
       const title = document.createElement("h2"); title.textContent = titleText;
@@ -191,6 +196,8 @@ export function outreachHomeBrowserSource() {
       app()?.querySelectorAll("[data-outreach-view]").forEach((tab) => tab.addEventListener("click", (event) => { event.preventDefault(); const target = routeHash(tab.dataset.outreachView); if (location.hash === target) load({ force:true }); else location.hash = target.slice(1); }));
       node("[data-outreach-load-more]")?.addEventListener("click", () => { if (nextCursor) load({ cursor:nextCursor }); });
       node("[data-outreach-create]")?.addEventListener("click", () => { if (node("[data-outreach-create]")?.disabled) return; window.__LE_GLOBAL_CREATE?.openWorkflow("outreach-campaign", { returnTarget:node("[data-outreach-create]") }); });
+      node("[data-outreach-page]")?.addEventListener("vnext:guided-clear-filters", () => { location.hash = "outreach?view=all"; });
+      node("[data-outreach-page]")?.addEventListener("vnext:guided-retry", () => load({ force:true }));
     }
     function routeChanged() { if (onRoute()) load(); }
     window.addEventListener("hashchange", () => setTimeout(routeChanged, 0));

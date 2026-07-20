@@ -5,7 +5,8 @@ export const COMMAND_CENTER_UX_VNEXT_ENV_KEY = "COMMAND_CENTER_UX_VNEXT";
 export const COMMAND_CENTER_UX_VNEXT_PRODUCT_FLAGS = Object.freeze({
   social:"COMMAND_CENTER_UX_VNEXT_SOCIAL",
   outreach:"COMMAND_CENTER_UX_VNEXT_OUTREACH",
-  files:"COMMAND_CENTER_UX_VNEXT_FILES"
+  files:"COMMAND_CENTER_UX_VNEXT_FILES",
+  discovery:"COMMAND_CENTER_UX_VNEXT_DISCOVERY"
 });
 
 export function parseCommandCenterVNextFlag(value) {

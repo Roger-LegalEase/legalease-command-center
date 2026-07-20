@@ -1,8 +1,12 @@
 import { GLOBAL_CREATE_ENDPOINTS } from "../../global-create-service.mjs";
 import { PARTNERS_HOME_ENDPOINT } from "../../partners-home-service.mjs";
 import { escapeAttribute, escapeHtml } from "../html.mjs";
+import { buildGuidedEmptyState } from "../../discovery-empty-states.mjs";
+import { renderGuidedEmptyState } from "../components/guided-empty-state.mjs";
 
 const clean = (value = "") => String(value ?? "").trim();
+const partnersEmptyHtml = renderGuidedEmptyState(buildGuidedEmptyState("partners", { state:"empty" }));
+const partnersFilteredEmptyHtml = renderGuidedEmptyState(buildGuidedEmptyState("partners", { state:"filtered-empty" }));
 
 export const PARTNERS_HOME_STYLESHEET_PATH = "assets/ui/partners-home.css";
 export const PARTNERS_ACCESSIBILITY_STYLESHEET_PATH = "assets/ui/partners-accessibility.css";
@@ -31,7 +35,7 @@ function row(item) {
 
 function empty(payload) {
   const filtered = payload.availability.state === "filtered_empty";
-  return `<section class="partners-empty" role="status"><p class="eyebrow">${filtered ? "No matches" : "Start here"}</p><h2>${filtered ? "No Partners match these filters" : "No Partners yet"}</h2><p>${filtered ? "Clear a filter or try a broader search." : "Add a Partner to begin tracking the relationship and next action."}</p></section>`;
+  return `<section class="partners-empty" role="status">${filtered ? partnersFilteredEmptyHtml : partnersEmptyHtml}</section>`;
 }
 
 export function partnersHomePageHtml(payload = null) {
@@ -62,6 +66,8 @@ export function partnersHomeBrowserSource() {
     `const date=${date.toString()};`,
     `const filters=${filters.toString()};`,
     `const row=${row.toString()};`,
+    `const partnersEmptyHtml=${JSON.stringify(partnersEmptyHtml).replaceAll("<", "\\u003c")};`,
+    `const partnersFilteredEmptyHtml=${JSON.stringify(partnersFilteredEmptyHtml).replaceAll("<", "\\u003c")};`,
     `const empty=${empty.toString()};`,
     `const GLOBAL_CREATE_ENDPOINTS={partner:"/api/ui/create/partner"};`,
     `const partnersHomePageHtml=${partnersHomePageHtml.toString()};`
@@ -78,7 +84,7 @@ export function partnersHomeBrowserSource() {
     function navigate(next){ const target=routeHash(next); if(location.hash===target) load({force:true}); else location.hash=target.slice(1); }
     function ensureLoading(){ const target=app(); if(!target||sessionEnded) return false; if(!target.querySelector("[data-partners-page]")) target.innerHTML=loadingHtml; return true; }
     function renderState(kind,title,message){ const target=app(); if(!target) return; const section=document.createElement("section"); section.className="partners-page"; section.dataset.partnersPage=""; const state=document.createElement("div"); state.className="partners-state"; state.setAttribute("role",kind==="error"||kind==="unauthorized"?"alert":"status"); const heading=document.createElement("h1"); heading.textContent=title; if(kind==="error"||kind==="unauthorized") heading.tabIndex=-1; const copy=document.createElement("p"); copy.textContent=message; state.append(heading,copy); if(kind==="error"){ const retry=document.createElement("button"); retry.type="button"; retry.textContent="Try again"; retry.addEventListener("click",()=>load({force:true})); state.append(retry); } section.append(state); target.replaceChildren(section); if(heading.tabIndex===-1) setTimeout(()=>heading.focus(),0); }
-    function bind(){ const root=app()?.querySelector("[data-partners-page]"); if(!root||root.dataset.bound==="true") return; root.dataset.bound="true"; root.querySelector("[data-partners-add]")?.addEventListener("click",event=>window.__LE_GLOBAL_CREATE?.openWorkflow("partner",{returnTarget:event.currentTarget})); const form=root.querySelector("[data-partners-filters]"); form?.addEventListener("change",event=>{ const control=event.target.closest("select"); if(control) navigate({[control.name]:control.value,cursor:""}); }); form?.addEventListener("submit",event=>{ event.preventDefault(); const data=new FormData(form); navigate({search:String(data.get("search")||"").trim(),cursor:""}); }); form?.querySelector("input[name=search]")?.addEventListener("search",event=>navigate({search:event.currentTarget.value.trim(),cursor:""})); root.querySelector("[data-partners-clear]")?.addEventListener("click",()=>navigate({search:"",stage:"",owner:"",health:"",cursor:""})); root.querySelector("[data-partners-load-more]")?.addEventListener("click",()=>{ if(payload?.pagination?.nextCursor) navigate({cursor:payload.pagination.nextCursor}); }); }
+    function bind(){ const root=app()?.querySelector("[data-partners-page]"); if(!root||root.dataset.bound==="true") return; root.dataset.bound="true"; root.querySelector("[data-partners-add]")?.addEventListener("click",event=>window.__LE_GLOBAL_CREATE?.openWorkflow("partner",{returnTarget:event.currentTarget})); root.addEventListener("vnext:guided-clear-filters",()=>navigate({search:"",stage:"",owner:"",health:"",cursor:""}));root.addEventListener("vnext:guided-retry",()=>load({force:true})); const form=root.querySelector("[data-partners-filters]"); form?.addEventListener("change",event=>{ const control=event.target.closest("select"); if(control) navigate({[control.name]:control.value,cursor:""}); }); form?.addEventListener("submit",event=>{ event.preventDefault(); const data=new FormData(form); navigate({search:String(data.get("search")||"").trim(),cursor:""}); }); form?.querySelector("input[name=search]")?.addEventListener("search",event=>navigate({search:event.currentTarget.value.trim(),cursor:""})); root.querySelector("[data-partners-clear]")?.addEventListener("click",()=>navigate({search:"",stage:"",owner:"",health:"",cursor:""})); root.querySelector("[data-partners-load-more]")?.addEventListener("click",()=>{ if(payload?.pagination?.nextCursor) navigate({cursor:payload.pagination.nextCursor}); }); }
     function render(next){ payload=next; const target=app(); if(!target) return; target.innerHTML=partnersHomePageHtml(next); bind(); }
     async function load({force=false}={}){ if(!onRoute()||sessionEnded||!ensureLoading()) return null; const query=routeQuery().toString(); if(active){ if(active.query===query&&!force) return active.promise; active.controller.abort(); metrics.staleRequestsAborted+=1; }
       const controller=new AbortController(); const currentSequence=++sequence; metrics.requests+=1; metrics.activeRequests+=1; metrics.maximumActiveRequests=Math.max(metrics.maximumActiveRequests,metrics.activeRequests);

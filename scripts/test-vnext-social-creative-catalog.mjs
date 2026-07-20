@@ -413,7 +413,16 @@ for (const forbidden of [
   assert.doesNotMatch(moduleSource, forbidden, `pure catalog modules must exclude ${forbidden}`);
 }
 const previewServerSource = readFileSync(new URL("./preview-server.mjs", import.meta.url), "utf8");
-assert.doesNotMatch(previewServerSource, /view-models\/social-creative-(?:sources|catalog)\.mjs/, "CCX-303A must not add endpoint, composer, page, preview-server, or browser wiring");
+assert.match(
+  previewServerSource,
+  /import \{ buildSocialCreativeCatalog \} from "\.\/ui\/view-models\/social-creative-catalog\.mjs";/,
+  "The integrated Discovery checklist must reuse the reviewed Social creative catalog projection."
+);
+assert.doesNotMatch(
+  previewServerSource,
+  /(?:GET|POST|PUT|PATCH|DELETE) \/api\/ui\/social\/creative-catalog/,
+  "The pure catalog must not gain a standalone mutation or browser endpoint."
+);
 
 const benchmarkState = {
   posts: [{ id: "benchmark-post", title: "Must remain unchanged", status: "draft" }],

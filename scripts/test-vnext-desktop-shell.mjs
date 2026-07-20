@@ -120,7 +120,7 @@ for (const item of TOP_BAR_CONTROLS.filter((entry) => entry.kind === "route")) {
 
 assert.match(serverSource, /<link rel="stylesheet" href="\/assets\/ui\/tokens\.css" \/>/);
 assert.match(serverSource, /import \{ renderVNextDesktopShell \} from "\.\/ui\/app-shell\.mjs";/);
-assert.match(serverSource, /function renderVNextApp\(\) \{[\s\S]*return renderVNextDesktopShell\(renderLegacyApp\(\)\);\s*\}/);
+assert.match(serverSource, /function renderVNextApp\(options = \{\}\) \{[\s\S]*return renderVNextDesktopShell\(renderLegacyApp\(\), \{[\s\S]*\}\);[\s\S]*return renderVNextDesktopShell\(renderLegacyApp\(\)\);\s*\}/);
 assert.match(serverSource, /function renderLegacyApp\(\) \{\s*return htmlShell\(\);\s*\}/);
 assert.doesNotMatch(shellSource, /COMMAND_CENTER_UX_VNEXT|localStorage|sessionStorage|document\.cookie/);
 assert.doesNotMatch(shellSource, /\/api\/(?:lee|state|outreach|publishing|auth\/login)/);

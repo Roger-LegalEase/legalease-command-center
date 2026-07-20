@@ -1,4 +1,6 @@
 import { escapeAttribute, escapeHtml } from "../html.mjs";
+import { buildGuidedEmptyState } from "../../discovery-empty-states.mjs";
+import { renderGuidedEmptyState } from "../components/guided-empty-state.mjs";
 
 export const FILES_HOME_STYLESHEET = "/assets/ui/files-home.css";
 
@@ -14,8 +16,9 @@ function unavailable(value, formatter = (item) => item) {
 export function renderFilesHome(payload = {}) {
   const query = payload.query || { view:"home", collection:"" };
   const items = payload.items || [];
-  const emptyTitle = Object.values(query).some(Boolean) && (query.view !== "home" || query.collection || query.search || query.type || query.status)
-    ? "No files match this view" : "Files will appear here";
+  const guidedEmpty = renderGuidedEmptyState(buildGuidedEmptyState("files", {
+    state:query.search || query.type || query.status || query.collection || query.view !== "home" ? "filtered-empty" : "empty"
+  }));
   const rows = items.map((item) => `<li class="files-row" data-file-id="${escapeAttribute(item.id)}">
     <div class="files-row-main"><span class="files-type" aria-hidden="true">${escapeHtml(item.fileType?.label?.slice(0, 1) || "F")}</span><div><a href="${escapeAttribute(item.href)}" data-file-open>${escapeHtml(item.name || "Unnamed file")}</a><span>${escapeHtml(item.fileType?.label || "Type unavailable")}</span></div></div>
     <div data-label="Collection">${unavailable(item.collection, (value) => payload.navigation?.collections?.find((entry) => entry.key === value)?.label || value)}</div>
@@ -29,7 +32,7 @@ export function renderFilesHome(payload = {}) {
     <div class="files-layout"><aside aria-label="Files navigation"><nav>${(payload.navigation?.views || []).map((item) => navLink(item, query.view === item.key && !query.collection, "view")).join("")}</nav><h2>Collections</h2><nav>${(payload.navigation?.collections || []).map((item) => navLink(item, query.collection === item.key, "collection")).join("")}</nav></aside>
     <div class="files-workspace"><form class="files-toolbar" data-files-filters role="search"><label>Search files<input type="search" name="search" value="${escapeAttribute(query.search || "")}"></label><label>Type<select name="type"><option value="">All types</option>${(payload.filters?.types || []).map((value) => `<option value="${escapeAttribute(value)}"${query.type === value ? " selected" : ""}>${escapeHtml(value.replaceAll("-", " "))}</option>`).join("")}</select></label><label>Status<select name="status"><option value="">All statuses</option>${(payload.filters?.statuses || []).map((value) => `<option value="${escapeAttribute(value)}"${query.status === value ? " selected" : ""}>${escapeHtml(value.replaceAll("-", " "))}</option>`).join("")}</select></label><label>Sort<select name="sort"><option value="recent">Recently modified</option><option value="name"${query.sort === "name" ? " selected" : ""}>Name</option><option value="owner"${query.sort === "owner" ? " selected" : ""}>Owner</option></select></label></form>
     <p class="files-status" role="status" aria-live="polite">${payload.pagination?.total || 0} file${payload.pagination?.total === 1 ? "" : "s"} in this view.</p>
-    ${rows ? `<div class="files-list-head" aria-hidden="true"><span>File</span><span>Collection</span><span>Status</span><span>Owner</span><span>Modified</span><span>Actions</span></div><ol class="files-list">${rows}</ol>` : `<div class="files-empty"><h2>${emptyTitle}</h2><p>${query.search || query.type || query.status || query.collection || query.view !== "home" ? "Try changing or clearing the filters." : "Use New to add a document through the authorized Files flow."}</p></div>`}
+    ${rows ? `<div class="files-list-head" aria-hidden="true"><span>File</span><span>Collection</span><span>Status</span><span>Owner</span><span>Modified</span><span>Actions</span></div><ol class="files-list">${rows}</ol>` : `<div class="files-empty" data-files-empty>${guidedEmpty}</div>`}
     ${payload.pagination?.nextCursor ? `<button type="button" class="files-load-more" data-files-more="${escapeAttribute(payload.pagination.nextCursor)}">Load more</button>` : ""}</div></div>
   </section>`;
 }

@@ -45,7 +45,9 @@ const trash = buildFilesHome(state, actor, { view:"trash" }, { cursorSecret:secr
 assert.deepEqual(trash.items.map((item) => item.id), ["data-room-item:trash-1"]);
 const filteredEmpty = buildFilesHome(state, actor, { search:"not present" }, { cursorSecret:secret });
 assert.equal(filteredEmpty.items.length, 0);
-assert.match(renderFilesHome(filteredEmpty), /No files match this view/);
+assert.match(renderFilesHome(filteredEmpty), /data-guided-empty-kind="filtered-empty"/);
+assert.match(renderFilesHome(filteredEmpty), /No matches in this view/);
+assert.match(renderFilesHome(filteredEmpty), /data-guided-empty-action="clear-filters"/);
 assert.match(renderFilesHome(home), /data-files-new/);
 assert.match(renderFilesHome(home), /#files\/data-room-item\/investor-1/);
 assert.doesNotMatch(renderFilesHome(home), /Hidden|hidden-report/);

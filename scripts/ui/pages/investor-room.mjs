@@ -1,4 +1,6 @@
 import { escapeAttribute, escapeHtml } from "../html.mjs";
+import { buildGuidedEmptyState } from "../../discovery-empty-states.mjs";
+import { renderGuidedEmptyState } from "../components/guided-empty-state.mjs";
 
 export const INVESTOR_ROOM_STYLESHEET = "/assets/ui/investor-room.css";
 const unavailable = (value) => value ? escapeHtml(value) : '<span class="investor-unavailable">Unavailable</span>';
@@ -8,6 +10,8 @@ const dateValue = (value) => value && Number.isFinite(Date.parse(value))
 
 export function renderInvestorRoom(view = {}) {
   const readiness = view.readiness || { available:false, band:"Unavailable" };
+  const totalItems = (view.sections || []).reduce((sum, section) => sum + (section.items || []).length, 0);
+  if (!totalItems) return `<section class="investor-room-page" data-investor-room aria-labelledby="investor-room-title"><header><div><p class="investor-eyebrow">Files</p><h1 id="investor-room-title">Investor Room</h1><p>See what is current, missing, or needs an update before sharing.</p></div></header>${renderGuidedEmptyState(buildGuidedEmptyState("investor-room", { state:readiness.available === false ? "unavailable" : "empty" }))}</section>`;
   const sections = (view.sections || []).map((section) => {
     const items = section.items.map((item) => `<li>
       <div><strong>${escapeHtml(item.name)}</strong><span class="investor-status investor-status-${escapeAttribute(item.status.key)}">${escapeHtml(item.status.label)}</span></div>

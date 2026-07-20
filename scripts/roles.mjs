@@ -180,6 +180,8 @@ export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", 
   if (verb === "GET" && path === "/api/ui/inbox") return ["read_internal"];
   if (verb === "GET" && path === "/api/ui/social") return ["read_internal"];
   if (verb === "GET" && path === "/api/ui/social/results") return ["read_internal"];
+  if (verb === "GET" && ["/api/ui/discovery/onboarding", "/api/ui/discovery/checklist"].includes(path)) return ["read_internal"];
+  if (verb === "POST" && ["/api/ui/discovery/onboarding", "/api/ui/discovery/analytics"].includes(path)) return ["mutate_state"];
   if (verb === "GET" && (path === "/api/ui/outreach" || /^\/api\/ui\/outreach\/campaign\/[^/]+(?:\/draft)?$/.test(path))) return ["read_internal"];
   if (verb === "POST" && /^\/api\/ui\/outreach\/campaign\/[^/]+\/(?:draft|test-send|assist|review-action|status-action|reply-action)$/.test(path)) return ["manage_growth"];
   if (verb === "GET" && (path === "/api/ui/files" || path === "/api/ui/files/investor-room" || /^\/api\/ui\/files\/[^/]+\/[^/]+(?:\/content)?$/.test(path))) return ["read_internal"];

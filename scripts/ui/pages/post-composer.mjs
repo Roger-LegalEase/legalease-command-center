@@ -24,6 +24,11 @@ function composerClient(loadingHtml) {
   let guardedHistoryTarget = null;
   let allowHistoryTraversal = false;
   let sessionExpired = false;
+  let analyticsActive = false;
+
+  const analyticsReference = Object.freeze({ workflowId:"social-post", destinationId:"social" });
+  function analyticsEvent(type, detail = analyticsReference) { document.dispatchEvent(new CustomEvent(type, { detail })); }
+  function startAnalytics() { if (!analyticsActive) { analyticsActive = true; analyticsEvent("vnext:workflow-started"); } }
 
   const app = () => document.querySelector("main#app");
   const postId = () => decodeURIComponent((String(location.hash).match(/^#social\/post\/([^?]+)/) || [])[1] || "");
@@ -96,6 +101,7 @@ function composerClient(loadingHtml) {
   }
   function bind() {
     app().querySelectorAll("[data-composer-field]").forEach((field) => field.addEventListener("input", () => {
+      startAnalytics();
       localDraft[field.dataset.composerField] = field.dataset.composerField === "hashtags" ? field.value.split(/[\s,]+/).filter(Boolean) : field.value;
       dirty = true; conflict = false; conflictVersion = null; updatePreview(); updateSaveState(); setMessage("Unsaved changes", "unsaved_changes");
     }));
@@ -166,7 +172,10 @@ function composerClient(loadingHtml) {
       const body = await response.json();
       if (!response.ok) throw Object.assign(new Error(body.message || "The Post could not be saved."), { status:response.status, body });
       model = body; localDraft = structuredClone(body.fields); dirty = false; conflict = false; conflictVersion = null; render(); setMessage("Saved", "saved");
+      if (analyticsActive) analyticsEvent("vnext:workflow-completed");
+      analyticsActive = false;
     } catch (error) {
+      if (analyticsActive) analyticsEvent(error.status === 400 ? "vnext:validation-blocked" : "vnext:action-failed", { ...analyticsReference, actionId:"save-draft", reasonCode:error.status === 400 ? "validation" : error.status === 409 ? "conflict" : error.status === 401 ? "session-expired" : error.status === 403 ? "unauthorized" : "write-unavailable" });
       if (error.status === 401) {
         sessionExpired = true; model = null; localDraft = null; dirty = false; conflict = false; conflictVersion = null; pendingDestination = null; closeGuard(false);
         app().innerHTML = '<section data-vnext-shell-state="session_expired"><h1>Session expired</h1><p>Sign in again to continue.</p></section>';
@@ -202,7 +211,7 @@ function composerClient(loadingHtml) {
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     });
     guardDialog.querySelector("[data-stay]").addEventListener("click", () => { closeGuard(true); previousFocus?.focus(); });
-    guardDialog.querySelector("[data-leave]").addEventListener("click", () => { const target = pendingDestination, source = pendingOrigin; dirty = false; localDraft = null; closeGuard(false); if (target === "reload") reloadSavedCopy(); else if (source === "history") { allowHistoryTraversal = true; history.back(); } else navigate(target, source); });
+    guardDialog.querySelector("[data-leave]").addEventListener("click", () => { const target = pendingDestination, source = pendingOrigin; if (analyticsActive) analyticsEvent("vnext:workflow-abandoned", { ...analyticsReference, reasonCode:"navigation" }); analyticsActive = false; dirty = false; localDraft = null; closeGuard(false); if (target === "reload") reloadSavedCopy(); else if (source === "history") { allowHistoryTraversal = true; history.back(); } else navigate(target, source); });
   }
   function navigate(destination, origin) {
     if (!destination) return;
