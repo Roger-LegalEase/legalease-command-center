@@ -46,6 +46,16 @@ Status: additive Lane A contract. Integration-owned runtime, shell, route, role,
 - Preserve the legacy `#operator-manual` compatibility route under Settings for advanced technical guidance; it is no longer the normal top-bar Help action.
 - Package registration: `test:vnext-discovery-help` → `node scripts/test-vnext-discovery-help.mjs`.
 
+## CCX-704 — Privacy-safe product analytics
+
+- Import `buildPrivacySafeAnalyticsEvent` from `scripts/discovery-product-analytics.mjs` into one compact authenticated analytics endpoint. Normalize every event again on the server and pass only the frozen normalized event to an append-only analytics writer; never persist or log the raw request body.
+- Register `discoveryAnalyticsBrowserSource` once inside the authenticated shell and supply `window.__LE_DISCOVERY_ANALYTICS_CAPTURE` as the same-origin, CSRF-protected sink. The controller performs no network request by itself and cannot select or enable a provider.
+- The only event types are destination opened, workflow started, workflow completed, workflow abandoned, validation blocked, action failed, time to first completed workflow, and search result selected. Event metadata is limited to bounded identifiers, opaque journey IDs, durations, and result positions.
+- Dispatch reviewed lifecycle events from the existing shell router, Global Create, Post and Campaign composers, Partner actions, Files actions, validation surfaces, failure boundaries, and Global Search. Do not place draft text, recipient or Partner records, File data, legal facts, provider payloads, or secrets in custom-event detail.
+- `pagehide` marks each active journey abandoned. A completed or explicitly abandoned journey is removed exactly once. Time to first completion is measured from the current authenticated page boot; durable aggregation may associate normalized events with a server-side pseudonymous subject but must not expose or return that identifier to the browser.
+- Do not record email bodies, Social post bodies, legal facts, recipient addresses, OAuth or secret values, or unredacted Partner communications. Unknown fields fail closed at the server contract. There is no free-form metadata field.
+- Package registration after integration: `test:vnext-discovery-analytics` → `SKIP_ENV_LOCAL_FILE=1 node scripts/test-vnext-discovery-analytics.mjs`. Focused browser registration is `tests/browser/discovery-analytics.spec.mjs`.
+
 ## Shared feature and rollback contract
 
 - Gate every Discovery registration server-side behind `COMMAND_CENTER_UX_VNEXT_DISCOVERY`, default false until Phase 7 acceptance passes. Browser state, hashes, query strings, cookies, and storage cannot enable it.
