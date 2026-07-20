@@ -167,8 +167,10 @@ function composerClient(loadingHtml) {
     if (saving || !dirty || !model?.capabilities?.edits) return;
     const snapshot = structuredClone(localDraft);
     saving = true; updateSaveState(); setMessage("Saving…", "saving");
+    let responseReceived = false;
     try {
       const response = await fetch("/api/ui/social/post/" + encodeURIComponent(postId()) + "/save", { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify({ fields:snapshot, expectedVersion:model.version }) });
+      responseReceived = true;
       const body = await response.json();
       if (!response.ok) throw Object.assign(new Error(body.message || "The Post could not be saved."), { status:response.status, body });
       model = body; localDraft = structuredClone(body.fields); dirty = false; conflict = false; conflictVersion = null; render(); setMessage("Saved", "saved");
@@ -181,7 +183,7 @@ function composerClient(loadingHtml) {
         app().innerHTML = '<section data-vnext-shell-state="session_expired"><h1>Session expired</h1><p>Sign in again to continue.</p></section>';
         return;
       }
-      dirty = true; conflict = error.status === 409; conflictVersion = conflict && Number.isSafeInteger(error.body?.currentVersion) ? error.body.currentVersion : null; setMessage(error.message, error.status === 409 ? "version_conflict" : error.status === 400 ? "validation_error" : error.status === 403 ? "authorization_error" : "recoverable_error");
+      dirty = true; conflict = error.status === 409; conflictVersion = conflict && Number.isSafeInteger(error.body?.currentVersion) ? error.body.currentVersion : null; setMessage(responseReceived ? error.message : "Connection lost before the save result was confirmed. Your edits are still here. Saved or changed: unknown. Nothing was sent, published, or uploaded. Reconnect and check the saved Post before trying again.", error.status === 409 ? "version_conflict" : error.status === 400 ? "validation_error" : error.status === 403 ? "authorization_error" : "recoverable_error");
       const actions = app()?.querySelector("[data-conflict-actions]"); if (actions) actions.hidden = !conflict;
       if (actions) actions.dataset.currentVersion = conflictVersion ?? "";
       const field = error.body?.field; if (field) { const node = app()?.querySelector('[data-field-error="' + CSS.escape(field) + '"]'); if (node) node.textContent = error.message; }

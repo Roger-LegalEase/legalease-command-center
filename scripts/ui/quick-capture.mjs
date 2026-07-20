@@ -306,6 +306,7 @@ export function quickCaptureBrowserSource() {
       submitButton.disabled = true;
       submitButton.setAttribute("aria-busy", "true");
       setStatus("working", "Saving", "Your selected destination is being rechecked before anything is saved.");
+      let responseReceived = false;
       try {
         const response = await fetch(endpoint, {
           method:"POST",
@@ -313,6 +314,7 @@ export function quickCaptureBrowserSource() {
           headers:{ "content-type":"application/json", "x-csrf-token":decodeURIComponent(cookieValue("leos_csrf")) },
           body:JSON.stringify(payload)
         });
+        responseReceived = true;
         const result = await response.json().catch(() => ({}));
         if (response.status === 401 || result.outcome === "session_expired") {
           form.reset();
@@ -334,7 +336,9 @@ export function quickCaptureBrowserSource() {
         if (typeof toast === "function") toast(result.message);
         success.focus();
       } catch (error) {
-        const message = error?.message || "Quick Capture could not save. Nothing was changed.";
+        const message = responseReceived
+          ? error?.message || "Quick Capture could not save. Nothing was changed."
+          : "Connection lost before the save result was confirmed. Your entered work is still here. Saved or changed: unknown. Nothing was sent, published, or uploaded. Reconnect and check the destination before trying again.";
         errorNode.textContent = message;
         errorNode.hidden = false;
         setStatus("error", "Quick Capture was not saved", message);
