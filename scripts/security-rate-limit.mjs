@@ -28,6 +28,6 @@ export async function consumeRateLimit({ store, scope, subject, limit, windowMs,
       retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))
     };
     return { ...(current || {}), id: "singleton", rateLimitBuckets: buckets, updatedAt: new Date(now).toISOString() };
-  }, { createIfMissing: true, maxRetries: 2 });
+  }, { createIfMissing: true, maxRetries: 2, returnState:false });
   return decision;
 }

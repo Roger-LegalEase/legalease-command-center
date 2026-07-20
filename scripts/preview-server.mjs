@@ -35485,14 +35485,21 @@ async function handleRequest(request, response) {
     request.verifiedOAuthState = verified;
   }
   if (url.pathname === "/api/auth/login" && request.method === "POST") {
-    const rate = await consumeRateLimit({
-      store,
-      scope: "login",
-      subject: request.socket?.remoteAddress || "unknown",
-      limit: 6,
-      windowMs: 15 * 60 * 1000,
-      secret: process.env.COMMAND_CENTER_SESSION_SECRET
-    });
+    let rate;
+    try {
+      rate = await consumeRateLimit({
+        store,
+        scope: "login",
+        subject: request.socket?.remoteAddress || "unknown",
+        limit: 6,
+        windowMs: 15 * 60 * 1000,
+        secret: process.env.COMMAND_CENTER_SESSION_SECRET
+      });
+    } catch (error) {
+      console.error(JSON.stringify({ level:"error", requestId:request.requestId, status:503, code:String(error?.code || "AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE").slice(0, 80) }));
+      sendJson(response, { error:"Authentication is temporarily unavailable. No successful session was returned." }, 503);
+      return;
+    }
     if (!rate.allowed) {
       await incrementSecurityMetric(store, "auth_throttled").catch(() => {});
       response.setHeader("retry-after", String(rate.retryAfterSeconds));
@@ -35506,7 +35513,14 @@ async function handleRequest(request, response) {
       sendJson(response, { error: "Authentication unavailable." }, 401);
       return;
     }
-    const created = await sessionService.create(role, { userAgent: request.headers["user-agent"] || "" });
+    let created;
+    try {
+      created = await sessionService.create(role, { userAgent: request.headers["user-agent"] || "" });
+    } catch (error) {
+      console.error(JSON.stringify({ level:"error", requestId:request.requestId, status:503, code:String(error?.code || "AUTH_SESSION_STORAGE_UNAVAILABLE").slice(0, 80) }));
+      sendJson(response, { error:"Authentication is temporarily unavailable. No successful session was returned." }, 503);
+      return;
+    }
     response.setHeader("set-cookie", [sessionCookie(created.token, { env: process.env }), csrfCookie(created.csrfToken, { env: process.env })]);
     sendJson(response, { ok: true, role });
     return;
