@@ -88,9 +88,11 @@ for (const entry of routeRegistry) {
   assert.ok(SHELL_DESTINATION_LABELS.includes(destination), `${entry.canonicalRoute} lacks a deterministic shell destination.`);
 }
 for (const [alias, target] of aliases) {
-  assert.equal(canonicalRouteForShell(alias), target, `Alias ${alias} must retain canonical target ${target}.`);
+  const expectedTarget = target === "growth" ? "queue" : target;
+  assert.equal(canonicalRouteForShell(alias), expectedTarget, `Alias ${alias} must retain final canonical target ${expectedTarget}.`);
   assert.ok(SHELL_DESTINATION_LABELS.includes(resolveShellDestination(alias)), `Alias ${alias} lacks a shell destination.`);
 }
+assert.equal(canonicalRouteForShell("growth"), "queue");
 assert.equal(resolveShellDestination("#item/posts/post-1"), "Social");
 assert.equal(resolveShellDestination("#item/campaigns/campaign-1"), "Outreach");
 assert.equal(resolveShellDestination("#item/partners/partner-1"), "Partners");
@@ -120,7 +122,7 @@ for (const item of TOP_BAR_CONTROLS.filter((entry) => entry.kind === "route")) {
 
 assert.match(serverSource, /<link rel="stylesheet" href="\/assets\/ui\/tokens\.css" \/>/);
 assert.match(serverSource, /import \{ renderVNextDesktopShell \} from "\.\/ui\/app-shell\.mjs";/);
-assert.match(serverSource, /function renderVNextApp\(\) \{[\s\S]*return renderVNextDesktopShell\(renderLegacyApp\(\)\);\s*\}/);
+assert.match(serverSource, /function renderVNextApp\(options = \{\}\) \{[\s\S]*return renderVNextDesktopShell\(renderLegacyApp\(\), \{[\s\S]*\}\);[\s\S]*return renderVNextDesktopShell\(renderLegacyApp\(\)\);\s*\}/);
 assert.match(serverSource, /function renderLegacyApp\(\) \{\s*return htmlShell\(\);\s*\}/);
 assert.doesNotMatch(shellSource, /COMMAND_CENTER_UX_VNEXT|localStorage|sessionStorage|document\.cookie/);
 assert.doesNotMatch(shellSource, /\/api\/(?:lee|state|outreach|publishing|auth\/login)/);
@@ -134,9 +136,10 @@ assert.match(cssSource, /:focus-visible/);
 assert.doesNotMatch(cssSource, /(?:linear|radial)-gradient|backdrop-filter|glass/i);
 
 for (const [label, source] of [["navigation", navigationSource], ["shell", shellSource]]) {
-  for (const forbiddenImport of ["storage", "database", "access-control", "outreach", "publishing", "social-publish", "safety-posture", "business-engine", "preview-server"]) {
+  for (const forbiddenImport of ["storage", "database", "access-control", "publishing", "social-publish", "safety-posture", "business-engine", "preview-server"]) {
     assert.doesNotMatch(source, new RegExp(`^\\s*import[^\\n]+${forbiddenImport}`, "im"), `${label} must not import ${forbiddenImport}.`);
   }
+  assert.doesNotMatch(source, /^\s*import[^\n]+(?:outreach-api-integration|outreach-os|campaign-command)/im, `${label} must not import Outreach domain or execution services.`);
   assert.doesNotMatch(source, /^\s*(?:await\s+)?(?:fetch|writeFile|readFile|createServer)\s*\(/m, `${label} must have no import-time I/O.`);
 }
 for (const renderer of routeRegistry.map((entry) => entry.renderer.split(":")[0]).filter((value) => !value.startsWith("inline"))) {

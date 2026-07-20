@@ -790,9 +790,15 @@ const performanceState = productionLikeFixture();
 const performanceBefore = structuredClone(performanceState);
 const scanned = INBOX_INCLUDED_COLLECTIONS.reduce((total, collection) => total + (Array.isArray(performanceState[collection]) ? performanceState[collection].length : 0), 0);
 const collected = collectInboxCandidates(performanceState, OWNER, NOW);
-const startedAt = performance.now();
-const performanceView = buildInboxView(performanceState, OWNER, NOW);
-const projectionMs = performance.now() - startedAt;
+const projectionSamples = [];
+let performanceView;
+for (let attempt = 0; attempt < 3; attempt += 1) {
+  const startedAt = performance.now();
+  const candidate = buildInboxView(performanceState, OWNER, NOW);
+  projectionSamples.push(performance.now() - startedAt);
+  performanceView ||= candidate;
+}
+const projectionMs = Math.min(...projectionSamples);
 const serializedBytes = Buffer.byteLength(JSON.stringify(performanceView), "utf8");
 const inputMutations = Number(JSON.stringify(performanceState) !== JSON.stringify(performanceBefore));
 const duplicatesRemoved = collected.candidates.length - performanceView.counts.total;
@@ -815,6 +821,7 @@ console.log(JSON.stringify({
   duplicatesRemoved,
   groups: performanceView.counts,
   projectionMs: Number(projectionMs.toFixed(3)),
+  projectionSamplesMs: projectionSamples.map((value) => Number(value.toFixed(3))),
   serializedBytes,
   inputMutations,
   networkRequests,

@@ -7,7 +7,7 @@ import { expect, openToday, test } from "./support.mjs";
 const screenshotDirectory = path.resolve("docs/ux-vnext/screenshots/ccx-100");
 const primaryDestinations = [
   ["Today", "today"],
-  ["Social", "queue"],
+  ["Social", "social"],
   ["Outreach", "campaigns"],
   ["Partners", "partners"],
   ["Files", "proof"]
@@ -90,8 +90,8 @@ test("visible destination navigation stays synchronized and captures desktop rev
 });
 
 test("aliases, record links, unknown routes, utilities, and top-bar controls remain functional", async ({ page }) => {
-  const baseURL = await openVNext(page, "social");
-  await expect(page).toHaveURL(/#growth$/);
+  const baseURL = await openVNext(page, "growth");
+  await expect(page).toHaveURL(/#social$/);
   await expect(primaryNavigation(page).getByRole("link", { name:"Social", exact:true })).toHaveAttribute("aria-current", "page");
 
   const stateResponse = await page.request.get(`${baseURL}/api/state`);

@@ -214,6 +214,8 @@ const coreStateCollections = [
   ,"publishClaims"
   ,"auditEvents"
   ,"securityMetrics"
+  ,"userDiscoveryPreferences"
+  ,"discoveryAnalyticsEvents"
 ];
 const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth", "settings", "inboxConfig", "securityMetrics"]);
 // Append-only safety ledgers: rows are inserted via claimCollectionItems and updated in place,
@@ -221,7 +223,7 @@ const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth",
 // in-memory snapshot (the exact mechanism that shredded reactivationContacts on 2026-07-08) can
 // never erase a claim that another invocation inserted directly. Deleting a claim would re-open
 // the duplicate-send window it exists to close.
-const appendOnlyCollections = new Set(["reactivationSendClaims", "outreachSendClaims", "webhookReplayClaims", "oauthStateClaims", "publishClaims", "auditEvents"]);
+const appendOnlyCollections = new Set(["reactivationSendClaims", "outreachSendClaims", "webhookReplayClaims", "oauthStateClaims", "publishClaims", "auditEvents", "discoveryAnalyticsEvents"]);
 const protectedReconcileCollections = new Set([...appendOnlyCollections, "authSessions"]);
 // Scoped snapshot reconciliation is intentionally opt-in. Most collections require explicit
 // versioned delete mutations (`writeChanges`) so a stale scoped patch cannot erase a concurrent row.

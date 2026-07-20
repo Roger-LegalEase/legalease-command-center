@@ -114,9 +114,13 @@ const ROUTE_DESTINATIONS = Object.freeze({
   search:"Search",
   inbox:"Inbox"
 });
-const ALIAS_TARGETS = Object.freeze(Object.fromEntries(
-  routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [alias, entry.canonicalRoute]))
-));
+const ALIAS_TARGETS = Object.freeze({
+  ...Object.fromEntries(routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [
+    alias,
+    entry.canonicalRoute === "growth" ? "queue" : entry.canonicalRoute
+  ])))
+});
+const CANONICAL_HASHES = Object.freeze({ queue:"social" });
 
 const CORE_COLLECTION_OBJECT_TYPES = Object.freeze({
   posts:"Post",
@@ -137,6 +141,7 @@ const COLLECTION_FILE_SOURCE_KINDS = Object.freeze(Object.fromEntries(
 export const ROUTE_COMPATIBILITY_CONTRACT = Object.freeze({
   routeDestinations:ROUTE_DESTINATIONS,
   aliasTargets:ALIAS_TARGETS,
+  canonicalHashes:CANONICAL_HASHES,
   itemDestinations:ITEM_COLLECTION_DESTINATIONS,
   coreCollectionObjectTypes:CORE_COLLECTION_OBJECT_TYPES,
   collectionFileSourceKinds:COLLECTION_FILE_SOURCE_KINDS,
@@ -219,6 +224,27 @@ export function resolveRouteWithContract(input = "", contract = ROUTE_COMPATIBIL
   const requestedHash = `#${rawRoute}${suffix}`;
   const parts = rawRoute.split("/");
   if (parts.some((part) => !part)) return unsafe("empty_route_segment");
+
+  if (contract.socialProductionEnabled === true && parts[0] === "settings" && parts[1] === "social") {
+    if (parts.length > 3) return unsafe("malformed_social_connection_route");
+    const allowedChannels = new Set(["linkedin", "instagram", "facebook", "x", "threads"]);
+    const channel = parts.length === 3 ? parts[2].toLowerCase() : "";
+    if (channel && !allowedChannels.has(channel)) return unsafe("unknown_social_connection");
+    const query = new URLSearchParams({ view:"social-connections", ...(channel ? { channel } : {}) });
+    return freeze({
+      kind:"page",
+      requestedHash,
+      requestedRoute:rawRoute,
+      canonicalRoute:"settings",
+      aliasUsed:rawRoute,
+      destination:"Settings",
+      objectType:null,
+      sourceKind:null,
+      sourceId:null,
+      safeHash:`#settings?${query.toString()}`,
+      recoveryReason:null
+    });
+  }
 
   const exactObject = (() => {
     if (parts.length !== 3) return null;
@@ -303,9 +329,11 @@ export function resolveRouteWithContract(input = "", contract = ROUTE_COMPATIBIL
   }
 
   if (parts.length !== 1 || !/^[a-z0-9-]+$/i.test(rawRoute)) return unsafe("malformed_route");
-  const canonicalRoute = contract.aliasTargets[rawRoute] || rawRoute;
+  const aliasTarget = rawRoute === "growth" ? "queue" : contract.aliasTargets[rawRoute];
+  const canonicalRoute = aliasTarget || rawRoute;
+  const canonicalSuffix = contract.aliasQueries?.[rawRoute] || suffix;
   if (contract.routeDestinations[canonicalRoute]) {
-    const aliasUsed = contract.aliasTargets[rawRoute] && rawRoute !== canonicalRoute ? rawRoute : null;
+    const aliasUsed = aliasTarget && rawRoute !== canonicalRoute ? rawRoute : null;
     return freeze({
       kind:"page",
       requestedHash,
@@ -316,7 +344,7 @@ export function resolveRouteWithContract(input = "", contract = ROUTE_COMPATIBIL
       objectType:null,
       sourceKind:null,
       sourceId:null,
-      safeHash:`#${canonicalRoute}${suffix}`,
+      safeHash:`#${contract.canonicalHashes?.[canonicalRoute] || canonicalRoute}${canonicalSuffix}`,
       recoveryReason:null
     });
   }
@@ -371,8 +399,36 @@ export function createObjectNotAvailableContract(resolution = {}) {
   });
 }
 
-export function routeCompatibilityBrowserSource() {
-  const contract = JSON.stringify(ROUTE_COMPATIBILITY_CONTRACT).replaceAll("<", "\\u003c");
+export function routeCompatibilityBrowserSource({ socialEnabled = false, outreachEnabled = false, filesEnabled = false } = {}) {
+  const contractValue = {
+    ...ROUTE_COMPATIBILITY_CONTRACT,
+    socialProductionEnabled:socialEnabled === true,
+    routeDestinations:{
+      ...ROUTE_COMPATIBILITY_CONTRACT.routeDestinations,
+      ...(outreachEnabled ? { outreach:"Outreach" } : {}),
+      ...(filesEnabled ? { files:"Files" } : {})
+    },
+    aliasTargets:{
+      ...ROUTE_COMPATIBILITY_CONTRACT.aliasTargets,
+      ...(socialEnabled ? { "social-calendar":"queue", "social-connections":"settings" } : {}),
+      ...(outreachEnabled ? { campaigns:"outreach", campaign:"outreach", "campaign-control":"outreach", "campaigns-control":"outreach" } : {}),
+      ...(filesEnabled ? { proof:"files", "data-room":"files", dataroom:"files", "evidence-room":"files", reports:"files", assets:"files", metrics:"files", kpis:"files" } : {})
+    },
+    aliasQueries:{
+      ...(socialEnabled ? { "social-calendar":"?view=calendar", "social-connections":"?view=social-connections" } : {}),
+      ...(filesEnabled ? {
+        proof:"",
+        "data-room":"?collection=investor-room",
+        dataroom:"?collection=investor-room",
+        "evidence-room":"?collection=compliance-evidence",
+        reports:"?view=all",
+        assets:"?collection=brand-assets",
+        metrics:"?collection=investor-room",
+        kpis:"?collection=investor-room"
+      } : {})
+    }
+  };
+  const contract = JSON.stringify(contractValue).replaceAll("<", "\\u003c");
   return `(() => {\n    "use strict";\n    const deepFreeze = (value) => {\n      if (value && typeof value === "object" && !Object.isFrozen(value)) {\n        Object.values(value).forEach(deepFreeze);\n        Object.freeze(value);\n      }\n      return value;\n    };\n    const contract = deepFreeze(${contract});\n    const resolveRouteWithContract = ${resolveRouteWithContract.toString()};\n    window.__LE_VNEXT_ROUTE_COMPATIBILITY = Object.freeze({\n      contract,\n      resolve:(input) => resolveRouteWithContract(input, contract)\n    });\n  })();`;
 }
 

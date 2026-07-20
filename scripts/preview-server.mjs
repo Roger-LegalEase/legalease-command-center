@@ -129,7 +129,38 @@ import { buildAuthorizedInboxPage } from "./inbox-page-service.mjs";
 import { buildAuthorizedTodayPage } from "./today-page-service.mjs";
 import { buildAuthorizedSocialHome } from "./social-home-service.mjs";
 import { buildSocialResultsView } from "./ui/view-models/social-results.mjs";
+import { PARTNER_API_BODY_LIMIT, handlePartnerApiRequest, isPartnerApiPath } from "./partner-api-integration.mjs";
+import { OUTREACH_API_BODY_LIMIT, handleOutreachApiRequest, isOutreachApiPath } from "./outreach-api-integration.mjs";
+import { FILES_JSON_BODY_LIMIT, FILES_MULTIPART_BODY_LIMIT, handleFilesApiRequest, isFilesApiPath, parseFilesMultipart } from "./files-api-integration.mjs";
+import { createLocalFilesStorage, createSupabaseFilesStorage } from "./files-storage-adapter.mjs";
+import { INVESTOR_ROOM_REQUIREMENTS } from "./investor-room-requirements.mjs";
+import { generatePartnerArtifact } from "./partner-artifact-service.mjs";
 import { buildPostComposerContract, composerSavePath, normalizeComposerPatch } from "./post-composer-service.mjs";
+import { renderSocialCreative, saveSocialCreativeSelection } from "./social-creative-actions.mjs";
+import { saveSocialVariants } from "./social-variant-actions.mjs";
+import { saveSocialSchedule } from "./social-schedule-actions.mjs";
+import { approveSocialPost, regenerateSocialPostImage, requestSocialPostChanges } from "./social-review-actions.mjs";
+import { createSocialManualPackage, publishSocialPost } from "./social-publishing-actions.mjs";
+import { buildSocialCalendarContract } from "./social-calendar-service.mjs";
+import { buildSocialConnectionsContract } from "./social-connections-service.mjs";
+import { buildSocialCreativeCatalog } from "./ui/view-models/social-creative-catalog.mjs";
+import { buildAuthorizedPartnersHome } from "./partners-home-service.mjs";
+import { buildAuthorizedOutreachHome } from "./outreach-home-service.mjs";
+import { readInvestorRoom } from "./ui-api/investor-room-read.mjs";
+import {
+  DISCOVERY_ONBOARDING_ENDPOINT,
+  buildFirstRunOnboarding,
+  saveFirstRunOnboarding
+} from "./discovery-onboarding-service.mjs";
+import {
+  DISCOVERY_CHECKLIST_ENDPOINT,
+  buildSetupChecklist
+} from "./discovery-checklist-service.mjs";
+import { buildContextualHelp } from "./discovery-help.mjs";
+import {
+  DISCOVERY_ANALYTICS_ENDPOINT,
+  buildPrivacySafeAnalyticsEvent
+} from "./discovery-product-analytics.mjs";
 import {
   INBOX_ACTION_BODY_LIMIT,
   executeAuthorizedInboxAction,
@@ -154,6 +185,7 @@ import { incrementSecurityMetric, operationalMetrics } from "./observability.mjs
 import { oauthSigningSecret, signOAuthState, verifyOAuthState, verifyOwnerStartedOAuthState } from "./oauth-state.mjs";
 import { escapeHtml } from "./ui/html.mjs";
 import { readCommandCenterVNextConfig } from "./ui/vnext-config.mjs";
+import { readCommandCenterVNextProductConfig } from "./ui/vnext-config.mjs";
 import { renderShellBoundary } from "./ui/shell-boundary.mjs";
 import { DESIGN_SYSTEM_SHOWCASE_PATH } from "./ui/brand-contract.mjs";
 import { renderDesignSystemShowcase } from "./ui/design-system-showcase.mjs";
@@ -172,6 +204,10 @@ import {
 const assetRoot = new URL("../", import.meta.url);
 loadLocalEnv();
 const commandCenterVNextConfig = readCommandCenterVNextConfig(process.env);
+const outreachVNextConfig = readCommandCenterVNextProductConfig(process.env, "outreach");
+const filesVNextConfig = readCommandCenterVNextProductConfig(process.env, "files");
+const socialVNextConfig = readCommandCenterVNextProductConfig(process.env, "social");
+const discoveryVNextConfig = readCommandCenterVNextProductConfig(process.env, "discovery");
 const globalCreateKindsByPath = Object.freeze(Object.fromEntries(
   Object.entries(GLOBAL_CREATE_ENDPOINTS).map(([kind, endpoint]) => [endpoint, kind])
 ));
@@ -3865,7 +3901,7 @@ async function markManualPostingKitReady(postId, patch = {}) {
   return { state: nextState, finalExportKit: kit, message: "Manual posting kit ready." };
 }
 
-async function exportPostingPackage(postId) {
+async function exportPostingPackage(postId, options = {}) {
   const state = await store.readState();
   const post = state.posts.find((item) => item.id === postId);
   if (!post) throw new Error("Post not found.");
@@ -3933,6 +3969,9 @@ async function exportPostingPackage(postId) {
   const fileList = ["final.png", ...files.map(([filename]) => filename)];
   const zipRecord = await writePostingPackageZip(packageDir, post.id);
   const packageRecord = {
+    ...(options.packageId ? { id:String(options.packageId) } : {}),
+    ...(options.requestId ? { requestId:String(options.requestId) } : {}),
+    manualOnly:true,
     generated: true,
     path: packagePath,
     relativePath: packageDir,
@@ -8003,6 +8042,8 @@ const initialState = {
       createdAt: "2026-05-19T00:00:00.000Z"
     }
   ],
+  userDiscoveryPreferences: [],
+  discoveryAnalyticsEvents: [],
   autonomyActions: [],
   autonomyDecisions: [],
   autonomyRuns: [],
@@ -8054,6 +8095,127 @@ async function writeChangedCollections(before = {}, after = {}) {
   }
   await store.writeCollections(patch);
   return after;
+}
+
+function discoveryEvidenceId(prefix = "discovery", ...parts) {
+  return `${prefix}-${crypto.createHash("sha256").update(parts.map((part) => String(part ?? "")).join("\u0000")).digest("hex").slice(0, 32)}`;
+}
+
+async function commitDiscoveryPreference(currentState = {}, command = {}) {
+  if (typeof store?.writeChanges !== "function") return { ok:false, status:503, safeMessage:"Onboarding persistence is unavailable." };
+  const actorId = String(command.actorId || "");
+  const preferences = Array.isArray(currentState.userDiscoveryPreferences) ? currentState.userDiscoveryPreferences : [];
+  const matches = preferences.filter((item) => String(item?.id || "") === actorId);
+  if (matches.length > 1) return { ok:false, status:503, safeMessage:"Onboarding preference truth is unavailable." };
+  const current = matches[0] || null;
+  const currentVersion = Number.isSafeInteger(current?._version) ? current._version : 0;
+  const prior = (Array.isArray(currentState.auditEvents) ? currentState.auditEvents : []).find((item) =>
+    item?.action === "discovery_onboarding_update" && item?.actorId === actorId && item?.requestId === command.requestId
+  );
+  if (prior) {
+    const same = prior.summary?.status === command.patch?.status
+      && (prior.summary?.choiceId || null) === (command.patch?.choiceId || null);
+    return same
+      ? { ok:true, version:currentVersion, reused:true }
+      : { ok:false, status:409, safeMessage:"The onboarding request identifier was already used." };
+  }
+  if (currentVersion !== command.expectedVersion) return { ok:false, status:409, safeMessage:"Onboarding changed in another session. Reload and try again." };
+  const preference = {
+    id:actorId,
+    status:command.patch.status,
+    choiceId:command.patch.choiceId,
+    completedAt:command.patch.completedAt,
+    deferredAt:command.patch.deferredAt
+  };
+  const activity = {
+    id:discoveryEvidenceId("activity-discovery", actorId, command.requestId),
+    requestId:command.requestId,
+    actorId,
+    type:command.evidence.activity.type,
+    summary:command.evidence.activity.summary,
+    createdAt:command.evidence.activity.occurredAt
+  };
+  const audit = {
+    id:discoveryEvidenceId("audit-discovery", actorId, command.requestId),
+    occurredAt:command.evidence.audit.occurredAt,
+    actorId,
+    role:"authenticated",
+    action:"discovery_onboarding_update",
+    targetType:"user_discovery_preference",
+    targetId:actorId,
+    requestId:command.requestId,
+    outcome:"success",
+    summary:{ status:command.patch.status, choiceId:command.patch.choiceId || null, externalSideEffects:false },
+    source:"http"
+  };
+  const after = {
+    ...currentState,
+    userDiscoveryPreferences:current
+      ? preferences.map((item) => item === current ? { ...preference, _version:current._version } : item)
+      : [preference, ...preferences],
+    activityEvents:[activity, ...(Array.isArray(currentState.activityEvents) ? currentState.activityEvents : [])],
+    auditEvents:[audit, ...(Array.isArray(currentState.auditEvents) ? currentState.auditEvents : [])]
+  };
+  try {
+    await store.writeChanges(currentState, after);
+    return { ok:true, version:currentVersion + 1, reused:false };
+  } catch (error) {
+    if (Number(error?.status) === 409 || error?.code === "STORAGE_VERSION_CONFLICT") return { ok:false, status:409, safeMessage:"Onboarding changed in another session. Reload and try again." };
+    return { ok:false, status:503, safeMessage:"Onboarding could not be saved. Nothing was changed." };
+  }
+}
+
+function discoveryAnalyticsSubject(actorId = "") {
+  const secret = process.env.COMMAND_CENTER_SESSION_SECRET || "local-discovery-analytics";
+  return crypto.createHmac("sha256", secret).update(String(actorId || "")).digest("hex").slice(0, 32);
+}
+
+async function appendDiscoveryAnalyticsEvent({ event, actor = {}, analyticsRequestId = "" } = {}) {
+  if (!Object.isFrozen(event) || typeof store?.claimCollectionItems !== "function") throw Object.assign(new Error("Analytics persistence is unavailable."), { status:503 });
+  const subjectId = discoveryAnalyticsSubject(actor.id);
+  const row = {
+    id:discoveryEvidenceId("analytics-discovery", subjectId, analyticsRequestId),
+    requestId:String(analyticsRequestId).slice(0, 96),
+    subjectId,
+    ...event
+  };
+  const result = await store.claimCollectionItems("discoveryAnalyticsEvents", [row]);
+  return { ok:true, accepted:true, reused:!result.inserted?.length };
+}
+
+function filesStorageAdapter() {
+  if (isHostedProduction(process.env)) {
+    return createSupabaseFilesStorage({
+      baseUrl:process.env.SUPABASE_URL,
+      serviceRoleKey:process.env.SUPABASE_SERVICE_ROLE_KEY,
+      bucket:process.env.COMMAND_CENTER_FILES_STORAGE_BUCKET || "command-center-files-private"
+    });
+  }
+  return createLocalFilesStorage({ rootDir:process.env.COMMAND_CENTER_FILES_DATA_DIR || path.resolve(process.cwd(), "data/files") });
+}
+
+async function generateReviewedFilesReport({ reportType, requestId:filesRequestId, actor }) {
+  const artifactType = ({ weekly_operating:"weekly_report", investor_update:"final_report" })[String(reportType || "").trim()];
+  if (!artifactType) throw new Error("No reviewed authoritative generator is available for this report type.");
+  const state = await store.readState();
+  const programs = serverList(state.partnerPrograms).slice().sort((left, right) => String(left.id || "").localeCompare(String(right.id || "")));
+  if (programs.length !== 1) throw new Error("Choose a Partner program before generating this report. No File was created.");
+  const program = programs[0];
+  const partnerId = String(program.relatedPartnerId || program.partnerId || "").trim();
+  if (!partnerId) throw new Error("The reviewed Partner program does not have an authoritative Partner identity.");
+  const generated = generatePartnerArtifact(state, partnerId, String(program.id || ""), {
+    requestId:filesRequestId,
+    artifactType
+  }, { actor, now:new Date().toISOString() });
+  const report = { ...generated.file, filesGenerationRequestId:filesRequestId };
+  const reports = generated.state.reports.map((item) => item.id === report.id ? report : item);
+  await store.writeCollections({
+    partnerProgramArtifacts:generated.state.partnerProgramArtifacts,
+    reports,
+    activityEvents:generated.state.activityEvents,
+    auditHistory:generated.state.auditHistory
+  });
+  return { report };
 }
 
 async function readJson(request) {
@@ -11785,6 +11947,9 @@ async function generateImageForPost(postId, overrides = {}) {
   }
   const image = {
     id: crypto.randomUUID(),
+    ...(overrides.socialRenderIdempotencyKey ? { socialRenderIdempotencyKey:String(overrides.socialRenderIdempotencyKey) } : {}),
+    ...(overrides.socialRequestId ? { requestId:String(overrides.socialRequestId) } : {}),
+    ...(Array.isArray(overrides.socialSourceReferences) ? { sourceReferences:overrides.socialSourceReferences.map((reference) => ({ collection:String(reference?.collection || ""), sourceId:String(reference?.sourceId || "") })) } : {}),
     postId,
     imageUrl: localFallbackUsed ? fallbackImageUrl : "",
     privateAssetPath: generatedImageFile?.privateAssetPath || "",
@@ -34914,17 +35079,91 @@ function renderLegacyApp() {
   return htmlShell();
 }
 
-function renderVNextApp() {
+function discoveryPreference(state = {}, actorId = "") {
+  const matches = (Array.isArray(state.userDiscoveryPreferences) ? state.userDiscoveryPreferences : [])
+    .filter((item) => String(item?.id || "") === String(actorId || ""));
+  if (matches.length > 1) throw new Error("Discovery preference truth is unavailable.");
+  const current = matches[0] || {};
+  return {
+    status:current.status || "new",
+    choiceId:current.choiceId || null,
+    completedAt:current.completedAt || null,
+    deferredAt:current.deferredAt || null,
+    version:Number.isSafeInteger(current._version) ? current._version : 0
+  };
+}
+
+function discoveryChecklistSources(state = {}, actor = {}, now = "") {
+  const unavailable = (reason) => ({ authorized:true, available:false, reason });
+  let brandAssets = unavailable("Approved brand assets could not be verified.");
+  let socialConnections = unavailable("Social connection truth could not be verified.");
+  let partners = unavailable("Partner setup truth could not be verified.");
+  let socialPosts = unavailable("Social Post setup truth could not be verified.");
+  let outreachCampaigns = unavailable("Outreach Campaign setup truth could not be verified.");
+  let investorRoom = unavailable("Investor Room requirement truth could not be verified.");
+  try {
+    const catalog = buildSocialCreativeCatalog(state, actor, { generatedAt:now, surfaceTone:"unspecified" });
+    const seen = new Set();
+    const items = (catalog.assetGroups || []).flatMap((group) => group.assets || []).filter((item) => {
+      const key = `${item?.sourceReference?.collection || ""}:${item?.sourceReference?.sourceId || ""}`;
+      if (!item?.approved || !item?.sourceReference?.collection || !item?.sourceReference?.sourceId || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).map((item) => ({ approved:true, selectable:true, sourceReference:{ collection:item.sourceReference.collection, sourceId:item.sourceReference.sourceId } }));
+    brandAssets = { authorized:true, available:["available", "partial"].includes(catalog.availability?.key), items };
+  } catch {}
+  try {
+    const contract = buildSocialConnectionsContract(state, actor, now);
+    socialConnections = { authorized:true, available:contract.ok === true, items:(contract.connections || []).map((item) => ({ state:item.state?.key || "not_connected", serverVerified:["connected_publishing_off", "ready_to_publish"].includes(item.state?.key) })) };
+  } catch {}
+  try {
+    const projection = buildAuthorizedPartnersHome(state, actor, now, { view:"list", limit:1 });
+    partners = { authorized:true, available:projection.available === true, total:Number.isSafeInteger(projection.summary?.authorizedPartners) ? projection.summary.authorizedPartners : null };
+  } catch {}
+  try {
+    const projection = buildAuthorizedSocialHome(state, actor, now, { view:"calendar", limit:1 });
+    socialPosts = { authorized:true, available:projection.ok === true && projection.sourceAvailability?.posts === true, total:Number.isSafeInteger(projection.counts?.total) ? projection.counts.total : null };
+  } catch {}
+  try {
+    const projection = buildAuthorizedOutreachHome(state, actor, now, { view:"all", limit:1 });
+    const total = projection.views?.find((item) => item.key === "all")?.count;
+    outreachCampaigns = { authorized:true, available:projection.ok === true && Number.isSafeInteger(total), total:Number.isSafeInteger(total) ? total : null };
+  } catch {}
+  try {
+    const projection = readInvestorRoom({ state, actor, requirements:INVESTOR_ROOM_REQUIREMENTS, now });
+    investorRoom = { authorized:true, available:projection.readiness?.available === true, currentRequirements:Number.isSafeInteger(projection.readiness?.current) ? projection.readiness.current : null };
+  } catch {}
+  return { brandAssets, socialConnections, partners, socialPosts, outreachCampaigns, investorRoom };
+}
+
+function buildDiscoveryShellContracts(state = {}, actor = {}, now = "") {
+  return Object.freeze({
+    onboarding:buildFirstRunOnboarding({ actor, preference:discoveryPreference(state, actor.id), now }),
+    checklist:buildSetupChecklist({ actor, sources:discoveryChecklistSources(state, actor, now), now }),
+    help:buildContextualHelp({ actor, destination:"Today", now })
+  });
+}
+
+function renderVNextApp(options = {}) {
   // CCX-100 composes one new navigation shell around the same routed application.
   // Page renderers, state, actions, authorization, and safety systems remain shared.
+  if (socialVNextConfig.enabled || outreachVNextConfig.enabled || filesVNextConfig.enabled || discoveryVNextConfig.enabled) {
+    return renderVNextDesktopShell(renderLegacyApp(), {
+      socialEnabled:socialVNextConfig.enabled,
+      outreachEnabled:outreachVNextConfig.enabled,
+      filesEnabled:filesVNextConfig.enabled,
+      discoveryEnabled:discoveryVNextConfig.enabled && Boolean(options.discovery),
+      discovery:options.discovery || null
+    });
+  }
   return renderVNextDesktopShell(renderLegacyApp());
 }
 
-function renderCommandCenterApp() {
+function renderCommandCenterApp(options = {}) {
   return renderShellBoundary({
     config: commandCenterVNextConfig,
     renderLegacyApp,
-    renderVNextApp
+    renderVNextApp:() => renderVNextApp(options)
   });
 }
 
@@ -34936,6 +35175,253 @@ function globalCreateCapabilityViewModel(role = "viewer") {
       reason:decision.ok ? "" : `Your current access does not allow creating ${option.label.toLowerCase()} records.`
     }];
   })));
+}
+
+const SOCIAL_PRODUCTION_ACTIONS = new Set([
+  "creative", "render", "variants", "schedule", "approve",
+  "request-changes", "regenerate", "publish", "manual-package"
+]);
+
+function socialProductionActionRoute(pathname = "") {
+  const match = String(pathname || "").match(/^\/api\/ui\/social\/post\/([^/]+)\/([^/]+)$/);
+  if (!match || !SOCIAL_PRODUCTION_ACTIONS.has(match[2])) return null;
+  let postId = "";
+  try { postId = decodeURIComponent(match[1]); } catch { return null; }
+  if (!postId || postId.length > 240 || postId !== postId.trim()
+    || /[\u0000-\u001f\u007f<>"'`\\]/u.test(postId)
+    || /^(?:javascript|data|vbscript)\s*:/i.test(postId)
+    || /(?:^|\/)\.{1,2}(?:\/|$)/.test(postId)) return null;
+  return { postId, action:match[2] };
+}
+
+function socialEvidenceId(prefix, ...parts) {
+  return `${prefix}-${crypto.createHash("sha256").update(parts.map((part) => String(part ?? "")).join("\u0000")).digest("hex").slice(0, 28)}`;
+}
+
+function socialActionAlreadyApplied(state = {}, requestId = "") {
+  const id = String(requestId || "").trim();
+  if (!id) return false;
+  const evidence = [
+    ...(Array.isArray(state.activityEvents) ? state.activityEvents : []),
+    ...(Array.isArray(state.auditHistory) ? state.auditHistory : []),
+    ...(Array.isArray(state.publishClaims) ? state.publishClaims : []),
+    ...(Array.isArray(state.publishEvents) ? state.publishEvents : []),
+    ...(Array.isArray(state.postImages) ? state.postImages : [])
+  ];
+  if (evidence.some((item) => String(item?.requestId || "") === id)) return true;
+  return (Array.isArray(state.posts) ? state.posts : []).some((post) =>
+    String(post?.postingPackage?.requestId || post?.postingPackage?.socialRequestId || "") === id
+    || [post?.reviewFeedback, post?.requestedChanges, post?.requested_changes]
+      .some((items) => Array.isArray(items) && items.some((item) => String(item?.requestId || "") === id))
+  );
+}
+
+function socialActionEvidence({ requestId, actorId, postId, action, summary, now, sourceReferences = [] }) {
+  const activityId = socialEvidenceId("activity-social", action, postId, requestId);
+  const auditId = socialEvidenceId("audit-social", action, postId, requestId);
+  return {
+    activity:{
+      id:activityId,
+      requestId,
+      type:action,
+      eventType:action,
+      postId,
+      relatedObjectType:"post",
+      relatedObjectId:postId,
+      resourceType:"post",
+      resourceId:postId,
+      summary:String(summary || "Social Post updated.").slice(0, 280),
+      actorId,
+      createdAt:now
+    },
+    audit:{
+      id:auditId,
+      requestId,
+      action,
+      resourceType:"post",
+      resourceId:postId,
+      actorId,
+      sourceReferences:Array.isArray(sourceReferences) ? sourceReferences : [],
+      createdAt:now
+    }
+  };
+}
+
+async function writeSocialPostMutation({ postId, expectedVersion, requestId, actorId, patch, activity, audit }) {
+  if (typeof store?.writeChanges !== "function") throw Object.assign(new Error("Scoped Social persistence is unavailable."), { status:503, outcome:"unavailable" });
+  const current = await store.readState();
+  const matches = (Array.isArray(current.posts) ? current.posts : []).filter((post) => String(post?.id || "") === postId);
+  if (matches.length !== 1) throw Object.assign(new Error("This Post is unavailable."), { status:404, outcome:"unavailable" });
+  const post = matches[0];
+  if (socialActionAlreadyApplied(current, requestId)) return { version:Number(post._version || 0), reused:true };
+  if (!Number.isSafeInteger(expectedVersion) || Number(post._version || 0) !== expectedVersion) {
+    throw Object.assign(new Error("The Post changed. Reload before continuing."), { status:409, outcome:"version_conflict", actualVersion:Number(post._version || 0) });
+  }
+  const now = new Date().toISOString();
+  const suppliedActivity = activity && typeof activity === "object" ? activity : {};
+  const suppliedAudit = audit && typeof audit === "object" ? audit : {};
+  const evidence = socialActionEvidence({
+    requestId,
+    actorId,
+    postId,
+    action:String(suppliedAudit.action || suppliedActivity.type || "social_post_updated"),
+    summary:suppliedActivity.summary,
+    now,
+    sourceReferences:suppliedAudit.sourceReferences
+  });
+  const nextPost = { ...post, ...(patch || {}), updatedAt:now };
+  const after = {
+    ...current,
+    posts:current.posts.map((item) => item === post ? nextPost : item),
+    activityEvents:[evidence.activity, ...(Array.isArray(current.activityEvents) ? current.activityEvents : [])],
+    auditHistory:[{ ...evidence.audit, ...suppliedAudit, id:evidence.audit.id, requestId, actorId, resourceType:"post", resourceId:postId, createdAt:now }, ...(Array.isArray(current.auditHistory) ? current.auditHistory : [])]
+  };
+  await store.writeChanges(current, after);
+  return { version:expectedVersion + 1, reused:false };
+}
+
+async function applySocialApproval({ postId, expectedVersion, requestId, actorId, reviewedPlan }) {
+  const approvalId = socialEvidenceId("approval-social", postId, requestId);
+  const approvedAt = new Date().toISOString();
+  const result = await writeSocialPostMutation({
+    postId, expectedVersion, requestId, actorId,
+    patch:{
+      approvalStatus:"approved",
+      approvalState:"approved",
+      reviewState:"approved",
+      status:"approved",
+      approvedAt,
+      approved_at:approvedAt,
+      approvalRevision:approvalId,
+      approval_revision:approvalId
+    },
+    activity:{ type:"approved", summary:"Post approved after explicit review. Nothing was scheduled or published." },
+    audit:{ action:"social_post_approved", reviewedState:reviewedPlan?.state?.key || "ready_for_review" }
+  });
+  return { ok:true, version:result.version, approvalId, reused:result.reused };
+}
+
+async function recordSocialRequestedChanges({ id, postId, expectedVersion, requestId, actorId, summary, sourceReference }) {
+  const current = await store.readState();
+  const post = (Array.isArray(current.posts) ? current.posts : []).find((item) => String(item?.id || "") === postId);
+  const existing = [post?.reviewFeedback, post?.requestedChanges, post?.requested_changes]
+    .flatMap((items) => Array.isArray(items) ? items : [])
+    .find((item) => String(item?.id || "") === id || String(item?.requestId || "") === requestId);
+  if (existing) return { ok:true, reused:true, version:Number(post?._version || 0) };
+  const createdAt = new Date().toISOString();
+  const feedback = {
+    id,
+    postId,
+    type:"post",
+    status:"changes_requested",
+    lifecycleStatus:"current",
+    summary,
+    requestId,
+    requestedBy:actorId,
+    sourceReference,
+    createdAt
+  };
+  const result = await writeSocialPostMutation({
+    postId, expectedVersion, requestId, actorId,
+    patch:{
+      approvalStatus:"changes_requested",
+      approvalState:"changes_requested",
+      reviewState:"changes_requested",
+      reviewFeedback:[feedback, ...(Array.isArray(post?.reviewFeedback) ? post.reviewFeedback : [])]
+    },
+    activity:{ type:"changes_requested", summary:"Changes requested after explicit Post review." },
+    audit:{ action:"social_post_changes_requested", sourceReferences:[sourceReference] }
+  });
+  return { ok:true, reused:result.reused, version:result.version };
+}
+
+async function renderSocialPostAdapter({ post, requestId, idempotencyKey, sourceReferences }) {
+  const state = await store.readState();
+  const reused = (Array.isArray(state.postImages) ? state.postImages : []).find((image) => image?.socialRenderIdempotencyKey === idempotencyKey && image?.generationStatus === "generated");
+  if (reused) return { ok:true, imageId:reused.id, reused:true };
+  const result = await generateImageForPost(post.id, { trigger:"vnext_social_production", socialRenderIdempotencyKey:idempotencyKey, socialSourceReferences:sourceReferences, socialRequestId:requestId });
+  if (!result?.ok || !result?.image?.id) return { ok:false };
+  const evidence = socialActionEvidence({ requestId, actorId:"social-render", postId:post.id, action:"social_image_rendered", summary:"A new Post image was rendered for review.", now:new Date().toISOString(), sourceReferences });
+  await store.claimCollectionItems("activityEvents", [evidence.activity]);
+  await store.claimCollectionItems("auditHistory", [evidence.audit]);
+  return { ok:true, imageId:result.image.id, reused:false };
+}
+
+async function buildSocialManualPackageAdapter({ postId, expectedVersion, requestId, actorId }) {
+  const state = await store.readState();
+  const post = (Array.isArray(state.posts) ? state.posts : []).find((item) => String(item?.id || "") === postId);
+  const previousId = post?.postingPackage?.id;
+  if (post?.postingPackage?.requestId === requestId && previousId) return { ok:true, packageId:previousId, reused:true };
+  const packageId = socialEvidenceId("manual-package", postId, requestId);
+  if (process.env.COMMAND_CENTER_TEST_MODE === "true" && process.env.COMMAND_CENTER_TEST_SOCIAL_MANUAL_ADAPTER === "inert") {
+    await writeSocialPostMutation({
+      postId, expectedVersion, requestId, actorId,
+      patch:{ postingPackage:{ id:packageId, requestId, manualOnly:true, generatedAt:new Date().toISOString() } },
+      activity:{ type:"social_manual_package_created", summary:"Manual publishing package created. No channel was marked Published." },
+      audit:{ action:"social_manual_package_created" }
+    });
+    return { ok:true, packageId };
+  }
+  const result = await exportPostingPackage(postId, { packageId, requestId });
+  return { ok:Boolean(result?.postingPackage), packageId:result?.postingPackage?.id || packageId };
+}
+
+async function publishSocialChannelAdapter({ postId, channel, approvedRevision, idempotencyKey, claimId }, actor) {
+  if (!socialVNextConfig.enabled || !canPerformEndpoint(actor?.role || "viewer", "POST", `/api/ui/social/post/${encodeURIComponent(postId)}/publish`).ok) {
+    return { ok:false, state:"failed_terminal", errorCode:"not_authorized" };
+  }
+  const state = await store.readState();
+  const postMatches = (Array.isArray(state.posts) ? state.posts : []).filter((post) => String(post?.id || "") === postId);
+  const claimMatches = (Array.isArray(state.publishClaims) ? state.publishClaims : []).filter((claim) => String(claim?.id || "") === claimId);
+  if (postMatches.length !== 1 || claimMatches.length !== 1) return { ok:false, state:"reconciliation_required", errorCode:"current_truth_unavailable" };
+  const post = postMatches[0];
+  const claim = claimMatches[0];
+  const revision = String(post.approvalRevision || post.approval_revision || post.approvedAt || post.approved_at || "");
+  if (!approvedRevision || revision !== approvedRevision || String(claim.channel || "") !== channel || String(claim.postId || "") !== postId) {
+    return { ok:false, state:"reconciliation_required", errorCode:"claim_truth_changed" };
+  }
+  if (process.env.COMMAND_CENTER_TEST_MODE === "true" && process.env.COMMAND_CENTER_TEST_SOCIAL_PUBLISH_ADAPTER === "inert") {
+    await store.claimCollectionItems("activityEvents", [{
+      id:socialEvidenceId("activity-social-provider", claimId),
+      type:"social_provider_adapter_called",
+      eventType:"social_provider_adapter_called",
+      postId,
+      channel,
+      claimId,
+      idempotencyKey,
+      createdAt:new Date().toISOString()
+    }]);
+    const failedChannels = new Set(String(process.env.COMMAND_CENTER_TEST_SOCIAL_PUBLISH_FAILURE_CHANNELS || "").split(",").map((value) => value.trim()).filter(Boolean));
+    if (failedChannels.has(channel)) return { ok:false, state:"failed_retryable", errorCode:"synthetic_channel_failure" };
+    return { ok:true, publishedUrl:`https://social.example.com/${encodeURIComponent(channel)}/${encodeURIComponent(postId)}`, providerReference:`synthetic-${claimId}` };
+  }
+  try {
+    const result = await publishToChannel({ state, post:{ ...post, targetChannels:[channel] }, channel });
+    return { ok:true, publishedUrl:result.externalPostUrl || null, providerReference:result.externalPostId || null };
+  } catch {
+    return { ok:false, state:"reconciliation_required", errorCode:"provider_result_unavailable" };
+  }
+}
+
+async function recordSocialPublicationResult(result, actor) {
+  const now = new Date().toISOString();
+  const event = {
+    id:socialEvidenceId("publish-event-social", result.claimId, result.status),
+    requestId:result.requestId,
+    postId:result.postId,
+    channel:result.channel,
+    approvalRevision:result.approvalRevision,
+    claimId:result.claimId,
+    eventType:result.status,
+    status:result.status,
+    statusAfter:result.status,
+    ...(result.status === "published" ? { publishedAt:now, publishedUrl:result.publishedUrl || null } : { attemptedAt:now }),
+    createdAt:now
+  };
+  await store.claimCollectionItems("publishEvents", [event]);
+  const evidence = socialActionEvidence({ requestId:result.requestId, actorId:actor?.id || actor?.actorId || "", postId:result.postId, action:result.status === "published" ? "social_post_published" : "social_publication_failed", summary:result.status === "published" ? `${result.channel} publication confirmed.` : `${result.channel} publication did not complete.`, now });
+  await store.claimCollectionItems("activityEvents", [evidence.activity]);
+  await store.claimCollectionItems("auditHistory", [evidence.audit]);
 }
 
 // Company-memory projection memo (2026-07-12 latency fix). projectCompanyMemory is pure over
@@ -35110,6 +35596,41 @@ async function handleRequest(request, response) {
       sendJson(response, { error:"Social Results are unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
       return;
     }
+    else if (["/api/ui/social/calendar", "/api/ui/social/connections"].includes(url.pathname)
+      || socialProductionActionRoute(url.pathname)) {
+      sendJson(response, { ok:false, outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized", message:accessDecision.status === 401 ? "Your session ended. Sign in again before opening Social production." : "Social production is unavailable for this account." }, accessDecision.status || 403);
+      return;
+    }
+    else if (isOutreachApiPath(url.pathname)) {
+      sendJson(response, {
+        ok:false,
+        outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
+        error:accessDecision.status === 401
+          ? "Your session ended. Sign in again before opening Outreach."
+          : "Outreach is unavailable for this account. No protected details were loaded."
+      }, accessDecision.status || 403);
+      return;
+    }
+    else if (isFilesApiPath(url.pathname)) {
+      sendJson(response, {
+        ok:false,
+        outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
+        error:accessDecision.status === 401
+          ? "Your session ended. Sign in again before opening Files."
+          : "Files are unavailable for this account. No protected details were loaded."
+      }, accessDecision.status || 403);
+      return;
+    }
+    else if (isPartnerApiPath(url.pathname)) {
+      sendJson(response, {
+        ok:false,
+        outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
+        error:accessDecision.status === 401
+          ? "Your session ended. Sign in again before opening Partners."
+          : "Partners are unavailable for this account. No protected details were loaded."
+      }, accessDecision.status || 403);
+      return;
+    }
     else if (/^\/api\/ui\/social\/post\/[^/]+\/(?:composer|save)$/.test(url.pathname)) {
       sendJson(response, { ok:false, outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized", message:accessDecision.status === 401 ? "Your session ended. Sign in again before opening this Post." : "This Post is unavailable for this account." }, accessDecision.status || 403);
       return;
@@ -35185,6 +35706,157 @@ async function handleRequest(request, response) {
 
   if (url.pathname === "/api/test/fixture-state" && request.method === "GET" && process.env.COMMAND_CENTER_TEST_MODE === "true") {
     sendJson(response, await store.readState());
+    return;
+  }
+
+  if (url.pathname === DISCOVERY_ONBOARDING_ENDPOINT && request.method === "GET") {
+    if (!discoveryVNextConfig.enabled) { sendJson(response, { ok:false, message:"Onboarding is unavailable." }, 404); return; }
+    try {
+      const actor = publicActor(accessDecision.actor);
+      const currentState = await store.readState();
+      sendJson(response, buildFirstRunOnboarding({ actor, preference:discoveryPreference(currentState, actor.id), now:new Date().toISOString() }));
+    } catch (error) {
+      sendJson(response, { ok:false, message:"Onboarding could not load. No choice was changed." }, Number(error?.status) === 403 ? 403 : 500);
+    }
+    return;
+  }
+
+  if (url.pathname === DISCOVERY_ONBOARDING_ENDPOINT && request.method === "POST") {
+    if (!discoveryVNextConfig.enabled) { sendJson(response, { ok:false, message:"Onboarding is unavailable. Nothing was changed." }, 404); return; }
+    try {
+      const input = await readBoundedJson(request, { limit:4_096 });
+      const actor = publicActor(accessDecision.actor);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        return saveFirstRunOnboarding({
+          actor,
+          currentPreference:discoveryPreference(currentState, actor.id),
+          input,
+          now:new Date().toISOString(),
+          commitPreference:(command) => commitDiscoveryPreference(currentState, command)
+        });
+      });
+      sendJson(response, result);
+    } catch (error) {
+      const status = [400, 403, 409, 413, 503].includes(Number(error?.status)) ? Number(error.status) : 500;
+      sendJson(response, { ok:false, message:status >= 500 ? "Onboarding could not be saved. Nothing was changed." : String(error?.safeMessage || error?.message || "Onboarding was not saved.").slice(0, 240) }, status);
+    }
+    return;
+  }
+
+  if (url.pathname === DISCOVERY_CHECKLIST_ENDPOINT && request.method === "GET") {
+    if (!discoveryVNextConfig.enabled) { sendJson(response, { ok:false, message:"The setup checklist is unavailable." }, 404); return; }
+    try {
+      const actor = publicActor(accessDecision.actor);
+      const now = new Date().toISOString();
+      const currentState = await store.readState();
+      sendJson(response, buildSetupChecklist({ actor, sources:discoveryChecklistSources(currentState, actor, now), now }));
+    } catch (error) {
+      sendJson(response, { ok:false, message:"Setup progress could not load. No setup state changed." }, Number(error?.status) === 403 ? 403 : 500);
+    }
+    return;
+  }
+
+  if (url.pathname === DISCOVERY_ANALYTICS_ENDPOINT && request.method === "POST") {
+    if (!discoveryVNextConfig.enabled) { sendJson(response, { ok:false, accepted:false }, 404); return; }
+    try {
+      const input = await readBoundedJson(request, { limit:4_096 });
+      const event = buildPrivacySafeAnalyticsEvent(input, { now:new Date().toISOString() });
+      const result = await appendDiscoveryAnalyticsEvent({
+        event,
+        actor:publicActor(accessDecision.actor),
+        analyticsRequestId:request.requestId
+      });
+      sendJson(response, result, result.reused ? 200 : 202);
+    } catch (error) {
+      const status = [400, 413, 503].includes(Number(error?.status)) ? Number(error.status) : 500;
+      sendJson(response, { ok:false, accepted:false, message:status === 400 ? "Analytics event was rejected." : "Analytics is temporarily unavailable." }, status);
+    }
+    return;
+  }
+
+  if (isPartnerApiPath(url.pathname)) {
+    const input = ["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase())
+      ? {}
+      : await readBoundedJson(request, { limit:PARTNER_API_BODY_LIMIT });
+    const execute = () => handlePartnerApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = ["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase())
+      ? await execute()
+      : await serializeStateMutation(execute);
+    sendJson(response, result.body || { ok:false, error:"Partner route not found." }, result.status || 404);
+    return;
+  }
+
+  if (isOutreachApiPath(url.pathname)) {
+    const input = ["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase())
+      ? {}
+      : await readBoundedJson(request, { limit:OUTREACH_API_BODY_LIMIT });
+    const execute = () => handleOutreachApiRequest({
+      enabled:outreachVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString(),
+      environment:process.env
+    });
+    const result = ["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase())
+      ? await execute()
+      : await serializeStateMutation(execute);
+    sendJson(response, result.body || { ok:false, error:"Outreach route not found." }, result.status || 404);
+    return;
+  }
+
+  if (isFilesApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const multipart = /^multipart\/form-data;/i.test(String(request.headers["content-type"] || ""));
+    const upload = mutation && multipart
+      ? parseFilesMultipart(await readBoundedBody(request, { limit:FILES_MULTIPART_BODY_LIMIT }), request.headers["content-type"])
+      : null;
+    const input = mutation && !multipart ? await readBoundedJson(request, { limit:FILES_JSON_BODY_LIMIT }) : {};
+    let storage;
+    try { storage = filesStorageAdapter(); } catch { storage = null; }
+    const execute = () => handleFilesApiRequest({
+      enabled:filesVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      upload,
+      store,
+      storage,
+      reportGenerator:generateReviewedFilesReport,
+      cursorSecret:process.env.COMMAND_CENTER_FILES_CURSOR_SECRET || "",
+      requirements:INVESTOR_ROOM_REQUIREMENTS,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
+    if (result.raw) {
+      const allowedTypes = new Set(["application/pdf", "image/png", "image/jpeg", "image/webp", "image/gif", "text/plain", "text/markdown", "text/csv"]);
+      const contentType = allowedTypes.has(result.raw.contentType) ? result.raw.contentType : "application/octet-stream";
+      const fileName = String(result.raw.fileName || "file").replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 200) || "file";
+      response.writeHead(result.status || 200, {
+        ...securityHeaders({ env:process.env, sensitive:true }),
+        "content-type":contentType,
+        "content-length":result.raw.body.length,
+        ...(result.raw.download ? { "content-disposition":`attachment; filename="${fileName}"` } : {})
+      });
+      response.end(result.raw.body);
+      return;
+    }
+    sendJson(response, result.body || { ok:false, error:"Files route not found." }, result.status || 404);
     return;
   }
 
@@ -35328,13 +36000,37 @@ async function handleRequest(request, response) {
     return;
   }
 
+  if (url.pathname === "/api/ui/social/calendar" && request.method === "GET") {
+    if (!socialVNextConfig.enabled) { sendJson(response, { ok:false, outcome:"not_available", message:"The Social calendar is unavailable." }, 404); return; }
+    try {
+      const currentState = await store.readState();
+      const body = buildSocialCalendarContract(currentState, publicActor(accessDecision.actor), { generatedAt:new Date().toISOString() });
+      sendJson(response, body, body.ok ? 200 : 404);
+    } catch {
+      sendJson(response, { ok:false, outcome:"recoverable_error", message:"The Social calendar could not load. No records were changed." }, 500);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/ui/social/connections" && request.method === "GET") {
+    if (!socialVNextConfig.enabled) { sendJson(response, { ok:false, outcome:"not_available", message:"Social connections are unavailable." }, 404); return; }
+    try {
+      const currentState = await store.readState();
+      const body = buildSocialConnectionsContract(currentState, publicActor(accessDecision.actor), new Date().toISOString());
+      sendJson(response, body, body.ok ? 200 : 404);
+    } catch {
+      sendJson(response, { ok:false, outcome:"recoverable_error", message:"Social connections could not load. No private connection details were returned." }, 500);
+    }
+    return;
+  }
+
   const composerRead = url.pathname.match(/^\/api\/ui\/social\/post\/([^/]+)\/composer$/);
   if (composerRead && request.method === "GET") {
     if (!commandCenterVNextConfig.enabled) { sendJson(response, { ok:false, outcome:"not_available", message:"Social composer is unavailable." }, 404); return; }
     try {
       const currentState = await store.readState();
       const actor = publicActor(accessDecision.actor);
-      const body = buildPostComposerContract(currentState, actor, decodeURIComponent(composerRead[1]), new Date().toISOString());
+      const body = buildPostComposerContract(currentState, actor, decodeURIComponent(composerRead[1]), new Date().toISOString(), { productionEnabled:socialVNextConfig.enabled });
       sendJson(response, body, body.ok ? 200 : 404);
     } catch {
       sendJson(response, { ok:false, outcome:"recoverable_error", message:"This Post could not load. No records were changed. Try again safely." }, 500);
@@ -35352,7 +36048,7 @@ async function handleRequest(request, response) {
       const decision = canPerformEndpoint(actor?.role || "viewer", "POST", url.pathname);
       if (!decision.ok) { sendJson(response, { ok:false, outcome:"unauthorized", message:"This account can view Social but cannot edit Posts." }, 403); return; }
       const currentState = await store.readState();
-      const visible = buildPostComposerContract(currentState, actor, id, new Date().toISOString());
+      const visible = buildPostComposerContract(currentState, actor, id, new Date().toISOString(), { productionEnabled:socialVNextConfig.enabled });
       const duplicateCount = (currentState.posts || []).filter((item) => String(item?.id || "") === id).length;
       if (!visible.ok || visible.post?.id !== id || duplicateCount !== 1) { sendJson(response, { ok:false, outcome:"unavailable", message:"This Post is unavailable." }, 404); return; }
       const expectedVersion = input.expectedVersion;
@@ -35361,12 +36057,64 @@ async function handleRequest(request, response) {
       if (expectedVersion !== visible.version) { sendJson(response, { ok:false, outcome:"conflict", currentVersion:visible.version, message:"The saved Post changed. Reload the saved copy or keep editing." }, 409); return; }
       const patch = normalizeComposerPatch(input);
       const nextState = (await store.mutateCollectionItem("posts", id, (post) => ({ ...post, ...patch }), { expectedVersion })).state;
-      sendJson(response, buildPostComposerContract(nextState, actor, id, new Date().toISOString()));
+      sendJson(response, buildPostComposerContract(nextState, actor, id, new Date().toISOString(), { productionEnabled:socialVNextConfig.enabled }));
     } catch (error) {
       const status = Number(error?.status);
       if (status === 400 || status === 413 || error instanceof RequestLimitError) sendJson(response, { ok:false, outcome:"validation_error", field:error?.field || null, message:status === 413 || error instanceof RequestLimitError ? "The save request is too large." : error?.message || "The shared copy is invalid." }, 400);
       else if (status === 409) sendJson(response, { ok:false, outcome:"conflict", currentVersion:Number.isSafeInteger(error?.actualVersion) ? error.actualVersion : null, message:"The saved Post changed. Reload the saved copy or keep editing." }, 409);
       else sendJson(response, { ok:false, outcome:"recoverable_error", message:"The Post could not be saved. Your edits are still here; try again safely." }, 500);
+    }
+    return;
+  }
+
+  const socialProductionRoute = socialProductionActionRoute(url.pathname);
+  if (socialProductionRoute && request.method === "POST") {
+    if (!socialVNextConfig.enabled) { sendJson(response, { ok:false, outcome:"not_available", message:"Social production is unavailable. Nothing was changed." }, 404); return; }
+    let input = {};
+    try { input = await readBoundedJson(request, { limit:32_000 }); }
+    catch (error) { sendJson(response, { ok:false, outcome:"validation_error", message:error instanceof RequestLimitError ? "The Social action request is too large." : "The Social action request is invalid." }, error instanceof RequestLimitError ? 413 : 400); return; }
+    const actor = publicActor(accessDecision.actor);
+    const execute = async () => {
+      const currentState = await store.readState();
+      if (socialActionAlreadyApplied(currentState, input.requestId)) return { ok:true, outcome:"already_applied", reused:true };
+      const dependencies = {
+        now:() => new Date().toISOString(),
+        commitPostMutation:writeSocialPostMutation,
+        renderPost:renderSocialPostAdapter,
+        applyApproval:applySocialApproval,
+        recordRequestedChanges:recordSocialRequestedChanges,
+        loadState:() => store.readState(),
+        store,
+        acquireClaim:(details) => acquireSocialPublishClaim({ claimCollectionItems:(collection, rows) => store.claimCollectionItems(collection, rows) }, details),
+        transitionClaim:(claimId, status, details) => transitionSocialPublishClaim(store, claimId, status, details),
+        publishChannel:(details) => publishSocialChannelAdapter(details, actor),
+        recordPublicationResult:(details) => recordSocialPublicationResult(details, actor),
+        buildManualPackage:buildSocialManualPackageAdapter
+      };
+      if (socialProductionRoute.action === "creative") return saveSocialCreativeSelection(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "render") return renderSocialCreative(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "variants") return saveSocialVariants(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "schedule") return saveSocialSchedule(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "approve") return approveSocialPost(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "request-changes") return requestSocialPostChanges(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "regenerate") return regenerateSocialPostImage(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "publish") return publishSocialPost(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      if (socialProductionRoute.action === "manual-package") return createSocialManualPackage(dependencies, currentState, actor, socialProductionRoute.postId, input);
+      throw Object.assign(new Error("Social action not found."), { status:404, outcome:"not_available" });
+    };
+    try {
+      const result = socialProductionRoute.action === "publish" ? await execute() : await serializeStateMutation(execute);
+      const serialized = JSON.stringify(result || {});
+      if (Buffer.byteLength(serialized) >= 16 * 1024) throw Object.assign(new Error("Social action response exceeded its compact boundary."), { status:500 });
+      sendJson(response, result || { ok:false, outcome:"recoverable_error" }, 200);
+    } catch (error) {
+      const status = Number(error?.status || 500);
+      sendJson(response, {
+        ok:false,
+        outcome:error?.outcome || (status === 403 ? "unauthorized" : status === 404 ? "not_available" : status === 409 ? "conflict" : status === 400 ? "validation_error" : "recoverable_error"),
+        ...(Number.isSafeInteger(error?.actualVersion) ? { currentVersion:error.actualVersion } : {}),
+        message:status >= 500 ? "The Social action could not be completed safely. No unconfirmed success was returned." : String(error?.message || "The Social action was rejected.").slice(0, 300)
+      }, [400, 403, 404, 409, 413, 503].includes(status) ? status : 500);
     }
     return;
   }
@@ -40603,7 +41351,17 @@ async function handleRequest(request, response) {
     return;
   }
 
-  const html = sanitizeOutboundText(renderCommandCenterApp());
+  let discovery = null;
+  if (discoveryVNextConfig.enabled && request.method === "GET") {
+    try {
+      const actor = publicActor(accessDecision.actor);
+      const now = new Date().toISOString();
+      discovery = buildDiscoveryShellContracts(await store.readState(), actor, now);
+    } catch {
+      discovery = null;
+    }
+  }
+  const html = sanitizeOutboundText(renderCommandCenterApp({ discovery }));
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
   response.end(html);
 }

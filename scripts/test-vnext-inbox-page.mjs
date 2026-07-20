@@ -285,7 +285,7 @@ assert.doesNotMatch(pageModuleSource + pageViewSource, /process\.env|readFile|wr
 assert.match(serverSource, /url\.pathname === "\/api\/ui\/inbox"/);
 assert.match(serverSource, /buildAuthorizedInboxPage\(currentState, actor, now/);
 const endpointStart = serverSource.indexOf('url.pathname === "/api/ui/inbox" && request.method === "GET"');
-const endpointEnd = serverSource.indexOf('url.pathname === "/api/ui/inbox/action" && request.method === "POST"', endpointStart);
+const endpointEnd = serverSource.indexOf('url.pathname === "/api/ui/today" && request.method === "GET"', endpointStart);
 assert.ok(endpointStart >= 0 && endpointEnd > endpointStart);
 assert.doesNotMatch(serverSource.slice(endpointStart, endpointEnd), /writeChangedCollections|serializeStateMutation|\bpublish(?:ing)?\b|\bsendEmail\b|approval\s*=|\bcomplete\w*\(|\bsnooze\w*\(/i);
 assert.match(shellSource, /\/api\/ui\/inbox\?group=needs-me&limit=1/);

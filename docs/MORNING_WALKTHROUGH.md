@@ -1,82 +1,32 @@
-# The Morning Walkthrough — Roger's acceptance test
+# vNext operator guide — the morning walkthrough
 
-Purpose: the usability overhaul (PRs #49–#52) is judged by ONE test, in Roger's words:
-*"can Roger do his whole morning routine without asking anyone what a button does."*
-Roger performs this walkthrough himself, on prod, after the Render promote. Every step
-names what you should see; if any step confuses you or a click does nothing visibly,
-the overhaul failed that step — note it and we fix it.
-
-Latency budget (from the approved proposal): every button visibly reacts within 100ms
-(pressed + spinner); warm actions complete in about a second; Today paints in about a
-second on a warm server.
+Purpose: prove that a founder can complete the morning operating loop without guessing what a control does. Run against an authenticated sandbox or approved hosted cohort. Every click should begin feedback within 100 ms; do not enable live sends or publishing for this walkthrough.
 
 ## Prerequisites
 
-- Render promoted to a commit containing PR #52 (check `/api/version`).
-- Signed in with the owner token.
+- Confirm `/api/version` is the intended commit and `/api/health` is healthy.
+- Confirm the server-side vNext flags intended for the cohort and confirm every live-action flag is `false`.
+- Sign in with the least-privileged role that can complete the walkthrough.
+- Use synthetic records only outside an approved production review.
 
-## The walkthrough
+## Five-destination workflow
 
-**1. Open the app.**
-   - You land on **Today** (no cockpit-vs-today choice; old `#cockpit` bookmarks land here too).
-   - Top of page: one sentence of system truth — "All systems normal. Heartbeat ran at
-     H:MM." in green, or one red sentence naming the problem with one "Open it" button.
-   - The nav shows exactly: **Today · Queue · Campaigns · Review Desk · Reports · More**.
-   - The Le-E bubble is in the corner (it is on every page).
+1. **Today:** read system truth, overnight changes, and the next actions. Open an exact object link, return to Today, create a small synthetic task with Create, and reload to prove it persisted.
+2. **Social:** open the review item, inspect its exact creative reference and independent channel variants, edit the draft, save, and reload. Confirm publishing remains blocked and the UI states what was and was not published.
+3. **Outreach:** open the county-intake draft, move through goal, audience, message, schedule, and review. Verify exact audience and suppression counts. Save the draft, but do not launch or send.
+4. **Partners:** open Fulton County from its exact link. Confirm an immediate next action, related Outreach work, and related Files. Update the internal next action, reload, and ensure lifecycle history is preserved.
+5. **Files:** search for the compliance memo, preview it, inspect access and relationship metadata, then open Investor Room readiness. A draft, failed, missing, or stale artifact must not count as current.
 
-**2. Read "Overnight".**
-   - Plain sentences: new decisions, drafts ready, replies, posts that went out, reports,
-     your brief. No jargon, no counts you cannot trace.
-   - Click any sentence → you land on the thing it describes, not a section list. Click
-     Back or Today to return.
-
-**3. Read "Needs Roger", press "Work the queue".**
-   - Top 3 decisions are inline; the header button "Work the queue (N)" opens the Queue.
-   - On the Queue: every card has Approve / Snooze / Dismiss and **Open**.
-   - Press **Open** on any card → you land on the actual artifact (the post, the report,
-     the record) — not on a list you have to re-search. This includes prospect approvals,
-     which live here and gate outreach sends.
-   - Approve or snooze one item: the button must press, spin, and resolve — at no point
-     does a click do nothing visibly. This is true of EVERY button in the app now; if you
-     find one that stays inert, that is a bug.
-
-**4. Open the Review Desk.**
-   - One draft at a time, shown finished: rendered image and caption together.
-   - The status line is one of exactly three things:
-     - **Ready to approve** → press Approve. Done. Next card appears.
-     - **Needs a fix: [a plain-English reason]** → press the one Fix button (it
-       regenerates the image, or opens the caption editor for copy problems).
-     - **Working…** → the system is still rendering/checking; Skip and come back.
-   - You should never see "Mark Copy Reviewed", "Confirm Overlay", "Final PNG", or stage
-     chips. If you want the old detail, it is under "All items (list view)" below.
-   - New drafts arrive already rendered (auto-render runs only after the text checks pass,
-     max 12 renders/day — manual Generate clicks are not capped).
-
-**5. Check Campaigns.**
-   - Nav → Campaigns. Status reads in sentences. Nothing here changed behavior in this
-     overhaul: reactivation stays paused, sends stay gated, Approve is always a human click.
-
-**6. Find an output.**
-   - Nav → Reports. Recent exports have **Read** (opens the report text right here) and
-     **Download** buttons — not a dead file path.
-   - The two auto-generated report families (Code health, Engagement & growth) render at
-     the bottom with their latest run, or say honestly that no run has landed yet.
-   - Count your clicks from Today: every report/post/document should be reachable in two.
-
-**7. Find something obscure.**
-   - Nav → More. Type in the filter box (try "SOC 2", "prospects", "alerts"). Everything
-     that left the top nav is here, grouped. Old bookmarks still work.
+Also exercise Search, Create, Inbox, Investor Room, and Discovery from their shell controls. At 390 px, tables must become readable narrow-screen alternatives without horizontal loss. Use keyboard-only navigation once: visible focus, logical headings/landmarks, trapped dialog focus, Escape close, and focus return are required.
 
 ## Sign-off
 
-| Step | Pass? | Notes |
-|---|---|---|
-| 1. Landing + truth line + six-item nav | | |
-| 2. Overnight sentences land on the thing | | |
-| 3. Queue Open lands on the artifact; buttons always react | | |
-| 4. Review Desk: three states, approve/fix only | | |
-| 5. Campaigns readable; safety unchanged | | |
-| 6. Reports readable + downloadable in two clicks | | |
-| 7. More finds everything | | |
+| Destination | Real save + reload | Exact link | Loading/empty/error/success truthful | Pass |
+|---|---:|---:|---:|---:|
+| Today |  |  |  |  |
+| Social |  |  |  |  |
+| Outreach |  |  |  |  |
+| Partners |  |  |  |  |
+| Files / Investor Room |  |  |  |  |
 
-If all seven pass without you asking what a button does, the overhaul met its test.
+Stop on a dead visible control, unexplained failure, authorization leak, missing focus, or any suggestion that an external action occurred when it did not.

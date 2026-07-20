@@ -118,8 +118,14 @@ test("Today is a four-question command surface with exact read-only navigation",
     await expect(needs.getByRole("link", { name:item.title })).toHaveAttribute("href", item.href);
     expect([payload.nowItem.href, ...payload.nextItems.map((entry) => entry.href)]).not.toContain(item.href);
   }
-  await expect(progress.getByRole("heading", { name:`${payload.progressSummary.count} meaningful moves`, level:2 })).toBeVisible();
-  await expect(progress.locator(".vnext-today-progress-list > li")).toHaveCount(payload.progressSummary.items.length);
+  if (payload.progressSummary.count === 0) {
+    await expect(progress.getByRole("heading", { name:"No progress recorded this week", level:2 })).toBeVisible();
+    await expect(progress.locator(".vnext-today-progress-list > li")).toHaveCount(0);
+  } else {
+    const progressLabel = `${payload.progressSummary.count} meaningful move${payload.progressSummary.count === 1 ? "" : "s"}`;
+    await expect(progress.getByRole("heading", { name:progressLabel, level:2 })).toBeVisible();
+    await expect(progress.locator(".vnext-today-progress-list > li")).toHaveCount(payload.progressSummary.items.length);
+  }
   await expect(pageRoot).not.toContainText(/queueItems|sourceKind|workKind|capability|review_required|technical status|health ping|Provider sync/i);
   await expect(page.locator("[data-today-quick-capture]")).toHaveCount(0);
   await expect(page.getByRole("button", { name:"Open Quick Capture" })).toHaveCount(1);
@@ -157,10 +163,14 @@ test("Today is a four-question command surface with exact read-only navigation",
   await page.goBack();
   await expect(page.locator("[data-today-page]")).toBeVisible();
   const progressLink = page.locator('[data-today-answer="progress"] .vnext-today-progress-link').first();
-  const progressHref = await progressLink.getAttribute("href");
-  await progressLink.click();
-  await expect(page).toHaveURL(new RegExp(progressHref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"));
-  await page.goBack();
+  if (payload.progressSummary.items.length > 0) {
+    const progressHref = await progressLink.getAttribute("href");
+    await progressLink.click();
+    await expect(page).toHaveURL(new RegExp(progressHref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"));
+    await page.goBack();
+  } else {
+    await expect(progressLink).toHaveCount(0);
+  }
   await page.locator('[data-today-answer="progress"]').getByRole("link", { name:"View updates" }).click();
   await expect(page).toHaveURL(/#inbox\?group=updates$/);
   expect(mutationRequests).toEqual([]);

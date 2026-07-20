@@ -91,7 +91,11 @@ const aliases = routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [a
 assert.equal(routeRegistry.length, 75);
 assert.equal(aliases.length, 53);
 for (const entry of routeRegistry) assert.notEqual(resolveShellDestination(entry.canonicalRoute), "", `${entry.canonicalRoute} needs a destination.`);
-for (const [alias, target] of aliases) assert.equal(canonicalRouteForShell(alias), target, `${alias} must retain ${target}.`);
+for (const [alias, target] of aliases) {
+  const expectedTarget = target === "growth" ? "queue" : target;
+  assert.equal(canonicalRouteForShell(alias), expectedTarget, `${alias} must retain final target ${expectedTarget}.`);
+}
+assert.equal(canonicalRouteForShell("growth"), "queue");
 assert.equal(resolveShellDestination("#item/posts/post-1"), "Social");
 assert.equal(resolveShellDestination("#item/campaigns/campaign-1"), "Outreach");
 assert.equal(resolveShellDestination("#item/partners/partner-1"), "Partners");
@@ -112,9 +116,10 @@ assert.doesNotMatch(responsiveFixture, /class="app-topbar"/);
 assert.equal(renderVNextDesktopShell("not-an-application"), "not-an-application");
 
 for (const [label, source] of [["navigation", navigationSource], ["shell", shellSource]]) {
-  for (const forbiddenImport of ["storage", "database", "access-control", "outreach", "publishing", "social-publish", "safety-posture", "business-engine", "preview-server"]) {
+  for (const forbiddenImport of ["storage", "database", "access-control", "publishing", "social-publish", "safety-posture", "business-engine", "preview-server"]) {
     assert.doesNotMatch(source, new RegExp(`^\\s*import[^\\n]+${forbiddenImport}`, "im"), `${label} must not import ${forbiddenImport}.`);
   }
+  assert.doesNotMatch(source, /^\s*import[^\n]+(?:outreach-api-integration|outreach-os|campaign-command)/im, `${label} must not import Outreach domain or execution services.`);
   assert.doesNotMatch(source, /^\s*(?:await\s+)?(?:fetch|writeFile|readFile|createServer)\s*\(/m, `${label} must have no import-time I/O.`);
 }
 assert.doesNotMatch(shellSource, /COMMAND_CENTER_UX_VNEXT|localStorage|sessionStorage|document\.cookie/);

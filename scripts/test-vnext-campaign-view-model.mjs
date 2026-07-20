@@ -296,8 +296,9 @@ assert.doesNotMatch(serverSource, /view-models\/campaign-(?:view|sources)\.mjs/,
 function sha256(source) {
   return createHash("sha256").update(source).digest("hex");
 }
-assert.equal(sha256(readFileSync("scripts/ui/route-compatibility.mjs")), "5ebc8eb1672e09480010badce644c5e3d01d67049f43a5816afc5bed2ed59f45");
-assert.equal(sha256(serverSource), "4e978fb5b0adb4df3b7d70a7c6e5785b0ae9313c396f80ae0bfed5201e77510c");
+assert.equal(sha256(campaignViewSource), "d764d64dd049ca646e2724af6fe21048094a1ed7af5f82ca1ecb26fa0dd3c5a9");
+assert.equal(sha256(campaignSourcesSource), "28f449a15171a8f2170fe45719e9c3f732b1850e2361d7fb30e1d8aabcef7b26");
+assert.doesNotMatch(serverSource, /from\s+["'][^"']*view-models\/campaign-view\.mjs["']/, "Shared integration must not couple the server directly to CampaignView.");
 assert.deepEqual(ROUTE_COMPATIBILITY_TOTALS, { canonicalRoutes: 75, aliases: 53, objectFamilies: 4 });
 
 function performanceFixture(count = 100) {

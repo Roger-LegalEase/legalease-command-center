@@ -15,6 +15,7 @@ const criticalPaths = new Set([
   "/api/ui/inbox/action",
   "/api/ui/social",
   "/api/ui/social/results",
+  "/api/ui/partners",
   "/api/ui/quick-capture",
   "/api/ui/quick-capture/capabilities",
   "/api/ui/route-access"
@@ -33,7 +34,13 @@ export function allowExpectedCriticalResponse(page, pathname, count = 1) {
 
 export function allowExpectedConsoleError(page, pattern, count = 1) {
   const current = expectedConsoleErrors.get(page) || [];
-  current.push({ pattern, remaining:Math.max(1, Number(count) || 1) });
+  current.push({ pattern, pathname:"", remaining:Math.max(1, Number(count) || 1) });
+  expectedConsoleErrors.set(page, current);
+}
+
+export function allowExpectedConsoleErrorForPath(page, pathname, pattern, count = 1) {
+  const current = expectedConsoleErrors.get(page) || [];
+  current.push({ pattern, pathname:String(pathname || ""), remaining:Math.max(1, Number(count) || 1) });
   expectedConsoleErrors.set(page, current);
 }
 
@@ -43,9 +50,13 @@ export function allowExpectedRequestFailure(page, pathname, pattern = /abort/i, 
   expectedRequestFailures.set(page, current);
 }
 
-function consumeExpectedConsoleError(page, text) {
+function consumeExpectedConsoleError(page, text, locationURL = "") {
   const current = expectedConsoleErrors.get(page) || [];
-  const expected = current.find((entry) => entry.remaining > 0 && entry.pattern.test(text));
+  let pathname = "";
+  try { pathname = locationURL ? new URL(locationURL).pathname : ""; } catch {}
+  const expected = current.find((entry) => entry.remaining > 0
+    && (!entry.pathname || entry.pathname === pathname)
+    && entry.pattern.test(text));
   if (!expected) return false;
   expected.remaining -= 1;
   return true;
@@ -82,7 +93,12 @@ function allowedOrigins(baseURL) {
     process.env.BROWSER_TEST_COMPOSER_BASE_URL,
     process.env.BROWSER_TEST_COMPOSER_RESTRICTED_BASE_URL,
     process.env.BROWSER_TEST_COMPOSER_RESTRICTED_READONLY_BASE_URL,
-    process.env.BROWSER_TEST_SOCIAL_RESTRICTED_BASE_URL
+    process.env.BROWSER_TEST_SOCIAL_RESTRICTED_BASE_URL,
+    process.env.BROWSER_TEST_PARTNERS_BASE_URL,
+    process.env.BROWSER_TEST_OUTREACH_BASE_URL,
+    process.env.BROWSER_TEST_FILES_BASE_URL,
+    process.env.BROWSER_TEST_SOCIAL_PRODUCTION_BASE_URL,
+    process.env.BROWSER_TEST_DISCOVERY_BASE_URL
   ].filter(Boolean).map((value) => new URL(value).origin));
 }
 
@@ -104,7 +120,7 @@ export const test = playwrightTest.extend({
     page.on("console", (message) => {
       if (message.type() !== "error") return;
       const text = message.text();
-      if (consumeExpectedConsoleError(page, text)) return;
+      if (consumeExpectedConsoleError(page, text, message.location().url)) return;
       if (!consoleErrorBaseline.some((entry) => entry.pattern.test(text))) {
         failures.push(`console.error: ${text}`);
       }
@@ -118,7 +134,7 @@ export const test = playwrightTest.extend({
     });
     page.on("response", (response) => {
       const url = new URL(response.url());
-      if (origins.has(url.origin) && criticalPaths.has(url.pathname) && response.status() >= 400) {
+      if (origins.has(url.origin) && (criticalPaths.has(url.pathname) || url.pathname.startsWith("/api/ui/partners/") || url.pathname.startsWith("/api/ui/outreach/") || url.pathname.startsWith("/api/ui/files")) && response.status() >= 400) {
         if (consumeExpectedCriticalResponse(page, url.pathname)) return;
         failures.push(`critical response: ${response.status()} ${url.pathname}`);
       }

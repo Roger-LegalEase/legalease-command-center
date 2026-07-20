@@ -9,8 +9,10 @@ import { fileURLToPath } from "node:url";
 
 import {
   COMMAND_CENTER_UX_VNEXT_ENV_KEY,
+  COMMAND_CENTER_UX_VNEXT_PRODUCT_FLAGS,
   parseCommandCenterVNextFlag,
-  readCommandCenterVNextConfig
+  readCommandCenterVNextConfig,
+  readCommandCenterVNextProductConfig
 } from "./ui/vnext-config.mjs";
 import {
   SHELL_MODES,
@@ -41,6 +43,10 @@ assert.ok(Object.isFrozen(defaultConfig), "The deployment configuration must be 
 assert.deepEqual(readCommandCenterVNextConfig({ COMMAND_CENTER_UX_VNEXT:"true" }), { enabled:true, mode:"vnext", source:"server-environment" });
 assert.deepEqual(readCommandCenterVNextConfig({ COMMAND_CENTER_UX_VNEXT:"false" }), defaultConfig);
 assert.deepEqual(readCommandCenterVNextConfig({ COMMAND_CENTER_UX_VNEXT:"invalid" }), defaultConfig);
+assert.equal(COMMAND_CENTER_UX_VNEXT_PRODUCT_FLAGS.discovery, "COMMAND_CENTER_UX_VNEXT_DISCOVERY");
+assert.equal(readCommandCenterVNextProductConfig({ COMMAND_CENTER_UX_VNEXT:"true" }, "discovery").enabled, false, "Discovery must default off independently.");
+assert.equal(readCommandCenterVNextProductConfig({ COMMAND_CENTER_UX_VNEXT:"true", COMMAND_CENTER_UX_VNEXT_DISCOVERY:"true" }, "discovery").enabled, true);
+assert.equal(readCommandCenterVNextProductConfig({ COMMAND_CENTER_UX_VNEXT:"false", COMMAND_CENTER_UX_VNEXT_DISCOVERY:"true" }, "discovery").enabled, false, "Discovery cannot bypass the server-side vNext boundary.");
 assert.deepEqual(
   readCommandCenterVNextConfig(Object.create({ COMMAND_CENTER_UX_VNEXT:"true" })),
   defaultConfig,
@@ -130,9 +136,9 @@ assert.match(serverSource, /import \{ renderShellBoundary \} from "\.\/ui\/shell
 assert.match(serverSource, /import \{ renderVNextDesktopShell \} from "\.\/ui\/app-shell\.mjs";/);
 assert.match(serverSource, /loadLocalEnv\(\);\s*const commandCenterVNextConfig = readCommandCenterVNextConfig\(process\.env\);/);
 assert.match(serverSource, /function renderLegacyApp\(\) \{\s*return htmlShell\(\);\s*\}/);
-assert.match(serverSource, /function renderVNextApp\(\) \{[\s\S]*?return renderVNextDesktopShell\(renderLegacyApp\(\)\);\s*\}/);
-assert.match(serverSource, /function renderCommandCenterApp\(\) \{\s*return renderShellBoundary\(\{[\s\S]*?config: commandCenterVNextConfig,[\s\S]*?renderLegacyApp,[\s\S]*?renderVNextApp[\s\S]*?\}\);\s*\}/);
-assert.match(serverSource, /const html = sanitizeOutboundText\(renderCommandCenterApp\(\)\);/);
+assert.match(serverSource, /function renderVNextApp\(options = \{\}\) \{[\s\S]*?discoveryEnabled:discoveryVNextConfig\.enabled && Boolean\(options\.discovery\),[\s\S]*?return renderVNextDesktopShell\(renderLegacyApp\(\)\);\s*\}/);
+assert.match(serverSource, /function renderCommandCenterApp\(options = \{\}\) \{\s*return renderShellBoundary\(\{[\s\S]*?config: commandCenterVNextConfig,[\s\S]*?renderLegacyApp,[\s\S]*?renderVNextApp:\(\) => renderVNextApp\(options\)[\s\S]*?\}\);\s*\}/);
+assert.match(serverSource, /const html = sanitizeOutboundText\(renderCommandCenterApp\(\{ discovery \}\)\);/);
 
 const shellStart = serverSource.indexOf("function htmlShell()");
 const shellEnd = serverSource.indexOf("function renderLegacyApp()", shellStart);
@@ -142,7 +148,7 @@ assert.doesNotMatch(
   /COMMAND_CENTER_UX_VNEXT/,
   "The deployment flag must never be embedded in client-side HTML or JavaScript."
 );
-assert.ok(serverSource.indexOf("const accessDecision = authorizeRequest") < serverSource.indexOf("sanitizeOutboundText(renderCommandCenterApp())"), "Authorization must remain before shell rendering.");
+assert.ok(serverSource.indexOf("const accessDecision = authorizeRequest") < serverSource.indexOf("sanitizeOutboundText(renderCommandCenterApp({ discovery }))"), "Authorization must remain before shell rendering.");
 
 function requiredMatch(pattern, label) {
   const match = serverSource.match(pattern);
@@ -198,7 +204,7 @@ async function availablePort() {
   });
 }
 
-async function shellResponse(flagValue) {
+async function shellResponse(flagValue, discoveryFlagValue) {
   const port = await availablePort();
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "legalease-vnext-shell-"));
   const dataPath = path.join(temporaryDirectory, "state.json");
@@ -227,6 +233,7 @@ async function shellResponse(flagValue) {
     ENABLE_LIVE_THREADS_POSTING:"false"
   };
   if (flagValue !== undefined) childEnvironment.COMMAND_CENTER_UX_VNEXT = flagValue;
+  if (discoveryFlagValue !== undefined) childEnvironment.COMMAND_CENTER_UX_VNEXT_DISCOVERY = discoveryFlagValue;
 
   const child = spawn(process.execPath, [serverPath], {
     cwd:root,
@@ -261,6 +268,7 @@ const missingFlagHtml = await shellResponse(undefined);
 const falseFlagHtml = await shellResponse("false");
 const invalidFlagHtml = await shellResponse("not-a-boolean");
 const trueFlagHtml = await shellResponse("true");
+const discoveryFlagHtml = await shellResponse("true", "true");
 assert.equal(falseFlagHtml, missingFlagHtml, "An explicit false flag must preserve the default shell byte-for-byte.");
 assert.equal(invalidFlagHtml, missingFlagHtml, "An invalid flag must fail to the default shell byte-for-byte.");
 assert.notEqual(trueFlagHtml, missingFlagHtml, "The enabled branch must render the isolated vNext shell.");
@@ -268,6 +276,10 @@ assert.match(missingFlagHtml, /<nav class="top-nav" aria-label="Primary">/);
 assert.doesNotMatch(missingFlagHtml, /data-vnext-shell="desktop"/);
 assert.match(trueFlagHtml, /data-vnext-shell="desktop"/);
 assert.match(trueFlagHtml, /<main id="app">/);
+assert.doesNotMatch(trueFlagHtml, /data-discovery-onboarding/);
+assert.match(discoveryFlagHtml, /data-discovery-onboarding/);
+assert.match(discoveryFlagHtml, /data-shell-action="open-contextual-help"/);
+assert.match(discoveryFlagHtml, /\/api\/ui\/discovery\/analytics/);
 assert.doesNotMatch(trueFlagHtml, /<nav class="top-nav" aria-label="Primary">/);
 assert.match(missingFlagHtml, /window\.addEventListener\("hashchange"/);
 assert.match(trueFlagHtml, /window\.addEventListener\("hashchange"/);

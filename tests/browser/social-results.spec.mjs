@@ -27,7 +27,7 @@ async function openResults(page, width = 1440, suffix = "") {
     allowExpectedRequestFailure(page, pathname, /abort/i, 2);
   }
   await page.setViewportSize({ width, height:width === 390 ? 844 : 900 });
-  await openToday(page, `${baseURL}/#queue?view=results${suffix}`);
+  await openToday(page, `${baseURL}/#social?view=results${suffix}`);
   await expect(page.locator("[data-social-results-page]")).toBeVisible();
   await expect(page.locator("[data-results-content]")).toHaveAttribute("aria-busy", "false");
 }
@@ -106,7 +106,7 @@ test("Social Results campaign tags use exact projected internal links without mu
     await route.fulfill({ response, json:{ ...body, items } });
   };
   await page.route("**/api/ui/social/results?*", campaignFixtureRoute);
-  await page.evaluate(() => { location.hash = "#queue?view=results&campaign=results-campaign-community"; });
+  await page.evaluate(() => { location.hash = "#social?view=results&campaign=results-campaign-community"; });
   await expect(page.locator("[data-results-content]")).toHaveAttribute("aria-busy", "false");
 
   const campaignLink = page.getByRole("link", { name:"Open campaign: Exact campaign fixture" });
@@ -121,7 +121,7 @@ test("Social Results campaign tags use exact projected internal links without mu
   expect(new URL(page.url()).hash).toBe(exactCampaignHref);
   expect(mutationRequests).toEqual([]);
   await page.goBack();
-  await expect(page).toHaveURL(/#queue\?view=results&campaign=results-campaign-community$/);
+  await expect(page).toHaveURL(/#social\?view=results&campaign=results-campaign-community$/);
   await expect(page.locator("[data-results-content]")).toHaveAttribute("aria-busy", "false");
   await page.unroute("**/api/ui/social/results?*", campaignFixtureRoute);
   await page.goForward();
@@ -168,7 +168,7 @@ test("Social Results is a compact read-only workspace with exact truth and histo
   await expect(campaign).toHaveValue("results-campaign-community");
   await page.screenshot({ path:path.join(screenshotDirectory, "social-results-filtered-1440.png"), fullPage:true, animations:"disabled" });
   await page.goBack();
-  await expect(page).toHaveURL(/#queue\?view=results$/);
+  await expect(page).toHaveURL(/#social\?view=results$/);
   await expect(page.locator("[data-results-content]")).toHaveAttribute("aria-busy", "false");
   await expect(campaign).toHaveValue("");
   await page.goForward();
@@ -219,7 +219,7 @@ test("Social Results covers loading, retry, authorization, and session states", 
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
   await page.route("**/api/ui/social/results?*", async (route) => { await gate; await route.continue(); });
-  await openToday(page, `${baseURL}/#queue?view=results`);
+  await openToday(page, `${baseURL}/#social?view=results`);
   await expect(page.getByText("Loading Results", { exact:true })).toBeVisible();
   await expect(page.locator("[data-results-content]")).toHaveAttribute("aria-busy", "true");
   release();

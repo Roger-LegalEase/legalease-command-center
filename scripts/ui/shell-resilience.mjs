@@ -1,10 +1,20 @@
 import { renderShellLoadingState, renderShellState } from "./shell-states.mjs";
+import { VNEXT_RECOVERY_FAILURES, recoveryTruthSentence } from "./recovery-contract.mjs";
 
 function serialized(value) {
   return JSON.stringify(String(value || "")).replaceAll("<", "\\u003c");
 }
 
 export function shellResilienceBrowserSource() {
+  const failureContracts = JSON.stringify(VNEXT_RECOVERY_FAILURES).replaceAll("<", "\\u003c");
+  const failureTemplates = JSON.stringify(Object.fromEntries(Object.entries(VNEXT_RECOVERY_FAILURES).map(([key, failure]) => [key, renderShellState({
+    kind:"error",
+    scope:"route",
+    title:failure.title,
+    explanation:`${failure.happened} ${failure.didNotHappen} ${recoveryTruthSentence(failure)} ${failure.nextAction}`,
+    retryable:failure.automaticRetrySafe === true,
+    retryLabel:"Try again"
+  })]))).replaceAll("<", "\\u003c");
   const routeLoading = serialized(renderShellLoadingState({
     kind:"loading",
     scope:"route",
@@ -72,8 +82,10 @@ export function shellResilienceBrowserSource() {
       unauthorized:${unauthorized},
       unavailable:${unavailable},
       sessionExpired:${sessionExpired},
-      recovery:${recovery}
+      recovery:${recovery},
+      failures:Object.freeze(${failureTemplates})
     });
+    const failureContracts = Object.freeze(${failureContracts});
     const metrics = window.__LE_SHELL_RESILIENCE_METRICS = {
       skeletonDisplayedAt:performance.now(),
       contentDisplayedAt:null,
@@ -190,6 +202,15 @@ export function shellResilienceBrowserSource() {
       metrics.renderFailures += 1;
       controller.failureStartedAt = performance.now();
       renderTemplate(templates.pageError, { kind:"error" });
+    }
+
+    function showFailure(kind) {
+      const key = String(kind || "");
+      const template = templates.failures[key] || templates.pageError;
+      metrics.renderFailures += 1;
+      controller.failureStartedAt = performance.now();
+      renderTemplate(template, { kind:"error" });
+      return failureContracts[key] || null;
     }
 
     function showModuleError(moduleName, renderer) {
@@ -443,7 +464,12 @@ export function shellResilienceBrowserSource() {
       showSessionExpired,
       showPageError,
       retry:() => retryFailedState(null),
-      clearAuthorization:() => controller.authorization.clear()
+      clearAuthorization:() => controller.authorization.clear(),
+      showFailure
+    });
+    window.__LE_RECOVERY_CONTRACT = Object.freeze({
+      describe:(kind) => failureContracts[String(kind || "")] || null,
+      keys:Object.freeze(Object.keys(failureContracts))
     });
 
     if (currentResolution().canonicalRoute === "safe-mode") showRecovery();

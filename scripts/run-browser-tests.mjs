@@ -7,6 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { buildPartnersTrainScenario } from "./fixtures/vnext-partners-train.mjs";
+
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const seedPath = path.join(projectRoot, "data", "seed", "social-command-center.seed.json");
 const networkGuardPath = path.join(projectRoot, "scripts", "test-support", "browser-network-guard.mjs");
@@ -26,7 +28,7 @@ function sanitizedLog(value = "") {
     .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[REDACTED]");
 }
 
-function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCredential = "", restrictedCredentials = {}, sessionSecret = "" }) {
+function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCredential = "", restrictedCredentials = {}, sessionSecret = "", productFlags = {} }) {
   return {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -49,6 +51,11 @@ function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCred
     COMMAND_CENTER_DATA_PATH:dataPath,
     COMMAND_CENTER_SEED_PATH:seedPath,
     COMMAND_CENTER_UX_VNEXT:vnext ? "true" : "false",
+    COMMAND_CENTER_UX_VNEXT_SOCIAL:productFlags.social === true ? "true" : "false",
+    COMMAND_CENTER_UX_VNEXT_OUTREACH:productFlags.outreach === true ? "true" : "false",
+    COMMAND_CENTER_UX_VNEXT_FILES:productFlags.files === true ? "true" : "false",
+    COMMAND_CENTER_UX_VNEXT_DISCOVERY:productFlags.discovery === true ? "true" : "false",
+    COMMAND_CENTER_FILES_CURSOR_SECRET:productFlags.files === true ? "synthetic-browser-files-cursor-secret" : "",
     LIVE_POSTING_ENABLED:"false",
     ENABLE_LIVE_LINKEDIN_POSTING:"false",
     ENABLE_LIVE_FACEBOOK_POSTING:"false",
@@ -67,7 +74,10 @@ function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCred
     SENDGRID_WEBHOOK_ENABLED:"false",
     PRODUCT_EVENT_WEBHOOK_ENABLED:"false",
     PRODUCT_WEBHOOK_ENABLED:"false",
-    ALLOW_LOCAL_IMAGE_FALLBACK:"false"
+    ALLOW_LOCAL_IMAGE_FALLBACK:productFlags.social === true ? "true" : "false",
+    COMMAND_CENTER_TEST_SOCIAL_PUBLISH_ADAPTER:productFlags.social === true ? "inert" : "",
+    COMMAND_CENTER_TEST_SOCIAL_MANUAL_ADAPTER:productFlags.social === true ? "inert" : "",
+    COMMAND_CENTER_TEST_SOCIAL_PUBLISH_FAILURE_CHANNELS:productFlags.social === true ? "instagram" : ""
   };
 }
 
@@ -559,6 +569,93 @@ function socialFixtureState(seed) {
   };
 }
 
+function socialProductionFixtureState(seed) {
+  const state = socialFixtureState(seed);
+  const reviewedPost = {
+    id:"production-post",
+    _version:1,
+    title:"Synthetic production Post",
+    headline:"A clear route through an access request",
+    body:"Reviewed synthetic information for a founder-controlled Social workflow.",
+    hook:"Start with the exact reviewed facts.",
+    cta:"Review the next step.",
+    hashtags:["#LegalEase"],
+    status:"draft",
+    approvalRequired:true,
+    approvalStatus:"not_requested",
+    copyReviewed:true,
+    imageIntentionallyOmitted:true,
+    finalPreviewConfirmed:true,
+    guidelinesGate:{ passed:true, hardFails:[] },
+    creativeSurfaceTone:"dark",
+    targetChannels:["linkedin", "instagram"],
+    channelVariants:[],
+    createdAt:"2026-07-19T10:00:00.000Z",
+    updatedAt:"2026-07-19T10:00:00.000Z"
+  };
+  const blockedPost = {
+    ...reviewedPost,
+    id:"production-blocked",
+    title:"Blocked production Post",
+    headline:"Blocked claim",
+    guidelinesGate:{ passed:false, hardFails:[{ key:"outcome_claim", detail:"Revise the unsupported outcome claim." }] }
+  };
+  const manualPost = {
+    ...reviewedPost,
+    id:"production-manual",
+    title:"Manual fallback Post",
+    headline:"Manual fallback is explicit",
+    status:"approved",
+    approvalStatus:"approved",
+    approvedAt:"2026-07-19T11:00:00.000Z",
+    approvalRevision:"production-manual-revision",
+    targetChannels:["x"],
+    manualPublishingAvailable:true
+  };
+  const publishPost = {
+    ...reviewedPost,
+    id:"production-publish",
+    title:"Controlled publication Post",
+    headline:"Controlled publication remains channel-specific",
+    status:"approved",
+    approvalStatus:"approved",
+    approvedAt:"2026-07-19T11:30:00.000Z",
+    approvalRevision:"production-publish-revision",
+    targetChannels:["linkedin", "instagram"],
+    channelVariants:[
+      { id:"production-publish:linkedin", channel:"linkedin", body:"Controlled LinkedIn publication copy." },
+      { id:"production-publish:instagram", channel:"instagram", body:"Controlled Instagram publication copy." }
+    ]
+  };
+  return {
+    ...state,
+    posts:[reviewedPost, blockedPost, manualPost, publishPost, ...state.posts.filter((post) => ![reviewedPost.id, blockedPost.id, manualPost.id, publishPost.id].includes(post?.id))],
+    generationProfiles:[
+      { id:"production-template", displayName:"Reviewed education template", templateCategory:"education", active:true, approved:true, surfaceTone:"dark", requiredAssetRoles:["logo", "wilma_pose", "background"], assetIds:["brand-contract-white-wordmark", "production-wilma", "production-background"], defaultDisclaimerId:"production-disclaimer" },
+      ...state.generationProfiles.filter((profile) => profile?.id !== "production-template")
+    ],
+    brandAssets:[
+      { id:"production-wilma", name:"Reviewed Wilma guide pose", assetType:"wilma_pose", approved:true },
+      { id:"production-background", name:"Reviewed navy background", assetType:"background", approved:true },
+      ...state.brandAssets.filter((asset) => !["production-wilma", "production-background"].includes(asset?.id))
+    ],
+    library:[
+      { id:"production-disclaimer", title:"Reviewed information disclaimer", category:"disclaimer", status:"approved", body:"Synthetic information only." },
+      ...state.library.filter((item) => item?.id !== "production-disclaimer")
+    ],
+    socialAccounts:[
+      { id:"production-linkedin", platform:"linkedin", connected:true, status:"connected" },
+      { id:"production-instagram", platform:"instagram", connected:true, status:"connected" },
+      { id:"production-x", platform:"x", connected:false, status:"not_connected" }
+    ],
+    runtime:{ ...(state.runtime || {}), livePostingGates:{ linkedin:true, instagram:true, x:false } },
+    publishEvents:[],
+    publishClaims:[],
+    activityEvents:[],
+    auditHistory:[]
+  };
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -587,10 +684,10 @@ async function stopChild(child) {
   activeChildren.delete(child);
 }
 
-async function startServer({ name, dataPath, vnext, restricted = false, restrictedCredential = "", restrictedCredentials = {}, sessionSecret = "" }) {
+async function startServer({ name, dataPath, vnext, restricted = false, restrictedCredential = "", restrictedCredentials = {}, sessionSecret = "", productFlags = {} }) {
   const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
     cwd:projectRoot,
-    env:serverEnvironment({ dataPath, vnext, restricted, restrictedCredential, restrictedCredentials, sessionSecret }),
+    env:serverEnvironment({ dataPath, vnext, restricted, restrictedCredential, restrictedCredentials, sessionSecret, productFlags }),
     stdio:["ignore", "pipe", "pipe"]
   });
   activeChildren.add(child);
@@ -673,15 +770,30 @@ const fixtureState = browserFixtureState(seedState);
 const actionFixtureState = browserFixtureState(seedState, { includeActions:true });
 const todayState = todayFixtureState(seedState);
 const socialState = socialFixtureState(seedState);
+const socialProductionState = socialProductionFixtureState(seedState);
 const composerRestrictedState = structuredClone(socialState);
+const partnersState = structuredClone(buildPartnersTrainScenario().state);
+const filesState = structuredClone(fixtureState);
+filesState.dataRoomItems = [{
+  id:"company-overview",
+  title:"Synthetic company overview",
+  status:"approved",
+  owner:"Founder",
+  collection:"investor-room",
+  mimeType:"text/markdown",
+  storageRef:"files/synthetic/company-overview.md",
+  verifiedAt:"2026-07-18T12:00:00.000Z",
+  updatedAt:"2026-07-18T12:00:00.000Z",
+  allowedRoles:["owner", "admin", "operator", "viewer"]
+}];
 const composerTemplate = composerRestrictedState.posts.find((post) => post.id === "idea-01");
 composerRestrictedState.posts.push(
   { ...structuredClone(composerTemplate), id:"composer-hidden", title:"Nondisclosed composer Post", visibility:"owner_only", allowedRoles:["owner"], _version:3 },
   { ...structuredClone(composerTemplate), id:"composer-duplicate", title:"Duplicate composer Post A", _version:4 },
   { ...structuredClone(composerTemplate), id:"composer-duplicate", title:"Duplicate composer Post B", _version:9 }
 );
-await rm(path.join(projectRoot, "playwright-report"), { recursive:true, force:true });
-await rm(artifactDir, { recursive:true, force:true });
+await rm(path.join(projectRoot, "playwright-report"), { recursive:true, force:true, maxRetries:5, retryDelay:100 });
+await rm(artifactDir, { recursive:true, force:true, maxRetries:5, retryDelay:100 });
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "legalease-browser-tests-"));
 const legacyDataPath = path.join(tempRoot, "legacy-state.json");
 const vnextDataPath = path.join(tempRoot, "vnext-state.json");
@@ -692,9 +804,14 @@ const todayDataPath = path.join(tempRoot, "today-state.json");
 const phase2DataPath = path.join(tempRoot, "phase2-state.json");
 const phase2RestrictedDataPath = path.join(tempRoot, "phase2-restricted-state.json");
 const socialDataPath = path.join(tempRoot, "social-state.json");
+const socialProductionDataPath = path.join(tempRoot, "social-production-state.json");
 const socialRestrictedDataPath = path.join(tempRoot, "social-restricted-state.json");
 const composerRestrictedDataPath = path.join(tempRoot, "composer-restricted-state.json");
 const composerRestrictedReadonlyDataPath = path.join(tempRoot, "composer-restricted-readonly-state.json");
+const partnersDataPath = path.join(tempRoot, "partners-state.json");
+const outreachDataPath = path.join(tempRoot, "outreach-state.json");
+const filesDataPath = path.join(tempRoot, "files-state.json");
+const discoveryDataPath = path.join(tempRoot, "discovery-state.json");
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
@@ -705,9 +822,14 @@ await Promise.all([
   writeFile(phase2DataPath, `${JSON.stringify(actionFixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(phase2RestrictedDataPath, `${JSON.stringify(actionFixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(socialDataPath, `${JSON.stringify(socialState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(socialProductionDataPath, `${JSON.stringify(socialProductionState, null, 2)}\n`, { mode:0o600 }),
   writeFile(socialRestrictedDataPath, `${JSON.stringify(socialState, null, 2)}\n`, { mode:0o600 }),
   writeFile(composerRestrictedDataPath, `${JSON.stringify(composerRestrictedState, null, 2)}\n`, { mode:0o600 }),
-  writeFile(composerRestrictedReadonlyDataPath, `${JSON.stringify(composerRestrictedState, null, 2)}\n`, { mode:0o600 })
+  writeFile(composerRestrictedReadonlyDataPath, `${JSON.stringify(composerRestrictedState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(partnersDataPath, `${JSON.stringify(partnersState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(outreachDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(filesDataPath, `${JSON.stringify(filesState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(discoveryDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
 const restrictedSessionSecret = crypto.randomBytes(32).toString("base64url");
@@ -798,6 +920,36 @@ try {
     restrictedCredentials:composerRestrictedCredentials,
     sessionSecret:crypto.randomBytes(32).toString("base64url")
   }));
+  servers.push(await startServer({
+    name:"partners",
+    dataPath:partnersDataPath,
+    vnext:true,
+    productFlags:{ outreach:true }
+  }));
+  servers.push(await startServer({
+    name:"outreach",
+    dataPath:outreachDataPath,
+    vnext:true,
+    productFlags:{ outreach:true }
+  }));
+  servers.push(await startServer({
+    name:"files",
+    dataPath:filesDataPath,
+    vnext:true,
+    productFlags:{ files:true }
+  }));
+  servers.push(await startServer({
+    name:"social-production",
+    dataPath:socialProductionDataPath,
+    vnext:true,
+    productFlags:{ social:true }
+  }));
+  servers.push(await startServer({
+    name:"discovery",
+    dataPath:discoveryDataPath,
+    vnext:true,
+    productFlags:{ discovery:true }
+  }));
   const runnerEnv = {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -818,6 +970,11 @@ try {
     BROWSER_TEST_SOCIAL_RESTRICTED_BASE_URL:servers[9].baseURL,
     BROWSER_TEST_COMPOSER_RESTRICTED_BASE_URL:servers[10].baseURL,
     BROWSER_TEST_COMPOSER_RESTRICTED_READONLY_BASE_URL:servers[11].baseURL,
+    BROWSER_TEST_PARTNERS_BASE_URL:servers[12].baseURL,
+    BROWSER_TEST_OUTREACH_BASE_URL:servers[13].baseURL,
+    BROWSER_TEST_FILES_BASE_URL:servers[14].baseURL,
+    BROWSER_TEST_SOCIAL_PRODUCTION_BASE_URL:servers[15].baseURL,
+    BROWSER_TEST_DISCOVERY_BASE_URL:servers[16].baseURL,
     BROWSER_TEST_COMPOSER_RESTRICTED_CREDENTIALS:JSON.stringify(composerRestrictedCredentials)
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));

@@ -10,7 +10,7 @@ export const SOCIAL_HOME_CONTRACT = Object.freeze({
 });
 
 export function renderSocialHomeLoading() {
-  const tabs = SOCIAL_HOME_VIEWS.map((view, index) => `<a class="vnext-social-tab${index === 0 ? " is-selected" : ""}" role="tab" aria-selected="${index === 0 ? "true" : "false"}" tabindex="${index === 0 ? "0" : "-1"}" href="#queue?view=${escapeAttribute(view.key)}" data-social-view="${escapeAttribute(view.key)}">${escapeHtml(view.label)} <span data-social-view-count="${escapeAttribute(view.key)}">0</span></a>`).join("");
+  const tabs = SOCIAL_HOME_VIEWS.map((view, index) => `<a class="vnext-social-tab${index === 0 ? " is-selected" : ""}" role="tab" aria-selected="${index === 0 ? "true" : "false"}" tabindex="${index === 0 ? "0" : "-1"}" href="#social?view=${escapeAttribute(view.key)}" data-social-view="${escapeAttribute(view.key)}">${escapeHtml(view.label)} <span data-social-view-count="${escapeAttribute(view.key)}">0</span></a>`).join("");
   return `<section class="vnext-social-page" data-social-page aria-labelledby="vnext-social-title">
     <header class="vnext-social-header">
       <div><p class="vnext-social-eyebrow">Social</p><h1 id="vnext-social-title">Social</h1><p>Shape ideas, see the calendar, find Posts, and review published results.</p></div>
@@ -91,7 +91,7 @@ export function socialHomeBrowserSource() {
       const state = { ...routeState(), ...next };
       const query = new URLSearchParams({ view:state.view || "ideas" });
       for (const key of ["status", "channel", "topic", "owner", "dateFrom", "dateTo"]) if (state[key]) query.set(key, state[key]);
-      return "#queue?" + query.toString();
+      return "#social?" + query.toString();
     }
     function navigate(next) { const target = routeHash(next); if (location.hash === target) load({ force:true }); else location.hash = target.slice(1); }
     function ensureScaffold() {
@@ -121,7 +121,7 @@ export function socialHomeBrowserSource() {
     function renderError() { setCreateAvailability(false, "Create Post availability could not be confirmed."); renderState("error", "Social could not load", "No records were changed. Try again.", [control("Try again", () => { settledPageState = ""; load({ force:true }); }), anchor("Go to Today", "#today")]); }
     function renderUnauthorized() { setCreateAvailability(false, "This account cannot create Posts here."); renderState("unauthorized", "Social needs additional access", "This account cannot view Social work. No protected details were loaded.", [anchor("Go to Today", "#today")]); }
     function activeFilters(payload) { return Object.values(payload?.activeFilters || {}).some(Boolean); }
-    function renderEmpty(payload) { renderState(activeFilters(payload) ? "filtered-empty" : "empty", activeFilters(payload) ? "No matching Social work" : "Nothing here yet", activeFilters(payload) ? "Try changing or clearing the filters." : "Create a Post when you are ready. Nothing has been inferred or duplicated.", activeFilters(payload) ? [control("Clear filters", () => navigate({ status:"", channel:"", topic:"", owner:"", dateFrom:"", dateTo:"" }))] : []); }
+    function renderEmpty(payload) { const filtered=activeFilters(payload);const state=node("[data-social-state]");if(state&&window.__LE_DISCOVERY_EMPTY_STATES?.render){clearItems();hideItemSurfaces();setBusy(false);state.hidden=false;window.__LE_DISCOVERY_EMPTY_STATES.render(state,"social",filtered?"filtered-empty":"empty");return;}renderState(filtered ? "filtered-empty" : "empty", filtered ? "No matching Social work" : "Nothing here yet", filtered ? "Try changing or clearing the filters." : "Create a Post when you are ready. Nothing has been inferred or duplicated.", filtered ? [control("Clear filters", () => navigate({ status:"", channel:"", topic:"", owner:"", dateFrom:"", dateTo:"" }))] : []); }
     function renderSourceState(payload) {
       const target = node("[data-social-source-state]"); if (!target) return;
       const missingPosts = payload.sourceAvailability?.posts !== true; const missingIdeas = payload.sourceAvailability?.contentBank !== true && payload.selectedView === "ideas";
@@ -168,15 +168,15 @@ export function socialHomeBrowserSource() {
       if (!append && !force && currentPayload && currentPayload.selectedView === routeState().view && !activeFilters(currentPayload)) { renderPayload(currentPayload, false); return currentPayload; }
       if (!append) { clearItems(); clearState(); setBusy(true); }
       const sequence = ++requestSequence; metrics.requests += 1; if (append) metrics.paginationRequests += 1;
-      const requestHash = location.hash;
+      const requestRouteState = JSON.stringify(routeState());
       pendingQuery = requestedQuery;
       pending = fetch(contract.endpoint + "?" + requestedQuery, { method:"GET", credentials:"same-origin", headers:{ accept:"application/json" } }).then(async (response) => {
         const text = await response.text(); metrics.lastResponseBytes = new TextEncoder().encode(text).byteLength; const payload = JSON.parse(text || "{}");
         if (response.status === 401) { sessionEnded = true; document.dispatchEvent(new CustomEvent("vnext:session-expired")); return null; }
         if (response.status === 403) { settledPageState = "unauthorized"; renderUnauthorized(); return null; }
         if (!response.ok || payload.ok !== true) throw new Error(payload.error || "Social could not load.");
-        if (sequence === requestSequence && location.hash === requestHash) { settledPageState = "loaded"; renderPayload(payload, append); } return payload;
-      }).catch(() => { if (sequence === requestSequence && location.hash === requestHash) { settledPageState = "error"; renderError(); } return null; }).finally(() => { pending = null; pendingQuery = ""; if (queuedRouteReload) { queuedRouteReload = false; activate(); } });
+        if (sequence === requestSequence && onSocialRoute() && JSON.stringify(routeState()) === requestRouteState) { settledPageState = "loaded"; renderPayload(payload, append); } return payload;
+      }).catch(() => { if (sequence === requestSequence && onSocialRoute() && JSON.stringify(routeState()) === requestRouteState) { settledPageState = "error"; renderError(); } return null; }).finally(() => { pending = null; pendingQuery = ""; if (queuedRouteReload) { queuedRouteReload = false; activate(); } });
       return pending;
     }
     function bindScaffold() {
@@ -184,6 +184,8 @@ export function socialHomeBrowserSource() {
       node("[data-social-create]")?.addEventListener("click", (event) => { const button = event.currentTarget; if (button.disabled || currentPayload?.capabilities?.createsPost !== true) return; button.setAttribute("aria-busy", "true"); try { window.__LE_GLOBAL_CREATE?.openWorkflow("social-post", { returnTarget:button }); } finally { button.setAttribute("aria-busy", "false"); } });
       node("[data-social-filters]")?.addEventListener("change", (event) => { const target = event.target.closest("[data-social-filter]"); if (target) navigate({ [target.dataset.socialFilter]:target.value }); });
       node("[data-social-clear]")?.addEventListener("click", () => navigate({ status:"", channel:"", topic:"", owner:"", dateFrom:"", dateTo:"" }));
+      root.addEventListener("vnext:guided-clear-filters", () => navigate({ status:"", channel:"", topic:"", owner:"", dateFrom:"", dateTo:"" }));
+      root.addEventListener("vnext:guided-retry", () => load({ force:true }));
       node("[data-social-load-more]")?.addEventListener("click", () => { if (nextCursor) load({ append:true }); });
       node("[data-social-page]")?.addEventListener("keydown", (event) => { const tab = event.target.closest("[data-social-view]"); if (!tab || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return; event.preventDefault(); const tabs = [...app().querySelectorAll("[data-social-view]")]; const index = tabs.indexOf(tab); const next = event.key === "Home" ? tabs[0] : event.key === "End" ? tabs.at(-1) : tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length]; next.focus(); next.click(); });
     }

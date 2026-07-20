@@ -33,10 +33,38 @@ import {
 } from "./pages/social-home.mjs";
 import { POST_COMPOSER_STYLESHEET_PATH, postComposerBrowserSource } from "./pages/post-composer.mjs";
 import { socialResultsBrowserSource } from "./pages/social-results.mjs";
+import { SOCIAL_CALENDAR_STYLESHEET_PATH } from "./pages/social-calendar.mjs";
+import { SOCIAL_CONNECTIONS_STYLESHEET_PATH } from "./pages/social-connections.mjs";
+import { socialProductionControllerBrowserSource } from "./controllers/social-production-controller.mjs";
+import {
+  PARTNERS_ACCESSIBILITY_STYLESHEET_PATH,
+  PARTNERS_HOME_STYLESHEET_PATH,
+  partnersHomeBrowserSource
+} from "./pages/partners-home.mjs";
+import { PARTNER_RECORD_STYLESHEET_PATHS, partnerRecordBrowserSource } from "./pages/partner-record.mjs";
+import { OUTREACH_HOME_STYLESHEET_PATH, outreachHomeBrowserSource } from "./pages/outreach-home.mjs";
+import { CAMPAIGN_WIZARD_STYLESHEET_PATH, campaignWizardBrowserSource } from "./pages/campaign-wizard.mjs";
+import { CAMPAIGN_DETAIL_STYLESHEET_PATH, campaignDetailBrowserSource } from "./pages/campaign-detail.mjs";
+import { campaignReviewBrowserSource } from "./pages/campaign-review-step.mjs";
+import { FILES_HOME_STYLESHEET } from "./pages/files-home.mjs";
+import { FILE_DETAILS_STYLESHEET } from "./pages/file-details.mjs";
+import { FILE_UPLOAD_STYLESHEET } from "./pages/file-upload.mjs";
+import { INVESTOR_ROOM_STYLESHEET } from "./pages/investor-room.mjs";
+import { filesIntegrationBrowserSource } from "./controllers/files-integration-controller.mjs";
+import { renderDiscoveryOnboarding, DISCOVERY_ONBOARDING_STYLESHEET } from "./pages/discovery-onboarding.mjs";
+import { renderDiscoveryChecklist, DISCOVERY_CHECKLIST_STYLESHEET } from "./pages/discovery-checklist.mjs";
+import { renderContextualHelp, DISCOVERY_HELP_STYLESHEET } from "./pages/discovery-help.mjs";
+import { discoveryOnboardingBrowserSource } from "./controllers/discovery-onboarding-controller.mjs";
+import { discoveryChecklistBrowserSource } from "./controllers/discovery-checklist-controller.mjs";
+import { discoveryEmptyStateBrowserSource } from "./controllers/discovery-empty-state-controller.mjs";
+import { discoveryHelpBrowserSource } from "./controllers/discovery-help-controller.mjs";
+import { discoveryAnalyticsBrowserSource } from "./controllers/discovery-analytics-controller.mjs";
+import { DISCOVERY_ANALYTICS_ENDPOINT } from "../discovery-product-analytics.mjs";
 import { INITIAL_VNEXT_LOADING_HTML } from "./shell-states.mjs";
 import {
   CREATE_MENU_OPTIONS,
   PRIMARY_SHELL_DESTINATIONS,
+  primaryShellDestinations,
   SECONDARY_SHELL_CONTROLS,
   TOP_BAR_CONTROLS
 } from "./app-shell-navigation.mjs";
@@ -46,7 +74,11 @@ export const RESPONSIVE_SHELL_BREAKPOINT_PX = 860;
 export const RESPONSIVE_NAVIGATION_DRAWER_ID = "vnext-navigation-drawer";
 
 const assetUrl = (path) => `/${String(path || "").replace(/^\/+/, "")}`;
-const routeHref = (route) => `#${String(route || "today").replace(/^#/, "")}`;
+const PUBLIC_ROUTE_HREFS = Object.freeze({ queue:"social" });
+const routeHref = (route) => {
+  const normalized = String(route || "today").replace(/^#/, "");
+  return `#${PUBLIC_ROUTE_HREFS[normalized] || normalized}`;
+};
 
 const routeRecoveryHtml = `<section class="vnext-route-recovery" data-vnext-route-recovery aria-label="Route recovery">
   ${renderPageHeader({
@@ -59,8 +91,8 @@ const routeRecoveryHtml = `<section class="vnext-route-recovery" data-vnext-rout
   </div>
 </section>`;
 
-function primaryNavigationHtml() {
-  return PRIMARY_SHELL_DESTINATIONS.map((item, index) => `
+function primaryNavigationHtml(options = {}) {
+  return primaryShellDestinations(options).map((item, index) => `
         <a class="vnext-nav-link${index === 0 ? " is-selected" : ""}" href="${escapeAttribute(routeHref(item.route))}" data-shell-destination="${escapeAttribute(item.label)}"${index === 0 ? ' aria-current="page"' : ""}>
           <span class="vnext-nav-indicator" aria-hidden="true"></span>
           <span>${escapeHtml(item.label)}</span>
@@ -89,8 +121,12 @@ function createMenuHtml() {
   return renderGlobalCreateMenu();
 }
 
-export function renderVNextDesktopShellChrome() {
+export function renderVNextDesktopShellChrome(options = {}) {
   const help = TOP_BAR_CONTROLS.find((item) => item.id === "help");
+  const discovery = options.discovery || {};
+  const helpControl = options.discoveryEnabled
+    ? `<button class="vnext-topbar-link" type="button" data-shell-action="open-contextual-help" aria-label="${escapeAttribute(help.label)}"><span class="vnext-topbar-icon" aria-hidden="true">?</span><span class="vnext-topbar-label">${escapeHtml(help.label)}</span></button>`
+    : `<a class="vnext-topbar-link" href="${escapeAttribute(routeHref(help.route))}" aria-label="${escapeAttribute(help.label)}"><span class="vnext-topbar-icon" aria-hidden="true">?</span><span class="vnext-topbar-label">${escapeHtml(help.label)}</span></a>`;
   return Object.freeze({
     start:`<div class="vnext-shell" data-vnext-shell="desktop">
     <button class="vnext-drawer-overlay" type="button" data-shell-action="close-navigation" aria-label="Close navigation" tabindex="-1" hidden></button>
@@ -99,7 +135,7 @@ export function renderVNextDesktopShellChrome() {
         <img class="vnext-shell-logo" src="${escapeAttribute(assetUrl(APPROVED_WHITE_LOGO_PATH))}" width="1920" height="1080" alt="LegalEase">
       </a>
       <button class="vnext-drawer-close" type="button" data-shell-action="close-navigation" aria-label="Close navigation"><span aria-hidden="true">×</span></button>
-      <nav class="vnext-primary-navigation" aria-label="Primary destinations">${primaryNavigationHtml()}
+      <nav class="vnext-primary-navigation" aria-label="Primary destinations">${primaryNavigationHtml(options)}
       </nav>
       <div class="vnext-sidebar-divider" aria-hidden="true"></div>
       <nav class="vnext-secondary-navigation" aria-label="Command Center utilities">${secondaryNavigationHtml()}
@@ -120,11 +156,12 @@ export function renderVNextDesktopShellChrome() {
             <div class="vnext-menu-panel vnext-create-menu" id="${GLOBAL_CREATE_MENU_ID}" role="menu" aria-label="Create" hidden>${createMenuHtml()}
             </div>
           </div>
-          <a class="vnext-topbar-link" href="${escapeAttribute(routeHref(help.route))}" aria-label="${escapeAttribute(help.label)}"><span class="vnext-topbar-icon" aria-hidden="true">?</span><span class="vnext-topbar-label">${escapeHtml(help.label)}</span></a>
+          ${helpControl}
           <div class="vnext-menu">
             <button class="vnext-profile-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="vnext-profile-menu"><span class="vnext-topbar-icon" aria-hidden="true">●</span><span class="vnext-topbar-label">Profile</span></button>
             <div class="vnext-menu-panel vnext-profile-menu" id="vnext-profile-menu" role="menu" aria-label="Profile" hidden>
               <a role="menuitem" href="#settings">Settings</a>
+              ${options.discoveryEnabled ? '<button role="menuitem" type="button" data-shell-action="open-discovery-checklist">Getting started</button><button role="menuitem" type="button" data-shell-action="start-product-tour-again">Start product tour again</button>' : ""}
               <button role="menuitem" type="button" data-shell-action="sign-out">Sign out</button>
             </div>
           </div>
@@ -134,9 +171,19 @@ export function renderVNextDesktopShellChrome() {
     end:`</div>
       ${renderGlobalCreateWorkspace()}
       ${renderGlobalSearchDialog()}
+      ${options.discoveryEnabled ? `<section class="discovery-checklist-panel" data-discovery-checklist-panel hidden><div class="discovery-checklist-dialog" role="dialog" aria-modal="true" aria-label="Getting started"><button class="discovery-checklist-close" type="button" data-checklist-close aria-label="Close getting started">×</button>${renderDiscoveryChecklist(discovery.checklist || {})}</div></section>${renderContextualHelp(discovery.help || {})}${renderDiscoveryOnboarding(discovery.onboarding || {})}` : ""}
     </div>
   </div>`
   });
+}
+
+function discoveryCaptureSinkBrowserSource() {
+  const endpoint = JSON.stringify(DISCOVERY_ANALYTICS_ENDPOINT);
+  return `(() => { "use strict";
+    window.__LE_CSRF_TOKEN=()=>{try{return typeof cookieValue==="function"?cookieValue("leos_csrf"):"";}catch{return"";}};
+    window.__LE_DISCOVERY_ANALYTICS_CAPTURE=(event)=>{try{const id="discovery-analytics-"+crypto.randomUUID().replaceAll("-","");void fetch(${endpoint},{method:"POST",credentials:"same-origin",keepalive:true,headers:{accept:"application/json","content-type":"application/json","x-csrf-token":window.__LE_CSRF_TOKEN(),"x-request-id":id},body:JSON.stringify(event)}).catch(()=>{});}catch{}};
+    document.addEventListener("click",event=>{const trigger=event.target.closest?.('[data-shell-action="start-product-tour-again"]');if(trigger){event.preventDefault();document.dispatchEvent(new CustomEvent("vnext:open-onboarding",{detail:{returnTarget:trigger}}));}});
+  })();`;
 }
 
 function shellClientScript() {
@@ -424,7 +471,7 @@ function shellClientScript() {
   </script>`;
 }
 
-function applyVNextRouteParser(html) {
+function applyVNextRouteParser(html, { socialEnabled = false, outreachEnabled = false, filesEnabled = false } = {}) {
   const startMarker = '      const pathRoute = String(location.pathname || "/").replace(';
   const endMarker = '      if (pageId === "safe-mode") {';
   const start = html.indexOf(startMarker);
@@ -447,9 +494,13 @@ function applyVNextRouteParser(html) {
         && vnextRouteResolution.objectType === "Post"
         && vnextRouteResolution.sourceKind === "posts"
         && vnextRouteResolution.requestedRoute === "social/post";
+      const isOutreachRoute = ${outreachEnabled ? "vnextRouteResolution.kind === \"page\" && vnextRouteResolution.canonicalRoute === \"outreach\"" : "false"};
+      const isFilesRoute = ${filesEnabled ? "vnextRouteResolution.kind === \"page\" && vnextRouteResolution.canonicalRoute === \"files\"" : "false"};
       const normalizedPage = artifactRef
         ? (isSocialPostRoute ? "social-post" : "item")
         : (isGlobalSearchRoute || isInboxRoute || isSocialRoute) ? "today"
+        : isOutreachRoute ? "campaigns"
+        : isFilesRoute ? "proof"
         : vnextRouteResolution.kind === "page" ? vnextRouteResolution.canonicalRoute : "today";
       const pageId = normalizedPage;
       currentPageId = pageId;
@@ -458,7 +509,6 @@ function applyVNextRouteParser(html) {
       const canCanonicalize = !pathRoute
         && !isGlobalSearchRoute
         && !isInboxRoute
-        && !isSocialRoute
         && !isSocialPostRoute
         && (vnextRouteResolution.kind === "page" || vnextRouteResolution.kind === "object")
         && vnextRouteResolution.safeHash;
@@ -488,34 +538,91 @@ function replaceInitialLoadingSurface(html) {
     + html.slice(end);
 }
 
-function disableSocialFullStateRefresh(html) {
+function protectSocialPostSurfaceFromLegacyRender(html, { socialEnabled = false } = {}) {
+  const marker = "    function render() {";
+  if (!html.includes(marker)) return html;
+  return html.replace(marker, `${marker}
+      const compactSocialRenderRoute = window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(location.hash || "#today");
+      const compactSocialView = new URLSearchParams(String(location.hash || "").split("?")[1] || "").get("view") || "ideas";
+      const compactSocialSurface = compactSocialRenderRoute?.kind === "page"
+        && compactSocialRenderRoute.canonicalRoute === "queue"
+        && /^#social(?:[?]|$)/.test(location.hash)
+        && (compactSocialView === "results"
+          ? document.querySelector("main#app [data-social-results-page]")
+          : document.querySelector("main#app [data-social-page]"));
+      if (compactSocialSurface) return;${socialEnabled ? `
+      const compactRenderRoute = window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(location.hash || "#today");
+      const compactPostSurface = compactRenderRoute?.kind === "object"
+        && compactRenderRoute.objectType === "Post"
+        && compactRenderRoute.sourceKind === "posts"
+        && compactRenderRoute.requestedRoute === "social/post";
+      if (compactPostSurface && document.querySelector("main#app [data-post-composer]")) return;` : ""}`);
+}
+
+function disableSocialFullStateRefresh(html, { socialEnabled = false, outreachEnabled = false, filesEnabled = false } = {}) {
   const marker = "      loadFullStateInBackground();";
   if (!html.includes(marker)) return html;
   return html.replace(marker, `      const compactSocialRoute = window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve(location.hash || "#today");
-      if (!(compactSocialRoute.kind === "page" && compactSocialRoute.canonicalRoute === "queue")) loadFullStateInBackground();`);
+      const onCompactSocial = (compactSocialRoute.kind === "page" && compactSocialRoute.canonicalRoute === "queue")
+        || (compactSocialRoute.kind === "object" && compactSocialRoute.objectType === "Post" && compactSocialRoute.sourceKind === "posts");
+      const onCompactSocialConnections = ${socialEnabled ? "compactSocialRoute.kind === \"page\" && compactSocialRoute.canonicalRoute === \"settings\" && new URLSearchParams(String(compactSocialRoute.safeHash || location.hash || \"\").split(\"?\")[1] || \"\").get(\"view\") === \"social-connections\"" : "false"};
+      const onCompactPartners = (compactSocialRoute.kind === "page" && compactSocialRoute.canonicalRoute === "partners")
+        || (compactSocialRoute.kind === "object" && compactSocialRoute.objectType === "Partner" && compactSocialRoute.sourceKind === "partners");
+      const onCompactOutreach = ${outreachEnabled ? "(compactSocialRoute.kind === \"page\" && compactSocialRoute.canonicalRoute === \"outreach\") || (compactSocialRoute.kind === \"object\" && compactSocialRoute.objectType === \"Campaign\")" : "false"};
+      const onCompactFiles = ${filesEnabled ? "(compactSocialRoute.kind === \"page\" && compactSocialRoute.canonicalRoute === \"files\") || (compactSocialRoute.kind === \"object\" && compactSocialRoute.objectType === \"File\")" : "false"};
+      if (!(onCompactSocial || onCompactSocialConnections || onCompactPartners || onCompactOutreach || onCompactFiles)) loadFullStateInBackground();`);
 }
 
-export function renderVNextDesktopShell(legacyHtml = "") {
+export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
   const source = String(legacyHtml || "");
   const bodyMarker = "<body>";
   const shellMarker = '<div class="shell">';
   const toastMarker = '<div id="toast"';
   if (!source.includes(bodyMarker) || !source.includes(shellMarker) || !source.includes(toastMarker)) return source;
 
-  const chrome = renderVNextDesktopShellChrome();
+  const chrome = renderVNextDesktopShellChrome(options);
   let html = removeLegacyPrimaryHeader(source);
-  html = applyVNextRouteParser(html);
-  html = disableSocialFullStateRefresh(html);
+  html = applyVNextRouteParser(html, options);
+  html = protectSocialPostSurfaceFromLegacyRender(html, options);
+  html = disableSocialFullStateRefresh(html, options);
   html = replaceInitialLoadingSurface(html);
   html = html.replace(
     "</head>",
-    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <script>${routeCompatibilityBrowserSource()}</script>\n</head>`
+    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_HOME_STYLESHEET_PATH))}" />\n  ${PARTNER_RECORD_STYLESHEET_PATHS.map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ")}\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_ACCESSIBILITY_STYLESHEET_PATH))}" />\n  ${options.outreachEnabled ? [OUTREACH_HOME_STYLESHEET_PATH, CAMPAIGN_WIZARD_STYLESHEET_PATH, CAMPAIGN_DETAIL_STYLESHEET_PATH].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  ${options.filesEnabled ? [FILES_HOME_STYLESHEET, "/assets/ui/files-organization.css", FILE_DETAILS_STYLESHEET, FILE_UPLOAD_STYLESHEET, INVESTOR_ROOM_STYLESHEET].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  <script>${routeCompatibilityBrowserSource(options)}</script>\n</head>`
   );
+  if (options.discoveryEnabled) {
+    const discoveryStyles = [DISCOVERY_ONBOARDING_STYLESHEET, DISCOVERY_CHECKLIST_STYLESHEET, "/assets/ui/discovery-empty-states.css", DISCOVERY_HELP_STYLESHEET]
+      .map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`)
+      .join("\n  ");
+    html = html.replace(
+      `  <script>${routeCompatibilityBrowserSource(options)}</script>`,
+      `  ${discoveryStyles}\n  <script>${routeCompatibilityBrowserSource(options)}</script>`
+    );
+  }
+  if (options.socialEnabled) {
+    const socialStyles = [SOCIAL_CALENDAR_STYLESHEET_PATH, SOCIAL_CONNECTIONS_STYLESHEET_PATH]
+      .map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`)
+      .join("\n  ");
+    html = html.replace(
+      `  <script>${routeCompatibilityBrowserSource(options)}</script>`,
+      `  ${socialStyles}\n  <script>${routeCompatibilityBrowserSource(options)}</script>`
+    );
+  }
   html = html.replace(bodyMarker, '<body class="vnext-app-shell" data-command-center-shell="vnext">');
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n</body>`);
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource()}</script>\n<script>${partnerRecordBrowserSource()}</script>\n${options.outreachEnabled ? `<script>${outreachHomeBrowserSource()}</script>\n<script>${campaignWizardBrowserSource()}</script>\n<script>${campaignReviewBrowserSource()}</script>\n<script>${campaignDetailBrowserSource()}</script>` : ""}\n${options.filesEnabled ? `<script>${filesIntegrationBrowserSource()}</script>` : ""}\n</body>`);
+  if (options.socialEnabled) {
+    html = html.replace(
+      `<script>${partnersHomeBrowserSource()}</script>`,
+      `<script>${socialProductionControllerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource()}</script>`
+    );
+  }
+  if (options.discoveryEnabled) {
+    const discovery = options.discovery || {};
+    html = html.replace("</body>", `<script>${discoveryCaptureSinkBrowserSource()}</script>\n<script>${discoveryOnboardingBrowserSource()}</script>\n<script>${discoveryChecklistBrowserSource(discovery.checklist || null)}</script>\n<script>${discoveryEmptyStateBrowserSource()}</script>\n<script>${discoveryHelpBrowserSource()}</script>\n<script>${discoveryAnalyticsBrowserSource()}</script>\n</body>`);
+  }
   return html;
 }
 

@@ -231,7 +231,7 @@ function compactSchedule(schedule = {}) {
   };
 }
 
-function compactPost(view, state, actor, now) {
+function compactPost(view) {
   const href = buildExactObjectLink({ objectType:"Post", sourceKind:"post", sourceId:view.id })?.target || "";
   if (!href || href !== view.href) return null;
   return {
@@ -246,9 +246,26 @@ function compactPost(view, state, actor, now) {
     updatedAt:view.updatedAt,
     href,
     schedule:compactSchedule(view.schedule),
-    readiness:compactReadiness(state, actor, view.id, now),
-    channels:compactChannels(state, actor, view.id),
+    readiness:null,
+    channels:{
+      available:true,
+      selectedChannels:list(view.channelVariants).map((variant) => ({
+        key:variant.channel,
+        label:variant.label,
+        customized:variant.isCustomized,
+        availability:{ key:"available", reason:null }
+      }))
+    },
     result:view.resultSummary
+  };
+}
+
+function enrichPageItem(item, state, actor, now) {
+  if (item?.kind !== "post") return item;
+  return {
+    ...item,
+    readiness:compactReadiness(state, actor, item.id, now),
+    channels:compactChannels(state, actor, item.id)
   };
 }
 
@@ -353,7 +370,11 @@ export function buildAuthorizedSocialHome(state = {}, actor = {}, now = "", quer
   const role = clean(actor?.role) || "viewer";
   const visibleState = authorizedState(state, role);
   const postViews = buildPostViews(visibleState);
-  const posts = postViews.map((view) => compactPost(view, visibleState, actor, generatedAt)).filter(Boolean);
+  // Build and filter inexpensive summaries for the full authorized collection, then run the
+  // detail-grade readiness/channel projections only for the requested page. Those projections
+  // intentionally inspect related ledgers and were previously repeated for every stored Post,
+  // making a 25-item read scale like a detail endpoint over the whole collection.
+  const posts = postViews.map(compactPost).filter(Boolean);
   const converted = convertedSourceIds(visibleState.posts);
   const sources = list(visibleState.contentBank)
     .filter((record) => !converted.has(clean(record.id || record.key || record.slug)))
@@ -377,7 +398,8 @@ export function buildAuthorizedSocialHome(state = {}, actor = {}, now = "", quer
   const matching = filtered(views[selectedView], filters);
   const offset = cursorValue(query.cursor);
   const limit = limitValue(query.limit);
-  const page = matching.slice(offset, offset + limit);
+  const page = matching.slice(offset, offset + limit)
+    .map((item) => enrichPageItem(item, visibleState, actor, generatedAt));
   const nextOffset = offset + page.length;
   const createPostDecision = actor?.authenticated === true
     ? canPerformEndpoint(role, "POST", GLOBAL_CREATE_ENDPOINTS.post)

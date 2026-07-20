@@ -15,6 +15,12 @@ export const PRIMARY_SHELL_DESTINATIONS = list([
   { id:"files", label:PRIMARY_DESTINATIONS.files, route:"proof" }
 ]);
 
+export function primaryShellDestinations({ outreachEnabled = false, filesEnabled = false } = {}) {
+  return list(PRIMARY_SHELL_DESTINATIONS.map((item) => item.id === "outreach" && outreachEnabled
+    ? { ...item, route:"outreach" }
+    : item.id === "files" && filesEnabled ? { ...item, route:"files" } : item));
+}
+
 export const SECONDARY_SHELL_CONTROLS = list([
   { id:"inbox", label:GLOBAL_UTILITIES.inbox, kind:"route", route:"inbox" },
   { id:"lee", label:GLOBAL_UTILITIES.lee, kind:"action", action:"open-lee" },

@@ -18,6 +18,32 @@ Status: operational readiness guide. This does not enable live publishing or cer
 
 Stop and get explicit human approval before live posting, external emails, destructive database actions, deleting records, disabling safety gates, legal/compliance claims, pricing changes, secret exposure, paid external services, or production RLS/security changes.
 
+## vNext release controls
+
+All product flags are server-side and default to `false`:
+
+```text
+COMMAND_CENTER_UX_VNEXT=false
+COMMAND_CENTER_UX_VNEXT_SOCIAL=false
+COMMAND_CENTER_UX_VNEXT_OUTREACH=false
+COMMAND_CENTER_UX_VNEXT_FILES=false
+COMMAND_CENTER_UX_VNEXT_DISCOVERY=false
+```
+
+After the launch gate, authoritative GitHub CI, and human approval, enable the global shell for an internal cohort first, then Social, Outreach, Files, and Discovery one at a time. Observe health, compact-read latency, browser errors, authorization failures, and exact-link behavior between steps. These flags never authorize a send or publish. All `ENABLE_LIVE_*`, `OUTREACH_LIVE_SEND`, and `REACTIVATION_LIVE_SEND` controls remain false unless a separate reviewed production change authorizes them.
+
+Before promotion, run `npm run verify:vnext-production` with synthetic configuration. Hosted production must still fail closed without durable storage, authentication, encryption, and private-storage health. CI and local verification require no production credential.
+
+### vNext rollback
+
+1. Set the affected product flag to `false`; if shell health is affected, set `COMMAND_CENTER_UX_VNEXT=false` first.
+2. Confirm legacy aliases render and exact object links recover without a white screen.
+3. Do not roll back persisted records or migrations merely to change presentation. If a database migration is implicated, use its documented forward-recovery or rollback procedure.
+4. Re-run health, authentication, compact-read, and private-asset checks before reopening traffic.
+5. Preserve audit events and record the commit, flag change, time, reason, and operator.
+
+See `docs/ux-vnext/troubleshooting.md` for symptom-specific recovery.
+
 ## Deploy
 
 1. Confirm local verification:
@@ -203,4 +229,3 @@ Order:
 4. Export audit logs and recent activity.
 5. Create an incident register entry.
 6. Do not remove audit logs.
-

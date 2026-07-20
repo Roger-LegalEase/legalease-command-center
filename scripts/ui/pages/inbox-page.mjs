@@ -201,6 +201,12 @@ export function inboxPageBrowserSource() {
     }
     function renderEmpty(payload) {
       const active = Object.values(payload.activeFilters || {}).some(Boolean);
+      const state = node("[data-inbox-state]");
+      if (state && window.__LE_DISCOVERY_EMPTY_STATES?.render) {
+        clearItems(); setBusy(false); state.hidden = false;
+        window.__LE_DISCOVERY_EMPTY_STATES.render(state, "inbox", active ? "filtered-empty" : "empty");
+        return;
+      }
       if (active) {
         renderState("empty", "No matching items", "Try changing or clearing the filters.", [button("Clear filters", "inboxClearState", clearFilters)]);
         return;
@@ -443,6 +449,8 @@ export function inboxPageBrowserSource() {
           load({ cursor:nextCursor, append:true });
         }
       });
+      target.addEventListener("vnext:guided-clear-filters", clearFilters);
+      target.addEventListener("vnext:guided-retry", () => load({ force:true }));
       target.addEventListener("keydown", (event) => {
         const tab = event.target.closest?.("[role='tab']");
         if (!tab || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;

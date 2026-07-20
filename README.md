@@ -2,6 +2,19 @@
 
 Local operating system for the LegalEase six-month growth sprint and social production workflow.
 
+## vNext launch train
+
+The vNext shell has five primary destinations: **Today, Social, Outreach, Partners, and Files**. Search, Create, Inbox, Investor Room, and Discovery remain directly reachable workflows, not additional primary navigation. Server-side flags are intentionally off by default; enabling a shell or product flag does not enable any sending or publishing authority.
+
+For a safe persisted demo:
+
+```bash
+npm run demo:vnext:load
+SKIP_ENV_LOCAL_FILE=1 STORAGE_BACKEND=json COMMAND_CENTER_ALLOW_JSON=true COMMAND_CENTER_DATA_PATH=/tmp/legalease-command-center-vnext-demo.json COMMAND_CENTER_UX_VNEXT=true COMMAND_CENTER_UX_VNEXT_SOCIAL=true COMMAND_CENTER_UX_VNEXT_OUTREACH=true COMMAND_CENTER_UX_VNEXT_FILES=true npm run start
+```
+
+The seed is written to `/tmp`, external actions remain disabled, and workflow edits go through the real scoped APIs. Follow [the vNext demo walkthrough](docs/ux-vnext/demo-walkthrough.md), then reload each edited object to demonstrate persistence. The approved visual reference is `docs/ux-vnext/reference/command-center-vnext-approved-direction.png`; the shell must render the exact official white logo at `assets/brand/logos/legalease-logo-white-2025.png`.
+
 ## Keep The App Visible
 
 Use the double-click launcher:
@@ -24,13 +37,12 @@ Runtime files live in `.local/` and are ignored by git:
 - `.local/preview-server.pid`
 - `.local/preview-server.log`
 
-## Clean Investor Demo Dataset
+## Legacy investor demo dataset
 
-Use this when the demo state gets noisy:
+The older command remains guarded for compatibility. Prefer `npm run demo:vnext:load`, which targets an isolated `/tmp` state file. To intentionally replace a selected local JSON dataset, set `ALLOW_DEMO_DATA=1` and `COMMAND_CENTER_DATA_PATH` explicitly before running:
 
 ```bash
-npm run demo:load
-npm run local:restart
+ALLOW_DEMO_DATA=1 STORAGE_BACKEND=json COMMAND_CENTER_DATA_PATH=/absolute/local/demo.json npm run demo:load
 ```
 
 The demo dataset backs up the current JSON state under `data/backups/demo-dataset/`, then loads a compact investor story:

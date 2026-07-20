@@ -180,8 +180,26 @@ export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", 
   if (verb === "GET" && path === "/api/ui/inbox") return ["read_internal"];
   if (verb === "GET" && path === "/api/ui/social") return ["read_internal"];
   if (verb === "GET" && path === "/api/ui/social/results") return ["read_internal"];
+  if (verb === "GET" && ["/api/ui/discovery/onboarding", "/api/ui/discovery/checklist"].includes(path)) return ["read_internal"];
+  if (verb === "POST" && ["/api/ui/discovery/onboarding", "/api/ui/discovery/analytics"].includes(path)) return ["mutate_state"];
+  if (verb === "GET" && (path === "/api/ui/outreach" || /^\/api\/ui\/outreach\/campaign\/[^/]+(?:\/draft)?$/.test(path))) return ["read_internal"];
+  if (verb === "POST" && /^\/api\/ui\/outreach\/campaign\/[^/]+\/(?:draft|test-send|assist|review-action|status-action|reply-action)$/.test(path)) return ["manage_growth"];
+  if (verb === "GET" && (path === "/api/ui/files" || path === "/api/ui/files/investor-room" || /^\/api\/ui\/files\/[^/]+\/[^/]+(?:\/content)?$/.test(path))) return ["read_internal"];
+  if (verb === "POST" && (path === "/api/ui/files/upload" || path === "/api/ui/files/reports/generate" || /^\/api\/ui\/files\/(?:reports\/[^/]+\/collection|[^/]+\/[^/]+\/(?:replace|organize))$/.test(path))) return ["manage_growth"];
+  if (verb === "POST" && /^\/api\/ui\/files\/[^/]+\/[^/]+\/access\/(?:grant|revoke)$/.test(path)) return ["manage_roles"];
+  if (verb === "GET" && (path === "/api/ui/partners" || /^\/api\/ui\/partners\/[^/]+(?:\/(?:outreach|files))?$/.test(path))) return ["read_internal"];
+  if (verb === "POST" && path === "/api/ui/partners/outreach/selection") return ["read_internal"];
+  if (verb === "POST" && /^\/api\/ui\/partners\/[^/]+\/activity$/.test(path)) return ["add_notes"];
+  if (verb === "POST" && /^\/api\/ui\/partners\/[^/]+\/next-action(?:\/complete)?$/.test(path)) return ["manage_tasks"];
+  if (verb === "POST" && (path === "/api/ui/partners/outreach/campaign"
+    || /^\/api\/ui\/partners\/[^/]+\/(?:outreach\/follow-up|stage-suggestions\/[^/]+\/apply|programs(?:\/[^/]+\/artifacts)?|files)$/.test(path))) return ["manage_growth"];
   if (verb === "GET" && /^\/api\/ui\/social\/post\/[^/]+\/composer$/.test(path)) return ["read_internal"];
+  if (verb === "GET" && ["/api/ui/social/calendar", "/api/ui/social/connections"].includes(path)) return ["read_internal"];
   if (verb === "POST" && /^\/api\/ui\/social\/post\/[^/]+\/save$/.test(path)) return ["manage_content_drafts"];
+  if (verb === "POST" && /^\/api\/ui\/social\/post\/[^/]+\/(?:creative|render|variants|schedule)$/.test(path)) return ["manage_content_drafts"];
+  if (verb === "POST" && /^\/api\/ui\/social\/post\/[^/]+\/request-changes$/.test(path)) return ["manage_content_drafts"];
+  if (verb === "POST" && /^\/api\/ui\/social\/post\/[^/]+\/(?:approve|regenerate)$/.test(path)) return ["manage_approval_queue"];
+  if (verb === "POST" && /^\/api\/ui\/social\/post\/[^/]+\/(?:publish|manual-package)$/.test(path)) return ["social_publish"];
   if (verb === "GET" && path === "/api/ui/quick-capture/capabilities") return ["read_internal"];
   if (verb === "POST" && path === "/api/ui/quick-capture") return ["read_internal"];
   if (verb === "POST" && path === "/api/ui/inbox/action") return ["read_internal"];

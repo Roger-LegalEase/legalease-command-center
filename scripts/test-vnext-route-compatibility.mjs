@@ -38,39 +38,57 @@ assert.equal(new Set(aliases.map(([alias]) => alias)).size, 53);
 for (const entry of routeRegistry) {
   const result = resolveRouteCompatibility(entry.canonicalHash);
   assert.equal(result.kind, "page", `${entry.canonicalHash} must resolve deterministically.`);
-  const expectedRoute = ROUTE_COMPATIBILITY_CONTRACT.aliasTargets[entry.canonicalRoute] || entry.canonicalRoute;
+  const expectedRoute = entry.canonicalRoute === "growth"
+    ? "queue"
+    : ROUTE_COMPATIBILITY_CONTRACT.aliasTargets[entry.canonicalRoute] || entry.canonicalRoute;
+  const expectedHashRoute = ROUTE_COMPATIBILITY_CONTRACT.canonicalHashes[expectedRoute] || expectedRoute;
   assert.equal(result.canonicalRoute, expectedRoute);
   assert.equal(result.aliasUsed, expectedRoute === entry.canonicalRoute ? null : entry.canonicalRoute);
-  assert.equal(result.safeHash, `#${expectedRoute}`);
+  assert.equal(result.safeHash, `#${expectedHashRoute}`);
   assert.equal(resolveShellDestination(entry.canonicalHash), result.destination);
 }
 
 for (const [alias, target] of aliases) {
   assert.ok(canonicalRoutes.has(target), `${alias} points to an existing canonical route.`);
   const result = resolveRouteCompatibility(`#${alias}`);
+  const expectedTarget = ROUTE_COMPATIBILITY_CONTRACT.aliasTargets[alias] || target;
+  const expectedHashTarget = ROUTE_COMPATIBILITY_CONTRACT.canonicalHashes[expectedTarget] || expectedTarget;
   assert.equal(result.kind, "page");
-  assert.equal(result.canonicalRoute, target);
-  assert.equal(result.safeHash, `#${target}`);
-  assert.equal(canonicalRouteForShell(alias), target);
-  assert.equal(result.destination, resolveRouteCompatibility(`#${target}`).destination);
+  assert.equal(result.canonicalRoute, expectedTarget);
+  assert.equal(result.safeHash, `#${expectedHashTarget}`);
+  assert.equal(canonicalRouteForShell(alias), expectedTarget);
+  assert.equal(result.destination, resolveRouteCompatibility(`#${expectedTarget}`).destination);
   assert.equal(resolveShellDestination(alias), result.destination);
   if (alias === target) assert.equal(result.aliasUsed, null, "The intentional self-alias is a stable one-hop canonical route, not a redirect loop.");
   else assert.equal(result.aliasUsed, alias);
   const chainedTarget = ROUTE_COMPATIBILITY_CONTRACT.aliasTargets[target];
-  assert.ok(!chainedTarget || chainedTarget === target, `${alias} must not enter an alias chain or loop.`);
+  assert.ok(!chainedTarget || chainedTarget === expectedTarget, `${alias} must resolve directly to its final target without a loop.`);
 }
 
 assert.deepEqual(resolveRouteCompatibility("#social?view=calendar"), {
   kind:"page",
   requestedHash:"#social?view=calendar",
   requestedRoute:"social",
-  canonicalRoute:"growth",
+  canonicalRoute:"queue",
   aliasUsed:"social",
   destination:"Social",
   objectType:null,
   sourceKind:null,
   sourceId:null,
-  safeHash:"#growth?view=calendar",
+  safeHash:"#social?view=calendar",
+  recoveryReason:null
+});
+assert.deepEqual(resolveRouteCompatibility("#growth"), {
+  kind:"page",
+  requestedHash:"#growth",
+  requestedRoute:"growth",
+  canonicalRoute:"queue",
+  aliasUsed:"growth",
+  destination:"Social",
+  objectType:null,
+  sourceKind:null,
+  sourceId:null,
+  safeHash:"#social",
   recoveryReason:null
 });
 assert.equal(resolveRouteCompatibility("/sources/import-social-calendar").canonicalRoute, "sources");
@@ -188,11 +206,20 @@ assert.match(serverSource, /This record is not in the loaded data/);
 const browserContext = { window:{} };
 vm.runInNewContext(routeCompatibilityBrowserSource(), browserContext, { timeout:1000 });
 const browserAlias = browserContext.window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve("#social");
-assert.equal(browserAlias.canonicalRoute, "growth");
+assert.equal(browserAlias.canonicalRoute, "queue");
 assert.equal(browserAlias.destination, "Social");
 const browserObject = browserContext.window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve("#files/data-room-item/file-1");
 assert.equal(browserObject.sourceKind, "dataRoomItems");
 assert.equal(browserObject.sourceId, "file-1");
+const socialBrowserContext = { window:{}, URLSearchParams };
+vm.runInNewContext(routeCompatibilityBrowserSource({ socialEnabled:true }), socialBrowserContext, { timeout:1000 });
+const socialCalendar = socialBrowserContext.window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve("#social-calendar");
+assert.equal(socialCalendar.canonicalRoute, "queue");
+assert.equal(socialCalendar.safeHash, "#social?view=calendar");
+const socialConnections = socialBrowserContext.window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve("#settings/social/linkedin");
+assert.equal(socialConnections.canonicalRoute, "settings");
+assert.equal(socialConnections.safeHash, "#settings?view=social-connections&channel=linkedin");
+assert.equal(socialBrowserContext.window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve("#settings/social/unknown").kind, "unsafe");
 
 const legacyFixture = `<!doctype html><html><head></head><body>
   <div class="shell"><header class="app-topbar"></header><main id="app"><h1>Legacy</h1></main></div>

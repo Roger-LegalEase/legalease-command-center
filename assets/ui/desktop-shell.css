@@ -201,7 +201,7 @@ body.vnext-app-shell {
   border: var(--le-border-subtle);
   border-radius: var(--le-radius-sm);
   background: var(--le-surface);
-  color: var(--le-text-muted);
+  color: var(--le-navy-800);
   font-family: inherit;
   font-size: var(--le-type-xs);
 }
