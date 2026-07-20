@@ -48,11 +48,12 @@ for (const entry of routeRegistry) {
 for (const [alias, target] of aliases) {
   assert.ok(canonicalRoutes.has(target), `${alias} points to an existing canonical route.`);
   const result = resolveRouteCompatibility(`#${alias}`);
+  const expectedTarget = alias === "social" ? "queue" : target;
   assert.equal(result.kind, "page");
-  assert.equal(result.canonicalRoute, target);
-  assert.equal(result.safeHash, `#${target}`);
-  assert.equal(canonicalRouteForShell(alias), target);
-  assert.equal(result.destination, resolveRouteCompatibility(`#${target}`).destination);
+  assert.equal(result.canonicalRoute, expectedTarget);
+  assert.equal(result.safeHash, `#${expectedTarget}`);
+  assert.equal(canonicalRouteForShell(alias), expectedTarget);
+  assert.equal(result.destination, resolveRouteCompatibility(`#${expectedTarget}`).destination);
   assert.equal(resolveShellDestination(alias), result.destination);
   if (alias === target) assert.equal(result.aliasUsed, null, "The intentional self-alias is a stable one-hop canonical route, not a redirect loop.");
   else assert.equal(result.aliasUsed, alias);
@@ -64,13 +65,13 @@ assert.deepEqual(resolveRouteCompatibility("#social?view=calendar"), {
   kind:"page",
   requestedHash:"#social?view=calendar",
   requestedRoute:"social",
-  canonicalRoute:"growth",
+  canonicalRoute:"queue",
   aliasUsed:"social",
   destination:"Social",
   objectType:null,
   sourceKind:null,
   sourceId:null,
-  safeHash:"#growth?view=calendar",
+  safeHash:"#queue?view=calendar",
   recoveryReason:null
 });
 assert.equal(resolveRouteCompatibility("/sources/import-social-calendar").canonicalRoute, "sources");
@@ -188,7 +189,7 @@ assert.match(serverSource, /This record is not in the loaded data/);
 const browserContext = { window:{} };
 vm.runInNewContext(routeCompatibilityBrowserSource(), browserContext, { timeout:1000 });
 const browserAlias = browserContext.window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve("#social");
-assert.equal(browserAlias.canonicalRoute, "growth");
+assert.equal(browserAlias.canonicalRoute, "queue");
 assert.equal(browserAlias.destination, "Social");
 const browserObject = browserContext.window.__LE_VNEXT_ROUTE_COMPATIBILITY.resolve("#files/data-room-item/file-1");
 assert.equal(browserObject.sourceKind, "dataRoomItems");

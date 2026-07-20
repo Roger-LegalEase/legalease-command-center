@@ -792,8 +792,8 @@ composerRestrictedState.posts.push(
   { ...structuredClone(composerTemplate), id:"composer-duplicate", title:"Duplicate composer Post A", _version:4 },
   { ...structuredClone(composerTemplate), id:"composer-duplicate", title:"Duplicate composer Post B", _version:9 }
 );
-await rm(path.join(projectRoot, "playwright-report"), { recursive:true, force:true });
-await rm(artifactDir, { recursive:true, force:true });
+await rm(path.join(projectRoot, "playwright-report"), { recursive:true, force:true, maxRetries:5, retryDelay:100 });
+await rm(artifactDir, { recursive:true, force:true, maxRetries:5, retryDelay:100 });
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "legalease-browser-tests-"));
 const legacyDataPath = path.join(tempRoot, "legacy-state.json");
 const vnextDataPath = path.join(tempRoot, "vnext-state.json");

@@ -98,6 +98,8 @@
     "test:vnext-recovery": "SKIP_ENV_LOCAL_FILE=1 node scripts/test-vnext-recovery-contract.mjs",
     "test:vnext-legacy-deprecation": "SKIP_ENV_LOCAL_FILE=1 node scripts/test-vnext-legacy-deprecation.mjs",
     "test:vnext-demo": "SKIP_ENV_LOCAL_FILE=1 node scripts/test-vnext-demo-contract.mjs",
+    "test:vnext-launch-gate": "SKIP_ENV_LOCAL_FILE=1 node scripts/test-vnext-launch-gate-contract.mjs",
+    "launch:gate:vnext": "SKIP_ENV_LOCAL_FILE=1 node scripts/run-vnext-launch-gate.mjs",
     "test:browser": "node scripts/run-browser-tests.mjs",
     "test:browser:install": "playwright install --with-deps chromium",
     "test:extended": "node scripts/run-extended-tests.mjs",

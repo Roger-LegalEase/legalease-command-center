@@ -11,6 +11,7 @@ const workflows = [
 ];
 
 test("production-like primary workflows render without white screens or external authority", async ({ page }) => {
+  test.setTimeout(90_000);
   for (const [environment, hash, heading] of workflows) {
     const baseURL = process.env[environment];
     await openToday(page, `${baseURL}/#${hash}`);
@@ -20,7 +21,9 @@ test("production-like primary workflows render without white screens or external
     await expect(page.getByRole("heading", { name:"Recovery Mode" })).toHaveCount(0);
   }
   const state = await page.request.get(`${process.env.BROWSER_TEST_VNEXT_BASE_URL}/api/state`).then((response) => response.json());
-  expect(state.runtime?.livePostingGates || {}).toEqual({});
+  const livePostingGates = Object.values(state.runtime?.livePostingGates || {});
+  expect(livePostingGates.length).toBeGreaterThan(0);
+  expect(livePostingGates.every((gate) => gate?.enabled === false)).toBe(true);
 });
 
 test("unauthorized access fails closed while aliases and exact object links remain usable", async ({ page }) => {

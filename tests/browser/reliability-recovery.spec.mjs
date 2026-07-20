@@ -1,4 +1,4 @@
-import { expect, openToday, test } from "./support.mjs";
+import { allowExpectedConsoleError, allowExpectedRequestFailure, expect, openToday, test } from "./support.mjs";
 
 const scenarios = [
   "read_timeout", "write_timeout", "network_loss_during_save", "third_party_publishing_failure",
@@ -38,12 +38,15 @@ test("network loss during a Post save preserves edits and never reports success"
   const baseURL = process.env.BROWSER_TEST_COMPOSER_BASE_URL;
   await page.goto(`${baseURL}/#social/post/idea-01`, { waitUntil:"domcontentloaded" });
   await expect(page.locator("[data-composer-form]")).toBeVisible();
-  const body = page.locator("[data-field='body']");
+  const body = page.locator("[data-composer-field='body']");
   await body.fill("Browser-local recovery copy must survive the failed save.");
+  allowExpectedRequestFailure(page, "/api/ui/social/post/idea-01/save", /ERR_INTERNET_DISCONNECTED/i);
+  allowExpectedConsoleError(page, /Failed to load resource.*ERR_INTERNET_DISCONNECTED/i);
   await page.route("**/api/ui/social/post/idea-01/save", (route) => route.abort("internetdisconnected"));
   await page.locator("[data-composer-form]").getByRole("button", { name:/Save/ }).click();
-  await expect(page.locator("[data-save-message]")).toContainText("Connection lost before the save result was confirmed");
-  await expect(page.locator("[data-save-message]")).toContainText("Nothing was sent, published, or uploaded");
+  const saveMessage = page.locator("[data-composer-message]");
+  await expect(saveMessage).toContainText("Connection lost before the save result was confirmed");
+  await expect(saveMessage).toContainText("Nothing was sent, published, or uploaded");
   await expect(body).toHaveValue("Browser-local recovery copy must survive the failed save.");
-  await expect(page.locator("[data-save-message]")).not.toContainText(/^Saved$/);
+  await expect(saveMessage).not.toContainText(/^Saved$/);
 });

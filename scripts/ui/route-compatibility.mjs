@@ -114,9 +114,10 @@ const ROUTE_DESTINATIONS = Object.freeze({
   search:"Search",
   inbox:"Inbox"
 });
-const ALIAS_TARGETS = Object.freeze(Object.fromEntries(
-  routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [alias, entry.canonicalRoute]))
-));
+const ALIAS_TARGETS = Object.freeze({
+  ...Object.fromEntries(routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [alias, entry.canonicalRoute]))),
+  social:"queue"
+});
 
 const CORE_COLLECTION_OBJECT_TYPES = Object.freeze({
   posts:"Post",
