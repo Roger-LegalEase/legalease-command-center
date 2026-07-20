@@ -1,8 +1,10 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { applyVNextDemoContract } from "./vnext-demo-contract.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, "..");
 
 // 2026-07-13 ground-truth reset: this script writes FICTIONAL demo partners, pilots,
 // campaigns, and milestones. Prod state was purged of that fiction; re-running this by
@@ -17,13 +19,18 @@ if ((process.env.STORAGE_BACKEND || "").toLowerCase() === "supabase") {
   process.exit(1);
 }
 
-const rootDir = path.resolve(__dirname, "..");
-const dataPath = path.join(rootDir, "data", "social-command-center.json");
-const backupDir = path.join(rootDir, "data", "backups", "demo-dataset");
+const sourceDataPath = path.join(rootDir, "data", "social-command-center.json");
+const configuredDataPath = String(process.env.COMMAND_CENTER_DATA_PATH || "").trim();
+const dataPath = configuredDataPath ? path.resolve(configuredDataPath) : sourceDataPath;
+const backupDir = path.join(path.dirname(dataPath), "backups", "demo-dataset");
 const now = "2026-05-22T12:00:00.000Z";
 const today = "2026-05-22";
 
 function readState() {
+  if (!existsSync(dataPath)) {
+    mkdirSync(path.dirname(dataPath), { recursive: true });
+    copyFileSync(sourceDataPath, dataPath);
+  }
   return JSON.parse(readFileSync(dataPath, "utf8"));
 }
 
@@ -419,17 +426,20 @@ state.settings = {
   ]
 };
 
-writeState(state);
+const persistedState = applyVNextDemoContract(state, { generatedAt: now });
+writeState(persistedState);
 
 console.log(JSON.stringify({
   ok: true,
   backupPath: path.relative(rootDir, backupPath),
-  posts: state.posts.length,
-  partners: state.partners.length,
-  campaigns: state.campaigns.length,
-  milestones: state.milestones.length,
-  pilots: state.pilots.length,
-  dataRoomItems: state.dataRoomItems.length,
-  funnelSnapshots: state.funnelSnapshots.length,
+  posts: persistedState.posts.length,
+  partners: persistedState.partners.length,
+  campaigns: persistedState.campaigns.length,
+  milestones: persistedState.milestones.length,
+  pilots: persistedState.pilots.length,
+  dataRoomItems: persistedState.dataRoomItems.length,
+  funnelSnapshots: persistedState.funnelSnapshots.length,
+  vnextDestinations: persistedState.settings.vnextDemo.primaryDestinations,
+  externalActionsEnabled: persistedState.settings.vnextDemo.externalActionsEnabled,
   finalPng: finalPng.size ? finalPng.relativePath : "not available"
 }, null, 2));
