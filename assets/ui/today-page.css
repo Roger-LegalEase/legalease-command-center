@@ -155,22 +155,25 @@
   justify-content: center;
   border-radius: 10px;
   font-weight: 750;
+  font-family: inherit;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .vnext-today-primary-action {
   min-width: 150px;
   margin-top: 25px;
   padding: 0 24px;
-  background: #F04800;
-  color: #fff;
+  border: 1px solid #3a9f98;
+  background: var(--le-teal-500);
+  color: var(--le-navy-950);
   font-size: 1.25rem;
-  box-shadow: 0 8px 18px rgba(240, 72, 0, 0.22);
+  box-shadow: 0 8px 18px rgb(82 190 183 / 22%);
 }
 
 .vnext-today-primary-action:hover {
-  background: #D84200;
-  color: #fff;
+  background: var(--le-teal-600);
+  color: var(--le-navy-950);
 }
 
 .vnext-today-middle {
@@ -279,6 +282,19 @@
   color: var(--le-navy-900);
   font-weight: 700;
   text-decoration: none;
+}
+
+.vnext-today-compact-task {
+  display: block;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--le-navy-900);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
 }
 
 .vnext-today-compact-list span {

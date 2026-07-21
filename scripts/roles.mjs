@@ -178,6 +178,8 @@ export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", 
   if (verb === "GET" && path === "/api/ui/search") return ["read_internal"];
   if (verb === "GET" && path === "/api/ui/today") return ["read_internal"];
   if (verb === "GET" && path === "/api/ui/inbox") return ["read_internal"];
+  if (verb === "GET" && /^\/api\/ui\/tasks\/[^/]+$/.test(path)) return ["read_internal"];
+  if (verb === "POST" && /^\/api\/ui\/tasks\/[^/]+\/action$/.test(path)) return ["manage_tasks"];
   if (verb === "GET" && path === "/api/ui/social") return ["read_internal"];
   if (verb === "GET" && path === "/api/ui/social/results") return ["read_internal"];
   if (verb === "GET" && ["/api/ui/discovery/onboarding", "/api/ui/discovery/checklist"].includes(path)) return ["read_internal"];

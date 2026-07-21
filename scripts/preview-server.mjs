@@ -166,6 +166,13 @@ import {
   executeAuthorizedInboxAction,
   inboxActionSafeError
 } from "./inbox-action-service.mjs";
+import {
+  TASK_WORKBENCH_BODY_LIMIT,
+  TASK_WORKBENCH_ROUTE,
+  applyTaskWorkbenchAction,
+  buildTaskWorkbenchView,
+  taskWorkbenchSafeError
+} from "./task-workbench-service.mjs";
 import { buildRouteAccessView, ROUTE_ACCESS_ENDPOINT } from "./shell-resilience-service.mjs";
 import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegritySnapshot } from "./state-integrity.mjs";
 import { buildEndpointInventory, guardForbiddenEndpoint, safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
@@ -35602,6 +35609,16 @@ async function handleRequest(request, response) {
       sendJson(response, { error:"Today is unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
       return;
     }
+    else if (TASK_WORKBENCH_ROUTE.test(url.pathname)) {
+      sendJson(response, {
+        ok:false,
+        outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
+        message:accessDecision.status === 401
+          ? "Your session ended. Sign in and try again."
+          : "This task is unavailable for this account."
+      }, accessDecision.status || 403);
+      return;
+    }
     else if (url.pathname === "/api/ui/social") {
       sendJson(response, { error:"Social is unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
       return;
@@ -35924,6 +35941,46 @@ async function handleRequest(request, response) {
           ? "The Inbox view could not be read. Check the selected filters."
           : "Inbox could not load. No records were changed. Try again."
       }, Number(error?.status || 500));
+    }
+    return;
+  }
+
+  const taskWorkbenchRoute = url.pathname.match(TASK_WORKBENCH_ROUTE);
+  if (taskWorkbenchRoute && request.method === "GET" && !taskWorkbenchRoute[2]) {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { ok:false, outcome:"not_available", message:"Task details are unavailable." }, 404);
+      return;
+    }
+    try {
+      const currentState = await store.readState();
+      const actor = publicActor(accessDecision.actor);
+      sendJson(response, buildTaskWorkbenchView(currentState, actor, decodeURIComponent(taskWorkbenchRoute[1])));
+    } catch (error) {
+      const safe = taskWorkbenchSafeError(error);
+      sendJson(response, safe.body, safe.status);
+    }
+    return;
+  }
+
+  if (taskWorkbenchRoute && request.method === "POST" && taskWorkbenchRoute[2] === "action") {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { ok:false, outcome:"not_available", message:"Task changes are unavailable. No changes were made." }, 404);
+      return;
+    }
+    try {
+      const input = await readBoundedJson(request, { limit:TASK_WORKBENCH_BODY_LIMIT });
+      const actor = publicActor(accessDecision.actor);
+      const taskId = decodeURIComponent(taskWorkbenchRoute[1]);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const action = applyTaskWorkbenchAction(currentState, actor, taskId, input, { now:new Date().toISOString() });
+        if (Object.keys(action.collections).length) await store.writeCollections(action.collections);
+        return action;
+      });
+      sendJson(response, result.body);
+    } catch (error) {
+      const safe = taskWorkbenchSafeError(error);
+      sendJson(response, safe.body, safe.status);
     }
     return;
   }

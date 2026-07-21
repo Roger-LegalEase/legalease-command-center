@@ -245,6 +245,7 @@ export function inboxPageBrowserSource() {
       row.dataset.inboxItem = "true";
       row.dataset.inboxItemId = item.id;
       row.dataset.inboxItemVersion = item.expectedUpdatedAt;
+      if (item.taskId) row.dataset.taskId = item.taskId;
       const body = document.createElement("div");
       body.className = "vnext-inbox-item-body";
       const badges = document.createElement("div");
@@ -277,9 +278,13 @@ export function inboxPageBrowserSource() {
       }
       const actions = document.createElement("div");
       actions.className = "vnext-inbox-item-actions";
-      const open = document.createElement("a");
+      const open = document.createElement(item.taskId ? "button" : "a");
       open.className = "vnext-inbox-open" + (index === 0 && !(item.actions || []).length ? " is-primary" : "");
-      open.href = item.href;
+      if (item.taskId) {
+        open.type = "button";
+        open.dataset.taskOpen = "true";
+        open.dataset.taskId = item.taskId;
+      } else open.href = item.href;
       open.textContent = "Open";
       open.setAttribute("aria-label", "Open " + item.title + " in " + item.type.label);
       const actionControls = (item.actions || []).map((action) => {

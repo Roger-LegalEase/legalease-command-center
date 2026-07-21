@@ -37,6 +37,7 @@
     "test:vnext-inbox-actions": "node scripts/test-vnext-inbox-actions.mjs",
     "test:vnext-today-view-model": "node scripts/test-vnext-today-view-model.mjs",
     "test:vnext-today-page": "node scripts/test-vnext-today-page.mjs",
+    "test:vnext-task-workbench": "node scripts/test-vnext-task-workbench.mjs",
     "test:vnext-post-view-model": "node scripts/test-vnext-post-view-model.mjs",
     "test:vnext-campaign-view-model": "node scripts/test-vnext-campaign-view-model.mjs",
     "test:vnext-quick-capture": "node scripts/test-vnext-quick-capture.mjs",
