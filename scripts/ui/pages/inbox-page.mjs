@@ -1,5 +1,6 @@
 import { escapeAttribute, escapeHtml } from "../html.mjs";
 import { renderInboxActionLayer } from "../inbox-action-ui.mjs";
+import { renderLeeInboxPanelShell } from "../lee-inbox-panel.mjs";
 import {
   INBOX_PAGE_DUE_CONTRACT,
   INBOX_PAGE_ENDPOINT,
@@ -29,6 +30,7 @@ export function renderInboxPageLoading() {
       </div>
       <a class="vnext-inbox-orientation" href="#inbox?group=needs-me" data-inbox-needs-me-link>View Needs me</a>
     </header>
+    ${renderLeeInboxPanelShell()}
     <nav class="vnext-inbox-tabs" role="tablist" aria-label="Inbox groups">${groups}</nav>
     <form class="vnext-inbox-filters" data-inbox-filters aria-label="Inbox filters">
       <label>Type<select name="type" data-inbox-filter="type"><option value="">All types</option></select></label>

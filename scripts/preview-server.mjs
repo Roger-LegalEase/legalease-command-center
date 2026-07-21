@@ -136,6 +136,11 @@ import {
   handleCommunicationComposerApiRequest,
   isCommunicationComposerApiPath
 } from "./communication-composer-api.mjs";
+import {
+  LEE_INBOX_BODY_LIMIT,
+  handleLeeInboxApiRequest,
+  isLeeInboxApiPath
+} from "./lee-inbox-api.mjs";
 import { OUTREACH_API_BODY_LIMIT, handleOutreachApiRequest, isOutreachApiPath } from "./outreach-api-integration.mjs";
 import { FILES_JSON_BODY_LIMIT, FILES_MULTIPART_BODY_LIMIT, handleFilesApiRequest, isFilesApiPath, parseFilesMultipart } from "./files-api-integration.mjs";
 import { createLocalFilesStorage, createSupabaseFilesStorage } from "./files-storage-adapter.mjs";
@@ -35668,13 +35673,13 @@ async function handleRequest(request, response) {
       }, accessDecision.status || 403);
       return;
     }
-    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname)) {
+    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname)) {
       sendJson(response, {
         ok:false,
         outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
         message:accessDecision.status === 401
           ? "Your session ended. Sign in again to continue."
-          : "Relationship follow-up details are unavailable for this account."
+          : "Founder follow-up details are unavailable for this account."
       }, accessDecision.status || 403);
       return;
     }
@@ -35872,6 +35877,24 @@ async function handleRequest(request, response) {
     });
     const result = mutation ? await serializeStateMutation(execute) : await execute();
     sendJson(response, result.body || { ok:false, message:"Follow-up drafting is unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isLeeInboxApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:LEE_INBOX_BODY_LIMIT }) : {};
+    const execute = () => handleLeeInboxApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
+    sendJson(response, result.body || { ok:false, message:"Le-E follow-ups are unavailable." }, result.status || 404);
     return;
   }
 
@@ -37753,22 +37776,18 @@ async function handleRequest(request, response) {
     return;
   }
 
-  // ---- I1 inbox intelligence: on-demand scan --------------------------------------------
-  // Owner/admin only, and refused while the inbox toggle is OFF: the toggle is the
-  // capability gate the 2026-07-12 decision record hangs the audit event on, so nothing —
-  // including a manual scan — reads the mailbox before the flip. Read-only; writes only the
-  // inboxSignals/inboxConfig scoped patch.
+  // ---- I1 inbox intelligence: owner-started, read-only refresh ----------------------------
+  // A manual founder refresh is independent of scheduled automation. It reads only the
+  // allowed mailbox through the existing bounded Google adapter, sends nothing, and writes
+  // only the minimized signal/config/suggestion projections.
   if (url.pathname === "/api/inbox/scan" && request.method === "POST") {
-    if (!["owner", "admin"].includes(String(accessDecision.actor?.role || ""))) {
-      sendJson(response, { error: "Only the owner can scan the inbox." }, 403);
+    if (String(accessDecision.actor?.role || "") !== "owner") {
+      sendJson(response, { error: "Refresh inbox now is available to the signed-in owner." }, 403);
       return;
     }
     try {
       const result = await serializeStateMutation(async () => {
         const currentState = await store.readState();
-        if (!autopilotEnabled(currentState, INBOX_ENGINE_ID, process.env)) {
-          return { blocked: true };
-        }
         const planned = await planInboxIntelligence(currentState, {
           fetchInboxThreads: fetchInboxThreadsForIntelligence,
           inboxReadEnabled: () => true,
@@ -37781,10 +37800,6 @@ async function handleRequest(request, response) {
         if (Object.keys(patch).length) await store.writeCollections(patch);
         return { observations: planned.observations, config: inboxConfigOf(planned.state) };
       });
-      if (result.blocked) {
-        sendJson(response, { error: "Inbox reading is off. Flip the Inbox intelligence toggle first (that flip records the activation audit event)." }, 400);
-        return;
-      }
       sendJson(response, { ok: true, observations: result.observations, lastScan: { at: result.config.lastScanAt, status: result.config.lastScanStatus, count: result.config.lastScanCount, truncated: result.config.lastScanTruncated, backfillCompletedAt: result.config.backfillCompletedAt } });
     } catch (error) {
       sendJson(response, { error: error.message || "Inbox scan failed." }, 500);

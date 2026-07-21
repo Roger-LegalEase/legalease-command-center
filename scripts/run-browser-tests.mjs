@@ -773,6 +773,41 @@ const socialState = socialFixtureState(seedState);
 const socialProductionState = socialProductionFixtureState(seedState);
 const composerRestrictedState = structuredClone(socialState);
 const partnersState = structuredClone(buildPartnersTrainScenario().state);
+partnersState.connectorStatus = [{ connector:"gmail", status:"connected", connected:true, updatedAt:"2026-07-21T14:00:00.000Z" }];
+partnersState.inboxConfig = { lastScanAt:"2026-07-21T14:00:00.000Z", lastScanStatus:"complete", lastScanCount:2, backfillCompletedAt:"2026-07-21T14:00:00.000Z" };
+partnersState.inboxSignals = [{
+  id:"browser-lee-needs-reply",
+  kind:"needs_reply",
+  status:"suggested",
+  counterpartName:"Taylor Example",
+  counterpartEmail:"taylor@example.com",
+  organization:"Community Justice Network",
+  summary:"Taylor asked which pilot milestone Roger wants to confirm next.",
+  suggestedNextAction:"Confirm the pilot decision date.",
+  whoOwesNextMove:"Roger",
+  confidence:0.92,
+  dueAt:"2026-07-22T17:00:00.000Z",
+  threadId:"synthetic-browser-thread-1",
+  pipelineMatch:{ collection:"partners", itemId:"partner-community", matchedBy:"address" },
+  ownerOnly:true,
+  internalOnly:true,
+  updatedAt:"2026-07-21T14:00:00.000Z"
+}, {
+  id:"browser-lee-went-quiet",
+  kind:"went_quiet",
+  status:"suggested",
+  counterpartName:"Morgan Example",
+  counterpartEmail:"morgan@example.com",
+  organization:"Example Community Network",
+  summary:"The Partner conversation has been quiet for eight days.",
+  suggestedNextAction:"Send a short check-in with one useful next step.",
+  confidence:0.81,
+  ageDays:8,
+  threadId:"synthetic-browser-thread-2",
+  ownerOnly:true,
+  internalOnly:true,
+  updatedAt:"2026-07-21T13:00:00.000Z"
+}];
 const filesState = structuredClone(fixtureState);
 filesState.dataRoomItems = [{
   id:"company-overview",
