@@ -21,7 +21,10 @@ import { buildPartnerRecordView } from "./ui/view-models/partner-record.mjs";
 
 const clean = (value = "") => String(value ?? "").trim();
 const PARTNER_PREFIX = "/api/ui/partners";
-const HOME_QUERY_KEYS = new Set(["view", "search", "stage", "owner", "health", "limit", "cursor"]);
+const HOME_QUERY_KEYS = new Set([
+  "view", "search", "stage", "owner", "health", "category", "waiting",
+  "automation", "eligibility", "followUp", "limit", "cursor"
+]);
 const DETAIL_QUERY_KEYS = new Set(["tab"]);
 const NO_QUERY_KEYS = new Set();
 const REQUEST_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{15,95}$/i;

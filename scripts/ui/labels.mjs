@@ -31,7 +31,7 @@ export const PRIMARY_DESTINATIONS = record({
   today: "Today",
   social: "Social",
   outreach: "Outreach",
-  partners: "Partners",
+  partners: "Relationships",
   files: "Files"
 });
 

@@ -51,7 +51,7 @@ export function taskWorkbenchBrowserSource() {
             + '<form class="founder-task-note-form" data-task-form="note"><label>Note or completion detail<textarea name="note" maxlength="2000" rows="3" placeholder="Add context that will help when you return."></textarea></label><p class="founder-field-error" data-task-field-error="note"></p><button type="submit">Add note</button></form>'
           + '</section>'
           + '<section class="founder-task-section" aria-labelledby="founder-task-history-title"><div class="founder-task-section-heading"><div><p class="founder-task-eyebrow">Recent activity</p><h3 id="founder-task-history-title">Task history</h3></div></div><ol class="founder-task-timeline" data-task-history></ol></section>'
-          + '<footer class="founder-task-footer"><a data-task-full-record>View full record</a><button type="button" class="founder-task-footer-close" data-task-close>Close</button></footer>'
+          + '<footer class="founder-task-footer"><button type="button" class="founder-task-draft" data-task-draft>Draft follow-up</button><div><a data-task-full-record>View full record</a><button type="button" class="founder-task-footer-close" data-task-close>Close</button></div></footer>'
         + '</div>'
       + '</div>';
       document.body.append(dialog);
@@ -303,6 +303,15 @@ export function taskWorkbenchBrowserSource() {
       target.addEventListener("click", (event) => {
         if (event.target.closest("[data-task-close]")) { close(); return; }
         if (event.target.closest("[data-task-retry]")) { showLoading(); loadTask(target.dataset.taskId); return; }
+        const draft = event.target.closest("[data-task-draft]");
+        if (draft) {
+          if (typeof window.commandCenterOpenComposer !== "function") { announce("The follow-up composer is still loading. Try again.", "error"); return; }
+          const taskId = current?.task?.id;
+          const returnTarget = lastTrigger;
+          close({ restoreFocus:false });
+          window.commandCenterOpenComposer({ sourceKind:"task", sourceId:taskId }, returnTarget);
+          return;
+        }
         const action = event.target.closest("[data-task-action]");
         if (!action) return;
         const values = action.dataset.taskAction === "done"

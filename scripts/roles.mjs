@@ -190,6 +190,10 @@ export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", 
   if (verb === "POST" && (path === "/api/ui/files/upload" || path === "/api/ui/files/reports/generate" || /^\/api\/ui\/files\/(?:reports\/[^/]+\/collection|[^/]+\/[^/]+\/(?:replace|organize))$/.test(path))) return ["manage_growth"];
   if (verb === "POST" && /^\/api\/ui\/files\/[^/]+\/[^/]+\/access\/(?:grant|revoke)$/.test(path)) return ["manage_roles"];
   if (verb === "GET" && (path === "/api/ui/partners" || /^\/api\/ui\/partners\/[^/]+(?:\/(?:outreach|files))?$/.test(path))) return ["read_internal"];
+  if (verb === "GET" && /^\/api\/ui\/relationships\/[^/]+$/.test(path)) return ["read_internal"];
+  if (verb === "GET" && path === "/api/ui/communications/context") return ["read_sensitive"];
+  if (verb === "POST" && path === "/api/ui/communications/drafts") return ["manage_content_drafts"];
+  if (verb === "POST" && /^\/api\/ui\/communications\/drafts\/[^/]+\/manual-sent$/.test(path)) return ["manage_growth"];
   if (verb === "POST" && path === "/api/ui/partners/outreach/selection") return ["read_internal"];
   if (verb === "POST" && /^\/api\/ui\/partners\/[^/]+\/activity$/.test(path)) return ["add_notes"];
   if (verb === "POST" && /^\/api\/ui\/partners\/[^/]+\/next-action(?:\/complete)?$/.test(path)) return ["manage_tasks"];

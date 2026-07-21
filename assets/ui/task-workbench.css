@@ -322,6 +322,18 @@
   padding: 22px clamp(20px, 5vw, 36px);
 }
 
+.founder-task-footer > div { display: flex; align-items: center; gap: 14px; }
+.founder-task-draft {
+  min-height: 44px;
+  border: 1px solid var(--le-teal-700, #167e77);
+  border-radius: var(--le-radius-md, 10px);
+  padding: 9px 16px;
+  background: var(--le-teal-700, #167e77);
+  color: #fff;
+  font: inherit;
+  font-weight: 780;
+  cursor: pointer;
+}
 .founder-task-footer a { color: #256762; font-size: .88rem; font-weight: 750; text-underline-offset: 3px; }
 .founder-task-drawer :focus-visible { outline: 2px solid var(--le-navy-950, #071e33); outline-offset: 3px; box-shadow: 0 0 0 3px var(--le-teal-500, #78d2cb); }
 
@@ -340,7 +352,10 @@
     bottom: 0;
     background: rgb(255 255 255 / 96%);
     box-shadow: 0 -8px 22px rgb(7 30 51 / 7%);
+    flex-wrap: wrap;
   }
+  .founder-task-draft { width: 100%; }
+  .founder-task-footer > div { width: 100%; justify-content: space-between; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -130,6 +130,12 @@ import { buildAuthorizedTodayPage } from "./today-page-service.mjs";
 import { buildAuthorizedSocialHome } from "./social-home-service.mjs";
 import { buildSocialResultsView } from "./ui/view-models/social-results.mjs";
 import { PARTNER_API_BODY_LIMIT, handlePartnerApiRequest, isPartnerApiPath } from "./partner-api-integration.mjs";
+import { handleRelationshipApiRequest, isRelationshipApiPath } from "./relationship-api-integration.mjs";
+import {
+  COMMUNICATION_COMPOSER_BODY_LIMIT,
+  handleCommunicationComposerApiRequest,
+  isCommunicationComposerApiPath
+} from "./communication-composer-api.mjs";
 import { OUTREACH_API_BODY_LIMIT, handleOutreachApiRequest, isOutreachApiPath } from "./outreach-api-integration.mjs";
 import { FILES_JSON_BODY_LIMIT, FILES_MULTIPART_BODY_LIMIT, handleFilesApiRequest, isFilesApiPath, parseFilesMultipart } from "./files-api-integration.mjs";
 import { createLocalFilesStorage, createSupabaseFilesStorage } from "./files-storage-adapter.mjs";
@@ -12755,7 +12761,7 @@ async function googleJson(url, token = "") {
 // gate; test-inbox-intelligence.mjs pins it.
 // Le-E's conversation memory joins the inbox data behind the owner wall: Roger's chat history
 // (and the leeMemory pointer into it) is stripped from any state payload served to a non-owner.
-const OWNER_ONLY_COLLECTIONS = ["inboxSignals", "inboxConfig", "leeThreads", "leeMessages", "leeRuns", "leeMemory"];
+const OWNER_ONLY_COLLECTIONS = ["inboxSignals", "inboxConfig", "emailDrafts", "leeThreads", "leeMessages", "leeRuns", "leeMemory"];
 function stripOwnerOnlyCollections(payload, actor) {
   if (!payload || typeof payload !== "object") return payload;
   if (String(actor?.role || "") === "owner") return payload;
@@ -35662,6 +35668,16 @@ async function handleRequest(request, response) {
       }, accessDecision.status || 403);
       return;
     }
+    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname)) {
+      sendJson(response, {
+        ok:false,
+        outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
+        message:accessDecision.status === 401
+          ? "Your session ended. Sign in again to continue."
+          : "Relationship follow-up details are unavailable for this account."
+      }, accessDecision.status || 403);
+      return;
+    }
     else if (/^\/api\/ui\/social\/post\/[^/]+\/(?:composer|save)$/.test(url.pathname)) {
       sendJson(response, { ok:false, outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized", message:accessDecision.status === 401 ? "Your session ended. Sign in again before opening this Post." : "This Post is unavailable for this account." }, accessDecision.status || 403);
       return;
@@ -35824,6 +35840,38 @@ async function handleRequest(request, response) {
       ? await execute()
       : await serializeStateMutation(execute);
     sendJson(response, result.body || { ok:false, error:"Partner route not found." }, result.status || 404);
+    return;
+  }
+
+  if (isRelationshipApiPath(url.pathname)) {
+    const result = await handleRelationshipApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    sendJson(response, result.body || { ok:false, message:"Relationship details are unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isCommunicationComposerApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:COMMUNICATION_COMPOSER_BODY_LIMIT }) : {};
+    const execute = () => handleCommunicationComposerApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
+    sendJson(response, result.body || { ok:false, message:"Follow-up drafting is unavailable." }, result.status || 404);
     return;
   }
 
