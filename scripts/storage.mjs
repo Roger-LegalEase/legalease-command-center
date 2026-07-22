@@ -207,15 +207,18 @@ const coreStateCollections = [
   "syncRuns",
   "googleInsights",
   "dailyRunPublisherRuns",
-  "handoffContractPreviews"
-  ,"authSessions"
-  ,"webhookReplayClaims"
-  ,"oauthStateClaims"
-  ,"publishClaims"
-  ,"auditEvents"
-  ,"securityMetrics"
-  ,"userDiscoveryPreferences"
-  ,"discoveryAnalyticsEvents"
+  "handoffContractPreviews",
+  // Existing Supabase authSessions rows and securityMetrics.rateLimitBuckets are legacy inert
+  // records retained to avoid destructive production cleanup during this hotfix. authSessions
+  // is deliberately omitted from the business-state registry; securityMetrics remains below
+  // only for unrelated application security telemetry, never auth runtime state.
+  "webhookReplayClaims",
+  "oauthStateClaims",
+  "publishClaims",
+  "auditEvents",
+  "securityMetrics",
+  "userDiscoveryPreferences",
+  "discoveryAnalyticsEvents"
 ];
 const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth", "settings", "inboxConfig", "securityMetrics"]);
 // Append-only safety ledgers: rows are inserted via claimCollectionItems and updated in place,
@@ -224,7 +227,7 @@ const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth",
 // never erase a claim that another invocation inserted directly. Deleting a claim would re-open
 // the duplicate-send window it exists to close.
 const appendOnlyCollections = new Set(["reactivationSendClaims", "outreachSendClaims", "webhookReplayClaims", "oauthStateClaims", "publishClaims", "auditEvents", "discoveryAnalyticsEvents"]);
-const protectedReconcileCollections = new Set([...appendOnlyCollections, "authSessions"]);
+const protectedReconcileCollections = new Set(appendOnlyCollections);
 // Scoped snapshot reconciliation is intentionally opt-in. Most collections require explicit
 // versioned delete mutations (`writeChanges`) so a stale scoped patch cannot erase a concurrent row.
 const reconcileEligibleCollections = new Set(["approvalQueue"]);
@@ -328,6 +331,9 @@ function supabaseHeaders(extra = {}) {
 const DEFAULT_SUPABASE_REQUEST_TIMEOUT_MS = 8_000;
 const MIN_SUPABASE_REQUEST_TIMEOUT_MS = 100;
 const MAX_SUPABASE_REQUEST_TIMEOUT_MS = 15_000;
+const SUPABASE_READ_RETRY_DELAY_MS = 50;
+const TRANSIENT_SUPABASE_HTTP_STATUSES = new Set([502, 503, 504]);
+const transientSupabaseNetworkErrors = new WeakSet();
 
 function supabaseRequestTimeoutMs(env = process.env) {
   const raw = String(env.SUPABASE_REQUEST_TIMEOUT_MS ?? "").trim();
@@ -337,38 +343,44 @@ function supabaseRequestTimeoutMs(env = process.env) {
   return Math.min(MAX_SUPABASE_REQUEST_TIMEOUT_MS, Math.max(MIN_SUPABASE_REQUEST_TIMEOUT_MS, Math.trunc(configured)));
 }
 
-async function supabaseRestRequest(pathname, options = {}) {
-  if (!process.env.SUPABASE_URL || !(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
-    throw new Error("Supabase database env vars are missing.");
-  }
-  const timeoutMs = supabaseRequestTimeoutMs();
+async function supabaseRestRequestAttempt(pathname, options, method, encodedBody) {
   const controller = new AbortController();
   let timedOut = false;
-  const onCallerAbort = () => controller.abort(options.signal?.reason);
+  let callerAborted = Boolean(options.signal?.aborted);
+  const onCallerAbort = () => {
+    callerAborted = true;
+    controller.abort(options.signal?.reason);
+  };
   if (options.signal?.aborted) onCallerAbort();
   else options.signal?.addEventListener("abort", onCallerAbort, { once:true });
   const timeout = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, timeoutMs);
+  }, supabaseRequestTimeoutMs());
   timeout.unref?.();
   let response;
   let text;
   try {
     response = await fetch(supabaseRestBaseUrl() + "/" + String(pathname || "").replace(/^\/+/, ""), {
-      method: options.method || "GET",
+      method,
       headers: supabaseHeaders({
-        ...(options.body ? { "content-type":"application/json" } : {}),
+        ...(encodedBody !== undefined ? { "content-type":"application/json" } : {}),
         ...(options.prefer ? { prefer: options.prefer } : {}),
         ...(options.headers || {})
       }),
-      body: options.body ? JSON.stringify(options.body) : undefined,
+      body: encodedBody,
       signal: controller.signal
     });
     text = await response.text();
+    if (callerAborted || options.signal?.aborted) throw new SupabaseRequestAbortedError();
+    if (timedOut) throw new SupabaseRequestTimeoutError();
   } catch (error) {
+    if (callerAborted || options.signal?.aborted || error instanceof SupabaseRequestAbortedError) {
+      throw new SupabaseRequestAbortedError();
+    }
     if (timedOut) throw new SupabaseRequestTimeoutError();
     if (controller.signal.aborted || error?.name === "AbortError") throw new SupabaseRequestAbortedError();
+    if (error && typeof error === "object") transientSupabaseNetworkErrors.add(error);
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -393,6 +405,46 @@ async function supabaseRestRequest(pathname, options = {}) {
     return { data, contentRange };
   }
   return data;
+}
+
+function supabaseReadRetryEligible(error) {
+  return error instanceof SupabaseRequestTimeoutError
+    || transientSupabaseNetworkErrors.has(error)
+    || TRANSIENT_SUPABASE_HTTP_STATUSES.has(Number(error?.status));
+}
+
+async function waitForSupabaseReadRetry(signal) {
+  if (signal?.aborted) throw new SupabaseRequestAbortedError();
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (operation) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      operation();
+    };
+    const onAbort = () => finish(() => reject(new SupabaseRequestAbortedError()));
+    const timer = setTimeout(() => finish(resolve), SUPABASE_READ_RETRY_DELAY_MS);
+    signal?.addEventListener("abort", onAbort, { once:true });
+    if (signal?.aborted) onAbort();
+  });
+}
+
+async function supabaseRestRequest(pathname, options = {}) {
+  if (!process.env.SUPABASE_URL || !(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
+    throw new Error("Supabase database env vars are missing.");
+  }
+  const method = String(options.method || "GET").toUpperCase();
+  const encodedBody = options.body ? JSON.stringify(options.body) : undefined;
+  const readOnly = method === "GET" || method === "HEAD";
+  try {
+    return await supabaseRestRequestAttempt(pathname, options, method, encodedBody);
+  } catch (error) {
+    if (!readOnly || options.signal?.aborted || !supabaseReadRetryEligible(error)) throw error;
+    await waitForSupabaseReadRetry(options.signal);
+    return supabaseRestRequestAttempt(pathname, options, method, encodedBody);
+  }
 }
 
 // "0-999/13593" => 13593. NaN when the server sent no exact count.
@@ -535,6 +587,9 @@ function applyCoreRecordsToState(baseState = {}, rows = []) {
 }
 
 function loadLocalEnv() {
+  if (String(process.env.NODE_ENV || "").toLowerCase() === "test"
+    || parseBoolean(process.env.COMMAND_CENTER_TEST_MODE)
+    || parseBoolean(process.env.SKIP_ENV_LOCAL_FILE)) return;
   const envPath = path.join(rootDir, ".env.local");
   if (!existsSync(envPath)) return;
   const raw = awaitableRead(envPath);
@@ -553,6 +608,9 @@ function awaitableRead(filePath) {
 }
 
 async function readLocalEnv() {
+  if (String(process.env.NODE_ENV || "").toLowerCase() === "test"
+    || parseBoolean(process.env.COMMAND_CENTER_TEST_MODE)
+    || parseBoolean(process.env.SKIP_ENV_LOCAL_FILE)) return;
   const envPath = path.join(rootDir, ".env.local");
   if (!existsSync(envPath)) return;
   const raw = await readFile(envPath, "utf8");
@@ -611,7 +669,7 @@ export async function getSupabaseHealth() {
     return { configured:false, connected:false, mode, table:supabaseRecordsTable, requestedBackend, error:"Supabase env vars are missing. Using local JSON fallback when needed." };
   }
   try {
-    await supabaseRestRequest(supabaseRecordsTable + "?select=collection,item_id&limit=1");
+    await supabaseRestRequest(supabaseRecordsTable + "?select=collection,item_id&collection=neq.authSessions&limit=1");
     return { configured:true, connected:true, mode, table:supabaseRecordsTable, requestedBackend, error:"" };
   } catch (error) {
     return { configured:true, connected:false, mode, table:supabaseRecordsTable, requestedBackend, error:String(error.message || error).slice(0, 500) };
@@ -1044,7 +1102,7 @@ export class SupabaseCoreStore extends JsonStore {
   async _remoteStateSignature() {
     try {
       const result = await supabaseRestRequest(
-        supabaseRecordsTable + "?select=updated_at&order=updated_at.desc&limit=1",
+        supabaseRecordsTable + "?select=updated_at&collection=neq.authSessions&order=updated_at.desc&limit=1",
         { prefer: "count=exact", withContentRange: true }
       );
       const total = contentRangeTotal(result?.contentRange || "");
@@ -1069,7 +1127,10 @@ export class SupabaseCoreStore extends JsonStore {
       this._fallbackCache = fallback;
     }
     try {
-      const rows = await supabaseFetchAllRows("collection,item_id,payload,version,updated_at");
+      const rows = await supabaseFetchAllRows(
+        "collection,item_id,payload,version,updated_at",
+        "collection=neq.authSessions"
+      );
       this.lastError = "";
       // Signature of THIS fetch (same shape as _remoteStateSignature): lets the cache
       // later prove via one cheap probe that the table has not moved under it.
@@ -1255,6 +1316,9 @@ export class SupabaseCoreStore extends JsonStore {
 
   async mutateCollectionItem(collection, itemId, mutate, options = {}) {
     if (typeof mutate !== "function") throw new Error("A record mutator is required.");
+    // Legacy authSessions rows are intentionally inert during this hotfix. Reject
+    // unsupported collections before even issuing a targeted Supabase read.
+    if (!coreStateCollections.includes(collection)) throw new Error("Unsupported storage collection.");
     const maxRetries = Math.min(3, Math.max(0, Number(options.maxRetries ?? 2)));
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       const rows = await supabaseRestRequest(

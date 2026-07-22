@@ -7,8 +7,11 @@ export function parseBoolean(value = "") {
 }
 
 export function isHostedProduction(env = process.env) {
+  // Definitive hosting markers must win over test flags. A deployed Render process must never
+  // opt into local/test auth storage by setting COMMAND_CENTER_TEST_MODE or NODE_ENV=test.
+  if (parseBoolean(env.RENDER) || clean(env.LEGALEASE_ENV).toLowerCase() === "production") return true;
   if (clean(env.NODE_ENV).toLowerCase() === "test" || parseBoolean(env.COMMAND_CENTER_TEST_MODE)) return false;
-  return clean(env.NODE_ENV).toLowerCase() === "production" || parseBoolean(env.RENDER) || clean(env.LEGALEASE_ENV).toLowerCase() === "production";
+  return clean(env.NODE_ENV).toLowerCase() === "production";
 }
 
 export function isTestEnvironment(env = process.env) {
@@ -21,6 +24,17 @@ const REPEATED = /^(.)\1+$/;
 export function strongSecret(value, { min = 32 } = {}) {
   const text = clean(value);
   return text.length >= min && !PLACEHOLDER.test(text) && !REPEATED.test(text) && new Set(text).size >= 8;
+}
+
+function validAuthStoreUrl(value = "") {
+  const text = clean(value);
+  if (!text || PLACEHOLDER.test(text)) return false;
+  try {
+    const url = new URL(text);
+    return url.protocol === "https:" && Boolean(url.hostname) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
 }
 
 export function webhookRouteEnabled(env = process.env) {
@@ -56,6 +70,8 @@ export function productionReadiness(env = process.env, { activeStorageBackend = 
   if (activeStorageBackend && activeStorageBackend !== "supabase") errors.push("durable_storage_adapter_not_selected");
   if (!/^https:\/\//i.test(clean(env.SUPABASE_URL))) errors.push("supabase_url_required");
   if (!strongSecret(env.SUPABASE_SERVICE_ROLE_KEY)) errors.push("supabase_service_role_key_required");
+  if (!validAuthStoreUrl(env.UPSTASH_REDIS_REST_URL)) errors.push("auth_store_url_required");
+  if (!strongSecret(env.UPSTASH_REDIS_REST_TOKEN)) errors.push("auth_store_token_required");
   if (!strongSecret(env.COMMAND_CENTER_OWNER_TOKEN || env.COMMAND_CENTER_ACCESS_TOKEN)) errors.push("owner_login_secret_required");
   for (const [name, value] of [["admin", env.COMMAND_CENTER_ADMIN_TOKEN], ["operator", env.COMMAND_CENTER_OPERATOR_TOKEN], ["viewer", env.COMMAND_CENTER_VIEWER_TOKEN || env.COMMAND_CENTER_INVESTOR_TOKEN]]) {
     if (clean(value) && !strongSecret(value)) errors.push(`${name}_login_secret_invalid`);

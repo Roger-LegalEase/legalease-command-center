@@ -226,6 +226,7 @@ import { applyRoleAssignmentChange, buildRoleSystemStatus, canPerformEndpoint, e
 import { assertProductionReadiness, isHostedProduction, parseBoolean, productEventRouteEnabled, safeStartupError, webhookRouteEnabled } from "./runtime-security.mjs";
 import { REQUEST_LIMITS, RequestLimitError, readBoundedBody, readBoundedJson, requestId, securityHeaders } from "./request-security.mjs";
 import { clearCsrfCookie, clearSessionCookie, createSessionService, credentialRole, csrfCookie, sessionCookie } from "./session-auth.mjs";
+import { createAuthRuntimeStore } from "./auth-runtime-store.mjs";
 import { stateAccessAllowed, stripServerOnlyState, viewerReportDto } from "./role-dto.mjs";
 import { consumeRateLimit } from "./security-rate-limit.mjs";
 import { imageTypeFromSignature, normalizePrivateAssetPath, signPrivateAsset, verifyPrivateAsset } from "./private-assets.mjs";
@@ -1004,12 +1005,13 @@ const versionDriftCache = createVersionDriftCache();
 async function safeVersionPayload() {
   const hostingConfig = storageRuntimeConfig();
   let supabaseConnected = false;
-  try {
-    const supabaseDb = await getSupabaseHealth();
-    supabaseConnected = Boolean(supabaseDb.connected);
-  } catch {
-    supabaseConnected = false;
-  }
+  let authStoreConnected = false;
+  const [supabaseResult, authResult] = await Promise.allSettled([
+    getSupabaseHealth(),
+    authRuntimeHealth()
+  ]);
+  if (supabaseResult.status === "fulfilled") supabaseConnected = Boolean(supabaseResult.value?.connected);
+  if (authResult.status === "fulfilled") authStoreConnected = Boolean(authResult.value?.connected);
   return {
     app: "LegalEase Command Center",
     environment: hostedModeEnabled() ? "production" : "development",
@@ -1018,6 +1020,8 @@ async function safeVersionPayload() {
     storageBackend: hostingConfig.activeStorageBackend,
     localDemoMode: Boolean(hostingConfig.localDemoMode),
     supabaseConnected,
+    authStoreBackend: authStore?.backend || "unavailable",
+    authStoreConnected,
     liveGatesCount: Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length,
     authProtected: true,
     noSecretsExposed: true
@@ -1771,11 +1775,15 @@ function productionReadinessForState(state = {}, options = {}) {
 async function productionReadinessSnapshot() {
   const state = await store.readState();
   const hostingConfig = storageRuntimeConfig();
-  const supabaseDb = await getSupabaseHealth();
-  const storageDiagnostics = await diagnoseSupabaseStorage({ testUpload: false });
+  const [supabaseDb, storageDiagnostics, authHealth] = await Promise.all([
+    getSupabaseHealth(),
+    diagnoseSupabaseStorage({ testUpload:false }),
+    authRuntimeHealth()
+  ]);
   const base = productionReadinessForState(state, { hostingConfig });
   const checks = [
     ...base.checks,
+    productionReadinessCheck("auth-runtime", "Authentication runtime connected", Boolean(authHealth.connected), authHealth.connected ? `Backend: ${authHealth.backend}.` : `Backend: ${authHealth.backend}; ${authHealth.errorCode || "AUTH_STORE_UNAVAILABLE"}.`),
     productionReadinessCheck("supabase-db", "Supabase DB connected", Boolean(supabaseDb.connected), supabaseDb.connected ? `Table: ${supabaseDb.table || hostingConfig.supabaseRecordsTable}` : String(supabaseDb.error || "Supabase DB unavailable.").slice(0, 260)),
     productionReadinessCheck("supabase-storage", "Supabase Storage connected", Boolean(storageDiagnostics.bucketReachable), storageDiagnostics.bucketReachable ? `Bucket: ${storageDiagnostics.bucket}; public: ${storageDiagnostics.bucketPublic === true}` : String(storageDiagnostics.error || "Supabase Storage unavailable.").slice(0, 260))
   ];
@@ -1785,6 +1793,7 @@ async function productionReadinessSnapshot() {
     status: blockers.length ? "needs_attention" : "ready",
     checks,
     blockers,
+    authStore:authHealth,
     supabaseDbConnected: Boolean(supabaseDb.connected),
     supabaseStorageConnected: Boolean(storageDiagnostics.bucketReachable),
     openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
@@ -8111,16 +8120,70 @@ const initialState = {
 };
 
 let store;
+let authStore;
 try {
   store = createStore(initialState);
   assertProductionReadiness(process.env, { activeStorageBackend: store.kind });
+  authStore = createAuthRuntimeStore({ env:process.env });
 } catch (error) {
   console.error(safeStartupError(error));
   process.exit(error?.exitCode || 78);
 }
-const sessionService = createSessionService({ store, env: process.env });
+const sessionService = createSessionService({ authStore, env: process.env });
 const auditService = createAuditService({ store });
 let stateMutationQueue = Promise.resolve();
+
+const AUTH_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,79}$/;
+const AUTH_LOG_REQUEST_ID = Symbol("authLogRequestId");
+
+function safeAuthErrorCode(error, fallback = "AUTH_STORE_ERROR") {
+  const code = String(error?.code || "").trim();
+  return AUTH_ERROR_CODE.test(code) ? code : fallback;
+}
+
+function authStageLog(request, { stage, status, code, startedAt = performance.now(), level = "info" } = {}) {
+  const durationMs = Math.max(0, Math.round(performance.now() - startedAt));
+  if (request && !request[AUTH_LOG_REQUEST_ID]) {
+    Object.defineProperty(request, AUTH_LOG_REQUEST_ID, { value:crypto.randomUUID() });
+  }
+  console[level === "error" ? "error" : "log"](JSON.stringify({
+    level:level === "error" ? "error" : level === "warn" ? "warn" : "info",
+    // Authentication logs never reflect the caller-controlled x-request-id header.
+    requestId:request?.[AUTH_LOG_REQUEST_ID] || crypto.randomUUID(),
+    area:"authentication",
+    stage,
+    status:Number(status || 500),
+    code:String(code || "AUTH_STORE_ERROR").slice(0, 80),
+    backend:authStore?.backend || "unavailable",
+    durationMs
+  }));
+}
+
+function incrementAuthMetric(name, amount = 1) {
+  void Promise.resolve()
+    .then(() => authStore?.incrementMetric?.(name, amount))
+    .catch(() => {});
+}
+
+function safeAuthHealth(value = {}) {
+  const rawCode = String(value.errorCode || value.code || "").trim();
+  return {
+    backend:authStore?.backend || "unavailable",
+    configured:Boolean(authStore?.configured),
+    connected:Boolean(value.connected),
+    latencyMs:Number.isFinite(Number(value.latencyMs)) ? Math.max(0, Math.round(Number(value.latencyMs))) : null,
+    lastCheckedAt:String(value.lastCheckedAt || ""),
+    errorCode:AUTH_ERROR_CODE.test(rawCode) ? rawCode : ""
+  };
+}
+
+async function authRuntimeHealth() {
+  try {
+    return safeAuthHealth(await authStore.health());
+  } catch (error) {
+    return safeAuthHealth({ connected:false, errorCode:safeAuthErrorCode(error) });
+  }
+}
 
 function serializeStateMutation(operation) {
   const next = stateMutationQueue.then(operation, operation);
@@ -35540,7 +35603,37 @@ async function handleRequest(request, response) {
     sendPublicLegalPage(response, url.pathname === "/terms" ? "terms" : "privacy", { headOnly:request.method === "HEAD" });
     return;
   }
-  request.authenticatedActor = await sessionService.authenticate(request);
+  const sessionLookupExempt = new Set([
+    "/api/auth/login",
+    "/api/health",
+    "/api/version",
+    "/api/events/product",
+    "/api/outreach/unsubscribe",
+    "/api/outreach/webhooks/sendgrid",
+    "/favicon.ico"
+  ]).has(url.pathname) || /^\/assets\/(?:styles|brand)\//.test(url.pathname);
+  request.authenticatedActor = null;
+  if (!sessionLookupExempt) {
+    const lookupStartedAt = performance.now();
+    const sessionCookiePresent = /(?:^|;\s*)leos_session=/.test(String(request.headers?.cookie || ""));
+    try {
+      request.authenticatedActor = await sessionService.authenticate(request);
+      if (sessionCookiePresent) {
+        authStageLog(request, {
+          stage:"session_lookup",
+          status:request.authenticatedActor ? 200 : 401,
+          code:request.authenticatedActor ? "AUTH_SESSION_FOUND" : "AUTH_SESSION_INVALID",
+          startedAt:lookupStartedAt,
+          level:request.authenticatedActor ? "info" : "warn"
+        });
+      }
+    } catch (error) {
+      incrementAuthMetric("auth_session_lookup_errors");
+      authStageLog(request, { stage:"session_lookup", status:503, code:safeAuthErrorCode(error), startedAt:lookupStartedAt, level:"error" });
+      sendJson(response, { error:"Authentication is temporarily unavailable. No successful session was returned." }, 503);
+      return;
+    }
+  }
   const callbackProvider = url.pathname === "/api/google/callback" ? "google_workspace"
     : url.pathname === "/api/linkedin/callback" ? "linkedin"
       : url.pathname === "/api/x/callback" ? "x"
@@ -35563,9 +35656,10 @@ async function handleRequest(request, response) {
   }
   if (url.pathname === "/api/auth/login" && request.method === "POST") {
     let rate;
+    const rateLimitStartedAt = performance.now();
     try {
       rate = await consumeRateLimit({
-        store,
+        authStore,
         scope: "login",
         subject: request.socket?.remoteAddress || "unknown",
         limit: 6,
@@ -35573,31 +35667,48 @@ async function handleRequest(request, response) {
         secret: process.env.COMMAND_CENTER_SESSION_SECRET
       });
     } catch (error) {
-      console.error(JSON.stringify({ level:"error", requestId:request.requestId, status:503, code:String(error?.code || "AUTH_RATE_LIMIT_STORAGE_UNAVAILABLE").slice(0, 80) }));
+      incrementAuthMetric("auth_rate_limit_errors");
+      authStageLog(request, { stage:"rate_limit", status:503, code:safeAuthErrorCode(error), startedAt:rateLimitStartedAt, level:"error" });
       sendJson(response, { error:"Authentication is temporarily unavailable. No successful session was returned." }, 503);
       return;
     }
     if (!rate.allowed) {
-      await incrementSecurityMetric(store, "auth_throttled").catch(() => {});
+      incrementAuthMetric("auth_throttled");
+      authStageLog(request, { stage:"rate_limit", status:429, code:"AUTH_RATE_LIMITED", startedAt:rateLimitStartedAt, level:"warn" });
       response.setHeader("retry-after", String(rate.retryAfterSeconds));
       sendJson(response, { error: "Authentication unavailable." }, 429);
       return;
     }
-    const body = await readJson(request);
-    const role = credentialRole(body.credential, process.env);
+    authStageLog(request, { stage:"rate_limit", status:200, code:"AUTH_RATE_LIMIT_ALLOWED", startedAt:rateLimitStartedAt });
+    const credentialStartedAt = performance.now();
+    let body;
+    try {
+      body = await readJson(request);
+    } catch {
+      authStageLog(request, { stage:"credential_check", status:400, code:"AUTH_CREDENTIAL_REQUEST_INVALID", startedAt:credentialStartedAt, level:"warn" });
+      sendJson(response, { error:"Authentication unavailable." }, 400);
+      return;
+    }
+    const role = credentialRole(body?.credential, process.env);
     if (!role) {
-      await incrementSecurityMetric(store, "auth_failures").catch(() => {});
+      incrementAuthMetric("auth_failures");
+      authStageLog(request, { stage:"credential_check", status:401, code:"AUTH_CREDENTIAL_INVALID", startedAt:credentialStartedAt, level:"warn" });
       sendJson(response, { error: "Authentication unavailable." }, 401);
       return;
     }
+    authStageLog(request, { stage:"credential_check", status:200, code:"AUTH_CREDENTIAL_VALID", startedAt:credentialStartedAt });
     let created;
+    const sessionCreateStartedAt = performance.now();
     try {
       created = await sessionService.create(role, { userAgent: request.headers["user-agent"] || "" });
     } catch (error) {
-      console.error(JSON.stringify({ level:"error", requestId:request.requestId, status:503, code:String(error?.code || "AUTH_SESSION_STORAGE_UNAVAILABLE").slice(0, 80) }));
+      incrementAuthMetric("auth_session_create_errors");
+      authStageLog(request, { stage:"session_create", status:503, code:safeAuthErrorCode(error), startedAt:sessionCreateStartedAt, level:"error" });
       sendJson(response, { error:"Authentication is temporarily unavailable. No successful session was returned." }, 503);
       return;
     }
+    incrementAuthMetric("auth_logins");
+    authStageLog(request, { stage:"session_create", status:200, code:"AUTH_SESSION_CREATED", startedAt:sessionCreateStartedAt });
     response.setHeader("set-cookie", [sessionCookie(created.token, { env: process.env }), csrfCookie(created.csrfToken, { env: process.env })]);
     sendJson(response, { ok: true, role });
     return;
@@ -35796,7 +35907,15 @@ async function handleRequest(request, response) {
   }
 
   if (url.pathname === "/api/auth/logout" && request.method === "POST") {
-    await sessionService.revoke(request);
+    const sessionRevokeStartedAt = performance.now();
+    try {
+      await sessionService.revoke(request);
+      authStageLog(request, { stage:"session_revoke", status:200, code:"AUTH_SESSION_REVOKED", startedAt:sessionRevokeStartedAt });
+    } catch (error) {
+      authStageLog(request, { stage:"session_revoke", status:503, code:safeAuthErrorCode(error), startedAt:sessionRevokeStartedAt, level:"error" });
+      sendJson(response, { error:"Authentication is temporarily unavailable. No successful session was returned." }, 503);
+      return;
+    }
     response.setHeader("set-cookie", [clearSessionCookie({ env: process.env }), clearCsrfCookie({ env: process.env })]);
     sendJson(response, { ok: true });
     return;
@@ -35811,7 +35930,12 @@ async function handleRequest(request, response) {
   }
 
   if (url.pathname === "/api/auth/diagnostics" && request.method === "GET") {
-    sendJson(response, { hostedMode: isHostedProduction(process.env), sessionAuthenticated: true, role: accessDecision.actor.role });
+    sendJson(response, {
+      hostedMode:isHostedProduction(process.env),
+      sessionAuthenticated:true,
+      role:accessDecision.actor.role,
+      authStore:await authRuntimeHealth()
+    });
     return;
   }
 
@@ -36544,8 +36668,15 @@ async function handleRequest(request, response) {
   }
 
   if (url.pathname === "/api/metrics" && request.method === "GET") {
-    const state = await store.readState();
-    sendJson(response, operationalMetrics(state, typeof store.writeHealth === "function" ? store.writeHealth() : {}));
+    const [state, authRuntimeCounters] = await Promise.all([
+      store.readState(),
+      Promise.resolve().then(() => authStore?.readMetrics?.() || {}).catch(() => ({}))
+    ]);
+    sendJson(response, operationalMetrics(
+      state,
+      typeof store.writeHealth === "function" ? store.writeHealth() : {},
+      authRuntimeCounters
+    ));
     return;
   }
 
@@ -36736,12 +36867,21 @@ async function handleRequest(request, response) {
   }
 
   if (url.pathname === "/api/ready" && request.method === "GET") {
-    let durableDependencyReady = false;
-    try {
-      await store.readState();
-      durableDependencyReady = !isHostedProduction(process.env) || store.kind === "supabase";
-    } catch {}
-    sendJson(response, { ready: durableDependencyReady, durableStorage: store.kind === "supabase", authenticationRequired: authRequiredForEnv(process.env) }, durableDependencyReady ? 200 : 503);
+    const [storageResult, authHealth] = await Promise.all([
+      store.readState().then(
+        (state) => store.kind !== "supabase" || state?.persistence === "supabase",
+        () => false
+      ),
+      authRuntimeHealth()
+    ]);
+    const durableDependencyReady = Boolean(storageResult);
+    const authDependencyReady = !isHostedProduction(process.env) || authHealth.connected;
+    sendJson(response, {
+      ready:durableDependencyReady && authDependencyReady,
+      durableStorage:store.kind === "supabase",
+      authenticationRequired:authRequiredForEnv(process.env),
+      authStore:authHealth
+    }, durableDependencyReady && authDependencyReady ? 200 : 503);
     return;
   }
 
@@ -38154,7 +38294,7 @@ async function handleRequest(request, response) {
     };
     try {
       const rate = await consumeRateLimit({
-        store,
+        authStore,
         scope: "sendgrid_webhook",
         subject: request.socket?.remoteAddress || "unknown",
         limit: 120,

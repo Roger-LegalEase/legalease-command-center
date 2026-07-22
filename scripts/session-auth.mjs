@@ -1,9 +1,13 @@
 import crypto from "node:crypto";
 import { isHostedProduction, strongSecret } from "./runtime-security.mjs";
+import { normalizeRole } from "./roles.mjs";
 
 export const SESSION_COOKIE = "leos_session";
 export const CSRF_COOKIE = "leos_csrf";
 export const SESSION_TTL_MS = 30 * 60 * 1000;
+// Legacy Supabase authSessions rows are intentionally inert. They remain in place to avoid a
+// destructive production cleanup during this hotfix, but authentication never reads or writes
+// this collection. Keep the exported name temporarily for downstream compatibility only.
 export const SESSION_COLLECTION = "authSessions";
 
 const clean = (value = "") => String(value ?? "").trim();
@@ -12,7 +16,12 @@ const hash = (value, pepper) => crypto.createHmac("sha256", pepper).update(value
 function cookies(value = "") {
   return Object.fromEntries(clean(value).split(";").map((part) => part.trim()).filter(Boolean).map((part) => {
     const i = part.indexOf("=");
-    return i < 0 ? [part, ""] : [part.slice(0, i), decodeURIComponent(part.slice(i + 1))];
+    if (i < 0) return [part, ""];
+    try {
+      return [part.slice(0, i), decodeURIComponent(part.slice(i + 1))];
+    } catch {
+      return [part.slice(0, i), ""];
+    }
   }));
 }
 
@@ -50,11 +59,23 @@ export function credentialRole(credential, env = process.env) {
   return "";
 }
 
-export function createSessionService({ store, env = process.env, now = () => Date.now() } = {}) {
-  if (!store) throw new Error("Session service requires durable storage.");
+export function createSessionService({ authStore, env = process.env, now = () => Date.now() } = {}) {
+  if (!authStore
+    || typeof authStore.createSession !== "function"
+    || typeof authStore.getSession !== "function"
+    || typeof authStore.deleteSession !== "function"
+    || typeof authStore.revokeSessions !== "function") {
+    throw new Error("Session service requires auth runtime storage.");
+  }
   const pepper = clean(env.COMMAND_CENTER_SESSION_SECRET);
   if (!strongSecret(pepper) && isHostedProduction(env)) throw new Error("Session security is unavailable.");
   const sessionPepper = pepper || crypto.randomBytes(32).toString("hex");
+
+  function unavailable(message) {
+    const error = new Error(message);
+    error.code = "AUTH_STORE_ERROR";
+    return error;
+  }
 
   async function create(role, metadata = {}) {
     const token = crypto.randomBytes(32).toString("base64url");
@@ -64,15 +85,15 @@ export function createSessionService({ store, env = process.env, now = () => Dat
       id: crypto.randomUUID(),
       tokenHash: hash(token, sessionPepper),
       csrfHash: hash(csrfToken, sessionPepper),
-      role,
+      role: normalizeRole(role),
       createdAt: new Date(at).toISOString(),
       expiresAt: new Date(at + SESSION_TTL_MS).toISOString(),
       revokedAt: "",
       generation: 1,
       userAgentHash: metadata.userAgent ? hash(metadata.userAgent, sessionPepper).slice(0, 16) : ""
     };
-    const outcome = await store.claimCollectionItems(SESSION_COLLECTION, [row]);
-    if (!outcome.inserted?.length) throw new Error("Session could not be created.");
+    const created = await authStore.createSession(row, SESSION_TTL_MS, { signal: metadata.signal });
+    if (!created) throw unavailable("Session could not be created.");
     return { token, csrfToken, row };
   }
 
@@ -80,33 +101,31 @@ export function createSessionService({ store, env = process.env, now = () => Dat
     const token = cookies(request.headers?.cookie || "")[SESSION_COOKIE] || "";
     if (!token) return null;
     const tokenHash = hash(token, sessionPepper);
-    const state = await store.readState();
-    const row = (state[SESSION_COLLECTION] || []).find((entry) => entry.tokenHash === tokenHash);
-    if (!row || row.revokedAt || Date.parse(row.expiresAt) <= now()) return null;
-    return { id: row.id, role: row.role, label: row.role, authenticated: true, authRequired: true, session: row };
+    const row = await authStore.getSession(tokenHash, { signal: request.signal });
+    const expiresAt = Date.parse(row?.expiresAt);
+    if (!row || row.tokenHash !== tokenHash || row.revokedAt || !Number.isFinite(expiresAt) || expiresAt <= now()) return null;
+    const role = normalizeRole(row.role);
+    const session = { ...row, role };
+    return { id: row.id, role, label: role, authenticated: true, authRequired: true, session };
   }
 
   async function revoke(request = {}) {
     const actor = await authenticate(request);
     if (!actor) return false;
-    await store.mutateCollectionItem(SESSION_COLLECTION, actor.id, (row) => ({ ...row, revokedAt: new Date(now()).toISOString() }));
-    return true;
+    return authStore.deleteSession(actor.session.tokenHash, { signal: request.signal });
   }
 
   async function revokeAll(predicate = () => true) {
-    const state = await store.readState();
-    const active = (state[SESSION_COLLECTION] || []).filter((row) => !row.revokedAt && predicate(row));
-    for (const row of active) {
-      await store.mutateCollectionItem(SESSION_COLLECTION, row.id, (current) => ({ ...current, revokedAt: new Date(now()).toISOString(), generation: Number(current.generation || 1) + 1 }), { expectedVersion: row._version });
-    }
-    return active.length;
+    if (typeof predicate !== "function") throw new TypeError("Session revocation predicate must be a function.");
+    return authStore.revokeSessions((row) => !row.revokedAt && predicate(row));
   }
 
   async function rotate(request = {}, role = "") {
     const actor = await authenticate(request);
     if (!actor) throw new Error("Session is unavailable.");
-    await revoke(request);
-    return create(role || actor.role, { userAgent: request.headers?.["user-agent"] || "" });
+    const revoked = await authStore.deleteSession(actor.session.tokenHash, { signal: request.signal });
+    if (!revoked) throw new Error("Session is unavailable.");
+    return create(role || actor.role, { userAgent: request.headers?.["user-agent"] || "", signal: request.signal });
   }
 
   function csrfValid(request, actor) {
