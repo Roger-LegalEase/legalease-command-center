@@ -19,6 +19,16 @@ export const ROUTE_ACCESS_READ_COLLECTIONS = Object.freeze([
 ]);
 
 const list = (value) => Array.isArray(value) ? value : [];
+const routeRecordSecretKey = /(secret|token|api[_-]?key|password|credential|authorization|service[_-]?role|webhook[_-]?secret)/i;
+
+function safeRouteRecord(value) {
+  if (Array.isArray(value)) return value.map(safeRouteRecord);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+    key,
+    routeRecordSecretKey.test(key) ? "[REDACTED]" : safeRouteRecord(child)
+  ]));
+}
 
 function recordId(record = {}) {
   return String(record.id || record.key || record.slug || "").trim();
@@ -54,7 +64,13 @@ export function buildRouteAccessView(state = {}, target = "", { role = "viewer" 
     if (!record || !recordVisibleToActor(record, role)) {
       return Object.freeze({ ok:true, allowed:false, outcome:"unavailable" });
     }
-    return Object.freeze({ ok:true, allowed:true, outcome:"record" });
+    return Object.freeze({
+      ok:true,
+      allowed:true,
+      outcome:"record",
+      collection,
+      record:safeRouteRecord(record)
+    });
   }
   const route = routeRegistryByCanonicalRoute[resolution.canonicalRoute];
   const capabilities = routeCapabilities(route, role);

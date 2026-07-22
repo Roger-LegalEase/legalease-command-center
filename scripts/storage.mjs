@@ -13,6 +13,7 @@ const defaultSeedPath = path.join(defaultDataDir, "seed", "social-command-center
 
 const supabaseRecordsTable = process.env.SUPABASE_CORE_RECORDS_TABLE || "leos_core_records";
 const coreStateCollections = [
+  "runtime",
   "contentBank",
   "growthInbox",
   "approvalQueue",
@@ -31,6 +32,7 @@ const coreStateCollections = [
   "soc2AuditLogs",
   "auditHistory",
   "events",
+  "calendarSignals",
   "tasks",
   "supportIssues",
   "alerts",
@@ -220,7 +222,7 @@ const coreStateCollections = [
   "userDiscoveryPreferences",
   "discoveryAnalyticsEvents"
 ];
-const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth", "settings", "inboxConfig", "securityMetrics"]);
+const singletonCollections = new Set(["runtime", "metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth", "settings", "inboxConfig", "securityMetrics"]);
 // Append-only safety ledgers: rows are inserted via claimCollectionItems and updated in place,
 // NEVER bulk-reconciled away. Excluding them from the snapshot orphan-delete pass means a stale
 // in-memory snapshot (the exact mechanism that shredded reactivationContacts on 2026-07-08) can

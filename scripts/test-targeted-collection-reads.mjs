@@ -244,7 +244,12 @@ try {
   assert.ok(founderDispatch.length > 10_000, "Founder route dispatch evidence must cover the vNext route block.");
   assert.doesNotMatch(founderDispatch, /store\.readState\s*\(/, "Founder/vNext route dispatch must not hydrate full state.");
   const appShellSource = await readFile(new URL("./ui/app-shell.mjs", import.meta.url), "utf8");
-  assert.match(appShellSource, /dataset\.commandCenterShell === "vnext"[\s\S]{0,300}targeted-route-ready/);
+  const targetedBoot = appShellSource.slice(
+    appShellSource.indexOf('if (document.body?.dataset.commandCenterShell === "vnext")'),
+    appShellSource.indexOf("        return;", appShellSource.indexOf('if (document.body?.dataset.commandCenterShell === "vnext")'))
+  );
+  assert.match(targetedBoot, /hydrateStatePayload\([\s\S]*render\(\);[\s\S]*targeted-route-ready/);
+  assert.doesNotMatch(targetedBoot, /\/api\/(?:state|boot-state)/);
 
   assert.ok(readRequests.every((request) => request.collections.length > 0));
   const evidence = {

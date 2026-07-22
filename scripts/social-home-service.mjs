@@ -44,7 +44,8 @@ export const SOCIAL_PRODUCTION_READ_COLLECTIONS = Object.freeze([
   "generationProfiles",
   "library",
   "publishClaims",
-  "reports"
+  "reports",
+  "runtime"
 ]);
 export const SOCIAL_HOME_VIEWS = Object.freeze([
   Object.freeze({ key:"ideas", label:"Ideas" }),

@@ -177,7 +177,7 @@ test("route recovery and exact links remain accessible, synchronized, and overfl
     if (new URL(request.url()).pathname === "/api/state") fullStateRequests += 1;
   });
   await openCompatibility(page, "old-incomplete-link");
-  await expect.poll(() => fullStateRequests).toBe(1);
+  expect(fullStateRequests).toBe(0);
   const axe = await new AxeBuilder({ page })
     .include("body")
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -197,5 +197,5 @@ test("route recovery and exact links remain accessible, synchronized, and overfl
     expect(overflow.document, `${width}px document must not overflow horizontally.`).toBeLessThanOrEqual(0);
     expect(overflow.body, `${width}px body must not overflow horizontally.`).toBeLessThanOrEqual(0);
   }
-  expect(fullStateRequests).toBe(1);
+  expect(fullStateRequests).toBe(0);
 });

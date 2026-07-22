@@ -111,7 +111,7 @@ test("Inbox route, authorized counts, badge, exact Open links, and Back share on
   if (payload.counts.needsMe > 0) await expect(badge).toHaveText(String(payload.counts.needsMe));
   expect(payload.counts.needsMe).not.toBe(payload.counts.total);
   expect(fullStateRequests).toBe(stateRequestsBeforeInbox);
-  expect(inboxRequests.filter((request) => request.method === "GET").length).toBeGreaterThanOrEqual(2);
+  expect(inboxRequests.filter((request) => request.method === "GET").length).toBe(1);
   expect(inboxRequests.every((request) => request.method === "GET")).toBe(true);
   expect(mutationRequests).toEqual([]);
   await page.screenshot({ path:path.join(screenshotDirectory, "inbox-needs-me-1440.png"), animations:"disabled" });

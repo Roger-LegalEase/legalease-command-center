@@ -248,7 +248,9 @@ export function shellResilienceBrowserSource() {
           ok:payload?.ok === true,
           allowed:payload?.allowed === true,
           outcome:String(payload?.outcome || ""),
-          permissionLabel:String(payload?.permissionLabel || "")
+          permissionLabel:String(payload?.permissionLabel || ""),
+          collection:String(payload?.collection || ""),
+          record:payload?.record && typeof payload.record === "object" && !Array.isArray(payload.record) ? payload.record : null
         };
         if (compact.outcome === "session_expired") {
           showSessionExpired();
@@ -261,6 +263,16 @@ export function shellResilienceBrowserSource() {
       });
       controller.pendingAuthorization = { target, promise };
       return promise;
+    }
+
+    function hydrateAuthorizedRouteRecord(access = {}) {
+      if (access.outcome !== "record" || !access.record || typeof state === "undefined") return;
+      const resolution = currentResolution();
+      const collection = String(access.collection || "");
+      const recordId = String(access.record.id || access.record.key || access.record.slug || "");
+      if (resolution.kind !== "object" || collection !== resolution.sourceKind || recordId !== resolution.sourceId) return;
+      const existing = Array.isArray(state?.[collection]) ? state[collection] : [];
+      state[collection] = [access.record, ...existing.filter((record) => String(record?.id || record?.key || record?.slug || "") !== recordId)];
     }
 
     async function guardedRender(options = {}) {
@@ -286,6 +298,7 @@ export function shellResilienceBrowserSource() {
           else renderTemplate(founderPermissionTemplate(access.permissionLabel), { kind:"unauthorized" });
           return;
         }
+        hydrateAuthorizedRouteRecord(access);
         controller.recoveryActive = false;
         setStateDependentControlsDisabled(false);
         controller.nativeRender();

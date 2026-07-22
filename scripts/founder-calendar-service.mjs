@@ -27,6 +27,7 @@ export const FOUNDER_CALENDAR_READ_COLLECTIONS = Object.freeze([
   "activityEvents",
   "auditHistory",
   "automationEvents",
+  "calendarSignals",
   "companyContacts",
   "googleInsights",
   "meetingBriefs",

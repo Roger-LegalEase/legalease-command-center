@@ -43,17 +43,19 @@ test("initial vNext loading keeps the shell visible and transitions without anot
   test.slow();
   await mkdir(screenshotDirectory, { recursive:true });
   const baseURL = process.env.BROWSER_TEST_VNEXT_BASE_URL;
-  let releaseBoot;
-  const bootGate = new Promise((resolve) => { releaseBoot = resolve; });
+  let releaseToday;
+  const todayGate = new Promise((resolve) => { releaseToday = resolve; });
   let bootRequests = 0;
   let fullStateRequests = 0;
+  let todayRequests = 0;
   page.on("request", (request) => {
     const pathname = new URL(request.url()).pathname;
     if (pathname === "/api/boot-state") bootRequests += 1;
     if (pathname === "/api/state") fullStateRequests += 1;
+    if (pathname === "/api/ui/today") todayRequests += 1;
   });
-  await page.route("**/api/boot-state", async (route) => {
-    await bootGate;
+  await page.route("**/api/ui/today", async (route) => {
+    await todayGate;
     await route.continue();
   });
   await page.goto(`${baseURL}/#today`, { waitUntil:"domcontentloaded" });
@@ -67,21 +69,24 @@ test("initial vNext loading keeps the shell visible and transitions without anot
   await expect(skeleton).toContainText("Loading Today");
   await expect(skeleton).not.toContainText(/\d+%|\$\d|records ready/i);
   await page.screenshot({ path:path.join(screenshotDirectory, "shell-loading-1440.png"), animations:"disabled" });
-  releaseBoot();
+  releaseToday();
   await expect.poll(() => page.evaluate(() => Boolean(window.__LE_BOOT?.ready))).toBe(true);
   await expect(page.locator("main#app").getByRole("heading", { level:1 }).first()).toBeVisible();
   await expect(page.locator("[data-today-content]")).toHaveAttribute("aria-busy", "false");
-  await expect.poll(() => fullStateRequests).toBe(1);
-  expect(bootRequests).toBe(1);
+  expect(fullStateRequests).toBe(0);
+  expect(bootRequests).toBe(0);
+  expect(todayRequests).toBe(1);
   const metrics = await page.evaluate(() => ({ ...window.__LE_SHELL_RESILIENCE_METRICS }));
-  expect(metrics.loadingToContentMs).toBeGreaterThanOrEqual(0);
-  expect(metrics.fullStateRequests).toBe(1);
+  const todayMetrics = await page.evaluate(() => ({ ...window.__LE_TODAY_METRICS }));
+  expect(todayMetrics.skeletonToContentMs).toBeGreaterThanOrEqual(0);
+  expect(metrics.fullStateRequests).toBe(0);
   expect(metrics.searchRequestsWhileClosed).toBe(0);
   expect(metrics.createRequestsWhileClosed).toBe(0);
   console.log("CCX105_LOADING_METRICS", JSON.stringify({
-    loadingToContentMs:metrics.loadingToContentMs,
+    loadingToContentMs:todayMetrics.skeletonToContentMs,
     bootRequests,
     fullStateRequests,
+    todayRequests,
     searchRequestsWhileClosed:metrics.searchRequestsWhileClosed,
     createRequestsWhileClosed:metrics.createRequestsWhileClosed
   }));
@@ -279,19 +284,11 @@ test("session expiration closes authenticated layers and removes protected conte
   expect(page.url()).toBe(`${baseURL}/#campaigns`);
 });
 
-test("boot failure uses Recovery Mode, retries once, and remains responsive", async ({ page }) => {
+test("Recovery Mode retries once and remains responsive", async ({ page }) => {
   test.slow();
   await mkdir(screenshotDirectory, { recursive:true });
-  const baseURL = process.env.BROWSER_TEST_VNEXT_BASE_URL;
-  let failBoot = true;
-  await page.route("**/api/boot-state", async (route) => {
-    if (failBoot) {
-      await route.fulfill({ status:200, contentType:"application/json", body:"{" });
-      return;
-    }
-    await route.continue();
-  });
-  await page.goto(`${baseURL}/#today`, { waitUntil:"domcontentloaded" });
+  await openVNext(page);
+  await page.evaluate(() => window.__LE_SHELL_RESILIENCE.showRecovery());
   const recovery = page.locator("[data-vnext-shell-state='recovery']");
   await expect(recovery).toBeVisible();
   await expect(page.locator(".vnext-sidebar")).toBeVisible();
@@ -302,7 +299,6 @@ test("boot failure uses Recovery Mode, retries once, and remains responsive", as
   await expect(page.getByRole("button", { name:"Create", exact:true })).toBeDisabled();
   await page.screenshot({ path:path.join(screenshotDirectory, "recovery-mode-1440.png"), animations:"disabled" });
 
-  failBoot = false;
   const retry = recovery.getByRole("button", { name:"Try full app again" });
   await retry.evaluate((button) => {
     button.click();

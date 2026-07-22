@@ -753,9 +753,27 @@ function disableLegacyFullStateBoot(html) {
   if (!html.includes(marker)) return html;
   return html.replace(marker, `${marker}
       if (document.body?.dataset.commandCenterShell === "vnext") {
-        window.__LE_BOOT.stage = "targeted-route-ready";
-        window.__LE_BOOT.ready = true;
-        if (window.__LE_BOOT.timeout) clearTimeout(window.__LE_BOOT.timeout);
+        window.__LE_BOOT.stage = "targeted-route-render";
+        state = hydrateStatePayload({
+          persistence:"targeted",
+          heavyCollectionsDeferred:true
+        }, "targeted-route-boot");
+        safeBootActive = false;
+        fullStateLoaded = false;
+        bootStateDiagnostics = {
+          status:"targeted",
+          endpoint:null,
+          loadedAt:new Date().toISOString(),
+          heavyCollectionsDeferred:true
+        };
+        try {
+          render();
+          window.__LE_BOOT.stage = "targeted-route-ready";
+          window.__LE_BOOT.ready = true;
+          if (window.__LE_BOOT.timeout) clearTimeout(window.__LE_BOOT.timeout);
+        } catch (renderError) {
+          showRenderFailure(renderError.message || "Targeted route shell failed.", "targeted-route-render");
+        }
         return;
       }`);
 }
