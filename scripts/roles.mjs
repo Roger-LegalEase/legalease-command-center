@@ -190,6 +190,11 @@ export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", 
   if (verb === "POST" && (path === "/api/ui/social/weekly" || /^\/api\/ui\/social\/weekly\/posts\/[^/]+(?:\/(?:manual-publication|results))?$/.test(path))) return ["manage_content_drafts"];
   if (verb === "GET" && path === "/api/ui/scoreboard") return ["read_internal"];
   if (verb === "POST" && path === "/api/ui/scoreboard/finance") return ["manage_growth"];
+  if (verb === "GET" && path === "/api/ui/support") return ["read_internal"];
+  if (verb === "POST" && path === "/api/ui/support/action") return ["add_notes"];
+  if (verb === "GET" && path === "/api/ui/calendar") return ["read_internal"];
+  if (verb === "POST" && path === "/api/ui/calendar/action") return ["manage_tasks"];
+  if (verb === "POST" && path === "/api/ui/calendar/create-link") return ["read_internal"];
   if (verb === "GET" && ["/api/ui/discovery/onboarding", "/api/ui/discovery/checklist"].includes(path)) return ["read_internal"];
   if (verb === "POST" && ["/api/ui/discovery/onboarding", "/api/ui/discovery/analytics"].includes(path)) return ["mutate_state"];
   if (verb === "GET" && (path === "/api/ui/outreach" || /^\/api\/ui\/outreach\/campaign\/[^/]+(?:\/draft)?$/.test(path))) return ["read_internal"];

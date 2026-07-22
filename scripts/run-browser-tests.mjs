@@ -821,6 +821,35 @@ filesState.dataRoomItems = [{
   updatedAt:"2026-07-18T12:00:00.000Z",
   allowedRoles:["owner", "admin", "operator", "viewer"]
 }];
+const founderOperationsState = structuredClone(fixtureState);
+const founderOperationsNow = new Date();
+const founderOperationsMeetingStart = new Date(founderOperationsNow.getTime() + 24 * 60 * 60 * 1_000);
+const founderOperationsMeetingEnd = new Date(founderOperationsMeetingStart.getTime() + 45 * 60 * 1_000);
+founderOperationsState.supportIssues = [{
+  id:"founder-browser-support-001",
+  title:"Customer needs an intake status update",
+  summary:"A synthetic customer is waiting for a clear next step.",
+  status:"open",
+  urgency:"normal",
+  owner:"Roger",
+  partnerId:"browser-partner-001",
+  requesterName:"Jamie Example",
+  created_at:new Date(founderOperationsNow.getTime() - 2 * 24 * 60 * 60 * 1_000).toISOString(),
+  updated_at:founderOperationsNow.toISOString(),
+  history:[]
+}];
+founderOperationsState.calendarSignals = [{
+  id:"founder-browser-calendar-001",
+  eventId:"founder-browser-calendar-001",
+  title:"Partner workflow review",
+  summary:"Review the synthetic Partner workflow and agree on the next action.",
+  organization:"Example Community Network",
+  partnerId:"browser-partner-001",
+  startTime:founderOperationsMeetingStart.toISOString(),
+  endTime:founderOperationsMeetingEnd.toISOString(),
+  htmlLink:"https://calendar.google.com/calendar/event?eid=synthetic-founder-operations",
+  updatedAt:founderOperationsNow.toISOString()
+}];
 const composerTemplate = composerRestrictedState.posts.find((post) => post.id === "idea-01");
 composerRestrictedState.posts.push(
   { ...structuredClone(composerTemplate), id:"composer-hidden", title:"Nondisclosed composer Post", visibility:"owner_only", allowedRoles:["owner"], _version:3 },
@@ -864,7 +893,7 @@ await Promise.all([
   writeFile(partnersDataPath, `${JSON.stringify(partnersState, null, 2)}\n`, { mode:0o600 }),
   writeFile(outreachDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(filesDataPath, `${JSON.stringify(filesState, null, 2)}\n`, { mode:0o600 }),
-  writeFile(discoveryDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 })
+  writeFile(discoveryDataPath, `${JSON.stringify(founderOperationsState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
 const restrictedSessionSecret = crypto.randomBytes(32).toString("base64url");

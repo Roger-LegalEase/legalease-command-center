@@ -160,6 +160,16 @@ import {
   handleFounderScoreboardApiRequest,
   isFounderScoreboardApiPath
 } from "./founder-scoreboard-api.mjs";
+import {
+  FOUNDER_SUPPORT_API_BODY_LIMIT,
+  handleFounderSupportApiRequest,
+  isFounderSupportApiPath
+} from "./founder-support-api.mjs";
+import {
+  FOUNDER_CALENDAR_API_BODY_LIMIT,
+  handleFounderCalendarApiRequest,
+  isFounderCalendarApiPath
+} from "./founder-calendar-api.mjs";
 import { approveSocialPost, regenerateSocialPostImage, requestSocialPostChanges } from "./social-review-actions.mjs";
 import { createSocialManualPackage, publishSocialPost } from "./social-publishing-actions.mjs";
 import { buildSocialCalendarContract } from "./social-calendar-service.mjs";
@@ -35683,7 +35693,7 @@ async function handleRequest(request, response) {
       }, accessDecision.status || 403);
       return;
     }
-    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname) || isSocialWeeklyPlannerApiPath(url.pathname) || isFounderScoreboardApiPath(url.pathname)) {
+    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname) || isSocialWeeklyPlannerApiPath(url.pathname) || isFounderScoreboardApiPath(url.pathname) || isFounderSupportApiPath(url.pathname) || isFounderCalendarApiPath(url.pathname)) {
       sendJson(response, {
         ok:false,
         outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
@@ -35941,6 +35951,43 @@ async function handleRequest(request, response) {
     });
     const result = mutation ? await serializeStateMutation(execute) : await execute();
     sendJson(response, result.body || { ok:false, message:"Scoreboard is unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isFounderSupportApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:FOUNDER_SUPPORT_API_BODY_LIMIT }) : {};
+    const execute = () => handleFounderSupportApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
+    sendJson(response, result.body || { ok:false, message:"Support is unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isFounderCalendarApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:FOUNDER_CALENDAR_API_BODY_LIMIT }) : {};
+    const execute = () => handleFounderCalendarApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const stateChangingCalendarAction = mutation && url.pathname !== "/api/ui/calendar/create-link";
+    const result = stateChangingCalendarAction ? await serializeStateMutation(execute) : await execute();
+    sendJson(response, result.body || { ok:false, message:"Calendar is unavailable." }, result.status || 404);
     return;
   }
 
