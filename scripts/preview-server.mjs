@@ -170,6 +170,10 @@ import {
   handleFounderCalendarApiRequest,
   isFounderCalendarApiPath
 } from "./founder-calendar-api.mjs";
+import {
+  handleFounderCompanyHealthApiRequest,
+  isFounderCompanyHealthApiPath
+} from "./founder-company-health-api.mjs";
 import { approveSocialPost, regenerateSocialPostImage, requestSocialPostChanges } from "./social-review-actions.mjs";
 import { createSocialManualPackage, publishSocialPost } from "./social-publishing-actions.mjs";
 import { buildSocialCalendarContract } from "./social-calendar-service.mjs";
@@ -35693,7 +35697,7 @@ async function handleRequest(request, response) {
       }, accessDecision.status || 403);
       return;
     }
-    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname) || isSocialWeeklyPlannerApiPath(url.pathname) || isFounderScoreboardApiPath(url.pathname) || isFounderSupportApiPath(url.pathname) || isFounderCalendarApiPath(url.pathname)) {
+    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname) || isSocialWeeklyPlannerApiPath(url.pathname) || isFounderScoreboardApiPath(url.pathname) || isFounderSupportApiPath(url.pathname) || isFounderCalendarApiPath(url.pathname) || isFounderCompanyHealthApiPath(url.pathname)) {
       sendJson(response, {
         ok:false,
         outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
@@ -35988,6 +35992,20 @@ async function handleRequest(request, response) {
     const stateChangingCalendarAction = mutation && url.pathname !== "/api/ui/calendar/create-link";
     const result = stateChangingCalendarAction ? await serializeStateMutation(execute) : await execute();
     sendJson(response, result.body || { ok:false, message:"Calendar is unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isFounderCompanyHealthApiPath(url.pathname)) {
+    const result = await handleFounderCompanyHealthApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    sendJson(response, result.body || { ok:false, message:"Company Health is unavailable." }, result.status || 404);
     return;
   }
 
