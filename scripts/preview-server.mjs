@@ -155,6 +155,11 @@ import {
   handleSocialWeeklyPlannerApiRequest,
   isSocialWeeklyPlannerApiPath
 } from "./social-weekly-planner-api.mjs";
+import {
+  FOUNDER_SCOREBOARD_BODY_LIMIT,
+  handleFounderScoreboardApiRequest,
+  isFounderScoreboardApiPath
+} from "./founder-scoreboard-api.mjs";
 import { approveSocialPost, regenerateSocialPostImage, requestSocialPostChanges } from "./social-review-actions.mjs";
 import { createSocialManualPackage, publishSocialPost } from "./social-publishing-actions.mjs";
 import { buildSocialCalendarContract } from "./social-calendar-service.mjs";
@@ -35678,7 +35683,7 @@ async function handleRequest(request, response) {
       }, accessDecision.status || 403);
       return;
     }
-    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname) || isSocialWeeklyPlannerApiPath(url.pathname)) {
+    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname) || isSocialWeeklyPlannerApiPath(url.pathname) || isFounderScoreboardApiPath(url.pathname)) {
       sendJson(response, {
         ok:false,
         outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
@@ -35918,6 +35923,24 @@ async function handleRequest(request, response) {
     });
     const result = mutation ? await serializeStateMutation(execute) : await execute();
     sendJson(response, result.body || { ok:false, message:"Weekly Social planning is unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isFounderScoreboardApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:FOUNDER_SCOREBOARD_BODY_LIMIT }) : {};
+    const execute = () => handleFounderScoreboardApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
+    sendJson(response, result.body || { ok:false, message:"Scoreboard is unavailable." }, result.status || 404);
     return;
   }
 
