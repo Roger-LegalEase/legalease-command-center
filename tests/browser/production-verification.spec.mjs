@@ -5,7 +5,7 @@ const workflows = [
   ["BROWSER_TEST_ACTIONS_BASE_URL", "inbox?group=needs-me", "Inbox"],
   ["BROWSER_TEST_SOCIAL_BASE_URL", "social?view=ideas", "Social"],
   ["BROWSER_TEST_OUTREACH_BASE_URL", "outreach", "Outreach"],
-  ["BROWSER_TEST_PARTNERS_BASE_URL", "partners", "Partners"],
+  ["BROWSER_TEST_PARTNERS_BASE_URL", "partners", "Relationships"],
   ["BROWSER_TEST_FILES_BASE_URL", "files", "Files"],
   ["BROWSER_TEST_FILES_BASE_URL", "files?collection=investor-room", "Investor Room"]
 ];

@@ -89,6 +89,75 @@ import {
 export const DESKTOP_SHELL_STYLESHEET_PATH = "assets/ui/desktop-shell.css";
 export const RESPONSIVE_SHELL_BREAKPOINT_PX = 860;
 export const RESPONSIVE_NAVIGATION_DRAWER_ID = "vnext-navigation-drawer";
+export const VNEXT_LAZY_RUNTIME_PATH_PREFIX = "/assets/ui/runtime/";
+export const VNEXT_LAZY_RUNTIME_MAX_BYTES = 64 * 1024;
+
+const VNEXT_LAZY_ASSETS = Object.freeze({
+  "lee-inbox":Object.freeze({
+    styles:Object.freeze([LEE_INBOX_PANEL_STYLESHEET_PATH]),
+    source:leeInboxPanelBrowserSource,
+    api:"__LE_LEE_INBOX"
+  }),
+  "task-workbench":Object.freeze({
+    styles:Object.freeze([TASK_WORKBENCH_STYLESHEET_PATH]),
+    source:taskWorkbenchBrowserSource
+  }),
+  "communication-composer":Object.freeze({
+    styles:Object.freeze([COMMUNICATION_COMPOSER_STYLESHEET_PATH, COMMUNICATION_COMPOSER_LAYOUT_STYLESHEET_PATH]),
+    source:communicationComposerBrowserSource
+  }),
+  "relationship-drawer":Object.freeze({
+    styles:Object.freeze([RELATIONSHIP_DRAWER_STYLESHEET_PATH]),
+    source:relationshipDrawerBrowserSource
+  }),
+  "social-weekly-planner":Object.freeze({
+    styles:Object.freeze([SOCIAL_WEEKLY_PLANNER_STYLESHEET_PATH]),
+    source:socialWeeklyPlannerBrowserSource
+  }),
+  "founder-scoreboard":Object.freeze({
+    styles:Object.freeze([FOUNDER_SCOREBOARD_STYLESHEET_PATH]),
+    source:founderScoreboardBrowserSource,
+    api:"__LE_FOUNDER_SCOREBOARD"
+  }),
+  "founder-support":Object.freeze({
+    styles:Object.freeze([FOUNDER_SUPPORT_STYLESHEET_PATH]),
+    source:founderSupportPageBrowserSource,
+    api:"__LE_FOUNDER_SUPPORT"
+  }),
+  "founder-calendar":Object.freeze({
+    styles:Object.freeze([FOUNDER_CALENDAR_STYLESHEET_PATH]),
+    source:founderCalendarPageBrowserSource,
+    api:"__LE_FOUNDER_CALENDAR"
+  }),
+  "founder-company-health":Object.freeze({
+    styles:Object.freeze([FOUNDER_COMPANY_HEALTH_STYLESHEET_PATH]),
+    source:founderCompanyHealthBrowserSource,
+    api:"__LE_FOUNDER_COMPANY_HEALTH"
+  }),
+  "automation-control-center":Object.freeze({
+    styles:Object.freeze([AUTOMATION_CONTROL_CENTER_STYLESHEET_PATH]),
+    source:automationControlCenterBrowserSource,
+    outreachOnly:true
+  })
+});
+
+export const VNEXT_LAZY_ASSET_CONTRACT = Object.freeze({
+  runtimePathPrefix:VNEXT_LAZY_RUNTIME_PATH_PREFIX,
+  runtimeMaxBytes:VNEXT_LAZY_RUNTIME_MAX_BYTES,
+  runtimeIds:Object.freeze(Object.keys(VNEXT_LAZY_ASSETS)),
+  stylesheetPaths:Object.freeze([...new Set(Object.values(VNEXT_LAZY_ASSETS).flatMap((asset) => asset.styles))])
+});
+
+export function resolveVNextLazyRuntime(pathname = "", options = {}) {
+  const requestedPath = String(pathname || "");
+  if (requestedPath.length > VNEXT_LAZY_RUNTIME_PATH_PREFIX.length + 80) return null;
+  const match = requestedPath.match(/^\/assets\/ui\/runtime\/([a-z0-9]+(?:-[a-z0-9]+)*)\.js$/);
+  if (!match || !Object.hasOwn(VNEXT_LAZY_ASSETS, match[1])) return null;
+  const asset = VNEXT_LAZY_ASSETS[match[1]];
+  if (!asset || (asset.outreachOnly && options.outreachEnabled !== true)) return null;
+  const source = asset.source();
+  return typeof source === "string" && source.length <= VNEXT_LAZY_RUNTIME_MAX_BYTES ? source : null;
+}
 
 const assetUrl = (path) => `/${String(path || "").replace(/^\/+/, "")}`;
 const PUBLIC_ROUTE_HREFS = Object.freeze({ queue:"social" });
@@ -204,6 +273,107 @@ function discoveryCaptureSinkBrowserSource() {
     window.__LE_DISCOVERY_ANALYTICS_CAPTURE=(event)=>{try{const id="discovery-analytics-"+crypto.randomUUID().replaceAll("-","");void fetch(${endpoint},{method:"POST",credentials:"same-origin",keepalive:true,headers:{accept:"application/json","content-type":"application/json","x-csrf-token":window.__LE_CSRF_TOKEN(),"x-request-id":id},body:JSON.stringify(event)}).catch(()=>{});}catch{}};
     document.addEventListener("click",event=>{const trigger=event.target.closest?.('[data-shell-action="start-product-tour-again"]');if(trigger){event.preventDefault();document.dispatchEvent(new CustomEvent("vnext:open-onboarding",{detail:{returnTarget:trigger}}));}});
   })();`;
+}
+
+function vnextLazyAssetLoaderScript(options = {}) {
+  const manifest = Object.fromEntries(Object.entries(VNEXT_LAZY_ASSETS)
+    .filter(([, asset]) => !asset.outreachOnly || options.outreachEnabled === true)
+    .map(([id, asset]) => [id, {
+      styles:asset.styles.map(assetUrl),
+      runtime:`${VNEXT_LAZY_RUNTIME_PATH_PREFIX}${id}.js`,
+      ...(asset.api ? { api:asset.api } : {})
+    }]));
+  const serializedManifest = JSON.stringify(manifest).replaceAll("<", "\\u003c");
+  return `<script>
+  (() => {
+    "use strict";
+    const manifest = ${serializedManifest};
+    const runtimeLoads = new Map();
+    const loadedStyles = new Set([...document.querySelectorAll('link[rel="stylesheet"][href]')].map((link) => {
+      try { return new URL(link.href, location.origin).pathname; } catch { return ""; }
+    }).filter(Boolean));
+    function sameOriginUrl(path) {
+      try { const url = new URL(path, location.origin); return url.origin === location.origin ? url : null; } catch { return null; }
+    }
+    function loadStyle(path, id) {
+      const url = sameOriginUrl(path);
+      if (!url || loadedStyles.has(url.pathname)) return;
+      loadedStyles.add(url.pathname);
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = url.href;
+      link.dataset.vnextLazyStyle = id;
+      link.addEventListener("error", () => { loadedStyles.delete(url.pathname); link.remove(); }, { once:true });
+      document.head.append(link);
+    }
+    function activateLoadedRuntime(asset) {
+      const api = asset.api ? window[asset.api] : null;
+      if (typeof api?.activate === "function") queueMicrotask(() => api.activate());
+    }
+    function loadRuntime(id) {
+      const asset = manifest[id];
+      if (!asset) return Promise.resolve(false);
+      asset.styles.forEach((path) => loadStyle(path, id));
+      if (runtimeLoads.has(id)) return runtimeLoads.get(id);
+      const url = sameOriginUrl(asset.runtime);
+      if (!url) return Promise.resolve(false);
+      const pending = new Promise((resolve) => {
+        const script = document.createElement("script");
+        script.src = url.href;
+        script.async = true;
+        script.dataset.vnextLazyRuntime = id;
+        script.addEventListener("load", () => { activateLoadedRuntime(asset); resolve(true); }, { once:true });
+        script.addEventListener("error", () => { runtimeLoads.delete(id); script.remove(); resolve(false); }, { once:true });
+        document.body.append(script);
+      });
+      runtimeLoads.set(id, pending);
+      return pending;
+    }
+    function routeAssets() {
+      const hash = String(location.hash || "#today");
+      const raw = hash.slice(1).split(/[/?]/)[0].toLocaleLowerCase("en-US");
+      const query = new URLSearchParams(hash.split("?")[1] || "");
+      const resolved = window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(hash);
+      const route = resolved?.kind === "page" ? resolved.canonicalRoute : "";
+      const objectType = resolved?.kind === "object" ? resolved.objectType : "";
+      const required = new Set();
+      const add = (...ids) => ids.forEach((id) => required.add(id));
+      if (route === "today") add("task-workbench", "communication-composer");
+      if (route === "inbox") add("lee-inbox", "task-workbench", "communication-composer", "relationship-drawer");
+      if (route === "partners" || objectType === "Partner") add("relationship-drawer", "task-workbench", "communication-composer");
+      if (route === "support") add("founder-support", "relationship-drawer", "task-workbench", "communication-composer");
+      if (route === "meetings") add("founder-calendar", "relationship-drawer", "task-workbench", "communication-composer");
+      if (["revenue", "metrics"].includes(route) || ["revenue", "scoreboard", "metrics", "kpis"].includes(raw)) add("founder-scoreboard");
+      if (["company-health", "os-health"].includes(route) || ["company-health", "os-health", "health", "app-status", "system"].includes(raw)) add("founder-company-health");
+      if (route === "queue" && query.get("view") === "weekly") add("social-weekly-planner");
+      if (["automation", "automation-control", "automation-control-center"].includes(raw) || (route === "outreach" && query.get("view") === "automation")) add("automation-control-center");
+      return required;
+    }
+    function controlAssets() {
+      const root = document.querySelector("main#app");
+      if (!root) return [];
+      const required = new Set();
+      if (root.querySelector("[data-task-open]")) { required.add("task-workbench"); required.add("communication-composer"); }
+      if (root.querySelector("[data-compose-source-kind][data-compose-source-id]")) required.add("communication-composer");
+      if (root.querySelector("[data-relationship-open]")) { required.add("relationship-drawer"); required.add("task-workbench"); required.add("communication-composer"); }
+      return required;
+    }
+    function activate() {
+      const required = new Set([...routeAssets(), ...controlAssets()]);
+      required.forEach((id) => { void loadRuntime(id); });
+    }
+    let observerQueued = false;
+    const app = document.querySelector("main#app");
+    if (app) new MutationObserver(() => {
+      if (observerQueued) return;
+      observerQueued = true;
+      queueMicrotask(() => { observerQueued = false; activate(); });
+    }).observe(app, { childList:true, subtree:true });
+    window.addEventListener("hashchange", activate);
+    window.__LE_VNEXT_LAZY_ASSETS = Object.freeze({ activate });
+    activate();
+  })();
+</script>`.replace(/\n\s*/g, "");
 }
 
 function shellClientScript() {
@@ -608,19 +778,7 @@ export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
   html = replaceInitialLoadingSurface(html);
   html = html.replace(
     "</head>",
-    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(LEE_INBOX_PANEL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TASK_WORKBENCH_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(COMMUNICATION_COMPOSER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(COMMUNICATION_COMPOSER_LAYOUT_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(RELATIONSHIP_DRAWER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_WEEKLY_PLANNER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(FOUNDER_SCOREBOARD_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_HOME_STYLESHEET_PATH))}" />\n  ${PARTNER_RECORD_STYLESHEET_PATHS.map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ")}\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_ACCESSIBILITY_STYLESHEET_PATH))}" />\n  ${options.outreachEnabled ? [OUTREACH_HOME_STYLESHEET_PATH, CAMPAIGN_WIZARD_STYLESHEET_PATH, CAMPAIGN_DETAIL_STYLESHEET_PATH].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  ${options.filesEnabled ? [FILES_HOME_STYLESHEET, "/assets/ui/files-organization.css", FILE_DETAILS_STYLESHEET, FILE_UPLOAD_STYLESHEET, INVESTOR_ROOM_STYLESHEET].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  <script>${routeCompatibilityBrowserSource(options)}</script>\n</head>`
-  );
-  const founderOperationsStyles = [
-    FOUNDER_SUPPORT_STYLESHEET_PATH,
-    FOUNDER_CALENDAR_STYLESHEET_PATH,
-    FOUNDER_COMPANY_HEALTH_STYLESHEET_PATH,
-    ...(options.outreachEnabled ? [AUTOMATION_CONTROL_CENTER_STYLESHEET_PATH] : [])
-  ]
-    .map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`)
-    .join("\n  ");
-  html = html.replace(
-    `  <script>${routeCompatibilityBrowserSource(options)}</script>`,
-    `  ${founderOperationsStyles}\n  <script>${routeCompatibilityBrowserSource(options)}</script>`
+    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_HOME_STYLESHEET_PATH))}" />\n  ${PARTNER_RECORD_STYLESHEET_PATHS.map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ")}\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_ACCESSIBILITY_STYLESHEET_PATH))}" />\n  ${options.outreachEnabled ? [OUTREACH_HOME_STYLESHEET_PATH, CAMPAIGN_WIZARD_STYLESHEET_PATH, CAMPAIGN_DETAIL_STYLESHEET_PATH].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  ${options.filesEnabled ? [FILES_HOME_STYLESHEET, "/assets/ui/files-organization.css", FILE_DETAILS_STYLESHEET, FILE_UPLOAD_STYLESHEET, INVESTOR_ROOM_STYLESHEET].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  <script>${routeCompatibilityBrowserSource(options)}</script>\n</head>`
   );
   if (options.discoveryEnabled) {
     const discoveryStyles = [DISCOVERY_ONBOARDING_STYLESHEET, DISCOVERY_CHECKLIST_STYLESHEET, "/assets/ui/discovery-empty-states.css", DISCOVERY_HELP_STYLESHEET]
@@ -644,11 +802,7 @@ export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${leeInboxPanelBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${taskWorkbenchBrowserSource()}</script>\n<script>${communicationComposerBrowserSource()}</script>\n<script>${relationshipDrawerBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialWeeklyPlannerBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${founderScoreboardBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource()}</script>\n<script>${partnerRecordBrowserSource()}</script>\n${options.outreachEnabled ? `<script>${outreachHomeBrowserSource()}</script>\n<script>${campaignWizardBrowserSource()}</script>\n<script>${campaignReviewBrowserSource()}</script>\n<script>${campaignDetailBrowserSource()}</script>` : ""}\n${options.filesEnabled ? `<script>${filesIntegrationBrowserSource()}</script>` : ""}\n</body>`);
-  html = html.replace(
-    `<script>${founderScoreboardBrowserSource()}</script>`,
-    `<script>${founderScoreboardBrowserSource()}</script>\n<script>${founderSupportPageBrowserSource()}</script>\n<script>${founderCalendarPageBrowserSource()}</script>\n<script>${founderCompanyHealthBrowserSource()}</script>${options.outreachEnabled ? `\n<script>${automationControlCenterBrowserSource()}</script>` : ""}`
-  );
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource()}</script>\n<script>${partnerRecordBrowserSource()}</script>\n${options.outreachEnabled ? `<script>${outreachHomeBrowserSource()}</script>\n<script>${campaignWizardBrowserSource()}</script>\n<script>${campaignReviewBrowserSource()}</script>\n<script>${campaignDetailBrowserSource()}</script>` : ""}\n${options.filesEnabled ? `<script>${filesIntegrationBrowserSource()}</script>` : ""}\n${vnextLazyAssetLoaderScript(options)}\n</body>`);
   if (options.socialEnabled) {
     html = html.replace(
       `<script>${partnersHomeBrowserSource()}</script>`,

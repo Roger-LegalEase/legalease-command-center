@@ -1,7 +1,7 @@
 import { expect, openToday, test } from "./support.mjs";
 
 test("founder completes the full task workflow from Today and reopens it from Inbox", async ({ page }) => {
-  const baseURL = process.env.BROWSER_TEST_TODAY_BASE_URL;
+  const baseURL = process.env.BROWSER_TEST_FOUNDER_TASK_BASE_URL;
   test.skip(!baseURL, "The isolated Today browser fixture URL is required.");
   const mutations = [];
   page.on("request", (request) => {

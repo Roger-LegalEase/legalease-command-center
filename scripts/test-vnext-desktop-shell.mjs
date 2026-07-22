@@ -18,8 +18,12 @@ import {
 import {
   DESKTOP_SHELL_CONTRACT,
   DESKTOP_SHELL_STYLESHEET_PATH,
+  VNEXT_LAZY_ASSET_CONTRACT,
+  VNEXT_LAZY_RUNTIME_MAX_BYTES,
+  VNEXT_LAZY_RUNTIME_PATH_PREFIX,
   renderVNextDesktopShell,
-  renderVNextDesktopShellChrome
+  renderVNextDesktopShellChrome,
+  resolveVNextLazyRuntime
 } from "./ui/app-shell.mjs";
 import { resolveRouteCompatibility } from "./ui/route-compatibility.mjs";
 
@@ -80,6 +84,34 @@ assert.match(vnextFixture, /window\.addEventListener\("hashchange", render\)/);
 assert.match(vnextFixture, /function normalizeNestedMainRegions\(\)/);
 assert.equal(renderVNextDesktopShell("not-an-application"), "not-an-application", "An invalid compatibility input must fail safely to the existing output.");
 
+assert.equal(VNEXT_LAZY_ASSET_CONTRACT.runtimePathPrefix, "/assets/ui/runtime/");
+assert.equal(VNEXT_LAZY_RUNTIME_PATH_PREFIX, VNEXT_LAZY_ASSET_CONTRACT.runtimePathPrefix);
+assert.equal(VNEXT_LAZY_RUNTIME_MAX_BYTES, 64 * 1024);
+assert.equal(VNEXT_LAZY_ASSET_CONTRACT.runtimeIds.length, 10, "The ten Founder-only browser runtimes must be route-loaded.");
+assert.equal(VNEXT_LAZY_ASSET_CONTRACT.stylesheetPaths.length, 11, "The eleven Founder-only stylesheets must be route-loaded.");
+const founderFixture = renderVNextDesktopShell(legacyFixture, { outreachEnabled:true });
+const criticalStyles = [...founderFixture.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g)].map((match) => match[1]);
+for (const path of VNEXT_LAZY_ASSET_CONTRACT.stylesheetPaths) {
+  assert.ok(!criticalStyles.includes(`/${path.replace(/^\/+/, "")}`), `${path} must not remain in the global critical CSS set.`);
+}
+for (const id of VNEXT_LAZY_ASSET_CONTRACT.runtimeIds) {
+  const runtimePath = `${VNEXT_LAZY_RUNTIME_PATH_PREFIX}${id}.js`;
+  assert.match(founderFixture, new RegExp(runtimePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${id} must be available through the lazy manifest.`);
+  const source = resolveVNextLazyRuntime(runtimePath, { outreachEnabled:true });
+  assert.ok(source && source.length <= VNEXT_LAZY_RUNTIME_MAX_BYTES, `${id} must resolve to a bounded allowlisted runtime.`);
+  assert.ok(!founderFixture.includes(source), `${id} must not be injected into the initial shell.`);
+}
+assert.equal(resolveVNextLazyRuntime(`${VNEXT_LAZY_RUNTIME_PATH_PREFIX}automation-control-center.js`), null, "Outreach-only runtime must follow the reviewed product gate.");
+assert.equal(resolveVNextLazyRuntime(`${VNEXT_LAZY_RUNTIME_PATH_PREFIX}unknown.js`, { outreachEnabled:true }), null);
+assert.equal(resolveVNextLazyRuntime(`${VNEXT_LAZY_RUNTIME_PATH_PREFIX}constructor.js`, { outreachEnabled:true }), null);
+assert.equal(resolveVNextLazyRuntime(`${VNEXT_LAZY_RUNTIME_PATH_PREFIX}../founder-scoreboard.js`, { outreachEnabled:true }), null);
+assert.match(founderFixture, /window\.addEventListener\("hashchange", activate\)/);
+assert.match(founderFixture, /url\.origin === location\.origin/);
+assert.match(founderFixture, /route === "support"\) add\("founder-support", "relationship-drawer", "task-workbench", "communication-composer"\)/);
+assert.match(founderFixture, /route === "meetings"\) add\("founder-calendar", "relationship-drawer", "task-workbench", "communication-composer"\)/);
+assert.match(founderFixture, /\[data-task-open\]/);
+assert.match(founderFixture, /\[data-relationship-open\]/);
+
 const aliases = routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [alias, entry.canonicalRoute]));
 assert.equal(routeRegistry.length, 75);
 assert.equal(aliases.length, 53);
@@ -122,7 +154,9 @@ for (const item of TOP_BAR_CONTROLS.filter((entry) => entry.kind === "route")) {
 }
 
 assert.match(serverSource, /<link rel="stylesheet" href="\/assets\/ui\/tokens\.css" \/>/);
-assert.match(serverSource, /import \{ renderVNextDesktopShell \} from "\.\/ui\/app-shell\.mjs";/);
+assert.match(serverSource, /import \{[\s\S]*?renderVNextDesktopShell,[\s\S]*?resolveVNextLazyRuntime[\s\S]*?\} from "\.\/ui\/app-shell\.mjs";/);
+assert.match(serverSource, /function serveVNextLazyRuntime\([\s\S]*?resolveVNextLazyRuntime\([\s\S]*?VNEXT_LAZY_RUNTIME_MAX_BYTES[\s\S]*?"content-type":"text\/javascript; charset=utf-8"/);
+assert.match(serverSource, /\["GET", "HEAD"\]\.includes\(request\.method\) && url\.pathname\.startsWith\(VNEXT_LAZY_RUNTIME_PATH_PREFIX\)/);
 assert.match(serverSource, /function renderVNextApp\(options = \{\}\) \{[\s\S]*return renderVNextDesktopShell\(renderLegacyApp\(\), \{[\s\S]*\}\);[\s\S]*return renderVNextDesktopShell\(renderLegacyApp\(\)\);\s*\}/);
 assert.match(serverSource, /function renderLegacyApp\(\) \{\s*return htmlShell\(\);\s*\}/);
 assert.doesNotMatch(shellSource, /COMMAND_CENTER_UX_VNEXT|localStorage|sessionStorage|document\.cookie/);

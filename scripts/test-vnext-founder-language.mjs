@@ -27,7 +27,7 @@ const labelsSource = fs.readFileSync(labelsPath, "utf8");
 const docsSource = fs.readFileSync(docsPath, "utf8");
 const serverSource = fs.readFileSync(serverPath, "utf8");
 
-const expectedPrimary = ["Today", "Social", "Outreach", "Partners", "Files"];
+const expectedPrimary = ["Today", "Inbox", "Relationships", "Social", "Outreach", "Scoreboard", "Support", "Calendar", "Company Health", "Files"];
 const expectedUtilities = ["Inbox", "Search", "Create", "Le-E", "Settings", "Help", "Profile"];
 const expectedObjects = ["Post", "Campaign", "Partner", "File"];
 const expectedStatuses = {

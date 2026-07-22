@@ -96,12 +96,12 @@ function relationshipRow(item) {
       <p>${value(item.primaryContact, "No primary contact")}${item.email ? ` · <a href="mailto:${escapeAttribute(item.email)}">${escapeHtml(item.email)}</a>` : ""}</p>
     </div>
     <dl class="relationship-row-details">
-      <div class="relationship-next"><dt>Next action</dt><dd>${value(item.nextAction, "No next action set")}</dd><small class="${item.followUpDue ? "is-overdue" : ""}">${item.nextFollowUpAt ? `${item.followUpDue ? "Due " : "Follow-up "}${date(item.nextFollowUpAt)}` : "No follow-up date"}</small></div>
+      <div class="relationship-next"><dt>Next action</dt><dd>${value(item.nextAction, "No next action set")}<small class="${item.followUpDue ? "is-overdue" : ""}">${item.nextFollowUpAt ? `${item.followUpDue ? "Due " : "Follow-up "}${date(item.nextFollowUpAt)}` : "No follow-up date"}</small></dd></div>
       <div><dt>Last inbound</dt><dd>${date(item.lastInboundAt)}</dd></div>
       <div><dt>Last outbound</dt><dd>${date(item.lastOutboundAt)}</dd></div>
       <div><dt>Owner</dt><dd>${value(item.owner, "Unassigned")}</dd></div>
       <div><dt>Open tasks</dt><dd>${Number(item.openTaskCount || 0)}</dd></div>
-      <div><dt>Outreach</dt><dd>${escapeHtml(outreach)}</dd><small>${escapeHtml(result)}</small></div>
+      <div><dt>Outreach</dt><dd>${escapeHtml(outreach)}<small>${escapeHtml(result)}</small></dd></div>
       <div><dt>Next move</dt><dd>${value(item.waitingState?.label, "Not set")}</dd></div>
       <div><dt>Eligibility</dt><dd>${statusChip(item.eligibility, ["suppressed", "ineligible"].includes(item.eligibility?.key) ? "attention" : "eligible")}</dd></div>
     </dl>

@@ -8,9 +8,14 @@ const screenshotDirectory = path.resolve("docs/ux-vnext/screenshots/ccx-101");
 const drawerId = "#vnext-navigation-drawer";
 const primaryDestinations = [
   ["Today", "today"],
+  ["Inbox", "inbox"],
+  ["Relationships", "partners"],
   ["Social", "social"],
   ["Outreach", "campaigns"],
-  ["Partners", "partners"],
+  ["Scoreboard", "revenue"],
+  ["Support", "support"],
+  ["Calendar", "meetings"],
+  ["Company Health", "os-health"],
   ["Files", "proof"]
 ];
 
@@ -67,16 +72,18 @@ test("the tablet and mobile drawer traps focus and closes through Escape or the 
   }
 });
 
-test("all five destinations navigate through the mobile drawer and keep active state synchronized", async ({ page }) => {
+test("all ten destinations navigate through the mobile drawer and keep active state synchronized", async ({ page }) => {
+  test.slow();
   await openResponsive(page, 390);
   for (const [label, route] of primaryDestinations) {
     const { drawer, trigger } = await openDrawer(page);
-    const link = drawer.getByRole("link", { name:label, exact:true });
+    const destination = label === "Relationships" ? "Partners" : label;
+    const link = drawer.locator(`[data-shell-destination="${destination}"]`);
     await link.click();
     await expect(page).toHaveURL(new RegExp(`#${route}$`));
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
     await expect(page.locator(drawerId)).toHaveAttribute("aria-hidden", "true");
-    await expect(page.locator(`[data-shell-destination="${label}"]`).first()).toHaveAttribute("aria-current", "page");
+    await expect(page.locator(`[data-shell-destination="${destination}"]`).first()).toHaveAttribute("aria-current", "page");
     await expect(page.locator("[data-shell-current-context]")).toHaveText(label);
     await expect(page.locator("main#app").getByRole("heading", { level:1 }).first()).toBeVisible();
   }

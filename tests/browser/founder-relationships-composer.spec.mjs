@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("founder reviews a relationship, drafts a follow-up, and records the manual send", async ({ page, context }) => {
   test.slow();
-  const baseURL = process.env.BROWSER_TEST_PARTNERS_BASE_URL;
+  const baseURL = process.env.BROWSER_TEST_FOUNDER_PARTNERS_BASE_URL;
   test.skip(!baseURL, "Partners browser server is required.");
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin:new URL(baseURL).origin });
   const mutations = [];

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("founder handles Le-E follow-ups in context without an external action", async ({ page }) => {
-  const baseURL = process.env.BROWSER_TEST_PARTNERS_BASE_URL;
+  const baseURL = process.env.BROWSER_TEST_FOUNDER_PARTNERS_BASE_URL;
   test.skip(!baseURL, "Founder inbox browser server is required.");
   const mutations = [];
   page.on("request", (request) => {

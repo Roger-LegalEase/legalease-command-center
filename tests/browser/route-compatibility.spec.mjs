@@ -39,7 +39,7 @@ test("canonical pages and aliases resolve identically without reload and preserv
     ["today", "overview", "Today"],
     ["social", "growth", "Social"],
     ["campaigns", "campaign", "Outreach"],
-    ["partners", "partner", "Partners"],
+    ["partners", "partner", "Relationships"],
     ["proof", "metrics", "Files"]
   ];
   for (const [canonical, alias, destination] of routePairs) {
@@ -86,7 +86,7 @@ test("canonical Post, Campaign, Partner, and File links open exact fixture recor
   const fixtures = [
     ["post", `social/post/${encodeURIComponent(post.id)}`, post.title, "Social", "post-deep-link-1440.png"],
     ["campaign", `outreach/campaign/${encodeURIComponent(campaign.id)}`, campaign.title, "Outreach", "campaign-deep-link-1440.png"],
-    ["partner", `partners/partner/${encodeURIComponent(partner.id)}`, partner.name, "Partners", "partner-deep-link-1440.png"],
+    ["partner", `partners/partner/${encodeURIComponent(partner.id)}`, partner.name, "Relationships", "partner-deep-link-1440.png"],
     ["file", `files/report/${encodeURIComponent(file.id)}`, file.reportTitle, "Files", "file-deep-link-1440.png"]
   ];
   for (const [kind, hash, title, destination, screenshot] of fixtures) {

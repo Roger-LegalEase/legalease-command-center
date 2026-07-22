@@ -1,7 +1,7 @@
 import { expect, openToday, test } from "./support.mjs";
 
 test("founder triages Support and turns Calendar events into internal work", async ({ page }) => {
-  const baseURL = process.env.BROWSER_TEST_DISCOVERY_BASE_URL;
+  const baseURL = process.env.BROWSER_TEST_FOUNDER_OPERATIONS_BASE_URL;
   test.skip(!baseURL, "The isolated founder-operations fixture URL is required.");
   test.slow();
   const mutations = [];

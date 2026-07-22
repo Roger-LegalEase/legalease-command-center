@@ -92,8 +92,8 @@ test("Inbox route, authorized counts, badge, exact Open links, and Back share on
 
   await expect(page.getByRole("heading", { name:"Inbox", level:1 })).toBeVisible();
   const primary = page.locator(".vnext-primary-navigation [data-shell-destination]");
-  await expect(primary).toHaveCount(5);
-  expect((await primary.allTextContents()).map((text) => text.trim())).toEqual(["Today", "Social", "Outreach", "Partners", "Files"]);
+  await expect(primary).toHaveCount(10);
+  expect((await primary.locator(":scope > span:nth-child(2)").allTextContents()).map((text) => text.trim())).toEqual(["Today", "Inbox", "Relationships", "Social", "Outreach", "Scoreboard", "Support", "Calendar", "Company Health", "Files"]);
   await expect(page.locator('[data-shell-destination="Inbox"]').first()).toHaveAttribute("aria-current", "page");
 
   const tabs = inbox.getByRole("tab");
@@ -128,6 +128,17 @@ test("Inbox route, authorized counts, badge, exact Open links, and Back share on
     await expect(page.locator("[data-inbox-content]")).toHaveAttribute("aria-busy", "false");
     const row = page.locator("[data-inbox-item]", { hasText:title });
     await expect(row).toHaveCount(1);
+    if (type === "task") {
+      const taskAction = row.locator('[data-task-open][data-task-id="browser-inbox-task-001"]');
+      await expect(taskAction).toBeVisible();
+      await taskAction.click();
+      const taskWorkbench = page.locator("[data-task-workbench]");
+      await expect(taskWorkbench).toBeVisible();
+      await expect(taskWorkbench.locator("[data-task-title]")).toHaveText(title);
+      await expect(page).toHaveURL(/#inbox\?group=needs-me&type=task$/);
+      await taskWorkbench.getByRole("button", { name:"Close", exact:true }).click();
+      continue;
+    }
     await row.getByRole("link", { name:new RegExp(`^Open ${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} in `) }).click();
     await expect(page).toHaveURL(href);
     await page.goBack();
@@ -223,7 +234,7 @@ test("Inbox empty states remain selectable and truthful", async ({ page }) => {
     await route.fulfill({ status:200, contentType:"application/json", body:JSON.stringify(emptyPayload(group, active)) });
   });
   await openVNext(page, { hash:"inbox?group=needs-me" });
-  await expect(page.getByRole("heading", { name:"You’re caught up" })).toBeVisible();
+  await expect(page.locator("[data-inbox-state]").getByRole("heading", { name:"You’re caught up" })).toBeVisible();
   await expect(page.getByText("Nothing needs your attention right now.")).toBeVisible();
   await expect(page.getByRole("tab")).toHaveCount(3);
   await expect(page.locator("[data-shell-inbox-count]").first()).toBeHidden();

@@ -133,7 +133,7 @@ for (const [label, source] of [["configuration", configSource], ["shell boundary
 
 assert.match(serverSource, /import \{ readCommandCenterVNextConfig \} from "\.\/ui\/vnext-config\.mjs";/);
 assert.match(serverSource, /import \{ renderShellBoundary \} from "\.\/ui\/shell-boundary\.mjs";/);
-assert.match(serverSource, /import \{ renderVNextDesktopShell \} from "\.\/ui\/app-shell\.mjs";/);
+assert.match(serverSource, /import \{[\s\S]*?VNEXT_LAZY_RUNTIME_MAX_BYTES,[\s\S]*?VNEXT_LAZY_RUNTIME_PATH_PREFIX,[\s\S]*?renderVNextDesktopShell,[\s\S]*?resolveVNextLazyRuntime[\s\S]*?\} from "\.\/ui\/app-shell\.mjs";/);
 assert.match(serverSource, /loadLocalEnv\(\);\s*const commandCenterVNextConfig = readCommandCenterVNextConfig\(process\.env\);/);
 assert.match(serverSource, /function renderLegacyApp\(\) \{\s*return htmlShell\(\);\s*\}/);
 assert.match(serverSource, /function renderVNextApp\(options = \{\}\) \{[\s\S]*?discoveryEnabled:discoveryVNextConfig\.enabled && Boolean\(options\.discovery\),[\s\S]*?return renderVNextDesktopShell\(renderLegacyApp\(\)\);\s*\}/);

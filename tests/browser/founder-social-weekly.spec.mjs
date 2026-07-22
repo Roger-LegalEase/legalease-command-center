@@ -1,7 +1,7 @@
 import { expect, openToday, test } from "./support.mjs";
 
 test("founder plans and records a weekly Social campaign without posting", async ({ page }) => {
-  const baseURL = process.env.BROWSER_TEST_SOCIAL_BASE_URL;
+  const baseURL = process.env.BROWSER_TEST_FOUNDER_SOCIAL_BASE_URL;
   test.skip(!baseURL, "The isolated Social browser fixture URL is required.");
   test.slow();
 

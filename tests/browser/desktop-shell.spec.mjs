@@ -7,9 +7,14 @@ import { expect, openToday, test } from "./support.mjs";
 const screenshotDirectory = path.resolve("docs/ux-vnext/screenshots/ccx-100");
 const primaryDestinations = [
   ["Today", "today"],
+  ["Inbox", "inbox"],
+  ["Relationships", "partners"],
   ["Social", "social"],
   ["Outreach", "campaigns"],
-  ["Partners", "partners"],
+  ["Scoreboard", "revenue"],
+  ["Support", "support"],
+  ["Calendar", "meetings"],
+  ["Company Health", "os-health"],
   ["Files", "proof"]
 ];
 
@@ -26,12 +31,16 @@ function primaryNavigation(page) {
   return page.getByRole("navigation", { name:"Primary destinations" });
 }
 
-test("the production vNext shell uses the approved logo and five exact destinations", async ({ page }) => {
+function primaryDestination(navigation, label) {
+  return navigation.locator(`[data-shell-destination="${label === "Relationships" ? "Partners" : label}"]`);
+}
+
+test("the production vNext shell uses the approved logo and ten exact destinations", async ({ page }) => {
   await openVNext(page);
   const navigation = primaryNavigation(page);
-  await expect(navigation.getByRole("link")).toHaveCount(5);
+  await expect(navigation.getByRole("link")).toHaveCount(10);
   for (const [label] of primaryDestinations) {
-    await expect(navigation.getByRole("link", { name:label, exact:true })).toBeVisible();
+    await expect(primaryDestination(navigation, label)).toBeVisible();
   }
   await expect(navigation.getByRole("link", { name:"Today", exact:true })).toHaveAttribute("aria-current", "page");
   const logo = page.locator(".vnext-shell-logo");
@@ -60,13 +69,14 @@ test("the production vNext shell uses the approved logo and five exact destinati
 });
 
 test("visible destination navigation stays synchronized and captures desktop review screenshots", async ({ page }) => {
+  test.slow();
   await mkdir(screenshotDirectory, { recursive:true });
   await page.setViewportSize({ width:1440, height:900 });
   await openVNext(page);
   const navigation = primaryNavigation(page);
 
   for (const [label, route] of primaryDestinations) {
-    const link = navigation.getByRole("link", { name:label, exact:true });
+    const link = primaryDestination(navigation, label);
     if (label !== "Today") await link.click();
     await expect(page).toHaveURL(new RegExp(`#${route}$`));
     await expect(link).toHaveAttribute("aria-current", "page");
@@ -112,10 +122,10 @@ test("aliases, record links, unknown routes, utilities, and top-bar controls rem
 
   await page.goto(`${baseURL}/#rcap`);
   await expect.poll(() => page.evaluate(() => Boolean(window.__LE_BOOT?.ready))).toBe(true);
-  await expect(primaryNavigation(page).getByRole("link", { name:"Partners", exact:true })).toHaveAttribute("aria-current", "page");
+  await expect(primaryNavigation(page).getByRole("link", { name:"Relationships", exact:true })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("main")).toHaveCount(1);
 
-  await page.getByRole("navigation", { name:"Command Center utilities" }).getByRole("link", { name:/^Inbox/ }).click();
+  await primaryNavigation(page).getByRole("link", { name:/^Inbox/ }).click();
   await expect(page).toHaveURL(/#inbox(?:\?group=needs-me)?$/);
   await expect(page.getByRole("heading", { name:"Inbox", level:1 })).toBeVisible();
   await page.getByRole("button", { name:"Le-E", exact:true }).click();
@@ -181,6 +191,7 @@ test("the shell has no serious accessibility violations or horizontal overflow",
 });
 
 test("shell composition preserves the full-state payload and hash navigation stays local", async ({ page, baseURL }) => {
+  test.slow();
   const vnextBaseURL = process.env.BROWSER_TEST_VNEXT_BASE_URL;
   expect(vnextBaseURL).toBeTruthy();
   const [legacyHtmlResponse, vnextHtmlResponse, legacyStateResponse, vnextStateResponse] = await Promise.all([
@@ -220,8 +231,9 @@ test("shell composition preserves the full-state payload and hash navigation sta
     if (url.pathname === "/api/state") fullStateRequests += 1;
   });
   for (const [label] of primaryDestinations.slice(1)) {
-    await primaryNavigation(page).getByRole("link", { name:label, exact:true }).click();
-    await expect(primaryNavigation(page).getByRole("link", { name:label, exact:true })).toHaveAttribute("aria-current", "page");
+    const link = primaryDestination(primaryNavigation(page), label);
+    await link.click();
+    await expect(link).toHaveAttribute("aria-current", "page");
   }
   expect(documentRequests).toBe(0);
   expect(fullStateRequests).toBe(0);

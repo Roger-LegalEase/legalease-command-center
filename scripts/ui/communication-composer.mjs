@@ -31,18 +31,18 @@ export function communicationComposerBrowserSource() {
       layer.setAttribute("aria-labelledby","founder-composer-title");
       layer.innerHTML='<div class="founder-composer-frame">'
         +'<header class="founder-composer-header"><div><p class="founder-composer-eyebrow">Follow-up</p><h2 id="founder-composer-title" tabindex="-1">Draft a message</h2><p data-composer-heading-copy>Use the saved context, then make the draft your own.</p></div><button type="button" class="founder-composer-close" data-composer-close aria-label="Close message composer">×</button></header>'
-        +'<div class="founder-composer-status" data-composer-status role="status" aria-live="polite"></div>'
+        +'<div class="founder-composer-status" data-communication-composer-status role="status" aria-live="polite"></div>'
         +'<div class="founder-composer-loading" data-composer-loading><span aria-hidden="true"></span><div><strong>Preparing context</strong><p>Bringing the relationship and recent interaction into one place.</p></div></div>'
         +'<div class="founder-composer-error" data-composer-error hidden role="alert"><h3>Draft could not open</h3><p>No changes were made.</p><button type="button" data-composer-retry>Try again</button></div>'
         +'<div class="founder-composer-content" data-composer-content hidden>'
           +'<aside class="founder-composer-context" aria-label="Relationship context"><p class="founder-composer-eyebrow">Context</p><h3 data-composer-context-title>Relationship</h3><dl><div><dt>Organization</dt><dd data-composer-context-organization>Not set</dd></div><div><dt>Recent interaction</dt><dd data-composer-context-interaction>Not available</dd></div><div><dt>Related commitment</dt><dd data-composer-context-task>Not set</dd></div></dl><p data-composer-context-summary></p></aside>'
-          +'<form class="founder-composer-form" data-composer-form novalidate>'
+          +'<form class="founder-composer-form" data-communication-composer-form novalidate>'
             +'<input type="hidden" name="draftId" /><input type="hidden" name="expectedVersion" />'
             +'<div class="founder-composer-two"><label>Recipient<input name="recipientName" type="text" maxlength="160" autocomplete="name" /></label><label>Organization<input name="recipientOrganization" type="text" maxlength="200" autocomplete="organization" /></label></div>'
             +'<label>Email address<input name="recipient" type="email" maxlength="320" autocomplete="email" required /><span class="founder-composer-field-error" data-composer-field-error="recipient"></span></label>'
             +'<label>Subject<input name="subject" type="text" maxlength="240" required /><span class="founder-composer-field-error" data-composer-field-error="subject"></span></label>'
             +'<label>Message<textarea name="body" rows="13" maxlength="12000" required></textarea><span class="founder-composer-field-error" data-composer-field-error="body"></span></label>'
-            +'<footer class="founder-composer-actions"><button class="is-primary" type="submit" data-composer-save>Save draft</button><button type="button" data-composer-copy>Copy</button><button type="button" data-composer-gmail>Open in Gmail</button><button type="button" data-composer-manual-open>Mark as sent manually</button></footer>'
+            +'<footer class="founder-composer-actions"><button class="is-primary" type="submit" data-communication-composer-save>Save draft</button><button type="button" data-composer-copy>Copy</button><button type="button" data-composer-gmail>Open in Gmail</button><button type="button" data-composer-manual-open>Mark as sent manually</button></footer>'
           +'</form>'
           +'<form class="founder-composer-manual" data-composer-manual hidden novalidate><div><p class="founder-composer-eyebrow">After sending</p><h3>Record the follow-up</h3><p>This records an internal activity only. It does not send an email.</p></div><label>Next follow-up date <span>(optional)</span><input name="nextFollowUpDate" type="date" /></label><label class="founder-composer-check"><input name="completeOriginatingTask" type="checkbox" checked /> Complete the related follow-up task</label><div class="founder-composer-manual-actions"><button class="is-primary" type="submit">Record sent</button><button type="button" data-composer-manual-cancel>Cancel</button></div></form>'
         +'</div>'
@@ -52,7 +52,7 @@ export function communicationComposerBrowserSource() {
       return layer;
     }
     function status(message,kind="success"){
-      const target=node("[data-composer-status]");
+      const target=node("[data-communication-composer-status]");
       if(!target)return;
       target.textContent=message||"";
       target.dataset.kind=message?kind:"";
@@ -75,7 +75,7 @@ export function communicationComposerBrowserSource() {
     function fieldError(field,message){const target=node('[data-composer-field-error="'+field+'"]');if(target)target.textContent=message||"";}
     function clearErrors(){dialog()?.querySelectorAll("[data-composer-field-error]").forEach((target)=>{target.textContent="";});}
     function formValues(){
-      const values=Object.fromEntries(new FormData(node("[data-composer-form]")));
+      const values=Object.fromEntries(new FormData(node("[data-communication-composer-form]")));
       return {draftId:String(values.draftId||""),expectedVersion:String(values.expectedVersion||""),recipient:String(values.recipient||"").trim(),recipientName:String(values.recipientName||"").trim(),recipientOrganization:String(values.recipientOrganization||"").trim(),subject:String(values.subject||"").trim(),body:String(values.body||"").trim()};
     }
     function validate(values){
@@ -185,7 +185,7 @@ export function communicationComposerBrowserSource() {
     async function manualSent(form,button){
       if(busy)return;
       let draftId=String(node('[name="draftId"]')?.value||"");
-      if(!draftId){const saved=await save(node("[data-composer-save]"));draftId=String(saved?.id||node('[name="draftId"]')?.value||"");}
+      if(!draftId){const saved=await save(node("[data-communication-composer-save]"));draftId=String(saved?.id||node('[name="draftId"]')?.value||"");}
       if(!draftId)return;
       const values=Object.fromEntries(new FormData(form));
       setBusy(true,"Recording…",button);status("");
@@ -213,7 +213,7 @@ export function communicationComposerBrowserSource() {
         if(event.target===layer&&!busy)close();
       });
       layer.addEventListener("submit",(event)=>{
-        if(event.target.matches("[data-composer-form]")){event.preventDefault();save(event.submitter||node("[data-composer-save]"));}
+        if(event.target.matches("[data-communication-composer-form]")){event.preventDefault();save(event.submitter||node("[data-communication-composer-save]"));}
         if(event.target.matches("[data-composer-manual]")){event.preventDefault();manualSent(event.target,event.submitter);}
       });
       layer.addEventListener("cancel",(event)=>{if(busy)event.preventDefault();else close();});

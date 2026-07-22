@@ -10,7 +10,7 @@ const baseURL = () => {
 
 async function openPartners(page, hash = "#partners") {
   await openToday(page, `${baseURL()}/${hash}`);
-  await expect(page.locator("main#app").getByRole("heading", { name:hash.startsWith("#partners/partner/") ? /.+/ : "Partners", level:1 })).toBeVisible();
+  await expect(page.locator("main#app").getByRole("heading", { name:hash.startsWith("#partners/partner/") ? /.+/ : "Relationships", level:1 })).toBeVisible();
   await expect.poll(() => page.evaluate(() => Math.max(window.__LE_PARTNERS_HOME_METRICS?.activeRequests || 0, window.__LE_PARTNER_RECORD_METRICS?.activeRequests || 0))).toBe(0);
 }
 
@@ -23,7 +23,7 @@ test("Partners train preserves exact links, safe actions, history, and accessibi
   page.on("request", (request) => requests.push({ method:request.method(), pathname:new URL(request.url()).pathname }));
   await openPartners(page);
 
-  const partnerLink = page.getByRole("link", { name:"Open Partner: Community Justice Network" });
+  const partnerLink = page.locator("[data-relationship-row]", { hasText:"Community Justice Network" }).getByRole("link", { name:"Full Partner record" });
   await expect(partnerLink).toHaveAttribute("href", "#partners/partner/partner-community");
   await partnerLink.focus();
   await expect(partnerLink).toBeFocused();
@@ -32,7 +32,7 @@ test("Partners train preserves exact links, safe actions, history, and accessibi
   await expect(page.getByRole("heading", { name:"Community Justice Network", level:1 })).toBeVisible();
   await waitForPartnerReads(page);
   await page.goBack();
-  await expect(page.getByRole("heading", { name:"Partners", level:1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name:"Relationships", level:1 })).toBeVisible();
   await waitForPartnerReads(page);
   await page.goForward();
   await expect(page.getByRole("heading", { name:"Community Justice Network", level:1 })).toBeVisible();
@@ -109,6 +109,14 @@ test("Partners train covers responsive and availability states without overflow"
       query:{ ...home.query, search:filtered ? "No match" : "" },
       availability:{ ...home.availability, state:filtered ? "filtered_empty" : "available_empty" },
       items:[],
+      relationships:{
+        ...home.relationships,
+        query:{ ...home.relationships.query, search:filtered ? "No match" : "" },
+        availability:{ ...home.relationships.availability, state:filtered ? "filtered_empty" : "empty" },
+        items:[],
+        summary:{ ...home.relationships.summary, matchingRelationships:0 },
+        pagination:{ ...home.relationships.pagination, returned:0, hasMore:false }
+      },
       pipeline:[],
       summary:{ ...home.summary, matchingPartners:0 },
       emptyState:filtered
@@ -128,18 +136,18 @@ test("Partners train covers responsive and availability states without overflow"
   const requestsBeforeReset = await page.evaluate(() => window.__LE_PARTNERS_HOME_METRICS.requests);
   await page.evaluate(() => { location.hash = "partners"; });
   await expect.poll(() => page.evaluate(() => window.__LE_PARTNERS_HOME_METRICS.requests)).toBeGreaterThan(requestsBeforeReset);
-  await expect(page.getByRole("heading", { name:"Partners", level:1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name:"Relationships", level:1 })).toBeVisible();
   await waitForPartnerReads(page);
   await page.route("**/api/ui/partners?*", (route) => route.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ ok:false }) }));
   await page.evaluate(() => window.__LE_PARTNERS_HOME.load());
-  await expect(page.getByRole("heading", { name:"Partners could not load" })).toBeVisible();
+  await expect(page.getByRole("heading", { name:"Relationships could not load" })).toBeVisible();
   await page.unroute("**/api/ui/partners?*");
 
   allowExpectedCriticalResponse(page, "/api/ui/partners");
   allowExpectedConsoleError(page, /status of 403/);
   await page.route("**/api/ui/partners?*", (route) => route.fulfill({ status:403, contentType:"application/json", body:JSON.stringify({ ok:false, outcome:"unauthorized" }) }));
   await page.evaluate(() => window.__LE_PARTNERS_HOME.load());
-  await expect(page.getByRole("heading", { name:"Partners need additional access" })).toBeVisible();
+  await expect(page.getByRole("heading", { name:"Relationships need additional access" })).toBeVisible();
   await page.unroute("**/api/ui/partners?*");
 
   await page.evaluate(() => window.__LE_SHELL_RESILIENCE.showSessionExpired());

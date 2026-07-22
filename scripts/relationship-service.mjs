@@ -245,13 +245,39 @@ function sourceRecordIndex(state = {}, role = "viewer") {
   for (const collection of RELATIONSHIP_SOURCE_COLLECTIONS) {
     const rows = visibleRecords(state, collection, role);
     const byId = new Map();
-    for (const row of rows) {
+    const related = {
+      ids:new Map(),
+      emails:new Map(),
+      sourceRefs:new Map(),
+      names:new Map()
+    };
+    const addRelated = (index, group, value) => {
+      const key = clean(value);
+      if (!key) return;
+      const matches = related[group].get(key) || new Set();
+      matches.add(index);
+      related[group].set(key, matches);
+    };
+    for (const [index, row] of rows.entries()) {
       for (const field of SOURCE_RECORD_ID_FIELDS) {
         const id = clean(row[field]);
         if (id && !byId.has(id)) byId.set(id, row);
       }
+      for (const field of RELATION_ID_FIELDS) {
+        for (const id of uniqueStrings(row[field])) addRelated(index, "ids", id);
+      }
+      for (const field of EMAIL_FIELDS) {
+        const email = validEmail(row[field]);
+        if (email) addRelated(index, "emails", email);
+      }
+      const pipeline = row.pipelineMatch;
+      if (pipeline) addRelated(index, "sourceRefs", sourceRefKey(pipeline.collection, pipeline.itemId));
+      const sourceRef = row.sourceRef || row.source_ref;
+      if (sourceRef) addRelated(index, "sourceRefs", sourceRefKey(sourceRef.collection, sourceRef.itemId || sourceRef.item_id));
+      const name = rawOrganizationName(row);
+      if (name) addRelated(index, "names", lower(name));
     }
-    collections.set(collection, { rows, byId });
+    collections.set(collection, { rows, byId, related });
   }
   return collections;
 }
@@ -539,7 +565,19 @@ function recordMatchesEntity(record = {}, identifiers, { allowOrganizationName =
 }
 
 function relatedRows(sourceIndex, collection, identifiers, options = {}) {
-  return (sourceIndex.get(collection)?.rows || []).filter((record) => recordMatchesEntity(record, identifiers, options));
+  const indexed = sourceIndex.get(collection);
+  if (!indexed) return [];
+  const matches = new Set();
+  const include = (group, keys) => {
+    for (const key of keys) {
+      for (const index of indexed.related[group].get(key) || []) matches.add(index);
+    }
+  };
+  include("ids", identifiers.ids);
+  include("emails", identifiers.emails);
+  include("sourceRefs", identifiers.sourceRefs);
+  if (options.allowOrganizationName) include("names", identifiers.names);
+  return indexed.rows.filter((_, index) => matches.has(index));
 }
 
 function categoryFor(entity) {

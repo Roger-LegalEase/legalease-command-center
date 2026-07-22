@@ -876,6 +876,10 @@ const partnersDataPath = path.join(tempRoot, "partners-state.json");
 const outreachDataPath = path.join(tempRoot, "outreach-state.json");
 const filesDataPath = path.join(tempRoot, "files-state.json");
 const discoveryDataPath = path.join(tempRoot, "discovery-state.json");
+const founderTaskDataPath = path.join(tempRoot, "founder-task-state.json");
+const founderOperationsDataPath = path.join(tempRoot, "founder-operations-state.json");
+const founderSocialDataPath = path.join(tempRoot, "founder-social-state.json");
+const founderPartnersDataPath = path.join(tempRoot, "founder-partners-state.json");
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
@@ -893,7 +897,11 @@ await Promise.all([
   writeFile(partnersDataPath, `${JSON.stringify(partnersState, null, 2)}\n`, { mode:0o600 }),
   writeFile(outreachDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(filesDataPath, `${JSON.stringify(filesState, null, 2)}\n`, { mode:0o600 }),
-  writeFile(discoveryDataPath, `${JSON.stringify(founderOperationsState, null, 2)}\n`, { mode:0o600 })
+  writeFile(discoveryDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(founderTaskDataPath, `${JSON.stringify(todayState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(founderOperationsDataPath, `${JSON.stringify(founderOperationsState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(founderSocialDataPath, `${JSON.stringify(socialState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(founderPartnersDataPath, `${JSON.stringify(partnersState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
 const restrictedSessionSecret = crypto.randomBytes(32).toString("base64url");
@@ -1014,6 +1022,27 @@ try {
     vnext:true,
     productFlags:{ discovery:true }
   }));
+  servers.push(await startServer({
+    name:"founder-task",
+    dataPath:founderTaskDataPath,
+    vnext:true
+  }));
+  servers.push(await startServer({
+    name:"founder-operations",
+    dataPath:founderOperationsDataPath,
+    vnext:true
+  }));
+  servers.push(await startServer({
+    name:"founder-social",
+    dataPath:founderSocialDataPath,
+    vnext:true
+  }));
+  servers.push(await startServer({
+    name:"founder-partners",
+    dataPath:founderPartnersDataPath,
+    vnext:true,
+    productFlags:{ outreach:true }
+  }));
   const runnerEnv = {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -1039,6 +1068,10 @@ try {
     BROWSER_TEST_FILES_BASE_URL:servers[14].baseURL,
     BROWSER_TEST_SOCIAL_PRODUCTION_BASE_URL:servers[15].baseURL,
     BROWSER_TEST_DISCOVERY_BASE_URL:servers[16].baseURL,
+    BROWSER_TEST_FOUNDER_TASK_BASE_URL:servers[17].baseURL,
+    BROWSER_TEST_FOUNDER_OPERATIONS_BASE_URL:servers[18].baseURL,
+    BROWSER_TEST_FOUNDER_SOCIAL_BASE_URL:servers[19].baseURL,
+    BROWSER_TEST_FOUNDER_PARTNERS_BASE_URL:servers[20].baseURL,
     BROWSER_TEST_COMPOSER_RESTRICTED_CREDENTIALS:JSON.stringify(composerRestrictedCredentials)
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));

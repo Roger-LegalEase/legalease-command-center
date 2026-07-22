@@ -98,7 +98,11 @@ function allowedOrigins(baseURL) {
     process.env.BROWSER_TEST_OUTREACH_BASE_URL,
     process.env.BROWSER_TEST_FILES_BASE_URL,
     process.env.BROWSER_TEST_SOCIAL_PRODUCTION_BASE_URL,
-    process.env.BROWSER_TEST_DISCOVERY_BASE_URL
+    process.env.BROWSER_TEST_DISCOVERY_BASE_URL,
+    process.env.BROWSER_TEST_FOUNDER_TASK_BASE_URL,
+    process.env.BROWSER_TEST_FOUNDER_OPERATIONS_BASE_URL,
+    process.env.BROWSER_TEST_FOUNDER_SOCIAL_BASE_URL,
+    process.env.BROWSER_TEST_FOUNDER_PARTNERS_BASE_URL
   ].filter(Boolean).map((value) => new URL(value).origin));
 }
 

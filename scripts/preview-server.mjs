@@ -239,7 +239,12 @@ import { readCommandCenterVNextProductConfig } from "./ui/vnext-config.mjs";
 import { renderShellBoundary } from "./ui/shell-boundary.mjs";
 import { DESIGN_SYSTEM_SHOWCASE_PATH } from "./ui/brand-contract.mjs";
 import { renderDesignSystemShowcase } from "./ui/design-system-showcase.mjs";
-import { renderVNextDesktopShell } from "./ui/app-shell.mjs";
+import {
+  VNEXT_LAZY_RUNTIME_MAX_BYTES,
+  VNEXT_LAZY_RUNTIME_PATH_PREFIX,
+  renderVNextDesktopShell,
+  resolveVNextLazyRuntime
+} from "./ui/app-shell.mjs";
 import { buildGlobalCreateViewModel, GLOBAL_CREATE_OPTIONS } from "./ui/global-create.mjs";
 import { createGlobalObject, GLOBAL_CREATE_ENDPOINTS, globalCreateSafeError } from "./global-create-service.mjs";
 import {
@@ -8852,6 +8857,28 @@ async function serveAsset(pathname, response) {
     response.writeHead(404);
     response.end("Not found");
   }
+}
+
+function serveVNextLazyRuntime(pathname, response, { headOnly = false } = {}) {
+  const source = resolveVNextLazyRuntime(pathname, { outreachEnabled:outreachVNextConfig.enabled });
+  if (!source) {
+    response.writeHead(404, { "content-type":"text/plain; charset=utf-8", "cache-control":"no-store" });
+    response.end(headOnly ? "" : "Not found");
+    return;
+  }
+  const size = Buffer.byteLength(source);
+  if (size > VNEXT_LAZY_RUNTIME_MAX_BYTES) {
+    response.writeHead(500, { "content-type":"text/plain; charset=utf-8", "cache-control":"no-store" });
+    response.end(headOnly ? "" : "Runtime unavailable");
+    return;
+  }
+  response.writeHead(200, {
+    "content-type":"text/javascript; charset=utf-8",
+    "content-length":String(size),
+    "cache-control":"private, max-age=3600",
+    "x-content-type-options":"nosniff"
+  });
+  response.end(headOnly ? "" : source);
 }
 
 function titleFromTopic(topic) {
@@ -36560,6 +36587,11 @@ async function handleRequest(request, response) {
     response.end(body);
     return;
   }
+
+	  if (["GET", "HEAD"].includes(request.method) && url.pathname.startsWith(VNEXT_LAZY_RUNTIME_PATH_PREFIX)) {
+	    serveVNextLazyRuntime(url.pathname, response, { headOnly:request.method === "HEAD" });
+	    return;
+	  }
 
 	  if (/^\/assets\/(styles|brand|ui)\//.test(url.pathname) && request.method === "GET") {
 	    await serveAsset(url.pathname, response);
