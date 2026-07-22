@@ -624,7 +624,9 @@ assert.throws(() => executeRelationshipAction(state, OWNER, "contact:contact-ven
 let apiState = structuredClone(state);
 const apiWrites = [];
 const apiStore = {
-  async readState() { return apiState; },
+  async readCollections(collectionNames) {
+    return Object.fromEntries(collectionNames.map((collection) => [collection, structuredClone(apiState[collection] ?? [])]));
+  },
   async writeCollections(patch) {
     apiWrites.push(Object.keys(patch).sort());
     apiState = { ...apiState, ...structuredClone(patch) };

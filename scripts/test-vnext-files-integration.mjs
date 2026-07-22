@@ -12,7 +12,10 @@ let state = {
 let reads = 0;
 let writes = 0;
 const store = {
-  async readState() { reads += 1; return structuredClone(state); },
+  async readCollections(collectionNames) {
+    reads += 1;
+    return Object.fromEntries(collectionNames.map((collection) => [collection, structuredClone(state[collection] ?? [])]));
+  },
   async writeCollections(patch) { writes += 1; state = { ...state, ...structuredClone(patch) }; }
 };
 const storage = { async get() { return Buffer.from("Synthetic overview"); }, async put() { return { objectRef:"files/2026/new.md", publicUrl:null }; }, async remove() {} };

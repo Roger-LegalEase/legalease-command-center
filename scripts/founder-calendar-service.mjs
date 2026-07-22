@@ -23,6 +23,17 @@ export const FOUNDER_CALENDAR_ACTIONS = Object.freeze([
   "create_google_event"
 ]);
 
+export const FOUNDER_CALENDAR_READ_COLLECTIONS = Object.freeze([
+  "activityEvents",
+  "auditHistory",
+  "automationEvents",
+  "companyContacts",
+  "googleInsights",
+  "meetingBriefs",
+  "partners",
+  "tasks"
+]);
+
 const CATEGORY_SET = new Set(FOUNDER_CALENDAR_CATEGORIES);
 const CATEGORY_ORDER = new Map(FOUNDER_CALENDAR_CATEGORIES.map((category, index) => [category, index]));
 

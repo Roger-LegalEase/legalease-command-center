@@ -3,6 +3,7 @@ import {
   RELATIONSHIP_CATEGORIES,
   RELATIONSHIP_ELIGIBILITY_STATES,
   RELATIONSHIP_WAITING_STATES,
+  RELATIONSHIP_READ_COLLECTIONS,
   buildRelationshipsView
 } from "./relationship-service.mjs";
 import { PARTNERS_HOME_VIEWS, buildPartnersHomeView } from "./ui/view-models/partners-home.mjs";
@@ -18,6 +19,11 @@ const followUpChoices = new Set(["due"]);
 
 export const PARTNERS_HOME_ENDPOINT = "/api/ui/partners";
 export const PARTNERS_HOME_LIMITS = Object.freeze({ default:24, maximum:50 });
+export const PARTNERS_HOME_READ_COLLECTIONS = Object.freeze([
+  ...RELATIONSHIP_READ_COLLECTIONS,
+  "partnerPrograms",
+  "pilots"
+]);
 
 export class PartnersHomeValidationError extends Error {
   constructor(message, status = 400) { super(message); this.name = "PartnersHomeValidationError"; this.status = status; }

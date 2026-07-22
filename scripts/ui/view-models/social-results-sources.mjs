@@ -26,6 +26,13 @@ const VISIBLE_COLLECTIONS = Object.freeze([
   "auditHistory", "generationBatches", "socialAccounts", "scheduleConflicts", "contentBank"
 ]);
 
+export const SOCIAL_RESULTS_READ_COLLECTIONS = Object.freeze([
+  "activityEvents", "approvalQueue", "approvals", "auditHistory", "brandAssets", "brandRules",
+  "campaigns", "contentBank", "dataRoomItems", "evidencePackNotes", "generationBatches",
+  "generationProfiles", "library", "postImages", "posts", "publishClaims", "publishEvents",
+  "queueItems", "reports", "settings", "socialAccounts"
+]);
+
 export const SOCIAL_RESULTS_SOURCE_MATRIX = deepFreeze([
   { source: "CCX-300 PostView", truth: "Canonical Post identity, exact links, shared content, and exact proof/File relationships" },
   { source: "CCX-303A Social creative catalog", truth: "Authorized exact template identity and category truth" },

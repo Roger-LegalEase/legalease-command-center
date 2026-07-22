@@ -124,11 +124,12 @@ import {
 import { buildFounderCapacityPulse } from "./operator-pulse-feeders.mjs";
 import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
 import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex } from "./operator-search.mjs";
-import { searchGlobalRecords } from "./global-search-service.mjs";
-import { buildAuthorizedInboxPage } from "./inbox-page-service.mjs";
-import { buildAuthorizedTodayPage } from "./today-page-service.mjs";
-import { buildAuthorizedSocialHome } from "./social-home-service.mjs";
+import { searchGlobalRecords, GLOBAL_SEARCH_READ_COLLECTIONS } from "./global-search-service.mjs";
+import { buildAuthorizedInboxPage, INBOX_READ_COLLECTIONS } from "./inbox-page-service.mjs";
+import { buildAuthorizedTodayPage, TODAY_READ_COLLECTIONS } from "./today-page-service.mjs";
+import { buildAuthorizedSocialHome, SOCIAL_HOME_READ_COLLECTIONS, SOCIAL_PRODUCTION_READ_COLLECTIONS } from "./social-home-service.mjs";
 import { buildSocialResultsView } from "./ui/view-models/social-results.mjs";
+import { SOCIAL_RESULTS_READ_COLLECTIONS } from "./ui/view-models/social-results-sources.mjs";
 import { PARTNER_API_BODY_LIMIT, handlePartnerApiRequest, isPartnerApiPath } from "./partner-api-integration.mjs";
 import {
   RELATIONSHIP_ACTION_BODY_LIMIT,
@@ -149,8 +150,8 @@ import { OUTREACH_API_BODY_LIMIT, handleOutreachApiRequest, isOutreachApiPath } 
 import { FILES_JSON_BODY_LIMIT, FILES_MULTIPART_BODY_LIMIT, handleFilesApiRequest, isFilesApiPath, parseFilesMultipart } from "./files-api-integration.mjs";
 import { createLocalFilesStorage, createSupabaseFilesStorage } from "./files-storage-adapter.mjs";
 import { INVESTOR_ROOM_REQUIREMENTS } from "./investor-room-requirements.mjs";
-import { generatePartnerArtifact } from "./partner-artifact-service.mjs";
-import { buildPostComposerContract, composerSavePath, normalizeComposerPatch } from "./post-composer-service.mjs";
+import { generatePartnerArtifact, PARTNER_ARTIFACT_READ_COLLECTIONS } from "./partner-artifact-service.mjs";
+import { buildPostComposerContract, composerSavePath, normalizeComposerPatch, POST_COMPOSER_READ_COLLECTIONS } from "./post-composer-service.mjs";
 import { renderSocialCreative, saveSocialCreativeSelection } from "./social-creative-actions.mjs";
 import { saveSocialVariants } from "./social-variant-actions.mjs";
 import { saveSocialSchedule } from "./social-schedule-actions.mjs";
@@ -184,19 +185,21 @@ import {
 } from "./automation-control-center-api.mjs";
 import { approveSocialPost, regenerateSocialPostImage, requestSocialPostChanges } from "./social-review-actions.mjs";
 import { createSocialManualPackage, publishSocialPost } from "./social-publishing-actions.mjs";
-import { buildSocialCalendarContract } from "./social-calendar-service.mjs";
-import { buildSocialConnectionsContract } from "./social-connections-service.mjs";
+import { buildSocialCalendarContract, SOCIAL_CALENDAR_READ_COLLECTIONS } from "./social-calendar-service.mjs";
+import { buildSocialConnectionsContract, SOCIAL_CONNECTIONS_READ_COLLECTIONS } from "./social-connections-service.mjs";
 import { buildSocialCreativeCatalog } from "./ui/view-models/social-creative-catalog.mjs";
 import { buildAuthorizedPartnersHome } from "./partners-home-service.mjs";
 import { buildAuthorizedOutreachHome } from "./outreach-home-service.mjs";
 import { readInvestorRoom } from "./ui-api/investor-room-read.mjs";
 import {
   DISCOVERY_ONBOARDING_ENDPOINT,
+  DISCOVERY_ONBOARDING_READ_COLLECTIONS,
   buildFirstRunOnboarding,
   saveFirstRunOnboarding
 } from "./discovery-onboarding-service.mjs";
 import {
   DISCOVERY_CHECKLIST_ENDPOINT,
+  DISCOVERY_CHECKLIST_READ_COLLECTIONS,
   buildSetupChecklist
 } from "./discovery-checklist-service.mjs";
 import { buildContextualHelp } from "./discovery-help.mjs";
@@ -211,12 +214,13 @@ import {
 } from "./inbox-action-service.mjs";
 import {
   TASK_WORKBENCH_BODY_LIMIT,
+  TASK_WORKBENCH_READ_COLLECTIONS,
   TASK_WORKBENCH_ROUTE,
   applyTaskWorkbenchAction,
   buildTaskWorkbenchView,
   taskWorkbenchSafeError
 } from "./task-workbench-service.mjs";
-import { buildRouteAccessView, ROUTE_ACCESS_ENDPOINT } from "./shell-resilience-service.mjs";
+import { buildRouteAccessView, routeAccessReadCollections, ROUTE_ACCESS_ENDPOINT } from "./shell-resilience-service.mjs";
 import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegritySnapshot } from "./state-integrity.mjs";
 import { buildEndpointInventory, guardForbiddenEndpoint, safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
 import { buildSmokeTestChecklist, buildSmokeTestStatus, finishSmokeTestRun, markSmokeTestItem, saveSmokeTestRun, startSmokeTestRun } from "./smoke-test-center.mjs";
@@ -247,11 +251,12 @@ import {
   resolveVNextLazyRuntime
 } from "./ui/app-shell.mjs";
 import { buildGlobalCreateViewModel, GLOBAL_CREATE_OPTIONS } from "./ui/global-create.mjs";
-import { createGlobalObject, GLOBAL_CREATE_ENDPOINTS, globalCreateSafeError } from "./global-create-service.mjs";
+import { createGlobalObject, GLOBAL_CREATE_ENDPOINTS, GLOBAL_CREATE_READ_COLLECTIONS_BY_KIND, globalCreateSafeError } from "./global-create-service.mjs";
 import {
   buildQuickCaptureCapabilities,
   createQuickCapture,
   QUICK_CAPTURE_BODY_LIMIT,
+  QUICK_CAPTURE_READ_COLLECTIONS,
   QUICK_CAPTURE_CAPABILITIES_ENDPOINT,
   QUICK_CAPTURE_ENDPOINT,
   quickCaptureSafeError
@@ -3966,7 +3971,8 @@ async function markManualPostingKitReady(postId, patch = {}) {
 }
 
 async function exportPostingPackage(postId, options = {}) {
-  const state = await store.readState();
+  const targetedState = options.currentState && typeof options.currentState === "object" ? options.currentState : null;
+  const state = targetedState || await store.readState();
   const post = state.posts.find((item) => item.id === postId);
   if (!post) throw new Error("Post not found.");
   const image = imageForPostFromState(state, postId);
@@ -4049,7 +4055,7 @@ async function exportPostingPackage(postId, options = {}) {
     generatedAt: metadata.generatedTimestamp,
     fileList
   };
-  const nextState = await store.updatePost(post.id, {
+  const postPatch = {
     postingPackageGenerated: true,
     postingPackagePath: packagePath,
     postingPackageDownloadUrl: packageRecord.downloadUrl,
@@ -4067,7 +4073,21 @@ async function exportPostingPackage(postId, options = {}) {
       postingPackageGenerated: true,
       postingPackageZipGenerated: true
     }
-  });
+  };
+  let nextState;
+  if (targetedState) {
+    const mutation = await store.mutateCollectionItem("posts", post.id, (current) => ({
+      ...current,
+      ...postPatch,
+      updatedAt:new Date().toISOString()
+    }), { expectedVersion:post._version, returnState:false });
+    nextState = {
+      ...state,
+      posts:(state.posts || []).map((item) => String(item?.id || "") === post.id ? mutation.record : item)
+    };
+  } else {
+    nextState = await store.updatePost(post.id, postPatch);
+  }
 
   return { state: nextState, postingPackage: packageRecord, metadata, message: "Posting package exported." };
 }
@@ -8315,7 +8335,7 @@ function filesStorageAdapter() {
 async function generateReviewedFilesReport({ reportType, requestId:filesRequestId, actor }) {
   const artifactType = ({ weekly_operating:"weekly_report", investor_update:"final_report" })[String(reportType || "").trim()];
   if (!artifactType) throw new Error("No reviewed authoritative generator is available for this report type.");
-  const state = await store.readState();
+  const state = await store.readCollections(PARTNER_ARTIFACT_READ_COLLECTIONS);
   const programs = serverList(state.partnerPrograms).slice().sort((left, right) => String(left.id || "").localeCompare(String(right.id || "")));
   if (programs.length !== 1) throw new Error("Choose a Partner program before generating this report. No File was created.");
   const program = programs[0];
@@ -11932,7 +11952,8 @@ async function autoRenderNewPosts(posts = []) {
 }
 
 async function generateImageForPost(postId, overrides = {}) {
-  const state = await store.readState();
+  const targetedState = overrides.currentState && typeof overrides.currentState === "object" ? overrides.currentState : null;
+  const state = targetedState || await store.readState();
   const post = state.posts.find((item) => item.id === postId);
   if (!post) throw new Error("Post not found.");
   const previous = (state.postImages || []).filter((image) => image.postId === postId);
@@ -12206,8 +12227,26 @@ async function generateImageForPost(postId, overrides = {}) {
     generatedAt: generatedAndPassed ? new Date().toISOString() : "",
     createdAt: new Date().toISOString()
   };
-  await store.updatePost(postId, routedPatch);
-  const nextState = await store.savePostImage(image);
+  let nextState;
+  if (targetedState) {
+    const postMutation = await store.mutateCollectionItem("posts", postId, (current) => ({
+      ...current,
+      ...routedPatch,
+      updatedAt:new Date().toISOString()
+    }), { expectedVersion:post._version, returnState:false });
+    const imageMutation = await store.mutateCollectionItem("postImages", image.id, () => image, {
+      createIfMissing:true,
+      returnState:false
+    });
+    nextState = {
+      ...state,
+      posts:(state.posts || []).map((item) => String(item?.id || "") === postId ? postMutation.record : item),
+      postImages:[imageMutation.record, ...(state.postImages || []).filter((item) => String(item?.id || "") !== image.id)]
+    };
+  } else {
+    await store.updatePost(postId, routedPatch);
+    nextState = await store.savePostImage(image);
+  }
   if (renderQaFailed) {
     return {
       image,
@@ -35389,7 +35428,7 @@ function socialActionEvidence({ requestId, actorId, postId, action, summary, now
 
 async function writeSocialPostMutation({ postId, expectedVersion, requestId, actorId, patch, activity, audit }) {
   if (typeof store?.writeChanges !== "function") throw Object.assign(new Error("Scoped Social persistence is unavailable."), { status:503, outcome:"unavailable" });
-  const current = await store.readState();
+  const current = await store.readCollections(SOCIAL_PRODUCTION_READ_COLLECTIONS);
   const matches = (Array.isArray(current.posts) ? current.posts : []).filter((post) => String(post?.id || "") === postId);
   if (matches.length !== 1) throw Object.assign(new Error("This Post is unavailable."), { status:404, outcome:"unavailable" });
   const post = matches[0];
@@ -35442,7 +35481,7 @@ async function applySocialApproval({ postId, expectedVersion, requestId, actorId
 }
 
 async function recordSocialRequestedChanges({ id, postId, expectedVersion, requestId, actorId, summary, sourceReference }) {
-  const current = await store.readState();
+  const current = await store.readCollections(SOCIAL_PRODUCTION_READ_COLLECTIONS);
   const post = (Array.isArray(current.posts) ? current.posts : []).find((item) => String(item?.id || "") === postId);
   const existing = [post?.reviewFeedback, post?.requestedChanges, post?.requested_changes]
     .flatMap((items) => Array.isArray(items) ? items : [])
@@ -35476,10 +35515,10 @@ async function recordSocialRequestedChanges({ id, postId, expectedVersion, reque
 }
 
 async function renderSocialPostAdapter({ post, requestId, idempotencyKey, sourceReferences }) {
-  const state = await store.readState();
+  const state = await store.readCollections(SOCIAL_PRODUCTION_READ_COLLECTIONS);
   const reused = (Array.isArray(state.postImages) ? state.postImages : []).find((image) => image?.socialRenderIdempotencyKey === idempotencyKey && image?.generationStatus === "generated");
   if (reused) return { ok:true, imageId:reused.id, reused:true };
-  const result = await generateImageForPost(post.id, { trigger:"vnext_social_production", socialRenderIdempotencyKey:idempotencyKey, socialSourceReferences:sourceReferences, socialRequestId:requestId });
+  const result = await generateImageForPost(post.id, { currentState:state, trigger:"vnext_social_production", socialRenderIdempotencyKey:idempotencyKey, socialSourceReferences:sourceReferences, socialRequestId:requestId });
   if (!result?.ok || !result?.image?.id) return { ok:false };
   const evidence = socialActionEvidence({ requestId, actorId:"social-render", postId:post.id, action:"social_image_rendered", summary:"A new Post image was rendered for review.", now:new Date().toISOString(), sourceReferences });
   await store.claimCollectionItems("activityEvents", [evidence.activity]);
@@ -35488,7 +35527,7 @@ async function renderSocialPostAdapter({ post, requestId, idempotencyKey, source
 }
 
 async function buildSocialManualPackageAdapter({ postId, expectedVersion, requestId, actorId }) {
-  const state = await store.readState();
+  const state = await store.readCollections(SOCIAL_PRODUCTION_READ_COLLECTIONS);
   const post = (Array.isArray(state.posts) ? state.posts : []).find((item) => String(item?.id || "") === postId);
   const previousId = post?.postingPackage?.id;
   if (post?.postingPackage?.requestId === requestId && previousId) return { ok:true, packageId:previousId, reused:true };
@@ -35502,7 +35541,7 @@ async function buildSocialManualPackageAdapter({ postId, expectedVersion, reques
     });
     return { ok:true, packageId };
   }
-  const result = await exportPostingPackage(postId, { packageId, requestId });
+  const result = await exportPostingPackage(postId, { currentState:state, packageId, requestId });
   return { ok:Boolean(result?.postingPackage), packageId:result?.postingPackage?.id || packageId };
 }
 
@@ -35510,7 +35549,7 @@ async function publishSocialChannelAdapter({ postId, channel, approvedRevision, 
   if (!socialVNextConfig.enabled || !canPerformEndpoint(actor?.role || "viewer", "POST", `/api/ui/social/post/${encodeURIComponent(postId)}/publish`).ok) {
     return { ok:false, state:"failed_terminal", errorCode:"not_authorized" };
   }
-  const state = await store.readState();
+  const state = await store.readCollections(SOCIAL_PRODUCTION_READ_COLLECTIONS);
   const postMatches = (Array.isArray(state.posts) ? state.posts : []).filter((post) => String(post?.id || "") === postId);
   const claimMatches = (Array.isArray(state.publishClaims) ? state.publishClaims : []).filter((claim) => String(claim?.id || "") === claimId);
   if (postMatches.length !== 1 || claimMatches.length !== 1) return { ok:false, state:"reconciliation_required", errorCode:"current_truth_unavailable" };
@@ -35948,7 +35987,7 @@ async function handleRequest(request, response) {
     if (!discoveryVNextConfig.enabled) { sendJson(response, { ok:false, message:"Onboarding is unavailable." }, 404); return; }
     try {
       const actor = publicActor(accessDecision.actor);
-      const currentState = await store.readState();
+      const currentState = await store.readCollections(DISCOVERY_ONBOARDING_READ_COLLECTIONS);
       sendJson(response, buildFirstRunOnboarding({ actor, preference:discoveryPreference(currentState, actor.id), now:new Date().toISOString() }));
     } catch (error) {
       sendJson(response, { ok:false, message:"Onboarding could not load. No choice was changed." }, Number(error?.status) === 403 ? 403 : 500);
@@ -35962,7 +36001,7 @@ async function handleRequest(request, response) {
       const input = await readBoundedJson(request, { limit:4_096 });
       const actor = publicActor(accessDecision.actor);
       const result = await serializeStateMutation(async () => {
-        const currentState = await store.readState();
+        const currentState = await store.readCollections(DISCOVERY_ONBOARDING_READ_COLLECTIONS);
         return saveFirstRunOnboarding({
           actor,
           currentPreference:discoveryPreference(currentState, actor.id),
@@ -35984,7 +36023,7 @@ async function handleRequest(request, response) {
     try {
       const actor = publicActor(accessDecision.actor);
       const now = new Date().toISOString();
-      const currentState = await store.readState();
+      const currentState = await store.readCollections(DISCOVERY_CHECKLIST_READ_COLLECTIONS);
       sendJson(response, buildSetupChecklist({ actor, sources:discoveryChecklistSources(currentState, actor, now), now }));
     } catch (error) {
       sendJson(response, { ok:false, message:"Setup progress could not load. No setup state changed." }, Number(error?.status) === 403 ? 403 : 500);
@@ -36256,7 +36295,7 @@ async function handleRequest(request, response) {
       return;
     }
     try {
-      const currentState = await store.readState();
+      const currentState = await store.readCollections(GLOBAL_SEARCH_READ_COLLECTIONS);
       const actor = publicActor(accessDecision.actor);
       const payload = searchGlobalRecords(currentState, url.searchParams.get("q") || "", {
         role:actor?.role || "viewer",
@@ -36282,7 +36321,7 @@ async function handleRequest(request, response) {
       return;
     }
     try {
-      const currentState = await store.readState();
+      const currentState = await store.readCollections(INBOX_READ_COLLECTIONS);
       const actor = publicActor(accessDecision.actor);
       const now = new Date().toISOString();
       sendJson(response, buildAuthorizedInboxPage(currentState, actor, now, {
@@ -36311,7 +36350,7 @@ async function handleRequest(request, response) {
       return;
     }
     try {
-      const currentState = await store.readState();
+      const currentState = await store.readCollections(TASK_WORKBENCH_READ_COLLECTIONS);
       const actor = publicActor(accessDecision.actor);
       sendJson(response, buildTaskWorkbenchView(currentState, actor, decodeURIComponent(taskWorkbenchRoute[1])));
     } catch (error) {
@@ -36331,7 +36370,7 @@ async function handleRequest(request, response) {
       const actor = publicActor(accessDecision.actor);
       const taskId = decodeURIComponent(taskWorkbenchRoute[1]);
       const result = await serializeStateMutation(async () => {
-        const currentState = await store.readState();
+        const currentState = await store.readCollections(TASK_WORKBENCH_READ_COLLECTIONS);
         const action = applyTaskWorkbenchAction(currentState, actor, taskId, input, { now:new Date().toISOString() });
         if (Object.keys(action.collections).length) await store.writeCollections(action.collections);
         return action;
@@ -36350,7 +36389,7 @@ async function handleRequest(request, response) {
       return;
     }
     try {
-      const currentState = await store.readState();
+      const currentState = await store.readCollections(TODAY_READ_COLLECTIONS);
       const actor = publicActor(accessDecision.actor);
       const now = new Date().toISOString();
       sendJson(response, buildAuthorizedTodayPage(currentState, actor, now));
@@ -36366,7 +36405,7 @@ async function handleRequest(request, response) {
       return;
     }
     try {
-      const currentState = await store.readState();
+      const currentState = await store.readCollections(SOCIAL_HOME_READ_COLLECTIONS);
       const actor = publicActor(accessDecision.actor);
       const now = new Date().toISOString();
       sendJson(response, buildAuthorizedSocialHome(currentState, actor, now, {
@@ -36397,7 +36436,7 @@ async function handleRequest(request, response) {
     }
     try {
       const requestStartedAt = performance.now();
-      const currentState = await store.readState();
+      const currentState = await store.readCollections(SOCIAL_RESULTS_READ_COLLECTIONS);
       const stateReadMs = performance.now() - requestStartedAt;
       const actor = publicActor(accessDecision.actor);
       const now = new Date().toISOString();
@@ -36433,7 +36472,7 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/ui/social/calendar" && request.method === "GET") {
     if (!socialVNextConfig.enabled) { sendJson(response, { ok:false, outcome:"not_available", message:"The Social calendar is unavailable." }, 404); return; }
     try {
-      const currentState = await store.readState();
+      const currentState = await store.readCollections(SOCIAL_CALENDAR_READ_COLLECTIONS);
       const body = buildSocialCalendarContract(currentState, publicActor(accessDecision.actor), { generatedAt:new Date().toISOString() });
       sendJson(response, body, body.ok ? 200 : 404);
     } catch {
@@ -36445,7 +36484,7 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/ui/social/connections" && request.method === "GET") {
     if (!socialVNextConfig.enabled) { sendJson(response, { ok:false, outcome:"not_available", message:"Social connections are unavailable." }, 404); return; }
     try {
-      const currentState = await store.readState();
+      const currentState = await store.readCollections(SOCIAL_CONNECTIONS_READ_COLLECTIONS);
       const body = buildSocialConnectionsContract(currentState, publicActor(accessDecision.actor), new Date().toISOString());
       sendJson(response, body, body.ok ? 200 : 404);
     } catch {
@@ -36458,7 +36497,7 @@ async function handleRequest(request, response) {
   if (composerRead && request.method === "GET") {
     if (!commandCenterVNextConfig.enabled) { sendJson(response, { ok:false, outcome:"not_available", message:"Social composer is unavailable." }, 404); return; }
     try {
-      const currentState = await store.readState();
+      const currentState = await store.readCollections(POST_COMPOSER_READ_COLLECTIONS);
       const actor = publicActor(accessDecision.actor);
       const body = buildPostComposerContract(currentState, actor, decodeURIComponent(composerRead[1]), new Date().toISOString(), { productionEnabled:socialVNextConfig.enabled });
       sendJson(response, body, body.ok ? 200 : 404);
@@ -36477,7 +36516,7 @@ async function handleRequest(request, response) {
       const actor = publicActor(accessDecision.actor);
       const decision = canPerformEndpoint(actor?.role || "viewer", "POST", url.pathname);
       if (!decision.ok) { sendJson(response, { ok:false, outcome:"unauthorized", message:"This account can view Social but cannot edit Posts." }, 403); return; }
-      const currentState = await store.readState();
+      const currentState = await store.readCollections(POST_COMPOSER_READ_COLLECTIONS);
       const visible = buildPostComposerContract(currentState, actor, id, new Date().toISOString(), { productionEnabled:socialVNextConfig.enabled });
       const duplicateCount = (currentState.posts || []).filter((item) => String(item?.id || "") === id).length;
       if (!visible.ok || visible.post?.id !== id || duplicateCount !== 1) { sendJson(response, { ok:false, outcome:"unavailable", message:"This Post is unavailable." }, 404); return; }
@@ -36486,7 +36525,11 @@ async function handleRequest(request, response) {
       if (!Number.isSafeInteger(visible.version)) { sendJson(response, { ok:false, outcome:"unavailable", message:"This Post cannot be safely saved right now." }, 404); return; }
       if (expectedVersion !== visible.version) { sendJson(response, { ok:false, outcome:"conflict", currentVersion:visible.version, message:"The saved Post changed. Reload the saved copy or keep editing." }, 409); return; }
       const patch = normalizeComposerPatch(input);
-      const nextState = (await store.mutateCollectionItem("posts", id, (post) => ({ ...post, ...patch }), { expectedVersion })).state;
+      const mutation = await store.mutateCollectionItem("posts", id, (post) => ({ ...post, ...patch }), { expectedVersion, returnState:false });
+      const nextState = {
+        ...currentState,
+        posts:(currentState.posts || []).map((post) => String(post?.id || "") === id ? mutation.record : post)
+      };
       sendJson(response, buildPostComposerContract(nextState, actor, id, new Date().toISOString(), { productionEnabled:socialVNextConfig.enabled }));
     } catch (error) {
       const status = Number(error?.status);
@@ -36505,7 +36548,7 @@ async function handleRequest(request, response) {
     catch (error) { sendJson(response, { ok:false, outcome:"validation_error", message:error instanceof RequestLimitError ? "The Social action request is too large." : "The Social action request is invalid." }, error instanceof RequestLimitError ? 413 : 400); return; }
     const actor = publicActor(accessDecision.actor);
     const execute = async () => {
-      const currentState = await store.readState();
+      const currentState = await store.readCollections(SOCIAL_PRODUCTION_READ_COLLECTIONS);
       if (socialActionAlreadyApplied(currentState, input.requestId)) return { ok:true, outcome:"already_applied", reused:true };
       const dependencies = {
         now:() => new Date().toISOString(),
@@ -36513,7 +36556,7 @@ async function handleRequest(request, response) {
         renderPost:renderSocialPostAdapter,
         applyApproval:applySocialApproval,
         recordRequestedChanges:recordSocialRequestedChanges,
-        loadState:() => store.readState(),
+        loadState:() => store.readCollections(SOCIAL_PRODUCTION_READ_COLLECTIONS),
         store,
         acquireClaim:(details) => acquireSocialPublishClaim({ claimCollectionItems:(collection, rows) => store.claimCollectionItems(collection, rows) }, details),
         transitionClaim:(claimId, status, details) => transitionSocialPublishClaim(store, claimId, status, details),
@@ -36559,7 +36602,7 @@ async function handleRequest(request, response) {
       const actor = publicActor(accessDecision.actor);
       const now = new Date().toISOString();
       const result = await serializeStateMutation(async () => {
-        const currentState = await store.readState();
+        const currentState = await store.readCollections(INBOX_READ_COLLECTIONS);
         const action = executeAuthorizedInboxAction(currentState, actor, now, payload);
         if (Object.keys(action.collections).length) await store.writeCollections(action.collections);
         return action;
@@ -36578,9 +36621,11 @@ async function handleRequest(request, response) {
       return;
     }
     try {
-      const currentState = await store.readState();
+      const target = url.searchParams.get("target") || "#today";
+      const routeCollections = routeAccessReadCollections(target);
+      const currentState = routeCollections.length ? await store.readCollections(routeCollections) : {};
       const actor = publicActor(accessDecision.actor);
-      sendJson(response, buildRouteAccessView(currentState, url.searchParams.get("target") || "#today", {
+      sendJson(response, buildRouteAccessView(currentState, target, {
         role:actor?.role || "viewer"
       }));
     } catch {
@@ -36619,7 +36664,7 @@ async function handleRequest(request, response) {
       const actor = publicActor(accessDecision.actor);
       const now = new Date().toISOString();
       const captured = await serializeStateMutation(async () => {
-        const currentState = await store.readState();
+        const currentState = await store.readCollections(QUICK_CAPTURE_READ_COLLECTIONS);
         const result = createQuickCapture(currentState, input, { actor, now });
         if (result.state !== currentState) await writeChangedCollections(currentState, result.state);
         return result;
@@ -36647,7 +36692,7 @@ async function handleRequest(request, response) {
     }
     try {
       const created = await serializeStateMutation(async () => {
-        const currentState = await store.readState();
+        const currentState = await store.readCollections(GLOBAL_CREATE_READ_COLLECTIONS_BY_KIND[globalCreateKind]);
         const result = createGlobalObject(currentState, globalCreateKind, input, {
           actor,
           now:new Date().toISOString()
@@ -36684,7 +36729,7 @@ async function handleRequest(request, response) {
     const body = await readJson(request);
     const assetPath = normalizePrivateAssetPath(body.assetPath);
     const postId = String(body.postId || "");
-    const currentState = await store.readState();
+    const currentState = await store.readCollections(["postImages", "posts"]);
     const postExists = (currentState.posts || []).some((post) => String(post.id) === postId);
     const assetOwned = (currentState.postImages || []).some((image) => String(image.postId) === postId && [image.privateAssetPath, image.assetBundleUsed?.uploadPath].includes(assetPath));
     if (!assetPath || !postExists || !assetOwned) {
@@ -36702,7 +36747,7 @@ async function handleRequest(request, response) {
       sendJson(response, { error: "Asset is unavailable." }, 404);
       return;
     }
-    const currentState = await store.readState();
+    const currentState = await store.readCollections(["postImages"]);
     const assetOwned = (currentState.postImages || []).some((image) => String(image.postId) === verified.postId && [image.privateAssetPath, image.assetBundleUsed?.uploadPath].includes(verified.assetPath));
     if (!assetOwned) {
       sendJson(response, { error: "Asset is unavailable." }, 404);
@@ -41799,7 +41844,7 @@ async function handleRequest(request, response) {
     try {
       const actor = publicActor(accessDecision.actor);
       const now = new Date().toISOString();
-      discovery = buildDiscoveryShellContracts(await store.readState(), actor, now);
+      discovery = buildDiscoveryShellContracts(await store.readCollections(["userDiscoveryPreferences"]), actor, now);
     } catch {
       discovery = null;
     }

@@ -1,5 +1,6 @@
 import {
   RELATIONSHIP_ACTION_WRITE_COLLECTIONS,
+  RELATIONSHIP_DETAIL_READ_COLLECTIONS,
   RelationshipActionError,
   buildRelationshipDetail,
   executeRelationshipAction,
@@ -46,10 +47,10 @@ function assertNoQuery(searchParams) {
 }
 
 async function readState(store) {
-  if (typeof store?.readState !== "function") {
+  if (typeof store?.readCollections !== "function") {
     throw new RelationshipActionError("Relationships are temporarily unavailable.", 503, "unavailable");
   }
-  return store.readState();
+  return store.readCollections(RELATIONSHIP_DETAIL_READ_COLLECTIONS);
 }
 
 async function persistScoped(store, result = {}) {

@@ -36,6 +36,28 @@ export const AUTOMATION_REVIEW_POSTURE = Object.freeze({
   externalActions:0
 });
 
+export const AUTOMATION_CONTROL_CENTER_READ_COLLECTIONS = Object.freeze([
+  "approvalQueue",
+  "approvals",
+  "autopilotSettings",
+  "campaigns",
+  "companyContacts",
+  "outreachAttempts",
+  "outreachCampaigns",
+  "outreachContacts",
+  "outreachOrganizations",
+  "outreachReplies",
+  "outreachSendClaims",
+  "outreachSequenceSteps",
+  "partners",
+  "prospectCandidates",
+  "reactivationAttempts",
+  "reactivationCampaign",
+  "reactivationContacts",
+  "reactivationEvents",
+  "reactivationSendClaims"
+]);
+
 const list = (value) => Array.isArray(value) ? value : [];
 const clean = (value = "") => String(value ?? "").trim();
 const lower = (value = "") => clean(value).toLocaleLowerCase("en-US");

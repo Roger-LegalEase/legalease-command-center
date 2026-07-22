@@ -4,6 +4,7 @@ import {
   exportWeeklySocialPlan,
   recordWeeklySocialPublication,
   recordWeeklySocialResults,
+  SOCIAL_WEEKLY_PLANNER_READ_COLLECTIONS,
   SocialWeeklyPlannerError,
   socialWeeklyPlannerSafeError,
   updateWeeklySocialPost
@@ -78,8 +79,8 @@ function weekQuery(searchParams) {
 }
 
 async function readState(store) {
-  if (typeof store?.readState !== "function") throw apiError("Social plan storage is unavailable.", 503, "unavailable");
-  return store.readState();
+  if (typeof store?.readCollections !== "function") throw apiError("Social plan storage is unavailable.", 503, "unavailable");
+  return store.readCollections(SOCIAL_WEEKLY_PLANNER_READ_COLLECTIONS);
 }
 
 async function persistScoped(store, result = {}) {

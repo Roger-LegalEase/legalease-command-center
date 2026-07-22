@@ -1,4 +1,4 @@
-import { buildAutomationControlCenterView } from "./automation-control-center-service.mjs";
+import { buildAutomationControlCenterView, AUTOMATION_CONTROL_CENTER_READ_COLLECTIONS } from "./automation-control-center-service.mjs";
 
 const clean = (value = "") => String(value ?? "").trim();
 
@@ -27,10 +27,10 @@ function assertNoQuery(searchParams) {
 }
 
 async function readState(store) {
-  if (typeof store?.readState !== "function") {
+  if (typeof store?.readCollections !== "function") {
     throw apiError("Automation review is temporarily unavailable.", 503, "unavailable");
   }
-  return store.readState();
+  return store.readCollections(AUTOMATION_CONTROL_CENTER_READ_COLLECTIONS);
 }
 
 function safeStatus(error) {

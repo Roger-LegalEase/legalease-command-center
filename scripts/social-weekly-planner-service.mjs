@@ -17,6 +17,12 @@ const POST_INPUT_KEYS = new Set(["title", "idea", "status", "shared", "selectedC
 const VARIANT_FIELDS = Object.freeze(["headline", "body", "hook", "cta", "hashtags"]);
 const INPUT_FIELDS = Object.freeze(["proof", "announcement", "customerInsight", "partnerStory", "educationalIdea", "cta"]);
 
+export const SOCIAL_WEEKLY_PLANNER_READ_COLLECTIONS = Object.freeze([
+  "activityEvents",
+  "auditHistory",
+  "posts"
+]);
+
 export const SOCIAL_WEEKLY_STATUSES = Object.freeze([
   "planned",
   "drafting",

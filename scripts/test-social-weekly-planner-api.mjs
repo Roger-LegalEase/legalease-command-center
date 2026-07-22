@@ -43,7 +43,10 @@ function memoryStore(seed = initialState()) {
   const writes = [];
   let reads = 0;
   return {
-    async readState() { reads += 1; return structuredClone(current); },
+    async readCollections(collectionNames) {
+      reads += 1;
+      return Object.fromEntries(collectionNames.map((collection) => [collection, structuredClone(current[collection] ?? [])]));
+    },
     async writeCollections(patch) {
       const saved = structuredClone(patch);
       writes.push(saved);
@@ -296,7 +299,12 @@ let postId;
   assert.equal(malformed.status, 400);
   assert.equal(store.writes().length, writesBefore);
 
-  const noWriteStore = { async readState() { return initialState(); } };
+  const noWriteStore = {
+    async readCollections(collectionNames) {
+      const state = initialState();
+      return Object.fromEntries(collectionNames.map((collection) => [collection, structuredClone(state[collection] ?? [])]));
+    }
+  };
   const unavailable = await call({ method:"POST", store:noWriteStore, input:{ ...createInput, requestId:"weekly_no_store_write_001" } });
   assert.equal(unavailable.status, 503);
   assert.equal(unavailable.body.outcome, "unavailable");

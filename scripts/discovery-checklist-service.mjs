@@ -4,6 +4,42 @@ const clean = (value = "") => String(value ?? "").trim();
 const list = (value) => Array.isArray(value) ? value : [];
 
 export const DISCOVERY_CHECKLIST_ENDPOINT = "/api/ui/discovery/checklist";
+export const DISCOVERY_CHECKLIST_READ_COLLECTIONS = Object.freeze([
+  "approvalQueue",
+  "approvals",
+  "automationSuggestions",
+  "brandAssets",
+  "brandRules",
+  "campaigns",
+  "companyContacts",
+  "contentBank",
+  "dataRoom",
+  "dataRoomItems",
+  "evidencePackNotes",
+  "growthInbox",
+  "inboxSignals",
+  "outreachCampaigns",
+  "outreachContacts",
+  "outreachReplies",
+  "outreachSuppressions",
+  "outreachUnsubscribes",
+  "partnerPrograms",
+  "partners",
+  "pilots",
+  "postImages",
+  "posts",
+  "prospectCandidates",
+  "publishEvents",
+  "queueItems",
+  "reactivationContacts",
+  "reports",
+  "settings",
+  "soc2Evidence",
+  "soc2Policies",
+  "socialAccounts",
+  "supportIssues",
+  "tasks"
+]);
 
 export const DISCOVERY_CHECKLIST_ITEMS = Object.freeze([
   Object.freeze({ id:"brand-assets", label:"Add brand assets", action:Object.freeze({ kind:"route", href:"#files?collection=brand-assets", expectedDestination:"Files" }) }),

@@ -32,6 +32,25 @@ export const COMMUNICATION_SOURCE_KINDS = Object.freeze([
   "outreach_reply"
 ]);
 
+export const COMMUNICATION_COMPOSER_READ_COLLECTIONS = Object.freeze([
+  "activityEvents",
+  "approvalQueue",
+  "auditHistory",
+  "companyContacts",
+  "companyOrganizations",
+  "emailDrafts",
+  "inboxSignals",
+  "outreachContacts",
+  "outreachOrganizations",
+  "outreachReplies",
+  "outreachSuppressions",
+  "partners",
+  "prospectCandidates",
+  "reactivationContacts",
+  "supportIssues",
+  "tasks"
+]);
+
 const SOURCE_ALIASES = Object.freeze({
   task:"task",
   tasks:"task",

@@ -10,6 +10,15 @@ const requestIdPattern = /^[a-z0-9][a-z0-9_-]{15,95}$/i;
 const unsafeTextPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]|<\s*\/?\s*(?:script|iframe|object|embed|svg)|\bon\w+\s*=/i;
 
 export const QUICK_CAPTURE_ENDPOINT = "/api/ui/quick-capture";
+export const QUICK_CAPTURE_READ_COLLECTIONS = Object.freeze([
+  "activityEvents",
+  "auditHistory",
+  "campaigns",
+  "captureInbox",
+  "dataRoomItems",
+  "posts",
+  "tasks"
+]);
 export const QUICK_CAPTURE_CAPABILITIES_ENDPOINT = "/api/ui/quick-capture/capabilities";
 export const QUICK_CAPTURE_BODY_LIMIT = 12 * 1024;
 

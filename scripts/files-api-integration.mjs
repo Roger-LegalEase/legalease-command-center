@@ -26,6 +26,17 @@ const NO_QUERY = new Set();
 export const FILES_JSON_BODY_LIMIT = 32_000;
 export const FILES_MULTIPART_BODY_LIMIT = (25 * 1024 * 1024) + 64_000;
 export const FILES_TEXT_PREVIEW_LIMIT = 200_000;
+export const FILES_READ_COLLECTIONS = Object.freeze([
+  "activityEvents",
+  "auditHistory",
+  "brandAssets",
+  "dataRoom",
+  "dataRoomItems",
+  "evidencePackNotes",
+  "reports",
+  "soc2Evidence",
+  "soc2Policies"
+]);
 
 export function parseFilesMultipart(body, contentType = "") {
   const match = clean(contentType).match(/^multipart\/form-data;\s*boundary=(?:"([A-Za-z0-9'()+_,.\/:=?-]{1,70})"|([A-Za-z0-9'()+_,.\/:=?-]{1,70}))$/i);
@@ -108,8 +119,8 @@ function route(pathname) {
 }
 
 function ports(store) {
-  if (typeof store?.readState !== "function" || typeof store?.writeCollections !== "function") throw error("Scoped Files persistence is unavailable.", 503, "failed_closed");
-  return { readState:() => store.readState(), writeCollections:(patch) => store.writeCollections(patch) };
+  if (typeof store?.readCollections !== "function" || typeof store?.writeCollections !== "function") throw error("Scoped Files persistence is unavailable.", 503, "failed_closed");
+  return { readState:() => store.readCollections(FILES_READ_COLLECTIONS), writeCollections:(patch) => store.writeCollections(patch) };
 }
 
 function homeQuery(searchParams) {
@@ -159,26 +170,26 @@ export async function handleFilesApiRequest({
     const verb = clean(method).toUpperCase();
     if (selected.kind === "home" && verb === "GET") {
       if (clean(cursorSecret).length < 16) throw error("Files are temporarily unavailable.", 503, "failed_closed");
-      const state = await store.readState();
+      const state = await store.readCollections(FILES_READ_COLLECTIONS);
       const view = readFilesHome({ state, actor, query:homeQuery(searchParams), cursorSecret });
       return { matched:true, status:200, body:{ ...view, html:`${renderFilesHome(view)}${renderFileUploadDialog()}${renderFilesReportActions()}` } };
     }
     if (selected.kind === "investor_room" && verb === "GET") {
       assertQuery(searchParams, NO_QUERY);
-      const state = await store.readState();
+      const state = await store.readCollections(FILES_READ_COLLECTIONS);
       const view = readInvestorRoom({ state, actor, requirements, now });
       return { matched:true, status:200, body:{ ...view, html:renderInvestorRoom(view) } };
     }
     if (selected.kind === "detail" && verb === "GET") {
       assertQuery(searchParams, NO_QUERY);
-      const state = await store.readState();
+      const state = await store.readCollections(FILES_READ_COLLECTIONS);
       const body = readFileDetails({ state, actor, sourceKind:selected.sourceKind, sourceId:selected.sourceId });
       const sharingControls = body ? renderFileSharingControls({ file:body.file, sharing:body.sharing, canManage:roleHasCapability(actor.role, "manage_roles") }) : "";
       return { matched:true, status:body ? 200 : 404, body:body ? { ...body, html:renderFileDetails(body, { sharingControls }) } : { ok:false, outcome:"not_available", error:"The File is not available." } };
     }
     if (selected.kind === "content" && verb === "GET") {
       assertQuery(searchParams, CONTENT_QUERY);
-      const state = await store.readState();
+      const state = await store.readCollections(FILES_READ_COLLECTIONS);
       return { matched:true, ...(await contentResult({ state, actor, sourceKind:selected.sourceKind, sourceId:selected.sourceId, storage, download:searchParams.get("download") === "1" })) };
     }
     const servicePorts = ports(store);

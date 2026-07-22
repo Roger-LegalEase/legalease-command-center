@@ -5,6 +5,18 @@ import { permissionLabelForCapabilities } from "./ui/permission-labels.mjs";
 import { resolveRouteCompatibility } from "./ui/route-compatibility.mjs";
 
 export const ROUTE_ACCESS_ENDPOINT = "/api/ui/route-access";
+export const ROUTE_ACCESS_READ_COLLECTIONS = Object.freeze([
+  "brandAssets",
+  "campaigns",
+  "dataRoomItems",
+  "evidencePackNotes",
+  "partners",
+  "posts",
+  "reports",
+  "soc2Evidence",
+  "soc2Policies",
+  "tasks"
+]);
 
 const list = (value) => Array.isArray(value) ? value : [];
 
@@ -23,6 +35,12 @@ function roleAllows(role, capabilities) {
   return capabilities.every((capability) => capability === "admin"
     ? ["owner", "admin"].includes(String(role || ""))
     : roleHasCapability(role, capability));
+}
+
+export function routeAccessReadCollections(target = "") {
+  const resolution = resolveRouteCompatibility(target);
+  if (resolution.kind !== "object" || !ROUTE_ACCESS_READ_COLLECTIONS.includes(resolution.sourceKind)) return Object.freeze([]);
+  return Object.freeze([resolution.sourceKind]);
 }
 
 export function buildRouteAccessView(state = {}, target = "", { role = "viewer" } = {}) {

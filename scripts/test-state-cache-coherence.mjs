@@ -340,9 +340,11 @@ for (const [name, mutate, reflected] of MUTATOR_CASES) {
   const classified = new Set([
     ...MUTATOR_CASES.map(([name]) => name),
     // read-only / lifecycle / telemetry:
-    "constructor", "ensure", "readState", "writeHealth", "recordWriteOutcome",
+    "constructor", "ensure", "readState", "readCollections", "writeHealth", "recordWriteOutcome",
+    "readPerformanceCounters", "resetReadPerformanceCounters",
     // internals of the cache + fetch layer (not entry points):
     "_stateCacheTtlMs", "_readStateCachedOrFresh", "_remoteStateSignature", "_readStateFresh",
+    "_invalidateCollectionCache", "_fallbackState", "_readCollectionsFresh",
     "writeStateToSupabase"
   ]);
   const methods = new Set([

@@ -28,6 +28,21 @@ export const FOUNDER_SUPPORT_ACTIONS = Object.freeze([
   "link_relationship"
 ]);
 
+export const FOUNDER_SUPPORT_READ_COLLECTIONS = Object.freeze([
+  "activityEvents",
+  "auditHistory",
+  "companyContacts",
+  "companyOrganizations",
+  "inboxSignals",
+  "outreachContacts",
+  "outreachOrganizations",
+  "partners",
+  "prospectCandidates",
+  "reactivationContacts",
+  "supportIssues",
+  "tasks"
+]);
+
 const LANE_INPUTS = Object.freeze({
   new:"New",
   waiting_on_legalease:"Waiting on LegalEase",

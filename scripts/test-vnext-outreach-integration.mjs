@@ -23,7 +23,10 @@ const state = {
 let reads = 0;
 let writes = 0;
 const store = {
-  async readState() { reads += 1; return state; },
+  async readCollections(collectionNames) {
+    reads += 1;
+    return Object.fromEntries(collectionNames.map((collection) => [collection, structuredClone(state[collection] ?? [])]));
+  },
   async writeChanges() { writes += 1; }
 };
 

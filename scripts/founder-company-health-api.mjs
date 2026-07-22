@@ -1,6 +1,7 @@
 import {
   buildFounderCompanyHealth,
-  FOUNDER_COMPANY_HEALTH_ENDPOINT
+  FOUNDER_COMPANY_HEALTH_ENDPOINT,
+  FOUNDER_COMPANY_HEALTH_READ_COLLECTIONS
 } from "./founder-company-health-service.mjs";
 
 const clean = (value = "") => String(value ?? "").trim();
@@ -37,10 +38,10 @@ function optionsFromQuery(searchParams) {
 }
 
 async function readState(store) {
-  if (typeof store?.readState !== "function") {
+  if (typeof store?.readCollections !== "function") {
     throw apiError("Company Health is temporarily unavailable.", 503, "unavailable");
   }
-  return store.readState();
+  return store.readCollections(FOUNDER_COMPANY_HEALTH_READ_COLLECTIONS);
 }
 
 function safeStatus(error) {

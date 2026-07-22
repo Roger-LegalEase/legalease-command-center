@@ -34,6 +34,36 @@ const NO_QUERY_KEYS = new Set();
 const STEPS = new Set(["goal", "audience", "message", "schedule", "review"]);
 
 export const OUTREACH_API_BODY_LIMIT = 32_000;
+export const OUTREACH_READ_COLLECTIONS = Object.freeze([
+  "activityEvents",
+  "agentRuns",
+  "approvalQueue",
+  "approvals",
+  "automationEvents",
+  "auditHistory",
+  "campaigns",
+  "companyContacts",
+  "companyEvents",
+  "outreachAttempts",
+  "outreachBounces",
+  "outreachCampaigns",
+  "outreachContacts",
+  "outreachReplies",
+  "outreachSequenceSteps",
+  "outreachSuppressions",
+  "outreachUnsubscribes",
+  "partnerPrograms",
+  "partners",
+  "pilots",
+  "products",
+  "queueItems",
+  "reactivationCampaign",
+  "reactivationContacts",
+  "reactivationAttempts",
+  "reactivationEvents",
+  "reactivationSendClaims",
+  "roleAssignments"
+]);
 export const OUTREACH_API_ENDPOINTS = Object.freeze([
   "GET /api/ui/outreach",
   "GET /api/ui/outreach/campaign/:identity/draft",
@@ -105,8 +135,8 @@ function requireRequestId(value, label = "request ID") {
 }
 
 function readState(store) {
-  if (typeof store?.readState !== "function") throw integrationError("Outreach storage is unavailable.", 503, "unavailable");
-  return store.readState();
+  if (typeof store?.readCollections !== "function") throw integrationError("Outreach storage is unavailable.", 503, "unavailable");
+  return store.readCollections(OUTREACH_READ_COLLECTIONS);
 }
 
 async function writeScoped(store, before, after, allowedCollections) {

@@ -79,6 +79,10 @@ try {
   }
 
   const shell = await fetch(`${server.baseUrl}/#today`, { headers, signal:AbortSignal.timeout(10_000) }).then((response) => response.text());
+  const targetedBootIndex = shell.indexOf('window.__LE_BOOT.stage = "targeted-route-ready"');
+  const legacyBootIndex = shell.indexOf('window.__LE_BOOT.stage = "state-fetch"');
+  assert.ok(targetedBootIndex >= 0 && legacyBootIndex > targetedBootIndex, "vNext must short-circuit legacy full-state boot before any state fetch can run.");
+  assert.doesNotMatch(shell, /setTimeout\(\(\) => refreshInboxCount\(\), 0\)/, "Initial shell boot must not prefetch an unrelated Inbox route.");
   const scriptBytes = [...shell.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)]
     .reduce((total, match) => total + Buffer.byteLength(match[1]), 0);
   const stylesheetPaths = [...new Set([...shell.matchAll(/<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)["']/gi)].map((match) => match[1]))];

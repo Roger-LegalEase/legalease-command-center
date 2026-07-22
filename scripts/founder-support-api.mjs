@@ -1,6 +1,7 @@
 import { buildRelationshipsView } from "./relationship-service.mjs";
 import {
   FounderSupportError,
+  FOUNDER_SUPPORT_READ_COLLECTIONS,
   buildFounderSupportView,
   executeFounderSupportAction,
   founderSupportSafeError
@@ -65,10 +66,10 @@ function supportQuery(searchParams) {
 }
 
 async function readState(store) {
-  if (typeof store?.readState !== "function") {
+  if (typeof store?.readCollections !== "function") {
     throw apiError("Support is temporarily unavailable.", 503, "unavailable");
   }
-  return store.readState();
+  return store.readCollections(FOUNDER_SUPPORT_READ_COLLECTIONS);
 }
 
 async function persistScoped(store, result = {}) {

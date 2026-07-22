@@ -1,6 +1,7 @@
 import { normalizeRole, roleHasCapability } from "./roles.mjs";
 import {
   FounderCalendarError,
+  FOUNDER_CALENDAR_READ_COLLECTIONS,
   buildFounderCalendarView,
   buildGoogleCalendarCreateUrl,
   executeFounderCalendarAction,
@@ -79,10 +80,10 @@ function canReadCalendar(actor = {}) {
 }
 
 async function readState(store) {
-  if (typeof store?.readState !== "function") {
+  if (typeof store?.readCollections !== "function") {
     throw apiError("Calendar is temporarily unavailable.", 503, "unavailable");
   }
-  return store.readState();
+  return store.readCollections(FOUNDER_CALENDAR_READ_COLLECTIONS);
 }
 
 async function persistScoped(store, result = {}) {
