@@ -1,266 +1,519 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import http from "node:http";
 import { jsonRequest, startPreviewServer } from "./test-support/preview-server-harness.mjs";
 
-const SERVICE_ROLE_KEY = "fake-service-role-key-A7v9-Q4m8-2026";
-const SESSION_SECRET = "hosted-login-session-secret-A7v9-Q4m8-2026";
+process.env.SKIP_ENV_LOCAL_FILE = "1";
 
-function json(response, body, status = 200, headers = {}) {
-  response.writeHead(status, { "content-type":"application/json", ...headers });
+const SERVICE_ROLE_KEY = "synthetic-service-role-key-A7v9-Q4m8-2026";
+const SESSION_SECRET = "hosted-login-session-secret-A7v9-Q4m8-2026";
+const UPSTASH_TOKEN = "synthetic-upstash-write-token-A7v9-Q4m8-2026";
+const SESSION_PREFIX = "leos:auth:v1:session:";
+const SESSION_FIELDS = [
+  "createdAt",
+  "csrfHash",
+  "expiresAt",
+  "generation",
+  "id",
+  "revokedAt",
+  "role",
+  "tokenHash",
+  "userAgentHash"
+];
+
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const hmac = (value) => crypto.createHmac("sha256", SESSION_SECRET).update(value).digest("hex");
+
+function sendJson(response, body, status = 200) {
+  response.writeHead(status, { "content-type":"application/json" });
   response.end(JSON.stringify(body));
 }
 
-async function requestBody(request) {
+async function readJson(request) {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : null;
 }
 
-async function startFakeSupabase({ conflictRateLimitOnce = false, hangRateLimitRead = false, failSessionWrites = false } = {}) {
-  const records = new Map();
-  const requests = [];
-  let rateLimitConflictsRemaining = conflictRateLimitOnce ? 1 : 0;
-  let fullHydrationRequests = 0;
-  let targetedRateLimitReads = 0;
-  let rateLimitCasRequests = 0;
-
-  const server = http.createServer(async (request, response) => {
-    const url = new URL(request.url || "/", "http://127.0.0.1");
-    const method = String(request.method || "GET").toUpperCase();
-    const collectionFilter = url.searchParams.get("collection") || "";
-    const select = url.searchParams.get("select") || "";
-    const isRecordsRoute = url.pathname === "/rest/v1/leos_core_records";
-    const isRateLimitRead = method === "GET" && isRecordsRoute && collectionFilter === "eq.securityMetrics";
-    requests.push({ method, pathname:url.pathname, collectionFilter, select });
-
-    if (isRateLimitRead) {
-      targetedRateLimitReads += 1;
-      if (hangRateLimitRead) {
-        const delayed = setTimeout(() => {
-          if (!response.destroyed) json(response, []);
-        }, 2_000);
-        delayed.unref?.();
-        request.once("close", () => clearTimeout(delayed));
-        return;
-      }
-      const row = records.get("securityMetrics/singleton");
-      json(response, row ? [row] : []);
-      return;
-    }
-
-    if (method === "GET" && isRecordsRoute) {
-      if (select.includes("updated_at") || url.searchParams.has("order")) fullHydrationRequests += 1;
-      json(response, [], 200, { "content-range":"*/0" });
-      return;
-    }
-
-    if (method === "POST" && url.pathname === "/rest/v1/rpc/leos_upsert_record_cas") {
-      const body = await requestBody(request);
-      if (body?.p_collection === "securityMetrics") {
-        rateLimitCasRequests += 1;
-        if (rateLimitConflictsRemaining > 0) {
-          rateLimitConflictsRemaining -= 1;
-          json(response, { code:"40001", message:"version_conflict" }, 409);
-          return;
-        }
-      }
-      const key = `${body.p_collection}/${body.p_item_id}`;
-      const current = records.get(key);
-      const version = Number(current?.version || 0) + 1;
-      records.set(key, {
-        collection:body.p_collection,
-        item_id:String(body.p_item_id),
-        payload:body.p_payload,
-        version,
-        updated_at:new Date().toISOString()
-      });
-      json(response, [{ version }]);
-      return;
-    }
-
-    if (method === "POST" && isRecordsRoute && url.searchParams.has("on_conflict")) {
-      const rows = await requestBody(request);
-      if (failSessionWrites && rows.some((row) => row.collection === "authSessions")) {
-        json(response, { message:"storage unavailable" }, 503);
-        return;
-      }
-      const inserted = [];
-      for (const row of rows) {
-        const key = `${row.collection}/${row.item_id}`;
-        if (records.has(key)) continue;
-        records.set(key, { ...row, updated_at:new Date().toISOString() });
-        inserted.push({ item_id:row.item_id });
-      }
-      json(response, inserted, 201);
-      return;
-    }
-
-    json(response, { message:"unexpected fake Supabase request" }, 500);
-  });
-
+async function listen(server) {
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address();
-  const baseUrl = `http://127.0.0.1:${address.port}`;
+  return `http://127.0.0.1:${address.port}`;
+}
+
+async function close(server) {
+  server.closeAllConnections?.();
+  await new Promise((resolve) => server.close(resolve));
+}
+
+async function startHangingSupabase() {
+  const requests = [];
+  const server = http.createServer((request) => {
+    requests.push({
+      method:String(request.method || "GET").toUpperCase(),
+      pathname:new URL(request.url || "/", "http://fixture.invalid").pathname
+    });
+    request.resume();
+    // Intentionally never answer. If authentication regresses into Supabase, its bounded
+    // request timeout keeps the test finite and the request counter identifies the violation.
+  });
+  const baseUrl = await listen(server);
   return {
     baseUrl,
-    records,
     requests,
-    metrics:() => ({ fullHydrationRequests, targetedRateLimitReads, rateLimitCasRequests }),
-    authSessions:() => [...records.values()].filter((row) => row.collection === "authSessions"),
-    async stop() {
-      server.closeAllConnections?.();
-      await new Promise(resolve => server.close(resolve));
-    }
+    async stop() { await close(server); }
   };
 }
 
-function hostedTestEnvironment(fake, overrides = {}) {
+async function startFakeUpstash() {
+  const sessions = new Map();
+  const rates = new Map();
+  const metrics = new Map();
+  const requests = [];
+  const unavailable = new Set();
+
+  function liveSession(key) {
+    const entry = sessions.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+      sessions.delete(key);
+      return null;
+    }
+    return entry;
+  }
+
+  const server = http.createServer(async (request, response) => {
+    if (request.headers.authorization !== `Bearer ${UPSTASH_TOKEN}`) {
+      sendJson(response, { error:"unauthorized" }, 401);
+      return;
+    }
+    let command;
+    try {
+      command = await readJson(request);
+    } catch {
+      sendJson(response, { error:"invalid request" }, 400);
+      return;
+    }
+    const name = String(command?.[0] || "").toUpperCase();
+    requests.push({ name, command, bodyBytes:Buffer.byteLength(JSON.stringify(command || [])) });
+    if (unavailable.has(name)) {
+      sendJson(response, { error:"synthetic unavailable" }, 503);
+      return;
+    }
+
+    if (name === "PING") {
+      sendJson(response, { result:"PONG" });
+      return;
+    }
+    if (name === "EVAL") {
+      const key = String(command[3] || "");
+      const ttlMs = Math.max(1, Number(command[4] || 1));
+      const current = rates.get(key);
+      const count = current && current.expiresAt > Date.now() ? current.count + 1 : 1;
+      const expiresAt = current && current.expiresAt > Date.now() ? current.expiresAt : Date.now() + ttlMs;
+      rates.set(key, { count, expiresAt });
+      sendJson(response, { result:[count, Math.max(1, expiresAt - Date.now())] });
+      return;
+    }
+    if (name === "SET") {
+      const key = String(command[1] || "");
+      const ttlMs = Math.max(1, Number(command[4] || 1));
+      if (liveSession(key)) sendJson(response, { result:null });
+      else {
+        sessions.set(key, { value:String(command[2] || ""), expiresAt:Date.now() + ttlMs });
+        sendJson(response, { result:"OK" });
+      }
+      return;
+    }
+    if (name === "GET") {
+      sendJson(response, { result:liveSession(String(command[1] || ""))?.value ?? null });
+      return;
+    }
+    if (name === "DEL") {
+      sendJson(response, { result:sessions.delete(String(command[1] || "")) ? 1 : 0 });
+      return;
+    }
+    if (name === "HINCRBY") {
+      const field = String(command[2] || "");
+      const value = (metrics.get(field) || 0) + Number(command[3] || 0);
+      metrics.set(field, value);
+      sendJson(response, { result:value });
+      return;
+    }
+    if (name === "HGETALL") {
+      sendJson(response, { result:[...metrics].flatMap(([field, value]) => [field, String(value)]) });
+      return;
+    }
+    if (name === "SCAN") {
+      sendJson(response, { result:["0", [...sessions.keys()]] });
+      return;
+    }
+    sendJson(response, { error:"unsupported command" }, 400);
+  });
+
+  const baseUrl = await listen(server);
+  return {
+    baseUrl,
+    requests,
+    fail(name, enabled = true) {
+      const normalized = String(name || "").toUpperCase();
+      if (enabled) unavailable.add(normalized);
+      else unavailable.delete(normalized);
+    },
+    commands(name) {
+      const normalized = String(name || "").toUpperCase();
+      return requests.filter((item) => item.name === normalized);
+    },
+    resetRequests() { requests.length = 0; },
+    seedSession(tokenHash, session, ttlMs = 30 * 60 * 1000) {
+      sessions.set(`${SESSION_PREFIX}${tokenHash}`, {
+        value:JSON.stringify(session),
+        expiresAt:Date.now() + ttlMs
+      });
+    },
+    sessionCount() {
+      for (const key of sessions.keys()) liveSession(key);
+      return sessions.size;
+    },
+    async stop() { await close(server); }
+  };
+}
+
+function hostedTestEnvironment(supabase, redis, overrides = {}) {
   return {
     STORAGE_BACKEND:"supabase",
     LOCAL_DEMO_MODE:"false",
     COMMAND_CENTER_ALLOW_JSON:"false",
-    SUPABASE_URL:fake.baseUrl,
+    SUPABASE_URL:supabase.baseUrl,
     SUPABASE_SERVICE_ROLE_KEY:SERVICE_ROLE_KEY,
-    COMMAND_CENTER_SESSION_SECRET:SESSION_SECRET,
-    SUPABASE_REQUEST_TIMEOUT_MS:"500",
+    SUPABASE_REQUEST_TIMEOUT_MS:"100",
     STATE_CACHE_TTL_MS:"0",
+    COMMAND_CENTER_SESSION_SECRET:SESSION_SECRET,
+    UPSTASH_REDIS_REST_URL:redis.baseUrl,
+    UPSTASH_REDIS_REST_TOKEN:UPSTASH_TOKEN,
+    AUTH_STORE_REQUEST_TIMEOUT_MS:"250",
     ...overrides
   };
 }
 
-async function login(server, credential) {
+async function startScenario() {
+  const supabase = await startHangingSupabase();
+  let redis;
+  let preview;
+  try {
+    redis = await startFakeUpstash();
+    preview = await startPreviewServer({ env:hostedTestEnvironment(supabase, redis) });
+    return {
+      supabase,
+      redis,
+      preview,
+      async stop() {
+        await preview.stop();
+        await redis.stop();
+        await supabase.stop();
+      }
+    };
+  } catch (error) {
+    if (preview) await preview.stop();
+    if (redis) await redis.stop();
+    await supabase.stop();
+    throw error;
+  }
+}
+
+async function login(server, credential, headers = {}) {
   return jsonRequest(server.baseUrl, "/api/auth/login", {
     method:"POST",
-    headers:{ "content-type":"application/json" },
+    headers:{ "content-type":"application/json", ...headers },
     body:JSON.stringify({ credential })
   });
 }
 
-function assertNoSecretLeak(text, secrets, label) {
-  for (const secret of secrets) assert(!String(text).includes(secret), `${label} must not expose a credential or secret.`);
+function cookieValue(setCookie, name) {
+  return String(setCookie || "").match(new RegExp(`(?:^|,\\s*)${name}=([^;,]+)`))?.[1] || "";
 }
 
-console.log("Hosted owner-login timeout regression tests");
-
-{
-  const fake = await startFakeSupabase({ conflictRateLimitOnce:true });
-  const preview = await startPreviewServer({ env:hostedTestEnvironment(fake) });
-  const responseBodies = [];
-  let sessionCookieValue = "";
-  let csrfCookieValue = "";
-  try {
-    const accepted = await login(preview, preview.ownerCredential);
-    responseBodies.push(accepted.text);
-    assert.equal(accepted.response.status, 200, "A correct owner credential must return 200.");
-    assert.equal(accepted.json.role, "owner");
-    const cookies = accepted.response.headers.get("set-cookie") || "";
-    sessionCookieValue = cookies.match(/leos_session=([^;]+)/)?.[1] || "";
-    csrfCookieValue = cookies.match(/leos_csrf=([^;]+)/)?.[1] || "";
-    assert(sessionCookieValue, "Correct login must set the opaque HttpOnly session cookie.");
-    assert(csrfCookieValue, "Correct login must set the CSRF cookie.");
-    assert.match(cookies, /leos_session=[^;]+; Path=\/; HttpOnly; SameSite=Lax/);
-    assert.equal(fake.authSessions().length, 1, "Correct login must durably create exactly one authSessions record.");
-    assert.equal(fake.metrics().fullHydrationRequests, 0, "Successful rate-limit CAS must not trigger complete-state hydration.");
-    assert.equal(fake.metrics().targetedRateLimitReads, 2, "One synthetic conflict must retry the exact securityMetrics row read.");
-    assert.equal(fake.metrics().rateLimitCasRequests, 2, "One synthetic conflict must retry the atomic CAS and then succeed.");
-
-    const invalid = await login(preview, "invalid-owner-credential-A7v9-Q4m8-2026");
-    responseBodies.push(invalid.text);
-    assert.equal(invalid.response.status, 401, "Invalid credentials must remain 401.");
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const denied = await login(preview, `invalid-owner-credential-${attempt}-A7v9-Q4m8`);
-      responseBodies.push(denied.text);
-      assert.equal(denied.response.status, 401, "The first six durable attempts must remain credential decisions.");
+function authEvents(logs) {
+  return String(logs || "").split(/\r?\n/).flatMap((line) => {
+    try {
+      const value = JSON.parse(line);
+      return value?.area === "authentication" ? [value] : [];
+    } catch {
+      return [];
     }
-    const throttled = await login(preview, "invalid-owner-credential-rate-limited-A7v9");
-    responseBodies.push(throttled.text);
-    assert.equal(throttled.response.status, 429, "The seventh durable attempt must remain rate-limited.");
-    assert(Number(throttled.response.headers.get("retry-after")) > 0, "Rate-limited responses must retain safe retry guidance.");
-    assert.equal(fake.authSessions().length, 1, "Rejected and throttled requests must not create sessions.");
-    assert.equal(fake.metrics().fullHydrationRequests, 0, "Auth security-metric writes must remain targeted.");
-    const securityMetrics = fake.records.get("securityMetrics/singleton")?.payload || {};
-    const bucketCounts = Object.values(securityMetrics.rateLimitBuckets || {}).map((bucket) => Number(bucket.count || 0));
-    assert.deepEqual(bucketCounts, [7], "The rate-limit bucket must remain durably persisted through enforcement.");
-    assert.equal(securityMetrics.counters?.auth_failures, 5, "Invalid credential audit counts must remain durable.");
-    assert.equal(securityMetrics.counters?.auth_throttled, 1, "Throttle audit counts must remain durable.");
-
-    const safeSurface = responseBodies.join("\n") + "\n" + preview.logs();
-    assertNoSecretLeak(safeSurface, [preview.ownerCredential, SERVICE_ROLE_KEY, SESSION_SECRET, sessionCookieValue, csrfCookieValue], "Login bodies and logs");
-  } finally {
-    await preview.stop();
-    await fake.stop();
-  }
-  console.log("  ✓ targeted CAS, conflict retry, 200/401/429, cookies, durable sessions, and secret safety");
+  });
 }
 
+async function expectStage(preview, stage, status) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 1_000) {
+    const event = authEvents(preview.logs()).findLast((item) => item.stage === stage && item.status === status);
+    if (event) return event;
+    await wait(10);
+  }
+  assert.fail(`Expected authentication stage ${stage} with status ${status}. Logs: ${preview.logs()}`);
+}
+
+function assertNoSecretLeak(text, secrets, label) {
+  for (const secret of secrets.filter(Boolean)) {
+    assert(!String(text).includes(secret), `${label} must not expose credentials or auth material.`);
+  }
+}
+
+function assertSafeAuthEvents(preview, secrets = []) {
+  const events = authEvents(preview.logs());
+  assert(events.length > 0, "Authentication requests must emit safe stage events.");
+  const allowed = new Set(["level", "requestId", "area", "stage", "status", "code", "backend", "durationMs"]);
+  for (const event of events) {
+    assert.deepEqual(Object.keys(event).filter((key) => !allowed.has(key)), [], "Auth logs must contain only the safe stage schema.");
+  }
+  assertNoSecretLeak(JSON.stringify(events), secrets, "Authentication stage logs");
+}
+
+function seededOwnerSession(rawToken) {
+  const now = Date.now();
+  const tokenHash = hmac(rawToken);
+  return {
+    tokenHash,
+    record:{
+      id:"synthetic-owner-session",
+      tokenHash,
+      csrfHash:hmac("synthetic-csrf-token"),
+      role:"owner",
+      createdAt:new Date(now).toISOString(),
+      expiresAt:new Date(now + 30 * 60 * 1000).toISOString(),
+      revokedAt:"",
+      generation:1,
+      userAgentHash:""
+    }
+  };
+}
+
+console.log("Hosted authentication runtime isolation regression tests");
+
+// A. Supabase is unavailable, but rate limiting and session creation use healthy Redis.
 {
-  const fake = await startFakeSupabase({ hangRateLimitRead:true });
-  const preview = await startPreviewServer({ env:hostedTestEnvironment(fake, { SUPABASE_REQUEST_TIMEOUT_MS:"100" }) });
+  const fixture = await startScenario();
+  const callerRequestId = "198.51.100.42";
+  let sessionToken = "";
+  let csrfToken = "";
   try {
     const startedAt = Date.now();
-    const unavailable = await login(preview, preview.ownerCredential);
-    const elapsedMs = Date.now() - startedAt;
-    assert.equal(unavailable.response.status, 503, "A Supabase timeout must return 503.");
-    assert(elapsedMs < 1_500, `Login timeout must beat the proxy-style deadline; observed ${elapsedMs}ms.`);
-    assert.equal(unavailable.json.error, "Authentication is temporarily unavailable. No successful session was returned.");
-    assert.equal(fake.authSessions().length, 0, "A rate-limit timeout must not create a false successful session.");
-    assertNoSecretLeak(unavailable.text + "\n" + preview.logs(), [preview.ownerCredential, SERVICE_ROLE_KEY, SESSION_SECRET], "Timeout response and logs");
+    const accepted = await login(fixture.preview, fixture.preview.ownerCredential, { "x-request-id":callerRequestId });
+    const durationMs = Date.now() - startedAt;
+    assert.equal(accepted.response.status, 200, "Healthy Redis must allow owner login while Supabase hangs.");
+    assert.equal(accepted.json.role, "owner");
+    assert(durationMs < 1_000, `Healthy auth must finish well below the hosted timeout; observed ${durationMs}ms.`);
+    const setCookie = accepted.response.headers.get("set-cookie") || "";
+    sessionToken = cookieValue(setCookie, "leos_session");
+    csrfToken = cookieValue(setCookie, "leos_csrf");
+    assert(sessionToken, "Successful login must set an opaque session cookie.");
+    assert(csrfToken, "Successful login must set a CSRF cookie.");
+    assert.match(setCookie, /leos_session=[^;]+; Path=\/; HttpOnly; SameSite=Lax/);
+    assert.equal(fixture.supabase.requests.length, 0, "Login must make zero Supabase requests.");
+    assert.equal(fixture.redis.commands("EVAL").length, 1, "Login must make one atomic Redis rate-limit decision.");
+    assert.equal(fixture.redis.commands("SET").length, 1, "Login must persist one Redis session.");
+    assert(fixture.redis.requests.every((item) => item.bodyBytes < 2_048), "Authentication must not move a large company-state body.");
+    await expectStage(fixture.preview, "rate_limit", 200);
+    await expectStage(fixture.preview, "credential_check", 200);
+    await expectStage(fixture.preview, "session_create", 200);
+    const version = await jsonRequest(fixture.preview.baseUrl, "/api/version");
+    assert.equal(version.response.status, 200, "Public version health must remain available without a session lookup.");
+    assert.equal(version.json.storageBackend, "supabase");
+    assert.equal(version.json.authStoreBackend, "upstash");
+    assert.equal(version.json.authStoreConnected, true);
+    assert.equal(version.json.supabaseConnected, false);
+    assert.equal(fixture.supabase.requests.length, 2, "Version health may make only the initial Supabase read and its one eligible retry.");
+    const persistedSession = JSON.parse(fixture.redis.commands("SET")[0].command[2]);
+    const redisBodies = fixture.redis.requests.map((item) => JSON.stringify(item.command)).join("\n");
+    assertNoSecretLeak(redisBodies, [fixture.preview.ownerCredential, sessionToken, csrfToken, "127.0.0.1"], "Redis command bodies");
+    assertNoSecretLeak(accepted.text + "\n" + fixture.preview.logs(), [
+      fixture.preview.ownerCredential,
+      SERVICE_ROLE_KEY,
+      SESSION_SECRET,
+      UPSTASH_TOKEN,
+      sessionToken,
+      csrfToken,
+      persistedSession.tokenHash,
+      persistedSession.csrfHash,
+      callerRequestId
+    ], "Successful login body and logs");
+    assertSafeAuthEvents(fixture.preview, [fixture.preview.ownerCredential, sessionToken, csrfToken, persistedSession.tokenHash, persistedSession.csrfHash, callerRequestId]);
   } finally {
-    await preview.stop();
-    await fake.stop();
+    await fixture.stop();
   }
-  console.log("  ✓ hanging Supabase rate-limit read aborts within the fixture bound and returns safe 503");
+  console.log("  ✓ healthy Redis login returns 200 with zero Supabase requests");
 }
 
+// B. A valid Redis session authenticates with one targeted GET and no state hydration.
 {
-  const fake = await startFakeSupabase({ failSessionWrites:true });
-  const preview = await startPreviewServer({ env:hostedTestEnvironment(fake) });
+  const fixture = await startScenario();
+  const rawToken = "synthetic-existing-session-token-B-Q4m8";
+  const seeded = seededOwnerSession(rawToken);
+  fixture.redis.seedSession(seeded.tokenHash, seeded.record);
+  fixture.redis.resetRequests();
   try {
-    const unavailable = await login(preview, preview.ownerCredential);
-    assert.equal(unavailable.response.status, 503, "Unavailable session persistence must return 503.");
-    assert.equal(unavailable.json.error, "Authentication is temporarily unavailable. No successful session was returned.");
-    assert.equal(fake.authSessions().length, 0, "Unavailable session persistence must not report or store a successful session.");
-    assertNoSecretLeak(unavailable.text + "\n" + preview.logs(), [preview.ownerCredential, SERVICE_ROLE_KEY, SESSION_SECRET], "Session failure response and logs");
+    const diagnostics = await jsonRequest(fixture.preview.baseUrl, "/api/auth/diagnostics", {
+      headers:{ cookie:`leos_session=${encodeURIComponent(rawToken)}` }
+    });
+    assert.equal(diagnostics.response.status, 200, "A valid Redis session must authenticate while Supabase hangs.");
+    assert.equal(diagnostics.json.sessionAuthenticated, true);
+    assert.equal(diagnostics.json.role, "owner");
+    assert.equal(diagnostics.json.authStore.backend, "upstash");
+    assert.equal(diagnostics.json.authStore.connected, true);
+    assert.equal(fixture.supabase.requests.length, 0, "Session authentication must make zero Supabase requests.");
+    assert.equal(fixture.redis.commands("GET").length, 1, "Session lookup must use one targeted Redis GET.");
+    assert.equal(fixture.redis.commands("PING").length, 1, "Protected diagnostics may probe only auth-store health after authentication.");
+    const get = fixture.redis.commands("GET")[0];
+    assert.equal(get.command.length, 2);
+    assert.equal(get.command[1], `${SESSION_PREFIX}${seeded.tokenHash}`);
+    assert(get.bodyBytes < 256, "Targeted session lookup must not carry a company-state body.");
+    await expectStage(fixture.preview, "session_lookup", 200);
+    const readiness = await jsonRequest(fixture.preview.baseUrl, "/api/ready", {
+      headers:{ cookie:`leos_session=${encodeURIComponent(rawToken)}` }
+    });
+    assert.equal(readiness.response.status, 503, "Business readiness must remain honest while Supabase is unavailable.");
+    assert.equal(readiness.json.ready, false);
+    assert.equal(readiness.json.authStore.connected, true, "Readiness must distinguish healthy auth from unavailable business storage.");
+    assert.deepEqual(Object.keys(readiness.json.authStore).sort(), [
+      "backend", "configured", "connected", "errorCode", "lastCheckedAt", "latencyMs"
+    ].sort(), "Readiness auth health must expose only safe fields.");
+    assertNoSecretLeak(diagnostics.text + "\n" + readiness.text + "\n" + fixture.preview.logs(), [
+      rawToken,
+      seeded.tokenHash,
+      SERVICE_ROLE_KEY,
+      SESSION_SECRET,
+      UPSTASH_TOKEN
+    ], "Session diagnostics body and logs");
+    assertSafeAuthEvents(fixture.preview, [rawToken, seeded.tokenHash]);
   } finally {
-    await preview.stop();
-    await fake.stop();
+    await fixture.stop();
   }
-  console.log("  ✓ unavailable session persistence returns safe 503 without false success");
+  console.log("  ✓ existing session uses one targeted Redis GET and zero business hydration");
 }
 
+// C. An unavailable atomic rate-limit decision fails closed and is not retried.
 {
-  const fake = await startFakeSupabase({ hangRateLimitRead:true });
-  const previous = {
-    url:process.env.SUPABASE_URL,
-    key:process.env.SUPABASE_SERVICE_ROLE_KEY,
-    timeout:process.env.SUPABASE_REQUEST_TIMEOUT_MS
-  };
+  const fixture = await startScenario();
+  fixture.redis.fail("EVAL");
   try {
-    process.env.SUPABASE_URL = fake.baseUrl;
-    process.env.SUPABASE_SERVICE_ROLE_KEY = SERVICE_ROLE_KEY;
-    process.env.SUPABASE_REQUEST_TIMEOUT_MS = "500";
-    const { supabaseRequestTimeoutMs, supabaseRestRequest } = await import(`./storage.mjs?hosted-login-timeout=${Date.now()}`);
-    assert.equal(supabaseRequestTimeoutMs({}), 8_000, "The default Supabase timeout must be eight seconds.");
-    assert.equal(supabaseRequestTimeoutMs({ SUPABASE_REQUEST_TIMEOUT_MS:"1" }), 100, "The timeout override must clamp to the safe minimum.");
-    assert.equal(supabaseRequestTimeoutMs({ SUPABASE_REQUEST_TIMEOUT_MS:"60000" }), 15_000, "The timeout override must clamp below the hosted request deadline.");
-    const controller = new AbortController();
-    const abort = setTimeout(() => controller.abort(), 25);
-    await assert.rejects(
-      () => supabaseRestRequest("leos_core_records?select=collection,item_id,payload,version&collection=eq.securityMetrics&item_id=eq.singleton&limit=1", { signal:controller.signal }),
-      (error) => error?.code === "SUPABASE_ABORTED" && error?.status === 503,
-      "A caller AbortSignal must be combined with the storage timeout and converted safely."
-    );
-    clearTimeout(abort);
+    const unavailable = await login(fixture.preview, fixture.preview.ownerCredential);
+    assert.equal(unavailable.response.status, 503, "Unavailable Redis rate limiting must fail closed.");
+    assert.equal(unavailable.json.error, "Authentication is temporarily unavailable. No successful session was returned.");
+    assert.equal(fixture.redis.commands("EVAL").length, 1, "Atomic rate limiting must never be blindly retried.");
+    assert.equal(fixture.redis.commands("SET").length, 0, "No session may be created without a rate-limit decision.");
+    assert.equal(fixture.supabase.requests.length, 0, "Rate-limit failure must not fall back to Supabase.");
+    const stage = await expectStage(fixture.preview, "rate_limit", 503);
+    assert.equal(stage.code, "AUTH_STORE_UNAVAILABLE");
+    assertNoSecretLeak(unavailable.text + "\n" + fixture.preview.logs(), [fixture.preview.ownerCredential, SERVICE_ROLE_KEY, SESSION_SECRET, UPSTASH_TOKEN], "Rate-limit failure");
+    assertSafeAuthEvents(fixture.preview, [fixture.preview.ownerCredential]);
   } finally {
-    if (previous.url === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = previous.url;
-    if (previous.key === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = previous.key;
-    if (previous.timeout === undefined) delete process.env.SUPABASE_REQUEST_TIMEOUT_MS; else process.env.SUPABASE_REQUEST_TIMEOUT_MS = previous.timeout;
-    await fake.stop();
+    await fixture.stop();
   }
-  console.log("  ✓ timeout default/clamps and caller AbortSignal composition are enforced");
+  console.log("  ✓ unavailable Redis rate limit returns safe 503 at rate_limit without retry or fallback");
 }
 
-console.log("hosted owner-login timeout regression tests passed");
+// D. An unavailable SET and verification GET never return a successful session cookie.
+{
+  const fixture = await startScenario();
+  fixture.redis.fail("SET");
+  fixture.redis.fail("GET");
+  try {
+    const unavailable = await login(fixture.preview, fixture.preview.ownerCredential);
+    assert.equal(unavailable.response.status, 503, "Unavailable Redis session persistence must return 503.");
+    assert.equal(unavailable.json.error, "Authentication is temporarily unavailable. No successful session was returned.");
+    assert.equal(cookieValue(unavailable.response.headers.get("set-cookie"), "leos_session"), "", "A failed session write must not set a success cookie.");
+    assert.equal(fixture.redis.commands("SET").length, 1, "Session creation must use one stable SET NX attempt.");
+    assert.equal(fixture.redis.commands("GET").length, 2, "Uncertain SET outcome verification may use one retried read.");
+    assert.equal(fixture.redis.sessionCount(), 0, "Failed persistence must not create a session in the fixture.");
+    assert.equal(fixture.supabase.requests.length, 0, "Session creation failure must not fall back to Supabase.");
+    const setCommand = fixture.redis.commands("SET")[0].command;
+    const sessionRecord = JSON.parse(setCommand[2]);
+    assert.deepEqual(Object.keys(sessionRecord).sort(), SESSION_FIELDS, "Redis session values must contain only the server-side session record.");
+    const stage = await expectStage(fixture.preview, "session_create", 503);
+    assert.equal(stage.code, "AUTH_STORE_UNAVAILABLE");
+    assertNoSecretLeak(unavailable.text + "\n" + fixture.preview.logs(), [fixture.preview.ownerCredential, SERVICE_ROLE_KEY, SESSION_SECRET, UPSTASH_TOKEN], "Session creation failure");
+    assertSafeAuthEvents(fixture.preview, [fixture.preview.ownerCredential]);
+  } finally {
+    await fixture.stop();
+  }
+  console.log("  ✓ unavailable SET/verification returns safe 503 at session_create with no cookie");
+}
+
+// E/F. Valid and invalid attempts share one bucket; invalid stays 401 and seventh is 429.
+{
+  const fixture = await startScenario();
+  fixture.redis.fail("HINCRBY");
+  const invalidCredentials = [];
+  let sessionToken = "";
+  let csrfToken = "";
+  try {
+    const accepted = await login(fixture.preview, fixture.preview.ownerCredential);
+    assert.equal(accepted.response.status, 200, "A valid first attempt must be evaluated normally.");
+    const setCookie = accepted.response.headers.get("set-cookie") || "";
+    sessionToken = cookieValue(setCookie, "leos_session");
+    csrfToken = cookieValue(setCookie, "leos_csrf");
+    assert(sessionToken && csrfToken, "The valid attempt must create its session before later throttling.");
+    for (let attempt = 2; attempt <= 6; attempt += 1) {
+      const credential = `synthetic-invalid-owner-${attempt}-Q4m8`;
+      invalidCredentials.push(credential);
+      const denied = await login(fixture.preview, credential);
+      assert.equal(denied.response.status, 401, `Invalid attempt ${attempt} must remain a credential decision.`);
+    }
+    const seventhCredential = "synthetic-invalid-owner-7-Q4m8";
+    invalidCredentials.push(seventhCredential);
+    const throttled = await login(fixture.preview, seventhCredential);
+    assert.equal(throttled.response.status, 429, "The seventh attempt must be throttled.");
+    assert(Number(throttled.response.headers.get("retry-after")) > 0, "A throttled login must include Retry-After.");
+    assert.equal(fixture.redis.commands("EVAL").length, 7, "Valid and invalid attempts must consume one durable Redis bucket.");
+    assert.equal(fixture.redis.commands("SET").length, 1, "Only the valid attempt may create a session.");
+    assert(fixture.redis.commands("HINCRBY").length > 0, "The fixture must exercise unavailable best-effort auth metrics.");
+    assert.equal(fixture.supabase.requests.length, 0, "Credential checks and throttling must make zero Supabase requests.");
+    await expectStage(fixture.preview, "credential_check", 401);
+    await expectStage(fixture.preview, "rate_limit", 429);
+    assertNoSecretLeak(throttled.text + "\n" + fixture.preview.logs(), [
+      ...invalidCredentials,
+      SERVICE_ROLE_KEY,
+      SESSION_SECRET,
+      UPSTASH_TOKEN,
+      sessionToken,
+      csrfToken
+    ], "Invalid and throttled login logs");
+    assertSafeAuthEvents(fixture.preview, [fixture.preview.ownerCredential, ...invalidCredentials, sessionToken, csrfToken]);
+  } finally {
+    await fixture.stop();
+  }
+  console.log("  ✓ valid and invalid attempts share one bucket; invalid is 401 and seventh is 429");
+}
+
+// G. A Redis lookup failure returns before authorization and never falls back to Supabase.
+{
+  const fixture = await startScenario();
+  const rawToken = "synthetic-existing-session-token-G-A7v9";
+  const seeded = seededOwnerSession(rawToken);
+  fixture.redis.seedSession(seeded.tokenHash, seeded.record);
+  fixture.redis.resetRequests();
+  fixture.redis.fail("GET");
+  try {
+    const unavailable = await jsonRequest(fixture.preview.baseUrl, "/api/auth/diagnostics", {
+      headers:{ cookie:`leos_session=${encodeURIComponent(rawToken)}` }
+    });
+    assert.equal(unavailable.response.status, 503, "Unavailable Redis session lookup must fail safely.");
+    assert.equal(unavailable.json.error, "Authentication is temporarily unavailable. No successful session was returned.");
+    assert.equal(fixture.redis.commands("GET").length, 2, "Read-only session lookup may retry once and no more.");
+    assert.equal(fixture.redis.commands("PING").length, 0, "The protected route must not execute after session lookup fails.");
+    assert.equal(fixture.supabase.requests.length, 0, "Session lookup must never fall back to Supabase.");
+    const stage = await expectStage(fixture.preview, "session_lookup", 503);
+    assert.equal(stage.code, "AUTH_STORE_UNAVAILABLE");
+    assertNoSecretLeak(unavailable.text + "\n" + fixture.preview.logs(), [rawToken, seeded.tokenHash, SERVICE_ROLE_KEY, SESSION_SECRET, UPSTASH_TOKEN], "Session lookup failure");
+    assertSafeAuthEvents(fixture.preview, [rawToken, seeded.tokenHash]);
+  } finally {
+    await fixture.stop();
+  }
+  console.log("  ✓ unavailable session GET returns safe 503 at session_lookup with no Supabase fallback");
+}
+
+console.log("hosted authentication runtime isolation regression tests passed");

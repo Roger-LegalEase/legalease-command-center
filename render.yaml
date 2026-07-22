@@ -28,6 +28,10 @@ services:
         sync: false
       - key: COMMAND_CENTER_SESSION_SECRET
         sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
       - key: COMMAND_CENTER_CRON_TOKEN
         sync: false
       - key: OAUTH_TOKEN_ENCRYPTION_KEY

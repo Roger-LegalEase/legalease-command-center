@@ -5,6 +5,8 @@ import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 
+process.env.SKIP_ENV_LOCAL_FILE = "1";
+
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -77,12 +79,16 @@ try {
   assert.equal(version.deployedAt, "2026-06-29T19:30:00.000Z");
   assert.equal(version.authProtected, true);
   assert.equal(version.noSecretsExposed, true);
+  assert.equal(version.authStoreBackend, "memory");
+  assert.equal(version.authStoreConnected, true);
   assert.equal(typeof version.supabaseConnected, "boolean");
   assert.equal(typeof version.localDemoMode, "boolean");
   assert.equal(typeof version.liveGatesCount, "number");
   assert.deepEqual(Object.keys(version).sort(), [
     "app",
     "authProtected",
+    "authStoreBackend",
+    "authStoreConnected",
     "commit",
     "deployedAt",
     "environment",
