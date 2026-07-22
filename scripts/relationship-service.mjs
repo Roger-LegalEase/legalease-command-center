@@ -1,7 +1,14 @@
 import { projectCompanyMemory } from "./company-memory-projector.mjs";
+import { stableMemoryId, upsertCompanyContact } from "./company-memory.mjs";
 import { recordVisibleToActor } from "./global-search-service.mjs";
 import { isSuppressed } from "./outreach-os.mjs";
+import {
+  completePartnerNextAction,
+  logPartnerActivity,
+  setPartnerNextAction
+} from "./partner-record-actions.mjs";
 import { roleHasCapability, roles } from "./roles.mjs";
+import { normalizeTaskRecord, updateTaskInState } from "./tasks-engine.mjs";
 import { buildExactObjectLink, buildGenericItemLink } from "./ui/route-compatibility.mjs";
 import { INTERNAL_PARTNER_STAGE_MAPPING, PARTNER_STAGE_CONTRACT } from "./ui/view-models/partner-stage.mjs";
 
@@ -97,6 +104,38 @@ const ORGANIZATION_NAME_FIELDS = Object.freeze([
 
 const OPEN_TASK_STATUSES = new Set(["open", "in_progress", "waiting", "blocked"]);
 const TERMINAL_SIGNAL_STATUSES = new Set(["dismissed", "done", "resolved", "archived"]);
+const RELATIONSHIP_REQUEST_PATTERN = /^[a-z0-9][a-z0-9_-]{15,95}$/i;
+const RELATIONSHIP_ACTIONS = new Set([
+  "set_next_action",
+  "complete_next_action",
+  "add_task",
+  "log_activity",
+  "add_note",
+  "add_contact",
+  "edit_contact",
+  "update_stage"
+]);
+const RELATIONSHIP_STAGES = new Set(["new", "qualified", "in_conversation", "proposal", "active", "stalled", "closed"]);
+const RELATIONSHIP_ACTIVITY_TYPES = new Set(["meeting_completed", "reply_recorded", "outreach_recorded", "relationship_updated"]);
+const RELATIONSHIP_TASK_PRIORITIES = new Set(["critical", "high", "medium", "low"]);
+const MUTABLE_RELATIONSHIP_COLLECTIONS = new Set([
+  "partners",
+  "companyContacts",
+  "companyOrganizations",
+  "reactivationContacts",
+  "expungementLifecycleContacts",
+  "outreachContacts",
+  "rcapRevenueContacts",
+  "outreachOrganizations",
+  "rcapRevenueAccounts",
+  "prospectCandidates"
+]);
+export const RELATIONSHIP_ACTION_WRITE_COLLECTIONS = Object.freeze([
+  ...MUTABLE_RELATIONSHIP_COLLECTIONS,
+  "tasks",
+  "activityEvents",
+  "auditHistory"
+]);
 
 function deepFreeze(value) {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
@@ -398,9 +437,22 @@ function buildEntityGraph(state = {}, context, now = "") {
       entities.set(entityId, createEntity({ id:entityId, kind:"contact" }));
     }
     const entity = entities.get(entityId);
-    const duplicate = entity.contacts.some((existing) => clean(existing.contact_id) === clean(contact.contact_id)
+    const duplicateIndex = entity.contacts.findIndex((existing) => clean(existing.contact_id) === clean(contact.contact_id)
       || contactEmail && validEmail(existing.email) === contactEmail);
-    if (!duplicate) entity.contacts.push(contact);
+    if (duplicateIndex < 0) entity.contacts.push(contact);
+    else {
+      const existing = entity.contacts[duplicateIndex];
+      entity.contacts[duplicateIndex] = {
+        ...contact,
+        name:clean(existing.name) || clean(contact.name),
+        title:clean(existing.title) || clean(contact.title),
+        types:uniqueStrings(existing.types, contact.types),
+        organizations:uniqueStrings(existing.organizations, contact.organizations),
+        links:[...new Map([...list(existing.links), ...list(contact.links)].map((link) => [sourceRefKey(clean(link.collection), clean(link.itemId || link.item_id)), link])).values()],
+        primary:existing.primary === true || contact.primary === true,
+        virtual:false
+      };
+    }
     addAlias(aliases, `contact:${clean(contact.contact_id)}`, entityId);
     addAlias(aliases, `id:${clean(contact.contact_id)}`, entityId);
     if (contactEmail) addAlias(aliases, `email:${contactEmail}`, entityId);
@@ -516,13 +568,14 @@ function categoryFor(entity) {
 }
 
 function stageFor(entity) {
-  const sources = [entity.partner, ...entity.sources.map((source) => source.record), ...entity.organizations].filter(Boolean);
-  let raw = "";
-  for (const record of sources) {
-    raw = clean(record.relationshipStage || record.relationship_stage || record.commercialStage || record.commercial_stage
-      || record.stage || record.review_state || record.reviewState || record.account_status || record.status);
-    if (raw) break;
-  }
+  const sources = [entity.partner, ...entity.organizations, ...entity.contacts, ...entity.sources.map((source) => source.record)].filter(Boolean);
+  const explicitRelationshipStage = sources
+    .map((record) => clean(record.relationshipStage || record.relationship_stage))
+    .find(Boolean);
+  const raw = explicitRelationshipStage || sources
+    .map((record) => clean(record.commercialStage || record.commercial_stage
+      || record.stage || record.review_state || record.reviewState || record.account_status || record.status))
+    .find(Boolean) || "";
   const internal = slug(raw);
   if (!internal) return { key:"unavailable", label:"Stage unavailable", available:false };
   const mapped = INTERNAL_PARTNER_STAGE_MAPPING[internal]
@@ -605,7 +658,7 @@ function signalsFor(sourceIndex, identifiers) {
 }
 
 function waitingState(tasks, signals, entity) {
-  const sourceValues = [entity.partner, ...entity.sources.map((source) => source.record)].filter(Boolean);
+  const sourceValues = [entity.partner, ...entity.sources.map((source) => source.record), ...entity.organizations, ...entity.contacts].filter(Boolean);
   const explicit = sourceValues.map((record) => lower(record.waitingState || record.waiting_state || record.waitingOn || record.waiting_on)).find(Boolean) || "";
   if (/them|partner|contact|customer|reply/.test(explicit)) return RELATIONSHIP_WAITING_STATES[0];
   if (/roger|us|legal.?ease|internal|owner/.test(explicit)) return RELATIONSHIP_WAITING_STATES[1];
@@ -617,7 +670,9 @@ function waitingState(tasks, signals, entity) {
 }
 
 function nextActionFor(entity, tasks, signals) {
-  const sources = [entity.partner, ...entity.sources.map((source) => source.record)].filter(Boolean);
+  const sources = [entity.partner, ...entity.sources.map((source) => source.record), ...entity.organizations, ...entity.contacts].filter(Boolean);
+  const storedNextActionTask = tasks.find((task) => task.id === relationshipNextActionTaskId(entity.id));
+  const taskFallback = storedNextActionTask || tasks[0];
   let summary = null;
   let dueAt = null;
   for (const record of sources) {
@@ -626,8 +681,8 @@ function nextActionFor(entity, tasks, signals) {
       || record.nextActionDueDate || record.next_action_due_date || record.followUpDate || record.follow_up_date || record.dueDate || record.due_date);
     if (summary && dueAt) break;
   }
-  if (!summary && tasks[0]) summary = tasks[0].nextAction || tasks[0].title;
-  if (!dueAt && tasks[0]) dueAt = tasks[0].dueAt;
+  if (!summary && taskFallback) summary = taskFallback.nextAction || taskFallback.title;
+  if (!dueAt && taskFallback) dueAt = taskFallback.dueAt;
   if (!summary && signals.length) {
     const kind = slug(signals[0].kind);
     summary = kind === "needs_reply" ? "Draft reply"
@@ -859,12 +914,12 @@ function notesFor(entity, sourceIndex, identifiers, context) {
 }
 
 function ownerFor(entity) {
-  const sources = [entity.partner, ...entity.sources.map((source) => source.record)].filter(Boolean);
+  const sources = [entity.partner, ...entity.sources.map((source) => source.record), ...entity.organizations, ...entity.contacts].filter(Boolean);
   return sources.map((record) => safeText(record.owner || record.assignedTo || record.assigned_to || record.internalOwner || record.internal_owner, 100)).find(Boolean) || null;
 }
 
 function summaryFor(entity) {
-  const sources = [entity.partner, ...entity.sources.map((source) => source.record)].filter(Boolean);
+  const sources = [entity.partner, ...entity.sources.map((source) => source.record), ...entity.organizations, ...entity.contacts].filter(Boolean);
   return sources.map((record) => safeText(record.relationshipSummary || record.relationship_summary || record.summary
     || record.opportunity || record.programOpportunity || record.fitReason || record.fit_reason || record.storyAngle || record.story_angle, 320)).find(Boolean) || null;
 }
@@ -997,6 +1052,960 @@ function projectionBundle(state, actor, now) {
   };
 }
 
+export class RelationshipActionError extends Error {
+  constructor(message, status = 400, outcome = "validation_error") {
+    super(message);
+    this.name = "RelationshipActionError";
+    this.status = status;
+    this.outcome = outcome;
+    this.safeMessage = message;
+  }
+}
+
+function actionError(message, status = 400, outcome = "validation_error") {
+  return new RelationshipActionError(message, status, outcome);
+}
+
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function assertActionObject(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw actionError("Enter valid relationship details. No changes were made.");
+  }
+}
+
+function actionText(value, label, maximum, { required = false, allowEmpty = false } = {}) {
+  if (value !== undefined && value !== null && typeof value !== "string") {
+    throw actionError(`${label} contains unsupported content. No changes were made.`);
+  }
+  const text = clean(value);
+  if (required && !text) throw actionError(`${label} is required. No changes were made.`);
+  if (!text && allowEmpty) return "";
+  if (text.length > maximum || /[\u0000-\u001f\u007f<>]/u.test(text)
+    || /(?:bearer\s+|api[_ -]?key|token\s*[=:]|secret\s*[=:]|whsec_|(?:^|[^a-z0-9])sk-[a-z0-9_-]{12,})/iu.test(text)) {
+    throw actionError(`${label} contains unsupported content. No changes were made.`);
+  }
+  return text;
+}
+
+function actionEmail(value, label = "Email") {
+  const email = actionText(value, label, 320, { required:true });
+  const normalized = validEmail(email);
+  if (!normalized) throw actionError(`Add a valid ${label.toLowerCase()}. No changes were made.`);
+  return normalized;
+}
+
+function actionDate(value, label = "Due date") {
+  const date = actionText(value, label, 10, { required:true });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw actionError(`Add a valid ${label.toLowerCase()}. No changes were made.`);
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    throw actionError(`Add a valid ${label.toLowerCase()}. No changes were made.`);
+  }
+  return date;
+}
+
+function actionBoolean(value, label) {
+  if (typeof value !== "boolean") throw actionError(`${label} must be yes or no. No changes were made.`);
+  return value;
+}
+
+function assertActionKeys(input, allowed) {
+  if (Object.keys(input).some((key) => !allowed.has(key))) {
+    throw actionError("The relationship action contains unsupported information. No changes were made.");
+  }
+}
+
+function actionCapability(action) {
+  if (["set_next_action", "complete_next_action", "add_task"].includes(action)) return "manage_tasks";
+  if (["log_activity", "add_note"].includes(action)) return "add_notes";
+  return "manage_growth";
+}
+
+function authorizeAction(actor, action) {
+  const context = actorContext(actor);
+  const capability = actionCapability(action);
+  if (!context.authorized || !roleHasCapability(context.role, capability)) {
+    throw actionError("This relationship action is not available for this account.", 403, "not_allowed");
+  }
+  return context;
+}
+
+function validateActionInput(input = {}) {
+  assertActionObject(input);
+  const action = slug(input.action);
+  if (!RELATIONSHIP_ACTIONS.has(action)) throw actionError("Choose a supported relationship action. No changes were made.");
+  const requestId = actionText(input.requestId, "Request", 96, { required:true });
+  if (!RELATIONSHIP_REQUEST_PATTERN.test(requestId)) throw actionError("The relationship action request was invalid. No changes were made.");
+  const expectedVersion = actionText(input.expectedVersion, "Relationship version", 80, { required:true });
+  if (expectedVersion !== "legacy" && !validTimestamp(expectedVersion)) {
+    throw actionError("The relationship changed; refresh and try again. No changes were made.", 409, "conflict");
+  }
+  const common = new Set(["requestId", "expectedVersion", "action"]);
+  const parsed = { action, requestId, expectedVersion };
+
+  if (action === "set_next_action") {
+    assertActionKeys(input, new Set([...common, "nextAction", "dueDate"]));
+    parsed.nextAction = actionText(input.nextAction, "Next action", 500, { required:true });
+    parsed.dueDate = actionDate(input.dueDate);
+  } else if (action === "complete_next_action") {
+    assertActionKeys(input, new Set([...common, "note"]));
+    parsed.note = actionText(input.note, "Completion note", 2000, { allowEmpty:true });
+  } else if (action === "add_task") {
+    assertActionKeys(input, new Set([...common, "title", "description", "dueDate", "priority", "owner", "nextAction"]));
+    parsed.title = actionText(input.title, "Task title", 240, { required:true });
+    parsed.description = actionText(input.description, "Task description", 2000, { allowEmpty:true });
+    parsed.dueDate = actionDate(input.dueDate);
+    parsed.priority = slug(actionText(input.priority || "medium", "Priority", 20, { required:true }));
+    if (!RELATIONSHIP_TASK_PRIORITIES.has(parsed.priority)) throw actionError("Choose a supported task priority. No changes were made.");
+    parsed.owner = actionText(input.owner || "Roger", "Task owner", 100, { required:true });
+    parsed.nextAction = actionText(input.nextAction, "Task next action", 500, { allowEmpty:true }) || parsed.title;
+  } else if (action === "log_activity") {
+    assertActionKeys(input, new Set([...common, "activityType", "summary"]));
+    parsed.activityType = slug(actionText(input.activityType, "Activity type", 80, { required:true }));
+    if (!RELATIONSHIP_ACTIVITY_TYPES.has(parsed.activityType)) throw actionError("Choose a supported activity type. No changes were made.");
+    parsed.summary = actionText(input.summary, "Activity summary", 1000, { required:true });
+  } else if (action === "add_note") {
+    assertActionKeys(input, new Set([...common, "note"]));
+    parsed.note = actionText(input.note, "Note", 2000, { required:true });
+  } else if (action === "add_contact") {
+    assertActionKeys(input, new Set([...common, "name", "email", "title", "primary"]));
+    parsed.name = actionText(input.name, "Contact name", 180, { required:true });
+    parsed.email = actionEmail(input.email);
+    parsed.title = actionText(input.title, "Contact title", 140, { allowEmpty:true });
+    parsed.primary = hasOwn(input, "primary") ? actionBoolean(input.primary, "Primary contact") : false;
+  } else if (action === "edit_contact") {
+    assertActionKeys(input, new Set([...common, "contactId", "name", "email", "title", "primary"]));
+    parsed.contactId = actionText(input.contactId, "Contact", 320, { required:true });
+    if (!["name", "email", "title", "primary"].some((key) => hasOwn(input, key))) {
+      throw actionError("Change at least one contact detail. No changes were made.");
+    }
+    if (hasOwn(input, "name")) parsed.name = actionText(input.name, "Contact name", 180, { required:true });
+    if (hasOwn(input, "email")) parsed.email = actionEmail(input.email);
+    if (hasOwn(input, "title")) parsed.title = actionText(input.title, "Contact title", 140, { allowEmpty:true });
+    if (hasOwn(input, "primary")) parsed.primary = actionBoolean(input.primary, "Primary contact");
+  } else if (action === "update_stage") {
+    assertActionKeys(input, new Set([...common, "stage"]));
+    parsed.stage = slug(actionText(input.stage, "Relationship stage", 80, { required:true }));
+    if (!RELATIONSHIP_STAGES.has(parsed.stage)) throw actionError("Choose a supported relationship stage. No changes were made.");
+  }
+  return parsed;
+}
+
+const COLLECTION_ID_FIELDS = Object.freeze({
+  partners:["id", "partnerId", "partner_id", "slug"],
+  companyContacts:["contact_id", "id"],
+  companyOrganizations:["org_id", "id"],
+  reactivationContacts:["contact_id", "id"],
+  expungementLifecycleContacts:["lifecycle_contact_id", "contact_id", "id"],
+  outreachContacts:["contact_id", "id"],
+  rcapRevenueContacts:["contact_id", "id"],
+  outreachOrganizations:["account_id", "organization_id", "id"],
+  rcapRevenueAccounts:["account_id", "organization_id", "id"],
+  prospectCandidates:["id", "candidate_id", "candidateId"]
+});
+
+function itemIdForCollection(collection, record = {}) {
+  return (COLLECTION_ID_FIELDS[collection] || SOURCE_RECORD_ID_FIELDS).map((field) => clean(record[field])).find(Boolean) || "";
+}
+
+function recordLocation(state, collection, itemId) {
+  if (!MUTABLE_RELATIONSHIP_COLLECTIONS.has(collection)) return null;
+  const id = clean(itemId);
+  const rows = list(state[collection]);
+  const index = rows.findIndex((record) => itemIdForCollection(collection, record) === id);
+  return index >= 0 ? { collection, itemId:id, index, record:rows[index] } : null;
+}
+
+function firstLocation(locations = []) {
+  return locations.find(Boolean) || null;
+}
+
+function canonicalLocation(state, entity) {
+  if (entity.partnerId) {
+    const partner = recordLocation(state, "partners", entity.partnerId);
+    if (partner) return partner;
+  }
+  if (entity.kind === "organization") {
+    const organizationId = clean(entity.id).startsWith("organization:") ? clean(entity.id).slice("organization:".length) : "";
+    const organization = recordLocation(state, "companyOrganizations", organizationId);
+    if (organization) return organization;
+  }
+  const sourcePriority = [
+    "companyOrganizations", "outreachOrganizations", "rcapRevenueAccounts", "prospectCandidates",
+    "companyContacts", "outreachContacts", "reactivationContacts", "expungementLifecycleContacts", "rcapRevenueContacts"
+  ];
+  for (const collection of sourcePriority) {
+    for (const source of entity.sources.filter((item) => item.collection === collection)) {
+      const location = recordLocation(state, collection, source.itemId);
+      if (location) return location;
+    }
+  }
+  if (entity.kind === "contact") {
+    const contactId = clean(entity.id).startsWith("contact:") ? clean(entity.id).slice("contact:".length) : "";
+    const companyContact = recordLocation(state, "companyContacts", contactId);
+    if (companyContact) return companyContact;
+  }
+  for (const contact of entity.contacts) {
+    const direct = recordLocation(state, "companyContacts", contact.contact_id);
+    if (direct) return direct;
+    for (const link of list(contact.links)) {
+      const linked = recordLocation(state, clean(link.collection), clean(link.itemId || link.item_id));
+      if (linked) return linked;
+    }
+  }
+  return null;
+}
+
+function rawEntityLocations(state, entity) {
+  const locations = [];
+  const seen = new Set();
+  const add = (location) => {
+    if (!location) return;
+    const key = `${location.collection}:${location.index}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    locations.push(location);
+  };
+  add(canonicalLocation(state, entity));
+  for (const source of entity.sources) add(recordLocation(state, source.collection, source.itemId));
+  for (const organization of entity.organizations) add(recordLocation(state, "companyOrganizations", organization.org_id));
+  for (const contact of entity.contacts) {
+    add(recordLocation(state, "companyContacts", contact.contact_id));
+    for (const link of list(contact.links)) add(recordLocation(state, clean(link.collection), clean(link.itemId || link.item_id)));
+  }
+  return locations;
+}
+
+function locationTimestamp(record = {}) {
+  return newestTimestamp([
+    record.updatedAt, record.updated_at, record.last_event_at, record.lastEventAt,
+    record.createdAt, record.created_at, record.first_seen, record.firstSeen
+  ]);
+}
+
+function relationshipVersion(state, entity, sourceIndex, identifiers) {
+  const sourceRecords = rawEntityLocations(state, entity).map((location) => location.record);
+  const taskRecords = relatedRows(sourceIndex, "tasks", identifiers);
+  return newestTimestamp([...sourceRecords, ...taskRecords].map(locationTimestamp)) || "legacy";
+}
+
+function replaceAtLocation(state, location, record) {
+  const rows = list(state[location.collection]);
+  return { ...state, [location.collection]:rows.map((item, index) => index === location.index ? record : item) };
+}
+
+function refreshedLocation(state, location) {
+  return recordLocation(state, location.collection, location.itemId);
+}
+
+function touchLocation(state, location, now, extra = {}) {
+  const current = refreshedLocation(state, location);
+  if (!current) throw actionError("This relationship can no longer be changed. Refresh and try again.", 409, "conflict");
+  return replaceAtLocation(state, current, { ...current.record, ...extra, updatedAt:now, updated_at:now });
+}
+
+function relationFields(entity, target) {
+  if (entity.partnerId) return { partnerId:entity.partnerId, sourceId:entity.partnerId };
+  if (entity.kind === "organization") {
+    const organizationId = clean(entity.id).startsWith("organization:") ? clean(entity.id).slice("organization:".length) : target.itemId;
+    return { organizationId, sourceId:target.itemId };
+  }
+  const contactId = clean(entity.id).startsWith("contact:") ? clean(entity.id).slice("contact:".length) : target.itemId;
+  return { contactId, sourceId:target.itemId };
+}
+
+function relationshipActivity({ action, requestId, relationshipId, entity, target, actor, now, title, summary = "", eventType = action }) {
+  return {
+    id:`activity-relationship-${action}-${requestId}`,
+    eventType,
+    title,
+    summary,
+    ...relationFields(entity, target),
+    relatedEntityId:target.itemId,
+    relatedObjectType:"relationship",
+    relatedObjectId:relationshipId,
+    createdAt:now,
+    metadata:{
+      actor:clean(actor.id || actor.role) || "authenticated_user",
+      externalAction:false,
+      noExternalSystemsContacted:true
+    }
+  };
+}
+
+function relationshipAudit({ action, requestId, relationshipId, actor, now }) {
+  return {
+    id:`audit-relationship-${requestId}`,
+    timestamp:now,
+    actor:clean(actor.id || actor.role) || "authenticated_user",
+    action:`relationship_${action}`,
+    resourceType:"Relationship",
+    resourceId:relationshipId,
+    externalSideEffects:false,
+    noExternalSystemsContacted:true
+  };
+}
+
+function appendEvidence(state, { activity = null, audit }) {
+  return {
+    ...state,
+    ...(activity ? { activityEvents:[activity, ...list(state.activityEvents)].slice(0, 500) } : {}),
+    auditHistory:[audit, ...list(state.auditHistory)].slice(0, 1000)
+  };
+}
+
+function actionAlreadyApplied(state, relationshipId, parsed) {
+  const id = `audit-relationship-${parsed.requestId}`;
+  const existing = list(state.auditHistory).find((item) => clean(item.id) === id);
+  if (existing) {
+    if (clean(existing.resourceId) !== relationshipId || clean(existing.action) !== `relationship_${parsed.action}`) {
+      throw actionError("This request was already used for a different change. Refresh and try again.", 409, "conflict");
+    }
+    return true;
+  }
+  const suffix = `-${parsed.requestId}`;
+  const reusedElsewhere = [...list(state.auditHistory), ...list(state.activityEvents)]
+    .some((item) => clean(item.id).endsWith(suffix));
+  if (reusedElsewhere) {
+    throw actionError("This request was already used for a different change. Refresh and try again.", 409, "conflict");
+  }
+  return false;
+}
+
+function changedCollections(before, after) {
+  const allowed = new Set(RELATIONSHIP_ACTION_WRITE_COLLECTIONS);
+  const changed = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((name) => before[name] !== after[name]);
+  const unsupported = changed.filter((name) => !allowed.has(name));
+  if (unsupported.length) throw actionError("The relationship change could not be saved safely. No changes were made.", 500, "failed_closed");
+  return Object.fromEntries(changed.map((name) => [name, after[name]]));
+}
+
+function nextMutationTimestamp(serverTimestamp, currentVersion) {
+  const serverValue = timestampValue(serverTimestamp);
+  const currentValue = timestampValue(currentVersion);
+  if (!Number.isFinite(currentValue) || serverValue > currentValue) return serverTimestamp;
+  return new Date(currentValue + 1).toISOString();
+}
+
+function explicitNextActionLocation(state, entity) {
+  return rawEntityLocations(state, entity).find(({ record }) => clean(record.nextAction || record.next_action || record.followUpAction || record.follow_up_action)) || null;
+}
+
+function clearNextActionRecord(record, completedSummary, now) {
+  return {
+    ...record,
+    nextAction:"",
+    next_action:"",
+    followUpAction:"",
+    follow_up_action:"",
+    nextFollowUpAt:"",
+    next_follow_up_at:"",
+    nextFollowUpDate:"",
+    next_follow_up_date:"",
+    nextActionDueDate:"",
+    next_action_due_date:"",
+    followUpDate:"",
+    follow_up_date:"",
+    lastCompletedAction:completedSummary,
+    lastCompletedActionAt:now,
+    updatedAt:now,
+    updated_at:now
+  };
+}
+
+function relationshipNextActionTaskId(relationshipId) {
+  return stableMemoryId("task", ["relationship-next-action", relationshipId]);
+}
+
+function upsertRelationshipNextActionTask(state, relationshipId, entity, target, parsed, actor, now) {
+  const id = relationshipNextActionTaskId(relationshipId);
+  const existing = list(state.tasks).find((task) => clean(task.id) === id);
+  const history = [{
+    action:existing ? "next_action_changed" : "created",
+    at:now,
+    actor:clean(actor.id || actor.role) || "authenticated_user",
+    note:parsed.nextAction
+  }, ...list(existing?.history)].slice(0, 50);
+  const task = normalizeTaskRecord({
+    ...existing,
+    id,
+    title:parsed.nextAction,
+    description:existing?.description || "Relationship follow-up",
+    owner:existing?.owner || "Roger",
+    status:"open",
+    priority:existing?.priority || "medium",
+    dueDate:parsed.dueDate,
+    due_date:parsed.dueDate,
+    sourceType:"relationship",
+    source:"relationship",
+    sourceId:target.itemId,
+    partnerId:entity.partnerId || "",
+    nextAction:parsed.nextAction,
+    history,
+    createdAt:existing?.createdAt || existing?.created_at || now,
+    created_at:existing?.created_at || existing?.createdAt || now,
+    updatedAt:now,
+    updated_at:now
+  }, { now });
+  const tasks = existing
+    ? list(state.tasks).map((item) => clean(item.id) === id ? task : item)
+    : [task, ...list(state.tasks)];
+  return { state:{ ...state, tasks }, task };
+}
+
+function setNextAction(state, relationshipId, entity, target, parsed, actor, now) {
+  if (entity.partnerId) {
+    const result = setPartnerNextAction(state, entity.partnerId, {
+      requestId:parsed.requestId,
+      summary:parsed.nextAction,
+      dueAt:parsed.dueDate
+    }, { actor, now });
+    return {
+      state:result.state,
+      activity:null,
+      result:{ partnerId:entity.partnerId, nextAction:parsed.nextAction, dueDate:parsed.dueDate }
+    };
+  }
+  const explicit = explicitNextActionLocation(state, entity);
+  if (explicit) {
+    const updated = {
+      ...explicit.record,
+      nextAction:parsed.nextAction,
+      nextFollowUpDate:parsed.dueDate,
+      nextActionDueDate:parsed.dueDate,
+      updatedAt:now,
+      updated_at:now
+    };
+    return {
+      state:replaceAtLocation(state, explicit, updated),
+      activity:relationshipActivity({
+        action:parsed.action, requestId:parsed.requestId, relationshipId, entity, target, actor, now,
+        title:"Relationship next action set", summary:parsed.nextAction, eventType:"next_action_set"
+      }),
+      result:{ nextAction:parsed.nextAction, dueDate:parsed.dueDate }
+    };
+  }
+  const saved = upsertRelationshipNextActionTask(state, relationshipId, entity, target, parsed, actor, now);
+  return {
+    state:saved.state,
+    activity:relationshipActivity({
+      action:parsed.action, requestId:parsed.requestId, relationshipId, entity, target, actor, now,
+      title:"Relationship next action set", summary:parsed.nextAction, eventType:"next_action_set"
+    }),
+    result:{ taskId:saved.task.id, nextAction:parsed.nextAction, dueDate:parsed.dueDate }
+  };
+}
+
+function completeNextAction(state, relationshipId, projection, entity, target, parsed, actor, now) {
+  if (entity.partnerId && clean(entity.partner?.nextAction)) {
+    const result = completePartnerNextAction(state, entity.partnerId, { requestId:parsed.requestId }, { actor, now });
+    let nextState = result.state;
+    if (parsed.note) {
+      const activity = relationshipActivity({
+        action:`${parsed.action}_note`, requestId:parsed.requestId, relationshipId, entity, target, actor, now,
+        title:"Next action completion note", summary:parsed.note, eventType:"note_added"
+      });
+      nextState = { ...nextState, activityEvents:[activity, ...list(nextState.activityEvents)].slice(0, 500) };
+    }
+    return {
+      state:nextState,
+      activity:null,
+      result:{ partnerId:entity.partnerId, completedSummary:result.completedSummary, completionNote:parsed.note || null }
+    };
+  }
+  const explicit = explicitNextActionLocation(state, entity);
+  if (explicit) {
+    const completedSummary = clean(explicit.record.nextAction || explicit.record.next_action || explicit.record.followUpAction || explicit.record.follow_up_action);
+    return {
+      state:replaceAtLocation(state, explicit, clearNextActionRecord(explicit.record, completedSummary, now)),
+      activity:relationshipActivity({
+        action:parsed.action, requestId:parsed.requestId, relationshipId, entity, target, actor, now,
+        title:completedSummary || "Relationship next action completed", summary:parsed.note, eventType:"task_completed"
+      }),
+      result:{ completedSummary, completionNote:parsed.note || null }
+    };
+  }
+  const preferredId = relationshipNextActionTaskId(relationshipId);
+  const taskId = projection._detail.tasks.find((task) => task.id === preferredId)?.id || projection._detail.tasks[0]?.id;
+  if (!taskId) throw actionError("This relationship has no next action to complete. No changes were made.", 409, "conflict");
+  const saved = updateTaskInState(state, taskId, "done", { completion_note:parsed.note || "Next action completed." }, {
+    now,
+    actor:clean(actor.id || actor.role) || "authenticated_user"
+  });
+  return {
+    state:saved.state,
+    activity:relationshipActivity({
+      action:parsed.action, requestId:parsed.requestId, relationshipId, entity, target, actor, now,
+      title:saved.task.title || "Relationship next action completed", summary:parsed.note, eventType:"task_completed"
+    }),
+    result:{ taskId, completedSummary:saved.task.title, completionNote:parsed.note || null }
+  };
+}
+
+function addRelationshipTask(state, relationshipId, entity, target, parsed, actor, now) {
+  const taskId = stableMemoryId("task", ["relationship-task", relationshipId, parsed.requestId]);
+  const task = normalizeTaskRecord({
+    id:taskId,
+    title:parsed.title,
+    description:parsed.description,
+    owner:parsed.owner,
+    status:"open",
+    priority:parsed.priority,
+    dueDate:parsed.dueDate,
+    sourceType:"relationship",
+    sourceId:target.itemId,
+    partnerId:entity.partnerId || "",
+    nextAction:parsed.nextAction,
+    escalationKey:`relationship-task:${relationshipId}:${parsed.requestId}`,
+    history:[{
+      action:"created",
+      at:now,
+      actor:clean(actor.id || actor.role) || "authenticated_user",
+      note:"Task created from the relationship record."
+    }]
+  }, { now });
+  return {
+    state:{ ...state, tasks:[task, ...list(state.tasks)] },
+    activity:relationshipActivity({
+      action:parsed.action, requestId:parsed.requestId, relationshipId, entity, target, actor, now,
+      title:"Relationship task created", summary:parsed.title, eventType:"task_created"
+    }),
+    result:{ taskId, title:task.title, dueDate:task.dueDate }
+  };
+}
+
+function addRelationshipActivity(state, relationshipId, entity, target, parsed, actor, now) {
+  const partnerType = parsed.activityType === "relationship_updated" ? "" : parsed.activityType;
+  if (entity.partnerId && partnerType) {
+    const result = logPartnerActivity(state, entity.partnerId, {
+      requestId:parsed.requestId,
+      type:partnerType,
+      summary:parsed.summary
+    }, { actor, now });
+    const eventId = `activity-partner-log-${parsed.requestId}`;
+    const nextState = {
+      ...result.state,
+      activityEvents:list(result.state.activityEvents).map((activity) => clean(activity.id) === eventId
+        ? { ...activity, summary:parsed.summary }
+        : activity)
+    };
+    return { state:nextState, activity:null, result:{ activityId:eventId, activityType:parsed.activityType } };
+  }
+  const activity = relationshipActivity({
+    action:parsed.action, requestId:parsed.requestId, relationshipId, entity, target, actor, now,
+    title:parsed.summary, summary:parsed.summary, eventType:parsed.activityType
+  });
+  return { state, activity, result:{ activityId:activity.id, activityType:parsed.activityType } };
+}
+
+function addRelationshipNote(state, relationshipId, entity, target, parsed, actor, now) {
+  if (entity.partnerId) {
+    const result = logPartnerActivity(state, entity.partnerId, {
+      requestId:parsed.requestId,
+      type:"note_added",
+      summary:parsed.note
+    }, { actor, now });
+    const eventId = `activity-partner-log-${parsed.requestId}`;
+    const nextState = {
+      ...result.state,
+      activityEvents:list(result.state.activityEvents).map((activity) => clean(activity.id) === eventId
+        ? { ...activity, summary:parsed.note, note:parsed.note }
+        : activity)
+    };
+    return { state:nextState, activity:null, result:{ noteId:eventId } };
+  }
+  const activity = relationshipActivity({
+    action:parsed.action, requestId:parsed.requestId, relationshipId, entity, target, actor, now,
+    title:"Relationship note added", summary:parsed.note, eventType:"note_added"
+  });
+  return { state, activity, result:{ noteId:activity.id } };
+}
+
+function contactTypesFor(categoryKey) {
+  if (categoryKey === "partner") return ["partner_contact"];
+  if (categoryKey === "partner_prospect") return ["partner_contact", "prospect"];
+  if (categoryKey === "investor") return ["investor", "funder"];
+  if (categoryKey === "press") return ["media"];
+  if (categoryKey === "vendor") return ["vendor"];
+  if (categoryKey === "customer") return ["consumer"];
+  if (categoryKey === "referral_source") return ["attorney"];
+  if (categoryKey === "internal_team") return ["internal"];
+  return [];
+}
+
+function relationshipOrganizationIds(entity) {
+  return uniqueStrings(entity.organizations.map((organization) => organization.org_id));
+}
+
+function contactLinkFor(entity, target) {
+  return entity.partnerId
+    ? { collection:"partners", itemId:entity.partnerId }
+    : { collection:target.collection, itemId:target.itemId };
+}
+
+const CONTACT_IDENTITY_COLLECTIONS = Object.freeze([
+  "companyContacts",
+  "reactivationContacts",
+  "expungementLifecycleContacts",
+  "outreachContacts",
+  "rcapRevenueContacts"
+]);
+
+function emailForContactRecord(collection, record = {}) {
+  return validEmail(collection === "rcapRevenueContacts" ? record.public_email : record.email);
+}
+
+function contactEmailLocations(state, email) {
+  const normalized = validEmail(email);
+  if (!normalized) return [];
+  const locations = [];
+  for (const collection of CONTACT_IDENTITY_COLLECTIONS) {
+    list(state[collection]).forEach((record, index) => {
+      if (emailForContactRecord(collection, record) !== normalized) return;
+      locations.push({ collection, index, itemId:itemIdForCollection(collection, record), record });
+    });
+  }
+  return locations;
+}
+
+function contactOwnerKeys(contact = {}) {
+  const keys = new Set();
+  const contactId = clean(contact.contact_id || contact.id);
+  if (contactId) keys.add(sourceRefKey("companyContacts", contactId));
+  for (const link of list(contact.links)) {
+    const collection = clean(link.collection);
+    if (!CONTACT_IDENTITY_COLLECTIONS.includes(collection)) continue;
+    keys.add(sourceRefKey(collection, clean(link.itemId || link.item_id)));
+  }
+  return keys;
+}
+
+function assertContactEmailAvailable(state, email, existingContact = null) {
+  const owners = contactEmailLocations(state, email);
+  if (!owners.length) return;
+  if (!existingContact) {
+    throw actionError("A contact with this email already exists. Open that relationship to edit it. No changes were made.", 409, "conflict");
+  }
+  const allowed = contactOwnerKeys(existingContact);
+  const collision = owners.some((owner) => !allowed.has(sourceRefKey(owner.collection, owner.itemId)));
+  if (collision) {
+    throw actionError("This email belongs to another contact. No changes were made.", 409, "conflict");
+  }
+}
+
+function patchCompanyContact(state, contactId, email, patch) {
+  const rows = list(state.companyContacts);
+  const index = rows.findIndex((contact) => clean(contact.contact_id) === clean(contactId)
+    || validEmail(contact.email) === validEmail(email));
+  if (index < 0) throw actionError("The contact could not be saved safely. No changes were made.", 500, "failed_closed");
+  const updated = { ...rows[index], ...patch };
+  return {
+    state:{ ...state, companyContacts:rows.map((contact, itemIndex) => itemIndex === index ? updated : contact) },
+    contact:updated
+  };
+}
+
+function unsetOtherPrimaryContacts(state, entity, keepContactId) {
+  const ids = new Set(entity.contacts.map((contact) => clean(contact.contact_id)).filter(Boolean));
+  const emails = new Set(entity.contacts.map((contact) => validEmail(contact.email)).filter(Boolean));
+  return {
+    ...state,
+    companyContacts:list(state.companyContacts).map((contact) => {
+      const belongs = ids.has(clean(contact.contact_id)) || emails.has(validEmail(contact.email));
+      return belongs && clean(contact.contact_id) !== clean(keepContactId) && contact.primary === true
+        ? { ...contact, primary:false, updatedAt:contact.updatedAt }
+        : contact;
+    })
+  };
+}
+
+function upsertContactOverlay(state, entity, target, input, now, existingContact = null) {
+  const email = input.email || validEmail(existingContact?.email);
+  if (!email) throw actionError("This contact needs a valid email before it can be changed. No changes were made.");
+  assertContactEmailAvailable(state, email, existingContact);
+  const name = input.name ?? clean(existingContact?.name);
+  const title = input.title ?? clean(existingContact?.title);
+  const primary = input.primary ?? Boolean(existingContact?.primary);
+  const contactId = clean(existingContact?.contact_id || existingContact?.id);
+  const links = [
+    ...list(existingContact?.links),
+    contactLinkFor(entity, target)
+  ];
+  const organizations = uniqueStrings(existingContact?.organizations, relationshipOrganizationIds(entity));
+  const upserted = upsertCompanyContact(list(state.companyContacts), {
+    contact_id:contactId,
+    email,
+    name,
+    types:uniqueStrings(existingContact?.types, contactTypesFor(categoryFor(entity).key)),
+    organizations,
+    links,
+    do_not_contact:Boolean(existingContact?.do_not_contact)
+  }, { now:() => now });
+  if (!upserted.contact) throw actionError("The contact could not be saved safely. No changes were made.", 500, "failed_closed");
+  const withUpsert = { ...state, companyContacts:upserted.contacts };
+  const patched = patchCompanyContact(withUpsert, upserted.contact.contact_id, upserted.contact.email, {
+    name,
+    email,
+    title,
+    primary,
+    updatedAt:now
+  });
+  return primary
+    ? { ...patchCompanyContact(unsetOtherPrimaryContacts(patched.state, entity, patched.contact.contact_id), patched.contact.contact_id, email, { primary:true, updatedAt:now }), contactId:patched.contact.contact_id }
+    : { ...patched, contactId:patched.contact.contact_id };
+}
+
+function preservePriorPartnerPrimary(state, entity, target, nextPrimaryEmail, now) {
+  if (!entity.partnerId) return state;
+  const prior = entity.contacts.find((contact) => contact.primary === true && validEmail(contact.email));
+  if (!prior || validEmail(prior.email) === validEmail(nextPrimaryEmail)) return state;
+  return upsertContactOverlay(state, entity, target, {
+    name:clean(prior.name),
+    email:validEmail(prior.email),
+    title:clean(prior.title),
+    primary:false
+  }, now, prior).state;
+}
+
+function addRelationshipContact(state, relationshipId, entity, target, parsed, actor, now) {
+  if (entity.kind === "contact" && !entity.partnerId && !entity.organizations.length) {
+    throw actionError("Add another contact from an organization relationship. No changes were made.", 409, "conflict");
+  }
+  const startingState = parsed.primary ? preservePriorPartnerPrimary(state, entity, target, parsed.email, now) : state;
+  const saved = upsertContactOverlay(startingState, entity, target, parsed, now);
+  let nextState = saved.state;
+  if (entity.partnerId && parsed.primary) {
+    nextState = touchLocation(nextState, target, now, {
+      primaryContactName:parsed.name,
+      primaryContactEmail:parsed.email,
+      primaryContactTitle:parsed.title
+    });
+  }
+  return {
+    state:nextState,
+    activity:relationshipActivity({
+      action:parsed.action, requestId:parsed.requestId, relationshipId, entity, target, actor, now,
+      title:"Relationship contact added", summary:parsed.name, eventType:"contact_added"
+    }),
+    result:{ contactId:saved.contactId, contactName:parsed.name }
+  };
+}
+
+function authoritativeContactLocation(state, contact) {
+  const direct = recordLocation(state, "companyContacts", contact.contact_id);
+  if (direct) return direct;
+  const contactCollections = new Set(["companyContacts", "reactivationContacts", "expungementLifecycleContacts", "outreachContacts", "rcapRevenueContacts"]);
+  for (const link of list(contact.links)) {
+    if (!contactCollections.has(clean(link.collection))) continue;
+    const location = recordLocation(state, clean(link.collection), clean(link.itemId || link.item_id));
+    if (location) return location;
+  }
+  return null;
+}
+
+function patchContactSource(record, collection, values, now) {
+  const patch = { updatedAt:now, updated_at:now };
+  if (values.name !== undefined) {
+    if (collection === "outreachContacts" || collection === "rcapRevenueContacts") patch.contact_name = values.name;
+    else if (collection === "reactivationContacts") patch.full_name = values.name;
+    else if (collection === "expungementLifecycleContacts") {
+      patch.first_name = values.name;
+      patch.full_name = values.name;
+    } else patch.name = values.name;
+  }
+  if (values.email !== undefined) {
+    if (collection === "rcapRevenueContacts") patch.public_email = values.email;
+    else patch.email = values.email;
+  }
+  if (values.title !== undefined) patch.title = values.title;
+  if (values.primary !== undefined) patch.primary = values.primary;
+  return { ...record, ...patch };
+}
+
+function editRelationshipContact(state, relationshipId, projection, entity, target, parsed, actor, now) {
+  const contact = entity.contacts.find((item) => clean(item.contact_id) === parsed.contactId);
+  if (!contact) throw actionError("This contact is no longer available. Refresh and try again.", 404, "not_found");
+  const source = authoritativeContactLocation(state, contact);
+  const currentEmail = validEmail(contact.email);
+  const emailChanging = Boolean(parsed.email && parsed.email !== currentEmail);
+  if (emailChanging && ["reactivationContacts", "expungementLifecycleContacts"].includes(source?.collection)) {
+    throw actionError("This email is linked to customer history and cannot be changed here. Name and role can still be updated. No changes were made.", 409, "conflict");
+  }
+  if (emailChanging && projection.automatedOutreach) {
+    throw actionError("Stop automated outreach for this contact before changing the email address. No changes were made.", 409, "conflict");
+  }
+  const restriction = isSuppressed({ ...(source?.record || contact), email:currentEmail }, {
+    state,
+    org:entity.organizations[0] || entity.partner || {}
+  });
+  const protectedRestriction = ["do_not_contact", "replied", "unsubscribed", "bounced", "manually_suppressed"].includes(restriction.reason);
+  if (emailChanging && (projection.eligibility?.key === "suppressed" || protectedRestriction)) {
+    throw actionError("This contact's email restrictions must stay in place. No changes were made.", 409, "conflict");
+  }
+  const nextValues = {
+    name:parsed.name ?? clean(contact.name),
+    email:parsed.email ?? validEmail(contact.email),
+    title:parsed.title ?? clean(contact.title),
+    primary:parsed.primary ?? Boolean(contact.primary)
+  };
+  if (!nextValues.email) throw actionError("This contact needs a valid email before it can be changed. No changes were made.");
+  let nextState = parsed.primary === true
+    ? preservePriorPartnerPrimary(state, entity, target, nextValues.email, now)
+    : state;
+  if (source) nextState = replaceAtLocation(nextState, source, patchContactSource(source.record, source.collection, parsed, now));
+
+  const overlay = upsertContactOverlay(nextState, entity, target, nextValues, now, contact);
+  nextState = overlay.state;
+
+  if (entity.partnerId && (contact.virtual || parsed.primary === true || clean(entity.partner?.primaryContactEmail) === validEmail(contact.email))) {
+    const shouldBePrimary = nextValues.primary;
+    const partnerPatch = shouldBePrimary ? {
+      primaryContactName:nextValues.name,
+      primaryContactEmail:nextValues.email,
+      primaryContactTitle:nextValues.title
+    } : {
+      primaryContactName:"",
+      primaryContactEmail:"",
+      primaryContactTitle:"",
+      ...(validEmail(entity.partner?.email) === validEmail(contact.email) ? { email:"" } : {})
+    };
+    nextState = touchLocation(nextState, target, now, partnerPatch);
+  }
+
+  return {
+    state:nextState,
+    activity:relationshipActivity({
+      action:parsed.action, requestId:parsed.requestId, relationshipId, entity, target, actor, now,
+      title:"Relationship contact updated", summary:nextValues.name || nextValues.email, eventType:"contact_updated"
+    }),
+    result:{ contactId:overlay.contactId, contactName:nextValues.name || null }
+  };
+}
+
+function updateRelationshipStage(state, relationshipId, entity, target, parsed, actor, now) {
+  const current = refreshedLocation(state, target);
+  if (!current) throw actionError("This relationship can no longer be changed. Refresh and try again.", 409, "conflict");
+  const updated = entity.partnerId
+    ? { ...current.record, relationshipStage:parsed.stage, updatedAt:now, updated_at:now }
+    : { ...current.record, relationshipStage:parsed.stage, updatedAt:now, updated_at:now };
+  return {
+    state:replaceAtLocation(state, current, updated),
+    activity:relationshipActivity({
+      action:parsed.action, requestId:parsed.requestId, relationshipId, entity, target, actor, now,
+      title:"Relationship stage updated", summary:PARTNER_STAGE_CONTRACT[parsed.stage]?.label || (parsed.stage === "stalled" ? "Stalled" : parsed.stage), eventType:"stage_changed"
+    }),
+    result:{ stage:parsed.stage }
+  };
+}
+
+function applyParsedAction(state, relationshipId, projection, target, parsed, actor, now) {
+  const entity = projection._detail.entity;
+  if (parsed.action === "set_next_action") return setNextAction(state, relationshipId, entity, target, parsed, actor, now);
+  if (parsed.action === "complete_next_action") return completeNextAction(state, relationshipId, projection, entity, target, parsed, actor, now);
+  if (parsed.action === "add_task") return addRelationshipTask(state, relationshipId, entity, target, parsed, actor, now);
+  if (parsed.action === "log_activity") return addRelationshipActivity(state, relationshipId, entity, target, parsed, actor, now);
+  if (parsed.action === "add_note") return addRelationshipNote(state, relationshipId, entity, target, parsed, actor, now);
+  if (parsed.action === "add_contact") return addRelationshipContact(state, relationshipId, entity, target, parsed, actor, now);
+  if (parsed.action === "edit_contact") return editRelationshipContact(state, relationshipId, projection, entity, target, parsed, actor, now);
+  return updateRelationshipStage(state, relationshipId, entity, target, parsed, actor, now);
+}
+
+const ACTION_MESSAGES = Object.freeze({
+  set_next_action:"Next action saved.",
+  complete_next_action:"Next action completed.",
+  add_task:"Task added.",
+  log_activity:"Activity recorded.",
+  add_note:"Note added.",
+  add_contact:"Contact added.",
+  edit_contact:"Contact updated.",
+  update_stage:"Relationship stage updated."
+});
+
+export function executeRelationshipAction(state = {}, actor = {}, relationshipId = "", now = "", input = {}) {
+  const parsed = validateActionInput(input);
+  authorizeAction(actor, parsed.action);
+  const at = actionText(now, "Server timestamp", 80, { required:true });
+  if (!validTimestamp(at)) throw actionError("Relationship changes are temporarily unavailable. No changes were made.", 503, "unavailable");
+  const id = actionText(relationshipId, "Relationship", 320, { required:true });
+  const bundle = projectionBundle(state, actor, at);
+  if (!bundle.available) throw actionError("This relationship is not available for this account.", bundle.availability?.state === "not_authorized" ? 403 : 404, "not_found");
+  const projection = bundle.projected.find((item) => item.id === id);
+  if (!projection) throw actionError("This relationship was not found or is no longer available.", 404, "not_found");
+  const entity = projection._detail.entity;
+  const target = canonicalLocation(state, entity);
+  if (!target) throw actionError("This relationship cannot be changed safely yet. No changes were made.", 409, "conflict");
+  const version = relationshipVersion(state, entity, bundle.graph.sourceIndex, projection._detail.identifiers);
+
+  if (actionAlreadyApplied(state, id, parsed)) {
+    return {
+      ok:true,
+      alreadyApplied:true,
+      state,
+      collections:{},
+      result:{ relationshipId:id, action:parsed.action, message:"This relationship change was already saved.", externalActions:0 },
+      detail:buildRelationshipDetail(state, actor, id, at),
+      mutations:0,
+      externalActions:0
+    };
+  }
+  if (parsed.expectedVersion !== version) {
+    throw actionError("The relationship changed; refresh and try again. No changes were made.", 409, "conflict");
+  }
+  const mutationAt = nextMutationTimestamp(at, version);
+
+  let applied;
+  try {
+    applied = applyParsedAction(state, id, projection, target, parsed, actor, mutationAt);
+  } catch (error) {
+    if (error instanceof RelationshipActionError) throw error;
+    if (error?.name === "PartnerActionError") {
+      throw actionError(clean(error.safeMessage || error.message) || "The relationship change could not be saved.", Number(error.status) || 400, Number(error.status) === 409 ? "conflict" : "validation_error");
+    }
+    throw error;
+  }
+  let nextState = touchLocation(applied.state, target, mutationAt);
+  const audit = relationshipAudit({ action:parsed.action, requestId:parsed.requestId, relationshipId:id, actor, now:mutationAt });
+  nextState = appendEvidence(nextState, { activity:applied.activity, audit });
+  const collections = changedCollections(state, nextState);
+  const detail = buildRelationshipDetail(nextState, actor, id, at);
+  if (!detail.available) throw actionError("The relationship changed but could not be refreshed safely. No changes were made.", 500, "failed_closed");
+  return {
+    ok:true,
+    alreadyApplied:false,
+    state:nextState,
+    collections,
+    result:{
+      relationshipId:id,
+      action:parsed.action,
+      message:ACTION_MESSAGES[parsed.action],
+      ...applied.result,
+      externalActions:0
+    },
+    detail,
+    mutations:Object.keys(collections).length,
+    externalActions:0
+  };
+}
+
+export function relationshipActionSafeError(error) {
+  const known = error instanceof RelationshipActionError;
+  const status = known && [400, 403, 404, 409, 413, 503].includes(Number(error.status)) ? Number(error.status) : 500;
+  const outcome = known ? error.outcome : "failed_closed";
+  return {
+    status,
+    body:{
+      ok:false,
+      outcome,
+      message:known ? error.safeMessage : "The relationship change could not be saved. No changes were made.",
+      mutations:0,
+      externalActions:0
+    }
+  };
+}
+
 export function buildRelationshipsView(state = {}, actor = {}, now = "", rawQuery = {}) {
   const generatedAt = validTimestamp(now);
   const bundle = projectionBundle(state, actor, generatedAt || new Date(0).toISOString());
@@ -1072,12 +2081,17 @@ export function buildRelationshipDetail(state = {}, actor = {}, relationshipId =
   const meetings = meetingsFor(bundle.graph.sourceIndex, detail.identifiers);
   const files = filesFor(bundle.graph.sourceIndex, detail.identifiers);
   const notes = notesFor(detail.entity, bundle.graph.sourceIndex, detail.identifiers, bundle.context);
+  const version = relationshipVersion(state, detail.entity, bundle.graph.sourceIndex, detail.identifiers);
+  const canManageTasks = roleHasCapability(bundle.context.role, "manage_tasks");
+  const canAddNotes = roleHasCapability(bundle.context.role, "add_notes");
+  const canManageGrowth = roleHasCapability(bundle.context.role, "manage_growth");
+  const canCompleteStoredNextAction = Boolean(explicitNextActionLocation(state, detail.entity) || detail.tasks.length);
   return deepFreeze({
     available:true,
     generatedAt,
     relationshipId:id,
     availability:{ state:"available", reason:null },
-    relationship:publicItem(projection),
+    relationship:{ ...publicItem(projection), version },
     contacts,
     timeline:detail.timeline,
     tasks:detail.tasks,
@@ -1101,11 +2115,15 @@ export function buildRelationshipDetail(state = {}, actor = {}, relationshipId =
       files:"#files"
     },
     capabilities:{
-      draftFollowUp:roleHasCapability(bundle.context.role, "manage_content_drafts") || roleHasCapability(bundle.context.role, "add_notes"),
-      setNextAction:roleHasCapability(bundle.context.role, "manage_tasks"),
-      addTask:roleHasCapability(bundle.context.role, "manage_tasks"),
-      addNote:roleHasCapability(bundle.context.role, "add_notes"),
-      editContact:roleHasCapability(bundle.context.role, "manage_growth")
+      draftFollowUp:roleHasCapability(bundle.context.role, "manage_content_drafts") || canAddNotes,
+      setNextAction:canManageTasks,
+      completeNextAction:canManageTasks && canCompleteStoredNextAction,
+      addTask:canManageTasks,
+      logActivity:canAddNotes,
+      addNote:canAddNotes,
+      addContact:canManageGrowth && (detail.entity.kind !== "contact" || Boolean(detail.entity.partnerId || detail.entity.organizations.length)),
+      editContact:canManageGrowth && contacts.length > 0,
+      updateStage:canManageGrowth
     },
     safety:{ fullStateReturned:false, mutations:0, externalActions:0, sensitiveContentAuthorized:bundle.context.canReadSensitive }
   });

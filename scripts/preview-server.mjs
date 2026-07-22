@@ -130,7 +130,11 @@ import { buildAuthorizedTodayPage } from "./today-page-service.mjs";
 import { buildAuthorizedSocialHome } from "./social-home-service.mjs";
 import { buildSocialResultsView } from "./ui/view-models/social-results.mjs";
 import { PARTNER_API_BODY_LIMIT, handlePartnerApiRequest, isPartnerApiPath } from "./partner-api-integration.mjs";
-import { handleRelationshipApiRequest, isRelationshipApiPath } from "./relationship-api-integration.mjs";
+import {
+  RELATIONSHIP_ACTION_BODY_LIMIT,
+  handleRelationshipApiRequest,
+  isRelationshipApiPath
+} from "./relationship-api-integration.mjs";
 import {
   COMMUNICATION_COMPOSER_BODY_LIMIT,
   handleCommunicationComposerApiRequest,
@@ -35877,15 +35881,19 @@ async function handleRequest(request, response) {
   }
 
   if (isRelationshipApiPath(url.pathname)) {
-    const result = await handleRelationshipApiRequest({
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:RELATIONSHIP_ACTION_BODY_LIMIT }) : {};
+    const execute = () => handleRelationshipApiRequest({
       enabled:commandCenterVNextConfig.enabled,
       method:request.method,
       pathname:url.pathname,
       searchParams:url.searchParams,
+      input,
       store,
       actor:publicActor(accessDecision.actor),
       now:new Date().toISOString()
     });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
     sendJson(response, result.body || { ok:false, message:"Relationship details are unavailable." }, result.status || 404);
     return;
   }

@@ -58,6 +58,9 @@ const done = updateTask(merged.tasks[0], "done", { note: "Handled." }, { now: "2
 assert.equal(done.status, "done");
 assert.equal(done.history[0].action, "done");
 
+const versioned = updateTask({ ...merged.tasks[0], _version:7 }, "done", { note:"Handled safely." }, { now:"2026-05-26T13:00:00.000Z" });
+assert.equal(versioned._version, 7, "task mutations preserve the storage compare-and-swap version");
+
 const snoozed = updateTask(merged.tasks[1], "snooze", { days: 3 }, { now: "2026-05-26T13:00:00.000Z" });
 assert.equal(snoozed.status, "waiting");
 assert.equal(snoozed.dueDate, "2026-05-29");

@@ -206,6 +206,7 @@ export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", 
   if (verb === "POST" && /^\/api\/ui\/files\/[^/]+\/[^/]+\/access\/(?:grant|revoke)$/.test(path)) return ["manage_roles"];
   if (verb === "GET" && (path === "/api/ui/partners" || /^\/api\/ui\/partners\/[^/]+(?:\/(?:outreach|files))?$/.test(path))) return ["read_internal"];
   if (verb === "GET" && /^\/api\/ui\/relationships\/[^/]+$/.test(path)) return ["read_internal"];
+  if (verb === "POST" && /^\/api\/ui\/relationships\/[^/]+\/action$/.test(path)) return ["mutate_state"];
   if (verb === "GET" && path === "/api/ui/communications/context") return ["read_sensitive"];
   if (verb === "POST" && path === "/api/ui/communications/drafts") return ["manage_content_drafts"];
   if (verb === "POST" && /^\/api\/ui\/communications\/drafts\/[^/]+\/manual-sent$/.test(path)) return ["manage_growth"];

@@ -230,6 +230,129 @@
   text-underline-offset: 3px;
 }
 
+.founder-relationship-drawer .relationship-action-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.founder-relationship-drawer .relationship-action-menu button {
+  min-height: 40px;
+  border: 1px solid var(--le-border, #dce5e8);
+  border-radius: 999px;
+  padding: 8px 13px;
+  background: var(--le-surface, #fff);
+  color: #35505f;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.founder-relationship-drawer .relationship-action-menu button:hover {
+  border-color: #83bdb9;
+  background: var(--le-teal-100, #e8f7f5);
+  color: var(--le-navy-950, #071e33);
+}
+
+.founder-relationship-drawer .relationship-action-menu button:disabled { cursor: wait; opacity: .62; }
+
+.founder-relationship-drawer .relationship-action-panel {
+  margin-top: 18px;
+  border: 1px solid #b9d8d6;
+  border-radius: 14px;
+  padding: 18px;
+  background: #f7fbfa;
+  box-shadow: 0 12px 30px rgb(7 30 51 / 8%);
+}
+
+.founder-relationship-drawer .relationship-action-panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.founder-relationship-drawer .relationship-action-panel h3 {
+  margin: 3px 0 0;
+  color: var(--le-navy-950, #071e33);
+  font-size: 1.05rem;
+}
+
+.founder-relationship-drawer .relationship-action-panel > header button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  border: 1px solid var(--le-border, #dce5e8);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--le-navy-950, #071e33);
+  font: inherit;
+  font-size: 1.35rem;
+  cursor: pointer;
+}
+
+.founder-relationship-drawer .relationship-action-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.founder-relationship-drawer .relationship-action-field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: #3e5562;
+  font-size: .78rem;
+  font-weight: 750;
+}
+
+.founder-relationship-drawer .relationship-action-field.is-full { grid-column: 1 / -1; }
+.founder-relationship-drawer .relationship-action-field small { color: var(--le-text-muted, #60717d); font-size: .7rem; font-weight: 500; }
+
+.founder-relationship-drawer .relationship-action-field input,
+.founder-relationship-drawer .relationship-action-field select,
+.founder-relationship-drawer .relationship-action-field textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid #c8d5d9;
+  border-radius: 9px;
+  padding: 10px 11px;
+  background: #fff;
+  color: var(--le-navy-950, #071e33);
+  font: inherit;
+  font-weight: 500;
+}
+
+.founder-relationship-drawer .relationship-action-field textarea { min-height: 88px; resize: vertical; line-height: 1.45; }
+.founder-relationship-drawer .relationship-action-field [aria-invalid="true"] { border-color: var(--le-danger-700, #a92d3e); box-shadow: 0 0 0 2px rgb(169 45 62 / 12%); }
+.founder-relationship-drawer .relationship-action-error { min-height: 20px; margin: 10px 0 0; color: var(--le-danger-700, #a92d3e); font-size: .8rem; font-weight: 700; }
+
+.founder-relationship-drawer .relationship-action-panel form > footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.founder-relationship-drawer .relationship-action-save {
+  min-height: 44px;
+  border: 1px solid #3a9f98;
+  border-radius: 10px;
+  padding: 9px 17px;
+  background: var(--le-teal-500, #78d2cb);
+  color: var(--le-navy-950, #071e33);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.founder-relationship-drawer .relationship-action-save:disabled { cursor: wait; opacity: .68; }
+
 .founder-relationship-drawer .relationship-section-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -389,6 +512,13 @@
   .founder-relationship-drawer .relationship-section--wide { grid-column: auto; }
   .founder-relationship-drawer .relationship-primary-actions { align-items: stretch; flex-direction: column; }
   .founder-relationship-drawer .relationship-primary-button { width: 100%; }
+  .founder-relationship-drawer .relationship-action-menu { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .founder-relationship-drawer .relationship-action-menu button { min-height: 44px; border-radius: 10px; padding-inline: 10px; }
+  .founder-relationship-drawer .relationship-action-panel { padding: 16px; }
+  .founder-relationship-drawer .relationship-action-fields { grid-template-columns: minmax(0, 1fr); }
+  .founder-relationship-drawer .relationship-action-field.is-full { grid-column: auto; }
+  .founder-relationship-drawer .relationship-action-panel form > footer { align-items: stretch; flex-direction: column; }
+  .founder-relationship-drawer .relationship-action-panel form > footer button { width: 100%; }
   .founder-relationship-footer {
     position: sticky;
     z-index: 2;

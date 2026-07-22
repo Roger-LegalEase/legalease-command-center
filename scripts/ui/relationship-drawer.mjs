@@ -12,6 +12,10 @@ export function relationshipDrawerBrowserSource() {
     let savedScroll = { x:0, y:0 };
     let loading = false;
     let requestToken = 0;
+    let mutationToken = 0;
+    let actionBusy = false;
+    let activeAction = "";
+    let actionTrigger = null;
 
     function layer() { return document.querySelector("[data-relationship-drawer]"); }
     function node(selector) { return layer()?.querySelector(selector) || null; }
@@ -82,6 +86,257 @@ export function relationshipDrawerBrowserSource() {
       }
       return link;
     }
+    function cookieValue(name) {
+      const prefix = name + "=";
+      const part = document.cookie.split(";").map((entry) => entry.trim()).find((entry) => entry.startsWith(prefix));
+      return part ? decodeURIComponent(part.slice(prefix.length)) : "";
+    }
+    function actionRequestId() { return "relationship_action_" + crypto.randomUUID().replaceAll("-", ""); }
+    function field({ label, name, value = "", type = "text", required = false, options = [], hint = "", full = false } = {}) {
+      const wrapper = document.createElement("label");
+      wrapper.className = "relationship-action-field" + (full ? " is-full" : "");
+      wrapper.append(text("span", label));
+      let control;
+      if (type === "textarea") {
+        control = document.createElement("textarea");
+        control.rows = 3;
+      } else if (type === "select") {
+        control = document.createElement("select");
+        options.forEach((option) => {
+          const element = document.createElement("option");
+          element.value = String(option.value ?? "");
+          element.textContent = String(option.label ?? option.value ?? "");
+          control.append(element);
+        });
+      } else {
+        control = document.createElement("input");
+        control.type = type;
+      }
+      control.name = name;
+      control.value = String(value ?? "");
+      control.required = required;
+      if (required) control.setAttribute("aria-required", "true");
+      wrapper.append(control);
+      if (hint) wrapper.append(text("small", hint));
+      return wrapper;
+    }
+    function actionLabel(action) {
+      return ({
+        set_next_action:"Set next action",
+        complete_next_action:"Complete next action",
+        add_task:"Add task",
+        log_activity:"Log activity",
+        add_note:"Add note",
+        upsert_contact:"Add or edit contact",
+        update_stage:"Change stage"
+      })[action] || "Update relationship";
+    }
+    function closeActionPanel({ restoreFocus = true } = {}) {
+      const panel = node("[data-relationship-action-panel]");
+      if (!panel || actionBusy) return;
+      panel.hidden = true;
+      node("[data-relationship-action-fields]")?.replaceChildren();
+      const error = node("[data-relationship-action-error]");
+      if (error) error.textContent = "";
+      activeAction = "";
+      if (restoreFocus && actionTrigger?.isConnected) actionTrigger.focus();
+      actionTrigger = null;
+    }
+    function contactFormFields(host) {
+      const capabilities = currentRelationship?.capabilities || {};
+      const contacts = capabilities.editContact === true ? asList(currentRelationship?.contacts).filter((contact) => contact.id) : [];
+      const options = [];
+      if (capabilities.addContact === true) options.push({ value:"", label:"Add a new contact" });
+      options.push(...contacts.map((contact) => ({ value:contact.id, label:contact.name || contact.email || "Contact" })));
+      const picker = field({
+        label:"Contact",
+        name:"contactId",
+        type:"select",
+        options,
+        full:true
+      });
+      const name = field({ label:"Name", name:"name" });
+      const email = field({ label:"Email", name:"email", type:"email", hint:"Use a work address when available." });
+      const title = field({ label:"Role or title", name:"title" });
+      const primary = field({ label:"Primary contact", name:"primary", type:"select", options:[{ value:"false", label:"No" }, { value:"true", label:"Yes" }] });
+      host.append(picker, name, email, title, primary);
+      const select = picker.querySelector("select");
+      const populate = () => {
+        const selected = contacts.find((contact) => String(contact.id || "") === select.value) || {};
+        const form = select.form;
+        form.elements.name.value = selected.name || "";
+        form.elements.email.value = selected.email || "";
+        form.elements.title.value = selected.title || selected.role || "";
+        form.elements.primary.value = selected.primary === true ? "true" : "false";
+        const creating = !selected.id;
+        for (const control of [form.elements.name, form.elements.email]) {
+          control.required = creating;
+          control.toggleAttribute("aria-required", creating);
+          control.removeAttribute("aria-invalid");
+        }
+      };
+      select?.addEventListener("change", populate);
+      populate();
+    }
+    function openActionPanel(action, trigger) {
+      if (actionBusy) return;
+      if (action === "complete_next_action") { performAction(action, {}, trigger); return; }
+      activeAction = action;
+      actionTrigger = trigger;
+      const panel = node("[data-relationship-action-panel]");
+      const host = node("[data-relationship-action-fields]");
+      const error = node("[data-relationship-action-error]");
+      if (!panel || !host) return;
+      host.replaceChildren();
+      if (error) error.textContent = "";
+      node("[data-relationship-action-title]").textContent = actionLabel(action);
+      const due = String(value(currentRelationship?.nextFollowUpAt, currentRelationship?.nextFollowUpDate, "")).slice(0, 10);
+      if (action === "set_next_action") host.append(
+        field({ label:"Next action", name:"nextAction", value:value(currentRelationship?.nextAction?.title, currentRelationship?.nextAction?.summary, typeof currentRelationship?.nextAction === "string" ? currentRelationship.nextAction : ""), type:"textarea", required:true, full:true }),
+        field({ label:"Follow-up date", name:"dueDate", value:due, type:"date", required:true })
+      );
+      else if (action === "add_task") host.append(
+        field({ label:"Task title", name:"title", required:true, full:true }),
+        field({ label:"Description", name:"description", type:"textarea", full:true }),
+        field({ label:"Due date", name:"dueDate", type:"date", required:true }),
+        field({ label:"Priority", name:"priority", type:"select", value:"medium", options:[{ value:"low", label:"Low" }, { value:"medium", label:"Medium" }, { value:"high", label:"High" }, { value:"critical", label:"Critical" }] }),
+        field({ label:"Next action", name:"nextAction", type:"text", full:true })
+      );
+      else if (action === "log_activity") host.append(
+        field({ label:"Activity type", name:"activityType", type:"select", options:[{ value:"relationship_updated", label:"Relationship update" }, { value:"meeting_completed", label:"Meeting completed" }, { value:"reply_recorded", label:"Reply recorded" }, { value:"outreach_recorded", label:"Outreach recorded" }] }),
+        field({ label:"What happened?", name:"summary", type:"textarea", required:true, full:true })
+      );
+      else if (action === "add_note") host.append(field({ label:"Note", name:"note", type:"textarea", required:true, full:true }));
+      else if (action === "upsert_contact") contactFormFields(host);
+      else if (action === "update_stage") host.append(field({
+        label:"Relationship stage",
+        name:"stage",
+        type:"select",
+        value:currentRelationship?.stage?.key || "new",
+        options:[{ value:"new", label:"New" }, { value:"qualified", label:"Qualified" }, { value:"in_conversation", label:"In conversation" }, { value:"proposal", label:"Proposal" }, { value:"active", label:"Active" }, { value:"stalled", label:"Stalled" }, { value:"closed", label:"Closed" }],
+        full:true
+      }));
+      panel.hidden = false;
+      panel.scrollIntoView({ block:"nearest" });
+      setTimeout(() => host.querySelector("input,textarea,select")?.focus(), 0);
+    }
+    function capabilityAllows(action) {
+      const capabilities = currentRelationship?.capabilities || {};
+      if (action === "set_next_action") return capabilities.setNextAction === true;
+      if (action === "complete_next_action") return capabilities.completeNextAction === true && Boolean(value(currentRelationship?.nextAction?.title, currentRelationship?.nextAction?.summary, typeof currentRelationship?.nextAction === "string" ? currentRelationship.nextAction : ""));
+      if (action === "add_task") return capabilities.addTask === true;
+      if (action === "log_activity") return capabilities.logActivity === true;
+      if (action === "add_note") return capabilities.addNote === true;
+      if (action === "upsert_contact") return capabilities.addContact === true || capabilities.editContact === true && asList(currentRelationship?.contacts).some((contact) => contact.id);
+      if (action === "update_stage") return capabilities.updateStage === true;
+      return false;
+    }
+    function renderActionAvailability() {
+      node("[data-relationship-draft]").hidden = currentRelationship?.capabilities?.draftFollowUp === false;
+      node("[data-relationship-action-menu]")?.querySelectorAll("[data-relationship-action]").forEach((button) => {
+        button.hidden = !capabilityAllows(button.dataset.relationshipAction);
+      });
+      const menu = node("[data-relationship-action-menu]");
+      if (menu) menu.hidden = !menu.querySelector("[data-relationship-action]:not([hidden])");
+    }
+    function setActionBusy(busy, trigger = null, label = "Saving…") {
+      actionBusy = busy;
+      layer()?.toggleAttribute("data-action-busy", busy);
+      node("[data-relationship-action-menu]")?.querySelectorAll("button").forEach((button) => { button.disabled = busy; });
+      node("[data-relationship-action-panel]")?.querySelectorAll("button,input,textarea,select").forEach((control) => { control.disabled = busy; });
+      const submit = node("[data-relationship-action-submit]");
+      if (submit) {
+        if (!submit.dataset.defaultLabel) submit.dataset.defaultLabel = submit.textContent;
+        submit.textContent = busy ? label : submit.dataset.defaultLabel;
+      }
+      if (trigger && !trigger.closest("[data-relationship-action-panel]")) {
+        if (!trigger.dataset.defaultLabel) trigger.dataset.defaultLabel = trigger.textContent;
+        trigger.textContent = busy ? label : trigger.dataset.defaultLabel;
+      }
+    }
+    function actionValues(form) {
+      const invalid = Array.from(form.querySelectorAll("input,textarea,select")).find((control) => !control.checkValidity());
+      form.querySelectorAll("[aria-invalid]").forEach((control) => control.removeAttribute("aria-invalid"));
+      if (invalid) {
+        invalid.setAttribute("aria-invalid", "true");
+        const message = invalid.validity.typeMismatch ? "Enter a valid email address." : "Complete the required fields.";
+        const error = node("[data-relationship-action-error]");
+        if (error) error.textContent = message;
+        invalid.focus();
+        return null;
+      }
+      const values = Object.fromEntries(new FormData(form));
+      Object.keys(values).forEach((key) => { if (typeof values[key] === "string") values[key] = values[key].trim(); });
+      if (activeAction === "upsert_contact") values.primary = values.primary === "true";
+      return values;
+    }
+    function successMessage(action) {
+      return ({
+        set_next_action:"Next action saved.",
+        complete_next_action:"Next action completed.",
+        add_task:"Task created.",
+        log_activity:"Activity recorded.",
+        add_note:"Note added.",
+        add_contact:"Contact added.",
+        edit_contact:"Contact updated.",
+        update_stage:"Relationship stage updated."
+      })[action] || "Relationship updated.";
+    }
+    async function performAction(requestedAction, values = {}, trigger = null) {
+      if (actionBusy || !currentId) return;
+      const relationshipId = currentId;
+      const token = ++mutationToken;
+      let action = requestedAction;
+      const input = { ...values };
+      if (action === "upsert_contact") {
+        action = input.contactId ? "edit_contact" : "add_contact";
+        if (!input.contactId) delete input.contactId;
+      }
+      const frame = node(".founder-relationship-frame");
+      const contentScroll = frame?.scrollTop || 0;
+      const label = action === "complete_next_action" ? "Completing…" : action === "add_task" ? "Creating…" : "Saving…";
+      const error = node("[data-relationship-action-error]");
+      if (error) error.textContent = "";
+      announce("");
+      setActionBusy(true, trigger, label);
+      try {
+        const response = await fetch(endpointPrefix + encodeURIComponent(relationshipId) + "/action", {
+          method:"POST",
+          credentials:"same-origin",
+          headers:{ accept:"application/json", "content-type":"application/json", "x-csrf-token":cookieValue("leos_csrf") },
+          body:JSON.stringify({ requestId:actionRequestId(), expectedVersion:String(currentRelationship?.version || "legacy"), action, ...input })
+        });
+        const body = await response.json().catch(() => ({}));
+        if (token !== mutationToken || relationshipId !== currentId || !layer()?.open) return;
+        if (response.status === 401 || body.outcome === "session_expired") {
+          close({ restoreFocus:false });
+          document.dispatchEvent(new CustomEvent("vnext:session-expired"));
+          return;
+        }
+        if (!response.ok || body.ok !== true) throw new Error(body.message || body.error || "This relationship could not be changed. No changes were made.");
+        const externalCount = Number(body.externalActions || 0) + Number(body.sends || 0) + Number(body.publishes || 0) + Number(body.releases || 0) + Number(body.enrollments || 0);
+        if (externalCount !== 0) throw new Error("The safety receipt was incomplete. No success was recorded.");
+        setActionBusy(false, trigger);
+        closeActionPanel({ restoreFocus:false });
+        if (body.detail) render(body.detail, { focusTitle:false });
+        else await loadRelationship(currentId, { focusTitle:false });
+        requestAnimationFrame(() => { if (frame) frame.scrollTop = contentScroll; });
+        announce(body.message || body.result?.message || successMessage(action));
+        document.dispatchEvent(new CustomEvent("vnext:relationship-updated", { detail:{ relationshipId, action } }));
+        await Promise.allSettled([
+          Promise.resolve(window.__LE_TODAY_PAGE?.refresh?.()),
+          Promise.resolve(window.__LE_INBOX_PAGE?.refresh?.())
+        ]);
+      } catch (caught) {
+        if (token !== mutationToken || relationshipId !== currentId) return;
+        const message = caught.message || "No changes were made. Try again.";
+        const target = node("[data-relationship-action-error]");
+        if (target && !node("[data-relationship-action-panel]")?.hidden) target.textContent = message;
+        else announce(message, "error");
+      } finally {
+        if (token === mutationToken && actionBusy) setActionBusy(false, trigger);
+      }
+    }
 
     function ensureLayer() {
       if (layer()) return layer();
@@ -95,7 +350,7 @@ export function relationshipDrawerBrowserSource() {
         + '<div class="relationship-loading" data-relationship-loading aria-label="Opening relationship"><div class="relationship-skeleton relationship-skeleton--hero"></div><div class="relationship-skeleton-grid"><div class="relationship-skeleton"></div><div class="relationship-skeleton"></div><div class="relationship-skeleton"></div><div class="relationship-skeleton"></div></div></div>'
         + '<div class="relationship-load-error" data-relationship-error hidden role="alert"><h3>Relationship could not load</h3><p>No changes were made. Try again.</p><button type="button" data-relationship-retry>Try again</button></div>'
         + '<div class="founder-relationship-content" data-relationship-content hidden>'
-          + '<section class="relationship-overview" aria-labelledby="relationship-overview-title"><div class="relationship-chip-row" data-relationship-chips></div><h3 id="relationship-overview-title" class="relationship-visually-hidden">Overview</h3><p class="relationship-summary" data-relationship-summary></p><dl class="relationship-facts" data-relationship-facts></dl><div class="relationship-next-action" data-relationship-next-action hidden></div><div class="relationship-primary-actions"><button type="button" class="relationship-primary-button" data-relationship-draft>Draft follow-up</button><div data-relationship-overview-links></div></div></section>'
+          + '<section class="relationship-overview" aria-labelledby="relationship-overview-title"><div class="relationship-chip-row" data-relationship-chips></div><h3 id="relationship-overview-title" class="relationship-visually-hidden">Overview</h3><p class="relationship-summary" data-relationship-summary></p><dl class="relationship-facts" data-relationship-facts></dl><div class="relationship-next-action" data-relationship-next-action hidden></div><div class="relationship-primary-actions"><button type="button" class="relationship-primary-button" data-relationship-draft>Draft follow-up</button><div data-relationship-overview-links></div></div><div class="relationship-action-menu" data-relationship-action-menu aria-label="Relationship actions"><button type="button" data-relationship-action="set_next_action">Set next action</button><button type="button" data-relationship-action="complete_next_action">Complete next action</button><button type="button" data-relationship-action="add_task">Add task</button><button type="button" data-relationship-action="log_activity">Log activity</button><button type="button" data-relationship-action="add_note">Add note</button><button type="button" data-relationship-action="upsert_contact">Add or edit contact</button><button type="button" data-relationship-action="update_stage">Change stage</button></div><section class="relationship-action-panel" data-relationship-action-panel aria-labelledby="relationship-action-title" hidden><header><div><p class="relationship-eyebrow">Update relationship</p><h3 id="relationship-action-title" data-relationship-action-title>Update relationship</h3></div><button type="button" data-relationship-action-cancel aria-label="Close relationship action">×</button></header><form data-relationship-action-form novalidate><div class="relationship-action-fields" data-relationship-action-fields></div><p class="relationship-action-error" data-relationship-action-error role="alert"></p><footer><button type="submit" class="relationship-action-save" data-relationship-action-submit>Save</button><button type="button" class="relationship-secondary-button" data-relationship-action-cancel>Cancel</button></footer></form></section></section>'
           + '<div class="relationship-section-grid">'
             + '<section class="relationship-section" id="relationship-contacts"><div class="relationship-section-heading"><div><p class="relationship-eyebrow">People</p><h3>Contacts</h3></div><span data-relationship-contacts-count></span></div><div class="relationship-card-list" data-relationship-contacts></div></section>'
             + '<section class="relationship-section relationship-section--wide" id="relationship-activity"><div class="relationship-section-heading"><div><p class="relationship-eyebrow">Conversation</p><h3>Recent activity</h3></div><span data-relationship-activity-count></span></div><ol class="relationship-timeline" data-relationship-activity></ol></section>'
@@ -355,7 +610,7 @@ export function relationshipDrawerBrowserSource() {
       footer.hidden = links.length < 2;
     }
 
-    function render(payload) {
+    function render(payload, { focusTitle = true } = {}) {
       const base = value(payload?.relationship, payload?.detail, payload?.data?.relationship, payload?.data, payload);
       const outreach = payload?.outreach || base?.outreach;
       const relationship = {
@@ -371,7 +626,9 @@ export function relationshipDrawerBrowserSource() {
         meetings:base?.meetings || payload?.meetings,
         notes:base?.notes || payload?.notes,
         files:base?.files || payload?.files,
-        links:base?.links || payload?.links
+        links:base?.links || payload?.links,
+        capabilities:base?.capabilities || payload?.capabilities || {},
+        version:value(base?.version, payload?.version, "legacy")
       };
       currentRelationship = relationship;
       const displayName = value(relationship.name, relationship.displayName, relationship.personName, relationship.organizationName, relationship.organization?.name, "Relationship");
@@ -398,7 +655,7 @@ export function relationshipDrawerBrowserSource() {
         fact("Owner", value(relationship.owner, relationship.ownerName)),
         fact("Last inbound", formatDate(value(relationship.lastInboundAt, relationship.lastInboundInteraction), true)),
         fact("Last outbound", formatDate(value(relationship.lastOutboundAt, relationship.lastOutboundInteraction), true)),
-        fact("Next follow-up", formatDate(value(relationship.nextFollowUpDate, relationship.followUpDate, relationship.nextActionDueAt))),
+        fact("Next follow-up", formatDate(value(relationship.nextFollowUpAt, relationship.nextFollowUpDate, relationship.followUpDate, relationship.nextActionDueAt))),
         fact("Reply state", labelFor(value(relationship.replyStateLabel, relationship.replyState?.label, relationship.replyState, relationship.recentReplyState, "Not available")))
       );
       const rawNextAction = relationship.nextAction;
@@ -408,7 +665,7 @@ export function relationshipDrawerBrowserSource() {
       nextActionHost.replaceChildren();
       if (nextAction) {
         nextActionHost.append(text("span", "Next action"), text("strong", nextAction));
-        const due = value(relationship.nextAction?.dueDate, relationship.nextAction?.dueAt, relationship.nextActionDueAt);
+        const due = value(relationship.nextAction?.dueDate, relationship.nextAction?.dueAt, relationship.nextActionDueAt, relationship.nextFollowUpAt, relationship.nextFollowUpDate);
         if (due) nextActionHost.append(text("small", "Due " + formatDate(due)));
         nextActionHost.hidden = false;
       } else {
@@ -422,15 +679,16 @@ export function relationshipDrawerBrowserSource() {
       renderNotes(relationship);
       renderFiles(relationship);
       renderLinks(relationship);
+      renderActionAvailability();
       loading = false;
       node("[data-relationship-loading]").hidden = true;
       node("[data-relationship-error]").hidden = true;
       node("[data-relationship-content]").hidden = false;
       layer()?.removeAttribute("aria-busy");
-      requestAnimationFrame(() => node("[data-relationship-title]")?.focus());
+      if (focusTitle) requestAnimationFrame(() => node("[data-relationship-title]")?.focus());
     }
 
-    async function loadRelationship(id) {
+    async function loadRelationship(id, { focusTitle = true } = {}) {
       const token = ++requestToken;
       try {
         const response = await fetch(endpointPrefix + encodeURIComponent(id), { credentials:"same-origin", headers:{ accept:"application/json" } });
@@ -442,7 +700,7 @@ export function relationshipDrawerBrowserSource() {
           return;
         }
         if (!response.ok || payload.ok === false) throw new Error(payload.message || "Relationship could not load. No changes were made.");
-        render(payload);
+        render(payload, { focusTitle });
       } catch (error) {
         if (token !== requestToken) return;
         showError(error.message || "Relationship could not load. No changes were made. Try again.");
@@ -452,6 +710,9 @@ export function relationshipDrawerBrowserSource() {
       const relationshipId = String(id || "").trim();
       if (!relationshipId) return;
       const target = ensureLayer();
+      mutationToken += 1;
+      if (actionBusy) setActionBusy(false);
+      closeActionPanel({ restoreFocus:false });
       currentId = relationshipId;
       currentRelationship = null;
       lastTrigger = trigger || document.activeElement;
@@ -464,7 +725,11 @@ export function relationshipDrawerBrowserSource() {
     function close({ restoreFocus = true } = {}) {
       const target = layer();
       requestToken += 1;
+      mutationToken += 1;
       loading = false;
+      if (actionBusy) setActionBusy(false);
+      activeAction = "";
+      actionTrigger = null;
       if (target?.open) target.close();
       currentRelationship = null;
       requestAnimationFrame(() => window.scrollTo(savedScroll.x, savedScroll.y));
@@ -488,6 +753,10 @@ export function relationshipDrawerBrowserSource() {
     }
     function bindLayer(target) {
       target.addEventListener("click", (event) => {
+        const actionCancel = event.target.closest("[data-relationship-action-cancel]");
+        if (actionCancel) { closeActionPanel(); return; }
+        const actionButton = event.target.closest("[data-relationship-action]");
+        if (actionButton) { openActionPanel(actionButton.dataset.relationshipAction, actionButton); return; }
         if (event.target.closest("[data-relationship-close]")) { close(); return; }
         if (event.target.closest("[data-relationship-retry]")) { showLoading(); loadRelationship(currentId); return; }
         const draft = event.target.closest("[data-relationship-draft]");
@@ -497,8 +766,18 @@ export function relationshipDrawerBrowserSource() {
         if (link && String(link.getAttribute("href") || "").startsWith("#")) close({ restoreFocus:false });
         if (event.target === target && !loading) close();
       });
+      target.addEventListener("submit", (event) => {
+        const form = event.target.closest("[data-relationship-action-form]");
+        if (!form) return;
+        event.preventDefault();
+        if (actionBusy || !activeAction) return;
+        const values = actionValues(form);
+        if (!values) return;
+        performAction(activeAction, values, form.querySelector("[data-relationship-action-submit]"));
+      });
       target.addEventListener("cancel", (event) => {
         event.preventDefault();
+        if (!node("[data-relationship-action-panel]")?.hidden) { closeActionPanel(); return; }
         close();
       });
     }
