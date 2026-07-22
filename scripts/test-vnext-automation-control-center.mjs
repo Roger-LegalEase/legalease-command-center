@@ -115,7 +115,7 @@ const STATE = {
       review_state:"pending_review"
     }
   ],
-  partners:[{ id:"partner-existing", organizationName:"Existing Partner Org", email:"existing@partnerorg.org" }],
+  partners:[{ id:"partner-existing", organizationName:"Existing Partner Org" }],
   outreachOrganizations:[
     { account_id:"press-org", organization_name:"Example Daily", organizationType:"media", publication:"Example Daily", beat:"Justice technology" }
   ],

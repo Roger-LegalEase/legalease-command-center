@@ -138,7 +138,7 @@ const CALENDAR_STATE = {
     title:"Internal LegalEase team standup",
     startsAt:"2026-07-23T15:00:00.000Z",
     endsAt:"2026-07-23T15:30:00.000Z",
-    attendees:[{ email:"roger@legalease.com", self:true }, { email:"lawrence@legalease.com", name:"Lawrence", self:false }],
+    attendees:[{ email:"roger@example.com", self:true }, { email:"lawrence@example.com", name:"Lawrence", self:false }],
     updatedAt:"2026-07-21T13:00:00.000Z"
   }],
   googleInsights:[{

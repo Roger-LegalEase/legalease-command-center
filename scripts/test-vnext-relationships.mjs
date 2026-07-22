@@ -15,7 +15,7 @@ const state = {
       stage:"proposal_sent",
       owner:"Roger",
       primaryContactName:"Avery Partner",
-      primaryContactEmail:"avery@community.example.com",
+      primaryContactEmail:"avery-community@example.com",
       nextAction:"Confirm the reviewed scope",
       nextActionDueDate:"2026-07-20",
       notes:[{ text:"Prefers a concise monthly check-in.", at:"2026-07-18T09:00:00.000Z" }],
@@ -32,10 +32,10 @@ const state = {
     { org_id:"org-press", name:"Daily News Example", domain:"daily.news.example.com", types:["media"], stage:"in_conversation" }
   ],
   companyContacts:[
-    { contact_id:"contact-investor", name:"Indigo Investor", email:"indigo@seed.fund.example.com", types:["investor"], organizations:["org-investor"] },
-    { contact_id:"contact-press", name:"Parker Press", email:"parker@daily.news.example.com", types:["media"], organizations:["org-press"] },
-    { contact_id:"contact-vendor", name:"Val Vendor", email:"val@vendor.services.example.com", types:["vendor"] },
-    { contact_id:"contact-internal", name:"Taylor Teammate", email:"taylor@team.legalease.example.com", types:["internal"] }
+    { contact_id:"contact-investor", name:"Indigo Investor", email:"indigo-investor@example.com", types:["investor"], organizations:["org-investor"] },
+    { contact_id:"contact-press", name:"Parker Press", email:"parker-press@example.com", types:["media"], organizations:["org-press"] },
+    { contact_id:"contact-vendor", name:"Val Vendor", email:"val-vendor@example.com", types:["vendor"] },
+    { contact_id:"contact-internal", name:"Taylor Teammate", email:"taylor-team@example.com", types:["internal"] }
   ],
   outreachOrganizations:[
     { account_id:"prospect-account", organization_name:"Future Partner Example", domain:"future.partner.example.com", classification:"nonprofit" }
@@ -44,7 +44,7 @@ const state = {
     {
       contact_id:"prospect-contact",
       contact_name:"Dana Prospect",
-      email:"dana@future.partner.example.com",
+      email:"dana-partner@example.com",
       organization_name:"Future Partner Example",
       linked_account_id:"prospect-account",
       campaign_id:"outreach-campaign",
@@ -56,7 +56,7 @@ const state = {
     { id:"candidate-one", organization_name:"Future Partner Example", domain:"future.partner.example.com", classification:"nonprofit", review_state:"approved" }
   ],
   reactivationContacts:[
-    { contact_id:"customer-contact", full_name:"Casey Customer", email:"casey@customer.household.example.com", sequence_status:"Not Enrolled" }
+    { contact_id:"customer-contact", full_name:"Casey Customer", email:"casey-customer@example.com", sequence_status:"Not Enrolled" }
   ],
   expungementLifecycleContacts:[],
   rcapRevenueContacts:[],
@@ -89,7 +89,7 @@ const state = {
   reactivationAttempts:[],
   reactivationReplies:[],
   outreachSuppressions:[
-    { id:"suppression-vendor", contact_id:"contact-vendor", email:"val@vendor.services.example.com", reason:"manual" }
+    { id:"suppression-vendor", contact_id:"contact-vendor", email:"val-vendor@example.com", reason:"manual" }
   ],
   outreachUnsubscribes:[],
   tasks:[
@@ -122,7 +122,7 @@ const state = {
       kind:"needs_reply",
       status:"suggested",
       counterpartName:"Dana Prospect",
-      counterpartEmail:"dana@future.partner.example.com",
+      counterpartEmail:"dana-partner@example.com",
       summary:"Dana needs a reply.",
       occurredAt:"2026-07-20T13:00:00.000Z",
       ownerOnly:true
@@ -147,7 +147,7 @@ const state = {
       title:"Community Justice scope review",
       start_at:"2026-07-23T15:00:00.000Z",
       end_at:"2026-07-23T15:30:00.000Z",
-      attendees:[{ email:"avery@community.example.com", name:"Avery Partner" }],
+      attendees:[{ email:"avery-community@example.com", name:"Avery Partner" }],
       status:"prepared"
     }
   ],
@@ -178,7 +178,7 @@ assert.equal(partner.href, "#partners/partner/partner%2Fcommunity");
 assert.equal(partner.category.label, "Partner");
 assert.equal(partner.stage.label, "Proposal");
 assert.equal(partner.primaryContact, "Avery Partner");
-assert.equal(partner.email, "avery@community.example.com");
+assert.equal(partner.email, "avery-community@example.com");
 assert.equal(partner.openTaskCount, 1);
 assert.equal(partner.waitingState.key, "on_them");
 assert.equal(partner.followUpDue, true);
@@ -213,7 +213,7 @@ const waitingOnThem = buildRelationshipsView(state, OWNER, NOW, { waiting:"on_th
 assert.deepEqual(waitingOnThem.items.map((item) => item.id), ["partner:partner/community"]);
 const automated = buildRelationshipsView(state, OWNER, NOW, { automation:"automated" });
 assert.deepEqual(automated.items.map((item) => item.organization), ["Future Partner Example"]);
-const search = buildRelationshipsView(state, OWNER, NOW, { search:"dana@future.partner.example.com" });
+const search = buildRelationshipsView(state, OWNER, NOW, { search:"dana-partner@example.com" });
 assert.deepEqual(search.items.map((item) => item.organization), ["Future Partner Example"]);
 const empty = buildRelationshipsView(state, OWNER, NOW, { search:"no matching relationship" });
 assert.equal(empty.availability.state, "filtered_empty");
@@ -222,7 +222,7 @@ assert.equal(empty.items.length, 0);
 const detail = buildRelationshipDetail(state, OWNER, "partner:partner/community", NOW);
 assert.equal(detail.available, true);
 assert.equal(detail.relationship.name, "Community Justice Example");
-assert.equal(detail.contacts[0].email, "avery@community.example.com");
+assert.equal(detail.contacts[0].email, "avery-community@example.com");
 assert.equal(detail.tasks.length, 1);
 assert.ok(detail.timeline.some((item) => item.label === "Scope meeting completed"));
 assert.deepEqual(detail.meetings.map((item) => item.title), ["Community Justice scope review"]);
