@@ -59,6 +59,7 @@ import {
 } from "./pages/partners-home.mjs";
 import { PARTNER_RECORD_STYLESHEET_PATHS, partnerRecordBrowserSource } from "./pages/partner-record.mjs";
 import { OUTREACH_HOME_STYLESHEET_PATH, outreachHomeBrowserSource } from "./pages/outreach-home.mjs";
+import { AUTOMATION_CONTROL_CENTER_STYLESHEET_PATH, automationControlCenterBrowserSource } from "./pages/automation-control-center.mjs";
 import { CAMPAIGN_WIZARD_STYLESHEET_PATH, campaignWizardBrowserSource } from "./pages/campaign-wizard.mjs";
 import { CAMPAIGN_DETAIL_STYLESHEET_PATH, campaignDetailBrowserSource } from "./pages/campaign-detail.mjs";
 import { campaignReviewBrowserSource } from "./pages/campaign-review-step.mjs";
@@ -609,7 +610,12 @@ export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
     "</head>",
     `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(LEE_INBOX_PANEL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TASK_WORKBENCH_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(COMMUNICATION_COMPOSER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(COMMUNICATION_COMPOSER_LAYOUT_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(RELATIONSHIP_DRAWER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_WEEKLY_PLANNER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(FOUNDER_SCOREBOARD_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_HOME_STYLESHEET_PATH))}" />\n  ${PARTNER_RECORD_STYLESHEET_PATHS.map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ")}\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_ACCESSIBILITY_STYLESHEET_PATH))}" />\n  ${options.outreachEnabled ? [OUTREACH_HOME_STYLESHEET_PATH, CAMPAIGN_WIZARD_STYLESHEET_PATH, CAMPAIGN_DETAIL_STYLESHEET_PATH].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  ${options.filesEnabled ? [FILES_HOME_STYLESHEET, "/assets/ui/files-organization.css", FILE_DETAILS_STYLESHEET, FILE_UPLOAD_STYLESHEET, INVESTOR_ROOM_STYLESHEET].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  <script>${routeCompatibilityBrowserSource(options)}</script>\n</head>`
   );
-  const founderOperationsStyles = [FOUNDER_SUPPORT_STYLESHEET_PATH, FOUNDER_CALENDAR_STYLESHEET_PATH, FOUNDER_COMPANY_HEALTH_STYLESHEET_PATH]
+  const founderOperationsStyles = [
+    FOUNDER_SUPPORT_STYLESHEET_PATH,
+    FOUNDER_CALENDAR_STYLESHEET_PATH,
+    FOUNDER_COMPANY_HEALTH_STYLESHEET_PATH,
+    ...(options.outreachEnabled ? [AUTOMATION_CONTROL_CENTER_STYLESHEET_PATH] : [])
+  ]
     .map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`)
     .join("\n  ");
   html = html.replace(
@@ -641,7 +647,7 @@ export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
   html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource()}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${leeInboxPanelBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${taskWorkbenchBrowserSource()}</script>\n<script>${communicationComposerBrowserSource()}</script>\n<script>${relationshipDrawerBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialWeeklyPlannerBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${founderScoreboardBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource()}</script>\n<script>${partnerRecordBrowserSource()}</script>\n${options.outreachEnabled ? `<script>${outreachHomeBrowserSource()}</script>\n<script>${campaignWizardBrowserSource()}</script>\n<script>${campaignReviewBrowserSource()}</script>\n<script>${campaignDetailBrowserSource()}</script>` : ""}\n${options.filesEnabled ? `<script>${filesIntegrationBrowserSource()}</script>` : ""}\n</body>`);
   html = html.replace(
     `<script>${founderScoreboardBrowserSource()}</script>`,
-    `<script>${founderScoreboardBrowserSource()}</script>\n<script>${founderSupportPageBrowserSource()}</script>\n<script>${founderCalendarPageBrowserSource()}</script>\n<script>${founderCompanyHealthBrowserSource()}</script>`
+    `<script>${founderScoreboardBrowserSource()}</script>\n<script>${founderSupportPageBrowserSource()}</script>\n<script>${founderCalendarPageBrowserSource()}</script>\n<script>${founderCompanyHealthBrowserSource()}</script>${options.outreachEnabled ? `\n<script>${automationControlCenterBrowserSource()}</script>` : ""}`
   );
   if (options.socialEnabled) {
     html = html.replace(

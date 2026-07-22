@@ -10,7 +10,7 @@ const styles = (await readFile(new URL("../../assets/ui/outreach-home.css", impo
 const views = [
   { key:"all", label:"All", count:5 }, { key:"draft", label:"Draft", count:1 },
   { key:"scheduled", label:"Scheduled", count:1 }, { key:"active", label:"Active", count:1 },
-  { key:"completed", label:"Completed", count:1 }
+  { key:"completed", label:"Completed", count:1 }, { key:"automation", label:"Automation control", count:null }
 ];
 const items = [
   { id:"campaign:active", name:"Education access campaign", href:"#outreach/campaign/active", campaignType:{ label:"Announcement" }, deliveryMode:{ label:"One-time message" }, audience:{ available:true, summary:"Synthetic community educators", includedCount:24, excludedCount:2 }, status:{ key:"active", label:"Active" }, nextAction:"Review replies", nextSend:null, replies:0, outcome:{ meetings:0, outcomes:null, summary:null }, owner:"Founder" },
@@ -56,7 +56,7 @@ test("CCX-401 Outreach page contract is truthful, read-only, responsive, and acc
   page.on("request", (request) => { if (!["GET", "HEAD", "OPTIONS"].includes(request.method())) mutations.push(`${request.method()} ${new URL(request.url()).pathname}`); });
   await openOutreach(page);
   await expect(page.getByRole("heading", { name:"Outreach", level:1 })).toBeVisible();
-  await expect(page.getByRole("tab")).toHaveCount(5);
+  await expect(page.getByRole("tab")).toHaveCount(6);
   await expect(page.getByRole("tab", { name:/Paused/ })).toHaveCount(0);
   await expect(page.locator("[data-outreach-row]")).toHaveCount(5);
   await expect(page.locator("[data-outreach-table-wrap]")).toContainText("Paused");

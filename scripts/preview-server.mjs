@@ -174,6 +174,10 @@ import {
   handleFounderCompanyHealthApiRequest,
   isFounderCompanyHealthApiPath
 } from "./founder-company-health-api.mjs";
+import {
+  handleAutomationControlCenterApiRequest,
+  isAutomationControlCenterApiPath
+} from "./automation-control-center-api.mjs";
 import { approveSocialPost, regenerateSocialPostImage, requestSocialPostChanges } from "./social-review-actions.mjs";
 import { createSocialManualPackage, publishSocialPost } from "./social-publishing-actions.mjs";
 import { buildSocialCalendarContract } from "./social-calendar-service.mjs";
@@ -35697,7 +35701,7 @@ async function handleRequest(request, response) {
       }, accessDecision.status || 403);
       return;
     }
-    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname) || isSocialWeeklyPlannerApiPath(url.pathname) || isFounderScoreboardApiPath(url.pathname) || isFounderSupportApiPath(url.pathname) || isFounderCalendarApiPath(url.pathname) || isFounderCompanyHealthApiPath(url.pathname)) {
+    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname) || isSocialWeeklyPlannerApiPath(url.pathname) || isFounderScoreboardApiPath(url.pathname) || isFounderSupportApiPath(url.pathname) || isFounderCalendarApiPath(url.pathname) || isFounderCompanyHealthApiPath(url.pathname) || isAutomationControlCenterApiPath(url.pathname)) {
       sendJson(response, {
         ok:false,
         outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
@@ -36006,6 +36010,20 @@ async function handleRequest(request, response) {
       now:new Date().toISOString()
     });
     sendJson(response, result.body || { ok:false, message:"Company Health is unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isAutomationControlCenterApiPath(url.pathname)) {
+    const result = await handleAutomationControlCenterApiRequest({
+      enabled:outreachVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    sendJson(response, result.body || { ok:false, message:"Automation review is unavailable." }, result.status || 404);
     return;
   }
 

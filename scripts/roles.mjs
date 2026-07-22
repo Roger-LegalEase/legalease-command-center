@@ -196,6 +196,7 @@ export function requiredCapabilitiesForEndpoint(method = "GET", pathname = "/", 
   if (verb === "POST" && path === "/api/ui/calendar/action") return ["manage_tasks"];
   if (verb === "POST" && path === "/api/ui/calendar/create-link") return ["read_internal"];
   if (verb === "GET" && path === "/api/ui/company-health") return ["read_internal"];
+  if (verb === "GET" && path === "/api/ui/automation-control-center") return ["read_sensitive"];
   if (verb === "GET" && ["/api/ui/discovery/onboarding", "/api/ui/discovery/checklist"].includes(path)) return ["read_internal"];
   if (verb === "POST" && ["/api/ui/discovery/onboarding", "/api/ui/discovery/analytics"].includes(path)) return ["mutate_state"];
   if (verb === "GET" && (path === "/api/ui/outreach" || /^\/api\/ui\/outreach\/campaign\/[^/]+(?:\/draft)?$/.test(path))) return ["read_internal"];

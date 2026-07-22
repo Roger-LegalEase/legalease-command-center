@@ -10,7 +10,8 @@ export const OUTREACH_HOME_VIEWS = Object.freeze([
   Object.freeze({ key:"draft", label:"Draft" }),
   Object.freeze({ key:"scheduled", label:"Scheduled" }),
   Object.freeze({ key:"active", label:"Active" }),
-  Object.freeze({ key:"completed", label:"Completed" })
+  Object.freeze({ key:"completed", label:"Completed" }),
+  Object.freeze({ key:"automation", label:"Automation control" })
 ]);
 export const OUTREACH_HOME_LIMITS = Object.freeze({ default:24, maximum:40 });
 
@@ -129,7 +130,11 @@ export function buildAuthorizedOutreachHome(state = {}, actor = {}, now = "", op
     selectedView:view,
     views:OUTREACH_HOME_VIEWS.map((option) => ({
       ...option,
-      count:option.key === "all" ? campaigns.length : campaigns.filter((campaign) => campaign.status.key === option.key).length
+      count:option.key === "automation"
+        ? null
+        : option.key === "all"
+          ? campaigns.length
+          : campaigns.filter((campaign) => campaign.status.key === option.key).length
     })),
     items,
     nextCursor:nextOffset < filtered.length ? `outreach-${view}-${nextOffset}` : null,
