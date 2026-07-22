@@ -31,9 +31,9 @@ assert.equal(RESPONSIVE_NAVIGATION_DRAWER_ID, "vnext-navigation-drawer");
 assert.deepEqual(RESPONSIVE_SHELL_CONTRACT.requiredWidths, [1440, 1280, 1024, 768, 390]);
 assert.equal(RESPONSIVE_SHELL_CONTRACT.approvedLogoPath, APPROVED_WHITE_LOGO_PATH);
 assert.deepEqual(RESPONSIVE_SHELL_CONTRACT.primaryDestinations.map((item) => item.label), [
-  "Today", "Social", "Outreach", "Partners", "Files"
+  "Today", "Inbox", "Relationships", "Social", "Outreach", "Scoreboard", "Support", "Calendar", "Company Health", "Files"
 ]);
-assert.deepEqual(RESPONSIVE_SHELL_CONTRACT.secondaryControls.map((item) => item.label), ["Inbox", "Le-E", "Settings"]);
+assert.deepEqual(RESPONSIVE_SHELL_CONTRACT.secondaryControls.map((item) => item.label), ["Le-E", "Settings"]);
 assert.deepEqual(RESPONSIVE_SHELL_CONTRACT.createOptions.map((item) => item.label), ["Social post", "Outreach campaign", "Partner", "File or folder", "Quick note"]);
 assert.equal(Object.isFrozen(RESPONSIVE_SHELL_CONTRACT), true);
 assert.equal(Object.isFrozen(RESPONSIVE_SHELL_CONTRACT.requiredWidths), true);
@@ -47,7 +47,7 @@ assert.match(chrome.start, /class="vnext-drawer-overlay"[\s\S]*aria-label="Close
 assert.match(chrome.start, /data-shell-current-context aria-live="polite">Today/);
 assert.match(chrome.start, /src="\/assets\/brand\/logos\/legalease-logo-white-2025\.png" width="1920" height="1080"/);
 assert.equal((chrome.start.match(/class="vnext-primary-navigation"/g) || []).length, 1, "There must be one primary navigation instance.");
-for (const label of ["Today", "Social", "Outreach", "Partners", "Files", "Inbox", "Le-E", "Settings"]) {
+for (const label of ["Today", "Inbox", "Relationships", "Social", "Outreach", "Scoreboard", "Support", "Calendar", "Company Health", "Files", "Le-E", "Settings"]) {
   assert.match(chrome.start, new RegExp(`>${label}<`), `${label} must remain in the responsive navigation.`);
 }
 assert.doesNotMatch(chrome.start, />Task</, "Task remains available in Today and Tasks, not Global Create.");
@@ -101,8 +101,8 @@ assert.equal(resolveShellDestination("#item/campaigns/campaign-1"), "Outreach");
 assert.equal(resolveShellDestination("#item/partners/partner-1"), "Partners");
 assert.equal(resolveShellDestination("#item/reports/report-1"), "Files");
 assert.equal(resolveShellDestination("#unknown-responsive-route"), "Today");
-assert.deepEqual(PRIMARY_SHELL_DESTINATIONS.map((item) => item.label), ["Today", "Social", "Outreach", "Partners", "Files"]);
-assert.deepEqual(SECONDARY_SHELL_CONTROLS.map((item) => item.label), ["Inbox", "Le-E", "Settings"]);
+assert.deepEqual(PRIMARY_SHELL_DESTINATIONS.map((item) => item.label), ["Today", "Inbox", "Relationships", "Social", "Outreach", "Scoreboard", "Support", "Calendar", "Company Health", "Files"]);
+assert.deepEqual(SECONDARY_SHELL_CONTROLS.map((item) => item.label), ["Le-E", "Settings"]);
 assert.deepEqual(CREATE_MENU_OPTIONS.map((item) => item.label), ["Social post", "Outreach campaign", "Partner", "File or folder", "Quick note"]);
 
 const legacyFixture = `<!doctype html><html><head><link rel="stylesheet" href="/assets/ui/tokens.css" /></head><body>

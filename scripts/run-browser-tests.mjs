@@ -773,6 +773,41 @@ const socialState = socialFixtureState(seedState);
 const socialProductionState = socialProductionFixtureState(seedState);
 const composerRestrictedState = structuredClone(socialState);
 const partnersState = structuredClone(buildPartnersTrainScenario().state);
+partnersState.connectorStatus = [{ connector:"gmail", status:"connected", connected:true, updatedAt:"2026-07-21T14:00:00.000Z" }];
+partnersState.inboxConfig = { lastScanAt:"2026-07-21T14:00:00.000Z", lastScanStatus:"complete", lastScanCount:2, backfillCompletedAt:"2026-07-21T14:00:00.000Z" };
+partnersState.inboxSignals = [{
+  id:"browser-lee-needs-reply",
+  kind:"needs_reply",
+  status:"suggested",
+  counterpartName:"Taylor Example",
+  counterpartEmail:"taylor@example.com",
+  organization:"Community Justice Network",
+  summary:"Taylor asked which pilot milestone Roger wants to confirm next.",
+  suggestedNextAction:"Confirm the pilot decision date.",
+  whoOwesNextMove:"Roger",
+  confidence:0.92,
+  dueAt:"2026-07-22T17:00:00.000Z",
+  threadId:"synthetic-browser-thread-1",
+  pipelineMatch:{ collection:"partners", itemId:"partner-community", matchedBy:"address" },
+  ownerOnly:true,
+  internalOnly:true,
+  updatedAt:"2026-07-21T14:00:00.000Z"
+}, {
+  id:"browser-lee-went-quiet",
+  kind:"went_quiet",
+  status:"suggested",
+  counterpartName:"Morgan Example",
+  counterpartEmail:"morgan@example.com",
+  organization:"Example Community Network",
+  summary:"The Partner conversation has been quiet for eight days.",
+  suggestedNextAction:"Send a short check-in with one useful next step.",
+  confidence:0.81,
+  ageDays:8,
+  threadId:"synthetic-browser-thread-2",
+  ownerOnly:true,
+  internalOnly:true,
+  updatedAt:"2026-07-21T13:00:00.000Z"
+}];
 const filesState = structuredClone(fixtureState);
 filesState.dataRoomItems = [{
   id:"company-overview",
@@ -785,6 +820,35 @@ filesState.dataRoomItems = [{
   verifiedAt:"2026-07-18T12:00:00.000Z",
   updatedAt:"2026-07-18T12:00:00.000Z",
   allowedRoles:["owner", "admin", "operator", "viewer"]
+}];
+const founderOperationsState = structuredClone(fixtureState);
+const founderOperationsNow = new Date();
+const founderOperationsMeetingStart = new Date(founderOperationsNow.getTime() + 24 * 60 * 60 * 1_000);
+const founderOperationsMeetingEnd = new Date(founderOperationsMeetingStart.getTime() + 45 * 60 * 1_000);
+founderOperationsState.supportIssues = [{
+  id:"founder-browser-support-001",
+  title:"Customer needs an intake status update",
+  summary:"A synthetic customer is waiting for a clear next step.",
+  status:"open",
+  urgency:"normal",
+  owner:"Roger",
+  partnerId:"browser-partner-001",
+  requesterName:"Jamie Example",
+  created_at:new Date(founderOperationsNow.getTime() - 2 * 24 * 60 * 60 * 1_000).toISOString(),
+  updated_at:founderOperationsNow.toISOString(),
+  history:[]
+}];
+founderOperationsState.calendarSignals = [{
+  id:"founder-browser-calendar-001",
+  eventId:"founder-browser-calendar-001",
+  title:"Partner workflow review",
+  summary:"Review the synthetic Partner workflow and agree on the next action.",
+  organization:"Example Community Network",
+  partnerId:"browser-partner-001",
+  startTime:founderOperationsMeetingStart.toISOString(),
+  endTime:founderOperationsMeetingEnd.toISOString(),
+  htmlLink:"https://calendar.google.com/calendar/event?eid=synthetic-founder-operations",
+  updatedAt:founderOperationsNow.toISOString()
 }];
 const composerTemplate = composerRestrictedState.posts.find((post) => post.id === "idea-01");
 composerRestrictedState.posts.push(
@@ -812,6 +876,10 @@ const partnersDataPath = path.join(tempRoot, "partners-state.json");
 const outreachDataPath = path.join(tempRoot, "outreach-state.json");
 const filesDataPath = path.join(tempRoot, "files-state.json");
 const discoveryDataPath = path.join(tempRoot, "discovery-state.json");
+const founderTaskDataPath = path.join(tempRoot, "founder-task-state.json");
+const founderOperationsDataPath = path.join(tempRoot, "founder-operations-state.json");
+const founderSocialDataPath = path.join(tempRoot, "founder-social-state.json");
+const founderPartnersDataPath = path.join(tempRoot, "founder-partners-state.json");
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
@@ -829,7 +897,11 @@ await Promise.all([
   writeFile(partnersDataPath, `${JSON.stringify(partnersState, null, 2)}\n`, { mode:0o600 }),
   writeFile(outreachDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(filesDataPath, `${JSON.stringify(filesState, null, 2)}\n`, { mode:0o600 }),
-  writeFile(discoveryDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 })
+  writeFile(discoveryDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(founderTaskDataPath, `${JSON.stringify(todayState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(founderOperationsDataPath, `${JSON.stringify(founderOperationsState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(founderSocialDataPath, `${JSON.stringify(socialState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(founderPartnersDataPath, `${JSON.stringify(partnersState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
 const restrictedSessionSecret = crypto.randomBytes(32).toString("base64url");
@@ -950,6 +1022,27 @@ try {
     vnext:true,
     productFlags:{ discovery:true }
   }));
+  servers.push(await startServer({
+    name:"founder-task",
+    dataPath:founderTaskDataPath,
+    vnext:true
+  }));
+  servers.push(await startServer({
+    name:"founder-operations",
+    dataPath:founderOperationsDataPath,
+    vnext:true
+  }));
+  servers.push(await startServer({
+    name:"founder-social",
+    dataPath:founderSocialDataPath,
+    vnext:true
+  }));
+  servers.push(await startServer({
+    name:"founder-partners",
+    dataPath:founderPartnersDataPath,
+    vnext:true,
+    productFlags:{ outreach:true }
+  }));
   const runnerEnv = {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -975,6 +1068,10 @@ try {
     BROWSER_TEST_FILES_BASE_URL:servers[14].baseURL,
     BROWSER_TEST_SOCIAL_PRODUCTION_BASE_URL:servers[15].baseURL,
     BROWSER_TEST_DISCOVERY_BASE_URL:servers[16].baseURL,
+    BROWSER_TEST_FOUNDER_TASK_BASE_URL:servers[17].baseURL,
+    BROWSER_TEST_FOUNDER_OPERATIONS_BASE_URL:servers[18].baseURL,
+    BROWSER_TEST_FOUNDER_SOCIAL_BASE_URL:servers[19].baseURL,
+    BROWSER_TEST_FOUNDER_PARTNERS_BASE_URL:servers[20].baseURL,
     BROWSER_TEST_COMPOSER_RESTRICTED_CREDENTIALS:JSON.stringify(composerRestrictedCredentials)
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));

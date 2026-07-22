@@ -1,11 +1,11 @@
 # CCX-002 founder-language registry
 
-Source main SHA: `24b8d94bc56787d2b11f04b1201796403117d9c6`
+Source Founder Mode SHA: `9141f5da8aaab3e6002dde20976d18b423300256`
 
 This document and `scripts/ui/labels.mjs` define the plain-English vocabulary for
-Command Center vNext. They are a presentation contract, not a runtime migration.
-CCX-002 does not change current labels, routes, navigation, rendering, workflows,
-authorization, safety controls, sending, publishing, storage, or business behavior.
+Command Center vNext. The Founder shell uses this presentation contract for its
+navigation labels; the contract does not change authorization, safety controls,
+sending, publishing, storage, or business behavior.
 
 ## Product sentence
 
@@ -15,17 +15,22 @@ Use this sentence when the product needs a one-sentence explanation. Do not expl
 the product through engine names, queue taxonomies, safety architecture, or internal
 event models.
 
-## Five primary destinations
+## Ten primary destinations
 
 | Destination | Plain-English purpose |
 | --- | --- |
 | **Today** | Decide what deserves attention now and what comes next. |
+| **Inbox** | Review decisions, follow-ups, and updates across the product. |
+| **Relationships** | Manage people, organizations, commitments, and next actions. |
 | **Social** | Create, review, schedule, publish, and measure social content. |
 | **Outreach** | Create and run partner or customer email campaigns. |
-| **Partners** | Manage relationships, opportunities, programs, and next actions. |
+| **Scoreboard** | Review the operating and revenue numbers that need attention. |
+| **Support** | Review customer issues and choose the next safe action. |
+| **Calendar** | Prepare for meetings and create follow-up work. |
+| **Company Health** | Review the company systems and operating risks that need attention. |
 | **Files** | Organize brand, partner, operating, compliance, and investor material. |
 
-These five labels are exact. Do not add a sixth catch-all destination.
+These ten labels are exact. Do not add a catch-all destination.
 
 ## Global utilities
 

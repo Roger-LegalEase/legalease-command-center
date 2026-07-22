@@ -93,6 +93,7 @@ assert.equal(payload.dateLabel, "Friday, July 17");
 assert.equal(payload.nowItem.title, "Prepare the current Partner brief");
 assert.equal(payload.nowItem.actionLabel, "Resume");
 assert.equal(payload.nowItem.href, "#item/tasks/today-now-task");
+assert.equal(payload.nowItem.taskId, "today-now-task");
 assert.equal(payload.nextItems.length, 3);
 assert.deepEqual(payload.nextItems.map((item) => item.href), [
   "#social/post/today-social-next",
@@ -152,6 +153,7 @@ for (const behavior of [
   "No records were changed. Try again.", "Today needs additional access", "vnext:session-expired",
   "vnext:recovery-mode", "Open Inbox", "View updates", "Open Quick Capture"
 ]) assert.ok(browserSource.includes(behavior), `${behavior} must be represented by the Today page contract.`);
+assert.match(browserSource, /dataset\.taskOpen = "true"/);
 assert.match(browserSource, /textContent = String\(value/);
 assert.match(browserSource, /checked\.safeHash === href/);
 assert.match(browserSource, /method:"GET"/);
@@ -183,7 +185,7 @@ assert.match(packageSource, /"test:vnext-today-page"/);
 assert.doesNotMatch(pageSource, /^\s*import[^\n]+(?:storage|database|network|provider|send|publish|preview-server|tasks-engine|daily-run-session|inbox-view|today-view)/im);
 assert.doesNotMatch(pageSource, /process\.env|readFile|writeFile|createServer/);
 assert.match(cssSource, /\.vnext-today-now[\s\S]*min-height:/);
-assert.match(cssSource, /background: #F04800/);
+assert.match(cssSource, /background: var\(--le-teal-500\)/);
 assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.vnext-today-now \{ order: 1/);
 assert.match(cssSource, /@media \(prefers-reduced-motion: reduce\)/);
 assert.doesNotMatch(cssSource, /gradient|backdrop-filter/i);

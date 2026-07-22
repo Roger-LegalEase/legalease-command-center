@@ -78,9 +78,9 @@ test("Today is a four-question command surface with exact read-only navigation",
   const progress = pageRoot.locator('[data-today-answer="progress"]');
   await expect(now.getByRole("heading", { name:"Prepare the current Partner brief", level:2 })).toBeVisible();
   await expect(now.getByText("This is the current Daily Run item.")).toBeVisible();
-  const primary = now.getByRole("link", { name:"Resume Prepare the current Partner brief" });
+  const primary = now.getByRole("button", { name:"Resume Prepare the current Partner brief" });
   await expect(primary).toHaveText("Resume");
-  await expect(primary).toHaveAttribute("href", "#item/tasks/today-browser-now-task");
+  await expect(primary).toHaveAttribute("data-task-id", "today-browser-now-task");
   const hierarchy = await page.evaluate(() => {
     const nowNode = document.querySelector('[data-today-answer="now"]');
     const nextNode = document.querySelector('[data-today-answer="next"]');
@@ -96,7 +96,7 @@ test("Today is a four-question command surface with exact read-only navigation",
   expect(hierarchy.first).toBe("now");
   expect(hierarchy.nowHeight).toBeGreaterThan(250);
   expect(hierarchy.nowShadow).not.toBe("none");
-  expect(hierarchy.actionBackground).toBe("rgb(240, 72, 0)");
+  expect(hierarchy.actionBackground).toBe("rgb(120, 210, 203)");
 
   const nextRows = next.locator(".vnext-today-next-list > li");
   await expect(nextRows).toHaveCount(3);
@@ -138,11 +138,13 @@ test("Today is a four-question command surface with exact read-only navigation",
 
   const historyLength = await page.evaluate(() => history.length);
   await primary.click();
-  await expect(page).toHaveURL(/#item\/tasks\/today-browser-now-task$/);
-  await expect(page.locator("main#app #item.page-section.active")).toBeVisible();
-  expect(await page.evaluate(() => history.length)).toBeGreaterThanOrEqual(historyLength);
+  const taskWorkbench = page.locator("[data-task-workbench]");
+  await expect(taskWorkbench).toBeVisible();
+  await expect(taskWorkbench.locator("[data-task-title]")).toHaveText("Prepare the current Partner brief");
+  await expect(page).toHaveURL(/#today$/);
+  expect(await page.evaluate(() => history.length)).toBe(historyLength);
   expect(mutationRequests).toEqual([]);
-  await page.goBack();
+  await taskWorkbench.getByRole("button", { name:"Close", exact:true }).click();
   await expect(page.locator("[data-today-page]")).toBeVisible();
 
   const exactNext = [
@@ -232,7 +234,7 @@ test("Today compatibility aliases and retained utilities remain usable without d
   await page.getByRole("button", { name:"Profile", exact:true }).click();
   await expect(page.getByRole("menu", { name:"Profile" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByRole("navigation", { name:"Command Center utilities" }).getByRole("link", { name:/^Inbox/ }).click();
+  await page.getByRole("navigation", { name:"Primary destinations" }).getByRole("link", { name:/^Inbox/ }).click();
   await expect(page).toHaveURL(/#inbox/);
   await page.goBack();
   await page.getByRole("button", { name:"Le-E", exact:true }).click();
@@ -356,7 +358,7 @@ test("Today stays ordered, accessible, and overflow-free at every required width
       .sort((left, right) => left.top - right.top)
       .map((entry) => entry.key));
     expect(order).toEqual(["now", "next", "needs-you", "progress"]);
-    await expect(page.getByRole("link", { name:"Resume Prepare the current Partner brief" })).toBeVisible();
+    await expect(page.getByRole("button", { name:"Resume Prepare the current Partner brief" })).toBeVisible();
     await page.screenshot({ path:path.join(screenshotDirectory, screenshotNames.get(width)), fullPage:true, animations:"disabled" });
   }
   const axe = await new AxeBuilder({ page })

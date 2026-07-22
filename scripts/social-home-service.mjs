@@ -23,6 +23,7 @@ const STATUS_OPTIONS = Object.freeze([
 export const SOCIAL_HOME_ENDPOINT = "/api/ui/social";
 export const SOCIAL_HOME_VIEWS = Object.freeze([
   Object.freeze({ key:"ideas", label:"Ideas" }),
+  Object.freeze({ key:"weekly", label:"Weekly plan" }),
   Object.freeze({ key:"calendar", label:"Calendar" }),
   Object.freeze({ key:"library", label:"Library" }),
   Object.freeze({ key:"results", label:"Results" })
@@ -332,6 +333,7 @@ function calendarItems(posts) {
 function itemsByView(posts, sources) {
   return {
     ideas:sortItems([...posts.filter((item) => ["idea", "draft"].includes(item.status.key)), ...sources]),
+    weekly:[],
     calendar:calendarItems(posts),
     library:sortItems(posts.filter((item) => ["draft", "needs_review", "scheduled", "published"].includes(item.status.key))),
     results:sortItems(posts.filter((item) => item.status.key === "published" && item.result?.available === true))

@@ -43,13 +43,13 @@ const state = {
 const before = structuredClone(state);
 const all = buildAuthorizedOutreachHome(state, OWNER, NOW, { view:"all", limit:40 });
 assert.equal(OUTREACH_HOME_ENDPOINT, "/api/ui/outreach");
-assert.deepEqual(OUTREACH_HOME_VIEWS.map((view) => view.label), ["All", "Draft", "Scheduled", "Active", "Completed"]);
+assert.deepEqual(OUTREACH_HOME_VIEWS.map((view) => view.label), ["All", "Draft", "Scheduled", "Active", "Completed", "Automation control"]);
 assert.equal(all.ok, true);
 assert.equal(all.authorized, true);
 assert.equal(all.generatedAt, NOW);
 assert.equal(all.items.length, 5);
 assert.equal(all.items.some((item) => item.id.includes("hidden")), false);
-assert.deepEqual(all.views.map((view) => [view.key, view.count]), [["all",5],["draft",1],["scheduled",1],["active",1],["completed",1]]);
+assert.deepEqual(all.views.map((view) => [view.key, view.count]), [["all",5],["draft",1],["scheduled",1],["active",1],["completed",1],["automation",null]]);
 assert.equal(all.views.some((view) => view.key === "paused"), false, "Paused must remain a truthful status without becoming a view.");
 assert.equal(all.items.find((item) => item.id === "campaign:paused").status.label, "Paused");
 assert.equal(all.items.find((item) => item.id === "campaign:active").replies, 0, "An explicit zero must remain zero.");

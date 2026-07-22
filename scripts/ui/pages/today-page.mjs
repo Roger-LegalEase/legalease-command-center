@@ -121,6 +121,18 @@ export function todayPageBrowserSource() {
       link.textContent = label;
       return link;
     }
+    function itemAction(item, className = "") {
+      if (item?.taskId) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = className;
+        button.dataset.taskOpen = "true";
+        button.dataset.taskId = item.taskId;
+        button.textContent = item.actionLabel || "Open";
+        return button;
+      }
+      return routeLink(item?.actionLabel || "Open", item?.href, className);
+    }
     function text(tag, value, className = "") {
       const element = document.createElement(tag);
       if (className) element.className = className;
@@ -188,7 +200,7 @@ export function todayPageBrowserSource() {
       ];
       if (item.summary && item.summary !== item.whyNow) children.push(text("p", item.summary, "vnext-today-summary"));
       children.push(metadata(item));
-      const action = routeLink(item.actionLabel, item.href, "vnext-today-primary-action");
+      const action = itemAction(item, "vnext-today-primary-action");
       if (action) {
         action.setAttribute("aria-label", item.actionAccessibleName || item.actionLabel + " " + item.title);
         children.push(action);
@@ -214,7 +226,7 @@ export function todayPageBrowserSource() {
         body.append(text("p", item.objectType || item.destination, "vnext-today-context"), text("h3", item.title));
         if (item.whyNow) body.append(text("p", item.whyNow, "vnext-today-summary"));
         body.append(metadata(item));
-        const action = routeLink(item.actionLabel || "Open", item.href, "vnext-today-item-action");
+        const action = itemAction(item, "vnext-today-item-action");
         if (action) action.setAttribute("aria-label", (item.actionLabel || "Open") + " " + item.title);
         row.append(body);
         if (action) row.append(action);
@@ -242,7 +254,9 @@ export function todayPageBrowserSource() {
         items.className = "vnext-today-compact-list";
         for (const item of (summary.topItems || []).slice(0, 3)) {
           const row = document.createElement("li");
-          const link = routeLink(item.title, item.href);
+          const link = item.taskId
+            ? itemAction({ ...item, actionLabel:item.title }, "vnext-today-compact-task")
+            : routeLink(item.title, item.href);
           if (!link) continue;
           row.append(link, text("span", item.destination));
           items.append(row);

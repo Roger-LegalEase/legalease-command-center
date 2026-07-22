@@ -130,6 +130,21 @@ import { buildAuthorizedTodayPage } from "./today-page-service.mjs";
 import { buildAuthorizedSocialHome } from "./social-home-service.mjs";
 import { buildSocialResultsView } from "./ui/view-models/social-results.mjs";
 import { PARTNER_API_BODY_LIMIT, handlePartnerApiRequest, isPartnerApiPath } from "./partner-api-integration.mjs";
+import {
+  RELATIONSHIP_ACTION_BODY_LIMIT,
+  handleRelationshipApiRequest,
+  isRelationshipApiPath
+} from "./relationship-api-integration.mjs";
+import {
+  COMMUNICATION_COMPOSER_BODY_LIMIT,
+  handleCommunicationComposerApiRequest,
+  isCommunicationComposerApiPath
+} from "./communication-composer-api.mjs";
+import {
+  LEE_INBOX_BODY_LIMIT,
+  handleLeeInboxApiRequest,
+  isLeeInboxApiPath
+} from "./lee-inbox-api.mjs";
 import { OUTREACH_API_BODY_LIMIT, handleOutreachApiRequest, isOutreachApiPath } from "./outreach-api-integration.mjs";
 import { FILES_JSON_BODY_LIMIT, FILES_MULTIPART_BODY_LIMIT, handleFilesApiRequest, isFilesApiPath, parseFilesMultipart } from "./files-api-integration.mjs";
 import { createLocalFilesStorage, createSupabaseFilesStorage } from "./files-storage-adapter.mjs";
@@ -139,6 +154,34 @@ import { buildPostComposerContract, composerSavePath, normalizeComposerPatch } f
 import { renderSocialCreative, saveSocialCreativeSelection } from "./social-creative-actions.mjs";
 import { saveSocialVariants } from "./social-variant-actions.mjs";
 import { saveSocialSchedule } from "./social-schedule-actions.mjs";
+import {
+  SOCIAL_WEEKLY_API_BODY_LIMIT,
+  handleSocialWeeklyPlannerApiRequest,
+  isSocialWeeklyPlannerApiPath
+} from "./social-weekly-planner-api.mjs";
+import {
+  FOUNDER_SCOREBOARD_BODY_LIMIT,
+  handleFounderScoreboardApiRequest,
+  isFounderScoreboardApiPath
+} from "./founder-scoreboard-api.mjs";
+import {
+  FOUNDER_SUPPORT_API_BODY_LIMIT,
+  handleFounderSupportApiRequest,
+  isFounderSupportApiPath
+} from "./founder-support-api.mjs";
+import {
+  FOUNDER_CALENDAR_API_BODY_LIMIT,
+  handleFounderCalendarApiRequest,
+  isFounderCalendarApiPath
+} from "./founder-calendar-api.mjs";
+import {
+  handleFounderCompanyHealthApiRequest,
+  isFounderCompanyHealthApiPath
+} from "./founder-company-health-api.mjs";
+import {
+  handleAutomationControlCenterApiRequest,
+  isAutomationControlCenterApiPath
+} from "./automation-control-center-api.mjs";
 import { approveSocialPost, regenerateSocialPostImage, requestSocialPostChanges } from "./social-review-actions.mjs";
 import { createSocialManualPackage, publishSocialPost } from "./social-publishing-actions.mjs";
 import { buildSocialCalendarContract } from "./social-calendar-service.mjs";
@@ -166,6 +209,13 @@ import {
   executeAuthorizedInboxAction,
   inboxActionSafeError
 } from "./inbox-action-service.mjs";
+import {
+  TASK_WORKBENCH_BODY_LIMIT,
+  TASK_WORKBENCH_ROUTE,
+  applyTaskWorkbenchAction,
+  buildTaskWorkbenchView,
+  taskWorkbenchSafeError
+} from "./task-workbench-service.mjs";
 import { buildRouteAccessView, ROUTE_ACCESS_ENDPOINT } from "./shell-resilience-service.mjs";
 import { buildDataIntegritySnapshot, buildDataModelInventory, saveDataIntegritySnapshot } from "./state-integrity.mjs";
 import { buildEndpointInventory, guardForbiddenEndpoint, safeAuthHardeningSummary } from "./auth-endpoint-hardening.mjs";
@@ -189,7 +239,12 @@ import { readCommandCenterVNextProductConfig } from "./ui/vnext-config.mjs";
 import { renderShellBoundary } from "./ui/shell-boundary.mjs";
 import { DESIGN_SYSTEM_SHOWCASE_PATH } from "./ui/brand-contract.mjs";
 import { renderDesignSystemShowcase } from "./ui/design-system-showcase.mjs";
-import { renderVNextDesktopShell } from "./ui/app-shell.mjs";
+import {
+  VNEXT_LAZY_RUNTIME_MAX_BYTES,
+  VNEXT_LAZY_RUNTIME_PATH_PREFIX,
+  renderVNextDesktopShell,
+  resolveVNextLazyRuntime
+} from "./ui/app-shell.mjs";
 import { buildGlobalCreateViewModel, GLOBAL_CREATE_OPTIONS } from "./ui/global-create.mjs";
 import { createGlobalObject, GLOBAL_CREATE_ENDPOINTS, globalCreateSafeError } from "./global-create-service.mjs";
 import {
@@ -8804,6 +8859,28 @@ async function serveAsset(pathname, response) {
   }
 }
 
+function serveVNextLazyRuntime(pathname, response, { headOnly = false } = {}) {
+  const source = resolveVNextLazyRuntime(pathname, { outreachEnabled:outreachVNextConfig.enabled });
+  if (!source) {
+    response.writeHead(404, { "content-type":"text/plain; charset=utf-8", "cache-control":"no-store" });
+    response.end(headOnly ? "" : "Not found");
+    return;
+  }
+  const size = Buffer.byteLength(source);
+  if (size > VNEXT_LAZY_RUNTIME_MAX_BYTES) {
+    response.writeHead(500, { "content-type":"text/plain; charset=utf-8", "cache-control":"no-store" });
+    response.end(headOnly ? "" : "Runtime unavailable");
+    return;
+  }
+  response.writeHead(200, {
+    "content-type":"text/javascript; charset=utf-8",
+    "content-length":String(size),
+    "cache-control":"private, max-age=3600",
+    "x-content-type-options":"nosniff"
+  });
+  response.end(headOnly ? "" : source);
+}
+
 function titleFromTopic(topic) {
   const clean = String(topic || "LegalEase content draft").replace(/[^\w\s'-]/g, "").trim();
   return clean.length > 64 ? `${clean.slice(0, 61)}...` : clean;
@@ -12748,7 +12825,7 @@ async function googleJson(url, token = "") {
 // gate; test-inbox-intelligence.mjs pins it.
 // Le-E's conversation memory joins the inbox data behind the owner wall: Roger's chat history
 // (and the leeMemory pointer into it) is stripped from any state payload served to a non-owner.
-const OWNER_ONLY_COLLECTIONS = ["inboxSignals", "inboxConfig", "leeThreads", "leeMessages", "leeRuns", "leeMemory"];
+const OWNER_ONLY_COLLECTIONS = ["inboxSignals", "inboxConfig", "emailDrafts", "leeThreads", "leeMessages", "leeRuns", "leeMemory"];
 function stripOwnerOnlyCollections(payload, actor) {
   if (!payload || typeof payload !== "object") return payload;
   if (String(actor?.role || "") === "owner") return payload;
@@ -35602,6 +35679,16 @@ async function handleRequest(request, response) {
       sendJson(response, { error:"Today is unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
       return;
     }
+    else if (TASK_WORKBENCH_ROUTE.test(url.pathname)) {
+      sendJson(response, {
+        ok:false,
+        outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
+        message:accessDecision.status === 401
+          ? "Your session ended. Sign in and try again."
+          : "This task is unavailable for this account."
+      }, accessDecision.status || 403);
+      return;
+    }
     else if (url.pathname === "/api/ui/social") {
       sendJson(response, { error:"Social is unavailable for this account. No protected details were loaded." }, accessDecision.status || 403);
       return;
@@ -35642,6 +35729,16 @@ async function handleRequest(request, response) {
         error:accessDecision.status === 401
           ? "Your session ended. Sign in again before opening Partners."
           : "Partners are unavailable for this account. No protected details were loaded."
+      }, accessDecision.status || 403);
+      return;
+    }
+    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname) || isSocialWeeklyPlannerApiPath(url.pathname) || isFounderScoreboardApiPath(url.pathname) || isFounderSupportApiPath(url.pathname) || isFounderCalendarApiPath(url.pathname) || isFounderCompanyHealthApiPath(url.pathname) || isAutomationControlCenterApiPath(url.pathname)) {
+      sendJson(response, {
+        ok:false,
+        outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
+        message:accessDecision.status === 401
+          ? "Your session ended. Sign in again to continue."
+          : "Founder follow-up details are unavailable for this account."
       }, accessDecision.status || 403);
       return;
     }
@@ -35810,6 +35907,161 @@ async function handleRequest(request, response) {
     return;
   }
 
+  if (isRelationshipApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:RELATIONSHIP_ACTION_BODY_LIMIT }) : {};
+    const execute = () => handleRelationshipApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
+    sendJson(response, result.body || { ok:false, message:"Relationship details are unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isCommunicationComposerApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:COMMUNICATION_COMPOSER_BODY_LIMIT }) : {};
+    const execute = () => handleCommunicationComposerApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
+    sendJson(response, result.body || { ok:false, message:"Follow-up drafting is unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isLeeInboxApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:LEE_INBOX_BODY_LIMIT }) : {};
+    const execute = () => handleLeeInboxApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
+    sendJson(response, result.body || { ok:false, message:"Le-E follow-ups are unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isSocialWeeklyPlannerApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:SOCIAL_WEEKLY_API_BODY_LIMIT }) : {};
+    const execute = () => handleSocialWeeklyPlannerApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
+    sendJson(response, result.body || { ok:false, message:"Weekly Social planning is unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isFounderScoreboardApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:FOUNDER_SCOREBOARD_BODY_LIMIT }) : {};
+    const execute = () => handleFounderScoreboardApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
+    sendJson(response, result.body || { ok:false, message:"Scoreboard is unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isFounderSupportApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:FOUNDER_SUPPORT_API_BODY_LIMIT }) : {};
+    const execute = () => handleFounderSupportApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
+    sendJson(response, result.body || { ok:false, message:"Support is unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isFounderCalendarApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:FOUNDER_CALENDAR_API_BODY_LIMIT }) : {};
+    const execute = () => handleFounderCalendarApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const stateChangingCalendarAction = mutation && url.pathname !== "/api/ui/calendar/create-link";
+    const result = stateChangingCalendarAction ? await serializeStateMutation(execute) : await execute();
+    sendJson(response, result.body || { ok:false, message:"Calendar is unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isFounderCompanyHealthApiPath(url.pathname)) {
+    const result = await handleFounderCompanyHealthApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    sendJson(response, result.body || { ok:false, message:"Company Health is unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isAutomationControlCenterApiPath(url.pathname)) {
+    const result = await handleAutomationControlCenterApiRequest({
+      enabled:outreachVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    sendJson(response, result.body || { ok:false, message:"Automation review is unavailable." }, result.status || 404);
+    return;
+  }
+
   if (isOutreachApiPath(url.pathname)) {
     const input = ["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase())
       ? {}
@@ -35924,6 +36176,46 @@ async function handleRequest(request, response) {
           ? "The Inbox view could not be read. Check the selected filters."
           : "Inbox could not load. No records were changed. Try again."
       }, Number(error?.status || 500));
+    }
+    return;
+  }
+
+  const taskWorkbenchRoute = url.pathname.match(TASK_WORKBENCH_ROUTE);
+  if (taskWorkbenchRoute && request.method === "GET" && !taskWorkbenchRoute[2]) {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { ok:false, outcome:"not_available", message:"Task details are unavailable." }, 404);
+      return;
+    }
+    try {
+      const currentState = await store.readState();
+      const actor = publicActor(accessDecision.actor);
+      sendJson(response, buildTaskWorkbenchView(currentState, actor, decodeURIComponent(taskWorkbenchRoute[1])));
+    } catch (error) {
+      const safe = taskWorkbenchSafeError(error);
+      sendJson(response, safe.body, safe.status);
+    }
+    return;
+  }
+
+  if (taskWorkbenchRoute && request.method === "POST" && taskWorkbenchRoute[2] === "action") {
+    if (!commandCenterVNextConfig.enabled) {
+      sendJson(response, { ok:false, outcome:"not_available", message:"Task changes are unavailable. No changes were made." }, 404);
+      return;
+    }
+    try {
+      const input = await readBoundedJson(request, { limit:TASK_WORKBENCH_BODY_LIMIT });
+      const actor = publicActor(accessDecision.actor);
+      const taskId = decodeURIComponent(taskWorkbenchRoute[1]);
+      const result = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const action = applyTaskWorkbenchAction(currentState, actor, taskId, input, { now:new Date().toISOString() });
+        if (Object.keys(action.collections).length) await store.writeCollections(action.collections);
+        return action;
+      });
+      sendJson(response, result.body);
+    } catch (error) {
+      const safe = taskWorkbenchSafeError(error);
+      sendJson(response, safe.body, safe.status);
     }
     return;
   }
@@ -36295,6 +36587,11 @@ async function handleRequest(request, response) {
     response.end(body);
     return;
   }
+
+	  if (["GET", "HEAD"].includes(request.method) && url.pathname.startsWith(VNEXT_LAZY_RUNTIME_PATH_PREFIX)) {
+	    serveVNextLazyRuntime(url.pathname, response, { headOnly:request.method === "HEAD" });
+	    return;
+	  }
 
 	  if (/^\/assets\/(styles|brand|ui)\//.test(url.pathname) && request.method === "GET") {
 	    await serveAsset(url.pathname, response);
@@ -37648,22 +37945,18 @@ async function handleRequest(request, response) {
     return;
   }
 
-  // ---- I1 inbox intelligence: on-demand scan --------------------------------------------
-  // Owner/admin only, and refused while the inbox toggle is OFF: the toggle is the
-  // capability gate the 2026-07-12 decision record hangs the audit event on, so nothing —
-  // including a manual scan — reads the mailbox before the flip. Read-only; writes only the
-  // inboxSignals/inboxConfig scoped patch.
+  // ---- I1 inbox intelligence: owner-started, read-only refresh ----------------------------
+  // A manual founder refresh is independent of scheduled automation. It reads only the
+  // allowed mailbox through the existing bounded Google adapter, sends nothing, and writes
+  // only the minimized signal/config/suggestion projections.
   if (url.pathname === "/api/inbox/scan" && request.method === "POST") {
-    if (!["owner", "admin"].includes(String(accessDecision.actor?.role || ""))) {
-      sendJson(response, { error: "Only the owner can scan the inbox." }, 403);
+    if (String(accessDecision.actor?.role || "") !== "owner") {
+      sendJson(response, { error: "Refresh inbox now is available to the signed-in owner." }, 403);
       return;
     }
     try {
       const result = await serializeStateMutation(async () => {
         const currentState = await store.readState();
-        if (!autopilotEnabled(currentState, INBOX_ENGINE_ID, process.env)) {
-          return { blocked: true };
-        }
         const planned = await planInboxIntelligence(currentState, {
           fetchInboxThreads: fetchInboxThreadsForIntelligence,
           inboxReadEnabled: () => true,
@@ -37676,10 +37969,6 @@ async function handleRequest(request, response) {
         if (Object.keys(patch).length) await store.writeCollections(patch);
         return { observations: planned.observations, config: inboxConfigOf(planned.state) };
       });
-      if (result.blocked) {
-        sendJson(response, { error: "Inbox reading is off. Flip the Inbox intelligence toggle first (that flip records the activation audit event)." }, 400);
-        return;
-      }
       sendJson(response, { ok: true, observations: result.observations, lastScan: { at: result.config.lastScanAt, status: result.config.lastScanStatus, count: result.config.lastScanCount, truncated: result.config.lastScanTruncated, backfillCompletedAt: result.config.backfillCompletedAt } });
     } catch (error) {
       sendJson(response, { error: error.message || "Inbox scan failed." }, 500);

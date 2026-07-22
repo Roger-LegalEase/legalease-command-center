@@ -7,7 +7,7 @@ import { resolveRouteCompatibility } from "./ui/route-compatibility.mjs";
 import { VNEXT_ALIAS_RETENTION_RELEASES, VNEXT_LEGACY_DEPRECATION } from "./vnext-legacy-deprecation.mjs";
 import { VNEXT_ROLLBACK_CHECKPOINT } from "./vnext-production-contract.mjs";
 
-assert.deepEqual(PRIMARY_SHELL_DESTINATIONS.map((item) => item.label), ["Today", "Social", "Outreach", "Partners", "Files"]);
+assert.deepEqual(PRIMARY_SHELL_DESTINATIONS.map((item) => item.label), ["Today", "Inbox", "Relationships", "Social", "Outreach", "Scoreboard", "Support", "Calendar", "Company Health", "Files"]);
 assert.equal(VNEXT_LEGACY_DEPRECATION.removed.length, 0);
 assert.equal(VNEXT_LEGACY_DEPRECATION.sourceBytesRemoved, 0);
 assert.equal(VNEXT_LEGACY_DEPRECATION.retained.length, 5);

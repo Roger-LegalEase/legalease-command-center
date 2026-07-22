@@ -82,7 +82,7 @@ assert.ok(!/leeChat\(/.test(server), "The old regex-template engine is gone.");
 assert.ok(!server.includes("lee-engine.mjs"), "lee-engine import removed.");
 
 // ---- memory: owner-only persisted conversation ----------------------------------------------------
-assert.match(server, /OWNER_ONLY_COLLECTIONS = \["inboxSignals", "inboxConfig", "leeThreads", "leeMessages", "leeRuns", "leeMemory"\]/, "Le-E memory is owner-only.");
+assert.match(server, /OWNER_ONLY_COLLECTIONS = \["inboxSignals", "inboxConfig", "emailDrafts", "leeThreads", "leeMessages", "leeRuns", "leeMemory"\]/, "Le-E memory is owner-only.");
 assert.match(server, /function loadLeeHistory/, "History loads on demand so Monday picks up Sunday.");
 
 // ---- suggestions surface in the Automation Inbox ---------------------------------------------------

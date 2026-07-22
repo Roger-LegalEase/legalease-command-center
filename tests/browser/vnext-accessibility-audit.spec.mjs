@@ -8,7 +8,7 @@ const surfaces = [
   { name:"Inbox", env:"BROWSER_TEST_ACTIONS_BASE_URL", hash:"inbox?group=needs-me", heading:"Inbox" },
   { name:"Social", env:"BROWSER_TEST_SOCIAL_BASE_URL", hash:"social?view=ideas", heading:"Social" },
   { name:"Outreach", env:"BROWSER_TEST_OUTREACH_BASE_URL", hash:"outreach", heading:"Outreach" },
-  { name:"Partners", env:"BROWSER_TEST_PARTNERS_BASE_URL", hash:"partners", heading:"Partners" },
+  { name:"Relationships", env:"BROWSER_TEST_PARTNERS_BASE_URL", hash:"partners", heading:"Relationships" },
   { name:"Files", env:"BROWSER_TEST_FILES_BASE_URL", hash:"files", heading:"Files" },
   { name:"Investor Room", env:"BROWSER_TEST_FILES_BASE_URL", hash:"files?collection=investor-room", heading:"Investor Room" }
 ];
@@ -81,6 +81,10 @@ test("Search, Create, and Discovery contain focus and announce complete accessib
     const discoveryBase = process.env.BROWSER_TEST_DISCOVERY_BASE_URL;
     await openToday(page, `${discoveryBase}/#today`);
     const onboarding = page.locator("[data-discovery-onboarding]");
+    if (!await onboarding.isVisible().catch(() => false)) {
+      await page.getByRole("button", { name:"Profile", exact:true }).click();
+      await page.getByRole("menuitem", { name:"Start product tour again" }).click();
+    }
     await expect(onboarding).toBeVisible();
     await expect(onboarding.getByRole("dialog")).toBeVisible();
     expect(await seriousOrCritical(page)).toEqual([]);

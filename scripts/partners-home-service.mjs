@@ -1,9 +1,20 @@
 import { roleHasCapability, roles } from "./roles.mjs";
+import {
+  RELATIONSHIP_CATEGORIES,
+  RELATIONSHIP_ELIGIBILITY_STATES,
+  RELATIONSHIP_WAITING_STATES,
+  buildRelationshipsView
+} from "./relationship-service.mjs";
 import { PARTNERS_HOME_VIEWS, buildPartnersHomeView } from "./ui/view-models/partners-home.mjs";
 
 const clean = (value = "") => String(value ?? "").trim();
 const lower = (value = "") => clean(value).toLocaleLowerCase("en-US");
 const allowedViews = new Set(PARTNERS_HOME_VIEWS.map((view) => view.key));
+const relationshipCategories = new Set(RELATIONSHIP_CATEGORIES.map((item) => item.key));
+const relationshipWaiting = new Set(RELATIONSHIP_WAITING_STATES.map((item) => item.key));
+const relationshipEligibility = new Set(RELATIONSHIP_ELIGIBILITY_STATES.map((item) => item.key));
+const relationshipAutomation = new Set(["automated", "manual"]);
+const followUpChoices = new Set(["due"]);
 
 export const PARTNERS_HOME_ENDPOINT = "/api/ui/partners";
 export const PARTNERS_HOME_LIMITS = Object.freeze({ default:24, maximum:50 });
@@ -59,10 +70,21 @@ export function buildAuthorizedPartnersHome(state = {}, actor = {}, now = "", ra
     stage:choice(rawQuery.stage, null, "Partner stage"),
     owner:choice(rawQuery.owner, null, "Partner owner"),
     health:choice(rawQuery.health, null, "Partner health"),
+    category:choice(rawQuery.category, relationshipCategories, "relationship category"),
+    waiting:choice(rawQuery.waiting, relationshipWaiting, "waiting filter"),
+    automation:choice(rawQuery.automation, relationshipAutomation, "outreach filter"),
+    eligibility:choice(rawQuery.eligibility, relationshipEligibility, "eligibility filter"),
+    followUp:choice(rawQuery.followUp, followUpChoices, "follow-up filter"),
     limit:limit(rawQuery.limit),
     offset:cursor(rawQuery.cursor)
   };
   const projection = buildPartnersHomeView(state, actor, now, query);
-  const cursorValue = projection.pagination?.hasMore ? nextCursor(query.offset + projection.items.length) : null;
-  return Object.freeze({ ...projection, query:Object.freeze({ ...query, offset:undefined }), pagination:Object.freeze({ ...projection.pagination, nextCursor:cursorValue }) });
+  const relationships = buildRelationshipsView(state, actor, now, query);
+  const cursorValue = relationships.pagination?.hasMore ? nextCursor(query.offset + relationships.items.length) : null;
+  return Object.freeze({
+    ...projection,
+    relationships,
+    query:Object.freeze({ ...query, offset:undefined }),
+    pagination:Object.freeze({ ...relationships.pagination, nextCursor:cursorValue })
+  });
 }

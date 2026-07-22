@@ -165,10 +165,10 @@ assert.equal(resolveRouteCompatibility("#inbox").kind, "page");
 assert.equal(resolveRouteCompatibility("#inbox").canonicalRoute, "inbox");
 assert.equal(resolveRouteCompatibility("#inbox").destination, "Inbox");
 assert.equal(resolveRouteCompatibility("#inbox?group=waiting").safeHash, "#inbox?group=waiting");
-assert.deepEqual(PRIMARY_SHELL_DESTINATIONS.map((item) => item.label), ["Today", "Social", "Outreach", "Partners", "Files"]);
-assert.equal(PRIMARY_SHELL_DESTINATIONS.length, 5);
-assert.equal(PRIMARY_SHELL_DESTINATIONS.some((item) => item.label === "Inbox"), false);
-assert.equal(SECONDARY_SHELL_CONTROLS.find((item) => item.id === "inbox")?.route, "inbox");
+assert.deepEqual(PRIMARY_SHELL_DESTINATIONS.map((item) => item.label), ["Today", "Inbox", "Relationships", "Social", "Outreach", "Scoreboard", "Support", "Calendar", "Company Health", "Files"]);
+assert.equal(PRIMARY_SHELL_DESTINATIONS.length, 10);
+assert.equal(PRIMARY_SHELL_DESTINATIONS.some((item) => item.label === "Inbox"), true);
+assert.deepEqual(SECONDARY_SHELL_CONTROLS.map((item) => item.id), ["lee", "settings"]);
 assert.equal(ROUTE_COMPATIBILITY_TOTALS.canonicalRoutes, 75);
 assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 53);
 
@@ -285,7 +285,7 @@ assert.doesNotMatch(pageModuleSource + pageViewSource, /process\.env|readFile|wr
 assert.match(serverSource, /url\.pathname === "\/api\/ui\/inbox"/);
 assert.match(serverSource, /buildAuthorizedInboxPage\(currentState, actor, now/);
 const endpointStart = serverSource.indexOf('url.pathname === "/api/ui/inbox" && request.method === "GET"');
-const endpointEnd = serverSource.indexOf('url.pathname === "/api/ui/today" && request.method === "GET"', endpointStart);
+const endpointEnd = serverSource.indexOf("const taskWorkbenchRoute =", endpointStart);
 assert.ok(endpointStart >= 0 && endpointEnd > endpointStart);
 assert.doesNotMatch(serverSource.slice(endpointStart, endpointEnd), /writeChangedCollections|serializeStateMutation|\bpublish(?:ing)?\b|\bsendEmail\b|approval\s*=|\bcomplete\w*\(|\bsnooze\w*\(/i);
 assert.match(shellSource, /\/api\/ui\/inbox\?group=needs-me&limit=1/);

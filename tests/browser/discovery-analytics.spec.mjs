@@ -118,7 +118,7 @@ test.describe("integrated Discovery shell", () => {
     await reopenTour();
     await choose("partners");
     await expect(page).toHaveURL(/#partners$/);
-    await expect(page.getByRole("heading", { name:"Partners", level:1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name:"Relationships", level:1 })).toBeVisible();
 
     await reopenTour();
     await choose("files");

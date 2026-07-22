@@ -9,9 +9,14 @@ const list = (values) => Object.freeze(values.map((value) => Object.freeze({ ...
 
 export const PRIMARY_SHELL_DESTINATIONS = list([
   { id:"today", label:PRIMARY_DESTINATIONS.today, route:"today" },
+  { id:"inbox", label:PRIMARY_DESTINATIONS.inbox, route:"inbox" },
+  { id:"partners", label:PRIMARY_DESTINATIONS.partners, route:"partners" },
   { id:"social", label:PRIMARY_DESTINATIONS.social, route:"queue" },
   { id:"outreach", label:PRIMARY_DESTINATIONS.outreach, route:"campaigns" },
-  { id:"partners", label:PRIMARY_DESTINATIONS.partners, route:"partners" },
+  { id:"scoreboard", label:PRIMARY_DESTINATIONS.scoreboard, route:"revenue" },
+  { id:"support", label:PRIMARY_DESTINATIONS.support, route:"support" },
+  { id:"calendar", label:PRIMARY_DESTINATIONS.calendar, route:"meetings" },
+  { id:"company-health", label:PRIMARY_DESTINATIONS.companyHealth, route:"os-health" },
   { id:"files", label:PRIMARY_DESTINATIONS.files, route:"proof" }
 ]);
 
@@ -22,7 +27,6 @@ export function primaryShellDestinations({ outreachEnabled = false, filesEnabled
 }
 
 export const SECONDARY_SHELL_CONTROLS = list([
-  { id:"inbox", label:GLOBAL_UTILITIES.inbox, kind:"route", route:"inbox" },
   { id:"lee", label:GLOBAL_UTILITIES.lee, kind:"action", action:"open-lee" },
   { id:"settings", label:GLOBAL_UTILITIES.settings, kind:"route", route:"settings" }
 ]);
@@ -46,6 +50,7 @@ const aliasTargets = new Map(
 
 export const SHELL_DESTINATION_LABELS = Object.freeze([
   ...Object.values(PRIMARY_DESTINATIONS),
+  "Partners",
   GLOBAL_UTILITIES.inbox,
   GLOBAL_UTILITIES.lee,
   GLOBAL_UTILITIES.settings,

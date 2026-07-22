@@ -30,7 +30,7 @@ function emptyPayload(view = "ideas", sourceAvailability = { posts:true, content
     ok:true,
     generatedAt:"2026-07-18T15:00:00.000Z",
     selectedView:view,
-    views:["ideas", "calendar", "library", "results"].map((key) => ({ key, label:key[0].toUpperCase() + key.slice(1), count:0 })),
+    views:["ideas", "weekly", "calendar", "library", "results"].map((key) => ({ key, label:key === "weekly" ? "Weekly plan" : key[0].toUpperCase() + key.slice(1), count:0 })),
     sourceAvailability,
     filters:{ statuses:[], channels:[], topics:[], owners:[] },
     activeFilters:{ status:"", channel:"", topic:"", owner:"", dateFrom:"", dateTo:"" },
@@ -62,7 +62,7 @@ async function expectNoOverflow(page, width) {
   return overflow;
 }
 
-test("Social defaults to Ideas and keeps four read-only views on canonical identities", async ({ page }) => {
+test("Social defaults to Ideas and keeps the five founder views on canonical identities", async ({ page }) => {
   test.slow();
   await mkdir(screenshotDirectory, { recursive:true });
   const socialRequests = [];
@@ -82,9 +82,9 @@ test("Social defaults to Ideas and keeps four read-only views on canonical ident
   await openSocial(page);
   await expect(page.getByRole("heading", { name:"Social", level:1 })).toHaveCount(1);
   const tabs = page.getByRole("tab");
-  await expect(tabs).toHaveCount(4);
-  expect(await tabs.allTextContents()).toEqual(expect.arrayContaining([expect.stringMatching(/^Ideas/), expect.stringMatching(/^Calendar/), expect.stringMatching(/^Library/), expect.stringMatching(/^Results/)]));
-  expect(await tabs.evaluateAll((nodes) => nodes.map((node) => node.dataset.socialView))).toEqual(["ideas", "calendar", "library", "results"]);
+  await expect(tabs).toHaveCount(5);
+  expect(await tabs.allTextContents()).toEqual(expect.arrayContaining([expect.stringMatching(/^Ideas/), expect.stringMatching(/^Weekly plan/), expect.stringMatching(/^Calendar/), expect.stringMatching(/^Library/), expect.stringMatching(/^Results/)]));
+  expect(await tabs.evaluateAll((nodes) => nodes.map((node) => node.dataset.socialView))).toEqual(["ideas", "weekly", "calendar", "library", "results"]);
   await expect(page.getByRole("tab", { name:/^Ideas/ })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("button", { name:"Create post", exact:true })).toHaveCount(1);
   await expect(page.getByRole("button", { name:"Create post", exact:true })).toBeEnabled();

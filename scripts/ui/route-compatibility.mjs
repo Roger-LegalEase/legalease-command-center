@@ -90,6 +90,10 @@ export const OBJECT_SOURCE_MAPPINGS = Object.freeze({
 
 const DESTINATION_OVERRIDES = Object.freeze({
   lee:"Le-E",
+  revenue:"Scoreboard",
+  support:"Support",
+  meetings:"Calendar",
+  "os-health":"Company Health",
   "operator-search":"Search",
   more:"Settings",
   "safe-mode":"Settings",
@@ -100,7 +104,7 @@ const DESTINATION_OVERRIDES = Object.freeze({
 });
 
 const SHELL_DESTINATIONS = Object.freeze([
-  "Today", "Social", "Outreach", "Partners", "Files", "Inbox", "Settings", "Le-E", "Search"
+  "Today", "Inbox", "Partners", "Social", "Outreach", "Scoreboard", "Support", "Calendar", "Company Health", "Files", "Settings", "Le-E", "Search"
 ]);
 
 function destinationForEntry(entry) {

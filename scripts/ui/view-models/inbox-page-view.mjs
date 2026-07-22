@@ -120,6 +120,7 @@ function compactItem(item, generatedAt) {
     owner:item.owner,
     requiresApproval:item.requiresApproval,
     href:item.href,
+    taskId:item.workKind === "task" && item.sourceKind === "tasks" ? item.sourceId : "",
     relatedObject:item.relatedObject,
     expectedUpdatedAt:item.updatedAt,
     actions,

@@ -102,7 +102,8 @@ function task(input = {}, options = {}) {
     created_at: input.created_at || input.createdAt || now,
     updated_at: input.updated_at || input.updatedAt || now,
     createdAt: input.createdAt || input.created_at || now,
-    updatedAt: input.updatedAt || input.updated_at || now
+    updatedAt: input.updatedAt || input.updated_at || now,
+    ...(Number.isInteger(input._version) ? { _version:input._version } : {})
   };
 }
 

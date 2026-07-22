@@ -199,7 +199,7 @@ const PIPELINE_STATE = {
 
 // ---- 11. server wiring (structural) ------------------------------------------------------------
 {
-  assert.ok(serverSource.includes('const OWNER_ONLY_COLLECTIONS = ["inboxSignals", "inboxConfig", "leeThreads", "leeMessages", "leeRuns", "leeMemory"]'), "owner-only collections declared (inbox + Le-E conversation memory)");
+  assert.ok(serverSource.includes('const OWNER_ONLY_COLLECTIONS = ["inboxSignals", "inboxConfig", "emailDrafts", "leeThreads", "leeMessages", "leeRuns", "leeMemory"]'), "owner-only collections declared (inbox, drafts, and Le-E conversation memory)");
   assert.ok(serverSource.includes("stripOwnerOnlyCollections(fullState, accessDecision.actor)"), "/api/state strips for non-owners");
   assert.ok(serverSource.includes("stripOwnerOnlyCollections(buildCompactBootState"), "/api/boot-state strips for non-owners");
   const fetcher = serverSource.slice(serverSource.indexOf("async function fetchInboxThreadsForIntelligence"), serverSource.indexOf("async function fetchGmailReadOnlyEvents"));
@@ -208,12 +208,14 @@ const PIPELINE_STATE = {
   assert.ok(fetcher.includes("nextPageToken"), "fetcher paginates (backfill can walk past one page)");
   assert.ok(!serverSource.includes("gmail.send") && !serverSource.includes("gmail.modify") && !serverSource.includes("gmail.compose"), "no send/modify/compose capability anywhere");
   const scanRoute = serverSource.slice(serverSource.indexOf('url.pathname === "/api/inbox/scan"'), serverSource.indexOf('url.pathname === "/api/inbox/scan"') + 2200);
-  assert.ok(scanRoute.includes("autopilotEnabled(currentState, INBOX_ENGINE_ID"), "manual scan refused while the toggle is off");
+  assert.ok(!scanRoute.includes("autopilotEnabled(currentState, INBOX_ENGINE_ID"), "manual owner refresh is independent of scheduled automation");
+  assert.ok(scanRoute.includes('String(accessDecision.actor?.role || "") !== "owner"'), "manual refresh is owner-only");
+  assert.ok(scanRoute.includes("inboxReadEnabled: () => true"), "manual refresh explicitly uses the bounded read-only path");
   assert.ok(serverSource.includes("recordInboxActivationAudit(nextState"), "toggle flip writes the activation audit");
   assert.ok(serverSource.includes("fetchInboxThreads: fetchInboxThreadsForIntelligence"), "fetcher injected into the heartbeat registry");
   const enginesSource = readFileSync(join(here, "heartbeat-engines.mjs"), "utf8");
   assert.ok(enginesSource.indexOf("buildInboxIntelligenceEngine") < enginesSource.indexOf("buildCompanyMemoryEngine()"), "inbox engine registers before the company-memory projector (same-tick projection)");
-  ok("server wiring: owner-only projection, identity-first fetcher, gated scan route, audit on flip");
+  ok("server wiring: owner-only projection, identity-first manual refresh, audit on scheduled activation");
 }
 
 // ---- 12. I2: queue projection ------------------------------------------------------------------

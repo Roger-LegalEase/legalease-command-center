@@ -6,6 +6,7 @@ export const OUTREACH_HOME_CONTRACT = Object.freeze({
   route:"outreach",
   endpoint:OUTREACH_HOME_ENDPOINT,
   views:OUTREACH_HOME_VIEWS,
+  automationView:"automation",
   pageSize:OUTREACH_HOME_LIMITS.default
 });
 
@@ -55,7 +56,7 @@ export function outreachHomeBrowserSource() {
 
     function app() { return document.querySelector("main#app #campaigns.page-section.active") || document.querySelector("main#app"); }
     function resolution() { return window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(location.hash || "#today"); }
-    function onRoute() { const value = resolution(); return value?.kind === "page" && value.canonicalRoute === contract.route; }
+    function onRoute() { const value = resolution(); return value?.kind === "page" && value.canonicalRoute === contract.route && routeState().view !== contract.automationView; }
     function routeState() {
       const query = new URLSearchParams(String(location.hash || "").split("?")[1] || "");
       const views = contract.views.map((view) => view.key);

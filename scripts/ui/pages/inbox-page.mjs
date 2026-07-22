@@ -1,5 +1,6 @@
 import { escapeAttribute, escapeHtml } from "../html.mjs";
 import { renderInboxActionLayer } from "../inbox-action-ui.mjs";
+import { renderLeeInboxPanelShell } from "../lee-inbox-panel.mjs";
 import {
   INBOX_PAGE_DUE_CONTRACT,
   INBOX_PAGE_ENDPOINT,
@@ -29,6 +30,7 @@ export function renderInboxPageLoading() {
       </div>
       <a class="vnext-inbox-orientation" href="#inbox?group=needs-me" data-inbox-needs-me-link>View Needs me</a>
     </header>
+    ${renderLeeInboxPanelShell()}
     <nav class="vnext-inbox-tabs" role="tablist" aria-label="Inbox groups">${groups}</nav>
     <form class="vnext-inbox-filters" data-inbox-filters aria-label="Inbox filters">
       <label>Type<select name="type" data-inbox-filter="type"><option value="">All types</option></select></label>
@@ -245,6 +247,7 @@ export function inboxPageBrowserSource() {
       row.dataset.inboxItem = "true";
       row.dataset.inboxItemId = item.id;
       row.dataset.inboxItemVersion = item.expectedUpdatedAt;
+      if (item.taskId) row.dataset.taskId = item.taskId;
       const body = document.createElement("div");
       body.className = "vnext-inbox-item-body";
       const badges = document.createElement("div");
@@ -277,9 +280,13 @@ export function inboxPageBrowserSource() {
       }
       const actions = document.createElement("div");
       actions.className = "vnext-inbox-item-actions";
-      const open = document.createElement("a");
+      const open = document.createElement(item.taskId ? "button" : "a");
       open.className = "vnext-inbox-open" + (index === 0 && !(item.actions || []).length ? " is-primary" : "");
-      open.href = item.href;
+      if (item.taskId) {
+        open.type = "button";
+        open.dataset.taskOpen = "true";
+        open.dataset.taskId = item.taskId;
+      } else open.href = item.href;
       open.textContent = "Open";
       open.setAttribute("aria-label", "Open " + item.title + " in " + item.type.label);
       const actionControls = (item.actions || []).map((action) => {

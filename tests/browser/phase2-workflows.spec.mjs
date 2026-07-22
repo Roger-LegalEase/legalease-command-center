@@ -154,20 +154,18 @@ test("Today, Inbox actions, and Quick Capture form one exact, duplicate-safe fou
   expect(await sections.evaluateAll((nodes) => nodes.map((node) => node.dataset.todayAnswer))).toEqual([
     "now", "next", "needs-you", "progress"
   ]);
-  const nowLink = page.locator('[data-today-answer="now"] .vnext-today-primary-action');
-  const nowHref = await nowLink.getAttribute("href");
-  expect(nowHref).toBe(initialToday.nowItem.href);
-  expect(["Start", "Resume"]).toContain((await nowLink.textContent()).trim());
+  const nowAction = page.locator('[data-today-answer="now"] .vnext-today-primary-action');
+  expect(initialToday.nowItem.href).toBe("#item/tasks/browser-inbox-task-001");
+  await expect(nowAction).toHaveAttribute("data-task-id", initialToday.nowItem.taskId);
+  expect(["Start", "Resume"]).toContain((await nowAction.textContent()).trim());
   const mutationsBeforeStart = mutationPaths.length;
-  await nowLink.click();
-  await expect(page).toHaveURL(exactHashPattern(nowHref));
-  await expect(page.locator("main#app #item.page-section.active")).toBeVisible();
+  await nowAction.click();
+  const taskWorkbench = page.locator("[data-task-workbench]");
+  await expect(taskWorkbench).toBeVisible();
+  await expect(taskWorkbench.locator("[data-task-title]")).toHaveText(initialToday.nowItem.title);
+  await expect(page).toHaveURL(/#today$/);
   expect(mutationPaths).toHaveLength(mutationsBeforeStart);
-  await page.goBack();
-  await expect(page.locator("[data-today-page]")).toBeVisible();
-  await page.goForward();
-  await expect(page).toHaveURL(exactHashPattern(nowHref));
-  await page.goBack();
+  await taskWorkbench.getByRole("button", { name:"Close", exact:true }).click();
   await expect(page.locator("[data-today-page]")).toBeVisible();
 
   await page.locator('[data-shell-destination="Inbox"]').first().click();
@@ -288,7 +286,7 @@ test("Today, Inbox actions, and Quick Capture form one exact, duplicate-safe fou
   expect(actionBodies).toHaveLength(2);
 
   console.log("CCX206_WORKFLOW_MATRIX", JSON.stringify({
-    todayNow:{ href:nowHref, mutationRequests:0, back:true, forward:true },
+    todayNow:{ taskId:initialToday.nowItem.taskId, mutationRequests:0, workbench:true },
     socialReview:{ href:sourceHref, duplicateInboxItems:0, back:true },
     approval:{ records:1, duplicateWrites:0, externalExecutions:0 },
     snooze:{ movedTo:"waiting", badgeDelta:-1, duplicateItems:0 },

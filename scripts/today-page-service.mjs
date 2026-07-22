@@ -36,6 +36,7 @@ function compactActionItem(item = {}, { primary = false } = {}) {
     owner:item.owner || "",
     href,
     destination:item.destination || "Inbox",
+    taskId:item.sourceKind === "tasks" ? item.sourceId || "" : "",
     actionLabel,
     actionAccessibleName:`${actionLabel} ${item.title || "work item"}`
   };
@@ -49,7 +50,8 @@ function compactReference(item = {}) {
     summary:item.summary || "",
     priority:item.priority || "normal",
     href,
-    destination:item.destination || "Inbox"
+    destination:item.destination || "Inbox",
+    taskId:item.sourceKind === "tasks" ? item.sourceId || "" : ""
   };
 }
 
