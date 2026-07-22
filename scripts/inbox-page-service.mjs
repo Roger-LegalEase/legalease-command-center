@@ -5,7 +5,8 @@ import { INBOX_INCLUDED_COLLECTIONS } from "./ui/view-models/inbox-sources.mjs";
 export const INBOX_READ_COLLECTIONS = Object.freeze([
   ...INBOX_INCLUDED_COLLECTIONS,
   "activityEvents",
-  "auditHistory"
+  "auditHistory",
+  "companyEvents"
 ]);
 
 export function buildAuthorizedInboxPage(state = {}, actor = {}, now = "", query = {}) {
