@@ -2,7 +2,8 @@ import {
   addPartnerFileRecord,
   buildPartnerFilesView,
   createPartnerProgramRecord,
-  generatePartnerArtifact
+  generatePartnerArtifact,
+  PARTNER_ARTIFACT_READ_COLLECTIONS
 } from "./partner-artifact-service.mjs";
 import {
   applyPartnerStageSuggestion,
@@ -16,7 +17,7 @@ import {
   logPartnerActivity,
   setPartnerNextAction
 } from "./partner-record-actions.mjs";
-import { buildAuthorizedPartnersHome } from "./partners-home-service.mjs";
+import { buildAuthorizedPartnersHome, PARTNERS_HOME_READ_COLLECTIONS } from "./partners-home-service.mjs";
 import { buildPartnerRecordView } from "./ui/view-models/partner-record.mjs";
 
 const clean = (value = "") => String(value ?? "").trim();
@@ -30,6 +31,83 @@ const NO_QUERY_KEYS = new Set();
 const REQUEST_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{15,95}$/i;
 
 export const PARTNER_API_BODY_LIMIT = 32_000;
+const frozenCollections = (...groups) => Object.freeze([...new Set(groups.flat())].sort());
+
+export const PARTNER_ACTION_READ_COLLECTIONS = frozenCollections(
+  "activityEvents",
+  "auditHistory",
+  "partners"
+);
+export const PARTNER_SELECTION_READ_COLLECTIONS = frozenCollections(
+  PARTNER_ACTION_READ_COLLECTIONS,
+  "automationEvents",
+  "companyContacts",
+  "outreachContacts",
+  "partnerPrograms",
+  "pilots"
+);
+export const PARTNER_OUTREACH_READ_COLLECTIONS = frozenCollections(
+  PARTNER_SELECTION_READ_COLLECTIONS,
+  "approvalQueue",
+  "approvals",
+  "campaigns",
+  "companyEvents",
+  "dataRoomItems",
+  "evidencePackNotes",
+  "outreachAttempts",
+  "outreachBounces",
+  "outreachCampaigns",
+  "outreachReplies",
+  "outreachSequenceSteps",
+  "outreachSuppressions",
+  "outreachUnsubscribes",
+  "partnerProgramArtifacts",
+  "reactivationCampaign",
+  "reactivationContacts",
+  "reactivationAttempts",
+  "reactivationEvents",
+  "reactivationSendClaims",
+  "reports",
+  "queueItems",
+  "tasks"
+);
+export const PARTNER_FILES_READ_COLLECTIONS = frozenCollections(
+  PARTNER_ACTION_READ_COLLECTIONS,
+  "automationEvents",
+  "brandAssets",
+  "dataRoomItems",
+  "evidencePackNotes",
+  "partnerPrograms",
+  "pilots",
+  "reports",
+  "soc2Evidence",
+  "soc2Policies"
+);
+export const PARTNER_RECORD_READ_COLLECTIONS = frozenCollections(
+  PARTNERS_HOME_READ_COLLECTIONS,
+  PARTNER_OUTREACH_READ_COLLECTIONS,
+  PARTNER_FILES_READ_COLLECTIONS
+);
+export const PARTNER_CAMPAIGN_READ_COLLECTIONS = frozenCollections(
+  PARTNER_SELECTION_READ_COLLECTIONS,
+  "campaigns"
+);
+export const PARTNER_PROGRAM_READ_COLLECTIONS = frozenCollections(
+  PARTNER_ACTION_READ_COLLECTIONS,
+  "automationEvents",
+  "partnerPrograms",
+  "pilots"
+);
+export const PARTNER_FILE_CREATE_READ_COLLECTIONS = frozenCollections(
+  PARTNER_PROGRAM_READ_COLLECTIONS,
+  "dataRoomItems"
+);
+export const PARTNER_ARTIFACT_MUTATION_READ_COLLECTIONS = frozenCollections(
+  PARTNER_ARTIFACT_READ_COLLECTIONS,
+  "automationEvents",
+  "pilots"
+);
+export const PARTNER_READ_COLLECTIONS = PARTNER_RECORD_READ_COLLECTIONS;
 
 export const PARTNER_API_ENDPOINTS = Object.freeze([
   "GET /api/ui/partners",
@@ -154,14 +232,14 @@ function mutationBody(result = {}, extra = {}) {
   };
 }
 
-async function readState(store) {
-  if (typeof store?.readState !== "function") throw validationError("Partner storage is unavailable.", 503);
-  return store.readState();
+async function readState(store, collectionNames = PARTNER_READ_COLLECTIONS) {
+  if (typeof store?.readCollections !== "function") throw validationError("Partner storage is unavailable.", 503);
+  return store.readCollections(collectionNames);
 }
 
-async function runMutation({ store, actor, now, input, apply, allowedCollections, response = () => ({}) }) {
+async function runMutation({ store, actor, now, input, apply, allowedCollections, readCollections, response = () => ({}) }) {
   const id = requestId(input);
-  const current = await readState(store);
+  const current = await readState(store, readCollections);
   if (requestAlreadyApplied(current, id)) return { status:200, body:mutationBody({ alreadyExisted:true }) };
   const result = apply(current, { actor, now });
   await persistScopedResult(store, current, result, allowedCollections);
@@ -208,78 +286,78 @@ export async function handlePartnerApiRequest({
 
     if (route.kind === "home" && verb === "GET") {
       const query = homeQuery(searchParams);
-      const state = await readState(store);
+      const state = await readState(store, PARTNERS_HOME_READ_COLLECTIONS);
       return { matched:true, status:200, body:{ ok:true, ...buildAuthorizedPartnersHome(state, actor, now, query) } };
     }
     if (route.kind === "record" && verb === "GET") {
       const query = detailQuery(searchParams);
-      const state = await readState(store);
+      const state = await readState(store, PARTNER_RECORD_READ_COLLECTIONS);
       const view = buildPartnerRecordView(state, actor, route.partnerId, now, query);
       return { matched:true, status:view.available ? 200 : 404, body:{ ok:view.available, ...view } };
     }
     if (route.kind === "outreach" && verb === "GET") {
       noQuery(searchParams);
-      const state = await readState(store);
+      const state = await readState(store, PARTNER_OUTREACH_READ_COLLECTIONS);
       const view = buildPartnerOutreachIntegration(state, actor, route.partnerId, now);
       return { matched:true, status:view.available ? 200 : 404, body:{ ok:view.available, ...view } };
     }
     if (route.kind === "files" && verb === "GET") {
       noQuery(searchParams);
-      const state = await readState(store);
+      const state = await readState(store, PARTNER_FILES_READ_COLLECTIONS);
       const view = buildPartnerFilesView(state, actor, route.partnerId, now);
       return { matched:true, status:view.available ? 200 : 404, body:{ ok:view.available, ...view } };
     }
     if (route.kind === "selection" && verb === "POST") {
       noQuery(searchParams);
-      const state = await readState(store);
+      const state = await readState(store, PARTNER_SELECTION_READ_COLLECTIONS);
       const selection = buildPartnerCampaignSelection(state, actor, input.partnerIds);
       return { matched:true, status:200, body:{ ok:true, ...selection, mutations:0, externalActions:0 } };
     }
     if (route.kind === "follow_up" && verb === "POST") {
       noQuery(searchParams);
-      const state = await readState(store);
+      const state = await readState(store, PARTNER_SELECTION_READ_COLLECTIONS);
       return { matched:true, status:200, body:{ ok:true, ...buildOneToOnePartnerFollowUp(state, actor, route.partnerId, now) } };
     }
     if (route.kind === "activity" && verb === "POST") {
       noQuery(searchParams);
-      const result = await runMutation({ store, actor, now, input, apply:(state, options) => logPartnerActivity(state, route.partnerId, input, options), allowedCollections:["partners", "activityEvents", "auditHistory"], response:(saved) => ({ activityId:saved.activity?.id || null }) });
+      const result = await runMutation({ store, actor, now, input, apply:(state, options) => logPartnerActivity(state, route.partnerId, input, options), allowedCollections:["partners", "activityEvents", "auditHistory"], readCollections:PARTNER_ACTION_READ_COLLECTIONS, response:(saved) => ({ activityId:saved.activity?.id || null }) });
       return { matched:true, ...result };
     }
     if (route.kind === "next_action" && verb === "POST") {
       noQuery(searchParams);
-      const result = await runMutation({ store, actor, now, input, apply:(state, options) => setPartnerNextAction(state, route.partnerId, input, options), allowedCollections:["partners", "activityEvents", "auditHistory"], response:() => ({ partnerId:route.partnerId }) });
+      const result = await runMutation({ store, actor, now, input, apply:(state, options) => setPartnerNextAction(state, route.partnerId, input, options), allowedCollections:["partners", "activityEvents", "auditHistory"], readCollections:PARTNER_ACTION_READ_COLLECTIONS, response:() => ({ partnerId:route.partnerId }) });
       return { matched:true, ...result };
     }
     if (route.kind === "complete_next_action" && verb === "POST") {
       noQuery(searchParams);
-      const result = await runMutation({ store, actor, now, input, apply:(state, options) => completePartnerNextAction(state, route.partnerId, input, options), allowedCollections:["partners", "activityEvents", "auditHistory"], response:(saved) => ({ partnerId:route.partnerId, completedSummary:saved.completedSummary || null }) });
+      const result = await runMutation({ store, actor, now, input, apply:(state, options) => completePartnerNextAction(state, route.partnerId, input, options), allowedCollections:["partners", "activityEvents", "auditHistory"], readCollections:PARTNER_ACTION_READ_COLLECTIONS, response:(saved) => ({ partnerId:route.partnerId, completedSummary:saved.completedSummary || null }) });
       return { matched:true, ...result };
     }
     if (route.kind === "campaign" && verb === "POST") {
       noQuery(searchParams);
-      const result = await runMutation({ store, actor, now, input, apply:(state, options) => createPartnerCampaignDraft(state, input, options), allowedCollections:["campaigns", "activityEvents", "auditHistory"], response:(saved) => ({ campaignId:saved.record?.id || null, campaignHref:saved.record?.id ? `#outreach/campaign/${encodeURIComponent(saved.record.id)}` : null, eligiblePartners:saved.selection?.eligibleCount || 0 }) });
+      const result = await runMutation({ store, actor, now, input, apply:(state, options) => createPartnerCampaignDraft(state, input, options), allowedCollections:["campaigns", "activityEvents", "auditHistory"], readCollections:PARTNER_CAMPAIGN_READ_COLLECTIONS, response:(saved) => ({ campaignId:saved.record?.id || null, campaignHref:saved.record?.id ? `#outreach/campaign/${encodeURIComponent(saved.record.id)}` : null, eligiblePartners:saved.selection?.eligibleCount || 0 }) });
       return { matched:true, ...result };
     }
     if (route.kind === "stage" && verb === "POST") {
       noQuery(searchParams);
       const stageInput = { ...input, suggestionId:route.suggestionId };
-      const result = await runMutation({ store, actor, now, input:stageInput, apply:(state, options) => applyPartnerStageSuggestion(state, route.partnerId, stageInput, options), allowedCollections:["partners", "activityEvents", "auditHistory"], response:(saved) => ({ partnerId:route.partnerId, uiStage:saved.suggestion?.proposedUiStage || null }) });
+      const result = await runMutation({ store, actor, now, input:stageInput, apply:(state, options) => applyPartnerStageSuggestion(state, route.partnerId, stageInput, options), allowedCollections:["partners", "activityEvents", "auditHistory"], readCollections:PARTNER_OUTREACH_READ_COLLECTIONS, response:(saved) => ({ partnerId:route.partnerId, uiStage:saved.suggestion?.proposedUiStage || null }) });
       return { matched:true, ...result };
     }
     if (route.kind === "program" && verb === "POST") {
       noQuery(searchParams);
-      const result = await runMutation({ store, actor, now, input, apply:(state, options) => createPartnerProgramRecord(state, route.partnerId, input, options), allowedCollections:["partnerPrograms", "activityEvents", "auditHistory"], response:(saved) => ({ partnerId:route.partnerId, programId:saved.program?.id || null }) });
+      const result = await runMutation({ store, actor, now, input, apply:(state, options) => createPartnerProgramRecord(state, route.partnerId, input, options), allowedCollections:["partnerPrograms", "activityEvents", "auditHistory"], readCollections:PARTNER_PROGRAM_READ_COLLECTIONS, response:(saved) => ({ partnerId:route.partnerId, programId:saved.program?.id || null }) });
       return { matched:true, ...result };
     }
     if (route.kind === "artifact" && verb === "POST") {
       noQuery(searchParams);
-      const result = await runMutation({ store, actor, now, input, apply:(state, options) => generatePartnerArtifact(state, route.partnerId, route.programId, input, options), allowedCollections:["partnerProgramArtifacts", "reports", "activityEvents", "auditHistory"], response:(saved) => ({ partnerId:route.partnerId, artifactId:saved.artifact?.id || null, fileId:saved.file?.id || null }) });
+      const result = await runMutation({ store, actor, now, input, apply:(state, options) => generatePartnerArtifact(state, route.partnerId, route.programId, input, options), allowedCollections:["partnerProgramArtifacts", "reports", "activityEvents", "auditHistory"], readCollections:PARTNER_ARTIFACT_MUTATION_READ_COLLECTIONS, response:(saved) => ({ partnerId:route.partnerId, artifactId:saved.artifact?.id || null, fileId:saved.file?.id || null }) });
       return { matched:true, ...result };
     }
     if (route.kind === "files" && verb === "POST") {
       noQuery(searchParams);
       const fileInput = { ...input, creationRequestId:input.requestId };
-      const result = await runMutation({ store, actor, now, input, apply:(state, options) => addPartnerFileRecord(state, route.partnerId, fileInput, options), allowedCollections:["dataRoomItems", "activityEvents", "auditHistory"], response:(saved) => ({ partnerId:route.partnerId, fileId:saved.record?.id || null }) });
+      const result = await runMutation({ store, actor, now, input, apply:(state, options) => addPartnerFileRecord(state, route.partnerId, fileInput, options), allowedCollections:["dataRoomItems", "activityEvents", "auditHistory"], readCollections:PARTNER_FILE_CREATE_READ_COLLECTIONS, response:(saved) => ({ partnerId:route.partnerId, fileId:saved.record?.id || null }) });
       return { matched:true, ...result };
     }
     return { matched:true, status:405, body:{ ok:false, error:"Partner method not allowed." } };

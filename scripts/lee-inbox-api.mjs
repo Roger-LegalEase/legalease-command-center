@@ -2,6 +2,7 @@ import { normalizeRole } from "./roles.mjs";
 import {
   buildLeeInboxView,
   executeLeeInboxAction,
+  LEE_INBOX_READ_COLLECTIONS,
   leeInboxSafeError
 } from "./lee-inbox-service.mjs";
 
@@ -41,7 +42,7 @@ export async function handleLeeInboxApiRequest({
   if (!ownerOnly(actor)) {
     return { matched:true, status:403, body:{ ok:false, outcome:"unauthorized", message:"Le-E follow-ups are available to the signed-in owner." } };
   }
-  if (typeof store?.readState !== "function") {
+  if (typeof store?.readCollections !== "function") {
     return { matched:true, status:503, body:{ ok:false, outcome:"temporary_failure", message:"Le-E follow-ups are temporarily unavailable." } };
   }
 
@@ -52,7 +53,7 @@ export async function handleLeeInboxApiRequest({
       if ([...searchParams.keys()].some((key) => !allowed.has(key))) {
         return { matched:true, status:400, body:{ ok:false, outcome:"invalid", message:"The inbox filters are invalid." } };
       }
-      const body = buildLeeInboxView(await store.readState(), actor, now, {
+      const body = buildLeeInboxView(await store.readCollections(LEE_INBOX_READ_COLLECTIONS), actor, now, {
         category:searchParams.get("category") || "",
         search:searchParams.get("search") || ""
       });
@@ -63,7 +64,7 @@ export async function handleLeeInboxApiRequest({
       if ([...searchParams.keys()].length) {
         return { matched:true, status:400, body:{ ok:false, outcome:"invalid", message:"The inbox action request contains unsupported filters." } };
       }
-      const result = executeLeeInboxAction(await store.readState(), actor, now, input);
+      const result = executeLeeInboxAction(await store.readCollections(LEE_INBOX_READ_COLLECTIONS), actor, now, input);
       if (Object.keys(result.collections || {}).length) {
         if (typeof store?.writeCollections !== "function") throw new Error("Scoped inbox persistence is unavailable.");
         await store.writeCollections(result.collections);

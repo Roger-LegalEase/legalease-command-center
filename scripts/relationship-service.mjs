@@ -57,7 +57,7 @@ const IDENTITY_COLLECTIONS = Object.freeze([
   "outreachUnsubscribes"
 ]);
 
-const RELATIONSHIP_SOURCE_COLLECTIONS = Object.freeze([
+export const RELATIONSHIP_READ_COLLECTIONS = Object.freeze([
   ...IDENTITY_COLLECTIONS,
   "tasks",
   "inboxSignals",
@@ -69,14 +69,23 @@ const RELATIONSHIP_SOURCE_COLLECTIONS = Object.freeze([
   "outreachAttempts",
   "outreachReplies",
   "reactivationAttempts",
-  "reactivationReplies",
   "meetingBriefs",
-  "calendarSignals",
-  "googleCalendarSignals",
+]);
+export const RELATIONSHIP_DETAIL_READ_COLLECTIONS = Object.freeze([
+  ...RELATIONSHIP_READ_COLLECTIONS,
   "dataRoomItems",
   "partnerProgramArtifacts",
   "evidencePackNotes",
   "reports"
+].sort());
+
+const RELATIONSHIP_SOURCE_COLLECTIONS = Object.freeze([
+  ...RELATIONSHIP_DETAIL_READ_COLLECTIONS,
+  // Legacy JSON fixtures can still contain these read-only sources. They are not
+  // registered Supabase collections and therefore never enter a targeted query.
+  "reactivationReplies",
+  "calendarSignals",
+  "googleCalendarSignals"
 ]);
 
 const SOURCE_RECORD_ID_FIELDS = Object.freeze([

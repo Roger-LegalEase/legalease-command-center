@@ -21,6 +21,32 @@ const STATUS_OPTIONS = Object.freeze([
 ]);
 
 export const SOCIAL_HOME_ENDPOINT = "/api/ui/social";
+export const SOCIAL_HOME_READ_COLLECTIONS = Object.freeze([
+  "approvalQueue",
+  "approvals",
+  "brandAssets",
+  "contentBank",
+  "postImages",
+  "posts",
+  "publishEvents",
+  "queueItems",
+  "settings",
+  "socialAccounts"
+]);
+export const SOCIAL_PRODUCTION_READ_COLLECTIONS = Object.freeze([
+  ...SOCIAL_HOME_READ_COLLECTIONS,
+  "activityEvents",
+  "auditHistory",
+  "brandRules",
+  "dataRoomItems",
+  "evidencePackNotes",
+  "generationBatches",
+  "generationProfiles",
+  "library",
+  "publishClaims",
+  "reports",
+  "runtime"
+]);
 export const SOCIAL_HOME_VIEWS = Object.freeze([
   Object.freeze({ key:"ideas", label:"Ideas" }),
   Object.freeze({ key:"weekly", label:"Weekly plan" }),

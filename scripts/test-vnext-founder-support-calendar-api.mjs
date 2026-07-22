@@ -74,9 +74,11 @@ function calendarState() {
     companyContacts:[],
     contacts:[],
     meetingBriefs:[],
-    calendarSignals:[{
+    calendarSignals:[],
+    automationEvents:[{
       id:"event-one",
       eventId:"event-one",
+      source:"calendar",
       title:"Partner planning meeting",
       safeSummary:"Review the shared pilot decision.",
       startTime:"2026-07-22T16:00:00.000Z",
@@ -89,7 +91,6 @@ function calendarState() {
     }],
     googleCalendarSignals:[],
     googleInsights:[],
-    automationEvents:[],
     tasks:[],
     auditHistory:[],
     activityEvents:[]
@@ -101,9 +102,9 @@ function fakeStore(seed, { writable = true } = {}) {
   const reads = [];
   const writes = [];
   const store = {
-    async readState() {
-      reads.push(true);
-      return structuredClone(current);
+    async readCollections(collectionNames) {
+      reads.push([...collectionNames]);
+      return Object.fromEntries(collectionNames.map((collection) => [collection, structuredClone(current[collection] ?? [])]));
     }
   };
   if (writable) {

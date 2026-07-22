@@ -31,7 +31,9 @@ const state = {
 const writes = [];
 const store = {
   current:structuredClone(state),
-  async readState() { return this.current; },
+  async readCollections(collectionNames) {
+    return Object.fromEntries(collectionNames.map((collection) => [collection, structuredClone(this.current[collection] ?? [])]));
+  },
   async writeCollections(patch) { writes.push(patch); this.current = { ...this.current, ...patch }; }
 };
 

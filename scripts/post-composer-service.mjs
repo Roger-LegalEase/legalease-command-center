@@ -5,9 +5,11 @@ import { buildPostReviewPlan } from "./ui/view-models/post-review-plan.mjs";
 import { buildPostPublishingControls } from "./ui/view-models/post-publishing-controls.mjs";
 import { buildSocialCreativeCatalog } from "./ui/view-models/social-creative-catalog.mjs";
 import { buildPostChannelVariants } from "./ui/view-models/post-channel-variants.mjs";
+import { SOCIAL_PRODUCTION_READ_COLLECTIONS } from "./social-home-service.mjs";
 
 export const POST_COMPOSER_ENDPOINT = "/api/ui/social/post";
 export const POST_COMPOSER_SAVE_SUFFIX = "/save";
+export const POST_COMPOSER_READ_COLLECTIONS = Object.freeze([...SOCIAL_PRODUCTION_READ_COLLECTIONS]);
 const FIELDS = ["headline", "body", "hook", "cta", "hashtags"];
 const LIMITS = Object.freeze({ headline:200, body:12000, hook:500, cta:300, hashtags:40 });
 const text = (v, n = 5000) => String(v ?? "").slice(0, n);

@@ -5,6 +5,11 @@ const requestIdPattern = /^[a-z0-9][a-z0-9_-]{15,95}$/i;
 const preferenceVersionPattern = /^(?:0|[1-9]\d{0,8})$/;
 
 export const DISCOVERY_ONBOARDING_ENDPOINT = "/api/ui/discovery/onboarding";
+export const DISCOVERY_ONBOARDING_READ_COLLECTIONS = Object.freeze([
+  "activityEvents",
+  "auditEvents",
+  "userDiscoveryPreferences"
+]);
 
 export const DISCOVERY_ONBOARDING_CHOICES = Object.freeze([
   Object.freeze({

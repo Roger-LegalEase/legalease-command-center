@@ -36,7 +36,10 @@ function storeFor(state = STATE) {
   const calls = { reads:0, writes:0 };
   return {
     calls,
-    async readState() { calls.reads += 1; return state; },
+    async readCollections(collectionNames) {
+      calls.reads += 1;
+      return Object.fromEntries(collectionNames.map((collection) => [collection, structuredClone(state[collection] ?? [])]));
+    },
     async writeCollections() { calls.writes += 1; throw new Error("read-only endpoint attempted a write"); }
   };
 }

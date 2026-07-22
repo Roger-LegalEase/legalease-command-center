@@ -24,6 +24,7 @@ export const GLOBAL_SEARCH_SOURCE_MAPPINGS = Object.freeze({
   tasks:Object.freeze({ objectType:"Task", sourceKind:"tasks", destination:"Inbox", link:"#item/tasks/<id>" }),
   reports:Object.freeze({ objectType:"Report", sourceKind:"report", destination:"Files", link:"#files/report/<id>" })
 });
+export const GLOBAL_SEARCH_READ_COLLECTIONS = Object.freeze(Object.keys(GLOBAL_SEARCH_SOURCE_MAPPINGS).sort());
 
 const GROUP_INDEX = new Map(GLOBAL_SEARCH_GROUPS.map((group, index) => [group.id, index]));
 const TYPE_ALIASES = Object.freeze({

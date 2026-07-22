@@ -15,6 +15,14 @@ export const PARTNER_ARTIFACT_ENDPOINTS = Object.freeze({
   generateArtifact:"/api/ui/partners/:partnerId/programs/:programId/artifacts",
   addFile:"/api/ui/partners/:partnerId/files"
 });
+export const PARTNER_ARTIFACT_READ_COLLECTIONS = Object.freeze([
+  "activityEvents",
+  "auditHistory",
+  "partnerProgramArtifacts",
+  "partnerPrograms",
+  "partners",
+  "reports"
+]);
 
 export class PartnerArtifactError extends Error {
   constructor(message, status = 400) { super(message); this.name = "PartnerArtifactError"; this.status = status; this.safeMessage = message; }

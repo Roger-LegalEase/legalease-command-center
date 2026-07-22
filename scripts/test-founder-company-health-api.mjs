@@ -31,6 +31,7 @@ function healthyState() {
       { connector:"email", configured:true, status:"connected", lastSyncAt:"2026-07-21T10:00:00.000Z" },
       { connector:"gmail", configured:true, status:"connected", lastSyncAt:"2026-07-21T10:10:00.000Z" },
       { connector:"calendar", configured:true, status:"connected", lastSyncAt:"2026-07-21T10:11:00.000Z" },
+      { connector:"stripe", configured:true, status:"connected", lastSyncAt:"2026-07-21T10:12:00.000Z" },
       { connector:"website", configured:true, status:"connected", lastSyncAt:"2026-07-21T10:15:00.000Z" }
     ],
     socialAccounts:[{ platform:"google_workspace", status:"connected", connectedAt:"2026-07-21T09:50:00.000Z" }],
@@ -46,9 +47,9 @@ function fakeStore(state = healthyState()) {
   return {
     reads,
     store:{
-      async readState() {
-        reads.push(true);
-        return structuredClone(state);
+      async readCollections(collectionNames) {
+        reads.push([...collectionNames]);
+        return Object.fromEntries(collectionNames.map((collection) => [collection, structuredClone(state[collection] ?? [])]));
       }
     }
   };
@@ -67,7 +68,7 @@ let disabledRead = false;
 const disabled = await handleFounderCompanyHealthApiRequest({
   enabled:false,
   pathname:"/api/ui/company-health",
-  store:{ readState:async () => { disabledRead = true; return {}; } },
+  store:{ readCollections:async () => { disabledRead = true; return {}; } },
   actor:OWNER,
   now:NOW
 });
@@ -192,7 +193,7 @@ assert.equal(noStore.body.message, "Company Health is temporarily unavailable.")
 const failedStore = await handleFounderCompanyHealthApiRequest({
   enabled:true,
   pathname:"/api/ui/company-health",
-  store:{ readState:async () => { throw new Error("DATABASE_URL=must-not-leak"); } },
+  store:{ readCollections:async () => { throw new Error("DATABASE_URL=must-not-leak"); } },
   actor:OWNER,
   now:NOW
 });

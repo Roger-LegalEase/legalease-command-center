@@ -8,14 +8,20 @@ import { PARTNERS_FIXTURE_ACTOR, PARTNERS_FIXTURE_NOW, partnersFixtureState } fr
 
 function fixtureStore(initial = partnersFixtureState()) {
   let state = structuredClone(initial);
+  let lastRead = null;
   const calls = { reads:0, scopedWrites:[], fullWrites:0 };
   return {
     calls,
-    async readState() { calls.reads += 1; return state; },
+    async readCollections(collectionNames) {
+      calls.reads += 1;
+      lastRead = Object.fromEntries(collectionNames.map((collection) => [collection, structuredClone(state[collection] ?? [])]));
+      return lastRead;
+    },
     async writeChanges(before, after) {
-      assert.equal(before, state, "scoped writes must be based on the freshly read state");
-      calls.scopedWrites.push(Object.keys(after).filter((key) => before[key] !== after[key]).sort());
-      state = after;
+      assert.equal(before, lastRead, "scoped writes must be based on the freshly read partial state");
+      const changed = Object.keys(after).filter((key) => before[key] !== after[key]).sort();
+      calls.scopedWrites.push(changed);
+      for (const collection of changed) state[collection] = structuredClone(after[collection]);
     },
     async writeState() { calls.fullWrites += 1; throw new Error("full-state writes are forbidden"); },
     snapshot() { return state; }

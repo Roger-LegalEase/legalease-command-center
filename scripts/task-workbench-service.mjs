@@ -5,6 +5,13 @@ import { buildExactObjectLink, buildGenericItemLink } from "./ui/route-compatibi
 
 export const TASK_WORKBENCH_BODY_LIMIT = 12 * 1024;
 export const TASK_WORKBENCH_ROUTE = /^\/api\/ui\/tasks\/([^/]+)(?:\/(action))?$/;
+export const TASK_WORKBENCH_READ_COLLECTIONS = Object.freeze([
+  "campaigns",
+  "partners",
+  "posts",
+  "supportIssues",
+  "tasks"
+]);
 
 const ACTIONS = Object.freeze(new Set([
   "done",

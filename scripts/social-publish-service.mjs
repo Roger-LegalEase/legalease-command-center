@@ -35,7 +35,7 @@ export async function transitionSocialPublishClaim(store, claimId, status, patch
     if (!current) throw new Error("Publish claim was not found.");
     if (["published", "failed_terminal", "reconciliation_required"].includes(current.status) && current.status !== status) throw new Error("Publish claim is terminal.");
     return { ...current, ...patch, status, updatedAt: new Date().toISOString() };
-  }, { maxRetries: 1 });
+  }, { maxRetries:1, returnState:false });
 }
 
 export function safeProviderReference(value = "") {

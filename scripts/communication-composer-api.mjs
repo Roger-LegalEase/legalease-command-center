@@ -1,5 +1,6 @@
 import {
   buildCommunicationContext,
+  COMMUNICATION_COMPOSER_READ_COLLECTIONS,
   communicationComposerSafeError,
   markCommunicationDraftSentManually,
   saveCommunicationDraft
@@ -33,6 +34,11 @@ function publicMutation(result = {}) {
   return body;
 }
 
+async function readComposerState(store) {
+  if (typeof store?.readCollections !== "function") throw new Error("Draft context storage is unavailable.");
+  return store.readCollections(COMMUNICATION_COMPOSER_READ_COLLECTIONS);
+}
+
 async function persist(store, result) {
   if (Object.keys(result.collections || {}).length) {
     if (typeof store?.writeCollections !== "function") throw new Error("Scoped draft persistence is unavailable.");
@@ -59,9 +65,8 @@ export async function handleCommunicationComposerApiRequest({
       if (keys.some((key) => !["sourceKind", "sourceId"].includes(key))) {
         return { matched:true, status:400, body:{ ok:false, outcome:"validation_error", message:"The follow-up request contains an unsupported field." } };
       }
-      if (typeof store?.readState !== "function") throw new Error("Draft context storage is unavailable.");
       const body = buildCommunicationContext(
-        await store.readState(),
+        await readComposerState(store),
         actor,
         searchParams.get("sourceKind") || "",
         searchParams.get("sourceId") || "",
@@ -71,7 +76,7 @@ export async function handleCommunicationComposerApiRequest({
     }
     if (pathname === COMMUNICATION_DRAFTS_PATH && verb === "POST") {
       if ([...searchParams.keys()].length) return { matched:true, status:400, body:{ ok:false, outcome:"validation_error", message:"The draft request contains an unsupported filter." } };
-      const current = await store.readState();
+      const current = await readComposerState(store);
       const result = saveCommunicationDraft(current, actor, input, { now });
       await persist(store, result);
       return { matched:true, status:200, body:publicMutation(result) };
@@ -79,7 +84,7 @@ export async function handleCommunicationComposerApiRequest({
     const manual = manualSentMatch(pathname);
     if (manual && verb === "POST") {
       if (manual.invalid || [...searchParams.keys()].length) return { matched:true, status:400, body:{ ok:false, outcome:"validation_error", message:"The sent interaction request is invalid." } };
-      const current = await store.readState();
+      const current = await readComposerState(store);
       const result = markCommunicationDraftSentManually(current, actor, manual.draftId, input, { now });
       await persist(store, result);
       return { matched:true, status:200, body:publicMutation(result) };

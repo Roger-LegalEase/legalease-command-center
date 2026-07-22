@@ -7,6 +7,15 @@ const lower = (value = "") => clean(value).toLocaleLowerCase("en-US");
 const slug = (value = "") => lower(value).replaceAll(/[^a-z0-9]+/g, "_").replaceAll(/^_+|_+$/g, "");
 
 export const FOUNDER_COMPANY_HEALTH_ENDPOINT = "/api/ui/company-health";
+export const FOUNDER_COMPANY_HEALTH_READ_COLLECTIONS = Object.freeze([
+  "connectorStatus",
+  "funnelSnapshots",
+  "heartbeatRuns",
+  "osHealthSnapshots",
+  "sendgridWebhookHealth",
+  "socialAccounts",
+  "systemHealth"
+]);
 
 export const FOUNDER_HEALTH_STATUSES = Object.freeze({
   healthy:Object.freeze({ key:"healthy", label:"Healthy" }),

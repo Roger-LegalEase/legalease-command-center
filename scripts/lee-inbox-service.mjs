@@ -43,6 +43,22 @@ export const LEE_INBOX_ACTIONS = Object.freeze([
   "open_google_context"
 ]);
 
+export const LEE_INBOX_READ_COLLECTIONS = Object.freeze([
+  "activityEvents",
+  "auditHistory",
+  "companyContacts",
+  "companyOrganizations",
+  "connectorStatus",
+  "googleInsights",
+  "inboxSignals",
+  "outreachContacts",
+  "outreachOrganizations",
+  "partners",
+  "prospectCandidates",
+  "reactivationContacts",
+  "tasks"
+]);
+
 const CATEGORY_SET = new Set(LEE_INBOX_CATEGORIES);
 const CATEGORY_PRIORITY = new Map(LEE_INBOX_CATEGORIES.map((category, index) => [category, index]));
 

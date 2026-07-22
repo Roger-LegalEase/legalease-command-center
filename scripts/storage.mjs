@@ -13,6 +13,7 @@ const defaultSeedPath = path.join(defaultDataDir, "seed", "social-command-center
 
 const supabaseRecordsTable = process.env.SUPABASE_CORE_RECORDS_TABLE || "leos_core_records";
 const coreStateCollections = [
+  "runtime",
   "contentBank",
   "growthInbox",
   "approvalQueue",
@@ -31,6 +32,7 @@ const coreStateCollections = [
   "soc2AuditLogs",
   "auditHistory",
   "events",
+  "calendarSignals",
   "tasks",
   "supportIssues",
   "alerts",
@@ -220,7 +222,7 @@ const coreStateCollections = [
   "userDiscoveryPreferences",
   "discoveryAnalyticsEvents"
 ];
-const singletonCollections = new Set(["metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth", "settings", "inboxConfig", "securityMetrics"]);
+const singletonCollections = new Set(["runtime", "metrics", "runwayInputs", "systemHealth", "leeMemory", "heartbeatLease", "autopilotSettings", "outreachConfig", "prospectConfig", "reactivationCampaign", "sendgridWebhookHealth", "settings", "inboxConfig", "securityMetrics"]);
 // Append-only safety ledgers: rows are inserted via claimCollectionItems and updated in place,
 // NEVER bulk-reconciled away. Excluding them from the snapshot orphan-delete pass means a stale
 // in-memory snapshot (the exact mechanism that shredded reactivationContacts on 2026-07-08) can
@@ -231,6 +233,20 @@ const protectedReconcileCollections = new Set(appendOnlyCollections);
 // Scoped snapshot reconciliation is intentionally opt-in. Most collections require explicit
 // versioned delete mutations (`writeChanges`) so a stale scoped patch cannot erase a concurrent row.
 const reconcileEligibleCollections = new Set(["approvalQueue"]);
+
+function normalizeCollectionNames(collectionNames) {
+  if (!Array.isArray(collectionNames) || collectionNames.length === 0) {
+    throw new TypeError("collectionNames must be a non-empty array.");
+  }
+  const normalized = [...new Set(collectionNames.map((name) => {
+    if (typeof name !== "string" || !name.trim()) throw new TypeError("Collection names must be non-empty strings.");
+    return name.trim();
+  }))].sort();
+  if (normalized.includes("authSessions")) throw new Error("authSessions is not available through business-state storage.");
+  const unsupported = normalized.find((name) => !coreStateCollections.includes(name));
+  if (unsupported) throw new Error(`Unsupported storage collection: ${unsupported}.`);
+  return normalized;
+}
 
 const jsonFileQueues = new Map();
 function withJsonFileLock(filePath, operation) {
@@ -461,15 +477,19 @@ function contentRangeTotal(value = "") {
 // under a STABLE order (collection,item_id) until a short/empty page proves we've read everything.
 const SUPABASE_PAGE_SIZE = 1000;
 
-async function supabaseFetchAllRows(selectColumns, extraQuery = "") {
+async function supabaseFetchAllRows(selectColumns, extraQuery = "", options = {}) {
   const base = supabaseRecordsTable + "?select=" + selectColumns + (extraQuery ? "&" + extraQuery : "") + "&order=collection.asc,item_id.asc";
+  const request = (pathname, requestOptions = {}) => {
+    options.onRequest?.();
+    return supabaseRestRequest(pathname, { ...requestOptions, signal:options.signal });
+  };
   // First page asks for the exact total (Prefer: count=exact => Content-Range
   // "0-999/13593"); the REMAINING pages are then fetched CONCURRENTLY. The old
   // sequential loop put a pages-times-round-trip latency floor under every state
   // read (~3s at 14 pages), which starved the dashboard's boot fetches. Torn-read
   // exposure against concurrent writes is unchanged: the sequential loop had the
   // same window, just slower.
-  const first = await supabaseRestRequest(
+  const first = await request(
     base + "&limit=" + SUPABASE_PAGE_SIZE + "&offset=0",
     { prefer: "count=exact", withContentRange: true }
   );
@@ -482,7 +502,7 @@ async function supabaseFetchAllRows(selectColumns, extraQuery = "") {
     const offsets = [];
     for (let o = pageSize; o < total; o += pageSize) offsets.push(o);
     const pages = await Promise.all(offsets.map((o) =>
-      supabaseRestRequest(base + "&limit=" + pageSize + "&offset=" + o)
+      request(base + "&limit=" + pageSize + "&offset=" + o)
     ));
     return firstRows.concat(...pages.map((p) => (Array.isArray(p) ? p : [])));
   }
@@ -492,7 +512,7 @@ async function supabaseFetchAllRows(selectColumns, extraQuery = "") {
   const all = [...firstRows];
   let offset = pageSize;
   for (let page = 0; page < 100000; page += 1) {
-    const rows = (await supabaseRestRequest(base + "&limit=" + SUPABASE_PAGE_SIZE + "&offset=" + offset)) || [];
+    const rows = (await request(base + "&limit=" + SUPABASE_PAGE_SIZE + "&offset=" + offset)) || [];
     if (!rows.length) break;
     all.push(...rows);
     if (rows.length < pageSize) break;
@@ -583,6 +603,29 @@ function applyCoreRecordsToState(baseState = {}, rows = []) {
   }
   if (!next.dataRoomItems?.length && Array.isArray(next.dataRoom)) next.dataRoomItems = next.dataRoom;
   if (!next.dataRoom?.length && Array.isArray(next.dataRoomItems)) next.dataRoom = next.dataRoomItems;
+  return next;
+}
+
+function applyRequestedCoreRecords(baseState = {}, rows = [], collectionNames = []) {
+  const requested = new Set(collectionNames);
+  const next = {};
+  const grouped = new Map(collectionNames.map((collection) => [collection, []]));
+  for (const row of rows || []) {
+    if (requested.has(row?.collection)) grouped.get(row.collection).push(row);
+  }
+  for (const collection of collectionNames) {
+    const records = grouped.get(collection) || [];
+    if (records.length) {
+      next[collection] = singletonCollections.has(collection)
+        ? { ...(records[0].payload || {}), _version:Number(records[0].version || 1) }
+        : records.map((row) => row.payload ? { ...row.payload, _version:Number(row.version || 1) } : null).filter(Boolean);
+      continue;
+    }
+    const fallback = baseState[collection];
+    next[collection] = singletonCollections.has(collection)
+      ? (fallback && typeof fallback === "object" && !Array.isArray(fallback) ? fallback : {})
+      : (Array.isArray(fallback) ? fallback : []);
+  }
   return next;
 }
 
@@ -720,6 +763,15 @@ export class JsonStore {
       postImages: rawState.postImages || this.initialState.postImages || [],
       publishEvents: rawState.publishEvents || this.initialState.publishEvents || [],
       persistence: "json"
+    };
+  }
+
+  async readCollections(collectionNames, _options = {}) {
+    const names = normalizeCollectionNames(collectionNames);
+    const state = await this.readState();
+    return {
+      ...Object.fromEntries(names.map((name) => [name, state[name] ?? (singletonCollections.has(name) ? {} : [])])),
+      persistence:"json"
     };
   }
 
@@ -1037,6 +1089,15 @@ export class SupabaseCoreStore extends JsonStore {
     this._stateCacheAt = 0;
     this._stateCacheSignature = "";
     this._lastFetchSignature = "";
+    // Founder/vNext reads cache each collection independently. A scoped mutation only
+    // evicts the collections it can have changed, so unrelated page data stays hot.
+    this._collectionCache = new Map();
+    this._collectionReadInFlight = new Map();
+    this._collectionGeneration = new Map();
+    this._readPerformance = (!isHostedProduction(process.env) && String(process.env.NODE_ENV || "").toLowerCase() !== "production")
+      || parseBoolean(process.env.COMMAND_CENTER_TEST_MODE)
+      ? { supabaseRequests:0, readStateCalls:0, targetedReadCalls:0, returnedRowCount:0, requestedCollectionSets:[] }
+      : null;
     // The JsonStore fallback layer parses the on-disk seed/data file (~590KB) on every
     // read. Under the supabase backend that file is static deploy content (all writes go
     // to Supabase), so it is parsed once per process and reused.
@@ -1050,7 +1111,102 @@ export class SupabaseCoreStore extends JsonStore {
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : 3000;
   }
 
+  readPerformanceCounters() {
+    if (!this._readPerformance) return null;
+    return {
+      ...this._readPerformance,
+      requestedCollectionSets:this._readPerformance.requestedCollectionSets.map((names) => [...names])
+    };
+  }
+
+  resetReadPerformanceCounters() {
+    if (!this._readPerformance) return null;
+    this._readPerformance = { supabaseRequests:0, readStateCalls:0, targetedReadCalls:0, returnedRowCount:0, requestedCollectionSets:[] };
+    return this.readPerformanceCounters();
+  }
+
+  _invalidateCollectionCache(collectionNames = []) {
+    for (const collection of collectionNames) {
+      this._collectionCache.delete(collection);
+      this._collectionGeneration.set(collection, Number(this._collectionGeneration.get(collection) || 0) + 1);
+    }
+  }
+
+  async _fallbackState() {
+    let fallback = this._fallbackCache;
+    if (!fallback) {
+      try {
+        fallback = (existsSync(this.dataPath) || existsSync(this.seedPath))
+          ? await super.readState()
+          : { ...this.initialState };
+      } catch {
+        fallback = { ...this.initialState };
+      }
+      this._fallbackCache = fallback;
+    }
+    return fallback;
+  }
+
+  async readCollections(collectionNames, options = {}) {
+    const names = normalizeCollectionNames(collectionNames);
+    if (this._readPerformance) {
+      this._readPerformance.targetedReadCalls += 1;
+      this._readPerformance.requestedCollectionSets.push([...names]);
+    }
+    const ttlMs = this._stateCacheTtlMs();
+    const now = Date.now();
+    const values = new Map();
+    const missing = [];
+    for (const name of names) {
+      const cached = this._collectionCache.get(name);
+      if (options.cache !== false && ttlMs > 0 && cached && now - cached.at < ttlMs) values.set(name, cached.value);
+      else missing.push(name);
+    }
+    if (missing.length) {
+      const generations = new Map(missing.map((name) => [name, Number(this._collectionGeneration.get(name) || 0)]));
+      const key = missing.map((name) => `${name}:${generations.get(name)}`).join("\u0000");
+      let inFlight = this._collectionReadInFlight.get(key);
+      if (!inFlight) {
+        inFlight = this._readCollectionsFresh(missing, options, generations).finally(() => {
+          if (this._collectionReadInFlight.get(key) === inFlight) this._collectionReadInFlight.delete(key);
+        });
+        this._collectionReadInFlight.set(key, inFlight);
+      }
+      const fetched = await inFlight;
+      for (const name of missing) values.set(name, fetched[name]);
+    }
+    return {
+      ...Object.fromEntries(names.map((name) => [name, values.get(name)])),
+      persistence:"supabase"
+    };
+  }
+
+  async _readCollectionsFresh(names, options = {}, generations = new Map()) {
+    const collectionFilter = "collection=in.(" + names.map((name) => encodeURIComponent(name)).join(",") + ")";
+    const rows = await supabaseFetchAllRows(
+      "collection,item_id,payload,version,updated_at",
+      collectionFilter,
+      {
+        signal:options.signal,
+        onRequest:() => { if (this._readPerformance) this._readPerformance.supabaseRequests += 1; }
+      }
+    );
+    if (this._readPerformance) this._readPerformance.returnedRowCount += rows.length;
+    const state = applyRequestedCoreRecords(await this._fallbackState(), rows, names);
+    if (options.cache !== false && this._stateCacheTtlMs() > 0) {
+      const cachedAt = Date.now();
+      for (const name of names) {
+        if (Number(this._collectionGeneration.get(name) || 0) === Number(generations.get(name) || 0)) {
+          this._collectionCache.set(name, { value:state[name], at:cachedAt });
+        }
+      }
+    }
+    this.lastError = "";
+    return state;
+  }
+
   async readState() {
+    if (this._readPerformance) this._readPerformance.readStateCalls += 1;
     const ttlMs = this._stateCacheTtlMs();
     // Burst path: same generation (no in-process write since) and inside the TTL window —
     // serve the shared graph with zero round-trips.
@@ -1101,12 +1257,14 @@ export class SupabaseCoreStore extends JsonStore {
   // which callers must treat as "cannot prove freshness" (full refetch).
   async _remoteStateSignature() {
     try {
+      if (this._readPerformance) this._readPerformance.supabaseRequests += 1;
       const result = await supabaseRestRequest(
         supabaseRecordsTable + "?select=updated_at&collection=neq.authSessions&order=updated_at.desc&limit=1",
         { prefer: "count=exact", withContentRange: true }
       );
       const total = contentRangeTotal(result?.contentRange || "");
       if (!Number.isFinite(total)) return "";
+      if (this._readPerformance) this._readPerformance.returnedRowCount += Array.isArray(result?.data) ? result.data.length : 0;
       const newest = Array.isArray(result?.data) && result.data[0] ? String(result.data[0].updated_at || "") : "";
       return total + "|" + newest;
     } catch {
@@ -1115,22 +1273,16 @@ export class SupabaseCoreStore extends JsonStore {
   }
 
   async _readStateFresh() {
-    let fallback = this._fallbackCache;
-    if (!fallback) {
-      try {
-        fallback = (existsSync(this.dataPath) || existsSync(this.seedPath))
-          ? await super.readState()
-          : { ...this.initialState };
-      } catch {
-        fallback = { ...this.initialState };
-      }
-      this._fallbackCache = fallback;
-    }
+    const fallback = await this._fallbackState();
     try {
       const rows = await supabaseFetchAllRows(
         "collection,item_id,payload,version,updated_at",
-        "collection=neq.authSessions"
+        "collection=neq.authSessions",
+        {
+          onRequest:() => { if (this._readPerformance) this._readPerformance.supabaseRequests += 1; }
+        }
       );
+      if (this._readPerformance) this._readPerformance.returnedRowCount += rows.length;
       this.lastError = "";
       // Signature of THIS fetch (same shape as _remoteStateSignature): lets the cache
       // later prove via one cheap probe that the table has not moved under it.
@@ -1183,6 +1335,7 @@ export class SupabaseCoreStore extends JsonStore {
       this.recordWriteOutcome(error);
       throw error;
     } finally {
+      this._invalidateCollectionCache(new Set(mutations.map((mutation) => mutation.collection)));
       this._writeGen += 1;
     }
   }
@@ -1199,6 +1352,7 @@ export class SupabaseCoreStore extends JsonStore {
       // Invalidate in-flight read sharing even on failure: a partial write (upsert
       // succeeded, reconcile failed) may have changed rows, so the safe direction is
       // a fresh read.
+      this._invalidateCollectionCache(Object.keys(state || {}).filter((name) => coreStateCollections.includes(name)));
       this._writeGen += 1;
     }
   }
@@ -1292,6 +1446,7 @@ export class SupabaseCoreStore extends JsonStore {
     } finally {
       // Claims are durable mutations too: never let a post-claim reader join a
       // pre-claim in-flight read.
+      this._invalidateCollectionCache([collection]);
       this._writeGen += 1;
     }
   }
@@ -1299,6 +1454,7 @@ export class SupabaseCoreStore extends JsonStore {
   async appendAuditEvent(event = {}) {
     const safeEvent = validateMutableRecord("auditEvents", event.id, event);
     const returned = await supabaseRestRequest("rpc/leos_append_audit_event", { method: "POST", body: { p_event: safeEvent }, prefer: "return=representation" });
+    this._invalidateCollectionCache(["auditEvents"]);
     this._writeGen += 1;
     return Array.isArray(returned) ? returned[0] : returned;
   }
@@ -1309,6 +1465,7 @@ export class SupabaseCoreStore extends JsonStore {
       body: { p_post_id: String(postId), p_expected_version: expectedVersion === undefined ? null : Number(expectedVersion), p_claim: validateMutableRecord("publishClaims", claim.id, claim) },
       prefer: "return=representation"
     });
+    this._invalidateCollectionCache(["posts", "publishClaims"]);
     this._writeGen += 1;
     const row = Array.isArray(returned) ? returned[0] : returned;
     return { claimed: Boolean(row?.claimed), claim };
@@ -1337,6 +1494,7 @@ export class SupabaseCoreStore extends JsonStore {
           prefer: "return=representation"
         });
         const resultRow = Array.isArray(returned) ? returned[0] : returned;
+        this._invalidateCollectionCache([collection]);
         this._writeGen += 1;
         const version = Number(resultRow?.version || actualVersion + 1);
         const record = { ...payloadWithoutVersion(changed), _version:version };
@@ -1377,4 +1535,4 @@ export function storageRuntimeConfig() {
   };
 }
 
-export { coreStateCollections, singletonCollections, appendOnlyCollections, coreRecordsFromState, coreMutationsBetween, supabaseRequestTimeoutMs, supabaseRestRequest };
+export { coreStateCollections, singletonCollections, appendOnlyCollections, coreRecordsFromState, coreMutationsBetween, normalizeCollectionNames, supabaseRequestTimeoutMs, supabaseRestRequest };

@@ -2,6 +2,7 @@ import { roleHasCapability } from "./roles.mjs";
 import { buildPostSchedulePlan } from "./ui/view-models/post-schedule-plan.mjs";
 
 export const SOCIAL_CALENDAR_ENDPOINT = "/api/ui/social/calendar";
+export const SOCIAL_CALENDAR_READ_COLLECTIONS = Object.freeze(["posts"]);
 const clean = (value = "") => String(value ?? "").trim();
 const safeTitle = (value) => clean(value).slice(0, 180) || "Untitled Post";
 

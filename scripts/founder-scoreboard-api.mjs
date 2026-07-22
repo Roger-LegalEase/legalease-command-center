@@ -1,5 +1,6 @@
 import {
   buildFounderScoreboard,
+  FOUNDER_SCOREBOARD_READ_COLLECTIONS,
   FOUNDER_FINANCE_INPUT_ENDPOINT,
   FOUNDER_SCOREBOARD_ENDPOINT,
   FounderScoreboardValidationError,
@@ -51,10 +52,10 @@ function financeInput(input) {
 }
 
 async function readState(store) {
-  if (typeof store?.readState !== "function") {
+  if (typeof store?.readCollections !== "function") {
     throw apiError("Scoreboard information is temporarily unavailable.", 503, "unavailable");
   }
-  return store.readState();
+  return store.readCollections(FOUNDER_SCOREBOARD_READ_COLLECTIONS);
 }
 
 async function persistFinance(store, result) {

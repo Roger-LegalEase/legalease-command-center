@@ -29,9 +29,9 @@ function fakeStore(seed = initialState(), { writable = true } = {}) {
   const reads = [];
   const writes = [];
   const store = {
-    async readState() {
-      reads.push(true);
-      return structuredClone(state);
+    async readCollections(collectionNames) {
+      reads.push([...collectionNames]);
+      return Object.fromEntries(collectionNames.map((collection) => [collection, structuredClone(state[collection] ?? [])]));
     }
   };
   if (writable) {

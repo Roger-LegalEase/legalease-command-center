@@ -656,7 +656,6 @@ function shellClientScript() {
     if (app) new MutationObserver(syncShell).observe(app, { childList:true, subtree:false });
     syncResponsiveMode();
     syncShell();
-    setTimeout(() => refreshInboxCount(), 0);
   })();
   </script>`;
 }
@@ -749,6 +748,36 @@ function protectSocialPostSurfaceFromLegacyRender(html, { socialEnabled = false 
       if (compactPostSurface && document.querySelector("main#app [data-post-composer]")) return;` : ""}`);
 }
 
+function disableLegacyFullStateBoot(html) {
+  const marker = "    async function load() {";
+  if (!html.includes(marker)) return html;
+  return html.replace(marker, `${marker}
+      if (document.body?.dataset.commandCenterShell === "vnext") {
+        window.__LE_BOOT.stage = "targeted-route-render";
+        state = hydrateStatePayload({
+          persistence:"targeted",
+          heavyCollectionsDeferred:true
+        }, "targeted-route-boot");
+        safeBootActive = false;
+        fullStateLoaded = false;
+        bootStateDiagnostics = {
+          status:"targeted",
+          endpoint:null,
+          loadedAt:new Date().toISOString(),
+          heavyCollectionsDeferred:true
+        };
+        try {
+          render();
+          window.__LE_BOOT.stage = "targeted-route-ready";
+          window.__LE_BOOT.ready = true;
+          if (window.__LE_BOOT.timeout) clearTimeout(window.__LE_BOOT.timeout);
+        } catch (renderError) {
+          showRenderFailure(renderError.message || "Targeted route shell failed.", "targeted-route-render");
+        }
+        return;
+      }`);
+}
+
 function disableSocialFullStateRefresh(html, { socialEnabled = false, outreachEnabled = false, filesEnabled = false } = {}) {
   const marker = "      loadFullStateInBackground();";
   if (!html.includes(marker)) return html;
@@ -773,6 +802,7 @@ export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
   const chrome = renderVNextDesktopShellChrome(options);
   let html = removeLegacyPrimaryHeader(source);
   html = applyVNextRouteParser(html, options);
+  html = disableLegacyFullStateBoot(html);
   html = protectSocialPostSurfaceFromLegacyRender(html, options);
   html = disableSocialFullStateRefresh(html, options);
   html = replaceInitialLoadingSurface(html);

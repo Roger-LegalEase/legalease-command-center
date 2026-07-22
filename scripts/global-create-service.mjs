@@ -21,6 +21,12 @@ export const GLOBAL_CREATE_SOURCE_MAPPINGS = Object.freeze({
   file:Object.freeze({ collection:"dataRoomItems", objectType:"File", destination:"Files", sourceKind:"data-room-item" }),
   note:Object.freeze({ collection:"captureInbox", objectType:"Note", destination:"Inbox", sourceKind:"captureInbox" })
 });
+export const GLOBAL_CREATE_READ_COLLECTIONS_BY_KIND = Object.freeze(Object.fromEntries(
+  Object.entries(GLOBAL_CREATE_SOURCE_MAPPINGS).map(([kind, mapping]) => [
+    kind,
+    Object.freeze(["activityEvents", "auditHistory", mapping.collection].sort())
+  ])
+));
 
 const allowedChannels = new Set(["", "linkedin", "instagram", "facebook", "x", "threads"]);
 const allowedCampaignTypes = new Set(["partner_outreach", "customer_reengagement", "announcement"]);

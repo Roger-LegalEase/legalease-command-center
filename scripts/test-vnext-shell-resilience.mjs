@@ -105,7 +105,9 @@ assert.deepEqual(buildRouteAccessView(routeState, "#assets", { role:"operator" }
 assert.deepEqual(buildRouteAccessView(routeState, "#social/post/post-visible", { role:"operator" }), {
   ok:true,
   allowed:true,
-  outcome:"record"
+  outcome:"record",
+  collection:"posts",
+  record:{ id:"post-visible", title:"Visible Post", status:"draft" }
 });
 assert.deepEqual(buildRouteAccessView(routeState, "#social/post/post-hidden", { role:"operator" }), {
   ok:true,

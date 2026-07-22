@@ -9,6 +9,29 @@ const slug = (value = "") => lower(value).replaceAll(/[^a-z0-9]+/g, "_").replace
 
 export const FOUNDER_SCOREBOARD_ENDPOINT = "/api/ui/scoreboard";
 export const FOUNDER_FINANCE_INPUT_ENDPOINT = "/api/ui/scoreboard/finance";
+export const FOUNDER_SCOREBOARD_READ_COLLECTIONS = Object.freeze([
+  "campaigns",
+  "connectorStatus",
+  "engagementGrowthSnapshots",
+  "funnelSnapshots",
+  "heartbeatRuns",
+  "meetingBriefs",
+  "operatingPulseSnapshots",
+  "osHealthSnapshots",
+  "outreachAttempts",
+  "outreachCampaigns",
+  "outreachContacts",
+  "outreachReplies",
+  "partnerPrograms",
+  "partners",
+  "pilots",
+  "prospectCandidates",
+  "runwayInputs",
+  "sendgridWebhookHealth",
+  "socialAccounts",
+  "supportIssues",
+  "tasks"
+]);
 
 export const SCOREBOARD_STATUSES = Object.freeze({
   live:Object.freeze({ key:"live", label:"Live" }),

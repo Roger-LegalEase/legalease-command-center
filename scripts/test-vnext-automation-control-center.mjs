@@ -333,6 +333,7 @@ console.log("Automation Control Center service tests");
 
 {
   assert.deepEqual(Object.keys(automationModule).sort(), [
+    "AUTOMATION_CONTROL_CENTER_READ_COLLECTIONS",
     "AUTOMATION_CONTROL_LANES",
     "AUTOMATION_REVIEW_POSTURE",
     "buildAutomationControlCenterView"

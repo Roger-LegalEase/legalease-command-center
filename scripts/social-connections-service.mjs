@@ -2,6 +2,7 @@ import { roleHasCapability } from "./roles.mjs";
 const CHANNELS = Object.freeze(["linkedin","instagram","facebook","x","threads"]);
 const LABELS = Object.freeze({ linkedin:"LinkedIn", instagram:"Instagram", facebook:"Facebook", x:"X", threads:"Threads" });
 const clean = (value = "") => String(value ?? "").trim();
+export const SOCIAL_CONNECTIONS_READ_COLLECTIONS = Object.freeze(["socialAccounts"]);
 
 export function buildSocialConnectionsContract(state = {}, actor = {}, now = "") {
   if (actor?.authenticated !== true || !roleHasCapability(actor.role, "read_internal")) return { ok:false, generatedAt:clean(now), connections:[] };

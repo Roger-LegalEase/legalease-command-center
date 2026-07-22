@@ -5,8 +5,30 @@ import { permissionLabelForCapabilities } from "./ui/permission-labels.mjs";
 import { resolveRouteCompatibility } from "./ui/route-compatibility.mjs";
 
 export const ROUTE_ACCESS_ENDPOINT = "/api/ui/route-access";
+export const ROUTE_ACCESS_READ_COLLECTIONS = Object.freeze([
+  "brandAssets",
+  "campaigns",
+  "dataRoomItems",
+  "evidencePackNotes",
+  "partners",
+  "posts",
+  "reports",
+  "soc2Evidence",
+  "soc2Policies",
+  "tasks"
+]);
 
 const list = (value) => Array.isArray(value) ? value : [];
+const routeRecordSecretKey = /(secret|token|api[_-]?key|password|credential|authorization|service[_-]?role|webhook[_-]?secret)/i;
+
+function safeRouteRecord(value) {
+  if (Array.isArray(value)) return value.map(safeRouteRecord);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+    key,
+    routeRecordSecretKey.test(key) ? "[REDACTED]" : safeRouteRecord(child)
+  ]));
+}
 
 function recordId(record = {}) {
   return String(record.id || record.key || record.slug || "").trim();
@@ -25,6 +47,12 @@ function roleAllows(role, capabilities) {
     : roleHasCapability(role, capability));
 }
 
+export function routeAccessReadCollections(target = "") {
+  const resolution = resolveRouteCompatibility(target);
+  if (resolution.kind !== "object" || !ROUTE_ACCESS_READ_COLLECTIONS.includes(resolution.sourceKind)) return Object.freeze([]);
+  return Object.freeze([resolution.sourceKind]);
+}
+
 export function buildRouteAccessView(state = {}, target = "", { role = "viewer" } = {}) {
   const resolution = resolveRouteCompatibility(target);
   if (resolution.kind === "unsafe" || resolution.kind === "unknown") {
@@ -36,7 +64,13 @@ export function buildRouteAccessView(state = {}, target = "", { role = "viewer" 
     if (!record || !recordVisibleToActor(record, role)) {
       return Object.freeze({ ok:true, allowed:false, outcome:"unavailable" });
     }
-    return Object.freeze({ ok:true, allowed:true, outcome:"record" });
+    return Object.freeze({
+      ok:true,
+      allowed:true,
+      outcome:"record",
+      collection,
+      record:safeRouteRecord(record)
+    });
   }
   const route = routeRegistryByCanonicalRoute[resolution.canonicalRoute];
   const capabilities = routeCapabilities(route, role);

@@ -1,9 +1,14 @@
 import { roleHasCapability } from "./roles.mjs";
 import { resolveRouteCompatibility } from "./ui/route-compatibility.mjs";
-import { inboxActorContext } from "./ui/view-models/inbox-sources.mjs";
+import { inboxActorContext, INBOX_INCLUDED_COLLECTIONS } from "./ui/view-models/inbox-sources.mjs";
 import { buildTodayView } from "./ui/view-models/today-view.mjs";
 
 export const TODAY_PAGE_ENDPOINT = "/api/ui/today";
+export const TODAY_READ_COLLECTIONS = Object.freeze([
+  ...INBOX_INCLUDED_COLLECTIONS,
+  "dailyRunSessions",
+  "morningBriefs"
+]);
 
 const DAILY_RUN_REASON = "This is the current Daily Run item.";
 
