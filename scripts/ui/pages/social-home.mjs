@@ -13,13 +13,14 @@ export function renderSocialHomeLoading() {
   const tabs = SOCIAL_HOME_VIEWS.map((view, index) => `<a class="vnext-social-tab${index === 0 ? " is-selected" : ""}" role="tab" aria-selected="${index === 0 ? "true" : "false"}" tabindex="${index === 0 ? "0" : "-1"}" href="#social?view=${escapeAttribute(view.key)}" data-social-view="${escapeAttribute(view.key)}">${escapeHtml(view.label)} <span data-social-view-count="${escapeAttribute(view.key)}">0</span></a>`).join("");
   return `<section class="vnext-social-page" data-social-page aria-labelledby="vnext-social-title">
     <header class="vnext-social-header">
-      <div><p class="vnext-social-eyebrow">Social</p><h1 id="vnext-social-title">Social</h1><p>Shape ideas, see the calendar, find Posts, and review published results.</p></div>
+      <div><p class="vnext-social-eyebrow">Social</p><h1 id="vnext-social-title">Social</h1><p>Plan the week, shape ideas, find Posts, and review published results.</p></div>
       <div class="vnext-social-primary-action">
         <button class="vnext-social-create" type="button" data-social-create aria-describedby="vnext-social-create-explanation" aria-busy="true" disabled>Create post</button>
         <p id="vnext-social-create-explanation" data-social-create-explanation role="status">Checking whether this account can create Posts.</p>
       </div>
     </header>
     <nav class="vnext-social-tabs" role="tablist" aria-label="Social views">${tabs}</nav>
+    <div data-social-weekly-host hidden></div>
     <form class="vnext-social-filters" data-social-filters aria-label="Social filters">
       <label>Status<select name="status" data-social-filter="status"><option value="">All statuses</option></select></label>
       <label>Channel<select name="channel" data-social-filter="channel"><option value="">All channels</option></select></label>
@@ -106,6 +107,24 @@ export function socialHomeBrowserSource() {
     function showItemSurface(view) { const calendar = node("[data-social-calendar]"); const grid = node("[data-social-grid]"); if (calendar) calendar.hidden = view !== "calendar"; if (grid) grid.hidden = view === "calendar"; }
     function hideItemSurfaces() { const calendar = node("[data-social-calendar]"); const grid = node("[data-social-grid]"); if (calendar) calendar.hidden = true; if (grid) grid.hidden = true; }
     function clearState() { const state = node("[data-social-state]"); if (state) { state.hidden = true; state.replaceChildren(); } }
+    function showWeeklySurface(show) {
+      const host = node("[data-social-weekly-host]");
+      const filters = node("[data-social-filters]");
+      const summary = node("[data-social-summary]");
+      const content = node("[data-social-content]");
+      if (host) host.hidden = !show;
+      if (filters) filters.hidden = show;
+      if (summary) summary.hidden = show;
+      if (content) content.hidden = show;
+      node("[data-social-page]")?.setAttribute("data-social-current-view", show ? "weekly" : routeState().view);
+      app()?.querySelectorAll("[data-social-view]").forEach((tab) => {
+        const selected = tab.dataset.socialView === (show ? "weekly" : routeState().view);
+        tab.classList.toggle("is-selected", selected);
+        tab.setAttribute("aria-selected", selected ? "true" : "false");
+        tab.tabIndex = selected ? 0 : -1;
+      });
+      if (show && host) document.dispatchEvent(new CustomEvent("vnext:social-weekly-mount", { detail:{ target:host } }));
+    }
     function control(label, action) { const button = document.createElement("button"); button.type = "button"; button.textContent = label; button.addEventListener("click", action); return button; }
     function anchor(label, href) { const link = document.createElement("a"); link.textContent = label; link.href = href; return link; }
     function renderState(kind, titleText, messageText, actions = []) {
@@ -156,13 +175,13 @@ export function socialHomeBrowserSource() {
     function renderCalendarCounts(payload) { for (const group of ["scheduled", "unscheduled"]) { const count = Number(payload.calendarGroups?.[group] || 0); const target = node('[data-social-calendar-count="' + group + '"]'); if (target) target.textContent = count + " " + (count === 1 ? "Post" : "Posts"); } }
     function appendItems(payload) { for (const item of payload.items || []) { if (renderedKeys.has(item.stableKey)) continue; const grid = payload.selectedView === "calendar" ? node(item.schedule?.scheduled ? "[data-social-scheduled-grid]" : "[data-social-unscheduled-grid]") : node("[data-social-grid]"); if (!grid) continue; renderedKeys.add(item.stableKey); grid.append(itemCard(item, payload.selectedView)); } metrics.renderedItems = renderedKeys.size; }
     function renderPayload(payload, append) {
-      currentPayload = payload; clearState(); setBusy(false); renderTabs(payload); renderFilters(payload); renderSourceState(payload); renderCalendarCounts(payload); setCreateAvailability(payload.capabilities?.createsPost === true, payload.capabilities?.createPostReason || "This account cannot create Posts here."); if (!append) clearItems(); showItemSurface(payload.selectedView); appendItems(payload);
+      currentPayload = payload; showWeeklySurface(false); clearState(); setBusy(false); renderTabs(payload); renderFilters(payload); renderSourceState(payload); renderCalendarCounts(payload); setCreateAvailability(payload.capabilities?.createsPost === true, payload.capabilities?.createPostReason || "This account cannot create Posts here."); if (!append) clearItems(); showItemSurface(payload.selectedView); appendItems(payload);
       nextCursor = payload.nextCursor || null; const more = node("[data-social-load-more]"); if (more) more.hidden = !nextCursor;
       const summary = node("[data-social-summary]"); if (summary) summary.textContent = payload.counts.filtered + " " + (payload.counts.filtered === 1 ? "item" : "items") + (activeFilters(payload) ? " match the selected filters." : ".");
       if (!payload.items?.length && !append) renderEmpty(payload);
     }
     async function load({ append = false, force = false } = {}) {
-      if (!onSocialRoute() || sessionEnded || routeState().view === "results" || !ensureScaffold()) return;
+      if (!onSocialRoute() || sessionEnded || ["results", "weekly"].includes(routeState().view) || !ensureScaffold()) return;
       const requestedQuery = queryString(append ? nextCursor : "");
       if (pending) { metrics.suppressedDuplicateLoads += 1; if (requestedQuery !== pendingQuery) queuedRouteReload = true; return pending; }
       if (!append && !force && currentPayload && currentPayload.selectedView === routeState().view && !activeFilters(currentPayload)) { renderPayload(currentPayload, false); return currentPayload; }
@@ -196,6 +215,7 @@ export function socialHomeBrowserSource() {
         return;
       }
       if (!ensureScaffold()) return;
+      if (routeState().view === "weekly") { showWeeklySurface(true); return; }
       if (settledPageState === "error") { renderError(); return; }
       if (settledPageState === "unauthorized") { renderUnauthorized(); return; }
       if (settledPageState === "loaded" && currentPayload) { renderPayload(currentPayload, false); return; }

@@ -78,7 +78,7 @@ const state = {
 const before = JSON.stringify(state);
 const ideas = buildAuthorizedSocialHome(state, actor, NOW, { view:"ideas", limit:40 });
 assert.equal(SOCIAL_HOME_ENDPOINT, "/api/ui/social");
-assert.deepEqual(SOCIAL_HOME_VIEWS.map((view) => view.label), ["Ideas", "Calendar", "Library", "Results"]);
+assert.deepEqual(SOCIAL_HOME_VIEWS.map((view) => view.label), ["Ideas", "Weekly plan", "Calendar", "Library", "Results"]);
 assert.equal(ideas.selectedView, "ideas");
 assert.equal(ideas.generatedAt, NOW);
 assert.equal(ideas.capabilities.createsPost, true);
@@ -98,7 +98,7 @@ assert.ok(ideas.items.filter((item) => item.kind === "post").every((item) => ite
 const calendar = buildAuthorizedSocialHome(state, actor, NOW, { view:"calendar", limit:40 });
 assert.ok(calendar.items.some((item) => item.schedule.scheduled));
 assert.ok(calendar.items.some((item) => !item.schedule.scheduled));
-assert.equal(calendar.views.map((view) => view.key).join(","), "ideas,calendar,library,results");
+assert.equal(calendar.views.map((view) => view.key).join(","), "ideas,weekly,calendar,library,results");
 assert.equal(calendar.calendarGroups.scheduled, 7);
 assert.equal(calendar.calendarGroups.unscheduled, calendar.views.find((view) => view.key === "calendar").count - 7);
 const firstUnscheduled = calendar.items.findIndex((item) => !item.schedule.scheduled);

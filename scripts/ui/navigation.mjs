@@ -18,11 +18,15 @@ export const MIGRATION_CLASSIFICATIONS = Object.freeze([
 
 export const VNEXT_DESTINATIONS = Object.freeze([
   "Today",
+  "Inbox",
+  "Partners",
   "Social",
   "Outreach",
-  "Partners",
+  "Scoreboard",
+  "Support",
+  "Calendar",
+  "Company Health",
   "Files",
-  "Inbox",
   "Settings",
   "Advanced/internal only",
   "Deprecate after parity"

@@ -29,16 +29,16 @@ const shellSource = readFileSync("scripts/ui/app-shell.mjs", "utf8");
 const cssSource = readFileSync(DESKTOP_SHELL_STYLESHEET_PATH, "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 
-const expectedPrimaryLabels = ["Today", "Social", "Outreach", "Partners", "Files"];
+const expectedPrimaryLabels = ["Today", "Inbox", "Relationships", "Social", "Outreach", "Scoreboard", "Support", "Calendar", "Company Health", "Files"];
 assert.deepEqual(Object.values(PRIMARY_DESTINATIONS), expectedPrimaryLabels);
 assert.deepEqual(PRIMARY_SHELL_DESTINATIONS.map((item) => item.label), expectedPrimaryLabels);
-assert.equal(PRIMARY_SHELL_DESTINATIONS.length, 5, "The vNext shell must expose exactly five primary destinations.");
-assert.equal(new Set(PRIMARY_SHELL_DESTINATIONS.map((item) => item.label)).size, 5);
+assert.equal(PRIMARY_SHELL_DESTINATIONS.length, 10, "The founder shell must expose the ten primary operating destinations.");
+assert.equal(new Set(PRIMARY_SHELL_DESTINATIONS.map((item) => item.label)).size, 10);
 for (const forbidden of ["Work", "Queue", "Review Desk", "Reports", "Proof", "Growth", "Production", "More", "Operator Search", "Data Room", "Evidence Room"]) {
   assert.ok(!PRIMARY_SHELL_DESTINATIONS.some((item) => item.label === forbidden), `${forbidden} must not be a primary destination.`);
 }
 
-assert.deepEqual(SECONDARY_SHELL_CONTROLS.map((item) => item.label), ["Inbox", "Le-E", "Settings"]);
+assert.deepEqual(SECONDARY_SHELL_CONTROLS.map((item) => item.label), ["Le-E", "Settings"]);
 assert.deepEqual(TOP_BAR_CONTROLS.map((item) => item.label), ["Search", "Create", "Help", "Profile"]);
 assert.deepEqual(Object.values(GLOBAL_UTILITIES), ["Inbox", "Search", "Create", "Le-E", "Settings", "Help", "Profile"]);
 assert.deepEqual(CREATE_MENU_OPTIONS.map((item) => item.label), ["Social post", "Outreach campaign", "Partner", "File or folder", "Quick note"]);
@@ -105,7 +105,8 @@ assert.equal(resolveShellDestination("#rcap"), "Partners");
 
 const canonicalRoutes = new Set(routeRegistry.map((entry) => entry.canonicalRoute));
 for (const item of PRIMARY_SHELL_DESTINATIONS) {
-  assert.ok(canonicalRoutes.has(item.route), `${item.label} must reach a real current route.`);
+  const resolved = resolveRouteCompatibility(`#${item.route}`);
+  assert.ok(canonicalRoutes.has(item.route) || resolved.kind === "page", `${item.label} must reach a real current or vNext route.`);
 }
 for (const item of CREATE_MENU_OPTIONS) {
   assert.match(item.endpoint, item.id === "quick-note"

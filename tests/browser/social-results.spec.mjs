@@ -147,7 +147,7 @@ test("Social Results is a compact read-only workspace with exact truth and histo
   await expect(page.getByText("Published results", { exact:true })).toBeVisible();
   await expect(page.getByText("Results with metrics", { exact:true })).toBeVisible();
   await expect(page.getByText("Results without metrics", { exact:true })).toBeVisible();
-  await expect(page.getByRole("tab")).toHaveCount(4);
+  await expect(page.getByRole("tab")).toHaveCount(5);
   await expect(page.getByRole("tab", { name:"Results" })).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("[data-results-card]")).toHaveCount(8);
   await expect(page.locator("[data-results-grid]")).not.toContainText(/Publishing|Failed|Reconciliation|status-only/i);

@@ -29,9 +29,14 @@ export const PRODUCT_SENTENCE = "The Command Center helps LegalEase plan today, 
 
 export const PRIMARY_DESTINATIONS = record({
   today: "Today",
+  inbox: "Inbox",
+  partners: "Relationships",
   social: "Social",
   outreach: "Outreach",
-  partners: "Relationships",
+  scoreboard: "Scoreboard",
+  support: "Support",
+  calendar: "Calendar",
+  companyHealth: "Company Health",
   files: "Files"
 });
 

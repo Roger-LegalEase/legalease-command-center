@@ -150,6 +150,11 @@ import { buildPostComposerContract, composerSavePath, normalizeComposerPatch } f
 import { renderSocialCreative, saveSocialCreativeSelection } from "./social-creative-actions.mjs";
 import { saveSocialVariants } from "./social-variant-actions.mjs";
 import { saveSocialSchedule } from "./social-schedule-actions.mjs";
+import {
+  SOCIAL_WEEKLY_API_BODY_LIMIT,
+  handleSocialWeeklyPlannerApiRequest,
+  isSocialWeeklyPlannerApiPath
+} from "./social-weekly-planner-api.mjs";
 import { approveSocialPost, regenerateSocialPostImage, requestSocialPostChanges } from "./social-review-actions.mjs";
 import { createSocialManualPackage, publishSocialPost } from "./social-publishing-actions.mjs";
 import { buildSocialCalendarContract } from "./social-calendar-service.mjs";
@@ -35673,7 +35678,7 @@ async function handleRequest(request, response) {
       }, accessDecision.status || 403);
       return;
     }
-    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname)) {
+    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname) || isSocialWeeklyPlannerApiPath(url.pathname)) {
       sendJson(response, {
         ok:false,
         outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
@@ -35895,6 +35900,24 @@ async function handleRequest(request, response) {
     });
     const result = mutation ? await serializeStateMutation(execute) : await execute();
     sendJson(response, result.body || { ok:false, message:"Le-E follow-ups are unavailable." }, result.status || 404);
+    return;
+  }
+
+  if (isSocialWeeklyPlannerApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:SOCIAL_WEEKLY_API_BODY_LIMIT }) : {};
+    const execute = () => handleSocialWeeklyPlannerApiRequest({
+      enabled:commandCenterVNextConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    const result = mutation ? await serializeStateMutation(execute) : await execute();
+    sendJson(response, result.body || { ok:false, message:"Weekly Social planning is unavailable." }, result.status || 404);
     return;
   }
 
