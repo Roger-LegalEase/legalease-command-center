@@ -1,13 +1,15 @@
-import { expect, test } from "@playwright/test";
+import { expect, openToday, test } from "./support.mjs";
 
 test("founder completes the full task workflow from Today and reopens it from Inbox", async ({ page }) => {
+  const baseURL = process.env.BROWSER_TEST_TODAY_BASE_URL;
+  test.skip(!baseURL, "The isolated Today browser fixture URL is required.");
   const mutations = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
     if (request.method() === "POST") mutations.push(url.pathname);
   });
 
-  await page.goto("/#today");
+  await openToday(page, `${baseURL}/#today`);
   await expect(page.locator("[data-today-page]")).toBeVisible();
   const onboarding = page.getByRole("button", { name:"Skip for now" });
   if (await onboarding.isVisible().catch(() => false)) await onboarding.click();
@@ -17,8 +19,8 @@ test("founder completes the full task workflow from Today and reopens it from In
 
   const drawer = page.locator("[data-task-workbench]");
   await expect(drawer).toBeVisible();
-  await expect(drawer.locator("[data-task-title]")).toHaveText("Follow up on Harris County pilot memo");
-  await expect(drawer.getByText("High priority")).toBeVisible();
+  await expect(drawer.locator("[data-task-title]")).toHaveText("Prepare the current Partner brief");
+  await expect(drawer.getByText("Medium priority")).toBeVisible();
 
   await drawer.getByRole("button", { name:"Mark in progress" }).click();
   await expect(drawer.getByText("Task marked in progress.")).toBeVisible();
@@ -68,15 +70,15 @@ test("founder completes the full task workflow from Today and reopens it from In
   expect(overflow.drawer).toBeLessThanOrEqual(0);
 
   await drawer.getByRole("button", { name:"Close", exact:true }).click();
-  await page.goto("/#inbox?group=needs-me&type=task");
+  await page.goto(`${baseURL}/#inbox?group=needs-me&type=task`);
   await expect(page.locator("[data-inbox-page]")).toBeVisible();
-  const taskRow = page.locator('[data-inbox-item][data-task-id="demo-task-harris-follow-up"]');
+  const taskRow = page.locator('[data-inbox-item][data-task-id="today-browser-now-task"]');
   await expect(taskRow).toBeVisible();
-  await taskRow.getByRole("button", { name:/Open Follow up on Harris County pilot memo/ }).click();
+  await taskRow.getByRole("button", { name:/Open Prepare the current Partner brief/ }).click();
   await expect(drawer).toBeVisible();
-  await expect(drawer.locator("[data-task-title]")).toHaveText("Follow up on Harris County pilot memo");
+  await expect(drawer.locator("[data-task-title]")).toHaveText("Prepare the current Partner brief");
 
   expect(new Set(mutations.filter((path) => path.includes("/tasks/"))))
-    .toEqual(new Set(["/api/ui/tasks/demo-task-harris-follow-up/action"]));
+    .toEqual(new Set(["/api/ui/tasks/today-browser-now-task/action"]));
   expect(mutations.filter((path) => /send|publish|release|launch|live-mode|heartbeat/i.test(path))).toEqual([]);
 });
