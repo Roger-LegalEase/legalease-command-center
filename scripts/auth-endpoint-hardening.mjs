@@ -54,7 +54,12 @@ const forbiddenEndpointRules = [
     id: "publish-post",
     label: "publish post",
     pattern: /\/api\/posts\/[^/]+\/publish-now|publish[-_]?post/i,
-    reason: "Live publishing is blocked while live gates remain 0."
+    // Unconditional by design: this rule never consults live-gate values — the route stays 403
+    // regardless, and may be relaxed only as part of a deliberate social live-publishing
+    // activation decision (docs/founder-os reuse ledger). If this shield is ever relaxed,
+    // publishPostNow's per-channel livePostingEnabledForChannel check is the second
+    // enforcement layer.
+    reason: "Live publishing is blocked unconditionally at the hardening layer."
   },
   {
     id: "publish-partner-page",
