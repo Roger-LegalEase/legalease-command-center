@@ -69,3 +69,45 @@ with every live-posting flag off.
 - The audit-fixes PR listed as a Release 1 precondition in `../08_DELIVERY_PLAN.md` must close this gap (make `publishPostNow` enforce `livePostingEnabledForChannel` the way `runPublishingWorker` does) **before** any future activation of live posting.
 - Per `../workspaces/campaigns.md`, the new Campaigns surface must not inherit this gap: any Publish Now affordance it exposes must call the same gate the scheduled worker calls.
 - This document records the finding only; the fix is explicitly out of scope for the documentation PR.
+
+---
+
+## Status update 2026-07-23 — per-channel gap CLOSED by PR #113
+
+Everything above is preserved as the historical record; it describes the code before
+PR #113 (branch `audit-fixes-01`, gate fix commit `8373e97`, branch tip `0beb01e`).
+
+**The fix.** `publishPostNow` now enforces the gate itself: immediately after the
+`publishReadiness` check and **before** `acquireSocialPublishClaim` and
+`publishToChannel`, it calls `livePostingEnabledForChannel(channel)`; when the channel's
+flag is off it records `publishingStatus: "blocked_live_gate"`, writes a publish event
+with `errorCode: "live_gate_disabled"` (identical to the scheduled worker's block), and
+rejects without creating a claim or touching the provider. The route response surfaces
+`errorCode`.
+
+**The test.** `scripts/test-publish-now-live-gate.mjs` (auto-discovered by
+`test:extended`) proves three layers: (1) source order — the gate call precedes the
+claim and provider calls; (2) behavior — `publishPostNow` in a vm sandbox with the real
+gate code blocks when the channel's flag is off *even when a different channel's flag is
+on* (the exact residual hole), and publishes via a mock provider when on; (3) HTTP — the
+endpoint-hardening layer still 403s the route outright.
+
+**Correction to the original analysis.** The route-level review above ("applies only
+RBAC") missed `guardForbiddenEndpoint` (`scripts/auth-endpoint-hardening.mjs`): its
+`publish-post` rule 403s `POST /api/posts/:id/publish-now` **unconditionally** — the
+route was never reachable over HTTP, with any gate value. Its reason string falsely
+claimed the block applied "while live gates remain 0"; a truth-only comment/reason fix
+ships in the follow-up test-fixes PR. The in-function per-channel gate from #113 is the
+second enforcement layer for if that shield is ever deliberately relaxed.
+
+**Practical-exposure correction (2026-07-23).** The "pipeline is dormant: no channel's
+live-posting env keys are set to `true` in production" claim above is **no longer true**:
+production `/api/version` reported `liveGatesCount: 5` on 2026-07-23 — all five
+channels' live-posting env flags are enabled in the prod environment (render.yaml says
+`"false"`; the dashboard values differ). The unconditional hardening 403 (and absent
+provider OAuth) are what currently stand between the scheduled worker/Publish Now and a
+live post. Owner decision needed on whether those flags should be returned to off.
+
+**Merge status at refresh time:** PR #113 was still OPEN and production ran `a3793c3`
+(pre-fix). The gap is closed in code on `audit-fixes-01`; it is closed on main only once
+#113 merges.

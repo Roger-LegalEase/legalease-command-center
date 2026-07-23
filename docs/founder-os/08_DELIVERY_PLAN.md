@@ -12,6 +12,15 @@ Two separate future PRs are required before Release 1 implementation begins. Thi
 package only records them.
 
 ### Precondition A — audit-fixes PR
+
+> **Status 2026-07-23: satisfied by PR #113** (branch `audit-fixes-01` @ `0beb01e`) —
+> all four items below are delivered there: per-channel live gate in `publishPostNow`
+> with `test-publish-now-live-gate.mjs`; sharp pinned `0.35.3` (no API changes); the
+> suppression exports and MVP workbooks moved into gitignored `data/private/` with a
+> pre-commit PII gate (`npm run hooks:install`); `engines.node: 24.x` plus
+> `NODE_VERSION=24.x` on both Render services. At the time of this note #113 was still
+> OPEN on GitHub and production ran `a3793c3` — **verify the merge before treating this
+> precondition as closed on main.** The items below are preserved as originally recorded.
 1. **Publish Now live gate** — `evidence/publish-now-gate-review.md` confirms the gap is
    **still open** at `a3793c3`: `publishPostNow` (`scripts/preview-server.mjs:5801`)
    never calls `livePostingEnabledForChannel`. Fix: enforce the same gate the scheduled
@@ -32,6 +41,13 @@ Delete the untracked stale clone `social-clean/` and drop `.gitignore:59`. Evide
 engines including a `publishPostNow` **without** the claim machinery). Recorded as a PR
 requirement even though the directory is untracked, so the removal is reviewed and
 deliberate.
+
+### Recorded future hardening (not a Release 1 blocker)
+- **2026-07-23 — CI mode for the binary CSV/XLSX PII gate.** The pre-commit gate from
+  PR #113 depends on each clone running `npm run hooks:install`. Add a branch-diff/CI
+  mode for the same check (staged-blob email scan over CSV/XLSX, suppression-filename
+  match) and run it in the privacy job, so the protection no longer depends on
+  per-clone hook installation.
 
 ---
 

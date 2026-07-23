@@ -86,3 +86,37 @@ false` (`preview-server.mjs:41437–41439`).
 `test-social-guidelines-gate.mjs`, `test-sendgrid-webhook.mjs`,
 `test-webhook-http-security.mjs`, `test-owner-token-auth.mjs`,
 `test-secret-exposure.mjs`.
+
+---
+
+## Post-#113 delta — 2026-07-23
+
+Everything above is preserved as collected at `a3793c3`. The audit-fixes work landed as
+PR #113 (branch `audit-fixes-01`, tip `0beb01e`; still OPEN/unmerged at refresh time —
+verify merge before relying on main). Changes relevant to this file:
+
+- **Publish Now live gate — CLOSED.** `publishPostNow` now enforces the per-channel
+  `livePostingEnabledForChannel` check before the publish claim and the provider call
+  (`errorCode: "live_gate_disabled"`, matching the scheduled worker), with
+  `scripts/test-publish-now-live-gate.mjs` proving off-blocked / on-allowed. The
+  "manual Publish Now path is the exception" caveat in §1 no longer applies once #113
+  merges — see `publish-now-gate-review.md` dated update, including the correction that
+  the endpoint-hardening layer 403s the route unconditionally.
+- **sharp CVEs — resolved.** `sharp` pinned exactly at `0.35.3` (libvips
+  CVE-2026-33327/-33328/-35590/-35591 fixed); no API accommodations were needed and the
+  render QA suites pass unchanged.
+- **Node pinned.** `"engines": { "node": "24.x" }` in package.json and
+  `NODE_VERSION=24.x` on both render.yaml services, matching the Node 24.14.1 observed
+  in production deploy logs (previously floating on Render's default).
+- **PII contained.** The four `suppression_*.csv` exports and both MVP-user workbooks
+  moved from the repo root into gitignored `data/private/`; a pre-commit gate
+  (`scripts/pre-commit-pii-gate.mjs` via `.githooks/pre-commit`, activated per clone by
+  `npm run hooks:install`) blocks staged suppression exports and email addresses in
+  CSV/XLSX content, reusing the security-scan tooling. **CI enforcement is proposed**
+  (recorded in `../08_DELIVERY_PLAN.md`) so the protection stops depending on per-clone
+  hook installation.
+- **Production observation (owner attention):** on 2026-07-23 production `/api/version`
+  reported `liveGatesCount: 5` — all five live-posting env flags enabled in the prod
+  environment, contradicting render.yaml's `"false"` values and the dormant-pipeline
+  assumption above. It also reported `supabaseConnected: false` at that moment. Neither
+  is changed by #113; both are owner decisions.

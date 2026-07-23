@@ -1,2 +1,8 @@
 a3793c3156bc2c866dbd1f65e0ec420ae2352554  (origin/main tip, commit date 2026-07-22 19:14:44 -0400)
 Evidence collected: 2026-07-23
+
+Post-#113 refresh: 2026-07-23 — audit-fixes verified against PR #113
+(branch audit-fixes-01 @ 0beb01e4e6c61bc829146fc89c5d151b29fa3128).
+Status at refresh time: PR #113 was still OPEN on GitHub, origin/main remained
+a3793c3, and production /api/version reported commit a3793c3. Re-stamp this
+file with the new main sha once #113 is squash-merged.

@@ -42,6 +42,28 @@ Supabase collection reads for Founder Mode routes replacing full-state hydration
 | `parallel-implementations.md` | social-clean/ accounting (untracked stale clone) and other parallel copies |
 | `inspection-bundle-e620bde/` | The historical inspection baseline, included verbatim as collected at e620bde |
 
+## Post-#113 delta — 2026-07-23
+
+Focused refresh after the audit-fixes work (PR #113, branch `audit-fixes-01` @
+`0beb01e`; **still OPEN/unmerged at refresh time**, with production running `a3793c3`).
+Original findings above and in each file are preserved; dated status updates are
+appended, never rewritten.
+
+- **Publish Now per-channel live gate: CLOSED** by #113 — enforcing check inside
+  `publishPostNow` + `scripts/test-publish-now-live-gate.mjs`; see the dated update in
+  `publish-now-gate-review.md` (including the unconditional hardening-403 correction).
+- **sharp: resolved at 0.35.3** (the CVE-fixing version); render QA suites pass with no
+  API changes.
+- **Node: pinned 24.x** in package.json `engines` and via `NODE_VERSION` on both Render
+  services (production observed on 24.14.1).
+- **PII: contained** in gitignored `data/private/` with a pre-commit gate reusing the
+  security-scan tooling (`npm run hooks:install` per clone); CI enforcement proposed in
+  `../08_DELIVERY_PLAN.md`.
+- **New production observation:** `/api/version` on 2026-07-23 reported
+  `liveGatesCount: 5` (all live-posting flags enabled in prod env — contradicts
+  render.yaml and the dormant assumption) and `supabaseConnected: false`. Recorded in
+  `safety-gates.md`; owner decisions, unchanged by #113.
+
 ## Privacy
 
 No env values, contact data, or suppression data appear anywhere in this directory. The
