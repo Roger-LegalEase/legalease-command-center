@@ -179,7 +179,7 @@
   },
   "dependencies": {
     "pg": "^8.21.0",
-    "sharp": "^0.34.5"
+    "sharp": "0.35.3"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
