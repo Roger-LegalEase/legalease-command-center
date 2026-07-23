@@ -175,7 +175,9 @@
     "security:scan:history": "node scripts/security-scan.mjs --history",
     "security:scanner:test": "node scripts/test-security-scan.mjs",
     "migrations:validate": "node scripts/validate-migrations.mjs",
-    "restore:drill": "node scripts/restore-drill.mjs"
+    "restore:drill": "node scripts/restore-drill.mjs",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "pii:scan:staged": "node scripts/pre-commit-pii-gate.mjs"
   },
   "dependencies": {
     "pg": "^8.21.0",
