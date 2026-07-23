@@ -1,0 +1,36 @@
+2026-07-15T00:11:27Z phase=init repo=Roger-LegalEase/legalease-command-center pr=62 render_service=[REDACTED] supabase_project=[REDACTED] outcome=started
+2026-07-15T00:11:27Z phase=preflight check=github_pr_identity outcome=pass state=open base=main head=e6f6cb7823001c83851d85cbfbc6e2b456cb21e1 mergeable=true draft=true
+2026-07-15T00:17:00Z phase=preflight check=github_required_jobs outcome=pass check=success canonical=success security=success privacy_and_migrations=success extended=documented_nonblocking_failure
+2026-07-15T00:17:00Z phase=preflight check=render_api outcome=retry_pending detail=read_timeout_no_state_change
+2026-07-15T00:24:31Z phase=preflight check=supabase_identity outcome=pass project=[REDACTED]
+2026-07-15T00:24:31Z phase=preflight check=migration_scope outcome=pass pending=20260713_001_production_hardening.sql
+2026-07-15T00:24:31Z phase=preflight check=logical_backup outcome=pass schema_bytes=20304 data_bytes=29194631 checksums=match ignored=true tracked=false staged=false
+2026-07-15T00:24:31Z phase=preflight check=record_baseline outcome=pass leos_core_records=23512 collections=57
+2026-07-15T00:24:31Z phase=preflight action=create_private_bucket outcome=success bucket=social-draft-assets-private public=false file_limit=12582912 mime_profile=image_only
+2026-07-15T00:24:31Z phase=preflight check=private_bucket_privacy outcome=pass public_read=denied client_policies=0 synthetic_prefix_empty=true
+2026-07-15T00:24:31Z phase=preflight check=production_revision outcome=pass deploy_commit=4a22fc71705c4f66b418d48888f485815db39ccf supabase_connected=true live_gates_count=0
+2026-07-15T00:30:15Z phase=preflight check=render_authenticated_api outcome=blocked detail=timeout_http_000 attempts=5
+2026-07-15T00:30:15Z phase=cutover outcome=stopped_before_merge reason=render_control_plane_unavailable old_commit=4a22fc71705c4f66b418d48888f485815db39ccf remains_live=true migration_applied=false
+2026-07-15T00:40:03Z phase=migration_preflight check=render_web_stopped outcome=fail http=200 commit=4a22fc71705c4f66b418d48888f485815db39ccf
+2026-07-15T00:40:03Z phase=migration_preflight check=render_cron_suspended outcome=unverified detail=render_api_timeout
+2026-07-15T00:40:03Z phase=migration_preflight check=supabase_identity outcome=pass project=[REDACTED]
+2026-07-15T00:40:03Z phase=migration_preflight check=migration_scope outcome=pass pending=20260713_001_production_hardening.sql
+2026-07-15T00:40:03Z phase=migration outcome=not_applied reason=old_writer_reachable
+2026-07-15T00:59:47Z phase=migration_preflight check=render_web_stopped outcome=pass health_http=503 version_http=503
+2026-07-15T00:59:47Z phase=migration_preflight check=render_cron_stopped outcome=operator_confirmed service=legalease-heartbeat
+2026-07-15T00:59:47Z phase=migration_preflight check=supabase_identity outcome=pass project=[REDACTED]
+2026-07-15T00:59:47Z phase=migration_preflight check=migration_scope outcome=pass pending=20260713_001_production_hardening.sql
+2026-07-15T01:23:43Z phase=migration_preflight check=record_baseline outcome=pass leos_core_records=23526 collections=57
+2026-07-15T01:23:43Z phase=migration action=db_push outcome=success migration=20260713_001_production_hardening.sql
+2026-07-15T01:23:43Z phase=migration_verify check=history outcome=pass version=20260713 occurrences=1
+2026-07-15T01:23:43Z phase=migration_verify check=record_counts outcome=pass pre=23526 post=23526 collection_counts=match
+2026-07-15T01:23:43Z phase=migration_verify check=schema_security outcome=pass version_column=true tables=true functions=true rls=true permissions=true audit_immutability=true publish_uniqueness=true
+2026-07-15T01:23:43Z phase=migration_verify check=rolled_back_behavior outcome=pass audit_mutations=blocked duplicate_claim=blocked synthetic_rows=0
+2026-07-15T01:23:43Z phase=migration_verify check=private_bucket outcome=pass bucket=social-draft-assets-private public=false client_policies=0
+2026-07-15T01:23:43Z phase=migration_verify check=render_web_still_stopped outcome=pass health_http=503 version_http=503
+2026-07-15T01:23:43Z phase=migration outcome=complete render_deployed=false services_resumed=false
+2026-07-15T01:39:14Z phase=github action=merge_pr outcome=success pr=62 merge_sha=fd1868369d80cafa8ffecf272e0b381c6f51e632
+2026-07-15T01:43:55Z phase=render_predeploy check=outbound_gates outcome=pass effective_false=true
+2026-07-15T01:43:55Z phase=render_deploy action=exact_sha_deploy outcome=blocked http=400 expected_sha=fd1868369d80cafa8ffecf272e0b381c6f51e632 deploy_id=none
+2026-07-15T01:43:55Z phase=render_deploy check=deployment_history outcome=pass expected_sha_deploys=0 current_deploy=dep-d9af8sks728c73eli7i0 current_sha=4a22fc71705c4f66b418d48888f485815db39ccf
+2026-07-15T01:43:55Z phase=cutover outcome=blocked web_suspended=true cron_suspended=true services_resumed=false

@@ -1,0 +1,44 @@
+# Files deliberately SKIPPED from the schema collection (item 4) and why
+
+Rule applied: zero row data; explicitly skip any file containing contact lists,
+suppression lists, email addresses, or phone numbers.
+
+Skipped:
+
+1. suppression_blocks.csv (repo root)
+   — SendGrid suppression list export. Contains email addresses. Suppression list = excluded by rule.
+
+2. suppression_bounces.csv (repo root)
+   — SendGrid bounce suppression list. Contains email addresses.
+
+3. suppression_invalid_emails.csv (repo root)
+   — SendGrid invalid-email suppression list. Contains email addresses.
+
+4. suppression_spam_reports.csv (repo root)
+   — SendGrid spam-report suppression list. Contains email addresses.
+
+5. expungement_ai_mvp_users_organized.xlsx and expungement_ai_mvp_users_organized-2.xlsx (repo root)
+   — User/contact list spreadsheets. Contact lists = excluded by rule.
+
+6. data/social-command-center.json (and data/backups/*.bak, data/seed/social-command-center.seed.json)
+   — These are application STATE files (row data, JSON records), not schema definitions.
+     The live state file contains email addresses. Row data = excluded by rule.
+     The schema they conform to is captured in code form via the copied files
+     (scripts/storage.mjs coreStateCollections registry, scripts/company-memory.mjs models).
+
+7. data/exports/* (backups, final-pngs, posting-kits, reports, soc2)
+   — Exported data/artifacts, not schema. Row data excluded by rule.
+     (One redacted report sample is provided separately under 08-reports-sample/ per item 8.)
+
+What WAS collected (for reference):
+- supabase/leos-core-records.sql — core table DDL (verified: DDL only, no rows)
+- supabase/migrations/20260713_001_production_hardening.sql — verified: DDL + stored
+  functions only; the INSERT statements inside are parameterized procedure bodies, not data
+- supabase/recovery/20260713_001_production_hardening.md — rollback notes for the migration
+- lib/storage/schema.sql, lib/storage/migrations.mjs — vnext/local storage DDL and migration code
+- scripts/storage.mjs — schema-in-code: coreStateCollections collection registry (the
+  authoritative list of persisted collections) plus the storage layer that enforces it
+  (verified: only email present is the placeholder roger@example.com)
+- scripts/company-memory.mjs — schema-in-code: shared record models (QueueItem/Contact/
+  Org/Event/AgentRun/Approval layer)
+- scripts/check-supabase-schema.mjs, scripts/validate-migrations.mjs — schema check tooling
