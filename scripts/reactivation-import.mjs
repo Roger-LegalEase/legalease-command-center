@@ -17,7 +17,7 @@ import {
   importReactivationContacts, applyWaveAssignment, reactivationCampaignOf, providerBucket
 } from "./reactivation-os.mjs";
 
-const DEFAULT_FILE = "expungement_ai_mvp_users_organized.xlsx";
+const DEFAULT_FILE = "data/private/expungement_ai_mvp_users_organized.xlsx";
 const SHEET = "Outreach List";
 
 // ---- minimal xlsx reader (no external dep): unzip via the OS, parse sharedStrings + a sheet ----

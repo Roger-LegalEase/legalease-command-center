@@ -170,7 +170,10 @@ function main() {
     if (base.quarantinedCount || head.quarantinedCount) throw new Error("Extended tests may not be quarantined.");
     if (head.discoveredCount < base.discoveredCount) throw new Error("Extended discovery count dropped.");
     if (removedTests.length) throw new Error("Previously discovered extended tests disappeared.");
-    if (added.length || missing.length) throw new Error("Extended failure-set parity changed.");
+    if (missing.length) {
+      console.log(`Extended parity repaired failures: ${missing.length} base failure(s) no longer fail on head.`);
+    }
+    if (added.length) throw new Error("Extended suite introduced new failures.");
   } finally {
     removeWorktree(headDirectory);
     removeWorktree(baseDirectory);

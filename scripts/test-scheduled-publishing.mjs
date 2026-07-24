@@ -6,11 +6,14 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+// Auth note: static x-command-center-token API auth was removed in PR #110 (sessions only).
+// Like test-publish-now-live-gate.mjs, this test runs the server in local-operator mode
+// (auth not required → requests act as the local owner, CSRF-exempt); sessions and CSRF are
+// covered by the dedicated auth suites. No production auth behavior is bypassed or changed.
 const rootDir = process.cwd();
 const source = readFileSync(path.join(rootDir, "scripts", "preview-server.mjs"), "utf8");
 const port = Number(process.env.TEST_SCHEDULED_PUBLISHING_PORT || 3491);
 const baseUrl = `http://127.0.0.1:${port}`;
-const ownerToken = "scheduled-publishing-owner-token-1234567890";
 const encryptionKey = "scheduled-publishing-encryption-key-1234567890";
 const dataDir = await mkdtemp(path.join(os.tmpdir(), "legalease-scheduled-publishing-"));
 const dataPath = path.join(dataDir, "social-command-center.json");
@@ -104,7 +107,6 @@ async function api(pathname, options = {}) {
     ...options,
     headers:{
       "content-type":"application/json",
-      "x-command-center-token":ownerToken,
       ...(options.headers || {})
     }
   });
@@ -125,8 +127,7 @@ const child = spawn(process.execPath, ["scripts/preview-server.mjs"], {
   env:{
     ...process.env,
     PORT:String(port),
-    COMMAND_CENTER_REQUIRE_AUTH:"true",
-    COMMAND_CENTER_OWNER_TOKEN:ownerToken,
+    COMMAND_CENTER_REQUIRE_AUTH:"false",
     LOCAL_DEMO_MODE:"true",
     STORAGE_BACKEND:"json",
     COMMAND_CENTER_DATA_PATH:dataPath,
@@ -204,8 +205,7 @@ const liveChild = spawn(process.execPath, ["scripts/preview-server.mjs"], {
   env:{
     ...process.env,
     PORT:String(port + 1),
-    COMMAND_CENTER_REQUIRE_AUTH:"true",
-    COMMAND_CENTER_OWNER_TOKEN:ownerToken,
+    COMMAND_CENTER_REQUIRE_AUTH:"false",
     LOCAL_DEMO_MODE:"true",
     STORAGE_BACKEND:"json",
     COMMAND_CENTER_DATA_PATH:dataPath,
@@ -236,7 +236,6 @@ try {
       ...options,
       headers:{
         "content-type":"application/json",
-        "x-command-center-token":ownerToken,
         ...(options.headers || {})
       }
     });
@@ -262,17 +261,17 @@ try {
   const postedAttempts = (posted.publish_attempts || []).filter(attempt => attempt.status === "posted");
   assert.equal(postedAttempts.length, 2, "duplicate publish should not add new posted attempts");
 
+  // /api/health is a bare {status:"ok"} now; gate visibility and the no-secrets guarantee
+  // live on /api/version.
   const health = await fetch(`${liveBase}/api/health`);
   const healthJson = await health.json();
-  assert.equal(healthJson.linkedInConnected, true, "health should report LinkedIn connected");
-  assert.equal(healthJson.xConnected, true, "health should report X connected");
-  assert.equal(healthJson.linkedInLiveGateEnabled, true, "health should report LinkedIn live gate state");
-  assert.equal(healthJson.xLiveGateEnabled, true, "health should report X live gate state");
-  assert.equal(healthJson.scheduledPublishingReady, true, "health should report scheduled publishing readiness");
-  assert.equal(healthJson.liveGatesCount, 2, "health should count enabled live gates only");
-  const healthText = JSON.stringify(healthJson);
-  assert.ok(!healthText.includes("scheduled-publishing-encryption-key"), "health must not expose token encryption settings");
-  assert.ok(!healthText.includes("test-encrypted"), "health must not expose token values");
+  assert.equal(healthJson.status, "ok", "health should report ok");
+  const version = await fetch(`${liveBase}/api/version`);
+  const versionJson = await version.json();
+  assert.equal(versionJson.liveGatesCount, 2, "version should count enabled live gates only");
+  const versionText = JSON.stringify(versionJson);
+  assert.ok(!versionText.includes("scheduled-publishing-encryption-key"), "version must not expose token encryption settings");
+  assert.ok(!versionText.includes("test-encrypted"), "version must not expose token values");
 } finally {
   liveChild.kill("SIGTERM");
 }
