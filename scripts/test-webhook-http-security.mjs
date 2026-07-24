@@ -63,6 +63,13 @@ try {
   assert.equal(state.json.outreachSuppressions.filter((item) => item.email === "business@example.com").length, 1);
   assert.equal(state.json.outreachBounces.filter((item) => item.email === "business@example.com").length, 1);
 
+  // The limiter counts in fixed 60s wall-clock windows; a burst straddling a
+  // minute boundary splits across two buckets and can truthfully never reach
+  // the limit. Keep the burst inside one window so the 429 is deterministic.
+  const rateWindowMs = 60_000;
+  const msLeftInWindow = rateWindowMs - (Date.now() % rateWindowMs);
+  if (msLeftInWindow < 15_000) await new Promise((resolve) => setTimeout(resolve, msLeftInWindow + 50));
+
   let limited = null;
   for (let attempt = 0; attempt < 130; attempt += 1) {
     limited = await jsonRequest(server.baseUrl, route, { method:"POST", headers:{ "content-type":"application/json" }, body:"[]" });

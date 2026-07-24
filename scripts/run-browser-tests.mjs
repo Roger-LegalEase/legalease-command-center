@@ -374,12 +374,13 @@ function browserFixtureState(seed, { includeActions = false } = {}) {
       } : {})
     })));
   const repeatInboxTask = Object.freeze({ ...inboxTask, id:"browser-inbox-task-002", title:`${inboxTask.title} (repeat fixture)`, priority:"low", important:true });
+  const recentUpdateAt = new Date(fixtureNow.getTime() - (2 * 60 * 60 * 1_000)).toISOString();
   const recentUpdate = Object.freeze({
     id:"browser-inbox-update-001",
     title:"Partner milestone announcement",
     status:"posted",
-    postedAt:"2026-07-16T14:00:00.000Z",
-    updatedAt:"2026-07-16T14:00:00.000Z"
+    postedAt:recentUpdateAt,
+    updatedAt:recentUpdateAt
   });
   const paginationTasks = Object.freeze(Array.from({ length:45 }, (_, index) => Object.freeze({
     id:`browser-inbox-page-task-${String(index).padStart(2, "0")}`,
