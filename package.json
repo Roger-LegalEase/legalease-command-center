@@ -175,14 +175,19 @@
     "security:scan:history": "node scripts/security-scan.mjs --history",
     "security:scanner:test": "node scripts/test-security-scan.mjs",
     "migrations:validate": "node scripts/validate-migrations.mjs",
-    "restore:drill": "node scripts/restore-drill.mjs"
+    "restore:drill": "node scripts/restore-drill.mjs",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "pii:scan:staged": "node scripts/pre-commit-pii-gate.mjs"
   },
   "dependencies": {
     "pg": "^8.21.0",
-    "sharp": "^0.34.5"
+    "sharp": "0.35.3"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.61.1"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }

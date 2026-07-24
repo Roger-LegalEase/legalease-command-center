@@ -8,6 +8,8 @@ services:
     healthCheckPath: /api/health
     autoDeploy: false
     envVars:
+      - key: NODE_VERSION
+        value: "24.x"
       - key: NODE_ENV
         value: production
       - key: LOCAL_DEMO_MODE
@@ -82,6 +84,8 @@ services:
     startCommand: 'curl -fsS --max-time 60 -X POST -H "Authorization: Bearer $COMMAND_CENTER_CRON_TOKEN" "$HEARTBEAT_TICK_URL"'
     autoDeploy: false
     envVars:
+      - key: NODE_VERSION
+        value: "24.x"
       - key: HEARTBEAT_TICK_URL
         value: https://legalease-command-center-prod.onrender.com/api/heartbeat/tick
       - key: COMMAND_CENTER_CRON_TOKEN

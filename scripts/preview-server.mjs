@@ -5833,6 +5833,27 @@ async function publishPostNow(postId, context = {}) {
     error.readiness = readiness;
     throw error;
   }
+  if (!livePostingEnabledForChannel(channel)) {
+    const message = `${channelLabels[channel] || channel} live posting is disabled. Enable ${livePostingEnvKeys[channel]?.join(" or ") || "the live posting flag"} only after dry runs pass.`;
+    state = await store.updatePost(post.id, {
+      publishingStatus: "blocked_live_gate",
+      publishErrorSummary: message,
+      lastPublishAttemptAt: new Date().toISOString()
+    });
+    state = await recordPublishEvent({
+      post,
+      channel,
+      eventType: "blocked",
+      statusBefore: post.status,
+      statusAfter: post.status,
+      message,
+      errorCode: "live_gate_disabled"
+    });
+    const error = new Error(message);
+    error.errorCode = "live_gate_disabled";
+    error.readiness = { ok: false, status: "blocked_live_gate", errorCode: "live_gate_disabled", message };
+    throw error;
+  }
   const ownership = await acquireSocialPublishClaim(store, { post, channel, actorId: context.actor?.id, requestId: context.requestId });
   if (!ownership.claimed) {
     const error = new Error("A publish claim already exists. Reconcile the existing attempt; do not republish.");
@@ -41330,7 +41351,7 @@ async function handleRequest(request, response) {
         message: result.message
       });
     } catch (error) {
-      sendJson(response, { error: error.message || "Could not publish post.", readiness: error.readiness || null }, 400);
+      sendJson(response, { error: error.message || "Could not publish post.", errorCode: error.errorCode || null, readiness: error.readiness || null }, 400);
     }
     return;
   }
