@@ -111,3 +111,18 @@ live post. Owner decision needed on whether those flags should be returned to of
 **Merge status at refresh time:** PR #113 was still OPEN and production ran `a3793c3`
 (pre-fix). The gap is closed in code on `audit-fixes-01`; it is closed on main only once
 #113 merges.
+
+## Status update 2026-07-24 — merged, deployed, flags corrected
+
+**Merge status:** PR #113 merged at `9983c958d00c3a97fee2a0331f078e5a61a20792`;
+PR #114 (the follow-up test-fixes PR referenced above) merged at
+`0bb28a57415d29628fe4ad16ad9cd21822e9b8af`, the current main tip. The per-channel gap
+is **closed on main**, and the truth-only fix to the hardening reason string shipped
+in #114. Production `/api/version` reports commit `0bb28a5`, so the deployed build
+carries both fixes.
+
+**Practical-exposure update.** Production `liveGatesCount` is back to `0` on
+2026-07-24 — the five enabled flags observed 2026-07-23 were corrected to off. The
+pipeline is dormant again in the deployed environment, now behind three layers: all
+live-posting flags off, the unconditional hardening 403, and the in-function
+per-channel gate from #113.

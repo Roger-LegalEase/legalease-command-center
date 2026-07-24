@@ -21,6 +21,17 @@ package only records them.
 > `NODE_VERSION=24.x` on both Render services. At the time of this note #113 was still
 > OPEN on GitHub and production ran `a3793c3` — **verify the merge before treating this
 > precondition as closed on main.** The items below are preserved as originally recorded.
+>
+> **Status 2026-07-24: SATISFIED ON MAIN.** PR #113 merged at
+> `9983c958d00c3a97fee2a0331f078e5a61a20792` and the follow-up PR #114 merged at
+> `0bb28a57415d29628fe4ad16ad9cd21822e9b8af` (current main tip; also resolves the
+> scheduled-publishing authentication blocker recorded in
+> `01_CURRENT_STATE_REUSE_LEDGER.md` §8). Production is deployed at `0bb28a5` with
+> `liveGatesCount: 0` (the five enabled flags observed 2026-07-23 were corrected to
+> off), `authStoreConnected: true`, and `supabaseConnected: false` — the Supabase-health
+> issue remains open and is separate from this consolidation. Heartbeat and the Morning
+> Brief remain off; the Social pipeline remains Advanced only. The CI mode for the
+> binary CSV/XLSX PII gate below remains a proposed future hardening item.
 1. **Publish Now live gate** — `evidence/publish-now-gate-review.md` confirms the gap is
    **still open** at `a3793c3`: `publishPostNow` (`scripts/preview-server.mjs:5801`)
    never calls `livePostingEnabledForChannel`. Fix: enforce the same gate the scheduled

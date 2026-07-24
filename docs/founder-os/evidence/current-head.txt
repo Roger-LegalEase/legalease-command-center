@@ -6,3 +6,11 @@ Post-#113 refresh: 2026-07-23 — audit-fixes verified against PR #113
 Status at refresh time: PR #113 was still OPEN on GitHub, origin/main remained
 a3793c3, and production /api/version reported commit a3793c3. Re-stamp this
 file with the new main sha once #113 is squash-merged.
+
+Final post-#113/#114 refresh: 2026-07-24 —
+PR #113 merged: 9983c958d00c3a97fee2a0331f078e5a61a20792
+PR #114 merged: 0bb28a57415d29628fe4ad16ad9cd21822e9b8af (origin/main tip)
+Production /api/version reports commit 0bb28a5 (deployed at current main),
+liveGatesCount: 0 (corrected from the 5 observed 2026-07-23),
+authStoreConnected: true, supabaseConnected: false (open issue, separate
+from this consolidation). The re-stamp requested above is complete.

@@ -120,3 +120,26 @@ verify merge before relying on main). Changes relevant to this file:
   environment, contradicting render.yaml's `"false"` values and the dormant-pipeline
   assumption above. It also reported `supabaseConnected: false` at that moment. Neither
   is changed by #113; both are owner decisions.
+
+---
+
+## Final post-#113/#114 delta — 2026-07-24
+
+Everything above is preserved as recorded. Both audit PRs are now merged and deployed:
+PR #113 at `9983c958d00c3a97fee2a0331f078e5a61a20792`, PR #114 at
+`0bb28a57415d29628fe4ad16ad9cd21822e9b8af` (current main tip).
+
+- **Publish Now per-channel gate — closed on main.** The "verify merge before relying
+  on main" caveat above is resolved; the gate and `test-publish-now-live-gate.mjs` are
+  on main and deployed.
+- **Scheduled-publishing verification — resolved.** PR #114 ported
+  `test-scheduled-publishing.mjs` to the supported session/cookie authentication path
+  (static-token API auth was removed in PR #110) and it passes in CI; the truth-only
+  correction to the endpoint-hardening reason string shipped with it.
+- **Production observation (2026-07-24, `/api/version`):** commit `0bb28a5` — the
+  deployed build is current main. `liveGatesCount: 0` — the five enabled live-posting
+  flags observed 2026-07-23 were corrected to off, restoring the dormant-pipeline
+  assumption in §1. `authStoreConnected: true`. `supabaseConnected: false` — this
+  **remains open** and is an owner/platform issue explicitly separate from the Founder
+  OS consolidation. Heartbeat and the Morning Brief remain off; the Social publishing
+  pipeline remains Advanced only.

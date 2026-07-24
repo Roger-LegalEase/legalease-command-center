@@ -64,6 +64,27 @@ appended, never rewritten.
   render.yaml and the dormant assumption) and `supabaseConnected: false`. Recorded in
   `safety-gates.md`; owner decisions, unchanged by #113.
 
+## Final post-#113/#114 refresh — 2026-07-24
+
+Both audit PRs are merged and deployed; the Post-#113 caveats above are resolved. All
+earlier dated observations are preserved unchanged.
+
+- **PR #113 merged** at `9983c958d00c3a97fee2a0331f078e5a61a20792`; **PR #114 merged**
+  at `0bb28a57415d29628fe4ad16ad9cd21822e9b8af` (current main tip).
+- **Publish Now per-channel gate: closed on main** (no longer pending-merge).
+- **Scheduled-publishing verification: resolved** — the test now exercises the
+  supported session/cookie authentication path (PR #114) and passes in CI; the
+  activation blocker recorded in `../01_CURRENT_STATE_REUSE_LEDGER.md` §8 is lifted.
+- **sharp 0.35.3, Node 24.x pin, PII containment + pre-commit gate: merged and
+  deployed** with main; CI enforcement for binary CSV/XLSX PII scanning remains a
+  proposed future hardening item in `../08_DELIVERY_PLAN.md`.
+- **Production observation (2026-07-24, `/api/version`):** commit
+  `0bb28a5` (current main), `liveGatesCount: 0` — the five enabled flags observed
+  2026-07-23 were corrected to off — `authStoreConnected: true`,
+  `supabaseConnected: false`. The Supabase-health issue **remains open** and is
+  explicitly separate from this consolidation package. Heartbeat and the Morning
+  Brief remain off; the Social publishing pipeline remains Advanced only.
+
 ## Privacy
 
 No env values, contact data, or suppression data appear anywhere in this directory. The
