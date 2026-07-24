@@ -2,6 +2,10 @@
 
 Local operating system for the LegalEase six-month growth sprint and social production workflow.
 
+## Setup
+
+After cloning, run `npm run hooks:install` once. Git hooks are per clone, so this step does not carry over automatically. It activates the pre-commit PII gate (blocks committing suppression exports or email addresses in CSV/XLSX files) and the existing pre-push scans (secret scan, PII scan, security-hardening tests).
+
 ## vNext launch train
 
 The vNext shell has five primary destinations: **Today, Social, Outreach, Partners, and Files**. Search, Create, Inbox, Investor Room, and Discovery remain directly reachable workflows, not additional primary navigation. Server-side flags are intentionally off by default; enabling a shell or product flag does not enable any sending or publishing authority.
