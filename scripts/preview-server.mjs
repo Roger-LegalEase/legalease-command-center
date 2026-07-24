@@ -1015,7 +1015,11 @@ async function safeVersionPayload() {
     getSupabaseHealth(),
     authRuntimeHealth()
   ]);
-  if (supabaseResult.status === "fulfilled") supabaseConnected = Boolean(supabaseResult.value?.connected);
+  let supabaseState = "disconnected";
+  if (supabaseResult.status === "fulfilled") {
+    supabaseConnected = Boolean(supabaseResult.value?.connected);
+    supabaseState = supabaseResult.value?.state || (supabaseConnected ? "connected" : "disconnected");
+  }
   if (authResult.status === "fulfilled") authStoreConnected = Boolean(authResult.value?.connected);
   return {
     app: "LegalEase Command Center",
@@ -1025,6 +1029,7 @@ async function safeVersionPayload() {
     storageBackend: hostingConfig.activeStorageBackend,
     localDemoMode: Boolean(hostingConfig.localDemoMode),
     supabaseConnected,
+    supabaseState,
     authStoreBackend: authStore?.backend || "unavailable",
     authStoreConnected,
     liveGatesCount: Object.values(Object.fromEntries(platforms.map((platform) => [platform, liveGateSummary(platform)]))).filter((gate) => gate.enabled).length,
@@ -8823,11 +8828,30 @@ function shouldLogAccessDenial(key = "", nowMs = 0, ledger = recentAccessDenials
   return true;
 }
 
+// Process-wide budget for denial WRITES: the per-key dedup above cannot bound a
+// scanner sweeping thousands of DISTINCT paths (every path is a fresh key), so a
+// separate fixed-window cap bounds total storage traffic from denials no matter
+// what the request mix looks like. Denials beyond the budget are still denied —
+// they just are not individually persisted.
+const ACCESS_DENIAL_LOG_MAX_PER_MINUTE = 30;
+let accessDenialLogWindow = -1;
+let accessDenialLogCount = 0;
+function accessDenialLogBudgetAvailable(nowMs = Date.now(), limit = ACCESS_DENIAL_LOG_MAX_PER_MINUTE) {
+  const window = Math.floor(nowMs / 60_000);
+  if (window !== accessDenialLogWindow) {
+    accessDenialLogWindow = window;
+    accessDenialLogCount = 0;
+  }
+  accessDenialLogCount += 1;
+  return accessDenialLogCount <= limit;
+}
+
 async function logAccessDecision(decision = {}, url = {}) {
   if (decision.ok) return;
   try {
     const dedupKey = `${decision.actor?.id || "anonymous"}|${url.pathname || ""}|${decision.reason || ""}`;
     if (!shouldLogAccessDenial(dedupKey, Date.now())) return;
+    if (!accessDenialLogBudgetAvailable(Date.now())) return;
     const now = new Date().toISOString();
     const audit = {
       id: "soc2-audit-access-" + crypto.randomUUID().slice(0, 10),
@@ -8846,12 +8870,13 @@ async function logAccessDecision(decision = {}, url = {}) {
       ip: "request",
       userAgent: "preview-server"
     };
-    // Serialized + SCOPED: only the soc2AuditLogs collection is written. The old full-state
-    // writeState here rewrote (and orphan-reconciled) every collection per denied request.
-    await serializeStateMutation(async () => {
-      const state = await store.readState();
-      await store.writeCollections({ soc2AuditLogs: [audit, ...(state.soc2AuditLogs || [])] });
-    });
+    // Single conditional INSERT, no state read, no mutation-queue slot. The previous
+    // shape (full readState + rewriting the ENTIRE ever-growing soc2AuditLogs array,
+    // serialized on the global mutation queue) ran once per denied request — on a
+    // public host that means once per bot probe — and was the primary amplifier in
+    // the 2026-07-24 Supabase request storm: cost per denial grew with total denials
+    // ever logged, and real mutations queued behind it.
+    await store.claimCollectionItems("soc2AuditLogs", [audit]);
   } catch {
     // Authorization logging should never make the protected route available.
   }
@@ -40485,7 +40510,7 @@ async function handleRequest(request, response) {
     // "writes are silently failing" visible instead of discoverable only via broken telemetry.
     const health = await getSupabaseHealth();
     const writes = typeof store.writeHealth === "function" ? store.writeHealth() : {};
-    sendJson(response, { configured:Boolean(health.configured), connected:Boolean(health.connected), writeHealthy:!writes.lastWriteErrorAt || writes.lastWriteOkAt > writes.lastWriteErrorAt, failedWriteCount:Number(writes.failedWriteCount || 0) });
+    sendJson(response, { configured:Boolean(health.configured), connected:Boolean(health.connected), state:health.state || (health.connected ? "connected" : "disconnected"), writeHealthy:!writes.lastWriteErrorAt || writes.lastWriteOkAt > writes.lastWriteErrorAt, failedWriteCount:Number(writes.failedWriteCount || 0) });
     return;
   }
 

@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
 import { assertProductionReadiness, isHostedProduction } from "./runtime-security.mjs";
+import { createSupabaseCircuit, createSupabaseRequestGate, SupabaseCircuitOpenError, SupabaseRequestGateSaturatedError } from "./supabase-backoff.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -351,7 +352,33 @@ const SUPABASE_READ_RETRY_DELAY_MS = 50;
 const TRANSIENT_SUPABASE_HTTP_STATUSES = new Set([502, 503, 504]);
 const transientSupabaseNetworkErrors = new WeakSet();
 
-function supabaseRequestTimeoutMs(env = process.env) {
+// One breaker + one outbound gate per process, shared by EVERY Supabase REST request
+// (storage reads/writes, claims, rpcs, and the health probe). A failing dependency
+// degrades to a few attempts per cooldown window instead of a tight loop; see
+// supabase-backoff.mjs for the 2026-07-24 request-storm background.
+let supabaseCircuit = createSupabaseCircuit();
+let supabaseRequestGate = createSupabaseRequestGate();
+
+export function supabaseCircuitSnapshot() {
+  return { ...supabaseCircuit.snapshot(), gate:supabaseRequestGate.snapshot() };
+}
+
+// Tests only: rebuild the circuit/gate/health cache from current env so scenarios
+// with tiny cooldowns or stubbed fetch start from a clean closed circuit.
+export function resetSupabaseRuntimeForTests() {
+  supabaseCircuit = createSupabaseCircuit();
+  supabaseRequestGate = createSupabaseRequestGate();
+  supabaseHealthCache = null;
+  supabaseHealthInFlight = null;
+}
+
+function supabaseRequestTimeoutMs(env = process.env, options = {}) {
+  // Per-call override (clamped): the health probe uses a short budget so a slow
+  // database yields a fast "degraded" answer instead of an 8s hang per status page.
+  const override = Number(options?.timeoutMs);
+  if (Number.isFinite(override) && override > 0) {
+    return Math.min(MAX_SUPABASE_REQUEST_TIMEOUT_MS, Math.max(MIN_SUPABASE_REQUEST_TIMEOUT_MS, Math.trunc(override)));
+  }
   const raw = String(env.SUPABASE_REQUEST_TIMEOUT_MS ?? "").trim();
   if (!raw) return DEFAULT_SUPABASE_REQUEST_TIMEOUT_MS;
   const configured = Number(raw);
@@ -360,48 +387,70 @@ function supabaseRequestTimeoutMs(env = process.env) {
 }
 
 async function supabaseRestRequestAttempt(pathname, options, method, encodedBody) {
-  const controller = new AbortController();
-  let timedOut = false;
-  let callerAborted = Boolean(options.signal?.aborted);
-  const onCallerAbort = () => {
-    callerAborted = true;
-    controller.abort(options.signal?.reason);
-  };
-  if (options.signal?.aborted) onCallerAbort();
-  else options.signal?.addEventListener("abort", onCallerAbort, { once:true });
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, supabaseRequestTimeoutMs());
-  timeout.unref?.();
-  let response;
-  let text;
+  // Circuit check FIRST: while open, fail fast with zero network traffic. The single
+  // half-open trial per cooldown is what re-probes the dependency.
+  const ticket = supabaseCircuit.acquire();
+  if (!ticket.allowed) throw new SupabaseCircuitOpenError(ticket.retryAfterMs);
+  // outcome: "failure" only for dependency-health signals (timeout / network / 5xx);
+  // 4xx and other responses prove Supabase answered; caller aborts are neutral.
+  let outcome = "neutral";
   try {
-    response = await fetch(supabaseRestBaseUrl() + "/" + String(pathname || "").replace(/^\/+/, ""), {
-      method,
-      headers: supabaseHeaders({
-        ...(encodedBody !== undefined ? { "content-type":"application/json" } : {}),
-        ...(options.prefer ? { prefer: options.prefer } : {}),
-        ...(options.headers || {})
-      }),
-      body: encodedBody,
-      signal: controller.signal
+    return await supabaseRequestGate.run(async () => {
+      const controller = new AbortController();
+      let timedOut = false;
+      let callerAborted = Boolean(options.signal?.aborted);
+      const onCallerAbort = () => {
+        callerAborted = true;
+        controller.abort(options.signal?.reason);
+      };
+      if (options.signal?.aborted) onCallerAbort();
+      else options.signal?.addEventListener("abort", onCallerAbort, { once:true });
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, supabaseRequestTimeoutMs(process.env, options));
+      timeout.unref?.();
+      let response;
+      let text;
+      try {
+        response = await fetch(supabaseRestBaseUrl() + "/" + String(pathname || "").replace(/^\/+/, ""), {
+          method,
+          headers: supabaseHeaders({
+            ...(encodedBody !== undefined ? { "content-type":"application/json" } : {}),
+            ...(options.prefer ? { prefer: options.prefer } : {}),
+            ...(options.headers || {})
+          }),
+          body: encodedBody,
+          signal: controller.signal
+        });
+        text = await response.text();
+        if (callerAborted || options.signal?.aborted) throw new SupabaseRequestAbortedError();
+        if (timedOut) throw new SupabaseRequestTimeoutError();
+      } catch (error) {
+        if (callerAborted || options.signal?.aborted || error instanceof SupabaseRequestAbortedError) {
+          throw new SupabaseRequestAbortedError();
+        }
+        if (timedOut) {
+          outcome = "failure";
+          throw new SupabaseRequestTimeoutError();
+        }
+        if (controller.signal.aborted || error?.name === "AbortError") throw new SupabaseRequestAbortedError();
+        if (error && typeof error === "object") transientSupabaseNetworkErrors.add(error);
+        outcome = "failure";
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+        options.signal?.removeEventListener("abort", onCallerAbort);
+      }
+      outcome = TRANSIENT_SUPABASE_HTTP_STATUSES.has(response.status) ? "failure" : "success";
+      return supabaseParseResponse(response, text, options);
     });
-    text = await response.text();
-    if (callerAborted || options.signal?.aborted) throw new SupabaseRequestAbortedError();
-    if (timedOut) throw new SupabaseRequestTimeoutError();
-  } catch (error) {
-    if (callerAborted || options.signal?.aborted || error instanceof SupabaseRequestAbortedError) {
-      throw new SupabaseRequestAbortedError();
-    }
-    if (timedOut) throw new SupabaseRequestTimeoutError();
-    if (controller.signal.aborted || error?.name === "AbortError") throw new SupabaseRequestAbortedError();
-    if (error && typeof error === "object") transientSupabaseNetworkErrors.add(error);
-    throw error;
   } finally {
-    clearTimeout(timeout);
-    options.signal?.removeEventListener("abort", onCallerAbort);
+    supabaseCircuit.settle(ticket, outcome);
   }
+}
+
+function supabaseParseResponse(response, text, options) {
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
   if (!response.ok) {
@@ -424,6 +473,8 @@ async function supabaseRestRequestAttempt(pathname, options, method, encodedBody
 }
 
 function supabaseReadRetryEligible(error) {
+  // An open circuit is a deliberate fast-fail, never something to retry into.
+  if (error instanceof SupabaseCircuitOpenError || error instanceof SupabaseRequestGateSaturatedError) return false;
   return error instanceof SupabaseRequestTimeoutError
     || transientSupabaseNetworkErrors.has(error)
     || TRANSIENT_SUPABASE_HTTP_STATUSES.has(Number(error?.status));
@@ -457,7 +508,7 @@ async function supabaseRestRequest(pathname, options = {}) {
   try {
     return await supabaseRestRequestAttempt(pathname, options, method, encodedBody);
   } catch (error) {
-    if (!readOnly || options.signal?.aborted || !supabaseReadRetryEligible(error)) throw error;
+    if (!readOnly || options.noRetry || options.signal?.aborted || !supabaseReadRetryEligible(error)) throw error;
     await waitForSupabaseReadRetry(options.signal);
     return supabaseRestRequestAttempt(pathname, options, method, encodedBody);
   }
@@ -703,20 +754,84 @@ function compactPostImageForLocal(image = {}) {
   };
 }
 
+// Health probe cache: computed at most once per SUPABASE_HEALTH_TTL_MS (default 30s,
+// clamped 250ms–5min), shared by every concurrent caller, and NEVER self-retrying —
+// one short-timeout request per window, through the same supabaseRestRequest path
+// (and therefore the same circuit) the storage layer uses. Before this, every
+// /api/version, /api/os-health, and readiness call issued its own uncached probe.
+const DEFAULT_SUPABASE_HEALTH_TTL_MS = 30_000;
+const SUPABASE_HEALTH_PROBE_TIMEOUT_MS = 2_500;
+let supabaseHealthCache = null;
+let supabaseHealthInFlight = null;
+
+function supabaseHealthTtlMs(env = process.env) {
+  const raw = String(env.SUPABASE_HEALTH_TTL_MS ?? "").trim();
+  if (!raw) return DEFAULT_SUPABASE_HEALTH_TTL_MS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return DEFAULT_SUPABASE_HEALTH_TTL_MS;
+  return Math.min(300_000, Math.max(250, Math.trunc(parsed)));
+}
+
+// Three truthful states:
+//   connected    — the probe query succeeded and the circuit is closed.
+//   degraded     — the probe succeeded but storage traffic tripped the breaker
+//                  recently, OR the probe failed while storage traffic succeeded
+//                  recently (partial availability either way).
+//   disconnected — the probe failed and nothing has succeeded recently.
+function supabaseHealthState(probeOk, circuit, checkedAt) {
+  const recentFailure = circuit.lastFailureAt && checkedAt - circuit.lastFailureAt < 60_000;
+  const recentSuccess = circuit.lastSuccessAt && checkedAt - circuit.lastSuccessAt < 120_000;
+  if (probeOk) return circuit.state !== "closed" || recentFailure ? "degraded" : "connected";
+  return recentSuccess ? "degraded" : "disconnected";
+}
+
 export async function getSupabaseHealth() {
   await readLocalEnv();
   const configured = Boolean(process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY));
   const requestedBackend = requestedStorageBackend();
   const mode = localDemoMode() ? "local_demo" : requestedBackend === "supabase" ? "supabase" : "local_json_fallback";
   if (!configured) {
-    return { configured:false, connected:false, mode, table:supabaseRecordsTable, requestedBackend, error:"Supabase env vars are missing. Using local JSON fallback when needed." };
+    return { configured:false, connected:false, state:"disconnected", mode, table:supabaseRecordsTable, requestedBackend, error:"Supabase env vars are missing. Using local JSON fallback when needed." };
   }
-  try {
-    await supabaseRestRequest(supabaseRecordsTable + "?select=collection,item_id&collection=neq.authSessions&limit=1");
-    return { configured:true, connected:true, mode, table:supabaseRecordsTable, requestedBackend, error:"" };
-  } catch (error) {
-    return { configured:true, connected:false, mode, table:supabaseRecordsTable, requestedBackend, error:String(error.message || error).slice(0, 500) };
+  const ttlMs = supabaseHealthTtlMs();
+  if (supabaseHealthCache && Date.now() - supabaseHealthCache.at < ttlMs) {
+    return { ...supabaseHealthCache.value, mode, requestedBackend, cached:true };
   }
+  if (!supabaseHealthInFlight) {
+    supabaseHealthInFlight = (async () => {
+      const checkedAt = Date.now();
+      let probeOk = false;
+      let error = "";
+      try {
+        // Same client, same table, same request path the storage layer uses — the
+        // probe answers "can the app's own reads work", not some separate endpoint.
+        await supabaseRestRequest(
+          supabaseRecordsTable + "?select=collection,item_id&collection=neq.authSessions&limit=1",
+          { timeoutMs:SUPABASE_HEALTH_PROBE_TIMEOUT_MS, noRetry:true }
+        );
+        probeOk = true;
+      } catch (probeError) {
+        error = String(probeError.message || probeError).slice(0, 500);
+      }
+      const circuit = supabaseCircuit.snapshot();
+      const state = supabaseHealthState(probeOk, circuit, Date.now());
+      const value = {
+        configured:true,
+        connected:state === "connected" || state === "degraded" ? probeOk : false,
+        state,
+        table:supabaseRecordsTable,
+        checkedAt:new Date(checkedAt).toISOString(),
+        circuit:{ state:circuit.state, consecutiveFailures:circuit.consecutiveFailures, retryAfterMs:circuit.retryAfterMs },
+        error
+      };
+      supabaseHealthCache = { at:Date.now(), value };
+      return value;
+    })().finally(() => {
+      supabaseHealthInFlight = null;
+    });
+  }
+  const value = await supabaseHealthInFlight;
+  return { ...value, mode, requestedBackend };
 }
 
 export class JsonStore {

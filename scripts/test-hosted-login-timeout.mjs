@@ -326,7 +326,7 @@ console.log("Hosted authentication runtime isolation regression tests");
     assert.equal(version.json.authStoreBackend, "upstash");
     assert.equal(version.json.authStoreConnected, true);
     assert.equal(version.json.supabaseConnected, false);
-    assert.equal(fixture.supabase.requests.length, 2, "Version health may make only the initial Supabase read and its one eligible retry.");
+    assert.equal(fixture.supabase.requests.length, 1, "Version health may make exactly one Supabase probe request — cached for the TTL window and never self-retrying.");
     const persistedSession = JSON.parse(fixture.redis.commands("SET")[0].command[2]);
     const redisBodies = fixture.redis.requests.map((item) => JSON.stringify(item.command)).join("\n");
     assertNoSecretLeak(redisBodies, [fixture.preview.ownerCredential, sessionToken, csrfToken, "127.0.0.1"], "Redis command bodies");

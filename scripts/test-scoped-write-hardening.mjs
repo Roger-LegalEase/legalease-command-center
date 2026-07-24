@@ -55,10 +55,13 @@ function sliceBetween(startMarker, endMarker) {
 {
   const body = sliceBetween("async function logAccessDecision", "async function saveDebugOpenAIImage");
   assert(body.includes("shouldLogAccessDenial("), "denials are deduped");
-  assert(body.includes("serializeStateMutation"), "denial audit write is serialized");
-  assert(body.includes("writeCollections({ soc2AuditLogs"), "denial audit write is scoped to soc2AuditLogs");
+  assert(body.includes("accessDenialLogBudgetAvailable("), "denial writes are bounded by the process-wide per-minute budget");
+  assert(body.includes('claimCollectionItems("soc2AuditLogs"'), "denial audit persists via a single conditional INSERT");
+  assert(!body.includes("store.readState("), "no state hydration remains in the denial path (2026-07-24 request-storm fix)");
+  assert(!body.includes("serializeStateMutation"), "denials no longer occupy the global mutation queue");
+  assert(!body.includes("writeCollections"), "no whole-collection rewrite remains in the denial path");
   assert(!body.includes("store.writeState("), "no full-state write remains in the denial path");
-  ok("logAccessDecision: deduped + serialized + scoped (no full-state write per bot hit)");
+  ok("logAccessDecision: deduped + budgeted + single-insert (no state read or collection rewrite per bot hit)");
 }
 
 {

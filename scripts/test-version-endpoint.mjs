@@ -82,6 +82,7 @@ try {
   assert.equal(version.authStoreBackend, "memory");
   assert.equal(version.authStoreConnected, true);
   assert.equal(typeof version.supabaseConnected, "boolean");
+  assert.ok(["connected", "degraded", "disconnected"].includes(version.supabaseState), "supabaseState must be one of the three truthful states");
   assert.equal(typeof version.localDemoMode, "boolean");
   assert.equal(typeof version.liveGatesCount, "number");
   assert.deepEqual(Object.keys(version).sort(), [
@@ -96,7 +97,8 @@ try {
     "localDemoMode",
     "noSecretsExposed",
     "storageBackend",
-    "supabaseConnected"
+    "supabaseConnected",
+    "supabaseState"
   ].sort());
 
   for (const forbidden of [
