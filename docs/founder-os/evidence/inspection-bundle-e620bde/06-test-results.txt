@@ -1,0 +1,823 @@
+=== Test run for external audit ===
+Command: SKIP_ENV_LOCAL_FILE=1 npm test
+Note: SKIP_ENV_LOCAL_FILE=1 prevents loading .env.local (production credentials) so no network calls reach production services, per audit hard rules. This is the repo's own supported env switch; the test suite is otherwise run exactly as defined in package.json.
+Started: Thu Jul 23 00:11:07 UTC 2026
+
+
+> legalease-command-center@0.1.0 test
+> npm run test:vnext-route-inventory && node scripts/test-hosting-readiness.mjs && node scripts/test-owner-token-auth.mjs && node scripts/test-root-shell-auth-boundary.mjs && node scripts/test-autonomy-engine.mjs && node scripts/test-access-control.mjs && node scripts/test-auth-endpoint-hardening.mjs && node scripts/test-role-system.mjs && node scripts/test-state-fetch-boot.mjs && node scripts/test-state-fetch-shape.mjs && node scripts/test-boot-auth-requests.mjs && node scripts/test-safe-boot-mode.mjs && node scripts/test-compact-boot-state.mjs && node scripts/test-smoke-test-status-helper.mjs && node scripts/test-render-helper-scope.mjs && node scripts/test-seed-bootstrap.mjs && node scripts/test-growth-inbox.mjs && node scripts/test-tasks-engine.mjs && node scripts/test-task-management.mjs && node scripts/test-partner-lifecycle.mjs && node scripts/test-partner-program-engine.mjs && node scripts/test-rcap-production-activation.mjs && node scripts/test-rcap-full-workflow.mjs && node scripts/test-rcap-review-workspace.mjs && node scripts/test-rcap-revenue-os-foundation.mjs && node scripts/test-rcap-revenue-os-queue-tasks.mjs && node scripts/test-rcap-suppression-matrix.mjs && node scripts/test-rcap-approval-rules-engine.mjs && node scripts/test-rcap-internal-scoring-and-views.mjs && node scripts/test-review-approval-engine.mjs && node scripts/test-partner-handoff-readiness.mjs && node scripts/test-partner-journey-handoff-contract.mjs && node scripts/test-daily-operating-loop.mjs && node scripts/test-operating-memory.mjs && node scripts/test-daily-rituals.mjs && node scripts/test-daily-closeout.mjs && node scripts/test-daily-run-session-brain.mjs && node scripts/test-daily-run-today-ui.mjs && node scripts/test-guided-queue-workbench.mjs && node scripts/test-guided-daily-run-operator-loop.mjs && node scripts/test-full-daily-workflow.mjs && node scripts/test-state-integrity.mjs && node scripts/test-os-health-center.mjs && node scripts/test-smoke-test-center.mjs && node scripts/test-evidence-room.mjs && node scripts/test-operator-manual.mjs && node scripts/test-operator-search.mjs && node scripts/test-lee-conversation-context.mjs && node scripts/test-lee-quick-capture.mjs && node scripts/test-render-date-helpers.mjs && node scripts/test-app-layout-stability.mjs && node scripts/test-button-controls.mjs && node scripts/test-google-workspace.mjs && node scripts/test-google-readonly-intelligence.mjs && node scripts/test-operator-experience.mjs && node scripts/test-cockpit-layout.mjs && node scripts/test-top-nav-layout.mjs && node scripts/test-lee-assistant.mjs && node scripts/test-button-action-feedback.mjs && node scripts/test-lee-ui.mjs && node scripts/test-founder-copy-cleanup.mjs && node scripts/test-display-truth.mjs && node scripts/test-supabase-reconcile-write.mjs && node scripts/test-supabase-store-pagination.mjs && node scripts/test-supabase-readstate-singleflight.mjs && node scripts/test-state-cache-coherence.mjs && node scripts/test-scoped-write-hardening.mjs && node scripts/test-registration-backlog.mjs && node scripts/test-heartbeat.mjs && node scripts/test-outreach-os.mjs && node scripts/test-prospect-discovery.mjs && node scripts/test-prospect-datasets.mjs && node scripts/test-codebase-health.mjs && node scripts/test-engagement-growth.mjs && node scripts/test-operating-loops.mjs && node scripts/test-reactivation-os.mjs && node scripts/test-reactivation-copy.mjs && node scripts/test-reactivation-dedupe.mjs && node scripts/test-reactivation-claims.mjs && node scripts/test-reconcile-20260708.mjs && node scripts/test-outreach-claims.mjs && node scripts/test-sendgrid-domain-auth.mjs && node scripts/test-reactivation-live-mode.mjs && node scripts/test-sendgrid-webhook.mjs && node scripts/test-intake.mjs && node scripts/test-campaign-command.mjs && node scripts/test-scoreboard-wiring.mjs && node scripts/test-today-cockpit-hierarchy.mjs && node scripts/test-queue-foundation.mjs && node scripts/test-agent-autonomy.mjs && node scripts/test-support-desk.mjs && node scripts/test-campaign-brain.mjs && node scripts/test-rcap-partner-ops.mjs && node scripts/test-alerts-engine.mjs && node scripts/test-meeting-briefs.mjs && node scripts/test-soc2-export.mjs && node scripts/test-social-guidelines-gate.mjs && node scripts/test-social-wizard.mjs && node scripts/test-artifact-deep-links.mjs && node scripts/test-inbox-intelligence.mjs && node scripts/test-vnext-social-results-surface.mjs
+
+
+> legalease-command-center@0.1.0 test:vnext-route-inventory
+> node scripts/test-vnext-route-inventory.mjs
+
+vNext route inventory verified: 75 canonical routes, 53 aliases, 6 primary navigation items.
+production startup guard tests passed
+hosting readiness tests passed
+session security tests passed
+opaque session authentication tests passed
+root shell session boundary tests passed
+autonomy engine tests passed
+access control tests passed
+auth endpoint hardening tests passed
+Role system tests passed.
+State fetch session boot tests passed.
+State fetch shape tests passed.
+Boot session request tests passed.
+Safe boot mode tests passed.
+Compact boot state tests passed.
+Smoke test status helper tests passed.
+Render helper scope tests passed.
+seed bootstrap test passed
+growth inbox tests passed
+tasks engine tests passed
+task management tests passed
+partner lifecycle tests passed
+partner program engine tests passed
+RCAP production activation tests passed
+{
+  "activationArtifactsVerified": [
+    "partner record",
+    "proposal task",
+    "proposal draft",
+    "partner page draft",
+    "dashboard readiness",
+    "weekly report draft",
+    "evidence note"
+  ],
+  "reviewTransitionsCompleted": [
+    "proposal task in_review",
+    "proposal draft in_review",
+    "proposal draft approved",
+    "partner page draft needs_revision",
+    "dashboard readiness blocked",
+    "weekly report draft approved",
+    "evidence note approved",
+    "manual review checklist in_review",
+    "manual review checklist approved"
+  ],
+  "blockersCreated": [
+    "Dashboard Readiness"
+  ],
+  "revisionsCreated": [
+    "Partner Page Draft"
+  ],
+  "blockersResolved": [
+    "Dashboard Readiness"
+  ],
+  "revisionsResolved": [
+    "Partner Page Draft"
+  ],
+  "handoffReadinessResult": {
+    "afterBlockers": {
+      "handoff_ready": false,
+      "blockers": [
+        "Dashboard Readiness"
+      ],
+      "revisions": [
+        "Partner Page Draft"
+      ],
+      "missingDetails": 11
+    },
+    "afterResolutionWithMissingDetails": {
+      "handoff_ready": false,
+      "readinessCount": {
+        "ready": 6,
+        "total": 6
+      },
+      "nextManualAction": "Confirm missing RCAP partner details before handoff."
+    },
+    "completeFixtureCanBecomeReady": true
+  },
+  "handoffPacketGenerated": true,
+  "handoffPacketKey": "rcap-partner-journey-handoff-packet-v1",
+  "rcapEvidenceIndexed": 24,
+  "auditEventsCreated": 12,
+  "activityEventsCreated": 12,
+  "liveGatesCount": 0,
+  "externalActionConfirmation": "No emails sent, no posts published, no partner pages published, no dashboards activated, no Partner Journey API calls, no destructive actions."
+}
+RCAP full workflow QA harness passed
+RCAP review workspace tests passed
+RCAP Revenue OS foundation tests passed.
+RCAP Revenue OS queue task tests passed.
+{
+  "suppressionVariants": [
+    "unsubscribed true",
+    "bounced true",
+    "status Unsubscribed",
+    "status Bounced",
+    "status Suppressed",
+    "status Do Not Contact",
+    "status unsubscribed",
+    "status bounced",
+    "status suppressed",
+    "status do not contact",
+    "status padded Do Not Contact",
+    "status uppercase DO NOT CONTACT",
+    "active plus unsubscribed true",
+    "active plus bounced true",
+    "active plus unsubscribed true bounced false",
+    "active plus unsubscribed false bounced true",
+    "verified plus unsubscribed true",
+    "verified plus bounced true"
+  ],
+  "variantsCovered": 18,
+  "structuralTripwire": {
+    "taskObjectCount": 9,
+    "guardedTaskCallCount": 9,
+    "onlyExportedProducer": [
+      "generateRcapRevenueQueueTasks"
+    ]
+  },
+  "conflictingFieldsCovered": [
+    "active plus unsubscribed true",
+    "active plus bounced true",
+    "active plus unsubscribed true bounced false",
+    "active plus unsubscribed false bounced true",
+    "verified plus unsubscribed true",
+    "verified plus bounced true"
+  ]
+}
+{
+  "suppressionVariantsCovered": 18,
+  "mustApproveReasonsCovered": [
+    "tier_1_account",
+    "executive_director_contact",
+    "ceo_contact",
+    "board_chair_contact",
+    "funder_contact",
+    "medium_source_confidence",
+    "low_source_confidence",
+    "missing_public_email",
+    "co_branded_page",
+    "clinic_date_reference",
+    "pricing_reference"
+  ],
+  "missingAllowlistReasonsCovered": [
+    "email_not_verified",
+    "missing_clear_segment",
+    "generic_page_required",
+    "sensitive_claim_present",
+    "missing_source_confidence",
+    "missing_source_confidence",
+    "unknown_source_confidence",
+    "unknown_source_confidence"
+  ],
+  "autoReadyStatus": "auto_ready",
+  "approvedNeedsHumanStatus": "ready_to_enroll",
+  "externalActionsTriggered": 0
+}
+RCAP internal scoring and saved views tests passed.
+review approval engine tests passed
+partner handoff readiness tests passed
+Partner Journey handoff contract tests passed.
+Daily Operating Loop tests passed.
+operating memory tests passed
+daily rituals tests passed
+daily closeout tests passed
+daily run session brain tests passed.
+daily run today UI tests passed.
+guided queue workbench tests passed.
+guided daily run operator loop tests passed.
+{
+  "capturesCreated": 3,
+  "ignoredControlCapturesCreated": 1,
+  "capturesRouted": {
+    "task": "capture-1779872400000-daily-workflow-qa",
+    "operatingMemory": "capture-1779872700000-daily-workflow-qa",
+    "eveningReflection": "capture-1779873000000-daily-workflow-qa",
+    "ignored": "capture-1779873120000-ignored-workflow-qa"
+  },
+  "tasksCreated": 1,
+  "taskTransitionsCompleted": [
+    "in_progress",
+    "blocked"
+  ],
+  "morningBriefSaved": true,
+  "dailyOperatingLoopTop3": [
+    "Resolve blocked RCAP artifact: Dashboard Readiness: Resolve blocker before review can continue.",
+    "Move RCAP toward handoff readiness: Resolve blocked artifacts before considering handoff.",
+    "Review RCAP artifact: Proposal Draft: Review and choose an approval state."
+  ],
+  "operatingMemorySaved": true,
+  "eveningReflectionSaved": true,
+  "dailyCloseoutSaved": true,
+  "tomorrowPlanGenerated": [
+    "RCAP / RCAP: Reflection: carry forward the RCAP dashboard decision tomorrow and do not touch live publishing.: Carry this Quick Capture forward internally.",
+    "RCAP / RCAP: Blocker: dashboard data source is still missing and blocks the RCAP handoff packet.: Carry this Quick Capture forward internally.",
+    "Resolve blocked RCAP artifact: Dashboard Readiness: Resolve blocker before review can continue."
+  ],
+  "nextMorningBriefInfluenced": [
+    "RCAP / RCAP: Reflection: carry forward the RCAP dashboard decision tomorrow and do not touch live publishing.: Carry this Quick Capture forward internally.",
+    "RCAP / RCAP: Blocker: dashboard data source is still missing and blocks the RCAP handoff packet.: Carry this Quick Capture forward internally.",
+    "Resolve blocked RCAP artifact: Dashboard Readiness: Resolve blocker before review can continue."
+  ],
+  "auditEventsCreated": 16,
+  "activityEventsCreated": 16,
+  "liveGatesCount": 0,
+  "externalActionsConfirmation": "No emails sent, no posts published, no partner pages published, no dashboards activated, no external systems contacted."
+}
+full daily workflow QA harness passed
+State Integrity tests passed.
+OS Health Center tests passed.
+Smoke Test Center tests passed.
+Evidence Room tests passed.
+Operator manual checks passed.
+operator search tests passed
+Le-E conversation context tests passed.
+Le-E Quick Capture tests passed.
+render date helper tests passed
+app layout stability tests passed
+button controls tests passed
+google workspace tests passed
+google read-only intelligence tests passed
+operator experience tests passed
+cockpit layout tests passed
+top nav layout tests passed
+Le-E assistant tests passed
+button action feedback tests passed
+Le-E UI tests passed
+founder copy cleanup tests passed
+Display-truth tests
+  ✓ email posture: literal exists only inside the gate-derived vocabulary
+  ✓ outreach automation posture: derived from /api/safety/posture, not typed
+  ✓ publishing posture: derived from the live posting gates, not typed
+  ✓ External Action Outbox shows honest-zero, not fabricated sample records
+  ✓ connection statuses are single derived states, not menus of possibilities
+
+All 5 display-truth checks passed.
+supabase record-diff round-trip tests passed
+Supabase store pagination — >1000-row hydration test
+  (seeded 1207 rows across 11 collections; server cap 1000)
+  ✓ dataset exceeds the 1000-row cap (1207 rows) — truncation is in play
+  ✓ readState paginated past the cap (2 requests)
+  ✓ hydrated via the supabase read path
+  ✓ every seeded collection hydrated with its FULL row count (zero dropped)
+  ✓ B3/B4 snapshots + outreach/prospect/suppression rows all hydrate (the regression target)
+  ✓ row-exact round trip: 1207/1207 rows, no truncation, no duplicates
+  ✓ without paging, 207 rows (incl. all prospectDiscoveryRuns) would silently vanish — paging recovers them
+  ✓ count-aware parallel paging hydrates row-exact in 2 requests
+  ✓ coreRecordsFromState dedupes duplicate upsert keys before Supabase writes
+  ✓ explicit null singleton record diffs clear stale persisted singleton rows
+
+10 checks passed.
+SupabaseCoreStore single-flight readState tests
+  ✓ concurrent readState calls share one fetch sweep and one object graph
+  ✓ sequential reads refetch: single-flight alone is not a cache (TTL=0 kill switch works)
+  ✓ write invalidation: post-write readState starts fresh (lost-update hazard closed)
+  ✓ claim invalidation: post-claim readState never joins a pre-claim read
+  ✓ failed write still invalidates the in-flight read (safe direction)
+  ✓ JSON fallback parsed once per process; runtime file edits are not re-read (documented)
+  ✓ failed read clears the slot; the next read retries and recovers
+  ✓ write queue re-arms after a failed write; later writes execute normally
+  ✓ convenience mutators shallow-copy: shared reader graphs stay untouched
+
+All 9 single-flight readState checks passed.
+SupabaseCoreStore cache-coherence verifier
+  ✓ burst path: sequential reads between writes are served from the cache
+  ✓ mutation invalidates + read reflects it: writeCollections
+  ✓ mutation invalidates + read reflects it: writeState
+  ✓ mutation invalidates + read reflects it: writeStateNow
+  ✓ mutation invalidates + read reflects it: writeChanges
+  ✓ mutation invalidates + read reflects it: claimCollectionItems
+  ✓ mutation invalidates + read reflects it: mutateCollectionItem
+  ✓ mutation invalidates + read reflects it: appendAuditEvent
+  ✓ mutation invalidates + read reflects it: claimSocialPublish
+  ✓ mutation invalidates + read reflects it: generatePosts
+  ✓ mutation invalidates + read reflects it: updatePost
+  ✓ mutation invalidates + read reflects it: addLibraryItem
+  ✓ mutation invalidates + read reflects it: savePostImage
+  ✓ mutation invalidates + read reflects it: addBrandAsset
+  ✓ mutation invalidates + read reflects it: addBrandRule
+  ✓ mutation invalidates + read reflects it: upsertGenerationProfile
+  ✓ mutation invalidates + read reflects it: updateSocialAccount
+  ✓ mutation invalidates + read reflects it: addPublishEvent
+  ✓ mutation invalidates + read reflects it: updateSettings
+  ✓ failed write still invalidates the cache (partial-write safety)
+  ✓ TTL expiry with unchanged table: probe-only revalidation
+  ✓ TTL expiry with external change: probe detects and the read reflects it
+  ✓ external in-place edit (count unchanged) is caught by the updated_at signature
+  ✓ STATE_CACHE_TTL_MS=0 is a full kill switch
+  ✓ explicit record diff: selected records deleted, unchanged collections untouched
+  ✓ structural: all 242 server read sites flow through the cached readState()
+  ✓ exhaustiveness: every store method is classified as mutator or read-only
+
+All 27 cache-coherence checks passed.
+Scoped-write hardening tests
+  ✓ product-event collections are registered for persistence (list-shaped, not singletons)
+  ✓ logAccessDecision: deduped + serialized + scoped (no full-state write per bot hit)
+  ✓ receiveProductEvent: scoped write of exactly the four collections it changes
+  ✓ /api/heartbeat/autopilot: serialized + scoped write (singleton, plus the one-time inbox activation trio)
+  ✓ /api/heartbeat/tick: serialized so mid-tick scoped writes cannot be clobbered
+  ✓ /api/outreach/unsubscribe: serialized + scoped write of exactly the three collections it changes
+  ✓ /api/google/callback: serialized + scoped on all four public write paths
+  ✓ store.updateSocialAccount: atomic record-scoped socialAccounts mutation (reachable from the public callback)
+  ✓ tier-2 sweep pinned: 1 full-state write remains in preview-server; publishing summaries append atomically
+  ✓ store convenience methods (posts through updateSettings): all scoped, region pinned to class end
+  ✓ heartbeat tick: lease claim/release use CAS; closing write cannot clobber the lease
+  ✓ reactivation CLI scripts: partial snapshots write via writeCollections (backend-safe)
+  ✓ live: bot-style repeated denials write ONE deduped, scoped audit entry per path
+  ✓ live: signed product event persists via scoped write without touching other collections
+  ✓ live: duplicate product event stays idempotent under the scoped write
+  ✓ live: autopilot toggle persists via scoped write; earlier collections survive
+  ✓ live: public unsubscribe persists via scoped write; earlier collections survive
+  ✓ live: malformed unsubscribe token stays rejected (fail closed)
+  ✓ live: invalid public google callback is rejected before mutation; earlier collections survive
+
+All 19 scoped-write hardening checks passed.
+Registration backlog tests
+  ✓ all 24 backlog collections registered as lists, registry duplicate-free
+  ✓ every growthCollections member (21) is registered
+  ✓ postImages rows are compacted (data: URIs stripped, placeholder SVG kept)
+  ✓ rows for all backlog collections use stable per-item ids
+  ✓ assetBundles deliberately unregistered (no writer exists)
+registration backlog tests passed (5 checks).
+  ✓ steady-state: lease releases unconditionally; no phantom lease skips the next tick
+Heartbeat (B1) tests:
+  ✓ toggles off: heartbeat fires, plan() writes proposals, ZERO act()/side effects
+  ✓ toggle on: act() runs (gate opens correctly)
+  ✓ replayed tick is a no-op (idempotency ledger)
+  ✓ overlapping tick doesn't double-run (in-process mutex)
+  ✓ lease guard: foreign lease blocks, expiry recovers, force overrides
+  ✓ ET/DST daily due logic (6am ET fires in both EDT and EST; off-hour skips)
+  ✓ autopilot is an OUTER gate; inner (live/approval) gates still decide
+  ✓ heartbeatRuns/heartbeatLease/autopilotSettings are in coreStateCollections
+  ✓ autopilot resolution: default OFF, persisted > env > default
+
+All 10 heartbeat assertions passed.
+
+B2 Phase 0 — Controlled Outreach OS tests
+
+  ✓ all outreach collections persist (membership + singleton)
+  ✓ suppression detects all 8 reasons (+ relationship, + clean pass)
+  ✓ suppression blocks at queue-build
+  ✓ suppression blocks at send-time (re-checked after approval)
+  ✓ assembleCompliantMessage throws with no postal address (and builds compliant msg otherwise)
+  ✓ validateCompliance rejects non-compliant messages
+  ✓ autopilot OFF => nothing sends even when approved
+  ✓ autopilot ON => still inert (dry_run) until live send dep injected
+  ✓ a real send is recorded ONLY when the live dep is injected (the last switch)
+  ✓ caps enforced (daily, per-domain, weekend, window hours)
+  ✓ max touches + min spacing enforced
+
+11 checks passed.
+
+
+B5 — Prospect Discovery tests
+
+  ✓ all prospect collections persist (membership + singleton)
+  ✓ classification always matches B2 vocab (and rejects out-of-vocab labels)
+  ✓ engineSetReviewState is the structural self-approval lockout (throws on 'approved')
+  ✓ full plan+act never writes 'approved' (only the human endpoint can)
+  ✓ act/promotion promotes ONLY approved and ignores pending_review
+  ✓ B5 has NO send path (no provider symbols; promoted contacts Not Enrolled)
+  ✓ dedup by EIN / domain / name + deterministic id
+  ✓ plan() is side-effect-free (no network; classify/dedup/score only)
+  ✓ autopilot OFF => no discovery/promotion; ON => discovery runs
+  ✓ discovery throttled to once per ET day
+  ✓ Phase-0 inert: no discovery dep => stages nothing
+
+11 checks passed.
+
+
+B5 — Tier-1 dataset loader tests
+
+  ✓ NTEE filter: default = core 8 (incl. I99); noisy buckets off-by-default but config-selectable
+  ✓ BMF parse/filter: NTEE + active-only + classification mapping + NTEE provenance, never any email/website
+  ✓ loadIrsBmf: multi-state download, reachability accounting, and manual-upload (readFile) mode
+  ✓ PROSPECT_LIVE_DISCOVERY OFF => dispatcher returns zero rows with NO network/disk I/O
+  ✓ LSC roster: all legal_aid, name+state only, state filter + official-file override
+  ✓ NLADA not built (access-restricted): zero rows, flagged honestly, never scraped
+  ✓ end-to-end: loader rows flow through the pipeline and land 100% pending_review (no send path)
+
+7 checks passed.
+
+B3 codebase-health monitor — tests
+  ✓ findings surface persists, engine id registered, surface self-documented
+  ✓ engine descriptor exposes NO act path (structural)
+  ✓ module has NO mutation / file-write / exec path (read-only by construction)
+  ✓ honesty rule: scan error => error reported, zero findings fabricated
+  ✓ detects real findings from fixture (drift/dead/dup/CI-gap), severity-ranked, no comment FPs
+  ✓ deltas since last run: new + resolved findings computed correctly
+  ✓ persistence mirrors data-integrity pattern (snapshot + audit + activity), idempotent per date
+  ✓ autopilot ON: plan runs and reports, but NO act happens (structural)
+  ✓ autopilot OFF (default): plan still audits and reports
+  ✓ plan() returns findings-as-proposals + summary, and persists the report
+
+10 checks passed.
+B4 engagement & growth monitor — tests
+  ✓ report surface persists, engine id registered, surface self-documented
+  ✓ engine descriptor exposes NO act path (read-only by construction)
+  ✓ module has NO posting / send / outward-write path
+  ✓ honesty: unconnected sources report no number, only an honest reason
+  ✓ honesty: configured-but-unavailable shows error, never a number
+  ✓ live numbers pass through unchanged (no transformation/estimation)
+  ✓ content performance aggregates ONLY operator-entered metrics (no seed/demo leakage)
+  ✓ social sources (LinkedIn/Meta/X) always reported blocked with gating reasons
+  ✓ deltas since last run computed correctly (trend surfaced)
+  ✓ persistence mirrors snapshot pattern (snapshot + audit + activity), idempotent per date
+  ✓ autopilot ON: plan runs and reports, but NO act happens (read-only, structural)
+  ✓ autopilot OFF (default): plan still observes and reports
+  ✓ plan() returns proposals + summary; injected fetch is read-only; errors never fabricate
+
+13 checks passed.
+B7 operating-loop registry — tests
+  ✓ pulse surface persists, 6 engine ids registered, surface self-documented
+  ✓ every loop engine exposes plan() and NO act path
+  ✓ module has NO posting / send / outward-write path
+  ✓ schedules the EXISTING loop functions (imports them; does not rewrite)
+  ✓ honesty: cash/runway reports needs_input with NO fabricated runway number
+  ✓ honesty: outreach reports real counts; rates are 'not_computed', never fabricated
+  ✓ persistence mirrors snapshot pattern; idempotent per loop/date; delta vs last run
+  ✓ autopilot ON: all loops plan & report, but NO act happens (read-only, structural)
+  ✓ autopilot OFF (default): loops still observe and report
+
+9 checks passed.
+  ✓ all reactivation collections persist (coreStateCollections + singletons)
+  ✓ REACTIVATION_LIVE_SEND defaults OFF; only a truthy flag enables
+  ✓ reactivation send decision uses REACTIVATION_LIVE_SEND and bypasses B2 classification routing
+  ✓ import dedups, drops bad domains, honors suppression, is idempotent
+  ✓ wave assignment: warm→Wave 1, plan sizes honored, domain-stratified (not all Gmail)
+  ✓ contacts inert until wave release; cadence timing + per-tick throttle respected
+  ✓ campaign hold: held contacts are unbucketed, never enrolled, never proposed
+  ✓ per-tick sends are provider-stratified (no all-Gmail burst)
+  ✓ per-contact pause signals (replied/...) stop the cadence
+  ✓ act() is dry_run without a live dep; sends only when a live dep is injected
+  ✓ stop-thresholds trip + auto-pause; below min-sample never trips
+  ✓ rolling threshold basis: distinct people, aging, below-sample self-heal, bounded override only
+  ✓ applyReactivationEvent suppresses+pauses on hard signals; metrics roll up per wave
+  ✓ cadence is Day 1/4/9/16/30 with a Touch-0 seed
+
+All 14 reactivation-os checks passed.
+
+MVP Reactivation — copy / subject / footer / link tests
+
+  ✓ 1. no Google Calendar URL appears anywhere
+  ✓ 2/3. no booking/calendar language and no "grab a time" anywhere
+  ✓ 4. Touch 1 subject is exactly "Clearing your record on Expungement.ai, now $50"
+  ✓ 5. no floating-comma "Expungement.ai , now $50" anywhere
+  ✓ 6-9. no "now part of / joined / acquired by / merged with LegalEase" anywhere
+  ✓ 10. legaleasepartner.com does not appear anywhere
+  ✓ 11/12. footer website is expungement.ai; Delaware address exact in every message
+  ✓ 13. every visible Expungement.ai in the body is hyperlinked
+  ✓ 14. every visible expungement.ai (footer website) is hyperlinked
+  ✓ 14b. signature: two <hr> dividers, clickable identity line, italic disclaimer
+  ✓ 14c. no em-dash characters anywhere (dividers are <hr>)
+  ✓ 14d. body sign-off is "Best," then "Roger" across all touches
+  ✓ 15. every Start Free Check CTA is a hyperlink
+  ✓ 16. long UTM URL is in href only, not visible HTML text
+  ✓ 17. UTM parameters present in every CTA href (per-touch utm_content)
+  ✓ 18. unsubscribe link appears (footer anchor + List-Unsubscribe header)
+  ✓ 19. postal address appears in every message
+  ✓ 20. no eligibility or outcome guarantee anywhere
+  ✓ 21. no raw merge fields or unrendered tokens remain
+  ✓ 22. "Hi there," fallback works (no first name)
+  ✓ 23. live send remains OFF (both gates default off)
+  ✓ 24. autopilot/auto-advance remains OFF; campaign staged
+  ✓ 26. dry-run renders Touch 1 for both logged-in and never-logged-in variants
+  ✓ 25. SendGrid is not called while the live flag is off (act() is dry_run without a dep)
+  ✓ routing: never_logged_in -> Sequence B; warm/cold -> Sequence A
+  ✓ 27/28. 3,827 contacts split into waves 300 / 700 / 1200 / 1627 (plan unchanged)
+
+All 26 reactivation-copy checks passed.
+Reactivation duplicate-contact guard tests
+  ✓ storage keys contact-shaped records by contact_id, not by list position
+  ✓ duplicate records sharing a contact_id collapse to one proposed send
+  ✓ duplicate records sharing an email collapse to one proposed send
+  ✓ dedupe does not suppress distinct contacts
+  ✓ when duplicate records disagree, the person is skipped (fail closed), not double-considered
+  ✓ a single plan never carries two sends to the same inbox
+
+reactivation dedupe tests passed (6 checks).
+Reactivation send-claim tests
+  ✓ reactivationSendClaims registered, list-shaped, append-only
+  ✓ concurrent double invocation: one send per (contact, step), loser skips and logs
+  ✓ transport failure: claim marked failed and kept; later run skips, never auto-retries
+  ✓ duplicate contact rows: one (contact, step) claim, one send
+  ✓ no claim path: live send fails closed, nothing reaches the transport
+  ✓ claim-write failure: fail closed, the ledger is the permission to send
+  ✓ dry-run path records attempts but burns no claims
+  ✓ engine passes the claim path through; unconfirmed claims surface in the live status
+  ✓ Supabase claim: conditional insert wire shape, inserted/skipped truth, fail-closed on outage
+  ✓ append-only exclusion: snapshot reconcile cannot erase claims
+  ✓ JsonStore claim: inserted/skipped contract holds under concurrent callers
+
+All 11 reactivation send-claim tests passed.
+Reconciliation script tests
+  ✓ 15:00 inserts carry computed step, real ids, real timestamps, recon source
+  ✓ duplicates annotated as one counted touch with copies noted
+  ✓ the SendGrid drop is corrected to dropped, not counted as a touch
+  ✓ claims backfill: live-path ids, one per (contact, step), drop claim failed
+  ✓ suppression inserts are only the missing bounce and unsubscribe; jaime annotated
+  ✓ apply: correct counts, idempotent re-run, zero deletes, campaign and contacts untouched
+
+All 6 reconciliation script tests passed.
+Outreach send-claim tests
+  ✓ outreachSendClaims registered, list-shaped, append-only
+  ✓ concurrent double invocation: one send per (contact, step), loser skips and logs
+  ✓ transport failure: claim failed, queue item rejected, re-approval cannot double-send
+  ✓ duplicate approved queue items: one claim, one send, skip logged
+  ✓ no claim path: live send fails closed, nothing reaches the transport
+  ✓ claim-write failure: fail closed, the ledger is the permission to send
+  ✓ dry-run path records attempts but burns no claims
+  ✓ claim id format is deterministic
+
+All 8 outreach send-claim tests passed.
+SendGrid domain-auth driver tests
+  ✓ unknown actions and non-hostname domains rejected pre-network; default domain is the outreach subdomain
+  ✓ missing SENDGRID_API_KEY fails closed before any network contact
+  ✓ create lists first, POSTs the exact isolation payload, returns 3 mapped CNAME records
+  ✓ create is idempotent: existing auth record short-circuits with zero write calls
+  ✓ status is a single read-only GET for both found and not-found
+  ✓ validate targets /{id}/validate, returns per-record verdicts, refuses a never-created domain
+  ✓ API key never appears in results or error text; provider status surfaces
+  ✓ mapping tolerates sparse provider payloads
+
+All 8 SendGrid domain-auth checks passed.
+Reactivation live-mode tests
+  ✓ live mode record lives in registered singletons; flips ONLY the reactivation gates
+  ✓ live mode is the send authority; kill switch, window, and campaign status re-checked at send time
+  ✓ enabling live mode sends nothing and uses scoped writes only (no full-state writeState)
+  ✓ armed outside 8am–5pm ET: zero sends, status 'Paused — outside send window.'
+  ✓ in-window heartbeat sends eligible contacts capped at perTickMax; B2 off; waves 3/4 unreleased
+  ✓ threshold trip: campaign auto-pauses, zero sends, status 'Stopped by safety threshold.'
+  ✓ disabling live mode prevents future heartbeat sends and is audited
+  ✓ safety posture reports live mode honestly (no comforting env-only 'off')
+  ✓ commit gate: exact and ahead-with-ancestor pass; behind, unrelated, unknown, and errors fail closed
+  ✓ live status exposes the full required field set incl. sendWindowET 8–17 ET weekdays
+
+All 10 reactivation live-mode checks passed.
+  ✓ a correctly signed batch verifies
+  ✓ a tampered payload is REJECTED (fail closed) when a key is configured
+  ✓ missing signature headers reject when a key is configured
+  ✓ with no key configured, requests are rejected because verification is unavailable
+  ✓ counters reflect received / recorded / skipped / reactivation-matched and by-type
+  ✓ a delivered event for a reactivation contact lands in the campaign ledger
+  ✓ a bounce suppresses the contact, un-enrolls it, and appends to the bounce ledger
+  ✓ a spamreport records an unsubscribed suppression even for unknown emails
+  ✓ the reducer touches ONLY the scoped webhook collections
+  ✓ health accumulates ok / rejected / verified / unverified outcomes and by-type counts
+  ✓ a healthy feed carries no warning; signature posture is reported honestly
+  ✓ sends with NO webhook batches ever => explicit 'telemetry blind' warning
+  ✓ a failing feed surfaces the last error in plain English
+  ✓ all webhook collections + the health singleton are registered in coreStateCollections
+  ✓ JsonStore.writeCollections merges the patch — unrelated local state is never wiped
+  ✓ a failed Supabase write is counted and stamped in writeHealth()
+  ✓ a successful write stamps lastWriteOkAt and clears the error without erasing history
+
+All 17 sendgrid-webhook checks passed.
+  ✓ every intake type declares a valid queue type and allowed actions
+  ✓ intake writes only into collections registered for persistence
+  ✓ type detection recognizes lifecycle, prospect, revenue, and social headers
+  ✓ detection reasons are plain English
+  ✓ sensitive columns are detected and warned about
+  ✓ header inspection counts emails, duplicates, and missing values
+  ✓ preview is pure — it never writes state
+  ✓ preview warns when the declared type disagrees with a strong detection
+  ✓ preview coerces a disallowed action with a plain-English note
+  ✓ preview requires type, source note, and content
+  ✓ confirm add_to_contacts writes deduped contacts + organizations and an audit trail
+  ✓ re-importing the same list merges — no duplicate contacts, orgs, or events
+  ✓ review_only writes NO contacts and puts one review item on the Queue
+  ✓ suppress marks people do-not-contact and the mark is sticky on re-import
+  ✓ draft_outreach requires approval: requested approval + needs_roger queue item, nothing executed
+  ✓ sensitive columns create a review queue item and are never imported
+  ✓ consumer route stages contacts held through the existing reactivation import
+  ✓ expungement route stages lifecycle contacts always held, suppressed people excluded
+  ✓ NO send machinery is ever touched by any intake action
+  ✓ user-facing intake copy carries no engineering jargon
+  ✓ verification recounts from the written state and fails honestly on a bad write
+  ✓ generic row parsing keeps only identity fields
+  ✓ re-confirming the same file later does NOT flood the Queue (content-derived import id)
+  ✓ a dismissed review item stays dismissed when the same file is imported again
+  ✓ suppress writes the authoritative suppression ledger, not just Company Memory
+  ✓ follow-ups and outreach approvals are skipped honestly when nothing was written
+  ✓ Stripe-style charge columns do not trip the criminal-record warning
+  ✓ sensitive values never transit the consumer preview sample rows
+  ✓ contact ids stay canonical with Company Memory
+
+All 29 intake checks passed.
+  ✓ overview and preview are pure — deep-frozen state is never mutated
+  ✓ overview reports gates honestly when sending is off
+  ✓ overview reports sending ON when live-send + autopilot + key are all set
+  ✓ preview shows who / which touch / when / suppression / blocked counts
+  ✓ preview risk is dangerous when sending is on, caution when off
+  ✓ unknown wave gets a plain-English error
+  ✓ propose writes a requested approval + needs-Roger queue item and releases NOTHING
+  ✓ duplicate proposals for the same wave refresh one queue item, not two
+  ✓ an approval record ALONE does not release or enroll anyone
+  ✓ execute refuses without an approved approval and logs the blocked attempt
+  ✓ execute with a bogus approval id refuses and releases nothing
+  ✓ approved execute releases the wave, enrolls only eligible people, completes the queue item
+  ✓ execute is idempotent — a second run refuses instead of double-releasing
+  ✓ a date-scheduled release refuses to run before its planned date
+  ✓ execute refuses when a safety limit is tripped, even with approval
+  ✓ execute never touches sending gates or autopilot
+  ✓ pause is immediate, audited, and honest
+  ✓ resume needs a proposal + approval; executing resumes without touching gates
+  ✓ resume refuses while a safety limit is still tripped
+  ✓ threshold monitor is honest below sample size and when tripped
+  ✓ telemetry is honest: blind warning when sends happened but no webhook data
+  ✓ re-proposing cannot clear an approved release's planned date (schedule bypass fixed)
+  ✓ re-proposing while still pending reuses the same approval and updates the date
+  ✓ a dismissed proposal is not a dead-end — a fresh one can be made and approved
+  ✓ a wave with nobody eligible cannot be proposed
+  ✓ a malformed planned date is refused in plain English
+  ✓ planned dates compare in Eastern time, not UTC
+  ✓ safety-limit copy has no machine tokens anywhere it surfaces
+  ✓ the REAL approval path — Queue approve then execute — works end to end
+  ✓ all collections campaign command writes are registered for persistence
+  ✓ user-facing campaign copy carries no engineering jargon
+  ✓ releasing a wave never enables sending
+  ✓ outside the window, the due message explains the window — never a false empty queue
+  ✓ inside the window with sending off, the real due count shows (no false 0)
+  ✓ inside the window with sending on, the message shows who is due this hour
+  ✓ waves 3 and 4 stay unreleased in the view; recommendation says run wave 2 first
+  ✓ legacy/unattributed prior sends surface when totals exceed the wave display (display-only)
+  ✓ normal operation needs no shell commands: run/stop/release/approve all live in the page
+  ✓ Run uses the live-mode control; Stop disables it; B2 outreach and social stay untouched
+
+All 39 campaign-command checks passed.
+Scoreboard wiring tests
+  ✓ funnel aggregation sums across rows, honors legacy keys, never double-counts a row
+  ✓ connected flags follow real source availability; disconnected shows honest not-wired, never numbers
+  ✓ bad signature rejected; funnel untouched
+  ✓ signed metric event auto-applies: funnel count moves with zero human steps
+  ✓ audit trail kept: suggestion recorded as applied, approval queue stays empty
+  ✓ replay-safe: duplicate event leaves the count unchanged
+  ✓ web visits wired to landing_page_viewed product events
+  ✓ summary endpoint attaches live-source posture; missing keys stay honestly disconnected
+
+All 8 scoreboard wiring checks passed.
+  ✓ Today at LegalEase renders through the cockpit page
+  ✓ the dashboard is a modular grid system, not hand-placed cards
+  ✓ the opening summary is company-wide, not campaign-first
+  ✓ company scoreboard sits above any campaign module in registry order
+  ✓ revenue, web visits, accounts, screenings appear before campaign metrics
+  ✓ Campaign at a glance no longer leads the page
+  ✓ campaign charts are conditional behind the details toggle or risk
+  ✓ missing traffic/account data uses honest not-wired language, no fake metrics
+  ✓ derived safety posture is used with Unverified fallback
+  ✓ orange marks alert states and Needs Roger, not healthy states
+  ✓ teal marks healthy/active states instead of green
+  ✓ navy anchors structure, headings, and stable status
+  ✓ the background wash is teal-tinted, not the old green
+  ✓ card visualizations stay honest about their sources
+  ✓ the dashboard carries visual modules for growth, social, and inbox
+  ✓ social and inbox modules are honest, never fabricated
+  ✓ money extras stay honest about unfetched numbers
+  ✓ header primary action works the queue; #daily-run still renders
+
+test-today-cockpit-hierarchy: all 18 checks passed.
+  ✓ queue items carry dueAt, sourceLink, and related
+  ✓ Open targets are vetted: pages normalize, only https external, junk rejected
+  ✓ re-projection refreshes dueAt/sourceLink/related without clobbering decisions
+  ✓ every decision leaves an audit event in companyEvents
+  ✓ approval decisions are audited and still never execute anything
+  ✓ non-decision transitions do not spam the audit trail
+  ✓ the shared data-status vocabulary is exported
+  ✓ the Decisions page exists with the four controls and safe Open rendering
+  ✓ decision endpoints persist the audit events
+  ✓ the social-post Review Desk keeps its route
+
+test-queue-foundation: all 10 checks passed.
+  ✓ agent runs carry the review layer fields
+  ✓ every heartbeat engine has a declared autonomy level with a plain sentence
+  ✓ external-facing senders are capped at level 3 (execute after approval)
+  ✓ read-only loops and unknown helpers default safely
+  ✓ autonomy sentences carry no developer jargon
+  ✓ proposing a wave release records a linked agent run
+  ✓ executing the approved release records who reviewed it and what finally happened
+  ✓ campaign routes persist the agent runs they record
+  ✓ the cockpit shows autonomy ceilings and agent activity from real data
+  ✓ the today summary serves agentDirectory and recentAgentRuns
+
+test-agent-autonomy: all 10 checks passed.
+  ✓ legal-advice-seeking messages are flagged with plain reasons
+  ✓ ordinary product questions are not flagged
+  ✓ urgency detection: urgent, low, and default normal
+  ✓ normalize produces one canonical shape and keeps legacy fields
+  ✓ no machine draft for legal-advice-sensitive messages, ever
+  ✓ drafts are internal skeletons with visible unfinished slots
+  ✓ status transitions are validated and resolution is stamped
+  ✓ growth-inbox conversion produces the canonical support shape
+  ✓ the queue projection puts sensitive and urgent support first
+  ✓ dedupe by id on upsert
+  ✓ the support module has no send path at all
+  ✓ the support routes persist with scoped writes and record the agent run
+  ✓ the support page carries triage lanes and sendless controls
+
+test-support-desk: all 13 checks passed.
+  ✓ outreach lanes group by status with the four honest lanes
+  ✓ outreach lanes never leak message bodies, unsubscribe links, or env-var names
+  ✓ preview lists only approved-for-later, unsuppressed, unenrolled contacts as releasable
+  ✓ confirm releases into the next unreleased wave without touching enrollment
+  ✓ confirm never reshuffles existing contacts across waves
+  ✓ confirm is all-or-nothing and refuses suppressed, enrolled, unapproved, and unknown ids
+  ✓ confirm refuses when every wave is already released
+  ✓ deliverability is quiet with no sends and honest below the sample size
+  ✓ deliverability warns before the trip at 60% of a limit
+  ✓ deliverability goes critical when a limit trips
+  ✓ a single bad wave warns even when the campaign-wide average looks fine
+  ✓ utilization helper picks the worst metric
+  ✓ the projector raises a caution queue item when drifting toward the limit
+  ✓ the campaign brain module has no send or enroll path at all
+  ✓ the held-release route is owner/admin gated with scoped writes and an agent run
+  ✓ the campaigns page carries the campaign brain card and sendless copy
+
+test-campaign-brain: all 16 checks passed.
+  ✓ usage groups partner_usage_window events by partner and month with the recorded counts
+  ✓ usage count key precedence matches what receiveProductEvent records
+  ✓ approved funnel snapshot usage is shown separately, never merged into observed
+  ✓ usage events with no matching partner land in an honest unmatched row
+  ✓ usage is honest about zero
+  ✓ onboarding derives done steps from the lifecycle stage
+  ✓ a stalled partner shows paused with no fabricated progress
+  ✓ onboarding is honest about an empty partner list
+  ✓ packet counts come from observed events and approved snapshots, labeled separately
+  ✓ packet counts are honest about zero and say generation happens elsewhere
+  ✓ the module is display-only: no writes, no network, no queue or approval creation
+  ✓ no cap enforcement exists and every view says so
+  ✓ the partner-ops route is GET-only display with no write path
+  ✓ the partners page carries the partner ops card and display-only copy
+
+test-rcap-partner-ops: all 14 checks passed.
+ok - alerts collections are registered in coreStateCollections
+ok - settings persist as a singleton core collection (Supabase toggle bug)
+ok - email decision fails closed at every layer
+ok - recipient comes from env only, never from state
+ok - module never talks to the network directly
+ok - queue candidates: aggregate plus overdue dangerous breakthrough
+ok - safety candidates: live gates, webhook rejections, os-health
+ok - money candidates: failed payments and stripe availability
+ok - support and partner candidates
+ok - reconcile: dedupe, respect read/dismissed, escalate, resolve, reappear
+ok - reconcile caps the collection
+ok - critical email and digest copy are safe and em-dash free
+ok - digest schedule: toggle, hour, once per day
+ok - act: dry run raises alerts but never calls the executor
+ok - act: live path emails criticals once and digests once per day
+ok - plan observes without writing
+ok - engine descriptor registers correctly
+ok - setAlertStatus transitions and view counts
+ok - criticalAlertsNeedingEmail excludes emailed, dismissed, resolved
+ok - server wiring: engine registered, endpoints present, recipient lock in executor
+alerts engine tests passed (20 checks).
+ok - meetingBriefs collections are registered in coreStateCollections
+ok - normalizeBriefEvent drops cancelled/declined/rooms, keeps people
+ok - attendee matching never fabricates a relationship
+ok - talking points: known contact, waiting decisions, stalled partner, honest default
+ok - buildMeetingBrief assembles the persisted record
+ok - email snippets are short single lines, never bodies
+ok - email context caps attendees and snippets per attendee
+ok - reconcile preserves pulled email context, drops stale, caps
+ok - module never talks to the network directly
+ok - plan observes without writing; act is calendar-only and honest
+ok - engine descriptor and view
+ok - server wiring: engine registered calendar-only, on-demand Gmail routes present
+meeting briefs tests passed (12 checks).
+SOC 2 markdown export test passed.
+  ✓ clean post passes; every §2/§3 rule class hard-fails
+  ✓ negated guarantees and criminal-record usage do not false-positive
+  ✓ image prompt scan flags positive requests, ignores negated safety language
+  ✓ gate wired at approve, batch approve, direct update, schedule, render, and draft factories
+
+test-social-guidelines-gate: all checks passed
+Phase S social wizard tests
+  ✓ auto-render: text gates first, then a persisted daily cap; failures never abort the batch
+  ✓ content-bank, /api/generate, and source automation all render via the gated, capped path
+  ✓ Approve absorbs copyReviewed; guidelines gate + render QA remain hard at approve time
+  ✓ wizard leads the Review Desk with exactly three states; workbench modes are gone
+  ✓ all 15 emittable gate rule ids translate to plain English (15 mapped)
+
+test-social-wizard: all 5 checks passed.
+Phase O artifact deep-link tests
+  ✓ queue-card Open lands on the artifact via sourceRef, with the page link as fallback
+  ✓ #item route parses safely and the viewer renders type-aware with honest fallbacks
+  ✓ exported report files: readable in-app + downloadable, traversal-guarded server-side
+  ✓ dead ends wired: system reports render; Today drafts/meetings are clickable
+  ✓ link model unchanged: deep links ride the existing sourceRef contract
+
+test-artifact-deep-links: all 5 checks passed.
+Inbox intelligence (I1) tests
+  ✓ collections registered: inboxSignals (list) + inboxConfig (singleton)
+  ✓ needs_reply: age threshold, plain sentence, bulk senders excluded
+  ✓ internal teammates (Lawrence, Britton, @legalease.com) excluded entirely
+  ✓ went_quiet: pipeline-only, with the record pointer for deep links
+  ✓ commitments: explicit-only detection with implied deadlines (dueAt)
+  ✓ pipeline inbound: contacts, press in companyContacts, and the named investors
+  ✓ privacy: no body fields persisted; evidence + subject redacted; caps hold
+  ✓ merge: Roger's dismissals stick; answered threads retire honestly
+  ✓ engine: plan-only, toggle gates reading, identity wall holds, backfill resumes then rolls
+  ✓ activation audit: auditHistory + company event, exactly once
+  ✓ server wiring: owner-only projection, identity-first manual refresh, audit on scheduled activation
+  ✓ I2: signals project as needs_roger sentences with deep links; moved threads retire
+  ✓ I3: skeleton drafts + UPL refusal with Lawrence flag; no send path anywhere
+  ✓ I4: pipeline inbounds propose pending, evidence-quoted updates; approval is human-only
+
+test-inbox-intelligence: all 14 checks passed.
+PASS test-vnext-social-results-surface
+{"endpoint":"/api/ui/social/results","results":1,"projectedChannels":["linkedin"],"mutations":0,"providerCalls":0}
+EXIT CODE: 0
+Finished: Thu Jul 23 00:12:05 UTC 2026

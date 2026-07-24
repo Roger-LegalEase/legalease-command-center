@@ -1,0 +1,18 @@
+# npm audit — Thu Jul 23 00:13:11 UTC 2026
+# Command: npm audit
+
+# npm audit report
+
+sharp  <0.35.0
+Severity: high
+sharp inherited vulnerabilities in libvips: CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591 - https://github.com/advisories/GHSA-f88m-g3jw-g9cj
+fix available via `npm audit fix --force`
+Will install sharp@0.35.3, which is a breaking change
+node_modules/sharp
+
+1 high severity vulnerability
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+EXIT CODE: 0
