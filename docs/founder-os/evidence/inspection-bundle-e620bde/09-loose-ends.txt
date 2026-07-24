@@ -1,0 +1,87 @@
+# Loose ends — TODO/FIXME/HACK comments, orphan tests, stub routes/handlers
+# Collected 2026-07-23 at HEAD e620bde (branch hotfix/founder-targeted-reads)
+
+## 1. TODO / FIXME / HACK comments
+
+NONE FOUND. A case-insensitive whole-word grep for TODO, FIXME, and HACK across all
+*.mjs / *.js source files (excluding node_modules, .git, test artifacts) returned
+zero matches. The codebase carries no marker-style deferred-work comments.
+(Deferred work is instead tracked in docs: docs/followups.md,
+docs/deferred-product-features.md, docs/extended-test-follow-up.md.)
+
+## 2. Test files referencing code that no longer exists
+
+NONE FOUND. Every relative import and dynamic-import specifier in scripts/test-*.mjs,
+tests/**, and scripts/test-support/* resolves to a file on disk, and every file named
+in package.json "test", "check", "precheck", "postcheck", and test:* script chains
+exists.
+
+One false positive worth documenting: scripts/test-codebase-health.mjs:63-72 contains
+the literal string './hub.mjs' — this is fixture source code the test writes into a
+temporary directory, not a real import; scripts/hub.mjs intentionally does not exist.
+
+## 3. Routes / UI handlers that appear to be stubs or no-ops
+
+a) "Upload a list" intake types — review-only stubs (all types except two)
+   File: scripts/intake.mjs, INTAKE_TYPES registry (lines 50-136); UI form in
+   scripts/preview-server.mjs (~27058-27089); endpoints /api/intake/preview (38525)
+   and /api/intake/confirm (38543).
+   - Fully wired: consumer (line 61, route:"wired") and expungement_lifecycle
+     (line 51, route:"wired") — call the real importers (confirmIntake 437-453).
+   - Partially wired: rcap_prospects (71), partner_contacts (83), support_list (95)
+     — route:"memory"; write identity-only Company Memory records, not the domain
+     systems.
+   - Stubbed (review-only): revenue_workbook (106), social_calendar (116),
+     unknown (126) — route:"review"; confirmIntake's review_only path (434-436,
+     509-520) imports nothing and only creates a Queue review item.
+
+b) RCAP Connection card — explicit placeholder wired to a no-op
+   File: scripts/preview-server.mjs, card at 20914-20931, handler
+   openRcapConnectionChecklist() at 34918.
+   Card text states: "This is only a placeholder. Nothing connects or runs from here
+   yet." The checklist statuses are hardcoded (20905-20913); the "Prepare connection"
+   button only toggles a <details> element — no route, no fetch. (Covered by
+   scripts/test-rcap-connection-placeholder.mjs.)
+
+c) Cockpit priority/task buttons — toast-only no-ops
+   File: scripts/preview-server.mjs, lines 24141-24144 and 24171.
+   "Mark Done", "Edit Priority", and "Move to Tomorrow" perform no state change and no
+   request; they only show toasts such as "… marked done internally. No external calls
+   were made." They present as action buttons but mutate nothing.
+
+d) SendGrid channel "Test" button — unwired
+   File: scripts/preview-server.mjs, line 25612.
+   Handler is toast('SendGrid test is not wired in this pass.') — a self-admitted no-op.
+
+e) Wilma image generation — local placeholder standing in for external image API
+   File: scripts/preview-server.mjs.
+   wilmaPlaceholderPreviewDataUrl() (3777) and brandedFinalPngPlaceholderBuffer()
+   (4889) generate local SVG/PNG placeholders; rendered text says "Local placeholder
+   only. External image API not connected for this workflow." (3799). Returns
+   imageStatus:"local_placeholder" / generationMode:"local_wilma_placeholder_preview"
+   (3856-3857).
+
+f) Social publish adapter — "not implemented" guard for unknown channels
+   File: scripts/preview-server.mjs.
+   publishToChannel() (5353) implements linkedin/facebook/instagram/threads/x and
+   throws "… publishing is not implemented." (5359) for anything else; readiness
+   check reports "publishing connector is not implemented yet." (4634) keyed off
+   adapterImplemented (4630). Guard behavior, listed for completeness.
+
+g) Minor / lower-confidence items
+   - scripts/ui/global-create.mjs:43 — "file-or-folder" create: "Persistent folders
+     are not available yet." Folder creation unimplemented; only file records created.
+   - scripts/ui/pages/partner-record.mjs:44 — deferred(title, action) helper renders
+     "… integration is ready for shared-shell registration. No external action has
+     occurred." Defined but never called in the file (dead helper, likely leftover).
+   - scripts/ui/controllers/discovery-onboarding-controller.mjs:32 — openAction falls
+     back to "That workflow is not available yet." when a route can't resolve
+     (graceful degradation rather than a hard stub).
+   - scripts/preview-server.mjs:12678 / 12822 — connector snapshots return honest
+     empty states ("Stripe is not connected yet." / "Signup metrics are not connected
+     yet."); scoreboard shows "Not wired yet" for Revenue/Accounts (12769, 25716).
+     Honest empty states, not fake data.
+
+Note: most "placeholder" keyword hits in scripts/ui/ are HTML placeholder="…" input
+attributes or error-recovery copy ("temporarily unavailable"), not stubs; those were
+excluded after inspection.
