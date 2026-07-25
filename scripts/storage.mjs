@@ -234,6 +234,24 @@ const protectedReconcileCollections = new Set(appendOnlyCollections);
 // Scoped snapshot reconciliation is intentionally opt-in. Most collections require explicit
 // versioned delete mutations (`writeChanges`) so a stale scoped patch cannot erase a concurrent row.
 const reconcileEligibleCollections = new Set(["approvalQueue"]);
+// Append-only audit ledgers EXCLUDED from routine full-state hydration and from the state-cache
+// signature (2026-07-25 saturation fix). Background: soc2AuditLogs accumulates one row per
+// denied request on the public host (bot probes, budgeted 30/min since #116) and auditEvents is
+// an unbounded hash-chained ledger. Including them in readState() meant (a) every full
+// hydration re-fetched and re-serialized the entire denial history, and (b) every denial INSERT
+// moved the table signature AND bumped the in-process write generation, so the state cache was
+// invalidated up to 30x/min and the app re-paged the whole table in a loop — the load that
+// saturated Supabase CPU within minutes of the service resuming. These collections:
+//   - never appear in the readState()/state-cache graph (hydrated as [] deterministically);
+//   - do not move the cross-process cache signature probe;
+//   - when written alone, do not bump the full-state write generation (their coherence is the
+//     per-collection cache, invalidated on every write; readers use targeted readCollections).
+// They remain registered, writable (claims/appends/upserts), and readable via explicit
+// readCollections([...]) — exclusion is strictly a hot-path hydration concern.
+const hydrationExcludedCollections = new Set(["soc2AuditLogs", "auditEvents"]);
+// PostgREST filter shared by the full sweep and the signature probe. Collection names are
+// registry-controlled identifiers, safe to embed.
+const hydrationExclusionFilter = "collection=not.in.(" + ["authSessions", ...hydrationExcludedCollections].join(",") + ")";
 
 function normalizeCollectionNames(collectionNames) {
   if (!Array.isArray(collectionNames) || collectionNames.length === 0) {
@@ -1247,6 +1265,21 @@ export class SupabaseCoreStore extends JsonStore {
     }
   }
 
+  // Every durable mutation lands here. Per-collection caches are always invalidated; the
+  // FULL-STATE write generation only advances when a touched collection is actually part of
+  // the readState() graph. Writes that touch ONLY hydration-excluded ledgers (the denial
+  // audit claim is the hot case: up to 30/min of bot-probe denials) cannot change anything
+  // readState() returns, so bumping the generation for them would re-page the whole table
+  // once per denial — the exact invalidation loop behind the 2026-07-25 CPU saturation.
+  // An empty/unknown touch set stays conservative and bumps.
+  _noteDurableMutation(collectionNames = []) {
+    const names = [...collectionNames];
+    this._invalidateCollectionCache(names);
+    if (names.length === 0 || names.some((name) => !hydrationExcludedCollections.has(name))) {
+      this._writeGen += 1;
+    }
+  }
+
   async _fallbackState() {
     let fallback = this._fallbackCache;
     if (!fallback) {
@@ -1374,7 +1407,7 @@ export class SupabaseCoreStore extends JsonStore {
     try {
       if (this._readPerformance) this._readPerformance.supabaseRequests += 1;
       const result = await supabaseRestRequest(
-        supabaseRecordsTable + "?select=updated_at&collection=neq.authSessions&order=updated_at.desc&limit=1",
+        supabaseRecordsTable + "?select=updated_at&" + hydrationExclusionFilter + "&order=updated_at.desc&limit=1",
         { prefer: "count=exact", withContentRange: true }
       );
       const total = contentRangeTotal(result?.contentRange || "");
@@ -1392,7 +1425,7 @@ export class SupabaseCoreStore extends JsonStore {
     try {
       const rows = await supabaseFetchAllRows(
         "collection,item_id,payload,version,updated_at",
-        "collection=neq.authSessions",
+        hydrationExclusionFilter,
         {
           onRequest:() => { if (this._readPerformance) this._readPerformance.supabaseRequests += 1; }
         }
@@ -1407,7 +1440,11 @@ export class SupabaseCoreStore extends JsonStore {
         if (stamp > newest) newest = stamp;
       }
       this._lastFetchSignature = (rows || []).length + "|" + newest;
-      return { ...applyCoreRecordsToState(fallback, rows || []), persistence:"supabase" };
+      const hydrated = { ...applyCoreRecordsToState(fallback, rows || []), persistence:"supabase" };
+      // Deterministic empty, not the seed/local-file fallback: a stale seed tail here would
+      // masquerade as live audit evidence. Readers that need these ledgers use readCollections.
+      for (const excluded of hydrationExcludedCollections) hydrated[excluded] = [];
+      return hydrated;
     } catch (error) {
       this.lastError = String(error.message || error).slice(0, 500);
       return { ...fallback, persistence:"supabase_unavailable", persistenceError:this.lastError };
@@ -1450,8 +1487,7 @@ export class SupabaseCoreStore extends JsonStore {
       this.recordWriteOutcome(error);
       throw error;
     } finally {
-      this._invalidateCollectionCache(new Set(mutations.map((mutation) => mutation.collection)));
-      this._writeGen += 1;
+      this._noteDurableMutation(new Set(mutations.map((mutation) => mutation.collection)));
     }
   }
 
@@ -1467,8 +1503,7 @@ export class SupabaseCoreStore extends JsonStore {
       // Invalidate in-flight read sharing even on failure: a partial write (upsert
       // succeeded, reconcile failed) may have changed rows, so the safe direction is
       // a fresh read.
-      this._invalidateCollectionCache(Object.keys(state || {}).filter((name) => coreStateCollections.includes(name)));
-      this._writeGen += 1;
+      this._noteDurableMutation(Object.keys(state || {}).filter((name) => coreStateCollections.includes(name)));
     }
   }
 
@@ -1560,17 +1595,16 @@ export class SupabaseCoreStore extends JsonStore {
       throw error;
     } finally {
       // Claims are durable mutations too: never let a post-claim reader join a
-      // pre-claim in-flight read.
-      this._invalidateCollectionCache([collection]);
-      this._writeGen += 1;
+      // pre-claim in-flight read. (For hydration-excluded ledgers this invalidates
+      // only the per-collection cache — see _noteDurableMutation.)
+      this._noteDurableMutation([collection]);
     }
   }
 
   async appendAuditEvent(event = {}) {
     const safeEvent = validateMutableRecord("auditEvents", event.id, event);
     const returned = await supabaseRestRequest("rpc/leos_append_audit_event", { method: "POST", body: { p_event: safeEvent }, prefer: "return=representation" });
-    this._invalidateCollectionCache(["auditEvents"]);
-    this._writeGen += 1;
+    this._noteDurableMutation(["auditEvents"]);
     return Array.isArray(returned) ? returned[0] : returned;
   }
 
@@ -1580,8 +1614,7 @@ export class SupabaseCoreStore extends JsonStore {
       body: { p_post_id: String(postId), p_expected_version: expectedVersion === undefined ? null : Number(expectedVersion), p_claim: validateMutableRecord("publishClaims", claim.id, claim) },
       prefer: "return=representation"
     });
-    this._invalidateCollectionCache(["posts", "publishClaims"]);
-    this._writeGen += 1;
+    this._noteDurableMutation(["posts", "publishClaims"]);
     const row = Array.isArray(returned) ? returned[0] : returned;
     return { claimed: Boolean(row?.claimed), claim };
   }
@@ -1609,8 +1642,7 @@ export class SupabaseCoreStore extends JsonStore {
           prefer: "return=representation"
         });
         const resultRow = Array.isArray(returned) ? returned[0] : returned;
-        this._invalidateCollectionCache([collection]);
-        this._writeGen += 1;
+        this._noteDurableMutation([collection]);
         const version = Number(resultRow?.version || actualVersion + 1);
         const record = { ...payloadWithoutVersion(changed), _version:version };
         if (options.returnState === false) return { record, version };
@@ -1650,4 +1682,4 @@ export function storageRuntimeConfig() {
   };
 }
 
-export { coreStateCollections, singletonCollections, appendOnlyCollections, coreRecordsFromState, coreMutationsBetween, normalizeCollectionNames, supabaseRequestTimeoutMs, supabaseRestRequest };
+export { coreStateCollections, singletonCollections, appendOnlyCollections, hydrationExcludedCollections, coreRecordsFromState, coreMutationsBetween, normalizeCollectionNames, supabaseRequestTimeoutMs, supabaseRestRequest };

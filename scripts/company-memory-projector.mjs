@@ -698,6 +698,50 @@ function aggregateFunnelMetrics(state) {
   };
 }
 
+// Every collection buildTodaySummary (and the projection under it) can read. The Today
+// endpoint fetches EXACTLY this set via store.readCollections — never the full state graph —
+// so a Today page load can never page the whole leos_core_records table (2026-07-25
+// saturation fix). Maintenance rule, enforced by test-hydration-bounds.mjs: any new
+// `state.<collection>` read in THIS file or in reactivation-os.mjs (campaignRates /
+// evaluateThresholds / reactivationCampaignOf are called with full state) must be added here.
+export const TODAY_SUMMARY_READ_COLLECTIONS = Object.freeze([
+  "activityEvents",
+  "agentRuns",
+  "approvalQueue",
+  "autonomyActions",
+  "autonomyRuns",
+  "autopilotSettings",
+  "companyContacts",
+  "companyEvents",
+  "companyOrganizations",
+  "events",
+  "expungementLifecycleContacts",
+  "funnelSnapshots",
+  "googleInsights",
+  "heartbeatRuns",
+  "inboxSignals",
+  "leeActionProposals",
+  "leeRuns",
+  "outreachContacts",
+  "outreachOrganizations",
+  "outreachSuppressions",
+  "outreachUnsubscribes",
+  "partners",
+  "prospectCandidates",
+  "prospectDiscoveryRuns",
+  "queueItems",
+  "rcapRevenueAccounts",
+  "rcapRevenueContacts",
+  "rcapRevenueQueueTasks",
+  "reactivationAttempts",
+  "reactivationCampaign",
+  "reactivationContacts",
+  "reactivationEvents",
+  "sendgridWebhookHealth",
+  "supportIssues",
+  "tasks"
+]);
+
 export function buildTodaySummary(state = {}, { env = process.env, now = () => new Date().toISOString(), project = projectCompanyMemory } = {}) {
   // Computed on demand from a projection — reading the page never writes anything. The
   // caller may pass a memoizing `project` (preview-server does): the projection is pure

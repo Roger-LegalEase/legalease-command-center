@@ -24,7 +24,8 @@ import { buildPartnerUsageView, buildOnboardingChecklist, buildPacketCounts } fr
 import { buildAlertsView, setAlertStatus, buildAlertCandidates, reconcileAlerts, resolveAlertEmailDecision, buildDailyDigest, alertsConfigOf, ALERTS_ENGINE_ID } from "./alerts-engine.mjs";
 import { buildMeetingBrief, reconcileMeetingBriefs, attachEmailContext, buildMeetingBriefsView, MEETING_BRIEFS_ENGINE_ID } from "./meeting-briefs.mjs";
 import { INBOX_ENGINE_ID, INBOX_ALLOWED_MAILBOX, INBOX_SCAN_MESSAGE_CAP, planInboxIntelligence, recordInboxActivationAudit, inboxConfigOf, prepareInboxDraftReply } from "./inbox-intelligence.mjs";
-import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID, buildTodaySummary, projectCompanyMemory } from "./company-memory-projector.mjs";
+import { buildCompanyMemoryEngine, COMPANY_MEMORY_ENGINE_ID, buildTodaySummary, projectCompanyMemory, TODAY_SUMMARY_READ_COLLECTIONS } from "./company-memory-projector.mjs";
+import { BOOT_STATE_READ_COLLECTIONS } from "./boot-state-read-collections.mjs";
 import { previewExpungementSync, confirmExpungementSync, resolveSyncRecords, buildHeldContactsReview, applyHeldDisposition } from "./expungement-lifecycle-sync.mjs";
 import { previewIntake, confirmIntake, INTAKE_TYPES, INTAKE_ACTIONS } from "./intake.mjs";
 import { buildCampaignCommandView, previewWaveRelease, proposeWaveRelease, executeApprovedWaveRelease, pauseCampaign, proposeCampaignResume, executeApprovedResume, applyReactivationLiveMode } from "./campaign-command.mjs";
@@ -36871,7 +36872,12 @@ async function handleRequest(request, response) {
   // One call powers Today at LegalEase. Computed on demand from a projection over the domain
   // ledgers (memoized per state graph — see projectCompanyMemoryCached) — reading never writes.
   if (url.pathname === "/api/today/summary" && request.method === "GET") {
-    const currentState = await store.readState();
+    // Targeted read (2026-07-25 saturation fix): the Today page reads exactly the
+    // collections the summary/projection consumes, never the full state graph, so a
+    // Today load performs zero full-table paging no matter how large the audit
+    // ledgers grow. The list lives next to buildTodaySummary and is drift-guarded
+    // by test-hydration-bounds.mjs.
+    const currentState = await store.readCollections(TODAY_SUMMARY_READ_COLLECTIONS);
     // Attach the live Stripe + signups snapshots (60s cache) exactly as /api/state
     // does, so the scoreboard's Revenue and Accounts created tiles read real source
     // data instead of permanently missing keys. Read-only: nothing is persisted.
@@ -36977,7 +36983,9 @@ async function handleRequest(request, response) {
   }
 
 	  if (url.pathname === "/api/boot-state" && request.method === "GET") {
-    const currentState = await store.readState();
+    // Targeted read (2026-07-25 saturation fix): first paint fetches exactly the
+    // collections buildCompactBootState consumes — see boot-state-read-collections.mjs.
+    const currentState = await store.readCollections(BOOT_STATE_READ_COLLECTIONS);
     sendJson(response, stripOwnerOnlyCollections(buildCompactBootState(currentState, accessDecision.actor), accessDecision.actor));
     return;
   }
