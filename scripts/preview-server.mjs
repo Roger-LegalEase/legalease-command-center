@@ -18448,12 +18448,41 @@ function htmlShell() {
       if (target) target.style.display = "block";
       return target;
     }
+    // campaignCommandView is the shared read-only campaign-command view declared with the
+    // other boot caches above; boot already fetches it for the cockpit charts. Reusing it
+    // means the controls can be drawn from cache and "Preview next sends" answers without a
+    // second round trip.
+    let campaignCommandLoading = false;
+    function campaignCommandRendered() {
+      const target = document.getElementById("campaign-command-result");
+      return Boolean(target && target.querySelector("[data-reactivation-controls]"));
+    }
+    // Called on every arrival at (and re-render of) #campaigns, from both route parsers.
+    // Run, Stop, Resume and the wave previews are BUILT by renderCampaignCommand(); before
+    // this hook they appeared only after clicking "Load campaign controls", so the Campaigns
+    // surface showed no controls on arrival under either UX flag. The legacy shell re-renders
+    // the page from its template on every state change, which resets the card, so this runs
+    // again after each render rather than once.
+    function autoLoadCampaignCommand() {
+      if (!document.getElementById("campaign-command-result")) return;
+      if (campaignCommandRendered()) return;
+      if (campaignCommandView) { renderCampaignCommand(campaignCommandView); return; }
+      if (campaignCommandLoading) return;
+      loadCampaignCommand();
+    }
     async function loadCampaignCommand() {
       const target = document.getElementById("campaign-command-result");
       if (target) target.innerHTML = "<strong>Loading campaign controls...</strong>";
       let view;
+      campaignCommandLoading = true;
       try { view = await api("/api/campaign/command"); }
-      catch (error) { if (target) target.innerHTML = "<strong>Could not load campaign controls.</strong> " + esc(error.message || ""); return; }
+      catch (error) { if (target) target.innerHTML = "<strong>Could not load campaign controls.</strong> " + esc(error.message || "") + " <button type=\\"button\\" onclick=\\"loadCampaignCommand()\\">Try again</button>"; return; }
+      finally { campaignCommandLoading = false; }
+      campaignCommandView = view;
+      renderCampaignCommand(view);
+    }
+    function renderCampaignCommand(view) {
+      const target = document.getElementById("campaign-command-result");
       const waves = (view.waves || []).map(function(w){
         const btn = w.released ? "" : " <button type=\\"button\\" onclick=\\"campaignWavePreview(" + Number(w.wave) + ")\\">Preview release</button>";
         return "<li>" + esc(String(w.plain)) + btn + "</li>";
@@ -18479,7 +18508,8 @@ function htmlShell() {
       const liveButton = liveOn
         ? "<button type=\\"button\\" onclick=\\"reactivationStopCampaign()\\">Stop Reactivation Campaign</button>"
         : "<button class=\\"primary\\" type=\\"button\\" onclick=\\"reactivationRunCampaignConfirm()\\">Run Reactivation Campaign</button>";
-      const controls = "<div class=\\"card-actions\\">" + liveButton + " " +
+      const controls = "<div class=\\"card-actions\\" data-reactivation-controls>" + liveButton + " " +
+        "<button type=\\"button\\" onclick=\\"campaignPreviewNextSends()\\">Preview next sends</button> " +
         (String(view.status).toLowerCase() === "paused"
           ? "<button class=\\"primary\\" type=\\"button\\" onclick=\\"campaignResumePropose()\\">Propose resume (asks your approval)</button>"
           : "<button type=\\"button\\" onclick=\\"campaignPause()\\">Pause campaign now</button>") +
@@ -18487,6 +18517,32 @@ function htmlShell() {
       if (target) target.innerHTML = lines.join("<br>") +
         "<br><br><strong>Waves</strong><ul>" + waves + "</ul>" + waveNotes + controls +
         "<br><em>" + esc(String(view.warning || "")) + "</em>";
+    }
+    // "Preview next sends" — who is due in the next send, in plain words, plus the preview of
+    // the next unreleased wave when there is one. Read-only: it releases nothing and sends
+    // nothing. This is the answer to "who would get an email if I pressed Run".
+    async function campaignPreviewNextSends() {
+      const target = campaignActionTarget();
+      if (target) target.innerHTML = "<strong>Checking who is due...</strong> Nothing is released or sent by looking.";
+      if (!campaignCommandView) {
+        await loadCampaignCommand();
+        if (!campaignCommandView) { if (target) target.innerHTML = "<strong>Could not read the campaign.</strong> Load the campaign controls again."; return; }
+      }
+      const view = campaignCommandView;
+      const lines = [
+        "<strong>" + esc(String(view.dueNowPlain || "No due-send reading is available.")) + "</strong>",
+        "Sending window: " + esc(String(view.sendWindowPlain || "not provided")),
+        "Reactivation sending: " + esc(String((view.live && view.live.statusCopy) || "unverified"))
+      ];
+      const nextWave = (view.waves || []).find(function(w){ return !w.released; });
+      if (nextWave) {
+        lines.push("Next wave not yet released: " + esc(String(nextWave.plain || ("Wave " + nextWave.wave))));
+        lines.push("<div class=\\"card-actions\\"><button class=\\"primary\\" type=\\"button\\" onclick=\\"campaignWavePreview(" + Number(nextWave.wave) + ")\\">See exactly who wave " + esc(String(nextWave.wave)) + " would line up</button></div>");
+      } else {
+        lines.push("Every wave in the plan is already released, so there is no new wave to line up.");
+      }
+      if (target) target.innerHTML = lines.join("<br>");
+      toast("Read-only look. Nothing was released or sent.");
     }
     async function campaignWavePreview(wave) {
       const target = campaignActionTarget();
@@ -18698,6 +18754,8 @@ function htmlShell() {
     window.loadCampaignBrain = loadCampaignBrain;
     window.heldReleaseConfirm = heldReleaseConfirm;
     window.loadCampaignCommand = loadCampaignCommand;
+    window.autoLoadCampaignCommand = autoLoadCampaignCommand;
+    window.campaignPreviewNextSends = campaignPreviewNextSends;
     window.campaignWavePreview = campaignWavePreview;
     window.campaignWavePropose = campaignWavePropose;
     window.campaignWaveExecute = campaignWaveExecute;
@@ -27217,15 +27275,16 @@ function htmlShell() {
         <div class="panel hero-panel"><div><div class="eyebrow">Review-only control surface</div><h1 class="big-title">Campaigns</h1><p class="muted">RCAP outreach, RCAP prospect lists, consumer reactivation, consumer waves, and social/content campaigns. No campaign will send without approval and live-send gates.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='queue'">Prepare approval items</button><button onclick="location.hash='upload'">Upload a list</button></div></div>
         <div class="campaign-safety-lines"><span>\${gates ? "Live gates need review" : "Sending is off"}</span><span>Dry run only</span><span>Waiting for approval</span><span>Suppressed contacts will not receive email</span><span>No campaign sends directly</span></div>
         <div class="campaign-preview-metrics">\${[[summary.total,"campaign/list rows"],[summary.waiting,"waiting for approval"],[summary.ready,"ready to approve"],[summary.scheduled,"scheduled/due"],[summary.blocked,"paused/blocked"]].map(([value,label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
-        <section class="growth-card">
+        <section class="growth-card" data-reactivation-control-surface>
           <div class="growth-card-head"><h2>Reactivation campaign controls</h2><small>Preview → approve on the Queue → run → monitor → stop. No shell commands needed.</small></div>
           <p class="muted">See exactly who would be lined up, which email they start with, when it would go, what is blocked, and what approval does and does not do. Releasing a wave never turns sending on; sending only starts when you press Run Reactivation Campaign below. This page controls the consumer reactivation campaign only — B2 partner outreach and social posting are separate and are not changed here.</p>
           <div class="card-actions">
-            <button class="primary" type="button" onclick="loadCampaignCommand()">Load campaign controls</button>
+            <button class="primary" type="button" onclick="loadCampaignCommand()">Refresh campaign controls</button>
+            <button type="button" onclick="campaignPreviewNextSends()">Preview next sends</button>
             <label class="inline-filter">Internal planning date (optional) — this does not schedule sending<input type="date" id="campaign-release-date"></label>
             <label class="inline-filter">Pause reason (optional)<input type="text" id="campaign-pause-reason" placeholder="e.g. reviewing bounce numbers"></label>
           </div>
-          <div id="campaign-command-result" class="campaign-import-status">Load the campaign controls to see status, waves, safety limits, and delivery feedback. Read-only until you approve something on the Queue.</div>
+          <div id="campaign-command-result" class="campaign-import-status">Loading status, waves, safety limits, and delivery feedback. Read-only until you approve something on the Queue.</div>
           <div id="campaign-command-action" class="campaign-import-status" style="display:none"></div>
         </section>
         <section class="growth-card">
@@ -31505,6 +31564,10 @@ function htmlShell() {
       currentPageId = pageId;
       document.body.classList.toggle("ck-wash", ["today", "overview"].includes(pageId));
       if (pageId === "decisions" && !companyQueue && !companyQueueLoading) loadDecisionsQueue();
+      // The reactivation Run/Stop/Preview controls are BUILT by loadCampaignCommand(); before
+      // this they existed only after clicking "Load campaign controls", so the surface Roger
+      // sees on arrival never showed them. Auto-load them whenever Campaigns is opened.
+      if (pageId === "campaigns") autoLoadCampaignCommand();
       const canonicalHash = artifactRef ? requestedPage : pageId === "overview" ? "today" : pageId === "partner-hub" ? "partners" : pageId;
       if (location.hash !== "#" + canonicalHash && !pathRoute) history.replaceState(null, "", "#" + canonicalHash);
       if (pageId === "safe-mode") {

@@ -369,7 +369,10 @@ function activityProjection(context) {
       : [
           ...context.attempts.map((record) => ({ collection: "reactivationAttempts", record })),
           ...context.events.map((record) => ({ collection: "reactivationEvents", record })),
-          ...context.approvals.map((record) => ({ collection: "approvals", record }))
+          ...context.approvals.map((record) => ({ collection: "approvals", record })),
+          // Present only on a label-merged reactivation context: the canonical row's own
+          // activity, so merging does not lose the history the canonical row carried.
+          ...list(context.canonicalActivity).map((entry) => ({ collection: entry.collection, record: entry.record }))
         ];
   return sources.map(({ collection, record }) => ({
     id: recordId(record),
@@ -395,6 +398,11 @@ function projectCampaign(context) {
   return {
     id: context.stableIdentity,
     stableIdentity: context.stableIdentity,
+    // Every identity this campaign answers to. On a label-merged reactivation campaign that
+    // is both the canonical `campaign:<id>` and the engine `reactivation:<id>`, so links
+    // built before the merge keep resolving to the one merged campaign.
+    identityAliases: [...new Set([context.stableIdentity, ...list(context.identityAliases)])],
+    canonicalSource: context.canonicalSource || null,
     source: {
       kind: context.kind,
       sourceKind: context.sourceKind,
@@ -433,5 +441,10 @@ export function buildCampaignViews(state = {}, actor = {}) {
 }
 
 export function buildCampaignView(state = {}, stableIdentity = "", actor = {}) {
-  return buildCampaignViews(state, actor).find((campaign) => campaign.stableIdentity === clean(stableIdentity)) || null;
+  const identity = clean(stableIdentity);
+  const campaigns = buildCampaignViews(state, actor);
+  return campaigns.find((campaign) => campaign.stableIdentity === identity)
+    // A merged reactivation campaign also answers to the identity it absorbed.
+    || campaigns.find((campaign) => list(campaign.identityAliases).includes(identity))
+    || null;
 }

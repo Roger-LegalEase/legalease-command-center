@@ -5,7 +5,8 @@ const clean=(value="",maximum=240)=>String(value??"").trim().slice(0,maximum);co
 export const CAMPAIGN_DETAIL_ENDPOINT_PREFIX="/api/ui/outreach/campaign";
 export const CAMPAIGN_DETAIL_TABS=Object.freeze([{key:"overview",label:"Overview"},{key:"messages",label:"Messages"},{key:"audience",label:"Audience"},{key:"replies",label:"Replies"},{key:"results",label:"Results"},{key:"activity",label:"Activity"}]);
 function deepFreeze(value){if(value&&typeof value==="object"&&!Object.isFrozen(value)){Object.values(value).forEach(deepFreeze);Object.freeze(value);}return value;}
-function detailHref(campaign){return campaign.source.kind==="canonical"?campaign.exactSafeSourceLink:`#outreach/campaign/${encodeURIComponent(campaign.stableIdentity)}`;}
+// A label-merged reactivation campaign keeps the canonical row's exact link.
+function detailHref(campaign){return campaign.source.kind==="canonical"||campaign.canonicalSource?campaign.exactSafeSourceLink:`#outreach/campaign/${encodeURIComponent(campaign.stableIdentity)}`;}
 function identityCandidates(value){const exact=clean(value);if(!exact)return[];return exact.includes(":")?[exact]:[`campaign:${exact}`,exact];}
 export function resolveCampaignDetailIdentity(state={},actor={},value=""){for(const candidate of identityCandidates(value)){const campaign=buildCampaignView(state,candidate,actor);if(campaign)return campaign;}return null;}
 export function buildCampaignDetailView(state={},actor={},identity="",options={}){

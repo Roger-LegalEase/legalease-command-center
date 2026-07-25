@@ -558,7 +558,13 @@ assert.doesNotMatch(serverSource, /today-view\.mjs/, "CCX-203 must not wire the 
 const shellStart = serverSource.indexOf("function htmlShell()");
 const shellEnd = serverSource.indexOf("\nfunction renderLegacyApp()", shellStart);
 assert.ok(shellStart >= 0 && shellEnd > shellStart);
-assert.equal(createHash("sha256").update(serverSource.slice(shellStart, shellEnd)).digest("hex"), "d9c94bd1cbe726d98c5a4952db74641ef6864b85216b9a60eedd90c572ae7187", "Legacy flag-off shell must remain byte-for-byte unchanged.");
+// Re-pinned 2026-07-25 (campaign surface repair). The ONLY legacy-shell change is the
+// reactivation control surface: the #campaigns auto-load hook, the "Preview next sends"
+// control, and the data-reactivation-control-surface marker the vNext Outreach page uses
+// to carry the card over instead of deleting it. Today's own HTML is separately pinned
+// below and is unchanged. Reachability is asserted by
+// scripts/test-campaign-controls-flag-matrix.mjs.
+assert.equal(createHash("sha256").update(serverSource.slice(shellStart, shellEnd)).digest("hex"), "ef1a41aca2110a0c2f9c3a37586a400d1d327d56a6e8c17c1a2c65b376bd1b73", "Legacy flag-off shell must not drift outside the reviewed reactivation-control change.");
 const todayStart = serverSource.indexOf("    function commandCenterOverviewHtml(posts)");
 const todayEnd = serverSource.indexOf("\n    function focusItemsForMode", todayStart);
 assert.ok(todayStart >= 0 && todayEnd > todayStart);

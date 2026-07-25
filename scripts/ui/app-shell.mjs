@@ -695,6 +695,10 @@ function applyVNextRouteParser(html, { socialEnabled = false, outreachEnabled = 
       currentPageId = pageId;
       document.body.classList.toggle("ck-wash", ["today", "overview"].includes(pageId));
       if (pageId === "decisions" && !companyQueue && !companyQueueLoading) loadDecisionsQueue();
+      // The reactivation Run/Stop/Preview controls are BUILT by loadCampaignCommand(); before
+      // this they existed only after clicking "Load campaign controls", so the surface Roger
+      // sees on arrival never showed them. Auto-load them whenever Campaigns is opened.
+      if (pageId === "campaigns") autoLoadCampaignCommand();
       const canCanonicalize = !pathRoute
         && !isGlobalSearchRoute
         && !isInboxRoute

@@ -64,13 +64,54 @@ export function outreachHomeBrowserSource() {
     }
     function routeHash(view) { return "#outreach?view=" + encodeURIComponent(view || "all"); }
     function node(selector) { return app()?.querySelector(selector) || null; }
+    // The real reactivation Run / Stop / Resume / Preview-next-sends controls are the legacy
+    // card the server renders inside #campaigns. This page used to replace that section's
+    // innerHTML wholesale, which deleted the only working controls in the product whenever the
+    // Outreach flag was on. The controls are now carried over instead of destroyed: detach the
+    // live node (keeping its already-loaded contents), mount the vNext page, re-attach it.
+    // If the card is not in the DOM at all, an equivalent host is created and filled by the
+    // same loader, so the controls are reachable on this surface either way.
+    const CONTROL_SURFACE = "[data-reactivation-control-surface]";
+    function detachControlSurface(target) {
+      const node = target.querySelector(CONTROL_SURFACE);
+      if (node) node.remove();
+      return node;
+    }
+    function createControlSurfaceHost() {
+      const section = document.createElement("section");
+      section.className = "growth-card";
+      section.setAttribute("data-reactivation-control-surface", "");
+      const head = document.createElement("div");
+      head.className = "growth-card-head";
+      const title = document.createElement("h2");
+      title.textContent = "Reactivation campaign controls";
+      head.append(title);
+      const result = document.createElement("div");
+      result.id = "campaign-command-result";
+      result.className = "campaign-import-status";
+      result.textContent = "Loading status, waves, safety limits, and delivery feedback.";
+      const action = document.createElement("div");
+      action.id = "campaign-command-action";
+      action.className = "campaign-import-status";
+      action.style.display = "none";
+      section.append(head, result, action);
+      return section;
+    }
+    function attachControlSurface(target, preserved) {
+      const node = preserved || createControlSurfaceHost();
+      target.append(node);
+      // Fills an empty host, and re-fills nothing when the card already carries its controls.
+      if (!node.querySelector("[data-reactivation-controls]")) window.autoLoadCampaignCommand?.();
+    }
     function ensureScaffold() {
       const target = app();
       if (!target || sessionEnded || target.querySelector("[data-vnext-shell-state='session_expired']")) return false;
       if (!target.querySelector("[data-outreach-page]")) {
+        const preserved = detachControlSurface(target);
         target.innerHTML = loadingHtml;
         bind();
         if (lastPayload) render(lastPayload, false);
+        attachControlSurface(target, preserved);
       }
       return true;
     }
