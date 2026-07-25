@@ -1,0 +1,126 @@
+name: post-deploy verification
+
+# Runs after the `test` workflow succeeds on main. Render is set to Auto-Deploy "After CI
+# Checks Pass", so a successful `test` run on main is the signal that a deploy is starting.
+# This workflow waits for the new build to actually be serving, then proves it is healthy.
+#
+# Deliberately named "post-deploy verification" so it does not collide with the pre-merge
+# required check named "Phase 8 / production verification".
+#
+# Everything here is read-only against production: GETs on public endpoints only. It never
+# sends, never changes gates, never touches campaign state, never writes to the database.
+
+on:
+  workflow_run:
+    workflows: ["test"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "Full 40-character commit sha to verify"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: post-deploy-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verify deployment
+    # Only a successful test run means a deploy is coming. A failed test run deploys nothing.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      commit: ${{ steps.target.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+
+      - name: Resolve the commit under verification
+        id: target
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            COMMIT="${{ inputs.commit }}"
+          else
+            COMMIT="${{ github.event.workflow_run.head_sha }}"
+          fi
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "Verifying deployment of $COMMIT"
+
+      # Polls /api/version until the deployed commit matches, up to ten minutes, then
+      # asserts Supabase connected, auth still enforced, and every workspace route healthy.
+      - name: Verify the deployed build
+        run: node scripts/post-deploy-verify.mjs --commit "${{ steps.target.outputs.commit }}" --timeout-ms 600000
+
+  auto-revert:
+    name: auto-revert failed deploy
+    needs: verify
+    if: failure() && github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # A PR opened with the default GITHUB_TOKEN does not trigger workflow runs, so its
+          # required checks would never start and auto-merge could never fire. When Roger has
+          # provisioned FOUNDER_OS_AUTOMATION_TOKEN the revert PR runs checks and merges
+          # itself; without it the PR is still opened and labelled, and this job fails loudly
+          # so the rollback is one click for him rather than a hunt.
+          token: ${{ secrets.FOUNDER_OS_AUTOMATION_TOKEN || github.token }}
+
+      - name: Open the revert pull request
+        id: revert
+        env:
+          GH_TOKEN: ${{ secrets.FOUNDER_OS_AUTOMATION_TOKEN || github.token }}
+          FAILED_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          git config user.name "founder-os-automation"
+          # The PII scanner only treats reserved domains as safe to commit, so the bot
+          # identity uses one. It is a commit author, never a recipient.
+          git config user.email "founder-os-automation@example.invalid"
+          BRANCH="auto-revert/${FAILED_COMMIT:0:12}"
+          git checkout -b "$BRANCH"
+          # Squash merges are single-parent, so a plain revert is correct here.
+          git revert --no-edit "$FAILED_COMMIT"
+          git push origin "$BRANCH"
+          {
+            echo "Post-deploy verification failed for \`$FAILED_COMMIT\`, so this reverts it."
+            echo
+            echo "The failing run, with the observed production values: $RUN_URL"
+            echo
+            echo "This pull request was opened automatically. The Founder OS run is stopped"
+            echo "and will not continue until Roger responds."
+          } > /tmp/revert-body.md
+          gh pr create \
+            --base main --head "$BRANCH" \
+            --title "Auto-revert: post-deploy verification failed for ${FAILED_COMMIT:0:7}" \
+            --body-file /tmp/revert-body.md
+          gh pr edit "$BRANCH" --add-label auto-revert || \
+            echo "Could not add the auto-revert label; the pull request is still open."
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Ask for the revert to merge as soon as its checks pass
+        env:
+          GH_TOKEN: ${{ secrets.FOUNDER_OS_AUTOMATION_TOKEN || github.token }}
+        run: |
+          gh pr merge "${{ steps.revert.outputs.branch }}" --auto --squash || \
+            echo "Auto-merge could not be enabled; the revert needs a manual merge."
+
+      - name: Stop the run and report
+        env:
+          FAILED_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          echo "::error::Post-deploy verification failed for ${FAILED_COMMIT}. A revert pull request is open on branch ${{ steps.revert.outputs.branch }}. The Founder OS run is stopped until Roger responds."
+          exit 1
