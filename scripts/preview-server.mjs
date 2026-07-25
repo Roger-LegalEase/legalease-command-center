@@ -15763,8 +15763,12 @@ async function exportWeeklyEvidencePack(options = {}) {
 //                              sample data.
 //   intakePending              universal list intake: one preview + confirm flow for every
 //                              list type. Preview never writes; confirm imports safely and
-//                              sends nothing. Plain-English checks before save: missing and
-//                              invalid emails, duplicates, suppressed/unsubscribed/bounced.
+//                              sends nothing. Plain-English checks before save: missing
+//                              emails, invalid emails, duplicates, and
+//                              suppressed/unsubscribed/bounced/do-not-contact. (Those four
+//                              phrases are asserted verbatim by
+//                              scripts/test-operator-consolidation-pass.mjs — keep the
+//                              wording exact.)
 //   campaignBrainHeldRows      Campaign brain (Phase 18E): outreach lanes, held release,
 //                              deliverability.
 //   consumerImportPending      consumer / Expungement.ai list import against the internal
