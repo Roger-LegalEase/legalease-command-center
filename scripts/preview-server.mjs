@@ -5,6 +5,7 @@ import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createStore, getSupabaseHealth, storageRuntimeConfig } from "./storage.mjs";
+import { runWithRequestContext } from "./request-context.mjs";
 import { analyzeOperations } from "./priority-engine.mjs";
 import { buildAutonomyGovernance, buildAutonomyReport, runAutonomyCycleOnState } from "./autonomy-engine.mjs";
 import { runHeartbeat, autopilotEnabled } from "./heartbeat.mjs";
@@ -41912,7 +41913,11 @@ const server = http.createServer({ requestTimeout: 30_000, headersTimeout: 10_00
   request.requestId = requestId(request);
   for (const [name, value] of Object.entries(securityHeaders({ env: process.env, html: true, sensitive: true }))) response.setHeader(name, value);
   response.setHeader("x-request-id", request.requestId);
-  handleRequest(request, response).catch((error) => {
+  // Attach a SAFE request context (method + sanitized pathname only) for the whole
+  // request. The Supabase mutation executor reads it so every core-mutation log line
+  // names the route that submitted the write — the fact that was missing when ~45
+  // concurrent mutation RPCs convoyed on 2026-07-25 and nothing could attribute them.
+  runWithRequestContext({ method:request.method, pathname:String(request.url || "") }, () => handleRequest(request, response)).catch((error) => {
     const status = Number(error?.status || (error instanceof RequestLimitError ? 413 : 500));
     const testDetail = process.env.COMMAND_CENTER_TEST_MODE === "true"
       ? { detail:sanitizeOutboundText(String(error?.message || "Request failed.")).slice(0, 240) }

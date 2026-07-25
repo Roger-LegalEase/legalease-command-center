@@ -1,0 +1,80 @@
+-- 2026-07-25 — PREPARED, NOT EXECUTED, AND EVIDENCE-GATED.
+--
+-- Nothing in the application runs this file. It must NOT be run until the gate below is
+-- satisfied. It is checked in so the decision, the numbers behind it, and the exact
+-- statement are reviewable before anyone touches production.
+--
+-- ============================================================================
+-- GATE — do not execute until BOTH are true
+-- ============================================================================
+--
+--   (a) The live pg_stat_activity capture taken during the convoy is read, and it shows
+--       core-mutation backends still ACTIVE (state='active', not 'idle in transaction')
+--       with a query_start older than the application's own request timeout. That is the
+--       only thing that proves the database kept executing after the client abandoned
+--       the request and therefore kept holding its advisory locks.
+--
+--   (b) The observed duration of LEGITIMATE mutations is known from that capture, so the
+--       ceiling below can be set above the real worst case rather than guessed.
+--
+-- If (a) is false — if PostgREST cancelled the statement on client disconnect, so the
+-- abandoned backends were gone — then this file is unnecessary and must be deleted
+-- rather than run. Serialization, not a timeout, is the fix for the convoy; a timeout
+-- only bounds the blast radius of a mutation nobody is waiting for any more.
+--
+-- ============================================================================
+-- TIMEOUT ORDERING AS IT STANDS TODAY
+-- ============================================================================
+--
+--   Application mutation-request timeout
+--     scripts/storage.mjs, supabaseRequestTimeoutMs():
+--     default 8,000 ms; SUPABASE_REQUEST_TIMEOUT_MS override, clamped 100–15,000 ms.
+--     On expiry the client aborts the HTTP request and the caller sees
+--     SupabaseRequestTimeoutError. The mutation is NOT retried (only GET/HEAD retry).
+--
+--   Function-level statement_timeout on public.leos_apply_core_mutations(jsonb)
+--     NONE. The production definition sets `search_path` only. Verified against
+--     supabase/migrations/20260713_001_production_hardening.sql; confirm against
+--     pg_get_functiondef output before running this.
+--
+--   Role-level statement_timeout
+--     supabase/migrations/20260724_001_perf_updated_at_index_and_statement_timeout.sql
+--     PROPOSES `alter role service_role set statement_timeout = '10s'`. Whether that
+--     migration was ever executed against production CANNOT be determined from this
+--     repository — it is an owner verification item (`show statement_timeout;` as
+--     service_role). This hotfix does not change service_role globally.
+--
+--   Observed mutation duration from the live capture
+--     NOT AVAILABLE to the author of this file. Supply it before choosing the value.
+--
+-- ============================================================================
+-- THE PROPOSED CHANGE
+-- ============================================================================
+--
+-- A function-scoped ceiling, shorter than the client's 8,000 ms abort, so a backend can
+-- never outlive the request that submitted it. Advisory transaction locks are released
+-- when the transaction ends, so bounding the statement bounds how long an abandoned
+-- mutation can block every other writer.
+--
+-- 6,000 ms leaves a 2,000 ms (25%) margin under the 8,000 ms client abort. The margin
+-- matters in one direction only: the database must give up BEFORE the client does, or
+-- the ceiling changes nothing about abandoned lock holders.
+--
+-- COST, STATED PLAINLY: any legitimate mutation batch that genuinely needs more than
+-- 6 seconds will now fail with 57014 (query_canceled) instead of committing. The
+-- transaction is atomic, so it rolls back whole — no partial writes, no torn state, and
+-- the caller sees a clean error. But it IS a behavior change for large batches, which is
+-- precisely why gate (b) exists: set this above the observed worst case for real work.
+--
+-- alter function ... set is a catalog change on the function, not a redefinition: the
+-- body, atomicity, expected-version checks, and advisory-lock semantics are untouched.
+
+-- alter function public.leos_apply_core_mutations(jsonb) set statement_timeout = '6s';
+
+-- Rollback (manual):
+--   alter function public.leos_apply_core_mutations(jsonb) reset statement_timeout;
+
+-- Verification after running:
+--   select proname, proconfig from pg_proc
+--    where proname = 'leos_apply_core_mutations';
+--   -- expect proconfig to contain both search_path=public and statement_timeout=6s

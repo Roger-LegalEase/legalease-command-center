@@ -1,5 +1,24 @@
 import { DISCOVERY_ANALYTICS_VALUES } from "../../discovery-product-analytics.mjs";
 
+// 2026-07-25 mutation-convoy hotfix — AUTOMATIC destination_opened emission REMOVED.
+//
+// This controller used to call openDestination("initial-route") the moment the script
+// loaded, and again on every `hashchange`. Each emission POSTs /api/ui/discovery/analytics,
+// which persists a row into leos_core_records (via claimCollectionItems). That made a
+// passive page load — and every route click — a durable database write on the public host,
+// with no user action behind it and no operator value at the moment.
+//
+// It was NOT a source of rpc/leos_apply_core_mutations (the analytics path is a single
+// conditional INSERT, never the core mutation RPC), so it did not cause the advisory-lock
+// convoy. It is removed anyway because objective 4 of this hotfix is that a passive
+// application load performs no business-state write at all, and boot-time destination
+// telemetry is the least valuable write in the system.
+//
+// Deliberate, documented telemetry loss: destination_opened is no longer emitted
+// automatically. Every OTHER analytics event — workflow_started / _completed / _abandoned,
+// validation_blocked, action_failed, search_result_selected — is user-action driven and is
+// unchanged. `openDestination` stays on the window API so an explicit user-initiated call
+// site can still emit one. Nothing was substituted: there is no replacement write.
 export function discoveryAnalyticsBrowserSource() {
   const values = JSON.stringify(DISCOVERY_ANALYTICS_VALUES).replaceAll("<", "\\u003c");
   return `(() => {
@@ -18,7 +37,7 @@ export function discoveryAnalyticsBrowserSource() {
     function selectSearchResult(detail={}){const destinationId=slug(detail.destinationId,"destinationId"),resultType=slug(detail.resultType,"resultType");const resultPosition=Number(detail.resultPosition);if(!destinationId||!resultType||!Number.isSafeInteger(resultPosition)||resultPosition<0||resultPosition>9999)return null;return emit("search_result_selected",{destinationId,source:slug(detail.source,"source","global-search"),resultType,resultPosition});}
     document.addEventListener("vnext:workflow-started",event=>startWorkflow(event.detail));document.addEventListener("vnext:workflow-completed",event=>finish("workflow_completed",event.detail));document.addEventListener("vnext:workflow-abandoned",event=>finish("workflow_abandoned",event.detail));document.addEventListener("vnext:validation-blocked",event=>signal("validation_blocked",event.detail));document.addEventListener("vnext:action-failed",event=>signal("action_failed",event.detail));document.addEventListener("vnext:search-result-selected",event=>selectSearchResult(event.detail));
     document.addEventListener("click",event=>{const result=event.target.closest?.("[data-analytics-search-result]");if(result)selectSearchResult({destinationId:result.dataset.analyticsDestination,resultType:result.dataset.analyticsResultType,resultPosition:Number(result.dataset.analyticsResultPosition)});});
-    addEventListener("hashchange",()=>openDestination("route"));addEventListener("pagehide",()=>{for(const item of [...active.values()])finish("workflow_abandoned",{journeyId:item.journeyId,reasonCode:"page-hidden"});});
-    openDestination("initial-route");window.__LE_DISCOVERY_ANALYTICS=Object.freeze({openDestination,startWorkflow,completeWorkflow:detail=>finish("workflow_completed",detail),abandonWorkflow:detail=>finish("workflow_abandoned",detail),validationBlocked:detail=>signal("validation_blocked",detail),actionFailed:detail=>signal("action_failed",detail),selectSearchResult,activeJourneyCount:()=>active.size});
+    addEventListener("pagehide",()=>{for(const item of [...active.values()])finish("workflow_abandoned",{journeyId:item.journeyId,reasonCode:"page-hidden"});});
+    window.__LE_DISCOVERY_ANALYTICS=Object.freeze({openDestination,startWorkflow,completeWorkflow:detail=>finish("workflow_completed",detail),abandonWorkflow:detail=>finish("workflow_abandoned",detail),validationBlocked:detail=>signal("validation_blocked",detail),actionFailed:detail=>signal("action_failed",detail),selectSearchResult,activeJourneyCount:()=>active.size});
   })();`;
 }
