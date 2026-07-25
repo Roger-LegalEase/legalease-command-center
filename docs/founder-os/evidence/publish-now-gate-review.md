@@ -126,3 +126,27 @@ carries both fixes.
 pipeline is dormant again in the deployed environment, now behind three layers: all
 live-posting flags off, the unconditional hardening 403, and the in-function
 per-channel gate from #113.
+
+## Status update 2026-07-25 — closed and unchanged at `fdbc334`
+
+Re-verified at HEAD `fdbc3341e50500a643dec35a89844a7fe9dd62ac`. **Current status:
+CLOSED.** Nothing in PRs #115–#118 touched the publishing path.
+
+- `livePostingEnabledForChannel` — `scripts/preview-server.mjs:704`.
+- `publishPostNow` — `scripts/preview-server.mjs:5808`; its in-function per-channel
+  block still precedes the claim and the provider call, recording
+  `publishingStatus: "blocked_live_gate"` / `errorCode: "live_gate_disabled"`
+  (`:5857–5861`).
+- Scheduled worker — `runPublishingWorker` at `:5572`, same `live_gate_disabled` blocks
+  at `:5640` and `:5663`.
+- The unconditional endpoint-hardening 403 for `POST /api/posts/:id/publish-now` is
+  still present (`scripts/auth-endpoint-hardening.mjs:40`, `:54–56`, `:166`).
+- `scripts/test-publish-now-live-gate.mjs` still exists. **Registration caveat
+  (unchanged):** it is picked up only by the extended differential runner, not by the
+  strict `npm test` chain — so this gate's production trust stays "Partially verified"
+  per the loose-ends convention.
+
+**Practical exposure at this refresh:** unverified from the repo. `liveGatesCount` was
+`0` on 2026-07-24; the 2026-07-25 production check
+(`2026-07-25-production-verification.md`) did not re-record it. The three layers
+(env flags, hardening 403, per-channel gate) are all present in code.

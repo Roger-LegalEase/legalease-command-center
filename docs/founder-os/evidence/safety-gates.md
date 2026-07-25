@@ -143,3 +143,72 @@ PR #113 at `9983c958d00c3a97fee2a0331f078e5a61a20792`, PR #114 at
   **remains open** and is an owner/platform issue explicitly separate from the Founder
   OS consolidation. Heartbeat and the Morning Brief remain off; the Social publishing
   pipeline remains Advanced only.
+
+---
+
+## Refresh 2026-07-25 — all three enforcement points still block at `fdbc334`
+
+Re-verified at HEAD `fdbc3341e50500a643dec35a89844a7fe9dd62ac`. Everything above is
+preserved as collected. **Verdict unchanged: all three enforcement points are present
+and blocking.** Only line numbers moved (PRs #116–#118 inserted code above them); no
+gate was weakened, removed, or bypassed.
+
+### 1. Send approval layers — line re-verification
+
+| Gate | Was (a3793c3) | Now (fdbc334) | Status |
+|---|---|---|---|
+| `outreachLiveSendEnabled` | `outreach-os.mjs:104–107` | `outreach-os.mjs:105` | Unchanged behavior |
+| `resolveOutreachSendDecision` (dry_run default) | `:434–451` | `:434` | Unchanged |
+| Outreach queue-then-approve (`queued_for_approval`) | `:609` | `:609` | Unchanged |
+| Outreach `no_claim_path` fail-closed | `:726–731` | `:729` | Unchanged |
+| `reactivationLiveSendEnabled` | `reactivation-os.mjs:62–66` | `reactivation-os.mjs:65` | Unchanged |
+| Kill switch → `dry_run` / `kill_switch` | `:146–148` | `:147` | Unchanged |
+| `releaseWave` human gate | `:369–388` | `:369` | Unchanged |
+| `evaluateThresholds` auto-pause | `:449–461` | `:449` | Unchanged |
+
+Dispatcher blocks: `runPublishingWorker` now at `preview-server.mjs:5572` with the
+per-channel `live_gate_disabled` blocks at `:5640` and `:5663`; `publishPostNow` at
+`:5808` with its own `live_gate_disabled` block at `:5857–5861` (the PR #113 gate, still
+present). `livePostingEnabledForChannel` is at `:704`.
+
+### 2. socialGuidelinesGate and renderQaForGeneratedImage — present, same shape
+
+- `socialGuidelinesGate` — `preview-server.mjs:11265` (was `:11217`). Blocking call
+  sites intact: approve throw at `:2880`, schedule throw at `:5388`, `/api/posts/update`
+  HTTP 400 at `:41483`.
+- `renderQaForGeneratedImage` — `preview-server.mjs:11389` (was `:11341`).
+- `guardForbiddenEndpoint`'s unconditional `publish-post` 403 rule is still in place —
+  `scripts/auth-endpoint-hardening.mjs:40`, `:54–56`, `:97`, `:166`.
+
+### 3. Manual deploy + prod commit gate
+
+- `render.yaml:9` and `render.yaml:85` (was `:83`) — `autoDeploy: false` on both
+  services. Production still changes only by manual promote.
+- `scripts/prod-commit-gate.mjs` — `evaluateCommitGate` at `:28`, ancestor rule intact,
+  exits `:86`/`:91`/`:108`, and it still asserts `authProtected === true` **and
+  `supabaseConnected === true`** from `/api/version` (`:95–96`). Note: while production
+  reported `supabaseConnected:false` (2026-07-23 → 2026-07-25) this gate would have
+  refused every promote. Production now reports `true`
+  (`2026-07-25-production-verification.md`), so the gate is usable again.
+
+### New protections added since a3793c3 (not previously in this file)
+
+These are new **availability** protections in the storage layer, not new send gates.
+They matter here because they are the layer every gate above writes through.
+
+| Protection | Location | Behavior |
+|---|---|---|
+| Read/write circuit breakers (separate) | `scripts/supabase-backoff.mjs:56`; `scripts/storage.mjs:390–391`, `:456–465` | 8 consecutive failures open the circuit; fast-fail with zero network; one half-open trial per cooldown. Write failures can no longer open the **read** circuit |
+| Read/write request gates (separate) | `supabase-backoff.mjs:145`; `storage.mjs:392–400` | Bounded concurrency + bounded waiters; clean 503 on overflow. A write convoy cannot consume read capacity |
+| Core-mutation FIFO executor | `storage.mjs:653–740` | Max 1 active `rpc/leos_apply_core_mutations` per process, 32 queued, immediate 503 when saturated (`SupabaseWriteQueueSaturatedError`, `:628`), pre-network deadline shed (`SupabaseWriteQueueExpiredError`, `:639`), **no retries** (a timed-out mutation may have committed) |
+| Single chokepoint for mutations | `storage.mjs:815–828` | `submitCoreMutations` is the only place naming the RPC; `test-supabase-mutation-serialization.mjs` asserts that structurally, closing the old `writeChanges` bypass |
+| Denial-audit write budget | `preview-server.mjs` (`accessDenialLogBudgetAvailable`) | Denials beyond 30/min are still denied, just not individually persisted |
+| PII-free mutation telemetry | `storage.mjs:783–811` | Field-by-field allowlist; collection names only, never payloads/ids/addresses; `supabase_core_mutation` lines carry a sanitized route (`scripts/request-context.mjs`) |
+
+### Focused gate tests at this HEAD
+
+All suites listed above still exist. Added since a3793c3:
+`scripts/test-supabase-backoff.mjs`, `scripts/test-hydration-bounds.mjs`,
+`scripts/test-supabase-mutation-serialization.mjs` (all three **in the `npm test`
+chain**), `scripts/test-publish-now-live-gate.mjs` (extended-differential only), and
+`tests/browser/passive-boot-write-free.spec.mjs`.
