@@ -14,7 +14,16 @@ test("Discovery analytics records the safe lifecycle and drops sensitive detail"
   });
   await page.addScriptTag({ content:discoveryAnalyticsBrowserSource() });
 
+  // 2026-07-25 mutation-convoy hotfix: loading the controller must emit NOTHING. The
+  // automatic initial-route (and hashchange) destination_opened emission was removed so a
+  // passive page load performs no durable write; destination_opened remains available as
+  // an explicit, user-initiated call.
+  expect(await page.evaluate(() => window.__capturedDiscoveryAnalytics.length)).toBe(0);
+  await page.evaluate(() => { location.hash = "files"; });
+  expect(await page.evaluate(() => window.__capturedDiscoveryAnalytics.length)).toBe(0);
+
   await page.evaluate(() => {
+    window.__LE_DISCOVERY_ANALYTICS.openDestination("route");
     document.dispatchEvent(new CustomEvent("vnext:workflow-started", { detail:{ workflowId:"social-post", destinationId:"social", emailBody:"Private launch message", recipientAddress:"person@example.com" } }));
     document.dispatchEvent(new CustomEvent("vnext:validation-blocked", { detail:{ workflowId:"social-post", actionId:"schedule", reasonCode:"missing-time", legalFacts:"Private case facts" } }));
     document.dispatchEvent(new CustomEvent("vnext:action-failed", { detail:{ workflowId:"social-post", actionId:"save-draft", reasonCode:"write-unavailable", oauthToken:"not-a-real-token" } }));

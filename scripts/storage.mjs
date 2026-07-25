@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
 import { assertProductionReadiness, isHostedProduction } from "./runtime-security.mjs";
 import { createSupabaseCircuit, createSupabaseRequestGate, SupabaseCircuitOpenError, SupabaseRequestGateSaturatedError } from "./supabase-backoff.mjs";
+import { currentRequestContext, processIdentity } from "./request-context.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -370,22 +371,70 @@ const SUPABASE_READ_RETRY_DELAY_MS = 50;
 const TRANSIENT_SUPABASE_HTTP_STATUSES = new Set([502, 503, 504]);
 const transientSupabaseNetworkErrors = new WeakSet();
 
-// One breaker + one outbound gate per process, shared by EVERY Supabase REST request
-// (storage reads/writes, claims, rpcs, and the health probe). A failing dependency
-// degrades to a few attempts per cooldown window instead of a tight loop; see
-// supabase-backoff.mjs for the 2026-07-24 request-storm background.
-let supabaseCircuit = createSupabaseCircuit();
-let supabaseRequestGate = createSupabaseRequestGate();
+// SEPARATE read and write admission per process (2026-07-25 mutation-convoy hotfix).
+//
+// Before this there was ONE breaker and ONE outbound gate shared by reads and writes.
+// That coupling is what turned a database-side lock convoy into a whole-app outage:
+// mutation requests that were blocked on advisory locks sat in the single gate holding
+// its concurrency slots, so Today/Inbox/route-access reads and the health probe queued
+// behind writes that could not finish; and every mutation timeout counted toward the
+// single breaker, so after 8 of them the breaker opened and REJECTED HEALTHY READS —
+// which then surfaced as "Supabase disconnected" even though reads were fine.
+//
+// Reads and writes now have independent gates and independent breakers:
+//   - a write convoy can consume at most the write gate, never a read slot;
+//   - write timeouts open only the write breaker, so reads keep flowing;
+//   - the health probe is a read, so a saturated write path can no longer report the
+//     database as disconnected.
+// Neither path's timeout, authentication, RLS, or service-role handling changes.
+let supabaseReadCircuit = createSupabaseCircuit();
+let supabaseWriteCircuit = createSupabaseCircuit();
+let supabaseReadGate = createSupabaseRequestGate();
+// The write gate stays deliberately small. The core-mutation executor below already
+// guarantees at most ONE in-flight rpc/leos_apply_core_mutations per process; this gate
+// bounds the OTHER durable writes (claim inserts, CAS upserts, audit appends, reconcile
+// deletes) so they cannot expand into the read budget either.
+let supabaseWriteGate = createSupabaseRequestGate({
+  maxConcurrent:positiveIntegerEnv(process.env.SUPABASE_MAX_CONCURRENT_WRITES, 4, 1, 32),
+  maxWaiters:positiveIntegerEnv(process.env.SUPABASE_MAX_QUEUED_WRITES, 64, 0, 1_000)
+});
 
-export function supabaseCircuitSnapshot() {
-  return { ...supabaseCircuit.snapshot(), gate:supabaseRequestGate.snapshot() };
+function positiveIntegerEnv(raw, fallback, min, max) {
+  const text = String(raw ?? "").trim();
+  if (!text) return fallback;
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(parsed)));
 }
 
-// Tests only: rebuild the circuit/gate/health cache from current env so scenarios
-// with tiny cooldowns or stubbed fetch start from a clean closed circuit.
+// Backward-compatible shape: callers (health, status endpoints, test-supabase-backoff)
+// read the top-level circuit fields, which stay the READ circuit — the one that answers
+// "can this app read the database". The write path is reported alongside it, never
+// merged into it.
+export function supabaseCircuitSnapshot() {
+  return {
+    ...supabaseReadCircuit.snapshot(),
+    gate:supabaseReadGate.snapshot(),
+    read:{ ...supabaseReadCircuit.snapshot(), gate:supabaseReadGate.snapshot() },
+    write:{
+      ...supabaseWriteCircuit.snapshot(),
+      gate:supabaseWriteGate.snapshot(),
+      mutationQueue:coreMutationExecutor.snapshot()
+    }
+  };
+}
+
+// Tests only: rebuild the circuits/gates/executor/health cache from current env so
+// scenarios with tiny cooldowns or stubbed fetch start from a clean closed circuit.
 export function resetSupabaseRuntimeForTests() {
-  supabaseCircuit = createSupabaseCircuit();
-  supabaseRequestGate = createSupabaseRequestGate();
+  supabaseReadCircuit = createSupabaseCircuit();
+  supabaseWriteCircuit = createSupabaseCircuit();
+  supabaseReadGate = createSupabaseRequestGate();
+  supabaseWriteGate = createSupabaseRequestGate({
+    maxConcurrent:positiveIntegerEnv(process.env.SUPABASE_MAX_CONCURRENT_WRITES, 4, 1, 32),
+    maxWaiters:positiveIntegerEnv(process.env.SUPABASE_MAX_QUEUED_WRITES, 64, 0, 1_000)
+  });
+  coreMutationExecutor.resetForTests();
   supabaseHealthCache = null;
   supabaseHealthInFlight = null;
 }
@@ -405,15 +454,20 @@ function supabaseRequestTimeoutMs(env = process.env, options = {}) {
 }
 
 async function supabaseRestRequestAttempt(pathname, options, method, encodedBody) {
+  // Read and write traffic are admitted independently: a write convoy must never
+  // consume the read budget, and write failures must never open the read breaker.
+  const isRead = method === "GET" || method === "HEAD";
+  const circuit = isRead ? supabaseReadCircuit : supabaseWriteCircuit;
+  const gate = isRead ? supabaseReadGate : supabaseWriteGate;
   // Circuit check FIRST: while open, fail fast with zero network traffic. The single
   // half-open trial per cooldown is what re-probes the dependency.
-  const ticket = supabaseCircuit.acquire();
+  const ticket = circuit.acquire();
   if (!ticket.allowed) throw new SupabaseCircuitOpenError(ticket.retryAfterMs);
   // outcome: "failure" only for dependency-health signals (timeout / network / 5xx);
   // 4xx and other responses prove Supabase answered; caller aborts are neutral.
   let outcome = "neutral";
   try {
-    return await supabaseRequestGate.run(async () => {
+    return await gate.run(async () => {
       const controller = new AbortController();
       let timedOut = false;
       let callerAborted = Boolean(options.signal?.aborted);
@@ -464,7 +518,7 @@ async function supabaseRestRequestAttempt(pathname, options, method, encodedBody
       return supabaseParseResponse(response, text, options);
     });
   } finally {
-    supabaseCircuit.settle(ticket, outcome);
+    circuit.settle(ticket, outcome);
   }
 }
 
@@ -530,6 +584,247 @@ async function supabaseRestRequest(pathname, options = {}) {
     await waitForSupabaseReadRetry(options.signal);
     return supabaseRestRequestAttempt(pathname, options, method, encodedBody);
   }
+}
+
+// ---------------------------------------------------------------------------------------
+// Core-mutation executor (2026-07-25 lock-convoy hotfix)
+// ---------------------------------------------------------------------------------------
+//
+// EVERY rpc/leos_apply_core_mutations call in this process goes through here, and at most
+// ONE is in flight at a time. This is the structural half of the fix; the SQL function is
+// unchanged.
+//
+// Why the old shape convoyed. leos_apply_core_mutations takes a per-record advisory
+// transaction lock — pg_advisory_xact_lock(hash(collection:item_id)) — for EVERY mutation
+// in the batch, in one pass, before applying any of them, and holds all of them until the
+// transaction commits. Two concurrent calls that share a single (collection,item_id) block
+// each other for the whole batch, and a full-state write locks every row it writes. So
+// concurrency here does not buy throughput; it buys blocker chains.
+//
+// The application had two INDEPENDENT serializers and one hole:
+//   - storage's writeQueue serialized writeState / writeCollections;
+//   - preview-server's serializeStateMutation serialized most route handlers;
+//   - writeChanges called supabaseRestRequest DIRECTLY, on neither queue.
+// A queued writeState and a raw writeChanges could therefore be in flight together, and
+// any call site that forgot serializeStateMutation added another. Two process-local
+// conventions cannot enforce a global invariant; one chokepoint can.
+//
+// Guarantees:
+//   - at most one active core-mutation RPC per Node process;
+//   - FIFO;
+//   - at most MAX_PENDING queued operations, then immediate rejection with zero network;
+//   - a failed operation settles only its own caller and never bricks the queue;
+//   - work that has exceeded its safe wait deadline fails BEFORE it is sent to Supabase;
+//   - nothing is retried: a timed-out or uncertain mutation may have committed, so
+//     resubmitting it is a duplicate-write risk, not a recovery.
+//
+// This bounds ONE process. Multiple Render instances (or a deploy overlap running old and
+// new instances together) can each hold one active mutation; that is the documented
+// residual, and the post-merge checklist verifies it against pg_stat_activity.
+
+const CORE_MUTATION_MAX_PENDING = 32;
+const DEFAULT_CORE_MUTATION_MAX_QUEUE_WAIT_MS = 20_000;
+
+export class SupabaseWriteQueueSaturatedError extends Error {
+  constructor(pending = 0, maxPending = CORE_MUTATION_MAX_PENDING) {
+    super("Supabase write queue is saturated; the mutation was rejected before any network call.");
+    this.name = "SupabaseWriteQueueSaturatedError";
+    this.code = "SUPABASE_WRITE_QUEUE_SATURATED";
+    this.status = 503;
+    this.pending = pending;
+    this.maxPending = maxPending;
+  }
+}
+
+export class SupabaseWriteQueueExpiredError extends Error {
+  constructor(waitedMs = 0) {
+    super("Supabase write waited past its safe deadline and was abandoned before any network call.");
+    this.name = "SupabaseWriteQueueExpiredError";
+    this.code = "SUPABASE_WRITE_QUEUE_EXPIRED";
+    this.status = 503;
+    this.waitedMs = Math.max(0, Math.round(waitedMs));
+  }
+}
+
+function coreMutationMaxQueueWaitMs(env = process.env) {
+  return positiveIntegerEnv(env.SUPABASE_WRITE_MAX_QUEUE_WAIT_MS, DEFAULT_CORE_MUTATION_MAX_QUEUE_WAIT_MS, 100, 120_000);
+}
+
+function createCoreMutationExecutor({ maxPending = CORE_MUTATION_MAX_PENDING, now = () => Date.now() } = {}) {
+  // A plain FIFO array plus one pump loop. Deliberately NOT a `queue = queue.then(...)`
+  // chain: that shape grows an unbounded promise graph, retains every prior settled
+  // value, and cannot express "reject when full" or "expire before sending".
+  const pending = [];
+  let draining = false;
+  let counters = { submitted:0, rejectedSaturated:0, expired:0, completed:0, failed:0, peakDepth:0 };
+
+  function snapshot() {
+    return { active:draining ? 1 : 0, pending:pending.length, maxPending, ...counters };
+  }
+
+  // Submit one core-mutation operation. `operation` must perform exactly one
+  // rpc/leos_apply_core_mutations request and nothing else that can block.
+  function submit(operation, meta = {}) {
+    counters.submitted += 1;
+    if (pending.length >= maxPending) {
+      counters.rejectedSaturated += 1;
+      // Rejected synchronously, before the operation is ever invoked: no network call,
+      // no gate slot, no circuit ticket.
+      return Promise.reject(new SupabaseWriteQueueSaturatedError(pending.length, maxPending));
+    }
+    const queuedAt = now();
+    const maxWaitMs = coreMutationMaxQueueWaitMs();
+    return new Promise((resolve, reject) => {
+      pending.push({ operation, meta, resolve, reject, queuedAt, deadlineAt:queuedAt + maxWaitMs });
+      counters.peakDepth = Math.max(counters.peakDepth, pending.length);
+      drain();
+    });
+  }
+
+  async function drain() {
+    if (draining) return;
+    draining = true;
+    try {
+      while (pending.length) {
+        const job = pending.shift();
+        const startedAt = now();
+        const queueWaitMs = startedAt - job.queuedAt;
+        if (startedAt >= job.deadlineAt) {
+          // Shed BEFORE the network. A mutation that has already waited past its safe
+          // deadline is behind a request its caller has almost certainly abandoned;
+          // sending it now would add another lock holder for no one's benefit.
+          counters.expired += 1;
+          reportCoreMutationTelemetry({ ...job.meta, queueDepth:pending.length, queueWaitMs, executionMs:0, outcome:"expired", errorCode:"SUPABASE_WRITE_QUEUE_EXPIRED" });
+          job.reject(new SupabaseWriteQueueExpiredError(queueWaitMs));
+          continue;
+        }
+        let outcome = "ok";
+        let errorCode = "";
+        try {
+          const value = await job.operation();
+          counters.completed += 1;
+          job.resolve(value);
+        } catch (error) {
+          // One caller's failure is settled to that caller only. The loop keeps going,
+          // so a failed write can never brick later writes.
+          counters.failed += 1;
+          outcome = "error";
+          errorCode = safeMutationErrorCode(error);
+          job.reject(error);
+        } finally {
+          reportCoreMutationTelemetry({
+            ...job.meta,
+            queueDepth:pending.length,
+            queueWaitMs,
+            executionMs:now() - startedAt,
+            outcome,
+            errorCode
+          });
+        }
+      }
+    } finally {
+      draining = false;
+      // Defensive: if anything was enqueued while the loop was unwinding, keep going.
+      if (pending.length) void drain();
+    }
+  }
+
+  function resetForTests() {
+    // Only the counters reset; in-flight callers keep their promises.
+    counters = { submitted:0, rejectedSaturated:0, expired:0, completed:0, failed:0, peakDepth:0 };
+  }
+
+  return { submit, snapshot, resetForTests };
+}
+
+const coreMutationExecutor = createCoreMutationExecutor();
+
+export function coreMutationQueueSnapshot() {
+  return coreMutationExecutor.snapshot();
+}
+
+// SAFE error code only. Never the message: Supabase error details can echo payload
+// fragments (conflicting values, constraint text) back at us.
+function safeMutationErrorCode(error) {
+  if (error instanceof StorageConflictError) return "STORAGE_VERSION_CONFLICT";
+  const code = String(error?.code || "").trim();
+  if (/^[A-Za-z0-9_]{1,48}$/.test(code)) return code;
+  const status = Number(error?.status);
+  if (Number.isFinite(status)) return "HTTP_" + status;
+  const name = String(error?.name || "").trim();
+  return /^[A-Za-z0-9_]{1,48}$/.test(name) ? name : "UNKNOWN";
+}
+
+// ---------------------------------------------------------------------------------------
+// Mutation telemetry (2026-07-25). Structured, one line per core-mutation attempt.
+//
+// The convoy was invisible because nothing recorded WHO submitted a mutation: Query
+// Performance showed no expensive completed statements because the work was still
+// waiting. This makes the responsible route and process obvious the moment it recurs.
+//
+// The allowlist below is exhaustive by construction — the log object is built field by
+// field from primitives, never spread from a payload. It carries NO mutation payloads,
+// item IDs, names, email addresses, message bodies, tokens, credentials, cookies, or
+// headers. Collection NAMES are registry-controlled identifiers from coreStateCollections
+// (schema vocabulary, not data) and are what make an offending writer identifiable.
+function coreMutationTelemetryEnabled(env = process.env) {
+  const raw = String(env.SUPABASE_MUTATION_TELEMETRY ?? "").trim().toLowerCase();
+  if (raw === "0" || raw === "false" || raw === "off") return false;
+  return true;
+}
+
+let coreMutationTelemetrySink = (line) => { console.log(JSON.stringify(line)); };
+
+// Tests only: capture the emitted lines instead of printing them.
+export function setCoreMutationTelemetrySinkForTests(sink) {
+  coreMutationTelemetrySink = typeof sink === "function" ? sink : (line) => { console.log(JSON.stringify(line)); };
+}
+
+function reportCoreMutationTelemetry(fields = {}) {
+  if (!coreMutationTelemetryEnabled()) return;
+  const context = currentRequestContext();
+  const collections = Array.isArray(fields.collections) ? fields.collections : [];
+  const line = {
+    level:"info",
+    event:"supabase_core_mutation",
+    // Which HTTP request submitted it (sanitized in request-context.mjs), or
+    // "(background)" for heartbeat/CLI work.
+    requestMethod:context.method,
+    route:context.route,
+    // writeChanges (versioned scoped mutations) vs writeState (full/scoped snapshot).
+    operationClass:String(fields.operationClass || "unknown"),
+    mutationCount:Number.isFinite(Number(fields.mutationCount)) ? Math.max(0, Math.trunc(Number(fields.mutationCount))) : 0,
+    collections:collections.filter((name) => coreStateCollections.includes(name)).slice(0, 40),
+    requestBytes:Number.isFinite(Number(fields.requestBytes)) ? Math.max(0, Math.trunc(Number(fields.requestBytes))) : 0,
+    process:processIdentity(),
+    queueDepth:Math.max(0, Math.trunc(Number(fields.queueDepth) || 0)),
+    queueWaitMs:Math.max(0, Math.round(Number(fields.queueWaitMs) || 0)),
+    executionMs:Math.max(0, Math.round(Number(fields.executionMs) || 0)),
+    outcome:["ok", "error", "expired"].includes(String(fields.outcome)) ? String(fields.outcome) : "unknown",
+    errorCode:/^[A-Za-z0-9_]{0,48}$/.test(String(fields.errorCode || "")) ? String(fields.errorCode || "") : "UNKNOWN"
+  };
+  try {
+    coreMutationTelemetrySink(line);
+  } catch {
+    // Telemetry must never break a write.
+  }
+}
+
+// THE single place in application code that may name rpc/leos_apply_core_mutations.
+// test-supabase-mutation-serialization.mjs asserts that structurally.
+function submitCoreMutations(mutations, { operationClass, requestOptions = {} } = {}) {
+  const body = { p_mutations:mutations };
+  const requestBytes = Buffer.byteLength(JSON.stringify(body));
+  const collections = [...new Set(mutations.map((mutation) => mutation.collection))];
+  return coreMutationExecutor.submit(
+    () => supabaseRestRequest("rpc/leos_apply_core_mutations", {
+      method:"POST",
+      body,
+      prefer:"return=representation",
+      ...requestOptions
+    }),
+    { operationClass, mutationCount:mutations.length, collections, requestBytes }
+  );
 }
 
 // "0-999/13593" => 13593. NaN when the server sent no exact count.
@@ -831,7 +1126,10 @@ export async function getSupabaseHealth() {
       } catch (probeError) {
         error = String(probeError.message || probeError).slice(0, 500);
       }
-      const circuit = supabaseCircuit.snapshot();
+      // READ circuit only. A saturated or lock-blocked WRITE path says nothing about
+      // whether this app can read the database, and reporting "disconnected" because
+      // writes are convoyed is exactly the false alarm the 2026-07-25 split removes.
+      const circuit = supabaseReadCircuit.snapshot();
       const state = supabaseHealthState(probeOk, circuit, Date.now());
       const value = {
         configured:true,
@@ -1452,8 +1750,12 @@ export class SupabaseCoreStore extends JsonStore {
   }
 
   async writeState(state) {
-    // Re-arm on failure: the caller must see the rejection, but the QUEUE must not
-    // stay rejected, or one failed write would brick every later write until restart.
+    // The per-instance writeQueue is retained for its ORIGINAL purpose — read-modify-write
+    // ordering of full-state snapshots within this store — but it is no longer what keeps
+    // mutation RPCs off each other: the process-wide coreMutationExecutor is (see
+    // writeStateToSupabase / writeChanges). Re-arm on failure: the caller must see the
+    // rejection, but the QUEUE must not stay rejected, or one failed write would brick
+    // every later write until restart.
     const next = this.writeQueue.then(() => this.writeStateNow(state));
     this.writeQueue = next.catch(() => {});
     return next;
@@ -1473,12 +1775,13 @@ export class SupabaseCoreStore extends JsonStore {
       if (mutation.operation === "upsert") validateMutableRecord(mutation.collection, mutation.item_id, mutation.payload);
     }
     try {
-      await supabaseRestRequest("rpc/leos_apply_core_mutations", {
-        method:"POST",
-        body:{ p_mutations:mutations },
-        prefer:"return=representation",
-        collection:"batch",
-        expectedVersion:"record versions"
+      // Through the process-wide executor, NOT supabaseRestRequest directly. This call
+      // site is the queue bypass that let a scoped versioned write run concurrently with
+      // a queued full-state write (and with every other writeChanges caller) — the
+      // application-side half of the 2026-07-25 advisory-lock convoy.
+      await submitCoreMutations(mutations, {
+        operationClass:"writeChanges",
+        requestOptions:{ collection:"batch", expectedVersion:"record versions" }
       });
       this.lastError = "";
       this.recordWriteOutcome();
@@ -1512,11 +1815,14 @@ export class SupabaseCoreStore extends JsonStore {
     for (const row of rows) {
       validateMutableRecord(row.collection, row.item_id, row.payload);
     }
-    if (rows.length) await supabaseRestRequest("rpc/leos_apply_core_mutations", {
-      method: "POST",
-      body: { p_mutations: rows.map((row) => ({ operation:"upsert", collection:row.collection, item_id:row.item_id, payload:row.payload, expected_version:row.expected_version })) },
-      prefer: "return=representation"
-    });
+    // Same executor as writeChanges: one shared chokepoint, so a full-state snapshot and
+    // a scoped versioned write can never hold overlapping advisory locks at once.
+    if (rows.length) {
+      await submitCoreMutations(
+        rows.map((row) => ({ operation:"upsert", collection:row.collection, item_id:row.item_id, payload:row.payload, expected_version:row.expected_version })),
+        { operationClass:"writeState" }
+      );
+    }
     // Reconcile so the snapshot is the source of truth, matching the JSON backend.
     // Upsert happens first (current data is never at risk); then, within each collection
     // that is present in this snapshot, delete any table rows whose (collection,item_id)
@@ -1682,4 +1988,4 @@ export function storageRuntimeConfig() {
   };
 }
 
-export { coreStateCollections, singletonCollections, appendOnlyCollections, hydrationExcludedCollections, coreRecordsFromState, coreMutationsBetween, normalizeCollectionNames, supabaseRequestTimeoutMs, supabaseRestRequest };
+export { coreStateCollections, singletonCollections, appendOnlyCollections, hydrationExcludedCollections, coreRecordsFromState, coreMutationsBetween, normalizeCollectionNames, supabaseRequestTimeoutMs, supabaseRestRequest, CORE_MUTATION_MAX_PENDING };
