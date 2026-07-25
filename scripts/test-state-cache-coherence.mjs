@@ -55,6 +55,24 @@ function tableRows() {
   return [...table.values()].sort((a, b) =>
     (a.collection + a.item_id).localeCompare(b.collection + b.item_id));
 }
+// Honor PostgREST collection filters the way the real server does: the store now sends
+// collection=not.in.(authSessions,<excluded ledgers>) on sweeps/probes and
+// collection=in.(...) on targeted reads, and coherence for excluded ledgers is only real
+// if the fake actually withholds/serves the filtered rows.
+function rowsForUrl(u) {
+  const rows = tableRows();
+  const notIn = u.match(/collection=not\.in\.\(([^)]*)\)/);
+  if (notIn) {
+    const excluded = new Set(notIn[1].split(","));
+    return rows.filter((row) => !excluded.has(row.collection));
+  }
+  const inFilter = u.match(/collection=in\.\(([^)]*)\)/);
+  if (inFilter) {
+    const allowed = new Set(inFilter[1].split(","));
+    return rows.filter((row) => allowed.has(row.collection));
+  }
+  return rows;
+}
 globalThis.fetch = async (url, options = {}) => {
   const u = decodeURIComponent(String(url));
   const method = String(options.method || "GET").toUpperCase();
@@ -67,13 +85,13 @@ globalThis.fetch = async (url, options = {}) => {
   });
   if (method === "GET" && u.includes("select=updated_at") && u.includes("order=updated_at.desc")) {
     counters.probes += 1;
-    const rows = tableRows();
+    const rows = rowsForUrl(u);
     const newest = rows.reduce((max, row) => (row.updated_at > max ? row.updated_at : max), "");
     return respond(newest ? [{ updated_at: newest }] : [], 200, rows);
   }
   if (method === "GET" && u.includes("select=collection,item_id,payload,version,updated_at")) {
     if (u.includes("offset=0")) counters.sweeps += 1;
-    const rows = tableRows();
+    const rows = rowsForUrl(u);
     return respond(u.includes("offset=0") ? rows : [], 200, rows);
   }
   if (method === "GET" && u.includes("select=collection,item_id,payload,version&collection=eq.")) {
@@ -198,8 +216,6 @@ const MUTATOR_CASES = [
     (st) => (st.outreachSendClaims || []).some((c) => c.id === "claim-coherence-1")],
   ["mutateCollectionItem", (s) => s.mutateCollectionItem("posts", "p-mut", () => ({ id: "p-mut", title: "mut" }), { createIfMissing: true }),
     (st) => st.posts.some((p) => p.id === "p-mut")],
-  ["appendAuditEvent", (s) => s.appendAuditEvent({ id: "audit-coherence-1", action: "cache verifier" }),
-    (st) => (st.auditEvents || []).some((event) => event.id === "audit-coherence-1")],
   ["claimSocialPublish", async (s) => {
     const before = await s.readState();
     const post = before.posts.find((item) => item.id === "p-1");
@@ -236,6 +252,37 @@ for (const [name, mutate, reflected] of MUTATOR_CASES) {
   assert.equal(counters.sweeps, 1, name + ": the immediate next read must sweep fresh, not serve the cache");
   assert.ok(reflected(after), name + ": write-then-immediate-read must reflect the write");
   ok("mutation invalidates + read reflects it: " + name);
+}
+
+// ---- 2b. hydration-excluded audit ledgers: write does NOT invalidate the full-state cache ----
+// soc2AuditLogs / auditEvents never appear in the readState() graph (2026-07-25 saturation
+// fix), so a write touching ONLY them must NOT bump the write generation or force a sweep —
+// that invalidation loop (one denial claim per bot probe, 30/min) is what saturated Supabase.
+// Their coherence contract is the per-collection cache: an immediate targeted
+// readCollections must reflect the write.
+const EXCLUDED_LEDGER_CASES = [
+  ["claimCollectionItems(soc2AuditLogs)",
+    (s) => s.claimCollectionItems("soc2AuditLogs", [{ id: "soc2-denial-coherence-1", action: "access denied" }]),
+    (view) => (view.soc2AuditLogs || []).some((row) => row.id === "soc2-denial-coherence-1"),
+    "soc2AuditLogs"],
+  ["appendAuditEvent",
+    (s) => s.appendAuditEvent({ id: "audit-coherence-1", action: "cache verifier" }),
+    (view) => (view.auditEvents || []).some((event) => event.id === "audit-coherence-1"),
+    "auditEvents"]
+];
+for (const [name, mutate, reflected, collection] of EXCLUDED_LEDGER_CASES) {
+  const warm = await store.readState();
+  const genBefore = store._writeGen;
+  counters.sweeps = 0;
+  await mutate(store);
+  assert.equal(store._writeGen, genBefore, name + " must NOT bump the write generation (excluded ledger)");
+  const after = await store.readState();
+  assert.equal(counters.sweeps, 0, name + ": the state cache must survive an excluded-ledger write");
+  assert.ok(warm === after, name + ": readState still serves the cached graph");
+  assert.deepEqual(after[collection], [], name + ": excluded ledgers never appear in the readState graph");
+  const targeted = await store.readCollections([collection]);
+  assert.ok(reflected(targeted), name + ": an immediate targeted read must reflect the write");
+  ok("excluded ledger: no full-state invalidation, targeted read coherent: " + name);
 }
 
 // ---- 3. a FAILED write still invalidates ----------------------------------------------------
@@ -339,12 +386,16 @@ for (const [name, mutate, reflected] of MUTATOR_CASES) {
 {
   const classified = new Set([
     ...MUTATOR_CASES.map(([name]) => name),
+    // mutators whose collections are hydration-excluded (verified in section 2b, NOT via
+    // full-state invalidation): appendAuditEvent (claimCollectionItems is dual-classified —
+    // section 2 covers included collections, 2b covers excluded ones):
+    "appendAuditEvent",
     // read-only / lifecycle / telemetry:
     "constructor", "ensure", "readState", "readCollections", "writeHealth", "recordWriteOutcome",
     "readPerformanceCounters", "resetReadPerformanceCounters",
     // internals of the cache + fetch layer (not entry points):
     "_stateCacheTtlMs", "_readStateCachedOrFresh", "_remoteStateSignature", "_readStateFresh",
-    "_invalidateCollectionCache", "_fallbackState", "_readCollectionsFresh",
+    "_invalidateCollectionCache", "_noteDurableMutation", "_fallbackState", "_readCollectionsFresh",
     "writeStateToSupabase"
   ]);
   const methods = new Set([
