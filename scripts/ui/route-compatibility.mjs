@@ -124,6 +124,16 @@ const ALIAS_TARGETS = Object.freeze({
     entry.canonicalRoute === "growth" ? "queue" : entry.canonicalRoute
   ])))
 });
+// Compatibility redirects that are NOT registry aliases and are deliberately not counted
+// as such: the registry is the record of the product's own routes, and its alias list is
+// mirrored in the historical alias map, which the Founder OS charter forbids editing.
+//
+// `outreach` exists only as a route when the vNext Outreach page is enabled. Without it the
+// hash resolved to nothing, so a held or bookmarked #outreach silently rendered Today while
+// the address bar still read #outreach. It now lands on the Campaigns page instead. When
+// the vNext Outreach page IS enabled, `outreach` is a canonical route and this entry is
+// dropped by routeCompatibilityBrowserSource so it cannot shadow it.
+const COMPATIBILITY_ALIASES = Object.freeze({ outreach:"campaigns" });
 const CANONICAL_HASHES = Object.freeze({ queue:"social" });
 
 const CORE_COLLECTION_OBJECT_TYPES = Object.freeze({
@@ -145,6 +155,7 @@ const COLLECTION_FILE_SOURCE_KINDS = Object.freeze(Object.fromEntries(
 export const ROUTE_COMPATIBILITY_CONTRACT = Object.freeze({
   routeDestinations:ROUTE_DESTINATIONS,
   aliasTargets:ALIAS_TARGETS,
+  compatibilityAliases:COMPATIBILITY_ALIASES,
   canonicalHashes:CANONICAL_HASHES,
   itemDestinations:ITEM_COLLECTION_DESTINATIONS,
   coreCollectionObjectTypes:CORE_COLLECTION_OBJECT_TYPES,
@@ -333,7 +344,7 @@ export function resolveRouteWithContract(input = "", contract = ROUTE_COMPATIBIL
   }
 
   if (parts.length !== 1 || !/^[a-z0-9-]+$/i.test(rawRoute)) return unsafe("malformed_route");
-  const aliasTarget = rawRoute === "growth" ? "queue" : contract.aliasTargets[rawRoute];
+  const aliasTarget = rawRoute === "growth" ? "queue" : (contract.aliasTargets[rawRoute] || contract.compatibilityAliases?.[rawRoute]);
   const canonicalRoute = aliasTarget || rawRoute;
   const canonicalSuffix = contract.aliasQueries?.[rawRoute] || suffix;
   if (contract.routeDestinations[canonicalRoute]) {
@@ -412,6 +423,9 @@ export function routeCompatibilityBrowserSource({ socialEnabled = false, outreac
       ...(outreachEnabled ? { outreach:"Outreach" } : {}),
       ...(filesEnabled ? { files:"Files" } : {})
     },
+    // With the vNext Outreach page enabled, `outreach` is a canonical route, so the
+    // compatibility redirect that points it at Campaigns must not shadow it.
+    compatibilityAliases:outreachEnabled ? {} : ROUTE_COMPATIBILITY_CONTRACT.compatibilityAliases,
     aliasTargets:{
       ...ROUTE_COMPATIBILITY_CONTRACT.aliasTargets,
       ...(socialEnabled ? { "social-calendar":"queue", "social-connections":"settings" } : {}),

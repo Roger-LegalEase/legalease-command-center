@@ -178,10 +178,16 @@ const routeRecoveryHtml = `<section class="vnext-route-recovery" data-vnext-rout
 </section>`;
 
 function primaryNavigationHtml(options = {}) {
+  // The legacy shell labels this destination "Partners" in its data attribute while showing
+  // "Relationships". Under the Founder OS shell the attribute matches the charter's name, so
+  // the accessible name and the test hook agree.
+  const destinationName = (item) => options.founderOsShell
+    ? item.label
+    : (item.id === "partners" ? "Partners" : item.label);
   return primaryShellDestinations(options).map((item, index) => {
     const count = item.id === "inbox" ? '<span class="vnext-inbox-count" data-shell-inbox-count hidden></span>' : "";
     return `
-        <a class="vnext-nav-link${index === 0 ? " is-selected" : ""}" href="${escapeAttribute(routeHref(item.route))}" data-shell-destination="${escapeAttribute(item.id === "partners" ? "Partners" : item.label)}"${index === 0 ? ' aria-current="page"' : ""}>
+        <a class="vnext-nav-link${index === 0 ? " is-selected" : ""}" href="${escapeAttribute(routeHref(item.route))}" data-shell-destination="${escapeAttribute(destinationName(item))}"${index === 0 ? ' aria-current="page"' : ""}>
           <span class="vnext-nav-indicator" aria-hidden="true"></span>
           <span>${escapeHtml(item.label)}</span>${count}
         </a>`;

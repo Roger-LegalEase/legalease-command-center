@@ -92,10 +92,68 @@ first-class design constraint for every release. Never raised silently.
 
 ## Authority conflicts (code vs ledger)
 
-None recorded yet.
+### 2026-07-25 — the `#outreach` alias could not be a registry alias
+
+**Conflict.** The mission requires an alias so `#outreach` never silently renders Today.
+The single source for aliases is the route registry in `scripts/ui/navigation.mjs`, and
+`scripts/test-vnext-route-inventory.mjs` requires every live alias to be documented in
+`docs/ux-vnext/legacy-alias-map.md`. But `00_READ_ME_FIRST.md` declares the whole of
+`docs/ux-vnext/` historical and says plainly: "Do not edit those files. They stay as
+history."
+
+**Resolution, and why.** The charter wins on decisions, so the historical file was not
+edited. The redirect was added instead as a separate, explicitly named contract field —
+`compatibilityAliases` in `scripts/ui/route-compatibility.mjs` — consulted at resolution
+time but deliberately not counted as a registry alias. `#outreach` now resolves to the
+Campaigns page; the registry totals stay 75 canonical routes and 53 aliases, so the
+inventory test and the historical alias map remain true. The inventory test gained
+assertions proving the behaviour rather than the count.
+
+**Residual.** A reader of `legacy-alias-map.md` will not find `outreach` listed. That is
+correct: it is not a product route alias, it is a compatibility redirect for a hash that
+only exists when the vNext Outreach page is enabled.
 
 ---
 
 ## Checkpoints raised
 
-None raised yet.
+None raised yet. The Press lane build-or-defer question fires at Release 4.
+
+---
+
+## Release 1 — the simplified shell
+
+**Status: built, tests green locally, waiting on the soak gate before merge.**
+
+- `FOUNDER_OS_SHELL` (new, default off) collapses primary navigation to exactly Today,
+  Relationships, Campaigns, Scoreboard. Verified by rendering the real shell under both flag
+  states: off gives the current eleven-item navigation, on gives exactly four workspaces,
+  and with the vNext Outreach page enabled Campaigns points at `#outreach` instead of
+  `#campaigns`.
+- Global controls are unchanged and already match the charter: Search and Create in the top
+  bar, Le-E and Settings in the secondary navigation.
+- **Settings → Advanced** renders the fifteen machinery routes from
+  `FOUNDER_OS_ADVANCED_ROUTES` behind `data-founder-os-advanced`. It is emitted server-side,
+  so with the flag off it contributes zero client bytes.
+- **`#outreach` no longer silently renders Today** — see the authority conflict above.
+- **Hide now** treatments applied to the five toast-only buttons the deprecation ledger
+  names (Edit Priority, two Mark Done, Move to Tomorrow, Resolve Blocker). Verified present
+  with the flag off and absent with it on. Gating is server-side, so hiding also reclaims
+  client bytes.
+- **Dead code removed**: `campaignsPageHtml` (37 lines, 4,447 bytes) had exactly one
+  occurrence in the repository — its own definition — and was never called. The live
+  Campaigns route renders `campaignsControlPageHtml`.
+- The eleven legacy-shell hash pins were recomputed together and annotated with the reason.
+
+### Release 1 client JavaScript budget
+
+Measured by booting the real server with every vNext product flag enabled and summing the
+inline `<script>` bodies, the same method the Phase 8 contract uses.
+
+| Build | Bytes | Headroom | Change vs main |
+|---|---|---|---|
+| main (`b1dac79`) | 1,649,779 | 221 | — |
+| Release 1, `FOUNDER_OS_SHELL` off | 1,645,452 | 4,548 | **−4,327** |
+| Release 1, `FOUNDER_OS_SHELL` on | 1,648,118 | 1,882 | **−1,661** |
+
+The release ships fewer bytes in both states. The ceiling was not touched.
