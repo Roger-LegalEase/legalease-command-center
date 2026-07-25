@@ -58,8 +58,11 @@ for (const terminal of ["Session expired. Sign in again.", "Campaign access requ
 assert.match(source, /failedRouteKey="";render\(payload,current\)/, "A successful render must clear the failed-route latch.");
 
 // 6. A hash change is a fresh start: it clears the failure latch and loads.
-assert.match(source, /function routeChanged\(\)\{failedRouteKey="";load\(\);\}/, "A route change must clear the failure latch.");
-assert.match(source, /addEventListener\("hashchange",\(\)=>setTimeout\(routeChanged,0\)\)/, "hashchange must go through routeChanged.");
+assert.match(
+  source,
+  /addEventListener\("hashchange",\(\)=>setTimeout\(\(\)=>\{failedRouteKey="";load\(\);\},0\)\)/,
+  "A hash change must clear the failure latch and load."
+);
 
 // 7. The latch matches the idiom the surfaces that never froze already use.
 console.log("test-campaign-detail-observer-latch: all checks passed");

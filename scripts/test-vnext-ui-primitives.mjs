@@ -287,7 +287,14 @@ const shellStart = serverSource.indexOf("function htmlShell()");
 const shellEnd = serverSource.indexOf("\nfunction renderLegacyApp()", shellStart);
 assert.ok(shellStart >= 0 && shellEnd > shellStart);
 const shellHash = createHash("sha256").update(serverSource.slice(shellStart, shellEnd)).digest("hex");
-assert.equal(shellHash, "d9c94bd1cbe726d98c5a4952db74641ef6864b85216b9a60eedd90c572ae7187");
+// Re-pinned 2026-07-25 (campaign surface repair). The legacy shell changed in exactly two
+// reviewed ways: the reactivation control surface (the #campaigns auto-load hook, the
+// "Preview next sends" control, the data-reactivation-control-surface marker the vNext
+// Outreach page uses to carry the card over instead of deleting it), and the campaign/
+// reactivation client comments moved out of the shipped template into server-side notes
+// above htmlShell() to stay inside the vNext client-JavaScript budget. Today's own HTML
+// pin is unchanged. Behavior is asserted by scripts/test-campaign-controls-flag-matrix.mjs.
+assert.equal(shellHash, "30f1f42b0a6f3094e45733ec3f56b0087fa860fa1e7375e993d516eb5990430d");
 
 assert.equal(packageJson.scripts["test:vnext-ui-primitives"], "node scripts/test-vnext-ui-primitives.mjs");
 const extendedRunner = readFileSync("scripts/run-extended-tests.mjs", "utf8");
