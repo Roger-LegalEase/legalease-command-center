@@ -11,6 +11,22 @@ route before its parity requirement passes.
 Two separate future PRs are required before Release 1 implementation begins. This
 package only records them.
 
+> **Production verification record (added 2026-07-25).** The live state these
+> preconditions are measured against is recorded in
+> `evidence/2026-07-25-production-verification.md` — the completed owner-observed
+> verification of PRs #116–#118 at deployed commit `fdbc334`: `supabaseConnected: true`
+> and `supabaseState: "connected"`, Supabase CPU 0.30% (from a sustained 87–91%), Today
+> loading, one deliberate save through the mutation executor at 258ms with
+> `queueDepth: 0` / `outcome: ok`, a login-path write clearing in 106ms, and the
+> heartbeat cron re-enabled. It also lists the three still-open observation items — the
+> idle `pg_stat_activity` mutation-count re-check, the Render instance-count
+> confirmation, and the evidence-gated timeout-ordering migration — none of which blocks
+> a precondition below, and none of which this documentation PR performs. Read that file
+> for the current production baseline before treating any precondition status as fresh.
+> The `supabaseConnected: false` caveat repeated in Precondition A's 2026-07-24 status
+> note is **closed** by it; `prod-commit-gate.mjs:96` (which asserts
+> `supabaseConnected === true`) is usable again.
+
 ### Precondition A — audit-fixes PR
 
 > **Status 2026-07-23: satisfied by PR #113** (branch `audit-fixes-01` @ `0beb01e`) —

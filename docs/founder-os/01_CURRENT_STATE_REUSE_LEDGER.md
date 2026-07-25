@@ -234,3 +234,137 @@ full clone of the repo, referenced by nothing). Its removal is documented in
 `07_MIGRATION_AND_DEPRECATION_LEDGER.md` and required as a Release 1 precondition in
 `08_DELIVERY_PLAN.md` — executed in a separate future PR/cleanup, **not** in this
 documentation PR.
+
+---
+
+# Addendum — 2026-07-25 evidence refresh at `fdbc334`
+
+Appended, not rewritten. **No row above changes.** Every DECIDED row stands as decided;
+the additions below either sharpen an existing row with current-HEAD evidence or are
+marked **PROPOSED** for Roger to ratify. Sources: `evidence/2026-07-25-delta.md`,
+`evidence/2026-07-25-production-verification.md`, and the dated sections in
+`evidence/loose-ends.md`, `evidence/safety-gates.md`, `evidence/route-inventory.md`.
+
+## A1. Row 18 (Supabase business-data store) — the storage layer now has a serialization contract
+
+**Status: Keep — infrastructure.** Unchanged. What is new is that the row's "reuse the one
+storage engine" instruction now carries an explicit contract every consolidation surface
+inherits, whether it knows it or not.
+
+| Contract term | Guarantee | Where |
+|---|---|---|
+| Single chokepoint | `submitCoreMutations` is the only place in application code that may name `rpc/leos_apply_core_mutations`; asserted structurally by `test-supabase-mutation-serialization.mjs`. The old `writeChanges` bypass is closed | `scripts/storage.mjs:815–828` |
+| One active mutation per process | FIFO executor, at most 1 in-flight core-mutation RPC | `:653–740` |
+| Bounded queue | 32 pending, then **immediate 503 with zero network** (`SUPABASE_WRITE_QUEUE_SATURATED`) | `:625`, `:628–637`, `:669–674` |
+| Pre-network deadline | Work past its safe wait (default 20s, `SUPABASE_WRITE_MAX_QUEUE_WAIT_MS`) is shed **before** it is sent (`SUPABASE_WRITE_QUEUE_EXPIRED`) | `:639–651`, `:692–700` |
+| No retries, ever | A timed-out or uncertain mutation may have committed; resubmitting is a duplicate-write risk, not a recovery | `:617–619` |
+| Isolated failures | One caller's failure settles that caller only; the pump loop continues | `:707–713` |
+| Read/write separation | Independent gates and independent circuit breakers; a write convoy cannot consume read capacity, and write failures cannot open the read circuit | `:374–400`, `:456–465` |
+| Attribution | One PII-free `supabase_core_mutation` line per attempt: sanitized route, collection **names** only, queue depth/wait/exec, outcome, error **code** | `:758–811`; `scripts/request-context.mjs` |
+| Residual | Bounds **one Node process**; N Render instances can hold N active mutations | `:621–623`; open item O2 in the production-verification record |
+
+**Consequence for consolidation (PROPOSED):** every Founder OS surface that saves must
+treat `503 SUPABASE_WRITE_QUEUE_SATURATED` / `SUPABASE_WRITE_QUEUE_EXPIRED` as a real,
+expected outcome — "not saved, safe to retry by hand", never a silent failure and never an
+automatic retry. No surface has been audited for this yet
+(`evidence/loose-ends.md` N5). **Production trust: Verified** — the contract is covered by
+`test-supabase-mutation-serialization.mjs` and `test-supabase-backoff.mjs`, both in the
+strict `npm test` chain, and observed live at 258ms / `queueDepth: 0` / `outcome: ok`.
+
+## A2. Row 18 — the health probe now has three states, not a boolean
+
+`connected` / `degraded` / `disconnected` (`scripts/storage.mjs:1088–1099`), where
+`degraded` means partial availability in either direction: the probe succeeded but the
+breaker tripped recently, **or** the probe failed while storage traffic succeeded in the
+last 120s. The probe uses the same client, table, and request path the storage layer uses;
+it is cached (default 30s), single-flight, 2.5s-budgeted, and **never self-retrying**;
+since #118 it reads the **read** circuit only, so a convoyed write path cannot report the
+database as disconnected. Exposed as `supabaseState` on `/api/version` and `state` on
+`/api/health/supabase`.
+
+**PROPOSED:** Scoreboard "Platform health" and any App Status surface should render all
+three states. Collapsing `degraded` into either neighbour is exactly the false alarm the
+#118 split removed — and `prod-commit-gate.mjs:96` still asserts the **boolean**
+`supabaseConnected === true`, so the boolean must remain in the payload for the gate.
+
+## A3. Row 12 (Campaign command page) — which UI owns `#campaigns` is an environment decision
+
+**Status: Reuse behind simplified interface.** Unchanged. The refresh adds a fact the row
+must not be built on top of blindly.
+
+The real Reactivation controls — Run, Stop, wave preview/propose/execute, pause, resume —
+are the legacy Campaigns page card (`scripts/preview-server.mjs:27221–27229`, handlers
+`:18451–18615`). But when `COMMAND_CENTER_UX_VNEXT` **and**
+`COMMAND_CENTER_UX_VNEXT_OUTREACH` are both `"true"`, `#campaigns` and its three aliases
+resolve to canonical route `outreach` (`scripts/ui/route-compatibility.mjs:418`), and the
+vNext Outreach home overwrites the same page section
+(`scripts/ui/pages/outreach-home.mjs:57`, `:78–84`). The two surfaces contend for one
+route, and the winner is an environment variable that does not appear in `render.yaml`.
+
+**PROPOSED:** the simplified Reactivation surface must own its route explicitly rather
+than inherit `#campaigns`, and the flag combination in production must be recorded before
+Release 4 planning treats either surface as "the" Campaigns page.
+
+## A4. Rows 9 + 11 — "Unnamed campaign" and "Expungement.ai reactivation (B1)" are ONE campaign
+
+Verified at HEAD. `collectCampaignSourceContexts`
+(`scripts/ui/view-models/campaign-sources.mjs:262–271`) concatenates three source kinds
+with **no cross-kind dedupe**, so the single live reactivation campaign is projected twice:
+
+- **`reactivation:mvp-reactivation`** — the engine singleton
+  (`state.reactivationCampaign`, `REACTIVATION_CAMPAIGN_ID = "mvp-reactivation"`,
+  `scripts/reactivation-os.mjs:46`). It has no name field, so the list falls back to
+  "Unnamed campaign" (`scripts/ui/pages/outreach-home.mjs:123`). Its audience is computed
+  live from `reactivationContacts` — that is where 3,762 enrolled / 3,528 excluded comes
+  from (`campaign-view.mjs:174–186`).
+- **`campaign:campaign-reactivation-b1`** — a canonical `campaigns` ledger row named
+  "Expungement.ai reactivation (B1)", the only real campaign per
+  `docs/GROUND_TRUTH_2026-07-13.md:34`. Canonical rows project audience only from their
+  own fields (`campaign-view.mjs:158–172`), and nothing links a canonical row to a contact
+  collection — hence `Unavailable`.
+
+One engine, one audience, two projections of it. **PROPOSED:** the consolidated Campaigns
+surface must present exactly one Reactivation campaign; the canonical row is the label and
+the engine singleton is the state, and the projection needs a link (or a dedupe rule)
+rather than a second row.
+
+## A5. Rows 8 + 11 — new dead and broken surfaces found in the vNext Outreach lane
+
+Two items that the audit-era loose-ends inventory did not contain, both classified with
+the `07_MIGRATION_AND_DEPRECATION_LEDGER.md` vocabulary in that file's addendum:
+
+- **`#outreach/campaign/<id>` campaign detail — broken, not slow.** An unguarded
+  `MutationObserver` re-enters `load()`, which destroys the rendered root and rewrites the
+  loading state, producing another mutation. Verified in real Chromium against a healthy
+  stubbed endpoint returning a valid payload; the guarded control renders normally
+  (`evidence/loose-ends.md` N1). **Production trust: Unverified — the surface does not
+  function.**
+- **Campaign detail Pause/Resume — dead by construction.** Gated on
+  `state.campaignActionPolicies`, which is not a registered storage collection and is not
+  read by the Outreach API, so both capabilities are permanently `false` and the buttons
+  can never render, though the server handler is real (`loose-ends.md` N2).
+
+**PROPOSED:** neither surface may be treated as reusable working code by the Campaigns
+release. Row 11's "replace the read-only projection as the primary interface" stands; this
+addendum records that the projection's **detail** view is not a working starting point.
+
+## A6. Resolved — items that were open when the package merged
+
+| Item | Resolution | Date |
+|---|---|---|
+| `supabaseConnected: false` in production | **Resolved.** `/api/version` reports `supabaseConnected: true`, `supabaseState: "connected"` | 2026-07-25 |
+| `prod-commit-gate.mjs:96` blocked by the above | **Resolved** — the promote gate is usable again | 2026-07-25 |
+| Automatic Discovery Analytics write on every route change | **Resolved** by #118; passive boot is write-free, proven by a browser test | 2026-07-25 |
+| Denial audit rewriting the whole `soc2AuditLogs` array per denied request | **Resolved** by #116 (one budgeted insert) | 2026-07-24 |
+| Full-table hydration on `/api/boot-state` and `/api/today/summary` | **Resolved** by #117 (targeted `readCollections`) | 2026-07-25 |
+| Publish Now per-channel live gate | Remains **resolved** (#113), re-verified at HEAD | 2026-07-24 |
+
+## A7. Correction to the "orphan tests" convention input
+
+`evidence/loose-ends.md` §3 (a3793c3) conflated two measures. At HEAD: **283**
+`scripts/test-*.mjs` files; **214** referenced anywhere in `package.json.scripts`; **179**
+not reachable from `npm test` following `npm run`; **69** referenced nowhere. The
+"Partially verified" convention itself is unchanged — only the numbers behind it are
+corrected. Of the four suites added by the perf arc, three are in the strict `npm test`
+chain and `test-publish-now-live-gate.mjs` is extended-only, so the Publish Now gate
+stays "Partially verified".

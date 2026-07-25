@@ -92,3 +92,46 @@ they exist to prove what the code looked like at e620bde.
 No parallel implementation of tasks, CRM records, campaign engines, activity timelines,
 or storage may be created. The consolidation reuses the single live implementation of
 each; any duplicate found on disk is scheduled for removal, never for divergent editing.
+
+---
+
+## Refresh 2026-07-25 — `social-clean/` is still present, still unreferenced
+
+Re-checked at HEAD `fdbc3341e50500a643dec35a89844a7fe9dd62ac`. Everything above stands.
+
+- **Still on disk, still untracked, still gitignored.** `git ls-tree -r HEAD
+  --name-only -- social-clean` returns nothing; `.gitignore:59` still contains
+  `social-clean/`; `git status --porcelain` does not list it.
+- **Still stale at the same commit.** Its nested HEAD is `2dcc28c`, 2026-07-09
+  ("Merge pull request #41 … ledger-reconciliation") — now **16 days** behind main, and
+  behind the entire perf/hardening arc (#116, #117, #118) as well as everything it was
+  already missing. 305 files outside its `.git` (was 304).
+- **Still referenced by nothing executable.** Repo-wide grep (excluding
+  `node_modules`, `.git`, and `social-clean/` itself) finds only `.gitignore:59`, the
+  historical bundle's plain-text tree, and the three Founder OS documents that schedule
+  its removal (`07_MIGRATION_AND_DEPRECATION_LEDGER.md:56`, `:75`;
+  `08_DELIVERY_PLAN.md:49–55`; `01_CURRENT_STATE_REUSE_LEDGER.md` prohibition section).
+  Zero imports, script entries, `render.yaml` references, or test-runner references.
+- **Staleness now includes safety-relevant storage code.** Its `scripts/storage.mjs`
+  predates the read/write circuit split, the request gates, and the core-mutation
+  executor entirely. Editing that copy by accident would reintroduce the exact class of
+  outage #116–#118 fixed. The **Remove** status in the migration ledger is reaffirmed,
+  still as a separate future PR, still not this documentation PR.
+
+### Other parallel copies — unchanged
+
+| Location | Tracked? | Status at fdbc334 |
+|---|---|---|
+| `social-clean/` | No (gitignored) | Present, stale at `2dcc28c`, unreferenced |
+| `inspection-bundle/` (repo root) | No (untracked) | Still present |
+| `docs/founder-os/evidence/inspection-bundle-e620bde/` | Yes (tracked since #112) | Unchanged evidence exhibit |
+| `quarantine/` | No (gitignored) | Cutover logs only |
+
+**No new parallel copies were created by #115–#118.** The live tree still has exactly
+one storage engine (`scripts/storage.mjs` + `lib/storage/`), one server
+(`scripts/preview-server.mjs`), and one copy of each campaign engine. The new modules
+added by the perf arc (`scripts/supabase-backoff.mjs`,
+`scripts/boot-state-read-collections.mjs`, `scripts/request-context.mjs`) are
+single-implementation extractions used by that one storage engine, not duplicates of it.
+`scripts/test-support/fake-supabase-server.mjs` is a test double, referenced only from
+tests.

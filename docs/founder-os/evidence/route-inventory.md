@@ -143,3 +143,56 @@ Format: `route` — label — existing registry classification.
 `campaign`→campaigns, `campaign-control`→campaigns, `campaigns-control`→campaigns,
 `privacy`→settings,
 `recovery`→safe-mode
+
+---
+
+## Refresh 2026-07-25 — no route change at `fdbc334`
+
+Re-run at HEAD `fdbc3341e50500a643dec35a89844a7fe9dd62ac`:
+
+```
+$ node scripts/test-vnext-route-inventory.mjs
+vNext route inventory verified: 75 canonical routes, 53 aliases, 6 primary navigation items.
+```
+
+| Measure | e620bde | a3793c3 | HEAD fdbc334 | Change |
+|---|---|---|---|---|
+| Canonical routes | 75 | 75 | 75 | None |
+| Aliases | 53 | 53 | 53 | None |
+| Primary navigation items | 6 | 6 | 6 | None |
+
+**No count change.** PRs #115–#118 touched documentation, the storage layer, the
+Supabase probe/gate/queue machinery, hot-path reads, and one browser controller — not
+`knownPages`, `routeAliases`, or `scripts/ui/navigation.mjs`. The 75-route and 53-alias
+listings above stand verbatim.
+
+### Not a registry route: the vNext object routes (recorded because they matter here)
+
+`#outreach/campaign/<id>` is not one of the 75 canonical routes. It is an **exact object
+link** resolved by `scripts/ui/route-compatibility.mjs:265–267` and rendered through the
+canonical `item` route: the shell's route parser maps any `kind:"object"` resolution to
+page id `item` (`scripts/ui/app-shell.mjs:688–692`). Verified at HEAD:
+
+```
+resolveRouteWithContract("#outreach/campaign/campaign-reactivation-b1")
+  → { kind:"object", objectType:"Campaign", sourceKind:"campaigns",
+      sourceId:"campaign-reactivation-b1", safeHash:"#outreach/campaign/campaign-reactivation-b1" }
+resolveRouteWithContract("#outreach/campaign/reactivation%3Amvp-reactivation")
+  → { kind:"object", objectType:"Campaign", sourceKind:"campaigns",
+      sourceId:"reactivation:mvp-reactivation", safeHash:"#outreach/campaign/reactivation%3Amvp-reactivation" }
+```
+
+Both are well-formed links. What happens after resolution is a separate finding — see
+the campaign-detail entry in `loose-ends.md` (2026-07-25 section).
+
+### Route ownership depends on one env flag (PROPOSED for the IA record)
+
+When `COMMAND_CENTER_UX_VNEXT` **and** `COMMAND_CENTER_UX_VNEXT_OUTREACH` are both
+`"true"` (`scripts/ui/vnext-config.mjs:5–10`, `:32–45`), the aliases `campaigns`,
+`campaign`, `campaign-control`, `campaigns-control` resolve to canonical route
+`outreach` (`scripts/ui/route-compatibility.mjs:418`), and the vNext Outreach home
+overwrites the same page section the legacy Campaigns page renders into
+(`scripts/ui/pages/outreach-home.mjs:57`, `:78–84`). Neither flag appears in
+`render.yaml`, so their production values are dashboard-only and not derivable from the
+repo. Consequence for the consolidation: **which UI owns `#campaigns` is an environment
+decision, not a code decision** — see the reuse-ledger addendum (row 12).

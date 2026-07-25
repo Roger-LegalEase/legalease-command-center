@@ -14,3 +14,19 @@ Production /api/version reports commit 0bb28a5 (deployed at current main),
 liveGatesCount: 0 (corrected from the 5 observed 2026-07-23),
 authStoreConnected: true, supabaseConnected: false (open issue, separate
 from this consolidation). The re-stamp requested above is complete.
+
+Evidence refresh: 2026-07-25 —
+HEAD fdbc3341e50500a643dec35a89844a7fe9dd62ac (origin/main tip),
+"fix(storage): serialize Supabase mutations and preserve read capacity (#118)",
+commit date 2026-07-25 11:42:35 -0400.
+Every file in this directory was re-derived at this commit; original sections are
+preserved and dated updates appended. Commits folded in since 0bb28a5:
+  95c411b docs(founder-os): restate social pipeline activation conditions (#115)
+  c7f7368 Perf: stop Supabase request storm, harden probe and pool, targeted indexes (#116)
+  685feec Perf: bound hydration, exclude audit logs from hot path, retention script (#117)
+  fdbc334 fix(storage): serialize Supabase mutations and preserve read capacity (#118)
+Production (owner-observed 2026-07-25, recorded in 2026-07-25-production-verification.md):
+deployed commit fdbc334, supabaseConnected: true, supabaseState: "connected".
+The supabaseConnected:false item open since 2026-07-23 is CLOSED.
+See 2026-07-25-delta.md for what changed and 2026-07-25-production-verification.md
+for the live verification.

@@ -91,3 +91,34 @@ No env values, contact data, or suppression data appear anywhere in this directo
 historical bundle contains env-var **names** only (`03-env-var-names.txt`) and a redacted
 log sample. The frozen code snapshots inside `inspection-bundle-e620bde/04-schema/` are
 dated evidence exhibits, not implementations (see `parallel-implementations.md`).
+
+## Evidence refresh at HEAD — 2026-07-25
+
+Regenerated at `fdbc3341e50500a643dec35a89844a7fe9dd62ac` (origin/main tip, PR #118).
+Every file above was re-derived at this commit; **no original content was rewritten** —
+each file carries a dated section appended to its end.
+
+Two files are new in this refresh:
+
+| File | What it proves |
+|---|---|
+| `2026-07-25-delta.md` | Everything that changed since the package merged: the #116/#117/#118 perf arc in full, the probe's three states, and the findings HEAD shows that the ledger did not |
+| `2026-07-25-production-verification.md` | The completed live verification of #116–#118 as owner-observed facts, plus the three still-open observation items |
+
+What the refresh found, in one line each:
+
+- **Routes: no change.** 75 canonical / 53 aliases / 6 primary nav, re-run at HEAD.
+- **Safety gates: all three still blocking.** Line numbers moved; behavior did not. New
+  *availability* protections (read/write circuit split, bounded gates, mutation executor)
+  are recorded alongside them.
+- **Publish Now: still closed** (the #113 gate is intact at HEAD).
+- **`social-clean/`: still present, still unreferenced,** now 16 days stale and missing
+  the entire perf arc — **Remove** status reaffirmed, still a separate future PR.
+- **Loose ends: all 10 stubs still open** (re-pinned to current lines); five new findings,
+  the most serious being that the vNext campaign detail route wedges the browser main
+  thread; `supabaseConnected:false` and three audit-era items are now **resolved**.
+- **Test registration: the a3793c3 accounting is corrected** — 283 files, 214 referenced
+  anywhere in `package.json`, 179 not reachable from `npm test`.
+
+Everything DECIDED in the package above stays decided. Genuinely new material is marked
+**PROPOSED** in the ledger addenda.

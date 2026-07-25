@@ -77,3 +77,54 @@ Seeded from the outline, verified against `evidence/loose-ends.md`:
 ## The rule
 
 **"No visible button may remain if it cannot complete the action its label promises."**
+
+---
+
+# Addendum — 2026-07-25 evidence refresh at `fdbc334`
+
+Appended, not rewritten. **No status above changes.** Every route fate, component status,
+and loose-ends row stands as assigned. Below: new loose ends found at HEAD, each given a
+status from the same vocabulary (Keep / Consolidate / Contextualize / Advanced only /
+Hide now / Deprecate after parity / Remove); audit-era items now resolved; and one
+component-status clarification. Source: `evidence/loose-ends.md` (2026-07-25 section) and
+`evidence/2026-07-25-delta.md`.
+
+## New loose ends (found at `fdbc334`)
+
+| Item | Current behavior | User risk | Immediate treatment | Final treatment |
+|---|---|---|---|---|
+| vNext campaign detail route `#outreach/campaign/<id>` (`scripts/ui/pages/campaign-detail.mjs:38–39`) — e.g. `#outreach/campaign/campaign-reactivation-b1` | Renders permanent loading skeletons and **freezes the browser main thread**: an unguarded `MutationObserver` re-enters `load()`, which destroys the rendered root and rewrites "Loading Campaign…", producing another mutation. Verified in real Chromium against a healthy stubbed endpoint with a valid payload | Highest of the new items: the tab wedges, so the founder cannot leave the page or trust anything on screen. It looks like a data or Supabase problem and is neither | **Hide now** — remove the link target from every list and object link until the observer is guarded; a page that freezes the tab is worse than a missing page | **Keep** the surface, **fix the loop** (re-entrancy latch, as `social-home.mjs:228` and `automation-control-center.mjs:254` already do) before Campaigns Release 4 reuses it |
+| Campaign detail Pause / Resume buttons (`scripts/campaign-detail-service.mjs:12`; rendered `scripts/ui/pages/campaign-detail.mjs:23`) | Never render. Capabilities are gated on `state.campaignActionPolicies`, which is **not** in `coreStateCollections` and **not** in `OUTREACH_READ_COLLECTIONS`, so both are permanently `false`. The server handler (`outreach-api-integration.mjs:390–394`) is real but unreachable from the product | Low today (invisible), high if someone "fixes" the visibility without wiring the collection: it would expose pause/resume with no policy source | **Advanced only** — do not surface until a real policy source exists | **Keep** the handler; either register/populate `campaignActionPolicies` or delete the capability path. Reactivation pause/resume already works on the legacy Campaigns page (`preview-server.mjs:18546`, `:18561`, `:18602`) — do not build a second one |
+| Outreach list `Unavailable` fields (`scripts/ui/pages/outreach-home.mjs:109`, `:130–150`) | Honest nulls, not failures: canonical `campaigns` rows project audience/replies/outcome only from their own fields (`campaign-view.mjs:158–172`) while the reactivation singleton projects from live contacts (`:174–186`). Same column, two different meanings | Moderate: `Unavailable` reads as "the system is broken" when it means "this record has no such field", and the two source kinds are indistinguishable in the list | **Label clearly** — distinguish "no audience attached to this record" from "could not load" | **Keep** the honest-null convention; link canonical rows to their engine state so the field has a value rather than a disclaimer |
+| Duplicate reactivation rows in the Outreach list (`scripts/ui/view-models/campaign-sources.mjs:262–271`) | The one live reactivation campaign appears twice — `campaign:campaign-reactivation-b1` ("Expungement.ai reactivation (B1)") and `reactivation:mvp-reactivation` ("Unnamed campaign", 3,762 enrolled / 3,528 excluded). No cross-kind dedupe | Moderate: two rows imply two campaigns and two audiences; one shows real numbers and one shows `Unavailable` | **Label clearly** in any interim surface (one is the ledger record, one is the engine) | **Consolidate** — one Reactivation campaign in the consolidated Campaigns surface: canonical row as the label, engine singleton as the state |
+| Storage-layer 503 saves (`scripts/storage.mjs:628–647`) | Writes can be rejected before any network call (`SUPABASE_WRITE_QUEUE_SATURATED`) or shed past their deadline (`SUPABASE_WRITE_QUEUE_EXPIRED`); deliberately never retried | Unknown — no surface has been audited for how it presents a 503 save. Risk is a save that silently did not happen | **Keep** the shedding behavior (it is the fix, not a defect); audit surfaces for honest "not saved — safe to retry" copy | **Keep**; make the honest failure state part of the universal action panel |
+| `scripts/ui/pages/campaign-wizard.mjs:62` observer | Same unguarded `MutationObserver` shape as campaign detail; **not tested** whether `activate()` can leave `root()` absent | Unknown | **No treatment assigned** — verify first | Assign after verification; if it loops, same fix as campaign detail |
+
+## Loose-ends rows now resolved (audit-era items)
+
+Recorded here so the table above is not re-worked in a future pass. The original rows are
+preserved unchanged.
+
+| Item | Status | Date | Evidence |
+|---|---|---|---|
+| Publish Now per-channel live gate (Release 1 Precondition A.1) | **Resolved** | 2026-07-24 | `preview-server.mjs:5857–5861`; `evidence/publish-now-gate-review.md` |
+| sharp CVEs (Precondition A.2) | **Resolved** at 0.35.3 | 2026-07-24 | PR #113 |
+| PII containment (Precondition A.3) | **Resolved** (gitignored `data/private/` + pre-commit gate); CI mode remains proposed | 2026-07-24 | PR #113; `08_DELIVERY_PLAN.md` |
+| Node pinning (Precondition A.4) | **Resolved** — `engines: 24.x` + `NODE_VERSION` on both services | 2026-07-24 | PR #113 |
+| Scheduled-publishing test on removed static-token auth | **Resolved** | 2026-07-24 | PR #114 |
+| `supabaseConnected: false` in production | **Resolved** — `/api/version` reports `true`, `supabaseState: "connected"` | 2026-07-25 | `evidence/2026-07-25-production-verification.md` |
+| Automatic Discovery Analytics write on every route change | **Resolved** — passive boot is write-free | 2026-07-25 | PR #118; `tests/browser/passive-boot-write-free.spec.mjs` |
+| Denial audit rewriting the entire `soc2AuditLogs` array per denied request | **Resolved** — one budgeted insert, 30/min cap | 2026-07-24 | PR #116 |
+| Full-table hydration on `/api/boot-state` and `/api/today/summary` | **Resolved** — targeted `readCollections` | 2026-07-25 | PR #117 |
+
+Still open and unchanged: the ten confirmed stubs in `evidence/loose-ends.md` §B
+(re-pinned to current line numbers, all still toast-only or placeholder), and the
+`social-clean/` removal.
+
+## Component-status clarification
+
+| Component | Status | 2026-07-25 note |
+|---|---|---|
+| Upstash auth store / Supabase store / targeted reads | **Keep** (unchanged) | The storage engine now carries an explicit serialization contract — one active core mutation per process, bounded queue, pre-network deadline, no retries, split read/write capacity, PII-free attribution. Reuse it as-is; do not add a second write path. Full terms in the `01_CURRENT_STATE_REUSE_LEDGER.md` addendum A1 |
+| `social-clean/` directory | **Remove** (unchanged) | Reaffirmed: still present, still unreferenced, now 16 days stale and missing the entire #116–#118 perf arc, including all of the storage protections above. Still a separate future PR |
+| vNext campaign detail + Outreach list projection | **Keep**, with the defects above | Added to this ledger for the first time; see the new loose-ends table |
