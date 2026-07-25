@@ -259,12 +259,117 @@ function reactivationContext(state, role) {
   }];
 }
 
+// ---------------------------------------------------------------------------------------
+// Reactivation label merge.
+//
+// The same campaign has two records: a canonical `campaigns` row (the LABEL — it carries
+// the name Roger reads, e.g. "Expungement.ai reactivation (B1)", but is not linked to any
+// contact collection, so every audience/reply/outcome field projects null) and the
+// `reactivationCampaign` singleton (the ENGINE — live status, wave plan, and the contact
+// rows the audience counts come from, but no name, so lists fell back to "Unnamed
+// campaign"). Concatenating both without a dedupe made one campaign look like two: one
+// with a name and "Unavailable" everywhere, one with real numbers and no name.
+//
+// The merge is deliberately conservative. It links a canonical row to the engine ONLY when
+// the data says so, and it never silently guesses between candidates.
+const REACTIVATION_TYPE_TOKENS = new Set([
+  "customer_reengagement", "customer_re_engagement", "reengagement", "re_engagement", "reactivation"
+]);
+const REACTIVATION_ENGINE_TOKENS = new Set(["reactivation", "reactivation-campaign", "reactivation_campaign"]);
+
+function firstText(record = {}, fields = []) {
+  return fields.map((field) => clean(record[field])).find(Boolean) || "";
+}
+
+function normalizedCampaignType(record = {}) {
+  return lower(record.campaignType || record.campaign_type || record.type).replaceAll(/[ -]+/g, "_");
+}
+
+function declaresReactivationEngine(record = {}) {
+  return ["engine", "system", "program", "sourceKind", "source_kind"]
+    .some((field) => REACTIVATION_ENGINE_TOKENS.has(lower(record[field])));
+}
+
+function canonicalIdsNamedBySingleton(record = {}) {
+  return [
+    record.canonicalCampaignId, record.canonical_campaign_id,
+    record.campaignRecordId, record.campaign_record_id
+  ].map(clean).filter(Boolean);
+}
+
+// Returns the canonical context that labels the reactivation engine, or null.
+export function canonicalLabelForReactivation(canonicalList = [], reactivation = null) {
+  if (!reactivation) return null;
+  const engineId = reactivation.sourceId;
+  const named = canonicalIdsNamedBySingleton(reactivation.record);
+  // 1. Explicit link — an id match in either direction, a sourceRef at the singleton, or a
+  //    row that declares the reactivation engine. `canonicalList` is already id-sorted, so
+  //    picking the first is deterministic.
+  const explicit = canonicalList.filter((context) =>
+    named.includes(context.sourceId)
+    || campaignIds(context.record).includes(engineId)
+    || refMatches(context.record, "reactivationCampaign", engineId)
+    || declaresReactivationEngine(context.record));
+  if (explicit.length) return explicit[0];
+  // 2. Type fallback, and only under both guards:
+  //    - the engine singleton has NO name of its own. A named singleton is not the
+  //      "Unnamed campaign" problem this merge exists to fix, and an unlinked canonical row
+  //      of the same type is then just a different campaign.
+  //    - exactly ONE canonical row is a customer-re-engagement campaign. Two candidates and
+  //      no link means we cannot know which one names the engine — merge nothing.
+  if (firstText(reactivation.record, ["name", "campaignName", "campaign_name", "title"])) return null;
+  const byType = canonicalList.filter((context) => REACTIVATION_TYPE_TOKENS.has(normalizedCampaignType(context.record)));
+  return byType.length === 1 ? byType[0] : null;
+}
+
+function mergeById(...groups) {
+  const seen = new Set();
+  return groups.flat().filter((record) => {
+    const id = recordId(record) || stableSerialize(record);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
+function mergeReactivationWithLabel(reactivation, label) {
+  return {
+    ...reactivation,
+    // Engine values win where the singleton has them (live status, wave plan, live-mode);
+    // the canonical row supplies the name and anything the engine does not know.
+    record: { ...label.record, ...reactivation.record },
+    // kind stays "reactivation" so the audience keeps projecting from real contact rows.
+    kind: "reactivation",
+    sourceCollection: "reactivationCampaign",
+    sourceKind: "reactivation-campaign",
+    sourceId: reactivation.sourceId,
+    // Identity and link come from the canonical row so links already in use keep resolving.
+    stableIdentity: label.stableIdentity,
+    identityAliases: [label.stableIdentity, reactivation.stableIdentity],
+    href: label.href || reactivation.href,
+    canonicalSource: {
+      collection: "campaigns",
+      sourceKind: "campaign",
+      sourceId: label.sourceId,
+      stableIdentity: label.stableIdentity
+    },
+    queueItems: mergeById(reactivation.queueItems, label.queueItems),
+    approvals: mergeById(reactivation.approvals, label.approvals),
+    canonicalActivity: list(label.activity),
+    availability: { ...label.availability, ...reactivation.availability }
+  };
+}
+
 export function collectCampaignSourceContexts(state = {}, actor = {}) {
   const role = allowedActor(actor);
   if (!role) return [];
+  const canonical = canonicalContexts(state, role);
+  const [reactivation = null] = reactivationContext(state, role);
+  const label = canonicalLabelForReactivation(canonical, reactivation);
+  const merged = label ? mergeReactivationWithLabel(reactivation, label) : reactivation;
   return [
-    ...canonicalContexts(state, role),
+    ...(label ? canonical.filter((context) => context !== label) : canonical),
     ...partnerContexts(state, role),
-    ...reactivationContext(state, role)
+    ...(merged ? [merged] : [])
   ].sort((left, right) => left.stableIdentity.localeCompare(right.stableIdentity, "en-US"));
 }

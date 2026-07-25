@@ -37,6 +37,18 @@ export function renderOutreachHomeLoading() {
   </section>`;
 }
 
+// Browser runtime. Everything inside the template literal ships on every page load, so the
+// reasoning lives out here rather than in the payload.
+//
+// detachControlSurface / attachControlSurface exist because the real reactivation
+// Run / Stop / Resume / Preview-next-sends controls are the legacy card the server renders
+// inside #campaigns — the same section this page mounts into. Replacing that section's
+// innerHTML wholesale deleted the only working controls in the product whenever the Outreach
+// flag was on. The card is now detached (keeping whatever it has already loaded), the vNext
+// page is mounted, and the card is re-attached beneath it. When the card carries no controls
+// yet, the shared loader fills it. `scripts/test-campaign-controls-flag-matrix.mjs` asserts
+// the card is served in all four flag states, so there is nothing to synthesise when it is
+// absent — an absent card means this is not the Campaigns section.
 export function outreachHomeBrowserSource() {
   const contract = JSON.stringify(OUTREACH_HOME_CONTRACT).replaceAll("<", "\\u003c");
   const loadingHtml = JSON.stringify(renderOutreachHomeLoading()).replaceAll("<", "\\u003c");
@@ -64,13 +76,25 @@ export function outreachHomeBrowserSource() {
     }
     function routeHash(view) { return "#outreach?view=" + encodeURIComponent(view || "all"); }
     function node(selector) { return app()?.querySelector(selector) || null; }
+    function detachControlSurface(target) {
+      const node = target.querySelector("[data-reactivation-control-surface]");
+      node?.remove();
+      return node;
+    }
+    function attachControlSurface(target, preserved) {
+      if (!preserved) return;
+      target.append(preserved);
+      if (!preserved.querySelector("[data-reactivation-controls]")) window.autoLoadCampaignCommand?.();
+    }
     function ensureScaffold() {
       const target = app();
       if (!target || sessionEnded || target.querySelector("[data-vnext-shell-state='session_expired']")) return false;
       if (!target.querySelector("[data-outreach-page]")) {
+        const preserved = detachControlSurface(target);
         target.innerHTML = loadingHtml;
         bind();
         if (lastPayload) render(lastPayload, false);
+        attachControlSurface(target, preserved);
       }
       return true;
     }

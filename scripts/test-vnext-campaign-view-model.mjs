@@ -296,8 +296,12 @@ assert.doesNotMatch(serverSource, /view-models\/campaign-(?:view|sources)\.mjs/,
 function sha256(source) {
   return createHash("sha256").update(source).digest("hex");
 }
-assert.equal(sha256(campaignViewSource), "d764d64dd049ca646e2724af6fe21048094a1ed7af5f82ca1ecb26fa0dd3c5a9");
-assert.equal(sha256(campaignSourcesSource), "28f449a15171a8f2170fe45719e9c3f732b1850e2361d7fb30e1d8aabcef7b26");
+// Re-pinned 2026-07-25 (campaign surface repair): the reactivation label merge in
+// campaign-sources.mjs and the identityAliases/canonicalActivity passthrough in
+// campaign-view.mjs. Behavior of the merge is asserted by
+// scripts/test-campaign-reactivation-dedupe.mjs; these pins stay as drift guards.
+assert.equal(sha256(campaignViewSource), "fe559cbf2bc3ccdb5ce9e5bebb5c1e3eeccd6dbca1a1e6623079e56eadd6cdd9");
+assert.equal(sha256(campaignSourcesSource), "ec0af09f53f3043b4fc8eae52e38945c27ea9e8db253b20d620466a5e309043a");
 assert.doesNotMatch(serverSource, /from\s+["'][^"']*view-models\/campaign-view\.mjs["']/, "Shared integration must not couple the server directly to CampaignView.");
 assert.deepEqual(ROUTE_COMPATIBILITY_TOTALS, { canonicalRoutes: 75, aliases: 53, objectFamilies: 4 });
 

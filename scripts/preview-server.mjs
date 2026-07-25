@@ -15731,6 +15731,69 @@ async function exportWeeklyEvidencePack(options = {}) {
   });
 }
 
+// Reactivation control block (inside the client script below). The comments that used to
+// sit inside the shipped template literal live here instead — everything inside htmlShell()
+// is downloaded on every page load, and the vNext performance contract keeps a tight
+// measured ceiling on that payload (scripts/vnext-performance-contract.mjs).
+//
+//   campaignCommandView       shared boot cache; the cockpit already fetches this view, so
+//                             the controls can be drawn without a second round trip.
+//   autoLoadCampaignCommand   runs on every arrival at, and re-render of, #campaigns from
+//                             both route parsers. Run / Stop / Resume / wave previews are
+//                             BUILT by renderCampaignCommand(); before this hook they
+//                             appeared only after clicking "Load campaign controls", so the
+//                             Campaigns surface showed no controls on arrival under either
+//                             UX flag. The legacy shell re-renders the page from its
+//                             template on every state change, which resets the card, so
+//                             this runs after each render rather than once.
+//   campaignPreviewNextSends  read-only: who is due in the next send, the sending window,
+//                             the current Run/Stop status, and the next unreleased wave.
+//                             It releases nothing and sends nothing.
+//   Run / Stop                POST /api/reactivation/live-mode. Run is two-step (explicit
+//                             confirm); Stop is immediate because it reduces risk. Neither
+//                             sends an email: the hourly heartbeat is the only send path,
+//                             and it still enforces the weekday 8am-5pm ET window, per-hour
+//                             and per-day caps, suppression, wave release, and the auto-pause
+//                             safety thresholds.
+//
+// Notes for the campaign/reactivation client functions whose comments were moved out of the
+// shipped template for the same reason (the code is unchanged):
+//   campaignCommandView        read-only view for the cockpit charts; same null contract as
+//                              todaySummary — a quiet "numbers not available" state, never
+//                              sample data.
+//   intakePending              universal list intake: one preview + confirm flow for every
+//                              list type. Preview never writes; confirm imports safely and
+//                              sends nothing. Plain-English checks before save: missing
+//                              emails, invalid emails, duplicates, and
+//                              suppressed/unsubscribed/bounced/do-not-contact. (Those four
+//                              phrases are asserted verbatim by
+//                              scripts/test-operator-consolidation-pass.mjs — keep the
+//                              wording exact.)
+//   campaignBrainHeldRows      Campaign brain (Phase 18E): outreach lanes, held release,
+//                              deliverability.
+//   consumerImportPending      consumer / Expungement.ai list import against the internal
+//                              endpoints. Preview never writes; confirm stages contacts into
+//                              reactivationContacts. Nothing sends.
+//   expungementSyncPending     Expungement.ai lifecycle sync: ingest-only preview + confirm.
+//                              Campaign-eligible contacts are held for review; deleted and
+//                              unsubscribed people are excluded from campaign staging.
+//   outreachAutomationLabel    B2 outreach posture (autopilot + OUTREACH_LIVE_SEND) from the
+//                              server derivation. The RCAP status line used to hardcode
+//                              "Off", which would have kept saying Off after the real gates
+//                              flipped.
+//   ck* helpers                cockpit number formatting, campaign math, chart builders.
+//                              Every figure comes from todaySummary or campaignCommandView;
+//                              nothing is fabricated. The summary line leads with revenue and
+//                              product activity, then decisions, then campaign safety and
+//                              deploy state, and stays honest about missing sources. The
+//                              scoreboard sits above any campaign module and says "Not wired
+//                              yet" when a source is not connected, honest zeros when it is.
+//   ckCampaignDetails*         campaign visibility is one operating lane, not the scoreboard:
+//                              a compact safety module by default with the full analytics
+//                              behind "View campaign details". Real campaign risk opens the
+//                              details by default, but Roger's own toggle always wins. The
+//                              details pane is itself a nested dashboard grid — charts are
+//                              grid cells with size spans, not hand-built columns.
 function htmlShell() {
   return `<!doctype html>
 <html lang="en">
@@ -17399,6 +17462,25 @@ function htmlShell() {
       border:1px solid var(--le-control-disabled-border);
       opacity:1;
     }
+    /* Contrast remediation for the reactivation control surface, same shape as the
+       CCX-006 fix above. The shared .primary treatment resolves to white on the teal
+       accent (#FFFFFF on #00A99D is ~3:1), which axe flags as a serious color-contrast
+       violation. These buttons only became part of an audited surface when the vNext
+       Outreach page started carrying the control card instead of deleting it, so the
+       pairing is corrected here rather than left to fail on a page nobody audited. */
+    [data-reactivation-control-surface] button.primary,
+    [data-reactivation-control-surface] .primary[type="button"] {
+      background:var(--le-navy-950);
+      color:var(--le-surface);
+      border-color:var(--le-navy-950);
+    }
+    [data-reactivation-control-surface] button.primary:disabled,
+    [data-reactivation-control-surface] .primary[type="button"]:disabled {
+      background:var(--le-control-disabled-bg);
+      color:var(--le-control-disabled-text);
+      border:1px solid var(--le-control-disabled-border);
+      opacity:1;
+    }
 
   </style>
 </head>
@@ -17463,8 +17545,6 @@ function htmlShell() {
     // Today at LegalEase operating summary (Phase 1). null means "not loaded yet" — sections
     // render honest placeholders, never fabricated numbers.
     let todaySummary = null;
-    // Read-only campaign command view for the cockpit charts. Same null contract: the
-    // campaign sections render a quiet "numbers not available" state, never sample data.
     let campaignCommandView = null;
     // Full company queue for the Decisions page (GET /api/queue). null = not loaded yet;
     // loaded lazily the first time the page opens, refreshed after every decision.
@@ -18351,9 +18431,6 @@ function htmlShell() {
     window.fixCampaignImportIssues = fixCampaignImportIssues;
     window.downloadCampaignTemplate = downloadCampaignTemplate;
 
-    // Universal list intake — one preview + confirm flow for every list type. Preview never
-    // writes; confirm asks the server to import safely (nothing sends). Plain-English checks
-    // before save: missing emails, invalid emails, duplicates, and suppressed/unsubscribed/bounced/do-not-contact rows.
     let intakePending = null;
     async function operatorUploadFlowSubmit(event) {
       event.preventDefault();
@@ -18440,20 +18517,31 @@ function htmlShell() {
     window.intakeImportConfirm = intakeImportConfirm;
     window.intakeImportCancel = intakeImportCancel;
 
-    // Campaign command — preview / propose / run-approved controls for the reactivation
-    // campaign. Everything read-only until an approval exists; nothing here sends email or
-    // changes a sending switch.
     function campaignActionTarget() {
       const target = document.getElementById("campaign-command-action");
       if (target) target.style.display = "block";
       return target;
     }
+    let campaignCommandLoading = false;
+    function autoLoadCampaignCommand() {
+      const target = document.getElementById("campaign-command-result");
+      if (!target || target.querySelector("[data-reactivation-controls]")) return;
+      if (campaignCommandView) { renderCampaignCommand(campaignCommandView); return; }
+      if (!campaignCommandLoading) loadCampaignCommand();
+    }
     async function loadCampaignCommand() {
       const target = document.getElementById("campaign-command-result");
       if (target) target.innerHTML = "<strong>Loading campaign controls...</strong>";
       let view;
+      campaignCommandLoading = true;
       try { view = await api("/api/campaign/command"); }
       catch (error) { if (target) target.innerHTML = "<strong>Could not load campaign controls.</strong> " + esc(error.message || ""); return; }
+      finally { campaignCommandLoading = false; }
+      campaignCommandView = view;
+      renderCampaignCommand(view);
+    }
+    function renderCampaignCommand(view) {
+      const target = document.getElementById("campaign-command-result");
       const waves = (view.waves || []).map(function(w){
         const btn = w.released ? "" : " <button type=\\"button\\" onclick=\\"campaignWavePreview(" + Number(w.wave) + ")\\">Preview release</button>";
         return "<li>" + esc(String(w.plain)) + btn + "</li>";
@@ -18479,7 +18567,8 @@ function htmlShell() {
       const liveButton = liveOn
         ? "<button type=\\"button\\" onclick=\\"reactivationStopCampaign()\\">Stop Reactivation Campaign</button>"
         : "<button class=\\"primary\\" type=\\"button\\" onclick=\\"reactivationRunCampaignConfirm()\\">Run Reactivation Campaign</button>";
-      const controls = "<div class=\\"card-actions\\">" + liveButton + " " +
+      const controls = "<div class=\\"card-actions\\" data-reactivation-controls>" + liveButton + " " +
+        "<button type=\\"button\\" onclick=\\"campaignPreviewNextSends()\\">Preview next sends</button> " +
         (String(view.status).toLowerCase() === "paused"
           ? "<button class=\\"primary\\" type=\\"button\\" onclick=\\"campaignResumePropose()\\">Propose resume (asks your approval)</button>"
           : "<button type=\\"button\\" onclick=\\"campaignPause()\\">Pause campaign now</button>") +
@@ -18487,6 +18576,18 @@ function htmlShell() {
       if (target) target.innerHTML = lines.join("<br>") +
         "<br><br><strong>Waves</strong><ul>" + waves + "</ul>" + waveNotes + controls +
         "<br><em>" + esc(String(view.warning || "")) + "</em>";
+    }
+    async function campaignPreviewNextSends() {
+      const target = campaignActionTarget();
+      if (target) target.innerHTML = "<strong>Checking who is due...</strong> Nothing is released or sent by looking.";
+      if (!campaignCommandView) await loadCampaignCommand();
+      const view = campaignCommandView;
+      if (!view) { if (target) target.innerHTML = "<strong>Could not read the campaign.</strong> Refresh the campaign controls."; return; }
+      const next = (view.waves || []).find(function(w){ return !w.released; });
+      if (target) target.innerHTML = "<strong>" + esc(String(view.dueNowPlain || "No due-send reading is available.")) + "</strong><br>" + (next
+        ? esc(String(next.plain || ("Wave " + next.wave))) + "<div class=\\"card-actions\\"><button class=\\"primary\\" type=\\"button\\" onclick=\\"campaignWavePreview(" + Number(next.wave) + ")\\">See exactly who wave " + esc(String(next.wave)) + " would line up</button></div>"
+        : "Every wave in the plan is already released, so there is no new wave to line up.");
+      toast("Read-only look. Nothing was released or sent.");
     }
     async function campaignWavePreview(wave) {
       const target = campaignActionTarget();
@@ -18571,11 +18672,6 @@ function htmlShell() {
         "<br><div class=\\"card-actions\\"><button class=\\"primary\\" type=\\"button\\" onclick=\\"campaignResumeExecute('" + esc(String(result.approvalId)) + "')\\">Run approved resume</button> <button type=\\"button\\" onclick=\\"location.hash='queue'\\">Open Queue</button></div>";
       toast("Sent to Queue. Still paused until you approve and run it.");
     }
-    // Owner Run/Stop switch for reactivation sending (POST /api/reactivation/live-mode).
-    // Run is two-step (explicit confirm button); Stop is immediate because it reduces risk.
-    // Neither sends an email here: the hourly heartbeat is the only send path, and it still
-    // enforces the weekday 8am-5pm ET window, per-hour and per-day caps, suppression, wave
-    // release, and the auto-pause safety thresholds.
     function reactivationRunCampaignConfirm() {
       const target = campaignActionTarget();
       if (target) target.innerHTML = "<strong>Run the reactivation campaign?</strong>" +
@@ -18613,7 +18709,6 @@ function htmlShell() {
       loadCampaignCommand();
       toast(String(result.headline || "Campaign resumed."));
     }
-    // ---- Campaign brain (Phase 18E): outreach lanes, held release, deliverability ----
     let campaignBrainHeldRows = [];
     async function loadCampaignBrain() {
       const target = document.getElementById("campaign-brain-result");
@@ -18698,6 +18793,8 @@ function htmlShell() {
     window.loadCampaignBrain = loadCampaignBrain;
     window.heldReleaseConfirm = heldReleaseConfirm;
     window.loadCampaignCommand = loadCampaignCommand;
+    window.autoLoadCampaignCommand = autoLoadCampaignCommand;
+    window.campaignPreviewNextSends = campaignPreviewNextSends;
     window.campaignWavePreview = campaignWavePreview;
     window.campaignWavePropose = campaignWavePropose;
     window.campaignWaveExecute = campaignWaveExecute;
@@ -18708,8 +18805,6 @@ function htmlShell() {
     window.reactivationStopCampaign = reactivationStopCampaign;
     window.reactivationLiveModeApply = reactivationLiveModeApply;
 
-    // Consumer / Expungement.ai list import — real preview + confirm against the internal endpoints.
-    // Preview never writes; confirm stages contacts into reactivationContacts. Nothing sends.
     let consumerImportPending = null;
     async function consumerListImportPreview(file, sourceNote) {
       const target = document.getElementById("operator-upload-result");
@@ -18787,8 +18882,6 @@ function htmlShell() {
     window.consumerListImportConfirm = consumerListImportConfirm;
     window.consumerListImportCancel = consumerListImportCancel;
 
-    // Expungement.ai lifecycle sync — ingest-only preview + confirm. Nothing sends; campaign-eligible
-    // contacts are held for review; deleted/unsubscribed people are excluded from campaign staging.
     let expungementSyncPending = null;
     function expungementSyncPreviewSubmit(event) {
       event.preventDefault();
@@ -25822,9 +25915,6 @@ function htmlShell() {
       return (safetyPosture && safetyPosture.email && safetyPosture.email.detail)
         || "Gate state not loaded yet — treat email sending as unverified, not off.";
     }
-    // B2 outreach automation posture (autopilot + OUTREACH_LIVE_SEND), from the same server
-    // derivation. The RCAP status line used to hardcode "Off" here; that literal would have
-    // kept saying Off after the real gates flipped.
     function outreachAutomationLabel() {
       const o = safetyPosture && safetyPosture.email && safetyPosture.email.outreach;
       if (!o) return "Outreach automation: Unverified";
@@ -27217,15 +27307,16 @@ function htmlShell() {
         <div class="panel hero-panel"><div><div class="eyebrow">Review-only control surface</div><h1 class="big-title">Campaigns</h1><p class="muted">RCAP outreach, RCAP prospect lists, consumer reactivation, consumer waves, and social/content campaigns. No campaign will send without approval and live-send gates.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='queue'">Prepare approval items</button><button onclick="location.hash='upload'">Upload a list</button></div></div>
         <div class="campaign-safety-lines"><span>\${gates ? "Live gates need review" : "Sending is off"}</span><span>Dry run only</span><span>Waiting for approval</span><span>Suppressed contacts will not receive email</span><span>No campaign sends directly</span></div>
         <div class="campaign-preview-metrics">\${[[summary.total,"campaign/list rows"],[summary.waiting,"waiting for approval"],[summary.ready,"ready to approve"],[summary.scheduled,"scheduled/due"],[summary.blocked,"paused/blocked"]].map(([value,label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
-        <section class="growth-card">
+        <section class="growth-card" data-reactivation-control-surface>
           <div class="growth-card-head"><h2>Reactivation campaign controls</h2><small>Preview → approve on the Queue → run → monitor → stop. No shell commands needed.</small></div>
           <p class="muted">See exactly who would be lined up, which email they start with, when it would go, what is blocked, and what approval does and does not do. Releasing a wave never turns sending on; sending only starts when you press Run Reactivation Campaign below. This page controls the consumer reactivation campaign only — B2 partner outreach and social posting are separate and are not changed here.</p>
           <div class="card-actions">
-            <button class="primary" type="button" onclick="loadCampaignCommand()">Load campaign controls</button>
+            <button class="primary" type="button" onclick="loadCampaignCommand()">Refresh campaign controls</button>
+            <button type="button" onclick="campaignPreviewNextSends()">Preview next sends</button>
             <label class="inline-filter">Internal planning date (optional) — this does not schedule sending<input type="date" id="campaign-release-date"></label>
             <label class="inline-filter">Pause reason (optional)<input type="text" id="campaign-pause-reason" placeholder="e.g. reviewing bounce numbers"></label>
           </div>
-          <div id="campaign-command-result" class="campaign-import-status">Load the campaign controls to see status, waves, safety limits, and delivery feedback. Read-only until you approve something on the Queue.</div>
+          <div id="campaign-command-result" class="campaign-import-status">Loading status, waves, safety limits, and delivery feedback. Read-only until you approve something on the Queue.</div>
           <div id="campaign-command-action" class="campaign-import-status" style="display:none"></div>
         </section>
         <section class="growth-card">
@@ -27817,8 +27908,6 @@ function htmlShell() {
       </article>\`;
     }
 
-    // ---- Cockpit (ck-) helpers: number formatting, campaign math, and chart builders. ----
-    // Every figure comes from todaySummary or campaignCommandView; nothing is fabricated.
     function ckNum(n) { return Number(n || 0).toLocaleString("en-US"); }
     function ckPct(fraction, digits = 1) { return (Number(fraction || 0) * 100).toFixed(digits) + "%"; }
     function ckCampaignView() { return campaignCommandView && campaignCommandView.ok ? campaignCommandView : null; }
@@ -27846,8 +27935,6 @@ function htmlShell() {
       const label = cls === "flat" ? "steady" : arrow + (diff > 0 ? "+" : "") + diff.toFixed(1) + " pt";
       return \`<span class="ck-delta \${cls}">\${label}</span><span class="vs">\${esc(vsLabel)}</span>\`;
     }
-    // Company-wide opening summary: revenue and product activity first, decisions next,
-    // campaign safety and deploy state as one closing clause. Honest about missing sources.
     function ckSummaryLineHtml(v, needsRogerCount) {
       if (!todaySummary) return '<p class="ck-sub">Your summary is loading. Numbers appear only from connected sources.</p>';
       const gm = todaySummary.goodMorning || {};
@@ -27912,8 +27999,6 @@ function htmlShell() {
         : '<span class="ck-pill navy">Campaign safe</span>');
       return \`<div class="ck-pills">\${pills.join("")}</div>\`;
     }
-    // The company scoreboard: the primary numbers of the business, above any campaign module.
-    // Source-aware: "Not wired yet" when a source is not connected; honest zeros when it is.
     function ckScoreCardHtml(label, icon, connected, valueHtml, subText) {
       return \`<div class="ck-card ck-kpi ck-score">
         <div class="top"><span class="label">\${esc(label)}</span><span class="ico">\${CK_ICONS[icon] || ""}</span></div>
@@ -28440,9 +28525,6 @@ function htmlShell() {
         <div class="ck-linkbtns"><button class="ck-linkbtn" type="button" onclick="location.hash='app-status'">Open App Status</button></div>\`;
     }
 
-    // Campaign visibility is one operating lane, not the scoreboard: a compact safety module
-    // by default, with the full analytics behind "View campaign details". Real campaign risk
-    // opens the details by default, but Roger's own toggle always wins over the default.
     let ckCampaignDetailsOverride = null;
     function ckCampaignDetailsShown(v) {
       const view = v === undefined ? ckCampaignView() : v;
@@ -28501,8 +28583,6 @@ function htmlShell() {
         <div class="ck-meter-note">Next: \${esc(v.nextRecommendedAction || "nothing right now.")}</div>
         <div class="ck-linkbtns ck-details-toggle"><button class="ck-linkbtn" type="button" onclick="ckToggleCampaignDetails()">\${detailsShown ? "Hide campaign details" : "View campaign details"}</button></div>\`;
     }
-    // Campaign details is itself a nested dashboard grid: charts are grid cells with
-    // size spans, not hand-built left/right columns.
     function ckCampaignDetailsHtml(v) {
       return \`<div id="ck-campaign-details">
         <div class="ck-sec-head"><h2>Campaign details</h2><span class="hint">Reactivation, all waves combined</span></div>
@@ -31505,6 +31585,7 @@ function htmlShell() {
       currentPageId = pageId;
       document.body.classList.toggle("ck-wash", ["today", "overview"].includes(pageId));
       if (pageId === "decisions" && !companyQueue && !companyQueueLoading) loadDecisionsQueue();
+      if (pageId === "campaigns") autoLoadCampaignCommand();
       const canonicalHash = artifactRef ? requestedPage : pageId === "overview" ? "today" : pageId === "partner-hub" ? "partners" : pageId;
       if (location.hash !== "#" + canonicalHash && !pathRoute) history.replaceState(null, "", "#" + canonicalHash);
       if (pageId === "safe-mode") {

@@ -60,7 +60,9 @@ function compactCount(value) {
 }
 
 function compactCampaign(view) {
-  const href = view.source.kind === "canonical"
+  // A label-merged reactivation campaign keeps the canonical row's exact link, so the row
+  // Roger clicks is the same URL that existed before the merge.
+  const href = view.source.kind === "canonical" || view.canonicalSource
     ? view.exactSafeSourceLink
     : `#outreach/campaign/${encodeURIComponent(view.stableIdentity)}`;
   return {
