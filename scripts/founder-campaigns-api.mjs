@@ -19,6 +19,7 @@ export const FOUNDER_CAMPAIGNS_ENDPOINT = "/api/ui/campaigns";
 // Exactly what buildFounderCampaignsView and buildCampaignCommandView read, and nothing else.
 export const FOUNDER_CAMPAIGNS_READ_COLLECTIONS = Object.freeze([
   "approvalQueue",
+  "pressPlacements",
   "autopilotSettings",
   "outreachContacts",
   "outreachReplies",
@@ -61,7 +62,9 @@ export async function handleFounderCampaignsApiRequest({
   store,
   actor = {},
   now = new Date().toISOString(),
-  env = {}
+  env = {},
+  // FOUNDER_OS_PRESS. Off, the Press lane keeps its honest not-built state.
+  pressEnabled = false
 } = {}) {
   if (!isFounderCampaignsApiPath(pathname)) return { matched:false };
   if (!enabled) {
@@ -90,7 +93,7 @@ export async function handleFounderCampaignsApiRequest({
       throw apiError("Campaigns are temporarily unavailable.", 503, "unavailable");
     }
     const state = await store.readCollections(FOUNDER_CAMPAIGNS_READ_COLLECTIONS);
-    const view = buildFounderCampaignsView(state, { env, now:new Date(now) });
+    const view = buildFounderCampaignsView(state, { env, now:new Date(now), pressEnabled });
     return { matched:true, status:200, body:{ ok:true, generatedAt:clean(now), ...view } };
   } catch (error) {
     const status = safeStatus(error);

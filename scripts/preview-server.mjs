@@ -257,6 +257,7 @@ import {
   FOUNDER_OS_ADVANCED_ROUTES,
   readFounderOsCampaignsConfig,
   readFounderOsLeePanelConfig,
+  readFounderOsPressConfig,
   readFounderOsRelationshipsConfig,
   readFounderOsScoreboardConfig,
   readFounderOsShellConfig,
@@ -295,6 +296,7 @@ const founderOsShellConfig = readFounderOsShellConfig(process.env);
 const founderOsTodayConfig = readFounderOsTodayConfig(process.env);
 const founderOsRelationshipsConfig = readFounderOsRelationshipsConfig(process.env);
 const founderOsCampaignsConfig = readFounderOsCampaignsConfig(process.env);
+const founderOsPressConfig = readFounderOsPressConfig(process.env);
 const founderOsScoreboardConfig = readFounderOsScoreboardConfig(process.env);
 const founderOsLeePanelConfig = readFounderOsLeePanelConfig(process.env);
 const globalCreateKindsByPath = Object.freeze(Object.fromEntries(
@@ -36416,7 +36418,8 @@ async function handleRequest(request, response) {
       store,
       actor:publicActor(accessDecision.actor),
       now:new Date().toISOString(),
-      env:process.env
+      env:process.env,
+      pressEnabled:founderOsPressConfig.enabled
     });
     sendJson(response, result.body || { ok:false, message:"Campaigns are unavailable." }, result.status || 404);
     return;

@@ -165,6 +165,11 @@ const coreStateCollections = [
   // Phase 1 — Company Memory (company-memory.mjs). Projections + direct engine emits;
   // domain collections stay authoritative. Registered here or Supabase silently drops them.
   "queueItems",
+  // Founder OS Release 8 — the Press lane. Registered here at the same time as the code that
+  // writes them: an unregistered collection writes fine on local JSON and silently vanishes on
+  // Supabase, which is the trap recorded against settings and reactivationContacts.
+  "pressPlacements",
+  "pressOutletRoutes",
   "companyContacts",
   "companyOrganizations",
   "companyEvents",
