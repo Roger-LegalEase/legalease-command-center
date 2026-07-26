@@ -64,7 +64,7 @@ Each with its enforcement reference from `evidence/safety-gates.md`:
 | Volume caps | `capCheck` — daily / per-domain / per-classification (`scripts/outreach-os.mjs:495–503`); reactivation `perWaveDayCap: 1400` (`scripts/reactivation-os.mjs:210,646`) |
 | Durable send claims | Atomic insert on `outreachSendClaims` / `reactivationSendClaims` before any live send; missing claim path fails closed (`scripts/outreach-os.mjs:709–765`; `scripts/reactivation-os.mjs:804–848`); append-only (`scripts/storage.mjs:231`) |
 | Threshold auto-pause | hard_bounce 2% / spam 0.1% / unsubscribe 2.5% defaults; trip pauses before sending (`scripts/reactivation-os.mjs:226,449–461,733–737`) |
-| Manual production deployment | `render.yaml:9,83` `autoDeploy: false`; `scripts/prod-commit-gate.mjs` ancestor rule, non-zero exit on failure (`:28–60,108`) |
+| **Gated production deployment** (amended 2026-07-26, see below) | Branch protection requires seven green checks on main; Render deploys production only after CI passes; `.github/workflows/post-deploy-verification.yml` verifies the deployed commit against live production; verification failure opens and labels an automatic revert and fails loudly. `scripts/prod-commit-gate.mjs` ancestor rule remains (`:28–60,108`) |
 | Provider signature verification | SendGrid webhook ECDSA verification, fail-closed (`scripts/sendgrid-webhook.mjs:56–85`; 401 at `scripts/preview-server.mjs:38362–38366`) |
 | No secret exposure | `scripts/test-secret-exposure.mjs:39,42` — no secret env values or names in browser payloads or outbound HTML |
 | Content gates | `socialGuidelinesGate` throws on approve/schedule, 400 on direct approve (`scripts/preview-server.mjs:2871–2874,5379–5382,41425–41432`); `renderQaForGeneratedImage` blocks QA-failed images from approval (`:12096–12108,41437–41439`) |
@@ -102,3 +102,80 @@ Known inherited defect the invariant must not replicate: the manual Publish Now 
 skips `livePostingEnabledForChannel` (`evidence/publish-now-gate-review.md`). Any new
 Campaigns surface exposing Publish Now must enforce that gate; closing the gap on the
 existing route is a documented Release 1 precondition in `08_DELIVERY_PLAN.md`.
+
+---
+
+# Amendment — 2026-07-26: manual production deployment is retired, not violated
+
+**Authorization.** Roger enabled Render's "After CI Checks Pass" auto-deploy deliberately, and
+confirmed the policy change on 2026-07-25 when he replaced the two-hour soak gate with the
+same-moment release gate. This amendment records that decision rather than reporting a breach.
+
+## What changed and why
+
+The protection this contract previously named was *"Manual production deployment — `render.yaml`
+`autoDeploy: false`"*. Production has deployed automatically after CI six times on 2026-07-26
+alone, each occurrence observed through a `post-deploy-verification.yml` run and a live
+`GET /api/version`. The old line described a control that is no longer in force.
+
+**The protection genuinely in force is a chain, not a human gate:**
+
+1. **Branch protection** — seven required checks (`check`, `extended`, `browser`, `canonical`,
+   `security`, `privacy-and-migrations`, `Phase 8 / production verification`) must be green before
+   anything reaches main. Nothing merges red and main is never force-pushed.
+2. **CI-gated deploy** — Render deploys only after CI passes on main, so a red build never
+   becomes a deploy.
+3. **Post-deploy verification** — `post-deploy-verification.yml` polls until the deployed commit
+   matches the merged sha, then asserts `supabaseState: "connected"`, `authProtected`,
+   `noSecretsExposed`, health `ok`, and that every primary route serves the shell.
+4. **Automatic revert** — verification failure opens a revert pull request, labels it
+   `auto-revert`, and fails loudly so the run stops. See
+   `execution/lessons/auto-revert-needs-a-non-default-token.md` for why it may need one click.
+5. **The release gate** — `scripts/founder-os-release-gate.mjs` refuses the next release unless
+   the previous one's verification concluded `success` **and** that commit is still what
+   production is serving with Supabase connected.
+
+This is a different protection from the one the document named, and it is stronger in one
+specific way: a human clicking Deploy proves only that a human clicked. The chain above proves
+the deployed commit is the reviewed commit, that it is healthy, and that it is still healthy
+before anything else lands on top of it.
+
+## `render.yaml` was NOT changed, and this is why
+
+The instruction was to make `render.yaml` match reality **unless applying the blueprint could
+itself flip the dashboard setting**, in which case stop. It could, and there is a second problem
+that makes the edit wrong regardless. Read-only evidence from the Render API on 2026-07-26:
+
+| Service | Type | Live `autoDeploy` | Named in `render.yaml`? |
+|---|---|---|---|
+| `legalease-command-center-prod` | web | **yes** | **No** |
+| `legalease-command-center` | web | no | Yes, as `autoDeploy: false` |
+| `legalease-heartbeat` | cron | **yes** | Yes, as `autoDeploy: false` |
+
+Three findings:
+
+1. **The blueprint does not describe production.** Its web service is
+   `legalease-command-center`; production is `legalease-command-center-prod`. Editing the
+   blueprint's `autoDeploy` would change a *stale, unwatched service*, not production — while
+   appearing in the diff as though it corrected production.
+2. **The blueprint has already drifted for a service it does name.** `legalease-heartbeat` is
+   declared `autoDeploy: false` and is live as `yes`. The dashboard has diverged, which is
+   evidence the blueprint is not being continuously synced — and equally that a future manual
+   re-apply *could* push blueprint values onto services.
+3. **No blueprint value can express what production actually does.** Render's `autoDeploy` is a
+   boolean. "After CI Checks Pass" is a dashboard-level trigger with no `render.yaml`
+   equivalent. Writing `autoDeploy: true` would not record reality; it would assert *deploy on
+   every push*, which is strictly less safe than what is configured. If a blueprint re-apply ever
+   synced that value, it could silently remove the CI gate before deploy.
+
+So `render.yaml` cannot be made to match reality — only to be differently wrong, in a direction
+that risks weakening the very control this amendment documents. **It is left untouched and the
+discrepancy is recorded here instead.** Two options for Roger, neither taken by this run because
+both are environment changes:
+
+- Remove the production service from blueprint management entirely, so `render.yaml` stops
+  implying it governs production; or
+- Keep the blueprint as the non-production service's definition and add a comment in
+  `render.yaml` saying so explicitly.
+
+The heartbeat cron's `autoDeploy` drift is a third, separate item worth a decision.
