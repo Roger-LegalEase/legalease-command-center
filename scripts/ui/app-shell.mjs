@@ -17,6 +17,7 @@ import { shellResilienceBrowserSource } from "./shell-resilience.mjs";
 import { inboxActionBrowserSource } from "./inbox-action-ui.mjs";
 import { LEE_INBOX_PANEL_STYLESHEET_PATH, leeInboxPanelBrowserSource } from "./lee-inbox-panel.mjs";
 import { TASK_WORKBENCH_STYLESHEET_PATH, taskWorkbenchBrowserSource } from "./task-workbench.mjs";
+import { prospectWorkbenchBrowserSource } from "./pages/prospect-workbench.mjs";
 import {
   COMMUNICATION_COMPOSER_LAYOUT_STYLESHEET_PATH,
   COMMUNICATION_COMPOSER_STYLESHEET_PATH,
@@ -165,6 +166,16 @@ const VNEXT_LAZY_ASSETS = Object.freeze({
     source:founderLeePanelBrowserSource,
     api:"__LE_FOUNDER_LEE_PANEL",
     founderOsLeePanelOnly:true
+  }),
+  // 2026-07-26: the prospect bulk-approval workbench. Lazy for the same reason as every runtime
+  // above — the legacy #prospects page ships only a container and a loader, so 313 pending
+  // organisations can be reviewed and decided without the initial payload paying for it. No
+  // flag gate: partner outreach approval is core, and the decision endpoints behind it carry
+  // their own approve-permission and owner guards.
+  "prospect-workbench":Object.freeze({
+    styles:Object.freeze([]),
+    source:prospectWorkbenchBrowserSource,
+    api:"__LE_PROSPECT_WORKBENCH"
   })
 });
 

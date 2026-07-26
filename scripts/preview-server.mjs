@@ -27422,138 +27422,29 @@ function htmlShell() {
       </section>\`;
     }
 
-    // ---- Prospect bulk approval workbench (2026-07-26) ---------------------------------------
-    // 313 pending organisations were unapprovable one-at-a-time (and the old page had no approve
-    // control at all). This surface: filter to a selection, review the ranked list, remove
-    // individuals by unchecking, approve or reject the whole selection in ONE confirmed action.
-    // The confirm dialog names the exact organisation count and the exact contactable count.
-    // Authorization is unchanged: the same /api/prospects/approve endpoint, pending-only, the
-    // engine still cannot write "approved", and approval alone makes nobody contactable.
-    const prospectWork = { segment: "", source: "", minScore: "", q: "" };
-
-    function prospectPendingRows() {
-      const rows = list(state.prospectCandidates)
-        .filter(c => String(c.review_state || "").toLowerCase() === "pending_review")
-        .map(c => ({
-          id: String(c.id || ""),
-          name: String(c.organization_name || ""),
-          segment: String(c.classification || "").toLowerCase(),
-          score: Number(c.score || 0),
-          source: String(c.source || "").toLowerCase(),
-          city: String(c.city || ""),
-          state: String(c.state || ""),
-          ntee: String(c.ntee_label || ""),
-          hasEmail: Boolean(String(c.email || "").trim()),
-          duplicate: c.is_duplicate === true
-        }));
-      rows.sort((a, b) => (b.score - a.score) || a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-      const q = prospectWork.q.toLowerCase();
-      return rows.filter(r =>
-        (!prospectWork.segment || r.segment === prospectWork.segment)
-        && (!prospectWork.source || r.source === prospectWork.source)
-        && (prospectWork.minScore === "" || r.score >= Number(prospectWork.minScore))
-        && (!q || (r.name + " " + r.city + " " + r.state + " " + r.ntee).toLowerCase().includes(q)));
-    }
-
-    function prospectApplyFilters() {
-      prospectWork.segment = (document.getElementById("prospect-filter-segment") || {}).value || "";
-      prospectWork.source = (document.getElementById("prospect-filter-source") || {}).value || "";
-      prospectWork.minScore = (document.getElementById("prospect-filter-score") || {}).value || "";
-      prospectWork.q = ((document.getElementById("prospect-filter-q") || {}).value || "").trim();
-      render();
-    }
-
-    function prospectClearFilters() {
-      prospectWork.segment = ""; prospectWork.source = ""; prospectWork.minScore = ""; prospectWork.q = "";
-      render();
-    }
-
-    function prospectSelectedIds() {
-      return Array.from(document.querySelectorAll("input[data-prospect-id]:checked"))
-        .map(box => box.getAttribute("data-prospect-id")).filter(Boolean);
-    }
-
-    function prospectUpdateCount() {
-      const ids = prospectSelectedIds();
-      const label = document.getElementById("prospect-selection-count");
-      if (label) label.textContent = ids.length + " of " + document.querySelectorAll("input[data-prospect-id]").length + " shown selected";
-      const approve = document.getElementById("prospect-approve-btn");
-      if (approve) { approve.textContent = "Approve selection (" + ids.length + ")"; approve.disabled = ids.length === 0; }
-      const reject = document.getElementById("prospect-reject-btn");
-      if (reject) { reject.textContent = "Reject selection (" + ids.length + ")"; reject.disabled = ids.length === 0; }
-    }
-
-    function prospectSetAll(checked) {
-      document.querySelectorAll("input[data-prospect-id]").forEach(box => { box.checked = checked; });
-      prospectUpdateCount();
-    }
-
-    async function prospectDecideSelection(decision) {
-      const ids = prospectSelectedIds();
-      if (!ids.length) { toast("Nothing is selected."); return; }
-      const chosen = new Set(ids);
-      const withEmail = prospectPendingRows().filter(r => chosen.has(r.id) && r.hasEmail).length;
-      // The one explicit act. The sentence mirrors describeProspectApproval in
-      // scripts/prospect-selection.mjs: exact counts, and what approval does NOT do.
-      const noun = ids.length === 1 ? "organisation" : "organisations";
-      const message = decision === "approved"
-        ? "Approve " + ids.length + " " + noun + " for partner outreach? "
-          + (withEmail === 0
-            ? "None of them has an email address on file yet, so this makes nobody contactable by itself. "
-            : withEmail + " of them " + (withEmail === 1 ? "has" : "have") + " an email address on file. ")
-          + "Contact discovery, suppression checks, sending windows and every outreach gate still apply before any email exists or sends."
-        : "Reject " + ids.length + " " + noun + "? They leave the ranked list and will not be contacted.";
-      if (!window.confirm(message)) return;
-      await cooAction(async () => {
-        const route = decision === "approved" ? "/api/prospects/approve" : "/api/prospects/reject";
-        const result = await api(route, { method: "POST", body: JSON.stringify({ ids }), timeoutMs: 30000 });
-        const decided = new Set(ids);
-        state.prospectCandidates = list(state.prospectCandidates).map(c => {
-          if (!decided.has(String(c.id)) || String(c.review_state || "").toLowerCase() !== "pending_review") return c;
-          return decision === "approved" ? { ...c, review_state: "approved" } : { ...c, review_state: "rejected" };
-        });
-        const done = Number(decision === "approved" ? result.approved : result.rejected) || 0;
-        toast((decision === "approved" ? "Approved " : "Rejected ") + done + " " + (done === 1 ? "organisation" : "organisations")
-          + (Number(result.skipped) > 0 ? " — " + result.skipped + " already decided elsewhere." : "."));
-        render();
-      }, decision === "approved" ? "Could not approve the selection." : "Could not reject the selection.");
+    // Bulk approval lives in the LAZY prospect-workbench runtime (scripts/ui/pages/
+    // prospect-workbench.mjs) so it costs the initial payload nothing; this loader is all
+    // that ships inline. Mount re-runs after every render because render() replaces the DOM.
+    function prospectWorkbenchMount() {
+      const slot = document.getElementById("prospect-workbench-slot");
+      if (!slot) return;
+      if (window.__LE_PROSPECT_WORKBENCH) { window.__LE_PROSPECT_WORKBENCH.mount(slot); return; }
+      if (prospectWorkbenchMount.loading) return;
+      prospectWorkbenchMount.loading = true;
+      const tag = document.createElement("script");
+      tag.src = "/assets/ui/runtime/prospect-workbench.js";
+      tag.onload = () => { const target = document.getElementById("prospect-workbench-slot"); if (target && window.__LE_PROSPECT_WORKBENCH) window.__LE_PROSPECT_WORKBENCH.mount(target); };
+      document.head.appendChild(tag);
     }
 
     function rcapProspectsPageHtml(pageClass) {
       const candidates = list(state.prospectCandidates);
       const revenueAccounts = list(state.rcapRevenueAccounts);
-      const pendingRows = prospectPendingRows();
-      const allPending = candidates.filter(c => String(c.review_state || "").toLowerCase() === "pending_review").length;
-      const approvedCount = candidates.filter(c => ["approved", "promoted"].includes(String(c.review_state || "").toLowerCase())).length;
-      const segments = Array.from(new Set(candidates.map(c => String(c.classification || "").toLowerCase()).filter(Boolean))).sort();
-      const sources = Array.from(new Set(candidates.map(c => String(c.source || "").toLowerCase()).filter(Boolean))).sort();
-      const filtering = Boolean(prospectWork.segment || prospectWork.source || prospectWork.minScore !== "" || prospectWork.q);
+      setTimeout(prospectWorkbenchMount, 0);
       return \`<section id="prospects" class="\${pageClass("prospects")} command-page section-page lee-bubble-safe-space">
-        <div class="panel hero-panel"><div><div class="eyebrow">RCAP pipeline</div><h1 class="big-title">RCAP Prospects</h1><p class="muted">The ranked list. Filter to a selection, uncheck anyone you want out, then approve the whole selection in one confirmed step. Approval promotes organisations toward partner outreach — it does not send anything, and every outreach gate still applies.</p></div><div class="card-actions"><button onclick="location.hash='upload'">Upload RCAP prospect list</button><button onclick="location.hash='production-activation-rcap'">Open RCAP review</button></div></div>
-        <div class="campaign-preview-metrics">\${[[allPending,"pending review"],[approvedCount,"approved"],[candidates.length,"prospect candidates"],[revenueAccounts.length,"revenue accounts"]].map(([value,label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
-        <section class="growth-card">
-          <div class="growth-card-head"><h2>Build a selection</h2><small>\${esc(String(pendingRows.length))} of \${esc(String(allPending))} pending shown\${filtering ? " (filtered)" : ""}</small></div>
-          <div class="card-actions" style="flex-wrap:wrap;gap:8px;align-items:flex-end">
-            <label>Segment <select id="prospect-filter-segment">\${["<option value=\\"\\">All segments</option>"].concat(segments.map(s => \`<option value="\${esc(s)}" \${prospectWork.segment === s ? "selected" : ""}>\${esc(s)}</option>\`)).join("")}</select></label>
-            <label>Source <select id="prospect-filter-source">\${["<option value=\\"\\">All sources</option>"].concat(sources.map(s => \`<option value="\${esc(s)}" \${prospectWork.source === s ? "selected" : ""}>\${esc(s)}</option>\`)).join("")}</select></label>
-            <label>Min score <input id="prospect-filter-score" type="number" inputmode="numeric" style="width:90px" value="\${esc(String(prospectWork.minScore))}"></label>
-            <label>Search <input id="prospect-filter-q" type="search" placeholder="Name, city, state, NTEE" value="\${esc(prospectWork.q)}"></label>
-            <button class="primary" onclick="prospectApplyFilters()">Apply filters</button>
-            <button onclick="prospectClearFilters()">Clear</button>
-          </div>
-        </section>
-        <section class="growth-card">
-          <div class="growth-card-head"><h2>Review and decide</h2><small id="prospect-selection-count">0 of \${esc(String(pendingRows.length))} shown selected</small></div>
-          <div class="card-actions" style="gap:8px">
-            <button onclick="prospectSetAll(true)">Select all shown</button>
-            <button onclick="prospectSetAll(false)">Select none</button>
-            <button class="primary" id="prospect-approve-btn" disabled onclick="prospectDecideSelection('approved')">Approve selection (0)</button>
-            <button id="prospect-reject-btn" disabled onclick="prospectDecideSelection('rejected')">Reject selection (0)</button>
-          </div>
-          \${pendingRows.length === 0
-            ? \`<p class="muted">\${filtering ? "No pending organisations match these filters." : "Nothing is pending review."}</p>\`
-            : \`<div class="support-status-list">\${pendingRows.map(row => \`<div class="support-status-row" style="align-items:center"><label style="display:flex;gap:10px;align-items:center;flex:1;min-width:0"><input type="checkbox" data-prospect-id="\${esc(row.id)}" onchange="prospectUpdateCount()"><span style="min-width:0"><strong>\${esc(row.name)}</strong> <span class="muted">score \${esc(String(row.score))} · \${esc(row.segment || "unclassified")} · \${esc(row.source)}\${row.city || row.state ? " · " + esc([row.city, row.state].filter(Boolean).join(", ")) : ""}\${row.ntee ? " · " + esc(row.ntee) : ""}</span>\${row.hasEmail ? "" : " <span class=\\"badge info\\">no email yet</span>"}\${row.duplicate ? " <span class=\\"badge warn\\">possible duplicate</span>" : ""}</span></label></div>\`).join("")}</div>\`}
-        </section>
+        <div class="panel hero-panel"><div><div class="eyebrow">RCAP pipeline</div><h1 class="big-title">RCAP Prospects</h1><p class="muted">The ranked list. Filter to a selection, uncheck anyone you want out, then approve the whole selection in one confirmed step. Approval does not send anything; every outreach gate still applies.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='upload'">Upload RCAP prospect list</button><button onclick="location.hash='production-activation-rcap'">Open RCAP review</button></div></div>
+        <div class="campaign-preview-metrics">\${[[candidates.length,"prospect candidates"],[revenueAccounts.length,"revenue accounts"],[candidates.filter(c => /pending|review/i.test(String(c.status || c.review_state || "pending_review"))).length,"needs review"],[candidates.filter(c => /approved|ready/i.test(String(c.status || c.review_state))).length,"ready"]].map(([value,label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
+        <div id="prospect-workbench-slot"><p class="muted">Loading the ranked list…</p></div>
       </section>\`;
     }
 

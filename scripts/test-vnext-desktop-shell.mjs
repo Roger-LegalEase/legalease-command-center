@@ -93,7 +93,10 @@ assert.equal(VNEXT_LAZY_RUNTIME_MAX_BYTES, 64 * 1024);
 // Thirteen since Founder OS Release 7 added the Scoreboard KPI registry and the Le-E side panel,
 // both lazy so they cost the initial client-JavaScript budget nothing. The exact count stays
 // pinned: a runtime added without a deliberate decision still fails here.
-assert.equal(VNEXT_LAZY_ASSET_CONTRACT.runtimeIds.length, 13, "The thirteen Founder-only browser runtimes must be route-loaded.");
+// Fourteen since 2026-07-26 added the prospect bulk-approval workbench — lazy for the same
+// reason (the #prospects loader is all that ships inline), and the deliberate decision this pin
+// exists to force is Roger's outreach-priority call of the same date.
+assert.equal(VNEXT_LAZY_ASSET_CONTRACT.runtimeIds.length, 14, "The fourteen Founder-only browser runtimes must be route-loaded.");
 for (const id of ["founder-campaigns", "founder-scoreboard-registry", "founder-lee-panel"]) {
   assert.ok(VNEXT_LAZY_ASSET_CONTRACT.runtimeIds.includes(id), `${id} must be a lazy runtime, never inline.`);
 }
@@ -229,7 +232,13 @@ const legacyShellHash = createHash("sha256").update(serverSource.slice(shellStar
 // that emit a short pointer into Today when FOUNDER_OS_TODAY is on and their original source
 // when it is off. With the flag off the shell is byte-identical to Release 1 (measured:
 // 1,647,552 inline client bytes in both states). Behaviour: tests/browser/founder-os-release-2.spec.mjs.
-assert.equal(legacyShellHash, "d77dabc8cfb7628af40982a8098088eee30305910ed23d766a664da76a1f40a0", "Flag-off htmlShell output must remain unchanged.");
+// Re-pinned 2026-07-26 (outreach priority: prospect bulk approval). The legacy shell changed
+// in exactly one reviewed way: the #prospects page swapped its metrics-only body for a
+// container plus a loader that fetches the LAZY prospect-workbench runtime (scripts/ui/pages/
+// prospect-workbench.mjs), keeping the bulk-approval surface out of the initial client payload
+// (measured after: 1,647,021 inline client bytes, budget 1,650,000). Behaviour is asserted by
+// scripts/test-prospect-bulk-approval.mjs.
+assert.equal(legacyShellHash, "781f465153a77b75833d2eb6e7c5bffb267bbf4fd64f5b5ce8922601b5a0b28e", "Flag-off htmlShell output must remain unchanged.");
 
 assert.equal(packageJson.scripts["test:vnext-desktop-shell"], "node scripts/test-vnext-desktop-shell.mjs");
 assert.match(readFileSync("scripts/run-extended-tests.mjs", "utf8"), /f\.startsWith\("test-"\) && f\.endsWith\("\.mjs"\)/);

@@ -178,26 +178,35 @@ check("the confirmation sentence names exact counts and what approval does NOT d
 });
 
 check("the surface wires one explicit confirmation and the reviewed-ids contract", () => {
-  const source = readFileSync(new URL("./preview-server.mjs", import.meta.url), "utf8");
+  // The workbench is a LAZY runtime (initial-payload budget), so the interaction contract lives
+  // in its source; the server file carries the loader and the endpoints.
+  const runtime = readFileSync(new URL("./ui/pages/prospect-workbench.mjs", import.meta.url), "utf8");
   // The bulk decision goes through window.confirm with the exact-count sentence...
-  assert.ok(source.includes("if (!window.confirm(message)) return;"),
+  assert.ok(runtime.includes("if(!window.confirm(message))return;"),
     "the decision must be gated on one explicit confirmation");
-  assert.ok(source.includes("makes nobody contactable by itself"),
+  assert.ok(runtime.includes("makes nobody contactable by itself"),
     "the confirmation must carry the honest contactable count");
   // ...the POST sends the explicit reviewed id list, never a filter...
-  assert.ok(source.includes('await api(route, { method: "POST", body: JSON.stringify({ ids })'),
-    "approval must post the exact reviewed ids");
-  assert.ok(!/api\/prospects\/approve[^\n]*filter/.test(source),
-    "no approval call may pass a filter to be re-evaluated server-side");
-  // ...rows are individually removable and the count is shown before confirming...
-  assert.ok(source.includes('data-prospect-id="${esc(row.id)}"') || source.includes("data-prospect-id"),
-    "each row must be individually checkable");
-  assert.ok(source.includes('id="prospect-selection-count"'), "the live selection count must be visible");
-  // ...and the server endpoints run the same tested module.
-  assert.ok(source.includes("applyBulkProspectDecision(serverList(currentState.prospectCandidates), ids"),
+  assert.ok(runtime.includes("body:JSON.stringify({ids})"),
+    "the decision must post the exact reviewed ids");
+  assert.ok(!runtime.includes("JSON.stringify({filter") && !runtime.includes("JSON.stringify(filters)"),
+    "no decision call may pass a filter to be re-evaluated server-side");
+  // ...rows are individually removable and the count is shown before confirming.
+  assert.ok(runtime.includes("data-prospect-id"), "each row must be individually checkable");
+  assert.ok(runtime.includes("data-prospect-count"), "the live selection count must be visible");
+
+  const server = readFileSync(new URL("./preview-server.mjs", import.meta.url), "utf8");
+  // The endpoints run the same tested module...
+  assert.ok(server.includes("applyBulkProspectDecision(serverList(currentState.prospectCandidates), ids"),
     "both endpoints must apply decisions through the shared tested module");
-  assert.ok(source.includes("selectPendingProspects(currentState"),
+  assert.ok(server.includes("selectPendingProspects(currentState"),
     "the read-only selection endpoint must use the shared module");
+  // ...and the #prospects page loads the workbench runtime instead of an inline copy.
+  assert.ok(server.includes("/assets/ui/runtime/prospect-workbench.js"),
+    "the page must load the lazy workbench runtime");
+
+  const shell = readFileSync(new URL("./ui/app-shell.mjs", import.meta.url), "utf8");
+  assert.ok(shell.includes('"prospect-workbench"'), "the runtime must be registered as a lazy asset");
 });
 
 console.log(`Prospect bulk approval: ${checks.length} checks passed.`);
