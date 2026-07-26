@@ -1,0 +1,20 @@
+/* Founder OS Release 7 — the KPI registry on the Scoreboard.
+   Layout only; colour comes from the shared token stylesheet so contrast stays audited. */
+.kpi-registry { display: grid; gap: var(--le-space-4, 1rem); }
+.kpi-group { border-top: 1px solid var(--le-border-subtle, #d6dae2); padding-top: var(--le-space-3, 0.75rem); }
+.kpi-cards { display: grid; gap: var(--le-space-3, 0.75rem); grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
+.kpi-card { border: 1px solid var(--le-border-subtle, #d6dae2); border-radius: 12px; padding: var(--le-space-3, 0.75rem); }
+.kpi-card header { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.kpi-card h4 { margin: 0; font-size: 0.95rem; }
+.kpi-status { font-size: 0.75rem; white-space: nowrap; }
+.kpi-card[data-kpi-status="needs_attention"] { border-color: var(--le-danger-600, #a11b2b); }
+.kpi-definition { margin: 0.35rem 0 0; font-size: 0.8rem; }
+.kpi-value { margin: 0.5rem 0 0; font-size: 1.4rem; font-weight: 600; }
+.kpi-fields { display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 0.6rem; margin: 0.6rem 0 0; font-size: 0.8rem; }
+.kpi-fields dt { font-weight: 600; }
+.kpi-fields dd { margin: 0; }
+.kpi-target.is-absent, .kpi-variance.is-absent { opacity: 0.75; }
+.kpi-variance { display: inline-block; margin-right: 0.5rem; }
+.kpi-derived, .kpi-action { margin: 0.5rem 0 0; font-size: 0.8rem; }
+.kpi-exceptions ul, .kpi-platform { margin: 0.35rem 0 0; padding-left: 1.1rem; }
+@media (max-width: 860px) { .kpi-cards { grid-template-columns: 1fr; } }

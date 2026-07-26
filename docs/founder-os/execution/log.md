@@ -724,3 +724,108 @@ amend the contract, the blueprint, or the setting.
 - **Auto-merge is disabled repository-wide.** `gh pr merge --auto --squash` returns
   `enablePullRequestAutoMerge`. Merges now use `--squash` only after the release gate passes and
   all seven checks are green, which satisfies the same condition but is not fire-and-forget.
+
+---
+
+## Production verification limits — what this run can and cannot confirm
+
+**Recorded 2026-07-26. This bounds every claim in every release report from here on.**
+
+The owner token in `.env.local` returns **401** against production `POST /api/login`. It was never
+set there (an older note in the run's memory says as much). Roger's instruction: do not attempt
+other credentials against production. So this run's machine verification of production is limited
+to **unauthenticated endpoints only**.
+
+### What CAN be machine-verified against production
+
+- `GET /api/version` — deployed commit, `supabaseState`, `supabaseConnected`, `authStoreConnected`,
+  `authProtected`, `liveGatesCount`, `noSecretsExposed`.
+- `GET /api/health` — status.
+- That `/` and every primary workspace route return 200 and serve the app shell. These are hash
+  routes, so the server returns the same shell for all of them; this proves routing and delivery,
+  **not** that any workspace rendered.
+- Post-deploy verification runs and their `POST_DEPLOY_EVIDENCE`, and the release gate.
+
+### What CANNOT be machine-verified, and depends on Roger looking
+
+Everything behind authentication, which is every founder surface:
+
+- The Scoreboard projection and which metrics show Live / Manual / Unavailable **in production**.
+- The Campaigns workspace and its lifecycle lanes.
+- Relationships, Today's five sections, and Le-E.
+- Any flag's real effect. A flag flip does not change the commit `/api/version` reports, so even
+  the flag STATE is unobservable from here.
+
+### The rule this imposes on release reports
+
+Every release report must say, per claim, whether it is **machine-verified against production**,
+**verified in CI or locally** (Chromium acceptance specs, unit suites, budget measurements — real
+evidence, but not production), or **dependent on Roger's observation**. Numbers derived from
+fixtures must never be presented as production numbers. Where a report says "these metrics went
+Live", it means the code path allows it and tests prove the projection — production confirmation
+is Roger's.
+
+### Current flag state — Roger's observation, 2026-07-26
+
+`FOUNDER_OS_SHELL` true · `FOUNDER_OS_TODAY` true · `FOUNDER_OS_RELATIONSHIPS` true ·
+`FOUNDER_OS_CAMPAIGNS` **true** · `FOUNDER_OS_SCOREBOARD` false · `FOUNDER_OS_LEE_PANEL` false.
+
+Roger enabled `FOUNDER_OS_CAMPAIGNS` after Release 4 deployed and verified. An earlier status
+table in this run listed it as off; that was wrong and is corrected here. He agrees the Scoreboard
+and Le-E panel flags stay off until Release 7 ships their surfaces, and that this run does not make
+the environment changes itself.
+
+---
+
+## Release 7 — the finishing pass
+
+**Status: PR #133 open.** Makes Releases 5 and 6 visible.
+
+### Budget
+
+| Build | Bytes | Headroom | Change |
+|---|---|---|---|
+| flags off | 1,645,741 | 4,259 | **0 — byte-identical** |
+| the four flags live in production | 1,628,023 | 21,977 | **0 — byte-identical** |
+| all six flags on | 1,628,531 | 21,469 | **+508** |
+
+Both surfaces are lazy runtime files, so the 508 bytes are the two route-binding lines, which
+are themselves only emitted when the flags are on. **The ceiling was not touched and nothing
+needed reclaiming**, so no ceiling proposal was required.
+
+### What it adds
+
+- **Scoreboard.** `GET /api/ui/scoreboard` carries the Release 5 registry when
+  `FOUNDER_OS_SCOREBOARD` is on — added to the existing body, never replacing it. Platform health
+  is read separately and a failure there degrades to an honest "could not be read" section
+  instead of taking the Scoreboard down. All nine contract fields render per metric, and the
+  honesty rules survive rendering: an unavailable metric renders the word "Unavailable" with no
+  bare zero and no `USD 0`; a missing target renders "No target set" and NO variance; a variance
+  reports direction and whether it is an improvement using the metric's own direction. Flag off,
+  the client renders nothing at all.
+- **Le-E.** A panel host bound on the shell rather than on one route, so it is reachable from
+  every workspace, and it performs **no writes** — a test strips comments and asserts the
+  executable source contains no `fetch`, `XMLHttpRequest`, `sendBeacon`, `POST`, `PUT`, `PATCH`
+  or `DELETE`, with a positive control so the stripping cannot make the check vacuous.
+
+### No route retired, and why that is compliance rather than shortfall
+
+The delivery plan permits retiring a superseded route **only after parity is demonstrated**.
+Parity for these surfaces is not demonstrable from this run: every founder surface is behind
+authentication and production verification here is limited to unauthenticated endpoints. So the
+panel links to `#lee` rather than replacing it, and the Scoreboard registry is additive.
+
+**A prerequisite for any future retirement:** `08_DELIVERY_PLAN.md` names `proofPageHtml` and
+`metricsPageHtml` as renderers to retire. **Neither exists.** The real ones are
+`proofWorkspaceHtml` and `metricsDashboardHtml` (`scripts/ui/navigation.mjs:154,293`). The
+route→renderer mapping must be corrected before a parity check against it could mean anything —
+as written, it would verify nothing.
+
+### Recorded finding — an assertion that matched its own comment
+
+A Release 7 test asserted the Le-E runtime contains no `POST`, and failed on the runtime's **own
+comment** saying "issues no fetch and no POST". This is the same trap the lessons already record
+for `test-operator-consolidation-pass`, where a phrase existing only in a comment was matched
+against source text. Fixed by stripping comments and scanning executable code, plus a positive
+control asserting the stripped source is still substantial — otherwise the fix could have made
+the check vacuous, which would have been worse than the false positive.

@@ -1,0 +1,14 @@
+/* Founder OS Release 7 — the Le-E side panel host.
+   A panel, not a page: it overlays the workspace and never replaces it. */
+.lee-panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(24rem, 92vw); z-index: 60;
+  border-left: 1px solid var(--le-border-subtle, #d6dae2); background: var(--le-surface, #fff);
+  padding: var(--le-space-4, 1rem); overflow-y: auto; display: grid; align-content: start; gap: 0.75rem; }
+.lee-panel[hidden] { display: none; }
+.lee-panel-header { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.lee-panel-header h2 { margin: 0; font-size: 1.05rem; }
+.lee-panel-note { margin: 0; font-size: 0.8rem; }
+.lee-proposals { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.5rem; }
+.lee-proposal-title { margin: 0; font-weight: 600; font-size: 0.9rem; }
+.lee-proposal-why, .lee-proposal-status { margin: 0.15rem 0 0; font-size: 0.8rem; }
+.lee-panel-empty, .lee-panel-link { margin: 0; font-size: 0.85rem; }
+@media (max-width: 640px) { .lee-panel { width: 100vw; } }

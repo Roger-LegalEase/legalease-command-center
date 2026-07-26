@@ -59,6 +59,8 @@ import {
 } from "./pages/partners-home.mjs";
 import { PARTNER_RECORD_STYLESHEET_PATHS, partnerRecordBrowserSource } from "./pages/partner-record.mjs";
 import { FOUNDER_CAMPAIGNS_STYLESHEET_PATH, founderCampaignsBrowserSource } from "./pages/founder-campaigns.mjs";
+import { FOUNDER_SCOREBOARD_REGISTRY_STYLESHEET_PATH, founderScoreboardRegistryBrowserSource } from "./pages/founder-scoreboard-registry.mjs";
+import { FOUNDER_LEE_PANEL_STYLESHEET_PATH, founderLeePanelBrowserSource } from "./pages/founder-lee-panel.mjs";
 import { OUTREACH_HOME_STYLESHEET_PATH, outreachHomeBrowserSource } from "./pages/outreach-home.mjs";
 import { AUTOMATION_CONTROL_CENTER_STYLESHEET_PATH, automationControlCenterBrowserSource } from "./pages/automation-control-center.mjs";
 import { CAMPAIGN_WIZARD_STYLESHEET_PATH, campaignWizardBrowserSource } from "./pages/campaign-wizard.mjs";
@@ -148,6 +150,21 @@ const VNEXT_LAZY_ASSETS = Object.freeze({
     source:founderCampaignsBrowserSource,
     api:"__LE_FOUNDER_CAMPAIGNS",
     founderOsCampaignsOnly:true
+  }),
+  // Founder OS Release 7. Both are lazy runtime files so the Scoreboard registry and the Le-E
+  // panel cost the initial client-JavaScript budget nothing, and both are gated on their own
+  // release flag exactly as founder-campaigns is.
+  "founder-scoreboard-registry":Object.freeze({
+    styles:Object.freeze([FOUNDER_SCOREBOARD_REGISTRY_STYLESHEET_PATH]),
+    source:founderScoreboardRegistryBrowserSource,
+    api:"__LE_FOUNDER_SCOREBOARD_REGISTRY",
+    founderOsScoreboardOnly:true
+  }),
+  "founder-lee-panel":Object.freeze({
+    styles:Object.freeze([FOUNDER_LEE_PANEL_STYLESHEET_PATH]),
+    source:founderLeePanelBrowserSource,
+    api:"__LE_FOUNDER_LEE_PANEL",
+    founderOsLeePanelOnly:true
   })
 });
 
@@ -166,6 +183,8 @@ export function resolveVNextLazyRuntime(pathname = "", options = {}) {
   const asset = VNEXT_LAZY_ASSETS[match[1]];
   if (!asset || (asset.outreachOnly && options.outreachEnabled !== true)) return null;
   if (asset.founderOsCampaignsOnly && options.founderOsCampaigns !== true) return null;
+  if (asset.founderOsScoreboardOnly && options.founderOsScoreboard !== true) return null;
+  if (asset.founderOsLeePanelOnly && options.founderOsLeePanel !== true) return null;
   const source = asset.source();
   return typeof source === "string" && source.length <= VNEXT_LAZY_RUNTIME_MAX_BYTES ? source : null;
 }
@@ -296,6 +315,8 @@ function vnextLazyAssetLoaderScript(options = {}) {
   const manifest = Object.fromEntries(Object.entries(VNEXT_LAZY_ASSETS)
     .filter(([, asset]) => !asset.outreachOnly || options.outreachEnabled === true)
     .filter(([, asset]) => !asset.founderOsCampaignsOnly || options.founderOsCampaigns === true)
+    .filter(([, asset]) => !asset.founderOsScoreboardOnly || options.founderOsScoreboard === true)
+    .filter(([, asset]) => !asset.founderOsLeePanelOnly || options.founderOsLeePanel === true)
     .map(([id, asset]) => [id, {
       styles:asset.styles.map(assetUrl),
       runtime:`${VNEXT_LAZY_RUNTIME_PATH_PREFIX}${id}.js`,
@@ -366,6 +387,8 @@ function vnextLazyAssetLoaderScript(options = {}) {
       if (route === "queue" && query.get("view") === "weekly") add("social-weekly-planner");
       if (["automation", "automation-control", "automation-control-center"].includes(raw) || (route === "outreach" && query.get("view") === "automation")) add("automation-control-center");
       ${options.founderOsCampaigns ? `if (["campaigns", "outreach"].includes(route)) add("founder-campaigns");` : ""}
+      ${options.founderOsScoreboard ? `if (["revenue", "metrics"].includes(route) || ["revenue", "scoreboard", "metrics", "kpis"].includes(raw)) add("founder-scoreboard-registry");` : ""}
+      ${options.founderOsLeePanel ? `add("founder-lee-panel");` : ""}
       return required;
     }
     function controlAssets() {
