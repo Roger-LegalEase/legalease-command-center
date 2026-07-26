@@ -26,6 +26,7 @@ import {
 } from "../founder-os-config.mjs";
 import { buildCampaignCommandView, plainSafetyReasons } from "../../campaign-command.mjs";
 import { PRESS_ANGLES } from "../../press-outreach.mjs";
+import { PRESS_KIT, pressProofPlan } from "../../press-kit.mjs";
 
 const list = (value) => Array.isArray(value) ? value : [];
 const clean = (value = "") => String(value ?? "").trim();
@@ -51,7 +52,10 @@ function stage(id, state, summary, options = {}) {
     action: options.action ? Object.freeze({ ...options.action }) : null,
     // Why the lane cannot proceed, in the words the decision function produced. Present only
     // when there genuinely is a reason.
-    blockedReason: clean(options.blockedReason) || null
+    blockedReason: clean(options.blockedReason) || null,
+    // Optional structured payload for a stage that has more to say than one line — the Press Plan
+    // stage's per-angle proof, for instance. Read-only like everything else here.
+    detail: options.detail ? Object.freeze(options.detail) : null
   });
 }
 
@@ -303,10 +307,44 @@ function pressLane(state, pressEnabled) {
     .map(([reason, count]) => `${count} ${reason.replace(/_/g, " ")}`)
     .join(", ");
 
+  // Every angle, resolved against the approved source. Nothing here is an outstanding-artifact
+  // warning: the kit proves what it proves, and what it does not prove is offered on request
+  // rather than shown as a checklist Roger is failing to clear.
+  const angles = PRESS_ANGLES.map((angle) => {
+    const proof = pressProofPlan(angle);
+    return Object.freeze({
+      id: angle.id,
+      label: angle.label,
+      guardrail: angle.guardrail,
+      // What the kit supplies — the only list on this stage that is a to-do in any sense, and it
+      // is already done.
+      provenByKit: Object.freeze(proof.satisfied.map((entry) => entry.requirement)),
+      // Proof the kit shapes but does not specify. Pitchable, with the note as the limit.
+      provenInPart: Object.freeze(proof.partial.map((entry) =>
+        Object.freeze({ requirement: entry.requirement, limit: entry.note }))),
+      // NOT blockers. Offered, never claimed.
+      offeredOnRequest: Object.freeze(proof.followUp.map((entry) => entry.requirement)),
+      offers: proof.offers,
+      reframe: proof.reframe,
+      kitCoverage: proof.kitCoverage
+    });
+  });
+  const fullyProven = angles.filter((angle) => angle.offeredOnRequest.length === 0 && angle.provenInPart.length === 0);
+
   return lane("press", [
-    stage("plan", PRESS_ANGLES.length ? "ready" : "attention",
-      `${PRESS_ANGLES.length} story angles, each with the proof it needs before you can pitch it.`,
-      { action: { label: "Choose a story angle", route: "GET /api/ui/campaigns", mutates: false } }),
+    stage("plan", "ready",
+      `${angles.length} story angles, all pitchable on the press kit alone. `
+      + `${fullyProven.length} need nothing beyond it; the rest carry the same claims and offer figures or a participant story on request.`,
+      {
+        action: { label: "Choose a story angle", route: "GET /api/ui/campaigns", mutates: false },
+        detail: {
+          approvedSource: PRESS_KIT.file,
+          approvedSourceCurrentAsOf: PRESS_KIT.currentAsOf,
+          angles: Object.freeze(angles),
+          // Stated once, here, so the surface never renders these as a gap.
+          followUpPolicy: "Traction figures and a participant story are offered on request, not required to pitch. A draft may offer them; it may never state a figure or tell a story it does not have, and a story needs recorded consent first."
+        }
+      }),
 
     stage("review", approvals.length ? "attention" : sendable.length ? "ready" : "attention",
       `${sendable.length} contactable, ${held.length} held (${reasonSummary || "no reasons recorded"}).`,
