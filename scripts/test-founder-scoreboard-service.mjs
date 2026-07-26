@@ -27,15 +27,25 @@ const state = {
     updatedAt:"2026-07-20T15:00:00.000Z",
     updatedBy:"founder-example"
   },
+  // THE REAL FETCHER'S SHAPE. This fixture used to supply monthGross, refundsThisMonth,
+  // previousMonthGross and previousRefunds — none of which fetchStripeRevenueSnapshot has ever
+  // produced (preview-server.mjs:12798-12808). The suite passed while the live route could not
+  // possibly work. It now sends exactly what production sends, so a pass means the real thing
+  // works.
+  //
+  // `since` precedes 2026-07-01, so July is fully covered and its total is real: 9000 + 6000.
+  // June is NOT fully covered (history starts 06-25), so no previous-month figure exists, and
+  // this source carries no refunds at all.
   stripeRevenue:{
     source:"stripe_live",
     available:true,
     configured:true,
-    monthGross:15000,
-    refundsThisMonth:250,
-    previousMonthGross:12000,
-    previousRefunds:100,
+    livemode:true,
+    gross:27000,
+    since:"2026-06-25",
+    sinceLabel:"June 25",
     currency:"usd",
+    dailyGross:{ "2026-06-26":12000, "2026-07-05":9000, "2026-07-18":6000 },
     fetchedAt:"2026-07-21T10:00:00.000Z"
   },
   signups:{
@@ -181,10 +191,28 @@ assert.equal(cardById(view, "cash_available").status.label, "Manual");
 assert.equal(cardById(view, "cash_available").previous.value, 100000);
 assert.equal(cardById(view, "monthly_burn").current.value, 20000);
 assert.equal(cardById(view, "runway").current.value, 6);
+// Current month is the sum of the covered July days, derived from the real dailyGross map.
 assert.equal(cardById(view, "revenue_this_month").current.value, 15000);
 assert.equal(cardById(view, "revenue_this_month").status.label, "Live");
+// Previous period comes from the RECORDED growth snapshot (12000) — a real prior observation,
+// which is preferred over anything derived from the payment feed.
 assert.equal(cardById(view, "revenue_this_month").previous.value, 12000);
-assert.equal(cardById(view, "refunds").current.value, 250);
+// This source totals charges and carries no refund figure, so refunds stay Unavailable rather
+// than being computed from an adjacent number.
+assert.equal(cardById(view, "refunds").current.value, null);
+assert.equal(cardById(view, "refunds").status.label, "Unavailable");
+assert.match(cardById(view, "refunds").detail, /carries no refund figure/i);
+
+// With no recorded growth snapshot to fall back on, there is NO previous-month revenue at all:
+// June is not fully covered by the payment history (it starts 2026-06-25), and a partial June
+// presented as June's total would understate it with nothing on screen to say so.
+{
+  const withoutGrowth = buildFounderScoreboard({ ...state, engagementGrowthSnapshots:[] }, OWNER, NOW);
+  const revenue = cardById(withoutGrowth, "revenue_this_month");
+  assert.equal(revenue.current.value, 15000, "the covered current month is still real");
+  assert.equal(revenue.previous.value, null, "an uncovered previous month must not be derived");
+  assert.equal(revenue.previous.available, false);
+}
 assert.ok(cardById(view, "booked_expected_revenue").current.value > 0);
 
 assert.equal(cardById(view, "website_visits").current.value, 100);

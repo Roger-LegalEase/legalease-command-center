@@ -214,8 +214,19 @@ try {
   const scoreboardStore = createStore();
   await scoreboardStore.readCollections(FOUNDER_SCOREBOARD_READ_COLLECTIONS);
   const scoreboardCollections = readRequests[0].collections;
-  for (const unrelated of ["leeMessages", "dataRoomItems", "posts", "postImages", "conversationNotes"]) {
+  // `posts` was on this list until 2026-07-26 and should not have been: the Scoreboard's
+  // marketing section counts social drafts ready, posts published and content needing results,
+  // all of which read state.posts. Because the collection was never requested, those three cards
+  // were permanently Unavailable on the live route — the read set and the code disagreed, and
+  // this assertion was pinning the disagreement in place.
+  for (const unrelated of ["leeMessages", "dataRoomItems", "postImages", "conversationNotes"]) {
     assert.equal(scoreboardCollections.includes(unrelated), false, `Scoreboard must not request ${unrelated}.`);
+  }
+  // Stronger than the silence it replaces: every collection the Scoreboard renders from must be
+  // requested, or the card is structurally unable to show a value.
+  for (const required of ["posts", "runtime", "runwayInputs", "supportIssues", "partners"]) {
+    assert.ok(scoreboardCollections.includes(required),
+      `Scoreboard renders metrics from ${required} and must request it; otherwise those cards can never populate.`);
   }
 
   const founderApiFiles = [

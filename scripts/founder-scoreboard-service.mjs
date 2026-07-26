@@ -1,6 +1,7 @@
 import { buildCashRunwayPulse } from "./operator-pulse-feeders.mjs";
 import { recordVisibleToActor } from "./global-search-service.mjs";
 import { roleHasCapability, roles } from "./roles.mjs";
+import { stripeRevenuePeriods } from "./stripe-revenue-periods.mjs";
 
 const list = (value) => Array.isArray(value) ? value : [];
 const clean = (value = "") => String(value ?? "").trim();
@@ -23,9 +24,14 @@ export const FOUNDER_SCOREBOARD_READ_COLLECTIONS = Object.freeze([
   "outreachContacts",
   "outreachReplies",
   "partnerPrograms",
+  // Added 2026-07-26: the service reads state.posts for the marketing cards and state.runtime
+  // for a health fallback, but neither was ever requested, so on the real route both were
+  // always undefined and those cards could not go Live no matter what the data said.
+  "posts",
   "partners",
   "pilots",
   "prospectCandidates",
+  "runtime",
   "runwayInputs",
   "sendgridWebhookHealth",
   "socialAccounts",
@@ -259,17 +265,21 @@ function financeCards(state, now) {
     href:"#scoreboard"
   }));
 
-  let revenue = null;
-  if (stripe?.available === true) {
-    revenue = numberOrNull(stripe.monthGross ?? stripe.monthlyGross ?? stripe.revenueThisMonth);
-    if (revenue === null && stripe.dailyGross && typeof stripe.dailyGross === "object") {
-      const daily = Object.entries(stripe.dailyGross).filter(([date, amount]) => monthKey(date) === monthKey(now) && numberOrNull(amount) !== null);
-      if (daily.length) revenue = daily.reduce((sum, [, amount]) => sum + Number(amount), 0);
-    }
-    if (revenue === null && monthKey(stripe.since) === monthKey(now)) revenue = numberOrNull(stripe.gross);
-  }
+  // Period figures come from stripeRevenuePeriods, which maps the fetcher's REAL output
+  // (gross / since / dailyGross / currency) onto month totals and refuses to produce one it
+  // cannot support. The previous reads here — monthGross, monthlyGross, revenueThisMonth,
+  // previousMonthGross, previousGross — were fields the real fetcher never sends, so every one
+  // resolved to undefined and these cards were permanently Unavailable while Stripe worked.
+  //
+  // The old dailyGross fallback also summed whatever days it held for the current month without
+  // checking coverage, which would present a partial month as a whole one. That check now lives
+  // in stripeRevenuePeriods.
+  const periods = stripeRevenuePeriods(stripe, now);
+  const revenue = periods.currentMonth;
   const growthSnapshots = list(state.engagementGrowthSnapshots).sort((left, right) => timestampMs(right.generated_at) - timestampMs(left.generated_at));
-  const priorRevenue = numberOrNull(growthSnapshots[1]?.metrics?.revenue?.gross ?? stripe?.previousMonthGross ?? stripe?.previousGross);
+  // A recorded growth snapshot is a real prior-period observation and is preferred. Failing
+  // that, a fully covered previous month from the payment snapshot. Never a partial month.
+  const priorRevenue = numberOrNull(growthSnapshots[1]?.metrics?.revenue?.gross) ?? periods.previousMonth;
   cards.push(card({
     id:"revenue_this_month", group:"financial", label:"Revenue this month",
     status:stripe?.available === true && revenue !== null ? sourceStatus("live", stripeRefreshed, now, 7)
@@ -278,19 +288,23 @@ function financeCards(state, now) {
     refreshedAt:stripeRefreshed,
     current:valueShape(revenue, { unit:"currency", currency:lower(stripe?.currency) || "usd" }),
     previous:previousShape(priorRevenue, { unit:"currency", currency:lower(stripe?.currency) || "usd", refreshedAt:growthSnapshots[1]?.generated_at }),
-    detail:stripe?.available === true && revenue === null ? "Stripe is live, but a current-month total is not available." : stripe?.error || null,
+    detail:stripe?.available === true && revenue === null
+      ? `Stripe is connected, but a current-month total cannot be shown: ${periods.currentMonthReason}.`
+      : stripe?.error || null,
     href:"#scoreboard"
   }));
 
-  const refunds = stripe?.available === true ? numberOrNull(stripe.refundsThisMonth ?? stripe.monthlyRefunds ?? stripe.refundsGross ?? stripe.refundAmount) : null;
+  // Always null, and deliberately so: the payment snapshot totals charges and carries no refund
+  // figure at all. There is no adjacent number that honestly stands in for one.
+  const refunds = periods.refunds;
   cards.push(card({
     id:"refunds", group:"financial", label:"Refunds",
     status:refunds !== null ? sourceStatus("live", stripeRefreshed, now, 7) : stripe?.configured && stripe?.available === false ? SCOREBOARD_STATUSES.needs_attention : SCOREBOARD_STATUSES.unavailable,
     source:"Stripe",
     refreshedAt:stripeRefreshed,
     current:valueShape(refunds, { unit:"currency", currency:lower(stripe?.currency) || "usd" }),
-    previous:previousShape(numberOrNull(stripe?.previousRefunds), { unit:"currency", currency:lower(stripe?.currency) || "usd", refreshedAt:stripeRefreshed }),
-    detail:refunds === null ? "No refund total is available from the current payment snapshot." : null,
+    previous:previousShape(null, { unit:"currency", currency:lower(stripe?.currency) || "usd", refreshedAt:stripeRefreshed }),
+    detail:refunds === null ? periods.refundsReason : null,
     href:"#scoreboard"
   }));
 
