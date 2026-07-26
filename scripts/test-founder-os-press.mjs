@@ -14,7 +14,7 @@
 //   5. This module contains no send path at all.
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import {
   PRESS_ANGLES,
@@ -88,8 +88,14 @@ check("BLOCKED: identity framing with no business substance", () => {
   assert.equal(bad.passed, false);
   assert.ok(bad.hardFails.some((f) => f.rule === "no_identity_only_framing"));
   // Positive control: the SAME identity language passes once real proof is present, which is
-  // exactly what the Pitch Map guardrail asks for.
-  assert.equal(verdict("A Black-owned legal technology company that grew to 12 states and 4,000 filings.").passed, true);
+  // exactly what the Pitch Map guardrail asks for. The substance is now KIT-PROVEN rather than
+  // traction, because traction is not something a draft may state (see `no_unbacked_figure`).
+  assert.equal(verdict("A Black-owned legal technology company shipping attorney-reviewed self-help workflows across all 50 states and Washington, D.C.").passed, true);
+  // And the old form — identity rescued by an unbacked traction figure — must now fail, since
+  // nothing in the approved source backs it.
+  const unbacked = verdict("A Black-owned legal technology company that grew to 12 states and 4,000 filings.");
+  assert.equal(unbacked.passed, false);
+  assert.ok(unbacked.hardFails.some((f) => f.rule === "no_unbacked_figure"));
 });
 
 check("BLOCKED: causal overstatement on participant outcomes", () => {
@@ -119,15 +125,15 @@ check("every guardrail rule applies to every draft, not only to its own angle", 
 });
 
 check("a clean draft passes and reports no failures", () => {
-  const result = verdict("LegalEase now supports record clearance in 12 states, with attorney review and published limits.", "nationwide_milestone");
+  const result = verdict("LegalEase now supports record clearance in all 50 states and Washington, D.C., with attorney-reviewed document logic and published limits.", "nationwide_milestone");
   assert.equal(result.passed, true);
   assert.deepEqual(result.hardFails, []);
 });
 
-check("the five rules are exactly the five the charter names", () => {
+check("the charter's five rules, plus the figure rule the kit decision requires", () => {
   assert.deepEqual(PRESS_GUARDRAIL_RULES.map((rule) => rule.id).sort(), [
     "no_causal_overstatement", "no_identity_only_framing", "no_lawyer_replacement",
-    "no_unqualified_eligibility", "requires_participant_consent"
+    "no_unbacked_figure", "no_unqualified_eligibility", "requires_participant_consent"
   ]);
 });
 
@@ -423,6 +429,162 @@ check("no press stage offers a publish or send route", () => {
     const route = String(stage.action?.route || "");
     assert.ok(!/\/send\b|publish/.test(route), `press stage ${stage.id} must not offer ${route}`);
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// 7. The press kit as the approved proof and claims source
+// ---------------------------------------------------------------------------------------------
+
+const {
+  PRESS_FOLLOW_UP_ARTIFACTS,
+  PRESS_KIT,
+  PRESS_KIT_BOUNDARY_CLAIMS,
+  PRESS_KIT_SECTIONS,
+  PRESS_PROOF_SOURCES,
+  pressAngleAudience,
+  pressProofPlan
+} = await import("./press-kit.mjs");
+
+check("the registered kit is the file Roger approved, and it exists on disk", () => {
+  assert.equal(PRESS_KIT.file, "docs/press/LegalEase_Press_Kit_July_2026_Rebuilt.pdf");
+  assert.ok(existsSync(new URL(`../${PRESS_KIT.file}`, import.meta.url)),
+    "the approved-claims source must be a file that is actually there");
+  assert.equal(PRESS_KIT_SECTIONS.length, 9, "the kit is a nine-part reference");
+});
+
+check("every Pitch Map proof requirement resolves to the kit or to a follow-up artifact", () => {
+  for (const angle of PRESS_ANGLES) {
+    for (const requirement of angle.proofRequired) {
+      const source = PRESS_PROOF_SOURCES[requirement];
+      assert.ok(source, `${angle.id}: "${requirement}" is not mapped to the kit`);
+      assert.ok(["kit", "kit_partial", "follow_up"].includes(source.kind));
+      // A kit-backed requirement must name sections that really exist.
+      for (const id of source.sections) {
+        assert.ok(PRESS_KIT_SECTIONS.some((section) => section.id === id), `unknown kit section ${id}`);
+      }
+    }
+  }
+});
+
+check("no angle is dead: every one is pitchable on the kit alone, and every one has a route", () => {
+  for (const angle of PRESS_ANGLES) {
+    const plan = pressProofPlan(angle);
+    assert.equal(plan.pitchableOnKitAlone, true, `${angle.id} must be pitchable on the kit alone`);
+    assert.ok(plan.reframe, `${angle.id} must say how it is pitched as it stands`);
+    // The follow-ups are never presented as blockers, and each carries an offer line instead.
+    for (const entry of plan.followUp) {
+      assert.ok(entry.offerLine, `${angle.id}: ${entry.requirement} must be offerable, not just absent`);
+    }
+  }
+  // The AI-guardrails angle is the one the kit satisfies outright — no follow-up, no partial.
+  const guardrails = pressProofPlan(pressAngle("ai_guardrails"));
+  assert.equal(guardrails.followUp.length, 0);
+  assert.equal(guardrails.partial.length, 0);
+  assert.equal(guardrails.kitCoverage.satisfied, 4);
+});
+
+check("traction and a participant story are follow-up artifacts, not blockers", () => {
+  assert.equal(PRESS_FOLLOW_UP_ARTIFACTS.length, 2);
+  for (const artifact of PRESS_FOLLOW_UP_ARTIFACTS) {
+    assert.equal(artifact.blocksPitch, false, `${artifact.id} must never block a pitch`);
+    assert.equal(artifact.mayState, false, `${artifact.id} must never be stated without a source`);
+    assert.equal(artifact.availability, "on_request");
+    assert.ok(artifact.offerLine.length > 10);
+  }
+  // The consent requirement survives the reclassification intact.
+  const story = PRESS_FOLLOW_UP_ARTIFACTS.find((entry) => entry.id === "participant_story");
+  assert.equal(story.requiresConsentFirst, true);
+  assert.match(story.offerLine, /consent/i);
+});
+
+check("BLOCKED: a draft contradicting any of the kit's boundary claims", () => {
+  // One case per ratified boundary claim. Each must fail, and must fail by NAME.
+  const cases = [
+    ["not_a_law_firm", "LegalEase is a law firm for people with records."],
+    ["no_legal_advice_or_representation", "We provide legal advice to every customer who buys a packet."],
+    ["may_be_able_to", "LegalEase will clear your record in 60 days."],
+    ["guidance_only", "Automatic Clean Slate sealing is included in the $50 packet."],
+    ["no_guaranteed_outcome", "We guarantee court approval of your petition."],
+    ["fifty_dollar_excludes_representation", "The $50 includes attorney representation and a court appearance."],
+    ["state_table_is_product_support", "The coverage map shows you qualify wherever your record is."]
+  ];
+  assert.equal(cases.length, PRESS_KIT_BOUNDARY_CLAIMS.length,
+    "every ratified boundary claim needs a draft that contradicts it");
+  for (const [rule, draft] of cases) {
+    const result = verdict(draft);
+    assert.equal(result.passed, false, `must block: ${draft}`);
+    assert.ok(result.hardFails.some((fail) => fail.rule === rule),
+      `"${draft}" must fail as ${rule}, got ${result.hardFails.map((f) => f.rule).join(",") || "nothing"}`);
+    // The failure carries the kit's own sentence, so the reason is the claim, not a rule id.
+    const named = result.hardFails.find((fail) => fail.rule === rule);
+    assert.ok(named.claim && named.claim.length > 20, `${rule} must report the claim it broke`);
+  }
+});
+
+check("the kit's OWN boundary language passes — negation is not a contradiction", () => {
+  // The trap this gate has to survive: the approved sentences contain the forbidden words.
+  for (const claim of PRESS_KIT_BOUNDARY_CLAIMS) {
+    assert.equal(verdict(claim.claim).passed, true,
+      `the kit's own ratified sentence must pass: "${claim.claim}"`);
+  }
+  assert.equal(verdict("LegalEase is not a law firm and does not provide legal advice or representation. The $50 path does not include representation, and the state table is product support, not a legal conclusion.").passed, true);
+});
+
+check("BLOCKED: stating a figure the kit cannot back; ALLOWED: offering it", () => {
+  for (const bad of [
+    "We have served 3,000 users across the country.",
+    "Revenue grew 40% last quarter.",
+    "LegalEase has prepared 1,200 filings to date.",
+    "We raised $2 million to build it."
+  ]) {
+    const result = verdict(bad);
+    assert.equal(result.passed, false, `must block: ${bad}`);
+    assert.ok(result.hardFails.some((fail) => fail.rule === "no_unbacked_figure"));
+  }
+  // The kit's own figures are not traction, and must never trip it.
+  assert.equal(verdict("Free screening in all 50 states and Washington, D.C., with a $50 flat packet price and EN + ES support.").passed, true);
+  // Offering what cannot be claimed is the approved behaviour, not a failure.
+  assert.equal(verdict("Usage and traction figures are available on request. A participant interview can be arranged on request, with recorded consent obtained first.").passed, true);
+});
+
+check("the verdict hands the draft surface the kit, its offers and its proof plan", () => {
+  const result = verdict("A straightforward product update.", "economic_mobility");
+  assert.equal(result.approvedClaimsSource, PRESS_KIT.file);
+  assert.equal(result.approvedClaimsCurrentAsOf, PRESS_KIT.currentAsOf);
+  assert.ok(result.offers.length >= 1, "a draft must be told what to offer instead of claiming");
+  // The story-heavy angle is carried entirely by the cost half of "Cost/time comparisons" —
+  // partial proof, but real proof, and enough to pitch on.
+  assert.equal(result.proofPlan.satisfied.length + result.proofPlan.partial.length >= 1, true);
+  assert.equal(result.proofPlan.pitchableOnKitAlone, true);
+  assert.match(result.proofPlan.reframe, /cost/i);
+});
+
+check("the Plan stage shows kit-proven proof and offers, never an unclearable warning", () => {
+  const plan = pressLaneOf(laneState(), true).stages.find((entry) => entry.id === "plan");
+  assert.equal(plan.state, "ready", "Plan is never in attention for proof Roger has decided about");
+  assert.equal(plan.blockedReason, null, "nothing about proof blocks planning");
+  assert.match(plan.summary, /pitchable on the press kit alone/i);
+  assert.equal(plan.detail.approvedSource, PRESS_KIT.file);
+  assert.equal(plan.detail.angles.length, 8);
+  for (const angle of plan.detail.angles) {
+    assert.ok(angle.provenByKit.length + angle.provenInPart.length >= 1,
+      `${angle.id} must show what the kit proves`);
+    // The surface must not carry a "missing" list — follow-ups are offers.
+    assert.equal(angle.missing, undefined);
+    if (angle.offeredOnRequest.length) assert.ok(angle.offers.length >= 1);
+  }
+  assert.match(plan.detail.followUpPolicy, /offered on request, not required to pitch/i);
+  assert.match(plan.detail.followUpPolicy, /recorded consent/i);
+});
+
+check("the audience an angle actually reaches is counted from eligibility, not guessed", () => {
+  const audience = pressAngleAudience(laneState().outreachContacts, "ai_guardrails");
+  assert.equal(audience.contactable, 2, "only the contactable rows count");
+  assert.ok(audience.onBeat <= audience.contactable, "an angle cannot reach more than are contactable");
+  // Held rows can never enter an audience, whatever their beat.
+  const held = laneState().outreachContacts.filter((row) => row.press_sendable !== true);
+  assert.ok(held.length >= 1);
+  assert.ok(!held.some((row) => row.press_sendable === true));
 });
 
 console.log(`Founder OS Release 8 press: ${checks.length} checks passed.`);

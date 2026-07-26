@@ -21,6 +21,8 @@
 //   * placements    -> `pressPlacements`, the one genuinely new collection, because coverage that
 //                      has already run is not a contact and belongs nowhere else.
 
+import { PRESS_KIT, assertsContradiction, evaluatePressKitClaims, pressOfferLines, pressProofPlan } from "./press-kit.mjs";
+
 const clean = (value = "") => String(value ?? "").trim();
 const lower = (value = "") => clean(value).toLocaleLowerCase("en-US");
 
@@ -116,7 +118,15 @@ export const PRESS_GUARDRAIL_RULES = Object.freeze([
     id: "no_unqualified_eligibility",
     summary: "No unqualified eligibility claim.",
     // "you qualify", "everyone is eligible", "guaranteed expungement", "will clear your record"
-    pattern: /\b(guarantee\w*|guaranteed)\b|\beveryone (is|will be) eligible\b|\byou (qualify|are eligible)\b|\bwill (clear|expunge|erase) your record\b|\banyone can (clear|expunge)\b/i
+    pattern: /\b(guarantee\w*|guaranteed)\b|\beveryone (is|will be) eligible\b|\byou (qualify|are eligible)\b|\bwill (clear|expunge|erase) your record\b|\banyone can (clear|expunge)\b/i,
+    // NEGATION-AWARE, and the only legacy rule that is. A bare "guarantee" match failed the kit's
+    // own boundary sentence — "the product will not guarantee eligibility, filing acceptance,
+    // court approval or record removal" — which is the exact language a pitch is supposed to
+    // carry. Denying a guarantee is the opposite of claiming one.
+    //
+    // Deliberately NOT applied to `no_lawyer_replacement`: its pattern matches "without an
+    // attorney", where the negator is the violation, not a cancellation of it.
+    negationAware: true
   }),
   Object.freeze({
     id: "no_identity_only_framing",
@@ -135,21 +145,52 @@ export const PRESS_GUARDRAIL_RULES = Object.freeze([
     id: "requires_participant_consent",
     summary: "Participant story without recorded consent.",
     // Any named-participant story shape; satisfied only by an explicit consent marker.
+    // UNCHANGED and unrelaxed by the follow-up-artifact decision: a story may be OFFERED without
+    // consent on hand, but the moment a draft tells one, consent must already be recorded.
     pattern: /\b(one (client|participant|user)|a (client|participant|user) (named|called)|his|her|their) (record|case|story)\b/i,
     requiresConsentMarker: true
+  }),
+  Object.freeze({
+    id: "no_unbacked_figure",
+    summary: "States a figure the press kit cannot back.",
+    // The other half of "offer it, never claim it". Traction is real and Roger will share it with
+    // an interested journalist — but the kit is the approved source, and it carries no usage
+    // number, so a draft may not put one in writing ahead of him.
+    //
+    // Deliberately keyed on TRACTION UNITS, so the kit's own figures — 50 states, D.C., $0, $50 —
+    // never trip it.
+    pattern: /\b\d[\d,.]*\s*(k|m|\+)?\s*(users|customers|clients|members|signups|sign-ups|participants|people|americans|records? cleared|expungements|filings|petitions|packets|partners|organizations|nonprofits|downloads|sessions)\b|\b\d[\d,.]*\s*(%|percent)\b|\b(revenue|arr|mrr|raised|funding|valuation)\b[^.]{0,25}\$[\d,]+|\$[\d,]+(\.\d+)?\s*(k\b|m\b|million|billion|thousand)|\b\d+x\b|\bgrew\s+(by\s+)?\d/i,
+    allowsCitation: true
   })
 ]);
 
 // Substance markers that rescue an identity-framed draft: a number, a named outcome, or a
 // business fact. Presence of ANY means the draft is not identity-only.
-const SUBSTANCE_PATTERN = /\b\d[\d,.]*\s*(%|percent|users|customers|states|partners|clients|records|filings|months|jobs)\b|\b(revenue|traction|funding|partnership|pilot|raised|grew|expanded)\b/i;
+//
+// The third clause is NEW and load-bearing. Once `no_unbacked_figure` blocks traction numbers, the
+// old substance list — which was almost entirely traction — could only be satisfied by a phrase
+// that fails that rule, leaving the founder-growth angle with no lawful way to pass. The kit's own
+// proven facts now count as substance, which is exactly the reframe Roger asked for: identity plus
+// the build, never identity plus a number.
+const SUBSTANCE_PATTERN = /\b\d[\d,.]*\s*(%|percent|users|customers|states|partners|clients|records|filings|months|jobs)\b|\b(revenue|traction|funding|partnership|pilot|raised|grew|expanded)\b|\b(50 states|washington,? ?d\.?c\.?|51 jurisdictions|packet-capable|attorney-reviewed|rules engine|fails? closed|fail-closed|jurisdiction profile|self-help|bounded|\$50)\b/i;
 
 // The only thing that satisfies the consent rule. Deliberately explicit: nothing infers consent.
 const CONSENT_MARKER_PATTERN = /\bconsent (recorded|on file|obtained|given)\b|\bconsented\b|\brelease signed\b/i;
 
+// An external, attributed statistic is not a LegalEase traction claim, so a cited figure is not
+// what `no_unbacked_figure` is for. The escape closes the moment the sentence claims the number as
+// ours — "according to our own data, 3,000 users" is a traction claim wearing a citation.
+const CITATION_PATTERN = /\b(according to|study|studies|research|survey|reported by|data from|per the|bureau of|census|found that)\b/i;
+const OWNERSHIP_PATTERN = /\b(our|we|us|legalease|expungement\.ai)\b/i;
+
 /**
  * Hard-fail gate for a press draft. Mirrors the social guidelines gate's shape: a list of
  * hardFails, and a `passed` boolean that callers treat as blocking.
+ *
+ * TWO SOURCES OF FAILURE, one verdict: the Pitch Map's own rules, and the press kit's boundary
+ * language. The kit is the approved-claims source, so contradicting it is a hard fail exactly as
+ * a Pitch Map breach is — a draft that says the $50 includes representation is as unapprovable as
+ * one that says LegalEase replaces a lawyer.
  */
 export function evaluatePressGuardrails(text = "", angleId = "") {
   const body = clean(text);
@@ -157,11 +198,21 @@ export function evaluatePressGuardrails(text = "", angleId = "") {
   const hardFails = [];
 
   for (const rule of PRESS_GUARDRAIL_RULES) {
-    if (!rule.pattern.test(body)) continue;
+    if (rule.negationAware ? !assertsContradiction(body, rule.pattern) : !rule.pattern.test(body)) continue;
     if (rule.requiresSubstance && SUBSTANCE_PATTERN.test(body)) continue;
     if (rule.requiresConsentMarker && CONSENT_MARKER_PATTERN.test(body)) continue;
+    if (rule.allowsCitation && CITATION_PATTERN.test(body) && !OWNERSHIP_PATTERN.test(body)) continue;
     hardFails.push({ rule: rule.id, summary: rule.summary });
   }
+
+  // The approved-claims layer. Reported alongside the Pitch Map failures, and carrying the claim
+  // it broke, so the reason a draft was blocked is the kit's sentence rather than a rule id.
+  const contradictions = evaluatePressKitClaims(body);
+  for (const entry of contradictions) {
+    hardFails.push({ rule: entry.rule, summary: entry.summary, claim: entry.claim, section: entry.section });
+  }
+
+  const proofPlan = angle ? pressProofPlan(angle) : null;
 
   return Object.freeze({
     passed: hardFails.length === 0,
@@ -170,6 +221,12 @@ export function evaluatePressGuardrails(text = "", angleId = "") {
     // Shown in the draft surface so Roger sees what a claim needs BEFORE it goes out.
     proofRequired: angle ? angle.proofRequired : Object.freeze([]),
     guardrail: angle ? angle.guardrail : null,
+    // What the kit proves for this angle, and what the draft should OFFER instead of claiming.
+    // A draft is not blocked for lacking these; it is expected to offer them.
+    proofPlan,
+    offers: proofPlan ? proofPlan.offers : pressOfferLines(),
+    approvedClaimsSource: PRESS_KIT.file,
+    approvedClaimsCurrentAsOf: PRESS_KIT.currentAsOf,
     ruleSource: "docs/founder-os/workspaces/campaigns.md + Pitch Map (LegalEase_Media_Targets_2026)",
     checkedAt: null
   });

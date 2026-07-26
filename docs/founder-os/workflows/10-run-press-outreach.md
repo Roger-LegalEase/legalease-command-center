@@ -28,6 +28,14 @@ the Relationships projection, role `media` — the contact type already exists);
 **approved LegalEase facts and claims** (the approved-facts source: only ratified claims
 may enter pitches); story angles; pitch status.
 
+**The approved-facts source is registered** (2026-07-26): the July 2026 press kit,
+`docs/press/LegalEase_Press_Kit_July_2026_Rebuilt.pdf`, mapped in `scripts/press-kit.mjs`.
+Its nine sections resolve every Pitch Map proof requirement, and its boundary language is
+enforced as a hard fail in `evaluatePressGuardrails` — a draft contradicting it cannot be
+approved. Traction figures and participant stories are **follow-up artifacts**: not in the
+kit, offered on request, never a blocker, and never stated in a draft. A participant story
+still requires recorded consent before it may be told.
+
 ## Primary action
 Develop a story angle → draft individualized pitches (never mail-merge) → approve the
 campaign (one confirmation) → bounded follow-ups run under the shared campaign
