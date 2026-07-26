@@ -12,6 +12,8 @@ import { runHeartbeat, autopilotEnabled } from "./heartbeat.mjs";
 import { buildHeartbeatRegistry, HEARTBEAT_ENGINE_IDS } from "./heartbeat-engines.mjs";
 import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_QUEUE_TYPE, OUTREACH_ENGINE_ID, resolveOutreachSendDecision, outreachLiveSendEnabled } from "./outreach-os.mjs";
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
+import { applyBulkProspectDecision, selectPendingProspects } from "./prospect-selection.mjs";
+import { applyPressImportPlan, buildPressImportPlan, readPressWorkbook } from "./press-import.mjs";
 import { reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, buildReactivationLiveStatus, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
 import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, sendgridBatchDigest, sendgridEventDigest, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
@@ -27420,12 +27422,138 @@ function htmlShell() {
       </section>\`;
     }
 
+    // ---- Prospect bulk approval workbench (2026-07-26) ---------------------------------------
+    // 313 pending organisations were unapprovable one-at-a-time (and the old page had no approve
+    // control at all). This surface: filter to a selection, review the ranked list, remove
+    // individuals by unchecking, approve or reject the whole selection in ONE confirmed action.
+    // The confirm dialog names the exact organisation count and the exact contactable count.
+    // Authorization is unchanged: the same /api/prospects/approve endpoint, pending-only, the
+    // engine still cannot write "approved", and approval alone makes nobody contactable.
+    const prospectWork = { segment: "", source: "", minScore: "", q: "" };
+
+    function prospectPendingRows() {
+      const rows = list(state.prospectCandidates)
+        .filter(c => String(c.review_state || "").toLowerCase() === "pending_review")
+        .map(c => ({
+          id: String(c.id || ""),
+          name: String(c.organization_name || ""),
+          segment: String(c.classification || "").toLowerCase(),
+          score: Number(c.score || 0),
+          source: String(c.source || "").toLowerCase(),
+          city: String(c.city || ""),
+          state: String(c.state || ""),
+          ntee: String(c.ntee_label || ""),
+          hasEmail: Boolean(String(c.email || "").trim()),
+          duplicate: c.is_duplicate === true
+        }));
+      rows.sort((a, b) => (b.score - a.score) || a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+      const q = prospectWork.q.toLowerCase();
+      return rows.filter(r =>
+        (!prospectWork.segment || r.segment === prospectWork.segment)
+        && (!prospectWork.source || r.source === prospectWork.source)
+        && (prospectWork.minScore === "" || r.score >= Number(prospectWork.minScore))
+        && (!q || (r.name + " " + r.city + " " + r.state + " " + r.ntee).toLowerCase().includes(q)));
+    }
+
+    function prospectApplyFilters() {
+      prospectWork.segment = (document.getElementById("prospect-filter-segment") || {}).value || "";
+      prospectWork.source = (document.getElementById("prospect-filter-source") || {}).value || "";
+      prospectWork.minScore = (document.getElementById("prospect-filter-score") || {}).value || "";
+      prospectWork.q = ((document.getElementById("prospect-filter-q") || {}).value || "").trim();
+      render();
+    }
+
+    function prospectClearFilters() {
+      prospectWork.segment = ""; prospectWork.source = ""; prospectWork.minScore = ""; prospectWork.q = "";
+      render();
+    }
+
+    function prospectSelectedIds() {
+      return Array.from(document.querySelectorAll("input[data-prospect-id]:checked"))
+        .map(box => box.getAttribute("data-prospect-id")).filter(Boolean);
+    }
+
+    function prospectUpdateCount() {
+      const ids = prospectSelectedIds();
+      const label = document.getElementById("prospect-selection-count");
+      if (label) label.textContent = ids.length + " of " + document.querySelectorAll("input[data-prospect-id]").length + " shown selected";
+      const approve = document.getElementById("prospect-approve-btn");
+      if (approve) { approve.textContent = "Approve selection (" + ids.length + ")"; approve.disabled = ids.length === 0; }
+      const reject = document.getElementById("prospect-reject-btn");
+      if (reject) { reject.textContent = "Reject selection (" + ids.length + ")"; reject.disabled = ids.length === 0; }
+    }
+
+    function prospectSetAll(checked) {
+      document.querySelectorAll("input[data-prospect-id]").forEach(box => { box.checked = checked; });
+      prospectUpdateCount();
+    }
+
+    async function prospectDecideSelection(decision) {
+      const ids = prospectSelectedIds();
+      if (!ids.length) { toast("Nothing is selected."); return; }
+      const chosen = new Set(ids);
+      const withEmail = prospectPendingRows().filter(r => chosen.has(r.id) && r.hasEmail).length;
+      // The one explicit act. The sentence mirrors describeProspectApproval in
+      // scripts/prospect-selection.mjs: exact counts, and what approval does NOT do.
+      const noun = ids.length === 1 ? "organisation" : "organisations";
+      const message = decision === "approved"
+        ? "Approve " + ids.length + " " + noun + " for partner outreach? "
+          + (withEmail === 0
+            ? "None of them has an email address on file yet, so this makes nobody contactable by itself. "
+            : withEmail + " of them " + (withEmail === 1 ? "has" : "have") + " an email address on file. ")
+          + "Contact discovery, suppression checks, sending windows and every outreach gate still apply before any email exists or sends."
+        : "Reject " + ids.length + " " + noun + "? They leave the ranked list and will not be contacted.";
+      if (!window.confirm(message)) return;
+      await cooAction(async () => {
+        const route = decision === "approved" ? "/api/prospects/approve" : "/api/prospects/reject";
+        const result = await api(route, { method: "POST", body: JSON.stringify({ ids }), timeoutMs: 30000 });
+        const decided = new Set(ids);
+        state.prospectCandidates = list(state.prospectCandidates).map(c => {
+          if (!decided.has(String(c.id)) || String(c.review_state || "").toLowerCase() !== "pending_review") return c;
+          return decision === "approved" ? { ...c, review_state: "approved" } : { ...c, review_state: "rejected" };
+        });
+        const done = Number(decision === "approved" ? result.approved : result.rejected) || 0;
+        toast((decision === "approved" ? "Approved " : "Rejected ") + done + " " + (done === 1 ? "organisation" : "organisations")
+          + (Number(result.skipped) > 0 ? " — " + result.skipped + " already decided elsewhere." : "."));
+        render();
+      }, decision === "approved" ? "Could not approve the selection." : "Could not reject the selection.");
+    }
+
     function rcapProspectsPageHtml(pageClass) {
       const candidates = list(state.prospectCandidates);
       const revenueAccounts = list(state.rcapRevenueAccounts);
+      const pendingRows = prospectPendingRows();
+      const allPending = candidates.filter(c => String(c.review_state || "").toLowerCase() === "pending_review").length;
+      const approvedCount = candidates.filter(c => ["approved", "promoted"].includes(String(c.review_state || "").toLowerCase())).length;
+      const segments = Array.from(new Set(candidates.map(c => String(c.classification || "").toLowerCase()).filter(Boolean))).sort();
+      const sources = Array.from(new Set(candidates.map(c => String(c.source || "").toLowerCase()).filter(Boolean))).sort();
+      const filtering = Boolean(prospectWork.segment || prospectWork.source || prospectWork.minScore !== "" || prospectWork.q);
       return \`<section id="prospects" class="\${pageClass("prospects")} command-page section-page lee-bubble-safe-space">
-        <div class="panel hero-panel"><div><div class="eyebrow">RCAP pipeline</div><h1 class="big-title">RCAP Prospects</h1><p class="muted">Prospect Discovery candidates and RCAP Revenue OS accounts. Pending candidates stay in review until approved by Roger.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='upload'">Upload RCAP prospect list</button><button onclick="location.hash='production-activation-rcap'">Open RCAP review</button></div></div>
-        <div class="campaign-preview-metrics">\${[[candidates.length,"prospect candidates"],[revenueAccounts.length,"revenue accounts"],[candidates.filter(c => /pending|review/i.test(String(c.status || c.review_state || "pending_review"))).length,"needs review"],[candidates.filter(c => /approved|ready/i.test(String(c.status || c.review_state))).length,"ready"]].map(([value,label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
+        <div class="panel hero-panel"><div><div class="eyebrow">RCAP pipeline</div><h1 class="big-title">RCAP Prospects</h1><p class="muted">The ranked list. Filter to a selection, uncheck anyone you want out, then approve the whole selection in one confirmed step. Approval promotes organisations toward partner outreach — it does not send anything, and every outreach gate still applies.</p></div><div class="card-actions"><button onclick="location.hash='upload'">Upload RCAP prospect list</button><button onclick="location.hash='production-activation-rcap'">Open RCAP review</button></div></div>
+        <div class="campaign-preview-metrics">\${[[allPending,"pending review"],[approvedCount,"approved"],[candidates.length,"prospect candidates"],[revenueAccounts.length,"revenue accounts"]].map(([value,label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
+        <section class="growth-card">
+          <div class="growth-card-head"><h2>Build a selection</h2><small>\${esc(String(pendingRows.length))} of \${esc(String(allPending))} pending shown\${filtering ? " (filtered)" : ""}</small></div>
+          <div class="card-actions" style="flex-wrap:wrap;gap:8px;align-items:flex-end">
+            <label>Segment <select id="prospect-filter-segment">\${["<option value=\\"\\">All segments</option>"].concat(segments.map(s => \`<option value="\${esc(s)}" \${prospectWork.segment === s ? "selected" : ""}>\${esc(s)}</option>\`)).join("")}</select></label>
+            <label>Source <select id="prospect-filter-source">\${["<option value=\\"\\">All sources</option>"].concat(sources.map(s => \`<option value="\${esc(s)}" \${prospectWork.source === s ? "selected" : ""}>\${esc(s)}</option>\`)).join("")}</select></label>
+            <label>Min score <input id="prospect-filter-score" type="number" inputmode="numeric" style="width:90px" value="\${esc(String(prospectWork.minScore))}"></label>
+            <label>Search <input id="prospect-filter-q" type="search" placeholder="Name, city, state, NTEE" value="\${esc(prospectWork.q)}"></label>
+            <button class="primary" onclick="prospectApplyFilters()">Apply filters</button>
+            <button onclick="prospectClearFilters()">Clear</button>
+          </div>
+        </section>
+        <section class="growth-card">
+          <div class="growth-card-head"><h2>Review and decide</h2><small id="prospect-selection-count">0 of \${esc(String(pendingRows.length))} shown selected</small></div>
+          <div class="card-actions" style="gap:8px">
+            <button onclick="prospectSetAll(true)">Select all shown</button>
+            <button onclick="prospectSetAll(false)">Select none</button>
+            <button class="primary" id="prospect-approve-btn" disabled onclick="prospectDecideSelection('approved')">Approve selection (0)</button>
+            <button id="prospect-reject-btn" disabled onclick="prospectDecideSelection('rejected')">Reject selection (0)</button>
+          </div>
+          \${pendingRows.length === 0
+            ? \`<p class="muted">\${filtering ? "No pending organisations match these filters." : "Nothing is pending review."}</p>\`
+            : \`<div class="support-status-list">\${pendingRows.map(row => \`<div class="support-status-row" style="align-items:center"><label style="display:flex;gap:10px;align-items:center;flex:1;min-width:0"><input type="checkbox" data-prospect-id="\${esc(row.id)}" onchange="prospectUpdateCount()"><span style="min-width:0"><strong>\${esc(row.name)}</strong> <span class="muted">score \${esc(String(row.score))} · \${esc(row.segment || "unclassified")} · \${esc(row.source)}\${row.city || row.state ? " · " + esc([row.city, row.state].filter(Boolean).join(", ")) : ""}\${row.ntee ? " · " + esc(row.ntee) : ""}</span>\${row.hasEmail ? "" : " <span class=\\"badge info\\">no email yet</span>"}\${row.duplicate ? " <span class=\\"badge warn\\">possible duplicate</span>" : ""}</span></label></div>\`).join("")}</div>\`}
+        </section>
       </section>\`;
     }
 
@@ -39429,6 +39557,63 @@ async function handleRequest(request, response) {
     return;
   }
 
+  // ---- Press workbook import (Release 8 importer, finally wired; 2026-07-26) ----------------
+  // The Release 8 import modules had NO server path, so production's Press lane read 0/0 while
+  // the import had only ever run in tests. These two endpoints wire them, in the exact shape of
+  // the consumer upload above: preview is a faithful dry-run that writes nothing; confirm is
+  // owner/admin-gated and writes records only. REVIEW-ONLY BY CONSTRUCTION is enforced twice —
+  // buildPressImportPlan writes every contact held and unenrolled, and confirm re-verifies that
+  // invariant on every row and refuses the whole import if a single row would land contactable.
+  if (url.pathname === "/api/press/import/preview" && request.method === "POST") {
+    try {
+      const payload = await readJson(request);
+      const workbook = readPressWorkbook(Buffer.from(String(payload?.workbookBase64 || ""), "base64"));
+      const currentState = await store.readState();
+      const plan = buildPressImportPlan(currentState, workbook, { now: new Date().toISOString() });
+      // Counts only — journalist names and addresses stay out of the preview payload.
+      sendJson(response, { ok: true, summary: plan.summary, noSend: true, wouldWrite: {
+        outreachContacts: plan.outreachContacts.length,
+        companyContactPatches: plan.contactPatches.length,
+        pressOutletRoutes: plan.outletRoutes.length,
+        pressPlacements: plan.placements.length
+      } });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not preview the press workbook." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/press/import/confirm" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const payload = await readJson(request);
+      const workbook = readPressWorkbook(Buffer.from(String(payload?.workbookBase64 || ""), "base64"));
+      const outcome = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const now = new Date().toISOString();
+        const plan = buildPressImportPlan(currentState, workbook, { now });
+        // The fail-closed invariant: every imported contact is held and unenrolled, whatever the
+        // workbook said. A single violation aborts the import before anything is written.
+        for (const row of plan.outreachContacts) {
+          if (row.press_hold !== true || row.sequence_status !== "Not Enrolled") {
+            throw new Error("Press import refused: a row would land contactable. Nothing was written.");
+          }
+        }
+        const nextState = applyPressImportPlan(currentState, plan, { now });
+        await writeChangedCollections(currentState, nextState);
+        return { summary: plan.summary };
+      });
+      sendJson(response, { ok: true, summary: outcome.summary, noSend: true, allHeld: true });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not import the press workbook." }, 400);
+    }
+    return;
+  }
+
   // ---- Held contacts review (read-only operator surface) -----------------------------------
   // Safe counts + masked rows for held reactivation contacts and Expungement.ai lifecycle contacts.
   // GET => "read" permission (auth required). Writes NO state; returns only safe, masked fields.
@@ -39702,32 +39887,48 @@ async function handleRequest(request, response) {
     return;
   }
 
+  // Ranked, filtered view of PENDING candidates — the read-only half of bulk approval. The
+  // surface previews a selection here (exact match count, contactable count, breakdowns) BEFORE
+  // any confirmation; nothing is written.
+  if (url.pathname === "/api/prospects/selection" && request.method === "GET") {
+    const currentState = await store.readState();
+    sendJson(response, selectPendingProspects(currentState, {
+      classification: url.searchParams.get("classification") || "",
+      source: url.searchParams.get("source") || "",
+      stateCode: url.searchParams.get("state") || "",
+      minScore: url.searchParams.get("minScore") || "",
+      maxScore: url.searchParams.get("maxScore") || "",
+      q: url.searchParams.get("q") || ""
+    }));
+    return;
+  }
+
   // Approve staged candidates — THE ONLY place review_state becomes "approved". Promotion into
   // the B2 collections happens later in the engine's act() (under autopilot). An optional
   // classification override is validated against the shared B2 vocab.
+  //
+  // Accepts one id or an explicit reviewed LIST of ids — bulk approval is this same endpoint,
+  // same authorization, same single write site (applyBulkProspectDecision). Never a filter:
+  // the server decides exactly the ids the human reviewed, nothing re-evaluated at apply time.
   if (url.pathname === "/api/prospects/approve" && request.method === "POST") {
     try {
       const input = await readJson(request);
-      const ids = new Set((Array.isArray(input.ids) ? input.ids : [input.id]).filter(Boolean).map(String));
+      const ids = [...new Set((Array.isArray(input.ids) ? input.ids : [input.id]).filter(Boolean).map(String))];
       const overrideClass = input.classification !== undefined ? normalizeClassification(input.classification) : "";
-      const approvedCount = await serializeStateMutation(async () => {
+      const outcome = await serializeStateMutation(async () => {
         const currentState = await store.readState();
-        let approved = 0;
-        const candidates = serverList(currentState.prospectCandidates).map((c) => {
-          if (!ids.has(c.id) || String(c.review_state || "").toLowerCase() !== PROSPECT_REVIEW.PENDING) return c;
-          approved += 1;
-          return {
-            ...c,
-            ...(overrideClass ? { classification: overrideClass } : {}),
-            review_state: PROSPECT_REVIEW.APPROVED,
-            approved_at: new Date().toISOString(),
-            approved_by: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
-          };
+        const result = applyBulkProspectDecision(serverList(currentState.prospectCandidates), ids, {
+          decision: "approved",
+          classification: overrideClass,
+          actorLabel: accessDecision.actor?.label || accessDecision.actor?.role || "operator",
+          now: new Date().toISOString()
         });
-        await store.writeCollections({ prospectCandidates: candidates });
-        return approved;
+        await store.writeCollections({ prospectCandidates: result.candidates });
+        return result;
       });
-      sendJson(response, { ok: true, approved: approvedCount });
+      // `skipped` = reviewed rows that stopped being pending between preview and confirm.
+      // Reported so the surface can say "approved 45, 2 already decided" — never a silent gap.
+      sendJson(response, { ok: true, approved: outcome.changed, requested: outcome.requested, skipped: outcome.skipped });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not approve prospects." }, 400);
     }
@@ -39738,24 +39939,18 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/prospects/reject" && request.method === "POST") {
     try {
       const input = await readJson(request);
-      const ids = new Set((Array.isArray(input.ids) ? input.ids : [input.id]).filter(Boolean).map(String));
-      const rejectedCount = await serializeStateMutation(async () => {
+      const ids = [...new Set((Array.isArray(input.ids) ? input.ids : [input.id]).filter(Boolean).map(String))];
+      const outcome = await serializeStateMutation(async () => {
         const currentState = await store.readState();
-        let rejected = 0;
-        const candidates = serverList(currentState.prospectCandidates).map((c) => {
-          if (!ids.has(c.id) || String(c.review_state || "").toLowerCase() !== PROSPECT_REVIEW.PENDING) return c;
-          rejected += 1;
-          return {
-            ...c,
-            review_state: PROSPECT_REVIEW.REJECTED,
-            rejected_at: new Date().toISOString(),
-            rejected_by: accessDecision.actor?.label || accessDecision.actor?.role || "operator"
-          };
+        const result = applyBulkProspectDecision(serverList(currentState.prospectCandidates), ids, {
+          decision: "rejected",
+          actorLabel: accessDecision.actor?.label || accessDecision.actor?.role || "operator",
+          now: new Date().toISOString()
         });
-        await store.writeCollections({ prospectCandidates: candidates });
-        return rejected;
+        await store.writeCollections({ prospectCandidates: result.candidates });
+        return result;
       });
-      sendJson(response, { ok: true, rejected: rejectedCount });
+      sendJson(response, { ok: true, rejected: outcome.changed, requested: outcome.requested, skipped: outcome.skipped });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not reject prospects." }, 400);
     }
