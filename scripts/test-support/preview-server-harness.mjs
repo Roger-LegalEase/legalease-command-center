@@ -178,3 +178,30 @@ export async function loginWithCredential(server, credential) {
 export async function loginOwner(server) {
   return loginWithCredential(server, server.ownerCredential);
 }
+
+// Added 2026-07-26 (hygiene, extended-test triage). Several connector suites spawn their own
+// preview server with bespoke OAuth env rather than going through startPreviewServer, and they used
+// to authenticate with a static `x-command-center-token` header. That no longer works: the static
+// token registry in scripts/access-control.mjs was emptied as intentional hardening, so bootstrap
+// credentials are accepted only by POST /api/auth/login and the browser gets an opaque HttpOnly
+// session. This is the same flow as loginWithCredential above, against a plain base URL.
+export async function loginAtBaseUrl(baseUrl, credential) {
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method:"POST",
+    headers:{ "content-type":"application/json" },
+    body:JSON.stringify({ credential }),
+    signal:AbortSignal.timeout(FETCH_TIMEOUT_MS)
+  });
+  assert.equal(response.status, 200, "Bootstrap credential login must succeed.");
+  const setCookie = (response.headers.getSetCookie?.() || []).join(", ") || response.headers.get("set-cookie") || "";
+  const session = cookiePair(setCookie, "leos_session");
+  const csrf = cookiePair(setCookie, "leos_csrf");
+  assert(session && csrf, "Login must set session and CSRF cookies.");
+  const role = (await response.json())?.role || "";
+  return {
+    role,
+    cookie:`${session}; ${csrf}`,
+    csrfToken:decodeURIComponent(csrf.slice("leos_csrf=".length)),
+    headers:{ cookie:`${session}; ${csrf}` }
+  };
+}

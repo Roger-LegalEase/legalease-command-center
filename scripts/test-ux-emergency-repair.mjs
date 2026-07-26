@@ -11,7 +11,11 @@ function functionBlock(name) {
   const start = source.indexOf(marker);
   assert(start >= 0, `${name} should exist`);
   const rest = source.slice(start);
-  const next = rest.slice(1).search(/\n    function [a-zA-Z0-9_$]+\(/);
+  // PORTED 2026-07-26 (hygiene, extended-test triage): the boundary only stopped at a sibling
+  // `function`, so blocks over-captured into the following `const` declaration (proofWorkspaceHtml
+  // is followed by `const MORE_DIRECTORY_GROUPS`, a nav catalogue full of route names). Stopping at
+  // a sibling const/let/var too keeps the doesNotMatch assertions below honest.
+  const next = rest.slice(1).search(/\n    (?:async function|function|const|let|var) [a-zA-Z0-9_$]+/);
   return next > 0 ? rest.slice(0, next + 1) : rest;
 }
 
@@ -43,7 +47,15 @@ assert(source.includes('pageId === "production-activation-rcap" ? rcapReviewWork
 assert(source.includes('safeRenderModule("proof", () => proofWorkspaceHtml(pageClass))'), "Metrics/KPIs route should render the Proof workspace");
 
 assert.match(proofBlock, /Metrics \/ KPIs/, "Proof should include Metrics / KPIs");
-assert.match(proofBlock, /Track the numbers that prove LegalEase is moving\./, "Metrics / KPIs should explain its purpose");
+// PORTED 2026-07-26 (hygiene, extended-test triage). The section subtitle "Track the numbers that
+// prove LegalEase is moving." has zero occurrences anywhere in the product: the Metrics / KPIs
+// panel head now carries an "Add Metric" action instead of a subtitle, and each metric explains
+// itself with a per-row note next to its value. Asserting that structure is a stronger version of
+// "Metrics / KPIs should explain its purpose" than the single dead sentence was, because it fails
+// if the per-metric explanation is ever dropped.
+assert.match(proofBlock, /<div class="command-panel" id="metrics-kpis">/, "Metrics / KPIs should be an addressable panel");
+assert.match(proofBlock, /id="metrics-kpis"[\s\S]{0,400}metrics\.map\(\(\[label, value, note\]\)/, "Metrics / KPIs should render each metric with a label, value and explanatory note");
+assert.match(proofBlock, /id="metrics-kpis"[\s\S]{0,600}<b>\\\$\{esc\(label\)\}<\/b><span>\\\$\{esc\(note\)\}<\/span>/, "each Metrics / KPIs row should show its explanatory note beside the label");
 assert.match(proofBlock, /Needs update/, "Metrics / KPIs should have useful missing states");
 assert.match(proofBlock, /No value added yet\./, "Metrics / KPIs should explain missing values quietly");
 assert.doesNotMatch(proofBlock, /RCAP Program Review|Record Clearing Access Program/, "Proof / Metrics should not include RCAP content");

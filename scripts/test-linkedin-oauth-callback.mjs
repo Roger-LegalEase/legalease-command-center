@@ -7,6 +7,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { coreRecordsFromState } from "./storage.mjs";
+import { loginAtBaseUrl } from "./test-support/preview-server-harness.mjs";
 
 const rootDir = process.cwd();
 const source = readFileSync(path.join(rootDir, "scripts", "preview-server.mjs"), "utf8");
@@ -105,8 +106,22 @@ try {
   assert.equal(connect.status, 401, "anonymous LinkedIn connect JSON route should remain protected");
   assert.equal((await connect.json()).error, "Authentication required.", "anonymous connect should return the protected API auth error");
 
-  const ownerConnect = await fetch(`${baseUrl}/api/linkedin/connect?format=json`, {
+  // PORTED 2026-07-26 (hygiene, extended-test triage). Every owner-authenticated request in this
+  // suite used a static `x-command-center-token` header. That stopped authenticating when the static
+  // token registry in scripts/access-control.mjs was emptied as intentional hardening: bootstrap
+  // credentials are now accepted only by POST /api/auth/login, which returns an opaque HttpOnly
+  // session. The header requests were therefore being treated as anonymous and getting 401s. Ported
+  // to the real login flow; the anonymous-protection assertions above are untouched, and this adds
+  // a check that the bootstrap credential is still refused as a bearer-style header credential.
+  const staticHeaderAttempt = await fetch(`${baseUrl}/api/linkedin/status`, {
     headers:{ "x-command-center-token":ownerToken }
+  });
+  assert.equal(staticHeaderAttempt.status, 401, "a static token header must not authenticate; only POST /api/auth/login issues a session");
+  const ownerSession = await loginAtBaseUrl(baseUrl, ownerToken);
+  assert.equal(ownerSession.role, "owner", "the bootstrap credential should log in as owner");
+
+  const ownerConnect = await fetch(`${baseUrl}/api/linkedin/connect?format=json`, {
+    headers:ownerSession.headers
   });
   assert.equal(ownerConnect.status, 200, "owner-authenticated LinkedIn connect should start OAuth");
   const ownerConnectJson = await ownerConnect.json();
@@ -119,54 +134,71 @@ try {
   assert.equal(statePayload.startedByRole, "owner", "OAuth state should include the owner/admin role marker");
   assert.equal(statePayload.returnTarget, "settings", "OAuth state should carry the Settings return target");
 
-  const missingState = await fetch(`${baseUrl}/api/linkedin/callback?code=fake-code`, { redirect:"manual" });
-  assertSettingsRedirect(missingState, "LinkedIn connection expired. Try again from Settings.", "missing callback state");
+  // PORTED 2026-07-26 (hygiene, extended-test triage). The OAuth callback contract was deliberately
+  // hardened and no longer redirects failures back to Settings with a founder-facing message. Every
+  // callback now requires BOTH an authenticated owner session and a state that is signed, expiring,
+  // session-bound and single-use (the guarantee the public privacy page advertises). Anything else
+  // fails closed with `400 {"error":"OAuth callback rejected."}` instead of a 302.
+  //
+  // The old assertions demanded the friendly redirects, which means they demanded a callback that
+  // accepts a self-signed state with no session. Satisfying them would have re-opened exactly the
+  // hole the hardening closed, so they are inverted to assert the fail-closed rejection. Two
+  // guarantees the old suite could not express are added: a validly signed owner-started state is
+  // still rejected without a session, and a state cannot be replayed.
+  async function assertCallbackRejected(query, label, headers = {}) {
+    const rejected = await fetch(`${baseUrl}/api/linkedin/callback?${query}`, { redirect:"manual", headers });
+    assert.equal(rejected.status, 400, `${label} should fail closed with 400, not redirect`);
+    assert.deepEqual(await rejected.json(), { error:"OAuth callback rejected." }, `${label} should return the generic rejection without leaking why`);
+  }
 
-  const invalidState = await fetch(`${baseUrl}/api/linkedin/callback?code=fake-code&state=not-valid`, { redirect:"manual" });
-  assertSettingsRedirect(invalidState, "LinkedIn connection expired. Try again from Settings.", "invalid callback state");
-
-  const malformedState = await fetch(`${baseUrl}/api/linkedin/callback?code=fake-code&state=abc.def`, { redirect:"manual" });
-  assertSettingsRedirect(malformedState, "LinkedIn connection expired. Try again from Settings.", "malformed callback state");
-
-  const validState = signedState();
-  const missingOwner = await fetch(`${baseUrl}/api/linkedin/callback?code=fake-code&state=${encodeURIComponent(validState)}`, { redirect:"manual" });
-  assertSettingsRedirect(missingOwner, "Sign in as owner, then reconnect LinkedIn.", "callback without owner session");
-
-  const ownerInvalidState = await fetch(`${baseUrl}/api/linkedin/callback?code=fake-code&state=not-valid`, {
-    redirect:"manual",
-    headers:{ "x-command-center-token":ownerToken }
-  });
-  assertSettingsRedirect(ownerInvalidState, "LinkedIn connection expired. Try again from Settings.", "owner callback with invalid state");
-
-  const expiredOwnerStartedState = signedState({
-    ownerStarted:true,
-    startedByRole:"owner",
-    issuedAt: Date.now() - 11 * 60 * 1000
-  });
-  const expiredOwnerStartedCallback = await fetch(`${baseUrl}/api/linkedin/callback?code=linkedin-oauth-test-success&state=${encodeURIComponent(expiredOwnerStartedState)}`, { redirect:"manual" });
-  assertSettingsRedirect(expiredOwnerStartedCallback, "LinkedIn connection expired. Try again from Settings.", "expired owner-started callback");
+  await assertCallbackRejected("code=fake-code", "missing callback state");
+  await assertCallbackRejected("code=fake-code&state=not-valid", "invalid callback state");
+  await assertCallbackRejected("code=fake-code&state=abc.def", "malformed callback state");
+  await assertCallbackRejected(`code=fake-code&state=${encodeURIComponent(signedState())}`, "signed state without owner-start proof");
+  await assertCallbackRejected("code=fake-code&state=not-valid", "owner-session callback with invalid state", ownerSession.headers);
+  await assertCallbackRejected(
+    `code=linkedin-oauth-test-success&state=${encodeURIComponent(signedState({ ownerStarted:true, startedByRole:"owner", issuedAt: Date.now() - 11 * 60 * 1000 }))}`,
+    "expired owner-started state",
+    ownerSession.headers
+  );
+  // The state is session-bound: a correctly signed, unexpired, owner-started state must still be
+  // refused when it is presented without the session that started the flow.
+  await assertCallbackRejected(
+    `code=linkedin-oauth-test-success&state=${encodeURIComponent(signedState({ ownerStarted:true, startedByRole:"owner" }))}`,
+    "owner-started state presented without the owner session"
+  );
 
   const notConnectedYet = await fetch(`${baseUrl}/api/linkedin/status`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
-  assert.equal((await notConnectedYet.json()).connected, false, "failed callback states should not store a LinkedIn connection");
+  assert.equal((await notConnectedYet.json()).connected, false, "rejected callback states should not store a LinkedIn connection");
 
-  const ownerStartedState = signedState({ ownerStarted:true, startedByRole:"owner" });
-  const ownerStartedCallback = await fetch(`${baseUrl}/api/linkedin/callback?code=linkedin-oauth-test-success&state=${encodeURIComponent(ownerStartedState)}`, { redirect:"manual" });
-  assertSettingsRedirect(ownerStartedCallback, "LinkedIn connected. Live posting remains off.", "owner-started callback without owner cookie");
+  // The only accepted path: the state minted by this owner session's own /connect call, replayed
+  // once, from that same session.
+  const ownerStartedCallback = await fetch(`${baseUrl}/api/linkedin/callback?code=linkedin-oauth-test-success&state=${encodeURIComponent(stateParam)}`, {
+    redirect:"manual",
+    headers:ownerSession.headers
+  });
+  assertSettingsRedirect(ownerStartedCallback, "LinkedIn connected. Live posting remains off.", "owner-started callback from the session that began the flow");
+
+  // Single-use: the same state must not work twice.
+  await assertCallbackRejected(`code=linkedin-oauth-test-success&state=${encodeURIComponent(stateParam)}`, "replayed callback state", ownerSession.headers);
 
   const connectedStatus = await fetch(`${baseUrl}/api/linkedin/status`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
   assert.equal(connectedStatus.status, 200, "owner should be able to read LinkedIn status after callback");
   const connectedJson = await connectedStatus.json();
   assert.equal(connectedJson.connected, true, "valid owner-started callback should store the LinkedIn connection");
   assert.equal(connectedJson.livePostingEnabled, false, "successful connection should not enable live posting");
 
+  // /api/health was minimised in d146413; liveGatesCount is no longer published to anonymous
+  // callers, so this asserts the minimisation rather than reading a value that must not be public.
   const health = await fetch(`${baseUrl}/api/health`);
   assert.equal(health.status, 200, "health endpoint should remain public");
   const healthJson = await health.json();
-  assert.equal(healthJson.liveGatesCount, 0, "liveGatesCount should remain 0");
+  assert.deepEqual(Object.keys(healthJson), ["status"], "public /api/health must stay minimised");
+  assert.equal(healthJson.liveGatesCount, undefined, "public /api/health must not publish live gate counts");
 } finally {
   child.kill("SIGTERM");
 }

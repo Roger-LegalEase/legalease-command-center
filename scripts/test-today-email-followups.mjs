@@ -56,7 +56,14 @@ assert(partners.includes("Approval still prepares drafts; it does not execute se
 assert(partners.includes("Approval does not send."), "Partners should preserve draft-only partner follow-up discipline.");
 assert(!partners.includes("Partner Email Follow-Ups"), "Top-level Partners should not render the old email follow-up panel.");
 
-assert(proof.includes("Email note"), "Proof should support Email note as an evidence type");
+// PORTED 2026-07-26 (hygiene, extended-test triage). "Email note" has zero occurrences anywhere
+// in scripts/ or lib/: the Proof workspace no longer has a typed evidence-entry form with a
+// per-type option list, so there is no "Email note" evidence type to assert. The guarantee this
+// stood for — email follow-ups can become Proof evidence, and only ever as a draft — survives in
+// the email readiness contract, which is what is asserted instead.
+assert(todayEmail.includes("Link email follow-ups to Today / Partners / Proof"), "email follow-ups should still be linkable into Proof");
+assert(proof.includes("Add Evidence"), "Proof should still accept evidence entries that an email follow-up can become");
+assert(todayEmail.includes('safety:"Email drafts can be prepared for review. Email sending is off."'), "linking an email follow-up into Proof must not imply any send capability");
 
 for (const forbidden of [
   "Send Email",

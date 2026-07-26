@@ -7,6 +7,8 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { coreRecordsFromState } from "./storage.mjs";
+import { permissionForRequest } from "./access-control.mjs";
+import { loginAtBaseUrl } from "./test-support/preview-server-harness.mjs";
 
 const rootDir = process.cwd();
 const source = readFileSync(path.join(rootDir, "scripts", "preview-server.mjs"), "utf8");
@@ -27,8 +29,24 @@ await writeFile(seedPath, JSON.stringify({ settings:{}, posts:[], contentBank:[]
 assert(source.includes('url.pathname === "/api/x/status"'), "Twitter / X status route should exist");
 assert(source.includes('url.pathname === "/api/x/connect"'), "Twitter / X connect route should exist");
 assert(source.includes('url.pathname === "/api/x/oauth-diagnostics"'), "Twitter / X should expose a protected redacted OAuth diagnostics route");
-assert(accessControlSource.includes('"/api/x/oauth-diagnostics"'), "Twitter / X OAuth diagnostics should be allowed through the top-level route gate for explicit owner/admin handling");
+// PORTED 2026-07-26 (hygiene, extended-test triage). This assertion previously required
+// '"/api/x/oauth-diagnostics"' to appear in scripts/access-control.mjs, where the only list
+// of literal paths is `publicPaths`. That entry was deliberately REMOVED in commit a7d7362
+// because it made a diagnostics endpoint publicly reachable. Satisfying the old assertion
+// would have re-opened it, so the assertion is INVERTED: the endpoint must NOT be public,
+// and its own owner/admin access decision must still gate it. The live 401 + "owner/admin"
+// requiredPermission behaviour is exercised against the running server further down.
+assert(!accessControlSource.includes("/api/x/oauth-diagnostics"), "Twitter / X OAuth diagnostics must never be named in access-control.mjs; the only literal-path list there is publicPaths (removed in a7d7362)");
+assert.notEqual(permissionForRequest("GET", "/api/x/oauth-diagnostics"), "public", "the top-level route gate must not classify Twitter / X OAuth diagnostics as a public path");
+assert.notEqual(permissionForRequest("POST", "/api/x/oauth-diagnostics"), "public", "the top-level route gate must not classify Twitter / X OAuth diagnostics writes as public either");
 assert(source.includes("xOAuthDiagnosticsAccessDecision"), "Twitter / X OAuth diagnostics should use its own owner/admin access decision");
+const xDiagnosticsRouteIndex = source.indexOf('url.pathname === "/api/x/oauth-diagnostics"');
+assert(xDiagnosticsRouteIndex > -1, "Twitter / X OAuth diagnostics route handler should exist");
+const xDiagnosticsRouteEnd = source.indexOf("url.pathname ===", xDiagnosticsRouteIndex + 1);
+const xDiagnosticsRouteBlock = source.slice(xDiagnosticsRouteIndex, xDiagnosticsRouteEnd > -1 ? xDiagnosticsRouteEnd : undefined);
+assert(xDiagnosticsRouteBlock.includes("xOAuthDiagnosticsAccessDecision(request)"), "the Twitter / X OAuth diagnostics route must run its owner/admin access decision on the request");
+assert(/if\s*\(!\s*diagnosticsAccess\.ok\)/.test(xDiagnosticsRouteBlock), "the Twitter / X OAuth diagnostics route must return early when the access decision denies, before emitting any payload");
+assert(xDiagnosticsRouteBlock.indexOf("xOAuthDiagnosticsPayload") > xDiagnosticsRouteBlock.indexOf("diagnosticsAccess.ok"), "the Twitter / X OAuth diagnostics payload must only be built after the access decision passes");
 assert(source.includes('url.pathname === "/api/x/callback"'), "Twitter / X callback route should exist");
 assert(source.includes("xAuthorizationUrl({ state"), "Twitter / X connect should create an OAuth authorization URL");
 assert(source.includes("verifyOwnerStartedOAuthState(\"x\""), "Twitter / X callback should validate owner-started state");
@@ -124,38 +142,96 @@ try {
   assert.equal(connect.status, 401, "anonymous Twitter / X connect JSON route should remain protected");
   assert.equal((await connect.json()).error, "Authentication required.", "anonymous connect should return the protected API auth error");
 
+  // PORTED 2026-07-26 (hygiene, extended-test triage): static `x-command-center-token` headers no
+  // longer authenticate, so every owner/admin request below goes through a real login session.
+  const staticHeaderAttempt = await fetch(`${baseUrl}/api/x/status`, {
+    headers:{ "x-command-center-token":ownerToken }
+  });
+  assert.equal(staticHeaderAttempt.status, 401, "a static token header must not authenticate; only POST /api/auth/login issues a session");
+  const ownerSession = await loginAtBaseUrl(baseUrl, ownerToken);
+  assert.equal(ownerSession.role, "owner", "the owner bootstrap credential should log in as owner");
+  const adminSession = await loginAtBaseUrl(baseUrl, adminToken);
+  assert.equal(adminSession.role, "admin", "the admin bootstrap credential should log in as admin");
+
   const anonymousDiagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`);
   assert.equal(anonymousDiagnostics.status, 401, "anonymous Twitter / X OAuth diagnostics should remain protected");
   const anonymousDiagnosticsJson = await anonymousDiagnostics.json();
   assert.equal(anonymousDiagnosticsJson.error, "Authentication required.", "anonymous diagnostics should return the protected API auth error");
-  assert.equal(anonymousDiagnosticsJson.requiredPermission, "owner/admin", "Twitter / X diagnostics should advertise owner/admin access instead of admin-only access");
+  // PORTED 2026-07-26 (hygiene, extended-test triage). This used to expect
+  // requiredPermission "owner/admin", which was only reachable because the path was listed
+  // as public at the top-level gate and therefore fell through to the route's own
+  // owner/admin decision. Since a7d7362 removed it from publicPaths, anonymous callers are
+  // now stopped EARLIER, by the generic route gate, which reports its own permission name.
+  // That is strictly more protection, not less, so the assertion is retightened around what
+  // actually matters: the denial must not be "public", and it must leak no diagnostics.
+  assert.notEqual(anonymousDiagnosticsJson.requiredPermission, "public", "anonymous Twitter / X diagnostics must be denied by a real permission, never treated as public");
+  assert.ok(anonymousDiagnosticsJson.requiredPermission, "the anonymous denial should name the permission that gated it");
+  assert.equal(anonymousDiagnosticsJson.actor?.authenticated, false, "the anonymous denial should report an unauthenticated actor");
+  for (const leakedField of ["xClientIdConfigured", "xClientIdPrefix", "clientIdPrefixOnly", "authorizeHost", "redirectUri", "scopes", "setupReady"]) {
+    assert.equal(anonymousDiagnosticsJson[leakedField], undefined, `anonymous Twitter / X diagnostics denial must not include the ${leakedField} diagnostics field`);
+  }
+
+  // PORTED 2026-07-26 (hygiene, extended-test triage). These three blocks put the raw owner
+  // BOOTSTRAP CREDENTIAL straight into a `leos_session` cookie. That is no longer a session: the
+  // static token registry in scripts/access-control.mjs was emptied as intentional hardening, so a
+  // bootstrap credential is accepted only by POST /api/auth/login, which returns an opaque session
+  // id. Asserting that the raw credential works as a cookie would be asserting that a long-lived
+  // static secret is a valid session cookie — the thing the hardening removed.
+  //
+  // Inverted: the raw credential must be REJECTED as a cookie, and the real opaque session must be
+  // accepted. The duplicate-cookie case is kept, because tolerating a stale cookie ahead of a good
+  // one is still a real requirement — it is just expressed with a real session now.
+  const rawCredentialCookie = await fetch(`${baseUrl}/api/x/oauth-diagnostics`, {
+    headers:{ cookie:`leos_session=${encodeURIComponent(ownerToken)}` }
+  });
+  assert.equal(rawCredentialCookie.status, 401, "the raw bootstrap credential must not work as a session cookie");
 
   const browserAuthDiagnostics = await fetch(`${baseUrl}/api/auth/diagnostics`, {
-    headers:{ cookie:`leos_session=${encodeURIComponent(ownerToken)}` }
+    headers:ownerSession.headers
   });
-  assert.equal(browserAuthDiagnostics.status, 200, "browser cookie auth diagnostics should remain reachable");
-  const browserAuthDiagnosticsJson = await browserAuthDiagnostics.json();
-  assert.equal(browserAuthDiagnosticsJson.tokenMatch, true, "browser cookie auth diagnostics should recognize the owner session");
+  assert.equal(browserAuthDiagnostics.status, 200, "an owner session should reach auth diagnostics");
 
-  const browserCookieDiagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`, {
-    headers:{ cookie:`leos_session=${encodeURIComponent(ownerToken)}` }
-  });
-  assert.equal(browserCookieDiagnostics.status, 200, "browser cookie owner session should be accepted for protected Twitter / X diagnostics");
-  const browserCookieDiagnosticsJson = await browserCookieDiagnostics.json();
-  assert.equal(browserCookieDiagnosticsJson.xClientIdConfigured, true, "browser cookie diagnostics should return safe Twitter / X setup facts");
-
-  const duplicateCookieHeader = `leos_session=stale-owner-session; leos_session=${encodeURIComponent(ownerToken)}`;
-  const duplicateCookieAuthDiagnostics = await fetch(`${baseUrl}/api/auth/diagnostics`, {
-    headers:{ cookie:duplicateCookieHeader }
-  });
-  assert.equal((await duplicateCookieAuthDiagnostics.json()).tokenMatch, true, "auth diagnostics should recognize a valid owner session even when a stale duplicate cookie appears first");
+  // ============================================================================================
+  // LEFT FAILING DELIBERATELY 2026-07-26 (hygiene, extended-test triage) — REAL PRODUCT BUG.
+  //
+  // Everything above this line is ported and passing. From here the suite fails because
+  // GET /api/x/oauth-diagnostics returns 500 for EVERY authorized owner or admin caller.
+  //
+  // Root cause: scripts/preview-server.mjs:6590, in the ok:true branch of
+  // xOAuthDiagnosticsAccessDecision():
+  //
+  //     actor: ownerTokenMatched && !actor.authenticated
+  //
+  // `ownerTokenMatched` is a free variable. It is declared nowhere in the repo — the only
+  // occurrence is this read. Any owner/admin request therefore reaches this line and throws a
+  // ReferenceError, which the server turns into 500 {"error":"Request failed securely."}
+  // (confirmed in the server log as {"status":500,"code":"ReferenceError"}). The endpoint is
+  // completely non-functional for its only permitted audience; the anonymous-denial path above
+  // never reaches the bug, which is why it went unnoticed.
+  //
+  // This is NOT test rot, so it is not being ported around. Fixing it means changing product
+  // behaviour, which is out of scope for this hygiene pass and is the owner's call: the intended
+  // value of `ownerTokenMatched` cannot be inferred safely, because the branch it guards
+  // synthesises an owner actor for an UNAUTHENTICATED request
+  // (`{ id:"owner", role:"owner", ..., authenticated:true }`) and getting that wrong would grant
+  // owner identity to the wrong caller. It needs a deliberate decision, not a guess from a test.
+  //
+  // The assertions below are the correct expectations and should start passing once the
+  // ReferenceError is fixed. Nothing here has been weakened to hide the failure.
+  // ============================================================================================
+  const duplicateCookieHeader = `leos_session=stale-owner-session; ${ownerSession.cookie}`;
   const duplicateCookieXDiagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`, {
     headers:{ cookie:duplicateCookieHeader }
   });
-  assert.equal(duplicateCookieXDiagnostics.status, 200, "Twitter / X diagnostics should use the same valid owner-token proof when duplicate session cookies exist");
+  assert.notEqual(
+    duplicateCookieXDiagnostics.status,
+    500,
+    "GET /api/x/oauth-diagnostics 500s for every owner/admin caller: `ownerTokenMatched` is an undeclared free variable at scripts/preview-server.mjs:6590, so the ok:true branch of xOAuthDiagnosticsAccessDecision throws a ReferenceError. This is a real product bug, not test rot — see the comment above this assertion."
+  );
+  assert.equal(duplicateCookieXDiagnostics.status, 200, "Twitter / X diagnostics should still accept a valid owner session when a stale duplicate cookie appears first");
 
   const ownerConnect = await fetch(`${baseUrl}/api/x/connect?format=json`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
   assert.equal(ownerConnect.status, 200, "owner-authenticated Twitter / X connect should start OAuth when setup is present");
   const ownerConnectJson = await ownerConnect.json();
@@ -185,7 +261,7 @@ try {
   assert.ok(!JSON.stringify(ownerConnectJson).includes(clientSecret), "client secret should not appear in connect output");
 
   const diagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
   assert.equal(diagnostics.status, 200, "owner should be able to read redacted Twitter / X OAuth diagnostics");
   const diagnosticsJson = await diagnostics.json();
@@ -231,7 +307,7 @@ try {
   assert.ok(!diagnosticsText.includes(statePayload.codeVerifierEncrypted), "diagnostics must not expose encrypted verifier material");
 
   const adminDiagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`, {
-    headers:{ "x-command-center-token":adminToken }
+    headers:adminSession.headers
   });
   assert.equal(adminDiagnostics.status, 200, "admin should be able to read redacted Twitter / X OAuth diagnostics");
   const adminDiagnosticsText = JSON.stringify(await adminDiagnostics.json());
@@ -261,7 +337,7 @@ try {
   assertSettingsRedirect(cancelled, "Twitter / X connection was cancelled. Try again from Settings.", "cancelled callback");
 
   const notConnectedYet = await fetch(`${baseUrl}/api/x/status`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
   assert.equal((await notConnectedYet.json()).connected, false, "failed callback states should not store a Twitter / X connection");
 
@@ -269,7 +345,7 @@ try {
   assertSettingsRedirect(ownerStartedCallback, "Twitter / X connected. Live posting remains off.", "owner-started callback without owner cookie");
 
   const connectedStatus = await fetch(`${baseUrl}/api/x/status`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
   assert.equal(connectedStatus.status, 200, "owner should be able to read Twitter / X status after callback");
   const connectedJson = await connectedStatus.json();
@@ -280,7 +356,7 @@ try {
   assert.equal(connectedJson.connectionLoadedFromSession, false, "Twitter / X status should not depend on browser session storage");
   assert.ok(!JSON.stringify(connectedJson).includes("twitter-x-oauth-test-access-token"), "status output must not expose stored access tokens");
 
-  const refreshedRoot = await fetch(`${baseUrl}/`, { headers:{ "x-command-center-token":ownerToken } });
+  const refreshedRoot = await fetch(`${baseUrl}/`, { headers:ownerSession.headers });
   assert.equal(refreshedRoot.status, 200, "owner root shell should load after Twitter / X connection");
   const refreshedHtml = await refreshedRoot.text();
   assert.match(refreshedHtml, /Twitter \/ X[\s\S]{0,500}Connected/, "Settings/root shell should read persisted Twitter / X connection after refresh");
@@ -307,7 +383,7 @@ try {
   await writeFile(dataPath, JSON.stringify(persisted, null, 2));
 
   const expiredStatus = await fetch(`${baseUrl}/api/x/status`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
   const expiredStatusJson = await expiredStatus.json();
   assert.equal(expiredStatusJson.connected, true, "expired X access token with refresh token should still be treated as a durable connection");
@@ -316,7 +392,7 @@ try {
   assert.match(expiredStatusJson.connectedComputedReason, /refresh token/i, "status should explain that refresh token preserves the connection");
 
   const expiredDiagnostics = await fetch(`${baseUrl}/api/x/oauth-diagnostics`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
   const expiredDiagnosticsJson = await expiredDiagnostics.json();
   assert.equal(expiredDiagnosticsJson.xTokenRecordPresent, true, "diagnostics should report persisted X token record");
@@ -359,7 +435,7 @@ try {
   await waitForServer(reloadChild);
   const reloadBaseUrl = `http://127.0.0.1:${port + 1}`;
   const reloadedStatus = await fetch(`${reloadBaseUrl}/api/x/status`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
   const reloadedStatusJson = await reloadedStatus.json();
   assert.equal(reloadedStatusJson.connected, true, "Twitter / X connection should survive server restart/reload");
