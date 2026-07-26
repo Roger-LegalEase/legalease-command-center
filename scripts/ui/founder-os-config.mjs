@@ -256,3 +256,35 @@ export const FOUNDER_OS_CAMPAIGN_FORBIDDEN_TERMS = Object.freeze([
   "heartbeat", "autopilot", "live mode", "livemode", "kill_switch", "threshold_tripped",
   "engine", "cron", "claim ledger", "sendgrid", "webhook"
 ]);
+
+// ---------------------------------------------------------------------------------------------
+// Release 5 — the Scoreboard.
+// ---------------------------------------------------------------------------------------------
+//
+// FOUNDER_OS_SCOREBOARD turns the Founder Scoreboard into the charter's trusted KPI registry
+// (docs/founder-os/workspaces/scoreboard.md): every metric carries a definition, a named source,
+// freshness, current and prior period, a target where one is set, a variance, one corrective
+// action, and exactly one status label. Default off; off restores today's Scoreboard exactly.
+//
+// It is a projection over the existing Founder Scoreboard and Company Health services. It builds
+// no metric of its own and reads no collection they do not already read.
+
+export const FOUNDER_OS_SCOREBOARD_ENV_KEY = "FOUNDER_OS_SCOREBOARD";
+
+export function readFounderOsScoreboardConfig(serverEnvironment = {}) {
+  const environment = serverEnvironment && typeof serverEnvironment === "object" ? serverEnvironment : {};
+  const enabled = Object.prototype.hasOwnProperty.call(environment, FOUNDER_OS_SCOREBOARD_ENV_KEY)
+    && parseFounderOsFlag(environment[FOUNDER_OS_SCOREBOARD_ENV_KEY]);
+  return Object.freeze({ enabled, source: "server-environment" });
+}
+
+// The charter's six sections, in charter order (scoreboard.md:5-7). Platform health is folded in
+// here rather than living at its own destination.
+export const FOUNDER_OS_SCOREBOARD_SECTIONS = Object.freeze([
+  Object.freeze({ id: "financial", label: "Financial" }),
+  Object.freeze({ id: "acquisition", label: "Acquisition" }),
+  Object.freeze({ id: "pipeline", label: "Pipeline" }),
+  Object.freeze({ id: "customer", label: "Customer" }),
+  Object.freeze({ id: "marketing", label: "Marketing" }),
+  Object.freeze({ id: "platform_health", label: "Platform health" })
+]);
