@@ -1,5 +1,6 @@
 import { roleHasCapability } from "./roles.mjs";
 import { normalizeTaskRecord, updateTaskInState } from "./tasks-engine.mjs";
+import { transitionQueueItem } from "./company-memory.mjs";
 import { recordVisibleToActor } from "./global-search-service.mjs";
 import { buildExactObjectLink, buildGenericItemLink } from "./ui/route-compatibility.mjs";
 
@@ -11,6 +12,15 @@ export const TASK_WORKBENCH_READ_COLLECTIONS = Object.freeze([
   "posts",
   "supportIssues",
   "tasks"
+]);
+
+// Founder OS Release 2: completing a task from the Today panel also closes the queue item that
+// projected it into Today, which needs the queue spine in scope. Read only when the flag is on.
+export const TASK_WORKBENCH_FOUNDER_READ_COLLECTIONS = Object.freeze([
+  ...TASK_WORKBENCH_READ_COLLECTIONS,
+  "queueItems",
+  "approvals",
+  "companyEvents"
 ]);
 
 const ACTIONS = Object.freeze(new Set([
@@ -264,13 +274,36 @@ export function applyTaskWorkbenchAction(state = {}, actor = {}, taskId = "", in
     days:parsed.days,
     ...(parsed.action === "done" ? { completion_note:parsed.note || "Completed from the task panel." } : {})
   };
+  const now = options.now || new Date().toISOString();
   const result = updateTaskInState(state, taskId, parsed.action, patch, {
-    now:options.now || new Date().toISOString(),
+    now,
     actor:actorLabel(actor)
   });
-  const collections = Object.fromEntries(["tasks", "auditHistory", "activityEvents"]
-    .filter((name) => result.state[name] !== state[name])
-    .map((name) => [name, result.state[name]]));
+
+  // Founder OS Release 2: Today is projected from queueItems, so completing the task from the
+  // panel must also close the queue item that points at it — otherwise the work is done but the
+  // item stays in Today. Opt-in (FOUNDER_OS_TODAY only); with the flag off nothing changes.
+  let nextState = result.state;
+  const queueItemsCompleted = [];
+  if (options.completeQueueItems === true && parsed.action === "done") {
+    for (const item of list(nextState.queueItems)) {
+      if (clean(item?.sourceRef?.collection) !== "tasks" || clean(item?.sourceRef?.itemId) !== clean(taskId)) continue;
+      const transitioned = transitionQueueItem(nextState, {
+        id:clean(item.id),
+        status:"completed",
+        actor:clean(actor.id || actor.role) || "owner",
+        note:"Completed from the Today action panel.",
+        now:() => now
+      });
+      if (!transitioned.ok) continue;
+      nextState = transitioned.state;
+      queueItemsCompleted.push(clean(item.id));
+    }
+  }
+
+  const collections = Object.fromEntries(["tasks", "auditHistory", "activityEvents", "queueItems", "companyEvents", "approvals"]
+    .filter((name) => nextState[name] !== state[name])
+    .map((name) => [name, nextState[name]]));
   const messages = Object.freeze({
     done:"Task marked done.",
     in_progress:"Task marked in progress.",
@@ -283,11 +316,12 @@ export function applyTaskWorkbenchAction(state = {}, actor = {}, taskId = "", in
     reopen:"Task reopened."
   });
   return {
-    state:result.state,
+    state:nextState,
     collections,
     body:{
-      ...buildTaskWorkbenchView(result.state, actor, taskId),
+      ...buildTaskWorkbenchView(nextState, actor, taskId),
       outcome:"applied",
+      queueItemsCompleted,
       message:messages[parsed.action] || "Task updated."
     }
   };

@@ -157,3 +157,88 @@ inline `<script>` bodies, the same method the Phase 8 contract uses.
 | Release 1, `FOUNDER_OS_SHELL` on | 1,648,118 | 1,882 | **−1,661** |
 
 The release ships fewer bytes in both states. The ceiling was not touched.
+
+---
+
+## Release 2 — the Today operating loop
+
+**Status: built, unit and browser tests green locally, extended parity exact. Not merged.**
+
+- `FOUNDER_OS_TODAY` (new, default off) turns Today into the charter's five-section ordered
+  work queue — Now, Next, Communications, Meetings, Needs attention — ranked by the six rules
+  in `workspaces/today.md`. Off restores the legacy Today page exactly; that is the rollback.
+- **The ranking is a projection, not an engine.** `scripts/ui/view-models/founder-today-view.mjs`
+  reads the same candidates the inbox view already produces, plus `meetingBriefs`, `alerts` and
+  the `queueItems` spine. It classifies each item into one of the six tiers, keeps declared
+  priority and derived urgency as separate reported values, and multiplies them for the sort.
+  Nothing new is computed, stored or scheduled.
+- **Only work that needs Roger today is ranked.** A commitment due next month and a task due in
+  September do not appear at all. Tier 6 qualifies only when the item is due today or overdue.
+- **The universal action panel is the existing task workbench and communication composer.**
+  Both were already built and already lazy-loaded on the Today route by the vNext asset loader;
+  they were reachable but nothing on Today opened them. Today now emits the trigger attributes
+  they already bind to (`data-task-open`, `data-compose-source-kind`). No panel was rebuilt, and
+  the client-JavaScript cost of wiring them was zero because they are served as separate runtime
+  files, not inline.
+- **The six-part cascade is one action.** Five of the six things the charter names were already
+  performed by `markCommunicationDraftSentManually`: record the interaction, complete the task,
+  update last-contact, flag the queued automation, set the next follow-up. The sixth — the item
+  leaving Today — was missing, because nothing closed the queue item. It now transitions the
+  queue items whose `sourceRef` points at the draft's own source or at the task the draft
+  completed, through the existing `transitionQueueItem`, and never touches anything else.
+  Completing a task from the panel does the same. Both are **opt-in** (`completeQueueItems`),
+  passed only when the flag is on, so the flag-off behaviour is byte- and effect-identical.
+- **Safety.** Today drafts and records; it has no send path. The cascade still reports
+  `externalActions: 0`, still writes `emailSentByApplication: false`, and the Gmail handoff is
+  still a link Roger clicks himself. No gate function was changed, added or bypassed.
+
+### Routes superseded, and the ones deliberately left alone
+
+The five daily-loop renderers the deprecation ledger lists under **Consolidate → Today**
+(`cockpitHomeHtml`, `focusPageHtml`, `morningBriefPageHtml`, `eveningReflectionPageHtml`,
+`dailyCloseoutPageHtml`) are now server-side conditionals. With the flag on they render a short
+pointer into Today; with it off they render their original source. Every address still resolves.
+
+`tasksPageHtml`, `meetingsPageHtml`, `supportPageHtml`, `alertsPageHtml`,
+`automationInboxPageHtml`, `growthInboxPageHtml` and `milestonesPageHtml` were **not** gated.
+The ledger lists meetings, support, alerts, automation and growth-inbox under *Contextualize*,
+and rows 50–51 mark meeting briefs and the support desk **Keep**; tasks views and milestones
+offer management actions Release 2's panel does not yet replace. Gating them would have hidden
+a surface before its parity requirement passed, which the charter forbids. That reclaim is
+available to a later release once the panel covers those actions.
+
+### Release 2 client JavaScript budget
+
+Same method as Release 1: the real server, every vNext product flag enabled, summing inline
+`<script>` bodies.
+
+| Build | Bytes | Headroom | Change vs Release 1 |
+|---|---|---|---|
+| Release 1 (`f66f51e`) | 1,647,552 | 2,448 | — |
+| Release 2, `FOUNDER_OS_TODAY` off | 1,647,552 | 2,448 | **0 — byte-identical** |
+| Release 2, `FOUNDER_OS_TODAY` on | 1,624,079 | 25,921 | **−23,473** |
+
+The flag-on build is smaller than the flag-off build because it ships one Today renderer instead
+of two and replaces 21,771 bytes of daily-loop renderers with a single pointer function. The
+ceiling was not touched.
+
+### Tests
+
+- `scripts/test-founder-os-today.mjs` (new, in the `npm test` chain): 29 checks over the six
+  ranking rules, the "today only" qualification, the 14-day resurfacing rule, the section
+  composition, and each of the six cascade steps individually, plus the flag-off no-op path.
+- `tests/browser/founder-os-release-2.spec.mjs` (new): the four delivery-plan acceptance
+  scenarios in real Chromium, plus a route-parity spec and a rollback spec.
+- The eleven legacy-shell hash pins were recomputed together and annotated with the reason.
+- One assertion in `scripts/test-vnext-quick-capture.mjs` was corrected with the reason inline:
+  it counted "Open Quick Capture" once per file, and `today-page.mjs` now holds two renderers.
+  It is asserted once per renderer instead.
+- Extended parity against `founder-os-release-1`: 30 failures on both branches, identical lists,
+  zero added.
+
+### Recorded finding
+
+Recording a reply to a support issue does **not** remove it from Today, and should not: the
+composer deliberately does not close a support case, because the customer's problem is resolved
+by a separate judgement. The acceptance scenario for "completing the Now item promotes the next"
+uses two inbox follow-ups for that reason.
