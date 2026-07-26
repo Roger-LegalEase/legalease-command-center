@@ -306,7 +306,7 @@ const shellHash = createHash("sha256").update(serverSource.slice(shellStart, she
 // that emit a short pointer into Today when FOUNDER_OS_TODAY is on and their original source
 // when it is off. With the flag off the shell is byte-identical to Release 1 (measured:
 // 1,647,552 inline client bytes in both states). Behaviour: tests/browser/founder-os-release-2.spec.mjs.
-assert.equal(shellHash, "d77dabc8cfb7628af40982a8098088eee30305910ed23d766a664da76a1f40a0");
+assert.equal(shellHash, "cec80c07192bef3d4b902050b43b2bf0c7f337c4a4b7f8a51d54c280adff45e6");
 
 assert.equal(packageJson.scripts["test:vnext-ui-primitives"], "node scripts/test-vnext-ui-primitives.mjs");
 const extendedRunner = readFileSync("scripts/run-extended-tests.mjs", "utf8");

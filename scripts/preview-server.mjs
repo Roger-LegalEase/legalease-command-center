@@ -27297,21 +27297,21 @@ function htmlShell() {
               <option value="add_to_contacts">Add to Contacts</option>
               <option value="hold_for_campaign">Hold for campaign review</option>
               <option value="create_followups">Create follow-up tasks</option>
-              <option value="draft_outreach">Draft outreach (asks for approval first)</option>
+              <option value="draft_outreach">Draft outreach (drafts only, never sends)</option>
               <option value="suppress">Suppress / do not contact</option>
             </select></label>
             <label>Where did this list come from?<input name="sourceNote" required placeholder="Required source note, e.g. partner workbook, Google Sheet, manual export"></label>
             <label>Choose file<input name="file" type="file" required accept=".csv,.xlsx,.json,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
-            <div id="operator-upload-dropzone" class="campaign-import-status">Drag/drop or choose a file. Preview checks missing emails, invalid emails, duplicates, and do-not-contact/suppressed rows before saving.</div>
+            <div id="operator-upload-dropzone" class="campaign-import-status"><strong>Importing a list never contacts anyone.</strong> Everyone you import is held for review, and nobody can be emailed until you release them deliberately from a campaign. Drag/drop or choose a file. Preview checks missing emails, invalid emails, duplicates, and do-not-contact/suppressed rows before saving.</div>
             <div class="campaign-safety-lines">
-              <span>Requires list type</span><span>Requires source note</span><span>Preview before saving</span><span>Dedupe by email or stable ID where possible</span><span>Cleanup work items are created where existing import logic supports it</span><span>No email sends</span>
+              <span>Requires list type</span><span>Requires source note</span><span>Preview before saving</span><span>Dedupe by email or stable ID where possible</span><span>Cleanup work items are created where existing import logic supports it</span><span>No email sends</span><span>Imported people are held for review</span><span>Nothing reaches anyone until you release them</span>
             </div>
             <div class="card-actions">
               <button class="primary" type="submit">Preview list</button>
               <button type="button" onclick="location.hash='sources'">Open existing import surfaces</button>
             </div>
           </form>
-          <div id="operator-upload-result" class="campaign-import-status">Upload Preview: choose list type, source note, and file.</div>
+          <div id="operator-upload-result" class="campaign-import-status">Upload Preview: choose list type, source note, and file. Nothing sends, and imported people stay held until you release them.</div>
         </section>
         <section class="growth-card">
           <div class="growth-card-head"><h2>Internal routes</h2><small>Existing engines reused</small></div>
