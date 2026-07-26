@@ -26,6 +26,13 @@ const HOME_QUERY_KEYS = new Set([
   "view", "search", "stage", "owner", "health", "category", "waiting",
   "automation", "eligibility", "followUp", "limit", "cursor"
 ]);
+// Release 3 filter keys (relationships.md:50-54). Accepted ONLY when
+// FOUNDER_OS_RELATIONSHIPS is on. With the flag off they stay unknown keys and the request
+// is rejected exactly as before, which is deliberate: silently accepting a filter the
+// projection will not apply would return a set that looks filtered and is not.
+const FOUNDER_OS_HOME_QUERY_KEYS = new Set([
+  ...HOME_QUERY_KEYS, "role", "pipeline", "replied", "meeting", "noContactDays"
+]);
 const DETAIL_QUERY_KEYS = new Set(["tab"]);
 const NO_QUERY_KEYS = new Set();
 const REQUEST_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{15,95}$/i;
@@ -158,9 +165,10 @@ function decodeRouteValue(value, label) {
   return decoded;
 }
 
-function homeQuery(searchParams) {
-  assertQuery(searchParams, HOME_QUERY_KEYS);
-  return Object.fromEntries([...HOME_QUERY_KEYS].map((key) => [key, searchParams?.get?.(key) || undefined]));
+function homeQuery(searchParams, founderOs = false) {
+  const allowed = founderOs ? FOUNDER_OS_HOME_QUERY_KEYS : HOME_QUERY_KEYS;
+  assertQuery(searchParams, allowed);
+  return Object.fromEntries([...allowed].map((key) => [key, searchParams?.get?.(key) || undefined]));
 }
 
 function detailQuery(searchParams) {
@@ -275,7 +283,9 @@ export async function handlePartnerApiRequest({
   input = {},
   store,
   actor = {},
-  now = new Date().toISOString()
+  now = new Date().toISOString(),
+  // FOUNDER_OS_RELATIONSHIPS, supplied by the server from its environment.
+  founderOs = false
 } = {}) {
   if (!isPartnerApiPath(pathname)) return { matched:false };
   try {
@@ -285,9 +295,9 @@ export async function handlePartnerApiRequest({
     const verb = clean(method).toUpperCase();
 
     if (route.kind === "home" && verb === "GET") {
-      const query = homeQuery(searchParams);
+      const query = homeQuery(searchParams, founderOs);
       const state = await readState(store, PARTNERS_HOME_READ_COLLECTIONS);
-      return { matched:true, status:200, body:{ ok:true, ...buildAuthorizedPartnersHome(state, actor, now, query) } };
+      return { matched:true, status:200, body:{ ok:true, ...buildAuthorizedPartnersHome(state, actor, now, query, { founderOs }) } };
     }
     if (route.kind === "record" && verb === "GET") {
       const query = detailQuery(searchParams);

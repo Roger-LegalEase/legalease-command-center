@@ -87,6 +87,8 @@ first-class design constraint for every release. Never raised silently.
 | Merge-base of PR #120 (`e4c5728`) | 1,649,086 | 914 | measured, PR #120 |
 | PR #120 as first pushed | 1,656,786 | −6,786 (red) | measured, PR #120 |
 | PR #120 as merged (`1a3d6b7`) | 1,649,779 | 221 | measured, PR #120 |
+| main at `dc75baa`, all Founder OS flags off | 1,645,452 | 4,548 | measured 2026-07-26 |
+| main at `dc75baa`, shell + Today on | 1,624,450 | 25,550 | measured 2026-07-26 |
 
 ---
 
@@ -113,11 +115,40 @@ assertions proving the behaviour rather than the count.
 correct: it is not a product route alias, it is a compatibility redirect for a hash that
 only exists when the vNext Outreach page is enabled.
 
+### 2026-07-26 — Release 3's "identity dedup projection" already existed
+
+**Conflict.** `08_DELIVERY_PLAN.md` lists Release 3's projection/adapter as "identity dedup
+projection (email/domain keyed, ambiguity surfaced)", written as work to be done. At HEAD
+`scripts/relationship-service.mjs` is 2,177 lines that already read all seven identity stores,
+already dedupe by email and organization, and are already served in production at
+`/api/ui/relationships/` and inside `/api/ui/partners`.
+
+**Resolution, and why.** Code wins for facts, so the projection was **not** rebuilt and no
+second projection was created — building one would have violated the reuse ledger's
+prohibition on a parallel contact store in the course of satisfying a line that only looked
+unmet. What was genuinely absent was verified by direct grep before any code was written:
+roles as a set, ambiguity surfacing, the two founder-set fields, support issues in the
+timeline, and the charter's filter vocabulary. Release 3 adds exactly those.
+
+**Residual.** The delivery plan's Release 3 row still reads as though the projection is new.
+It is left unedited — the charter is authority for decisions and this is a fact correction,
+recorded here rather than by rewriting the plan.
+
 ---
 
 ## Checkpoints raised
 
-None raised yet. The Press lane build-or-defer question fires at Release 4.
+1. **2026-07-26 — enable the Release 1 and 2 flags in Render.** Both releases were deployed
+   and verified but invisible, because `FOUNDER_OS_SHELL` and `FOUNDER_OS_TODAY` ship default
+   off and neither key is in `render.yaml`. Roger was asked what to enable, told what each
+   flag changes, that setting it back to `false` is the tested rollback, and which acceptance
+   scenarios pass in Chromium for each. **Roger's answer: enable both now, and
+   `COMMAND_CENTER_UX_VNEXT` is already true in production** — which matters because
+   `FOUNDER_OS_SHELL` is inert without it and this run cannot observe that value from
+   outside. The environment change is Roger's; this run did not make it. A flag flip does not
+   change the commit `/api/version` reports, so the flip is not externally observable either
+   and is treated as unverified until Roger confirms.
+2. The Press lane build-or-defer question still fires at Release 4.
 
 ---
 
@@ -162,7 +193,8 @@ The release ships fewer bytes in both states. The ceiling was not touched.
 
 ## Release 2 — the Today operating loop
 
-**Status: built, unit and browser tests green locally, extended parity exact. Not merged.**
+**Status: MERGED as `dc75baa` at 2026-07-26T02:44:46Z. Deployed, verified, soak satisfied.**
+(The build notes below were written pre-merge and are preserved unchanged.)
 
 - `FOUNDER_OS_TODAY` (new, default off) turns Today into the charter's five-section ordered
   work queue — Now, Next, Communications, Meetings, Needs attention — ranked by the six rules
@@ -242,3 +274,213 @@ Recording a reply to a support issue does **not** remove it from Today, and shou
 composer deliberately does not close a support case, because the customer's problem is resolved
 by a separate judgement. The acceptance scenario for "completing the Now item promotes the next"
 uses two inbox follow-ups for that reason.
+
+---
+
+## Session resume — 2026-07-26 state verification
+
+The previous session's terminal was cut off while Release 2's post-deploy verification was
+still running. Every line below is from a tool result in the resuming session, not from
+memory or from the notes above.
+
+### Pull requests
+
+| PR | Title | State | Merge commit |
+|---|---|---|---|
+| #121 | Founder OS pipeline: post-deploy verification, auto-revert, soak gate | MERGED 2026-07-25T22:22:18Z | `b1dac79` |
+| #122 | Release 1: simplified shell, Settings → Advanced, outreach redirect | MERGED 2026-07-26T00:23:58Z | `2fcf1c8` |
+| #123 | Release 2 (superseded) | CLOSED 2026-07-26T00:54:35Z, `mergedAt: null` | — |
+| #124 | Release 2: the Today operating loop and the universal action panel | MERGED 2026-07-26T02:44:46Z | `dc75baa` |
+
+`git log` confirms all three merge commits are ancestors of the current `main` tip
+`dc75baa`, in that order, on top of `1a3d6b7` (PR #120).
+
+### Required checks on the merge commits
+
+All nine check runs on both `2fcf1c8` and `dc75baa` report `success`, except
+`auto-revert failed deploy` which is `skipped` — the correct state when verification passes.
+The seven required checks are `check`, `extended`, `browser`, `canonical`, `security`,
+`privacy-and-migrations`, `Phase 8 / production verification`.
+
+### Release 2 post-deploy verification — the question left open
+
+**Conclusion: PASSED.** Workflow run `30185300205` on `dc75baa`, conclusion `success`,
+started 2026-07-26T02:54:38Z, verified at 02:55:17Z on the third poll:
+
+```
+POST_DEPLOY_EVIDENCE {"expectedCommit":"dc75baa…","deployedCommit":"dc75baa…",
+  "supabaseState":"connected","health":{"status":"ok"},
+  "routes":{"/":200,"/#today":200,"/#partners":200,"/#campaigns":200,"/#revenue":200,
+            all servesShell:true}}
+```
+
+No auto-revert was triggered and none was required.
+
+### Production at the time of resume
+
+`GET /api/version` on `legalease-command-center-prod.onrender.com`:
+`commit: dc75baa1856716e2111f105c62d5eeee7792b7f6`, `supabaseState: "connected"`,
+`supabaseConnected: true`, `authStoreConnected: true`, `authProtected: true`,
+`liveGatesCount: 0`, `noSecretsExposed: true`. `GET /api/health` → 200.
+
+### Soak gate
+
+`node scripts/founder-os-soak-check.mjs --commit dc75baa…` →
+**satisfied**, `elapsedHours: 4.895` against `minHours: 2`, deployed commit matching,
+Supabase connected, all five routes 200 and serving the shell. Release 3 is free to merge on
+the soak gate's terms once its own checks are green.
+
+### Both releases are deployed and invisible
+
+`scripts/ui/founder-os-config.mjs:22–27` and `:76–77` read `FOUNDER_OS_SHELL` and
+`FOUNDER_OS_TODAY` from the server environment with strict `value === "true"` parsing, so an
+absent key is off. Neither key appears in `render.yaml`, which means neither is set by
+infrastructure-as-code and both would have to be set in the Render dashboard. Roger's
+checkpoint to enable them was raised at the start of this session.
+
+**One dependency worth recording:** `FOUNDER_OS_SHELL` composes with the vNext shell rather
+than replacing it (`founder-os-config.mjs:12–14`) — with `COMMAND_CENTER_UX_VNEXT` off the
+flag is inert. No API endpoint reports the vNext flag's value, and an unauthenticated request
+to `/` returns the 4,639-byte login page with no shell markers, so **this run cannot observe
+whether vNext is on in production.** It is part of the checkpoint question rather than an
+assumption.
+
+---
+
+## Release 3 — the Relationships workspace
+
+**Status: built on branch `founder-os-release-3`. Not merged.**
+
+### The finding that shaped the release
+
+`08_DELIVERY_PLAN.md` describes Release 3 as building an identity-dedupe projection. **At HEAD
+that projection already exists and is already live.** `scripts/relationship-service.mjs` is
+2,177 lines, reads all seven identity stores named in `01_CURRENT_STATE_REUSE_LEDGER.md:53`,
+and is served at `/api/ui/relationships/` (wired at `preview-server.mjs:36226`) and inside
+`/api/ui/partners` (`partners-home-service.mjs:70`). Code wins for facts, so Release 3 did
+**not** build a projection. It extended the one that exists with the charter behaviour it did
+not yet have. Nothing was rebuilt and no second projection was created.
+
+Verified absent at HEAD before any code was written, by direct grep:
+
+- `relationshipStrength` / `strategicPriority` — **zero occurrences anywhere in `scripts/`**.
+- Ambiguity surfacing — no `ambiguous` / `possibleMatch` / `needsConfirmation` in the service.
+- `supportIssues` — absent from both relationship read sets, so the charter's tenth timeline
+  source was silently missing.
+- Roles — `categoryFor` collapses a person to exactly **one** category; there was no roles set.
+- Filters — five quick filters existed against the charter's fifteen, and none of the six
+  pinned secondary views from `02_TARGET_PRODUCT_AND_IA.md:37`.
+
+### What the release adds, all behind `FOUNDER_OS_RELATIONSHIPS` (new, default off)
+
+- **Roles are a set on one person.** `rolesFor` unions every declared type across the entity's
+  contacts and organizations, using the existing `CONTACT_TYPES` vocabulary from
+  `company-memory.mjs` — no second vocabulary. An investor who is also a partner contact and a
+  funder is one record with three roles. Types outside the vocabulary are dropped rather than
+  displayed as a role with no definition.
+- **Ambiguous identity is surfaced, never merged.** `uniqueAlias` already refused to merge on
+  an ambiguous alias, but it then *discarded* the ambiguity, so the same person could quietly
+  become a third standalone record. Two mechanisms now report it: a per-contact capture for
+  the fall-through case, and a whole-graph pass for the commoner and more dangerous one —
+  two relationships that each resolved perfectly well by their own explicit link and
+  nonetheless claim the same email. Reported on every relationship involved, merged on none.
+- **Support issues joined the timeline**, on the **detail** read contract only *and* only when
+  the flag is on, so a relationship list does not pay to read a collection it never renders and
+  the flag-off detail contract reads exactly what it read before. An open issue reads inbound;
+  a drafted or resolved one reads outbound. This is the one place the flag changes an existing
+  value: last-inbound now counts a support issue as inbound contact, which it is. That single
+  shift is asserted by name in the test suite so it can never happen silently or spread.
+- **Relationship strength and strategic priority.** Both founder-set, never inferred. Strength
+  is genuinely new and reports "Not set" when unset rather than guessing from activity.
+  Strategic priority *extends* the existing partner priority: an explicit value wins, the
+  partner's own `priority` is honoured when there is none, and the projection reports which of
+  the two it used. Both are written onto the relationship's own canonical source record by the
+  same mechanism `updateRelationshipStage` already uses — no new collection, no parallel store.
+- **The charter's filters**, plus the six pinned views verbatim from the IA table. Every view
+  and saved filter reports the count it would return, and a test asserts the advertised count
+  equals the returned count for every one of them. "Overdue" is strictly past due where
+  "Follow-up due" includes today, because the charter lists both.
+- **Open commitments** from inbox-intelligence commitment signals, with overdue marked —
+  the field workflow 05 requires on the unified record.
+
+### Routes superseded
+
+**None.** Release 3 supersedes no route: `partners`, `partner-hub`, `contacts`, `pilots` and
+`pages` all still render exactly what they rendered before, and a browser spec asserts it. The
+delivery plan permits aliasing them into Relationships only *after* parity, and parity for the
+partner sub-pages (programs, dashboards, reports, proposals) means their actions exist on the
+unified record. That has not been demonstrated, so nothing was hidden. The reclaim stays
+available to a later release.
+
+### Safety
+
+Relationships drafts and records; it has no send path. Every action the release adds is
+internal — strength and priority — and both report `externalActions: 0`. No gate function was
+changed, added or bypassed. The new query keys are accepted **only** when the flag is on: with
+it off they remain unknown keys and the request is rejected exactly as before, deliberately,
+because silently accepting a filter the projection will not apply would return a set that
+looks filtered and is not.
+
+### Release 3 client JavaScript budget
+
+Same method as Releases 1 and 2: the real server, every vNext product flag enabled, summing
+inline `<script>` bodies.
+
+| Build | Bytes | Headroom | Change |
+|---|---|---|---|
+| main (`dc75baa`), all flags off | 1,645,452 | 4,548 | — |
+| Release 3, flag off | 1,645,741 | 4,259 | **+289** |
+| main (`dc75baa`), shell + Today on | 1,624,450 | 25,550 | — |
+| Release 3, shell + Today on | 1,624,739 | 25,261 | **+289** |
+| Release 3, all three flags on | 1,627,800 | 22,200 | **+3,061** vs shell + Today |
+
+The ceiling was not touched. The +289 with the flag off is the payload-shape guard in the
+renderer functions that always ship; the +3,061 with the flag on is the five view helpers, the
+filter-reset map and the view binding, which ship only when the flag is on.
+
+### A real regression the budget measurement caught
+
+The first measurement reported the flag-on build as **6,907 bytes smaller** than the flag-off
+build. An additive change cannot do that, and it was not a measurement artefact.
+`app-shell.mjs` injects the partners client bundle and then, when Social is enabled, performs a
+second `String.replace` that anchors on the *rendered text* of that bundle to insert the social
+production controller before it. Changing the injection to `partnersHomeBrowserSource(options)`
+without changing the anchor meant the anchor no longer matched, the replace silently did
+nothing, and **the social production controller was never injected at all** whenever
+`FOUNDER_OS_RELATIONSHIPS` was on. Fixed by rendering the anchor with the same arguments, with
+the reason recorded at the call site.
+
+This is why the budget is measured before and after every release rather than at the end: the
+number was the only thing that noticed.
+
+### Tests
+
+- `scripts/test-founder-os-relationships.mjs` (new, in the `npm test` chain): 26 checks over
+  the flag, the roles rule, cross-lane dedupe, ambiguity surfacing, the timeline including
+  support issues, every pinned view and saved filter's advertised-vs-returned count, each new
+  filter, commitments, both founder-set fields and their write path, and three separate
+  rollback assertions — including one proving that turning the flag on only ADDS fields and
+  never changes an existing one.
+- `tests/browser/founder-os-release-3.spec.mjs` (new): the delivery plan's acceptance scenarios
+  in real Chromium, plus route parity and the rollback. **7 passed** locally.
+- `scripts/test-founder-os-relationships.mjs`: **29 checks passed**, and the whole `npm test`
+  chain is green (exit 0) with the suite registered in it.
+- **Extended differential, CI's own methodology, both sides in clean worktrees:** base
+  (`dc75baa`) 30 failures, head 31. The extra was `test-vnext-performance-contract`, which the
+  triage document names as the contention flake rather than one of the thirty; re-run
+  standalone on the head worktree it **passes**, reporting Partners list 52,351 bytes against a
+  250,000 budget and critical CSS 137,452 against 180,000. **True differential: 30 = 30, zero
+  added, zero removed.**
+
+### Recorded findings
+
+- **Email normalization is trim-and-lowercase everywhere; plus-addressing is never collapsed.**
+  `f+a@example.com` and `f+b@example.com` are two identities in every lane. This was left alone on
+  purpose: `companyContactId` and `contactIdForEmail` hash the normalized address into a
+  **persisted** record id, so changing normalization would re-key live records. It is a dedupe
+  gap, not a bug to fix inside a UI release.
+- **The mark-sent cascade touches five of the seven identity stores.** `rcapRevenueContacts`
+  and `expungementLifecycleContacts` are in neither
+  `COMMUNICATION_COMPOSER_READ_COLLECTIONS` nor the cascade's write list. Recording a send to
+  someone known only through those two lanes will not stamp their last-contact. Out of scope
+  for Release 3, which is read-side; recorded so it is not rediscovered.

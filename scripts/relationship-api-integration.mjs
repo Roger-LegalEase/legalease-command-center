@@ -1,6 +1,7 @@
 import {
   RELATIONSHIP_ACTION_WRITE_COLLECTIONS,
   RELATIONSHIP_DETAIL_READ_COLLECTIONS,
+  RELATIONSHIP_FOUNDER_OS_DETAIL_READ_COLLECTIONS,
   RelationshipActionError,
   buildRelationshipDetail,
   executeRelationshipAction,
@@ -46,11 +47,13 @@ function assertNoQuery(searchParams) {
   }
 }
 
-async function readState(store) {
+async function readState(store, founderOs = false) {
   if (typeof store?.readCollections !== "function") {
     throw new RelationshipActionError("Relationships are temporarily unavailable.", 503, "unavailable");
   }
-  return store.readCollections(RELATIONSHIP_DETAIL_READ_COLLECTIONS);
+  return store.readCollections(founderOs
+    ? RELATIONSHIP_FOUNDER_OS_DETAIL_READ_COLLECTIONS
+    : RELATIONSHIP_DETAIL_READ_COLLECTIONS);
 }
 
 async function persistScoped(store, result = {}) {
@@ -95,7 +98,9 @@ export async function handleRelationshipApiRequest({
   input = {},
   store,
   actor = {},
-  now = new Date().toISOString()
+  now = new Date().toISOString(),
+  // FOUNDER_OS_RELATIONSHIPS, supplied by the server from its environment.
+  founderOs = false
 } = {}) {
   const route = matchRelationshipRoute(pathname);
   if (!route) return { matched:false };
@@ -110,7 +115,7 @@ export async function handleRelationshipApiRequest({
   try {
     if (route.kind === "detail" && verb === "GET") {
       assertNoQuery(searchParams);
-      const view = buildRelationshipDetail(await readState(store), actor, route.relationshipId, now);
+      const view = buildRelationshipDetail(await readState(store, founderOs), actor, route.relationshipId, now, { founderOs });
       return {
         matched:true,
         status:view.available ? 200 : view.availability?.state === "not_authorized" ? 403 : 404,
@@ -120,7 +125,7 @@ export async function handleRelationshipApiRequest({
 
     if (route.kind === "action" && verb === "POST") {
       assertNoQuery(searchParams);
-      const state = await readState(store);
+      const state = await readState(store, founderOs);
       const result = executeRelationshipAction(state, actor, route.relationshipId, now, input);
       await persistScoped(store, result);
       return { matched:true, status:200, body:mutationBody(result) };

@@ -67,7 +67,9 @@ function cursor(value = "") {
 
 function nextCursor(offset) { return Buffer.from(`partners:${offset}`).toString("base64url"); }
 
-export function buildAuthorizedPartnersHome(state = {}, actor = {}, now = "", rawQuery = {}) {
+// `options.founderOs` carries FOUNDER_OS_RELATIONSHIPS through to the projection. It is a
+// server-environment value supplied by the caller, never read from the request.
+export function buildAuthorizedPartnersHome(state = {}, actor = {}, now = "", rawQuery = {}, options = {}) {
   if (!authorizedActor(actor)) throw new PartnersHomeValidationError("Partners are not available for this account.", 403);
   if (!Number.isFinite(Date.parse(now))) throw new PartnersHomeValidationError("A valid server timestamp is required.");
   const query = {
@@ -85,7 +87,18 @@ export function buildAuthorizedPartnersHome(state = {}, actor = {}, now = "", ra
     offset:cursor(rawQuery.cursor)
   };
   const projection = buildPartnersHomeView(state, actor, now, query);
-  const relationships = buildRelationshipsView(state, actor, now, query);
+  const relationships = buildRelationshipsView(state, actor, now, {
+    ...query,
+    // Release 3 filter keys. Passed through only when the flag is on so the flag-off query
+    // shape — and therefore the flag-off result set — is unchanged.
+    ...(options.founderOs === true ? {
+      role:rawQuery.role,
+      pipeline:rawQuery.pipeline,
+      replied:rawQuery.replied,
+      meeting:rawQuery.meeting,
+      noContactDays:rawQuery.noContactDays
+    } : {})
+  }, options);
   const cursorValue = relationships.pagination?.hasMore ? nextCursor(query.offset + relationships.items.length) : null;
   return Object.freeze({
     ...projection,
