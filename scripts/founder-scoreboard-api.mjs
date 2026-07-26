@@ -51,6 +51,17 @@ function financeInput(input) {
   return Object.fromEntries(Object.entries(input).filter(([key]) => FINANCE_INPUT_FIELDS.has(key)));
 }
 
+// The live Stripe and signups snapshots are per-request fetches, not stored collections, so
+// readCollections can never return them. /api/today/summary attaches them to state before
+// projecting (preview-server.mjs:37137); the Scoreboard now does the same, which is what makes
+// its Stripe and signups cards able to go Live at all.
+function attachLiveSnapshots(state, liveMetrics = {}) {
+  if (!state || typeof state !== "object") return state;
+  if (liveMetrics.stripeRevenue !== undefined) state.stripeRevenue = liveMetrics.stripeRevenue;
+  if (liveMetrics.signups !== undefined) state.signups = liveMetrics.signups;
+  return state;
+}
+
 async function readState(store) {
   if (typeof store?.readCollections !== "function") {
     throw apiError("Scoreboard information is temporarily unavailable.", 503, "unavailable");
@@ -107,7 +118,9 @@ export async function handleFounderScoreboardApiRequest({
   input = {},
   store,
   actor = {},
-  now = new Date().toISOString()
+  now = new Date().toISOString(),
+  // { stripeRevenue, signups } — supplied by the route, which owns the fetchers.
+  liveMetrics = {}
 } = {}) {
   if (!isFounderScoreboardApiPath(pathname)) return { matched:false };
   if (!enabled) {
@@ -122,7 +135,7 @@ export async function handleFounderScoreboardApiRequest({
     const verb = clean(method).toUpperCase();
     if (pathname === FOUNDER_SCOREBOARD_ENDPOINT && verb === "GET") {
       assertNoQuery(searchParams);
-      const state = await readState(store);
+      const state = attachLiveSnapshots(await readState(store), liveMetrics);
       const view = buildFounderScoreboard(state, actor, now);
       return {
         matched:true,

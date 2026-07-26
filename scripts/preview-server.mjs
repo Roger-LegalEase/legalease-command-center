@@ -36328,6 +36328,21 @@ async function handleRequest(request, response) {
   if (isFounderScoreboardApiPath(url.pathname)) {
     const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
     const input = mutation ? await readBoundedJson(request, { limit:FOUNDER_SCOREBOARD_BODY_LIMIT }) : {};
+    // The Scoreboard's Stripe and signups cards read per-request live snapshots, which
+    // readCollections cannot supply. /api/today/summary attaches them the same way; without
+    // this the cards were structurally unable to go Live while both integrations worked.
+    const scoreboardLiveMetrics = ["GET", "HEAD"].includes(String(request.method || "GET").toUpperCase())
+      ? await (async () => {
+        try {
+          const [stripeRevenue, signups] = await fetchLiveMetricsSnapshots();
+          return { stripeRevenue, signups };
+        } catch {
+          // A provider outage must not take the whole Scoreboard down: every other card still
+          // reads from storage, and the two live cards fall back to their honest Unavailable.
+          return {};
+        }
+      })()
+      : {};
     const execute = () => handleFounderScoreboardApiRequest({
       enabled:commandCenterVNextConfig.enabled,
       method:request.method,
@@ -36336,7 +36351,8 @@ async function handleRequest(request, response) {
       input,
       store,
       actor:publicActor(accessDecision.actor),
-      now:new Date().toISOString()
+      now:new Date().toISOString(),
+      liveMetrics:scoreboardLiveMetrics
     });
     const result = mutation ? await serializeStateMutation(execute) : await execute();
     sendJson(response, result.body || { ok:false, message:"Scoreboard is unavailable." }, result.status || 404);
