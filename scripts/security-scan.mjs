@@ -4,10 +4,20 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { detectSecurityFindings } from "./security-scan-detectors.mjs";
+import { extractArchiveText, isArchiveDocumentPath, looksLikeZipArchive } from "./security-scan-archive.mjs";
 
 const root = process.env.SECURITY_SCAN_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = new Set(process.argv.slice(2));
-const mode = args.has("--history") ? "history" : args.has("--staged") ? "staged" : "tracked";
+const mode = args.has("--history")
+  ? "history"
+  : args.has("--branch-diff")
+    ? "branch-diff"
+    : args.has("--staged") ? "staged" : "tracked";
+
+// branch-diff compares against a base ref so a pull request can be gated on just what it
+// changed. Defaults to origin/main; CI must check out with enough history for the merge base
+// to exist, or this mode has nothing to compare and says so rather than passing silently.
+const branchDiffBase = process.env.SECURITY_SCAN_BASE || "origin/main";
 
 function run(command, commandArgs, options = {}) {
   return execFileSync(command, commandArgs, { cwd: root, encoding: options.encoding || "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
@@ -20,11 +30,26 @@ function trackedEntries() {
   if (process.env.SECURITY_SCAN_FILES) {
     return process.env.SECURITY_SCAN_FILES.split(path.delimiter).filter(Boolean).map((file) => ({ path:path.basename(file), read:() => readFileSync(file) }));
   }
-  const names = mode === "staged"
-    ? run("git", ["diff", "--cached", "--name-only", "-z"], { encoding:"buffer" })
-    : run("git", ["ls-files", "-z"], { encoding:"buffer" });
+  let names;
+  if (mode === "staged") {
+    names = run("git", ["diff", "--cached", "--name-only", "-z"], { encoding:"buffer" });
+  } else if (mode === "branch-diff") {
+    // A missing base is a broken gate, not a clean scan. Fail loudly.
+    try { run("git", ["rev-parse", "--verify", branchDiffBase]); } catch {
+      process.stdout.write(JSON.stringify({ mode, scanned:false, reason:`base ref ${branchDiffBase} is not available; fetch more history`, findings:[] }, null, 2) + "\n");
+      process.exit(1);
+    }
+    names = run("git", ["diff", "--name-only", "--diff-filter=ACMR", "-z", `${branchDiffBase}...HEAD`], { encoding:"buffer" });
+  } else {
+    names = run("git", ["ls-files", "-z"], { encoding:"buffer" });
+  }
   return names.toString("utf8").split("\0").filter(Boolean).map((path) => ({ path, read: () => {
-    if (mode === "staged") return Buffer.from(run("git", ["show", `:${path}`]));
+    // encoding:"buffer" matters. Reading a staged blob as utf8 and then wrapping it in a
+    // Buffer mangles every non-text byte, which made a staged .xlsx unrecognisable as a ZIP
+    // and its contents unscannable — the staged mode reported zero findings on a workbook
+    // full of addresses.
+    if (mode === "staged") return run("git", ["show", `:${path}`], { encoding:"buffer" });
+    if (mode === "branch-diff") return run("git", ["show", `HEAD:${path}`], { encoding:"buffer" });
     return readFileSync(pathModuleJoin(root, path));
   } }));
 }
@@ -54,9 +79,16 @@ const findings = [];
 for (const entry of mode === "history" ? historyEntries() : trackedEntries()) {
   let body;
   try { body = entry.read(); } catch { continue; }
-  if (!textBlob(body)) continue;
-  const text = body.toString("utf8");
   const fileFingerprint = fingerprint(body);
+  // Text to scan, by kind of file:
+  //   plain text            -> its own bytes, as before
+  //   ZIP-container document -> the text inside it (an .xlsx is a ZIP; it used to be skipped)
+  //   anything else binary   -> "" — no content to scan, but the FILENAME is still checked,
+  //                             which is the hole this closes: `suppression-export.xlsx`
+  //                             used to produce zero findings.
+  const text = textBlob(body)
+    ? body.toString("utf8")
+    : isArchiveDocumentPath(entry.path) && looksLikeZipArchive(body) ? extractArchiveText(body) : "";
   const categories = detectSecurityFindings(text, entry.path);
   for (const [category, count] of categories) {
     if (args.has("--secrets-only") && category !== "high_confidence_secret") continue;
