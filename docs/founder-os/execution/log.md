@@ -654,3 +654,73 @@ The residual concern is architectural, not a live hole: two publish paths establ
 by different means, and only one of them calls the function the scheduled worker calls. Release 4
 does not depend on either, because its Social lane has no publish affordance. Added to the
 deprecation ledger so it is not rediscovered.
+
+---
+
+## Releases 4, 5 and 6 — status at 2026-07-26
+
+| Release | State | Evidence |
+|---|---|---|
+| 1 | **Live in production** | Merged `2fcf1c8`; Roger confirms the four-workspace navigation |
+| 2 | **Live in production** | Merged `dc75baa`; Roger confirms Today's five sections |
+| 3 | **Live in production** | Merged `922a555`, post-deploy verified, `FOUNDER_OS_RELATIONSHIPS` on per Roger |
+| 4 | **Merged** `bb02d51` (PR #127) | Seven checks green; release gate satisfied against `444c1a5`. Flag off until Roger enables it |
+| 5 | PR #130 open | 20 checks, full `npm test` green |
+| 6 | PR #131 open | 11 checks, full `npm test` green |
+
+Hygiene merged alongside: PR #128 (`6fd7b15`, thirty extended failures to one, plus the OAuth
+500 fix) and PR #126 (`444c1a5`, the binary CSV/XLSX PII hole). PR #129 replaces the soak gate.
+
+Release 4 required **two rebases** as main moved beneath it, both resolving `package.json` by
+taking main's copy and re-applying the release's registrations. That is the third time this
+session that a `package.json` conflict has been resolved by rebuilding from the clean side rather
+than editing the conflicted file — see the lesson below.
+
+---
+
+## Authority conflicts (continued)
+
+### 2026-07-26 — "Manual production deployment" is no longer a protection in force
+
+**Conflict.** `06_SAFETY_AND_AUTOMATION_CONTRACT.md` lists, among the non-negotiable existing
+protections: *"Manual production deployment — `render.yaml:9,83` `autoDeploy: false`"*. And
+`render.yaml` does still say `autoDeploy: false` at lines 9 and 85.
+
+But production has deployed **automatically** after CI five times in this session, observed
+directly through `post-deploy-verification.yml` runs and `GET /api/version`. Roger has confirmed
+Render's "After CI Checks Pass" auto-deploy is active and part of the pipeline.
+
+**Resolution, and why.** Nothing was changed. Deploy configuration is an environment matter and
+sits on the never-without-Roger list, and he has already told this run that auto-deploy is
+deliberate. What is recorded is the discrepancy itself: the contract asserts a protection that is
+not operating, and `render.yaml` no longer describes how the service actually deploys — the
+dashboard setting overrides the blueprint.
+
+**Residual.** A reader of the safety contract would believe production cannot deploy without a
+human. It can, and does. The compensating controls are real and were exercised repeatedly today
+— seven required checks before merge, post-deploy verification after, and auto-revert on failure
+— but they are a *different* protection from the one the document names. Roger's call whether to
+amend the contract, the blueprint, or the setting.
+
+---
+
+## Lessons added this session
+
+- `shell-injects-client-bundles-by-string-anchor.md` — how a call-signature change silently
+  un-injected a client bundle, caught only by the byte count moving the wrong way.
+- **Extended suites may not be deleted.** `compare-extended-tests.mjs` refuses a drop in
+  discovery count and refuses quarantine, and `test-vnext-launch-gate-contract.mjs:46`
+  contract-protects both guards. A stale suite has exactly two honest dispositions: port it to
+  current truth, or invert it to guard the removal. Recorded in
+  `execution/extended-test-triage.md`.
+- **`package.json` conflicts: rebuild, do not merge.** Three times this session a rebase
+  conflicted on the one-line `check`/`test` chains. Editing the conflicted file produced a broken
+  file once (a stray marker survived and the commit went through). The reliable procedure is
+  `git checkout <clean-side> -- package.json`, re-apply the branch's registrations with an
+  asserted string replace, and validate with `JSON.parse` before staging.
+- **A test that fails early proves nothing about the code after its failure point.** The
+  extended-test triage concluded "0 real bugs"; there was one, a live 500, hidden behind an
+  authentication failure earlier in the same suite.
+- **Auto-merge is disabled repository-wide.** `gh pr merge --auto --squash` returns
+  `enablePullRequestAutoMerge`. Merges now use `--squash` only after the release gate passes and
+  all seven checks are green, which satisfies the same condition but is not fire-and-forget.
