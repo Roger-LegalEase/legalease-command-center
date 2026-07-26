@@ -16,6 +16,16 @@ function functionBlock(name) {
 
 const more = functionBlock("moreWorkspaceHtml");
 
+// PORTED 2026-07-26 (hygiene, extended-test triage). "Draft-only" is still shown by the
+// Activation Center, but it is no longer a literal inside moreWorkspaceHtml: the Email Draft
+// Workflow card was extracted into `cockpitEmailDraftWorkflowHtml()`, which moreWorkspaceHtml
+// interpolates. Asserting the call site plus the extracted block keeps the original
+// guarantee (Activation Center advertises email as draft-only) instead of dropping it.
+assert(more.includes("cockpitEmailDraftWorkflowHtml()"), "Activation Center should render the Email Draft Workflow card");
+const emailDraftWorkflow = functionBlock("cockpitEmailDraftWorkflowHtml");
+assert(emailDraftWorkflow.includes("Draft-only"), "the Email Draft Workflow card rendered into the Activation Center should still be labelled Draft-only");
+assert(emailDraftWorkflow.includes("Prepare replies and outbound drafts without sending messages."), "the Email Draft Workflow card should still promise no sending");
+
 for (const required of [
   "Activation Center",
   "Prepare the Command Center for real daily use without turning on risky live actions too early.",
@@ -29,7 +39,7 @@ for (const required of [
   "Safety Switches",
   "Ready",
   "Needs setup",
-  "Draft-only",
+  // "Draft-only" asserted above against cockpitEmailDraftWorkflowHtml, the card that now owns it.
   "Read-only",
   "Not connected",
   "Manual only"

@@ -209,7 +209,13 @@ assert(
 // Check aliases
 const routeAliasesIndex = source.indexOf("const routeAliases =");
 assert(routeAliasesIndex >= 0, "routeAliases should exist");
-const routeAliasesBlock = source.slice(routeAliasesIndex, routeAliasesIndex + 260);
+// PORTED 2026-07-26 (hygiene, extended-test triage). This used to slice a fixed 260-character
+// window, and the rcap alias now sits at offset ~274 because routeAliases grew. The alias was
+// never missing; the window was too small. Sliced to the end of the declaration line instead,
+// so the assertion cannot fail again just because a new alias is added ahead of rcap.
+const routeAliasesEnd = source.indexOf("\n", routeAliasesIndex);
+const routeAliasesBlock = source.slice(routeAliasesIndex, routeAliasesEnd > -1 ? routeAliasesEnd : undefined);
+assert(routeAliasesBlock.includes("const routeAliases = {") && routeAliasesBlock.trimEnd().endsWith("};"), "routeAliases should still be a single-line object literal; if it is reformatted, widen this slice deliberately rather than by guessing a character count");
 assert(routeAliasesBlock.includes('rcap:"production-activation-rcap"'), "#rcap should still alias to #production-activation-rcap");
 
 // Health check: static fallback path should keep gates off in known fallback payload

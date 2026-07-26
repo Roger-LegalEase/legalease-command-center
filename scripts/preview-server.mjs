@@ -6591,11 +6591,19 @@ function xOAuthDiagnosticsAccessDecision(request = {}) {
       diagnostics: { sessionAuthenticated: Boolean(actor.authenticated) }
     };
   }
+  // `ownerTokenMatched` was read here and declared nowhere in the repository, so in strict-mode
+  // ESM this threw a ReferenceError and GET /api/x/oauth-diagnostics answered 500 to every
+  // authorized owner and admin — the only callers who reach this line. It went unnoticed because
+  // the suite covering it died on authentication first and never got here.
+  //
+  // The condition was also unreachable on its own terms: this branch runs only when
+  // `ownerOrAdmin` is true, and that requires `actor.authenticated === true`, so
+  // `!actor.authenticated` is necessarily false. Removing the ternary therefore changes no
+  // behaviour that could ever have occurred, and it invents no identity: `actor` is the
+  // authenticated owner or admin the access decision already validated.
   return {
     ok:true,
-    actor: ownerTokenMatched && !actor.authenticated
-      ? { id:"owner", role:"owner", label:"Owner", authenticated:true, permissions:roleDefinitions.owner.can }
-      : actor,
+    actor,
     requiredPermission:"owner/admin",
     diagnostics: { sessionAuthenticated: true }
   };

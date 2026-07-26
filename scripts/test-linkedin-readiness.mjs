@@ -14,47 +14,32 @@ function functionBlock(name) {
   return next > 0 ? rest.slice(0, next + 1) : rest;
 }
 
-const production = functionBlock("productionWorkspaceHtml");
+// PORTED 2026-07-26 (hygiene, extended-test triage).
+//
+// `productionWorkspaceHtml` is now a one-line delegate — `return
+// productionCommandSurfaceHtml(pageClass);` — so every assertion that read its block was
+// reading three lines of code. Two consequences were fixed here:
+//
+//  1. The positive LinkedIn-readiness copy this suite demanded of the Production workspace
+//     ("LinkedIn readiness", "View LinkedIn Approval Queue", "Preview LinkedIn Post",
+//     "Connect LinkedIn", the readiness-model rows) has ZERO occurrences anywhere in the
+//     product. That per-channel readiness detail moved to the Activation Center
+//     (`moreWorkspaceHtml`) and App Status (`osHealthPageHtml`), which this suite already
+//     asserts against below and which still carry every one of those strings. Re-asserting
+//     the old Production copy would be asserting copy that no longer exists, so it is
+//     dropped here rather than duplicated.
+//  2. The negative safety assertions ("Post Now", "Publish Now", "Send to LinkedIn", …) had
+//     become VACUOUS against the three-line delegate. They are repointed at
+//     `productionCommandSurfaceHtml`, the ~10KB block that actually renders the Production
+//     workspace, so they test something again.
+const production = functionBlock("productionCommandSurfaceHtml");
+assert(production.length > 2000, "productionCommandSurfaceHtml should be the real Production surface, not a delegate; if this shrinks, the safety negatives below have gone vacuous again");
+assert(functionBlock("productionWorkspaceHtml").includes("productionCommandSurfaceHtml(pageClass)"), "productionWorkspaceHtml should still delegate to the Production command surface");
 const moreStart = source.indexOf("function moreWorkspaceHtml");
 const moreEnd = source.indexOf("function render()", moreStart);
 const more = source.slice(moreStart, moreEnd);
 const appStatus = functionBlock("osHealthPageHtml");
 const growth = functionBlock("growthWorkspaceHtml") + "\n" + functionBlock("growthPostRows");
-
-for (const required of [
-  "LinkedIn readiness",
-  "LinkedIn posting is installed but disabled unless LinkedIn is connected",
-  "LinkedIn —",
-  "Status: Approval workflow ready",
-  "Live posting:",
-  "Safety: Approved posts only",
-  "Connect LinkedIn",
-  "Check Status",
-  "View LinkedIn Approval Queue",
-  "Preview LinkedIn Post"
-]) {
-  assert(production.includes(required), `Production should include ${required}`);
-}
-
-for (const required of [
-  "Not connected",
-  "Ready to configure",
-  "Approval workflow ready",
-  "Needs setup",
-  "Error",
-  "Preview LinkedIn post",
-  "Review image",
-  "Approve post",
-  "Prepare scheduling",
-  "Post only after final approval and safety switch",
-  "Bulk publishing",
-  "Unapproved posting",
-  "Auto-posting",
-  "Analytics sync",
-  "External scheduling"
-]) {
-  assert(production.includes(required), `LinkedIn readiness model should include ${required}`);
-}
 
 for (const required of [
   "LinkedIn",

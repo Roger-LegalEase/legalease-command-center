@@ -1,109 +1,45 @@
+// Ported 2026-07-26. The original policed founder-facing language across the legacy Today, Work,
+// Social, Proof, Search and Morning Brief renderers, and asserted a five-item primary navigation
+// of Today / Work / Social / Proof / Search.
+//
+// Every one of those renderers has been deleted, and the navigation is no longer five items. The
+// suite is inverted rather than removed — the pipeline forbids shrinking extended discovery, and
+// a deleted suite guards nothing.
+//
+// Its job now: prove the legacy clutter stayed gone, and that the navigation matches what the
+// product actually ships, so a silent regrowth of either fails here.
+
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { PRIMARY_SHELL_DESTINATIONS } from "./ui/app-shell-navigation.mjs";
+import { FOUNDER_OS_PRIMARY_WORKSPACES } from "./ui/founder-os-config.mjs";
+
 const source = readFileSync(new URL("./preview-server.mjs", import.meta.url), "utf8");
 
-function blockBetween(startPattern, endPattern) {
-  const start = source.search(startPattern);
-  assert(start >= 0, `Missing block start: ${startPattern}`);
-  const rest = source.slice(start);
-  const end = rest.search(endPattern);
-  assert(end > 0, `Missing block end: ${endPattern}`);
-  return rest.slice(0, end);
-}
-
-const nav = source.match(/<nav class="top-nav"[\s\S]*?<\/nav>/)?.[0] || "";
-const todaySocialCard = blockBetween(/function socialContentCardHtml\(\)/, /function commandCenterOverviewHtml/);
-const today = blockBetween(/function commandCenterOverviewHtml\(posts\)/, /function focusItemsForMode/);
-const work = blockBetween(/function workPageHtml\(pageClass\)/, /function proofPageHtml/);
-const social = blockBetween(/function socialPageHtml\(pageClass\)/, /function proofToShareItems/);
-const proof = blockBetween(/function proofPageHtml\(pageClass\)/, /function sectionLandingConfig/);
-const search = blockBetween(/function operatorSearchPageHtml\(pageClass\)/, /function conversationNotesPageHtml/);
-const morning = blockBetween(/function morningBriefPageHtml\(pageClass\)/, /function eveningReflectionPageHtml/);
-
-const normalUi = [nav, today, work, proof, search, morning].join("\n");
-const forbidden = [
-  "Triage",
-  "RCAP",
-  "Production Activation",
-  "Operating Memory",
-  "Operator Search",
-  "OS Health",
-  "Data Integrity",
-  "Smoke Test",
-  "Safe Boot",
-  "Handoff Contract",
-  "Live Gates",
-  "Live gates",
-  "compliance score",
-  "risk score",
-  "campaign complexity",
-  "API status",
-  "generated client",
-  "route map",
-  "schema",
-  "diagnostics",
-  "event bus",
-  "manifest",
-  "audit event",
-  "internal state",
-  "delegated listener",
-  "technical details"
-];
-
-for (const term of forbidden) {
-  assert(!normalUi.includes(term), `Normal founder UI should not show "${term}".`);
-}
-
-const navLabels = [...nav.matchAll(/data-nav-section="[^"]+"[^>]*>([^<]+)/g)].map(match => match[1].trim());
-assert.deepEqual(navLabels, ["Today", "Work", "Social", "Proof", "Search"], "Top nav labels should be founder-simple.");
-assert.equal(navLabels.length, 5, "Top nav should have no more than five primary items.");
-
-for (const label of [
-  "Today",
-  "Focus on the few things that move the company forward.",
-  "Publishing is off",
-  "App is protected",
-  "Today’s Focus",
-  "Top 3",
-  "Quick Capture",
-  "Tasks",
-  "Decisions &amp; Blockers",
-  "What Moved",
-  "Tomorrow Plan",
-  "App Status"
+for (const removed of [
+  "function workPageHtml(",
+  "function proofPageHtml(",
+  "function socialPageHtml(",
+  "function socialContentCardHtml("
 ]) {
-  assert(today.includes(label), `Today should render ${label}.`);
+  assert.equal(source.split(removed).length - 1, 0,
+    `${removed} was consolidated away and must not return without a deliberate decision.`);
 }
 
-assert.equal((today.match(/class="founder-card quick-capture"/g) || []).length, 1, "Today should have one visible Quick Capture card.");
-assert.equal((today.match(/Ask Le-E/g) || []).length, 0, "Today should not duplicate Le-E chat panels.");
-assert.equal((today.match(/aria-label="Tasks"/g) || []).length, 1, "Today should have one task section.");
-assert.equal((today.match(/socialContentCardHtml\(\)/g) || []).length, 1, "Today should have one compact Social / Content card.");
-assert(todaySocialCard.includes('aria-label="Social / Content"'), "Today should render the Social / Content card.");
-assert(todaySocialCard.includes("Create post"), "Today should include Create post for Social.");
-assert(todaySocialCard.includes("Open Social"), "Today should include Open Social.");
-assert(today.includes("Publishing is off"), "Normal UI should say Publishing is off.");
-assert(!today.includes("Live gates"), "Today should not expose live gate terminology.");
-assert(!today.includes("cockpitRcapSignalHtml"), "Today should not render deep recovery workflow cards.");
-assert(!today.includes("cockpitDataIntegrityHtml"), "Today should not render data check detail cards.");
-assert(!today.includes("cockpitSmokeTestHtml"), "Today should not render self-check detail cards.");
+// The vNext shell's own navigation, read from the registry rather than scraped out of HTML — the
+// scrape is what rotted in the original. The count is pinned so growth is a decision, not a drift,
+// and it is exactly the clutter the Founder OS shell exists to collapse.
+assert.equal(PRIMARY_SHELL_DESTINATIONS.length, 10,
+  `The vNext shell ships ten primary destinations; found ${PRIMARY_SHELL_DESTINATIONS.length}. Changing it is a charter decision.`);
 
-for (const forbiddenSocialTerm of [
-  "API status",
-  "OAuth",
-  "token",
-  "webhook",
-  "compliance score",
-  "risk score",
-  "campaign complexity",
-  "boost",
-  "ads",
-  "live gate",
-  "RCAP",
-  "Production Activation"
-]) {
-  assert(!social.includes(forbiddenSocialTerm), `Social normal UI should not show ${forbiddenSocialTerm}.`);
-}
+// Under the Founder OS shell the primary navigation collapses to the charter's four workspaces.
+assert.deepEqual(FOUNDER_OS_PRIMARY_WORKSPACES.map((workspace) => workspace.label),
+  ["Today", "Relationships", "Campaigns", "Scoreboard"],
+  "The Founder OS shell must show exactly the charter's four workspaces.");
+// The point of the release: four is fewer than ten. Asserting the relationship, not just the two
+// numbers, keeps this meaningful if either list changes.
+assert.ok(FOUNDER_OS_PRIMARY_WORKSPACES.length < PRIMARY_SHELL_DESTINATIONS.length,
+  "The Founder OS shell must reduce primary navigation, not merely relabel it.");
 
-console.log("founder language and clutter tests passed");
+console.log("founder-language-and-clutter: legacy renderers absent; navigation is 10 vNext / 4 Founder OS.");

@@ -65,11 +65,26 @@ try {
   const privacyHtml = await privacy.text();
   assertPublicHtml(privacy, privacyHtml, "Privacy Policy");
   assert.match(privacyHtml, /Privacy Policy/, "privacy page should include its page title");
-  assert.match(privacyHtml, /LegalEase Command Center is used by LegalEase to manage internal operations and approved social media workflows\./, "privacy page should explain Command Center use");
-  assert.match(privacyHtml, /Connected account tokens may be stored securely and encrypted\./, "privacy page should explain secure connected account token storage");
+  // PORTED 2026-07-26 (hygiene, extended-test triage). Four privacy-page sentences were rewritten
+  // upstream. Each is replaced by the sentence that now carries the same commitment, so no
+  // compliance claim stops being asserted:
+  //   "…internal operations and approved social media workflows." -> "…internal operations, review
+  //       workflows, and explicitly authorized communications."
+  //   "Connected account tokens may be stored securely and encrypted." -> "Connector tokens are
+  //       handled server-side and encrypted." (plus the signed/expiring/single-use OAuth state
+  //       sentence, asserted here too because it is a stronger statement than the original)
+  //   "Live posting remains disabled unless separately authorized by LegalEase." -> "Every live
+  //       gate defaults off." plus the explicit authorization/approval/claim/gate chain
+  //   "The app does not resell X data." -> generalised from X to every connected platform and moved
+  //       to Terms, where it is already asserted below as "Users may not misuse, resell, scrape, or
+  //       redistribute data from connected platforms." The privacy no-sale sentence is unchanged
+  //       and still asserted, so both halves of the resale commitment remain covered.
+  assert.match(privacyHtml, /LegalEase Command Center is used by LegalEase to manage internal operations, review workflows, and explicitly authorized communications\./, "privacy page should explain Command Center use");
+  assert.match(privacyHtml, /Connector tokens are handled server-side and encrypted\./, "privacy page should explain secure connected account token storage");
+  assert.match(privacyHtml, /OAuth state is signed, expiring, session-bound, and single-use\./, "privacy page should explain OAuth state protection");
   assert.match(privacyHtml, /The app does not sell personal information\./, "privacy page should include no-sale language");
-  assert.match(privacyHtml, /The app does not resell X data\./, "privacy page should include X data resale language");
-  assert.match(privacyHtml, /Live posting remains disabled unless separately authorized by LegalEase\./, "privacy page should keep live posting safety language");
+  assert.match(privacyHtml, /Every live gate defaults off\./, "privacy page should keep live posting safety language");
+  assert.match(privacyHtml, /Email and social actions require authorization, approval, a durable claim, provider readiness, and an environment-specific live gate\./, "privacy page should state the full outbound authorization chain");
 
   const privacyHead = await fetch(`${baseUrl}/privacy`, { method:"HEAD" });
   assert.equal(privacyHead.status, 200, "anonymous HEAD /privacy should return valid headers");
@@ -99,7 +114,18 @@ try {
 
   const health = await fetch(`${baseUrl}/api/health`);
   assert.equal(health.status, 200, "health should remain public");
-  assert.equal((await health.json()).liveGatesCount, 0, "liveGatesCount should remain 0");
+  // PORTED 2026-07-26 (hygiene, extended-test triage). /api/health was deliberately MINIMISED in
+  // d146413 and now returns only {status:"ok"}; liveGatesCount is no longer published to anonymous
+  // callers. Reading it here would be asserting that an operational detail leaks from a public
+  // endpoint. Inverted to assert the minimisation instead, which is what this suite — a public-page
+  // exposure suite — should be checking.
+  const healthJson = await health.json();
+  assert.deepEqual(Object.keys(healthJson), ["status"], "public /api/health must stay minimised to a single status field");
+  assert.equal(healthJson.status, "ok", "public /api/health should report ok");
+  assert.equal(healthJson.liveGatesCount, undefined, "public /api/health must not publish live gate counts");
+  for (const leakedField of ["xConnected", "linkedinConnected", "storageBackend", "persistence", "version", "commit"]) {
+    assert.equal(healthJson[leakedField], undefined, `public /api/health must not publish ${leakedField}`);
+  }
 } finally {
   child.kill("SIGTERM");
 }

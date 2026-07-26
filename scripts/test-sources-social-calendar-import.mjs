@@ -10,19 +10,24 @@ const navEnd = source.indexOf("</nav>", navStart);
 assert(navStart >= 0 && navEnd > navStart, "Top nav should exist");
 const topNav = source.slice(navStart, navEnd);
 
+// PORTED 2026-07-26 (hygiene, extended-test triage). This asserted the pre-Release-1 seven-item
+// primary nav (Today / Growth / Partners / Production / Proof / Settings & Health / Le-E). The
+// simplified shell replaced it with a six-item nav: Today / Queue / Campaigns / Review Desk /
+// Reports / More. Ported to the live nav, matching what test-route-map-integrity already asserts,
+// so the two suites cannot disagree about the shell. The load-bearing part of this suite — that
+// Sources is NOT a primary nav item and lives under a workspace instead — is unchanged.
 for (const [label, href] of [
   ["Today", "#today"],
-  ["Growth", "#growth"],
-  ["Partners", "#partners"],
-  ["Production", "#production"],
-  ["Proof", "#proof"],
-  ["Settings &amp; Health", "#settings"],
-  ["Le-E", "#le-e"]
+  ["Queue", "#decisions"],
+  ["Campaigns", "#campaigns"],
+  ["Review Desk", "#queue"],
+  ["Reports", "#reports"],
+  ["More", "#more"]
 ]) {
   assert(topNav.includes(`href="${href}"`) && topNav.includes(`>${label}</a>`), `Top nav should keep ${label}`);
 }
-assert.equal((topNav.match(/class="nav-top-link"/g) || []).length, 7, "Top nav should keep six surfaces plus Le-E");
-assert(!topNav.includes("#sources"), "Sources should live under Growth tabs instead of primary nav");
+assert.equal((topNav.match(/class="nav-top-link"/g) || []).length, 6, "Top nav should keep exactly six primary surfaces");
+assert(!topNav.includes("#sources"), "Sources should live under a workspace instead of primary nav");
 
 const queueStart = source.indexOf('<section id="queue"');
 const sourcesStart = source.indexOf('<section id="sources"', queueStart);

@@ -34,7 +34,11 @@ for (const required of [
   "App Status",
   "Check whether the Command Center is healthy, protected, and safe to use.",
   "Command Center is protected",
-  "Publishing: Off",
+  // PORTED 2026-07-26 (hygiene, extended-test triage): the literal "Publishing: Off" moved
+  // out of osHealthPageHtml into the derived `publishingPostureRow()` helper, exactly like
+  // the email and social rows below. Asserting the call site here and the derived label
+  // below keeps the same guarantee instead of dropping it.
+  "publishingPostureRow()",
   "emailPostureRow()",
   "socialPostureRow()",
   "Calendar writes: Off",
@@ -71,6 +75,13 @@ for (const required of [
 // loaded the UI must say Unverified — a hardcoded "Off" claim is the bug this guards against.
 assert(source.includes('"Email sending: Unverified"'), "Email posture fallback must be Unverified, not a hardcoded Off");
 assert(source.includes('"Live social posting: Unverified"'), "Social posture fallback must be Unverified, not a hardcoded Off");
+assert(source.includes('"Publishing: Unverified"'), "Publishing posture fallback must be Unverified, not a hardcoded Off");
+// The "Publishing: Off" claim App Status shows must still be produced only when no social
+// channel is actually enabled — this is the assertion the old literal grep stood for.
+const publishingPostureBlock = functionBlock("publishingPostureRow");
+assert(publishingPostureBlock.includes('"Publishing: Off"'), "publishingPostureRow must still be able to report Publishing: Off");
+assert(/enabledChannels \|\| \[\]\)\.length > 0/.test(publishingPostureBlock), "Publishing: Off must be derived from the enabled-channel list, never hardcoded");
+assert(/on \? "Publishing: LIVE/.test(publishingPostureBlock), "publishingPostureRow must say LIVE when channels are enabled, so Off is never shown while live");
 
 assert(!/details[^>]*open/i.test(appStatus), "App Status advanced details should be collapsed by default");
 assert(!/details[^>]*open/i.test(recovery), "Recovery advanced details should be collapsed by default");

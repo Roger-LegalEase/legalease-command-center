@@ -5,8 +5,12 @@
 - `scripts/test-button-action-feedback.mjs`: catches silent buttons and missing pending states.
 - `scripts/test-lee-visible-actions.mjs`: catches Le-E no-op behavior.
 - `scripts/test-safe-boot-mode.mjs`: catches Recovery Mode regressions.
-- `scripts/test-founder-language-and-clutter.mjs`: preserves founder language and nav shape.
-- `scripts/test-social-workspace.mjs`: preserves Social as a first-class workspace.
+- `scripts/test-vnext-today-page.mjs`: preserves founder language and nav shape (replaced the
+  retired `test-founder-language-and-clutter.mjs`, which policed a five-item nav and a Today
+  surface that no longer exist).
+- `scripts/test-vnext-social-home.mjs` and the other `test-vnext-social-*` suites: preserve
+  Social as a first-class workspace (replaced the retired `test-social-workspace.mjs`, which
+  asserted against the deleted `socialPageHtml` monolith block).
 - `scripts/test-storage-durability.mjs`: verifies durable storage adapter behavior.
 - `scripts/test-no-filesystem-production-db.mjs`: blocks production filesystem/localStorage/memory source-of-truth risk.
 - `scripts/test-secret-exposure.mjs`: blocks hardcoded or client-exposed secrets.

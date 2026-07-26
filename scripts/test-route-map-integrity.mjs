@@ -11,6 +11,13 @@ for (const section of ["today", "queue", "campaigns", "review-desk", "reports", 
 for (const alias of ['overview:"today"', 'command:"growth"', 'social:"growth"', 'rcap:"production-activation-rcap"', 'recovery:"safe-mode"', 'privacy:"settings"']) assert(aliases.includes(alias));
 for (const route of ["today", "decisions", "campaigns", "queue", "reports", "more", "production-activation-rcap", "safe-mode", "settings"]) assert(knownPages.includes(`"${route}"`));
 for (const mapping of ['return "today"', 'return "queue"', 'return "campaigns"', 'return "review-desk"', 'return "reports"', 'return "more"']) assert(sections.includes(mapping));
-assert.match(source, /normalizedPage = routeAliases\[requestedPage\] \|\| requestedPage/);
+// PORTED 2026-07-26 (hygiene, extended-test triage). The alias resolution is unchanged in
+// meaning but no longer the whole right-hand side: the Phase O artifact deep-link work wrapped
+// it in a ternary, so the line now reads
+//   const normalizedPage = artifactRef ? "item" : (routeAliases[requestedPage] || requestedPage);
+// Asserting both branches rather than loosening the pattern: an #item/<collection>/<id> deep
+// link must bypass the alias map, and everything else must still resolve through it.
+assert.match(source, /normalizedPage = artifactRef \? "item" : \(routeAliases\[requestedPage\] \|\| requestedPage\)/);
+assert.match(source, /if \(requestedPage\.startsWith\("item\/"\)\)/, "artifact deep links should be parsed before alias resolution");
 assert.match(source, /knownPages\.includes\(normalizedPage\) \? normalizedPage : "today"/);
 console.log("route map integrity tests passed");

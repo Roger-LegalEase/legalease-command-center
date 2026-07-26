@@ -99,7 +99,12 @@ ok("disposition endpoint requires owner/admin; anonymous rejected");
   assert.equal(co.campaign_hold, true, "still held");
   assert.equal(co.import_status, "suppressed");
   assert.ok(!co.enrolled_at && co.wave === null, "not enrolled, no wave");
-  assert.ok((r.state.outreachSuppressions || []).some((s) => /co@yahoo/.test(s.email)), "sticky suppression written");
+  // PORTED 2026-07-26 (hygiene, extended-test triage). This matched /co@yahoo/, an address the
+  // fixture no longer uses: commit 90de797 renamed the fixture from a real-looking consumer
+  // domain to co@example.com and missed this one regex. The suppression row WAS always being
+  // written, so the product was right and the test was looking for the wrong address. Now an
+  // exact match on the fixture address, which cannot drift silently the way a substring can.
+  assert.ok((r.state.outreachSuppressions || []).some((s) => s.email === "co@example.com"), "sticky suppression written");
   assert.ok(r.state.expungementLifecycleContacts.some((c) => c.email === "co@example.com"), "lifecycle record preserved");
   // No attempts; planReactivation never proposes the suppressed contact even if forced due.
   const forced = {

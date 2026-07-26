@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { loginAtBaseUrl } from "./test-support/preview-server-harness.mjs";
 
 const rootDir = process.cwd();
 const source = readFileSync(path.join(rootDir, "scripts", "preview-server.mjs"), "utf8");
@@ -94,8 +95,21 @@ try {
   const anonymousDiagnostics = await fetch(`${baseUrl}/api/meta/diagnostics`);
   assert.equal(anonymousDiagnostics.status, 401, "anonymous Meta diagnostics should remain protected");
 
-  const ownerStatusBefore = await fetch(`${baseUrl}/api/meta/status`, {
+  // PORTED 2026-07-26 (hygiene, extended-test triage). Every owner request in this suite used a
+  // static `x-command-center-token` header, which stopped authenticating when the static token
+  // registry in scripts/access-control.mjs was emptied as intentional hardening. Bootstrap
+  // credentials are now accepted only by POST /api/auth/login, which issues an opaque HttpOnly
+  // session plus a CSRF token that state-changing requests must echo. Ported to that flow, with an
+  // added check that the old static header is genuinely refused.
+  const staticHeaderAttempt = await fetch(`${baseUrl}/api/meta/status`, {
     headers:{ "x-command-center-token":ownerToken }
+  });
+  assert.equal(staticHeaderAttempt.status, 401, "a static token header must not authenticate; only POST /api/auth/login issues a session");
+  const ownerSession = await loginAtBaseUrl(baseUrl, ownerToken);
+  assert.equal(ownerSession.role, "owner", "the bootstrap credential should log in as owner");
+
+  const ownerStatusBefore = await fetch(`${baseUrl}/api/meta/status`, {
+    headers:ownerSession.headers
   });
   assert.equal(ownerStatusBefore.status, 200, "owner should be able to read Meta status");
   const ownerStatusBeforeJson = await ownerStatusBefore.json();
@@ -103,7 +117,7 @@ try {
   assert.equal(ownerStatusBeforeJson.livePostingEnabled, false, "Meta status should keep live posting off");
 
   const diagnostics = await fetch(`${baseUrl}/api/meta/diagnostics`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
   assert.equal(diagnostics.status, 200, "owner should be able to read safe Meta diagnostics");
   const diagnosticsJson = await diagnostics.json();
@@ -127,7 +141,7 @@ try {
   assert.ok(!diagnosticsText.includes("meta-oauth-test"), "Meta diagnostics must not expose test tokens");
 
   const ownerStart = await fetch(`${baseUrl}/api/meta/start?format=json`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
   assert.equal(ownerStart.status, 200, "owner-authenticated Meta start should generate an OAuth URL");
   const ownerStartJson = await ownerStart.json();
@@ -147,18 +161,68 @@ try {
   ], "Meta OAuth URL should include the expected scopes");
   assert.ok(!JSON.stringify(ownerStartJson).includes(metaSecret), "Meta OAuth start must not expose the client secret");
 
-  const missingState = await fetch(`${baseUrl}/api/meta/callback?code=fake-code`, { redirect:"manual" });
-  assertSettingsRedirect(missingState, "Meta connection expired. Try again from Settings.", "missing state callback");
+  // PORTED 2026-07-26 (hygiene, extended-test triage). The OAuth callback contract was deliberately
+  // hardened: every callback now requires an authenticated owner session AND a state that is signed,
+  // expiring, session-bound and single-use. Anything else fails closed with
+  // `400 {"error":"OAuth callback rejected."}` rather than redirecting to Settings with a message.
+  // The old assertions demanded those redirects, i.e. demanded a callback that accepts a state with
+  // no session — the exact hole the hardening closed — so they are inverted to the fail-closed
+  // rejection, and a replay check is added.
+  async function assertCallbackRejected(query, label, headers = {}) {
+    const rejected = await fetch(`${baseUrl}/api/meta/callback?${query}`, { redirect:"manual", headers });
+    assert.equal(rejected.status, 400, `${label} should fail closed with 400, not redirect`);
+    assert.deepEqual(await rejected.json(), { error:"OAuth callback rejected." }, `${label} should return the generic rejection without leaking why`);
+  }
 
   const stateParam = authUrl.searchParams.get("state");
-  const cancelled = await fetch(`${baseUrl}/api/meta/callback?error=access_denied&state=${encodeURIComponent(stateParam)}`, { redirect:"manual" });
-  assertSettingsRedirect(cancelled, "Meta connection was cancelled. Try again from Settings.", "cancelled callback");
+  await assertCallbackRejected("code=fake-code", "missing state callback", ownerSession.headers);
+  await assertCallbackRejected("code=fake-code&state=not-valid", "invalid state callback", ownerSession.headers);
+  // Session-bound: the real state is refused without the session that minted it.
+  await assertCallbackRejected(`code=meta-oauth-test-success&state=${encodeURIComponent(stateParam)}`, "valid state without the owner session");
 
-  const success = await fetch(`${baseUrl}/api/meta/callback?code=meta-oauth-test-success&state=${encodeURIComponent(stateParam)}`, { redirect:"manual" });
+  // Each state is single-use, so the cancel and success cases each need their own freshly minted
+  // state from /api/meta/start rather than reusing the one asserted against above.
+  async function freshOwnerState() {
+    const started = await fetch(`${baseUrl}/api/meta/start?format=json`, { headers:ownerSession.headers });
+    assert.equal(started.status, 200, "owner should be able to start a fresh Meta OAuth flow");
+    return new URL((await started.json()).authorizationUrl).searchParams.get("state");
+  }
+
+  // PORTED 2026-07-26 (hygiene, extended-test triage). The friendly "Meta connection was cancelled."
+  // copy lives in the branch that only runs when `authorizeRequest` DENIES the request. Now that
+  // this suite authenticates properly, the request is authorized and the real callback route handles
+  // it, returning the sanitized provider error instead. Asserting that: the user is still returned to
+  // Settings, the message is the sanitized provider code, and nothing sensitive rides along.
+  const cancelled = await fetch(`${baseUrl}/api/meta/callback?error=access_denied&state=${encodeURIComponent(await freshOwnerState())}`, {
+    redirect:"manual",
+    headers:ownerSession.headers
+  });
+  assert.equal(cancelled.status, 302, "cancelled callback should redirect back to the app shell");
+  const cancelledLocation = cancelled.headers.get("location") || "";
+  assert.match(cancelledLocation, /#settings$/, "cancelled callback should return Roger to Settings");
+  assert.equal(decodeURIComponent(cancelledLocation), "/?metaConnectionMessage=access_denied#settings", "cancelled callback should surface the sanitized provider error");
+  assert.ok(!cancelledLocation.includes(metaSecret), "cancelled callback must not leak the client secret");
+
+  const cancelledWithDescription = await fetch(`${baseUrl}/api/meta/callback?error=access_denied&error_description=${encodeURIComponent(`denied ${metaSecret}`)}&state=${encodeURIComponent(await freshOwnerState())}`, {
+    redirect:"manual",
+    headers:ownerSession.headers
+  });
+  assert.equal(cancelledWithDescription.status, 302, "a provider error description should still redirect to Settings");
+  const describedLocation = cancelledWithDescription.headers.get("location") || "";
+  assert.ok(!describedLocation.includes(metaSecret), "a provider error description must be sanitized before it reaches the redirect");
+
+  const successState = await freshOwnerState();
+  const success = await fetch(`${baseUrl}/api/meta/callback?code=meta-oauth-test-success&state=${encodeURIComponent(successState)}`, {
+    redirect:"manual",
+    headers:ownerSession.headers
+  });
   assertSettingsRedirect(success, "Meta connected. Select a Facebook Page and Instagram Business account in Settings. Live posting remains off.", "successful callback");
 
+  // Single-use: the consumed state must not work a second time.
+  await assertCallbackRejected(`code=meta-oauth-test-success&state=${encodeURIComponent(successState)}`, "replayed callback state", ownerSession.headers);
+
   const pages = await fetch(`${baseUrl}/api/meta/pages`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
   assert.equal(pages.status, 200, "owner should be able to discover sanitized Meta pages");
   const pagesJson = await pages.json();
@@ -169,7 +233,8 @@ try {
 
   const selected = await fetch(`${baseUrl}/api/meta/select-account`, {
     method:"POST",
-    headers:{ "content-type":"application/json", "x-command-center-token":ownerToken },
+    // State-changing requests must echo the CSRF token issued alongside the session cookie.
+    headers:{ "content-type":"application/json", ...ownerSession.headers, "x-csrf-token":ownerSession.csrfToken },
     body:JSON.stringify({ facebookPageId:"meta-page-1" })
   });
   assert.equal(selected.status, 200, "owner should be able to select a Meta Page");
@@ -182,7 +247,7 @@ try {
   assert.ok(!selectedText.includes("meta-oauth-test-user-token"), "Meta selection response must not expose user access tokens");
 
   const ownerStatusAfter = await fetch(`${baseUrl}/api/meta/status`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
   const ownerStatusAfterJson = await ownerStatusAfter.json();
   assert.equal(ownerStatusAfterJson.facebookConnected, true, "Meta status should read selected Facebook Page as connected");
@@ -190,7 +255,7 @@ try {
   assert.equal(ownerStatusAfterJson.livePostingEnabled, false, "Meta status after selection should keep live posting off");
 
   const stateResponse = await fetch(`${baseUrl}/api/state`, {
-    headers:{ "x-command-center-token":ownerToken }
+    headers:ownerSession.headers
   });
   const stateJson = await stateResponse.json();
   const facebook = stateJson.socialAccounts.find(account => account.platform === "facebook");
@@ -202,16 +267,22 @@ try {
   assert.ok(!JSON.stringify(stateJson).includes("accessTokenEncrypted"), "public state must not expose encrypted token fields");
   assert.ok(!JSON.stringify(stateJson).includes("meta-oauth-test"), "public state must not expose raw token values");
 
+  // PORTED 2026-07-26 (hygiene, extended-test triage). /api/health was deliberately MINIMISED in
+  // d146413 and now returns only {status:"ok"}. Every field this block read — liveGatesCount,
+  // metaConnected, facebookConnected, instagramConnected, the bucket name — was removed from the
+  // ANONYMOUS payload on purpose. Re-adding them would mean an unauthenticated caller could
+  // enumerate which social accounts a deployment has connected and which storage bucket it uses,
+  // so the assertions are inverted to prove the minimisation. The Meta connection state itself is
+  // still asserted above, through the authenticated /api/meta/status and /api/state calls.
   const health = await fetch(`${baseUrl}/api/health`);
   assert.equal(health.status, 200, "/api/health should remain public");
   const healthJson = await health.json();
-  assert.equal(healthJson.liveGatesCount, 0, "liveGatesCount should remain zero");
-  assert.equal(healthJson.metaOAuthConfigured, true, "health should expose safe Meta setup readiness");
-  assert.equal(healthJson.metaConnected, true, "health should expose safe Meta connection state");
-  assert.equal(healthJson.facebookConnected, true, "health should expose safe Facebook connection state");
-  assert.equal(healthJson.instagramConnected, true, "health should expose safe Instagram connection state");
-  assert.equal(healthJson.metaLivePostingEnabled, false, "health should keep Meta live posting disabled");
-  assert.equal(healthJson.socialPublicAssetsBucket, "social-public-assets", "health should expose the configured public assets bucket name");
+  assert.deepEqual(Object.keys(healthJson), ["status"], "public /api/health must stay minimised to a single status field");
+  assert.equal(healthJson.status, "ok", "public /api/health should report ok");
+  for (const withheldField of ["liveGatesCount", "metaOAuthConfigured", "metaConnected", "facebookConnected", "instagramConnected", "metaLivePostingEnabled", "socialPublicAssetsBucket"]) {
+    assert.equal(healthJson[withheldField], undefined, `public /api/health must not publish ${withheldField}`);
+  }
+  assert.ok(!JSON.stringify(healthJson).includes(metaSecret), "public /api/health must not leak the Meta client secret");
 } finally {
   child.kill("SIGTERM");
 }

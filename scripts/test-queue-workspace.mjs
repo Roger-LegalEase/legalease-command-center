@@ -14,7 +14,13 @@ const mainQueue = queue.slice(0, queue.indexOf("Detailed production workflow"));
 
 for (const required of [
   "Queue",
-  "Review posts, follow-ups, reports, and partner work before anything moves forward.",
+  // PORTED 2026-07-26 (hygiene, extended-test triage): the #queue section was retitled
+  // "Review Desk" and its subtitle rewritten. The old sentence "Review posts, follow-ups,
+  // reports, and partner work before anything moves forward." has zero occurrences anywhere in
+  // the product. Asserting the current hero copy, which carries the same promise — review comes
+  // before anything moves — rather than dropping the copy check.
+  "Review Desk",
+  "One draft at a time, shown as it will post. Approve it or fix it; the pipeline runs on its own.",
   "Safe mode: approvals prepare work only. Nothing sends or publishes automatically.",
   "Needs review",
   "One clear action per item",
@@ -49,6 +55,12 @@ for (const required of [
   assert(source.includes(required), `Queue delete flow should include ${required}`);
 }
 
+// PORTED 2026-07-26 (hygiene, extended-test triage). This list held the same six categories
+// twice, once sentence-case and once Title-Case, because the old Queue had both summary cards
+// and a duplicate filter-chip row. The Review Desk wizard replaced the chip row, so the
+// Title-Case duplicates "Social Posts", "Partner Follow-ups" and "Channel Reviews" have zero
+// occurrences anywhere in the product. The sentence-case labels below are the live
+// queueReviewSummaryCards labels and are all still asserted — no category lost coverage.
 for (const required of [
   "Posts",
   "Partner follow-ups",
@@ -57,11 +69,7 @@ for (const required of [
   "Proof-to-content",
   "Channel reviews",
   "All",
-  "Social Posts",
-  "Partner Follow-ups",
-  "Reports",
-  "Proof-to-Content",
-  "Channel Reviews"
+  "Proof-to-Content"
 ]) {
   assert(source.includes(required), `Queue helpers should include ${required}`);
 }

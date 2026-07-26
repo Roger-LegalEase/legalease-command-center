@@ -41,7 +41,13 @@ assert(today.includes("app-intention"), "Today should keep the large intention h
 assert(intention.includes("Today is for"), "Today hero should use the Today is for framing");
 assert(intention.includes("closing the highest-trust follow-ups"), "Today hero should use Roger's current follow-up intention");
 assert(intention.includes("turning movement into execution"), "Today hero should use Roger's current execution outcome");
-assert(today.includes("Rewrite with Le-E"), "Today hero should keep the Le-E rewrite action");
+// PORTED 2026-07-26 (hygiene, extended-test triage). The hardcoded "Rewrite with Le-E" button is
+// gone; the Le-E affordance on Today is now data-driven through the Now block's secondary action,
+// which opens the Le-E bubble when the item's secondaryLabel is "Ask Le-E". Asserting the live
+// wiring rather than the dead label, so Today cannot lose its Le-E entry point unnoticed.
+assert(today.includes("Ask Le-E"), "Today should keep a Le-E action on the Now block");
+assert(today.includes("openLeeBubble()"), "the Today Le-E action should open the Le-E bubble");
+assert(/nowItem\.secondaryLabel === "Ask Le-E" \? "openLeeBubble\(\)"/.test(today), "the Today Le-E action should be wired through the Now block secondary action");
 assert(today.includes('aria-label="Now"'), "Today should include the Now / Current Focus block");
 assert(today.includes("Start with"), "Now block should include the Start with list");
 assert(timeline.includes("Today’s Flow") || timeline.includes("Today's Flow"), "Today should keep Today’s Flow");
