@@ -1,3 +1,40 @@
+# ---------------------------------------------------------------------------------------------
+# READ THIS BEFORE TRUSTING OR RE-APPLYING THIS FILE.
+#
+# THIS BLUEPRINT DOES NOT DESCRIBE THE PRODUCTION SERVICE.
+#
+# Production is the Render service `legalease-command-center-prod`. It is NOT named anywhere in
+# this file — the web service declared below is `legalease-command-center`, a separate and stale
+# service. Editing values here does not change production, and a diff that appears to correct
+# production's configuration does not.
+#
+# Production's deploy configuration lives in the RENDER DASHBOARD, as After-CI auto-deploy:
+# Render deploys production only once CI passes on main. There is NO render.yaml equivalent for
+# that setting — `autoDeploy` is a boolean, so no value in this file can express it. Writing
+# `autoDeploy: true` would assert "deploy on every push", which is strictly LESS safe than what
+# is configured, and would remove the CI gate if it were ever synced.
+#
+# THIS FILE HAS DRIFTED FROM LIVE VALUES. Verified read-only against the Render API on
+# 2026-07-26:
+#
+#   legalease-command-center-prod   web    autoDeploy = yes   (production; absent from this file)
+#   legalease-command-center        web    autoDeploy = no    (declared below as false — matches)
+#   legalease-heartbeat             cron   autoDeploy = yes   (declared below as false — DRIFTED)
+#
+# Treat this file as a HISTORICAL DEFINITION, not a source of truth. **Re-applying this blueprint
+# could push stale values onto live services**, including setting the heartbeat cron's auto-deploy
+# back to false.
+#
+# The deploy protections genuinely in force are recorded in
+# `docs/founder-os/06_SAFETY_AND_AUTOMATION_CONTRACT.md` — see the amendment dated 2026-07-26,
+# "manual production deployment is retired, not violated": branch protection requiring seven
+# green checks, CI-gated deploy, post-deploy verification against live production, automatic
+# revert on verification failure, and the release gate.
+#
+# No autoDeploy value in this file has been changed. Whether to drop production from blueprint
+# management, or retire the stale service entirely, is Roger's decision.
+# ---------------------------------------------------------------------------------------------
+
 services:
   - type: web
     name: legalease-command-center
