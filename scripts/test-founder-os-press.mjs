@@ -251,5 +251,179 @@ check("the source workbook is not in the repository", () => {
     "data/private/ must remain gitignored — it holds real journalists' contact details");
 });
 
+
+// ---------------------------------------------------------------------------------------------
+// 5. The importer — review-only, identity-preserving, and PII-safe
+// ---------------------------------------------------------------------------------------------
+
+const { buildPressImportPlan, applyPressImportPlan } = await import("./press-import.mjs");
+const { mapMasterRow, mapSeedRow, sheetRecords } = await import("./press-workbook.mjs");
+const { companyContactId } = await import("./company-memory.mjs");
+
+// A synthetic two-sheet workbook in the shape readWorkbook returns. No real data involved.
+function syntheticWorkbook() {
+  const master = [
+    ["Priority Rank", "Tier", "Journalist", "Primary Publication", "Coverage Lanes", "Geography",
+      "Pitchability", "Relationship", "Public Email", "Email Type", "Reference Article / Work",
+      "Reference URL", "Why LegalEase Fits", "Best Pitch Angle", "Verified", "Confidence / Notes"],
+    ["1", "Tier 1", "Alex Rivera", "Example Legal Review", "LegalTech", "National / U.S.",
+      "Product/news", "Cold", "alex@example.org", "Direct public", "A piece on legal AI",
+      "https://example.org/a", "Covers legal AI", "nationwide_milestone", "2026-07-26", "High — official/public source"],
+    ["2", "Tier 2", "Sam Okafor", "Example Desk", "Criminal Justice", "National / U.S.",
+      "Investigative", "Warm", "desk@example.net", "Shared newsroom", "A reentry series",
+      "https://example.net/b", "Covers reentry", "implementation_gap", "2026-07-26", "Medium — re-verify before outreach"],
+    ["3", "Tier 3", "Jo Chen", "Example Weekly", "Impact", "National / U.S.",
+      "Feature", "Cold", "", "Official contact form", "", "", "Covers impact", "founder_growth", "2026-07-26", "Medium"]
+  ];
+  const seed = [
+    ["Publication", "Geographic Focus", "LegalEase Fit", "2026 Status", "Media Lane", "Recommended Angle", "Source / Verification Note"],
+    ["Example Seed Press", "Southeast", "Strong", "Needs 2026 verification", "Black Press", "founder_growth", "Directory listing"],
+    ["Example Verified Press", "National", "Strong", "Verified active", "Black Press", "founder_growth", "Confirmed masthead"]
+  ];
+  const existing = [
+    ["Publication / Show", "Journalist / Host", "Coverage", "Format", "Date", "URL", "Relationship", "Recommended Follow-up"],
+    ["Example Podcast", "Alex Rivera", "Founder interview", "Podcast", "2025-11-02", "https://example.org/ep", "Warm", "Offer the nationwide milestone."]
+  ];
+  const desks = [
+    ["Outlet", "Primary Beat", "Best Contact", "Public Email", "Route Type", "Official Source / Contact URL", "How to Use"],
+    ["Example Desk", "Justice", "Tips line", "tips@example.net", "Shared tips", "https://example.net/tips", "Use for breaking news"]
+  ];
+  return new Map([
+    ["Master Media List", master], ["Black Press Seed", seed],
+    ["Existing LegalEase Press", existing], ["Outlet Desks", desks]
+  ]);
+}
+
+const NOW_IMPORT = "2026-07-26T12:00:00.000Z";
+
+check("nothing imported is contactable — every record lands held and unenrolled", () => {
+  const plan = buildPressImportPlan({ companyContacts: [] }, syntheticWorkbook(), { now: NOW_IMPORT });
+  assert.ok(plan.outreachContacts.length >= 5, "master and seed rows must both import");
+  for (const row of plan.outreachContacts) {
+    assert.equal(row.press_hold, true, `${row.contact_id} must be held on import`);
+    assert.equal(row.sequence_status, "Not Enrolled",
+      "an enrolled contact could be picked up by a planner; import must never enrol");
+    assert.equal(row.classification, "press", "press contacts are ordinary outreach contacts");
+  }
+});
+
+check("the seed list is held regardless of what its row claims", () => {
+  const plan = buildPressImportPlan({ companyContacts: [] }, syntheticWorkbook(), { now: NOW_IMPORT });
+  const seeds = plan.outreachContacts.filter((row) => row.press_source === "black_press_seed");
+  assert.equal(seeds.length, 2);
+  for (const row of seeds) {
+    assert.equal(row.press_sendable, false, "a seed row marked 'Verified active' is still research, not a contact record");
+    assert.equal(row.press_hold_reason, "seed_list");
+  }
+});
+
+check("eligibility is recorded as a reason, never as permission", () => {
+  const plan = buildPressImportPlan({ companyContacts: [] }, syntheticWorkbook(), { now: NOW_IMPORT });
+  const byId = Object.fromEntries(plan.outreachContacts.map((row) => [row.contact_name || row.publication, row]));
+  assert.equal(byId["Alex Rivera"].press_sendable, true);
+  assert.equal(byId["Sam Okafor"].press_sendable, true);
+  assert.equal(byId["Jo Chen"].press_sendable, false);
+  assert.equal(byId["Jo Chen"].press_hold_reason, "no_email");
+  assert.match(byId["Jo Chen"].press_hold_detail, /form, not email/i);
+});
+
+check("a journalist already in the CRM gains the media role instead of a duplicate", () => {
+  const existingId = companyContactId("alex@example.org");
+  const state = { companyContacts: [{ contact_id: existingId, email: "alex@example.org", name: "Alex Rivera", types: ["investor"], links: [], organizations: [] }] };
+  const plan = buildPressImportPlan(state, syntheticWorkbook(), { now: NOW_IMPORT });
+
+  assert.equal(plan.summary.matchedExistingPerson, 1, "the existing person must be matched, not duplicated");
+  const patch = plan.contactPatches.find((entry) => entry.contact_id === existingId);
+  assert.ok(patch.existing, "the match must be recorded as an existing person");
+  assert.deepEqual([...patch.types].sort(), ["investor", "media"],
+    "the press role is ADDED to the roles already held; nothing is replaced");
+
+  const applied = applyPressImportPlan(state, plan, { now: NOW_IMPORT });
+  const people = applied.companyContacts.filter((row) => row.email === "alex@example.org");
+  assert.equal(people.length, 1, "exactly one person may exist for one address");
+});
+
+check("prior coverage is imported as placements carrying their recommended follow-up", () => {
+  const plan = buildPressImportPlan({ companyContacts: [] }, syntheticWorkbook(), { now: NOW_IMPORT });
+  assert.equal(plan.placements.length, 1);
+  const placement = plan.placements[0];
+  assert.equal(placement.kind, "prior_coverage");
+  assert.match(placement.recommendedFollowUp, /nationwide milestone/i,
+    "the recorded recommendation must be available when drafting");
+  assert.equal(plan.outletRoutes.length, 1, "outlet-level routes import separately from people");
+});
+
+check("applying the plan writes records and starts no sequence", () => {
+  const applied = applyPressImportPlan({ companyContacts: [] },
+    buildPressImportPlan({ companyContacts: [] }, syntheticWorkbook(), { now: NOW_IMPORT }), { now: NOW_IMPORT });
+  assert.ok(applied.outreachContacts.length >= 5);
+  assert.ok(applied.pressPlacements.length === 1);
+  assert.ok(applied.pressOutletRoutes.length === 1);
+  assert.equal(applied.outreachContacts.every((row) => row.sequence_status === "Not Enrolled"), true);
+});
+
+check("the importer module contains no send path", () => {
+  const source = readFileSync(new URL("./press-import.mjs", import.meta.url), "utf8")
+    .replaceAll(/\/\*[\s\S]*?\*\//g, " ")
+    .split("\n").map((line) => line.replace(/\/\/.*$/, "")).join("\n");
+  for (const forbidden of ["sendgrid", "fetch(", "claimOutreachSends", "recordSuppression", "releaseWave", "planOutreach"]) {
+    assert.ok(!source.includes(forbidden), `press-import.mjs must contain no "${forbidden}"`);
+  }
+  assert.ok(source.length > 1500, "stripped source must remain substantial");
+});
+
+// ---------------------------------------------------------------------------------------------
+// 6. The lane surface
+// ---------------------------------------------------------------------------------------------
+
+const { buildFounderCampaignsView } = await import("./ui/view-models/founder-campaigns-view.mjs");
+
+const laneState = () => applyPressImportPlan({ companyContacts: [] },
+  buildPressImportPlan({ companyContacts: [] }, syntheticWorkbook(), { now: NOW_IMPORT }), { now: NOW_IMPORT });
+
+const pressLaneOf = (state, pressEnabled) => buildFounderCampaignsView(
+  { posts: [], prospectCandidates: [], outreachReplies: [], outreachSuppressions: [], outreachUnsubscribes: [], approvalQueue: [], ...state },
+  { env: {}, now: new Date(NOW_IMPORT), pressEnabled }
+).lanes.find((lane) => lane.id === "press");
+
+check("with FOUNDER_OS_PRESS off the lane keeps its honest not-built state", () => {
+  const lane = pressLaneOf(laneState(), false);
+  assert.equal(lane.built, false);
+  assert.equal(lane.available, false);
+  for (const stage of lane.stages) assert.equal(stage.state, "not_built");
+});
+
+check("with the flag on the lane shows contactable versus held, with the reasons", () => {
+  const lane = pressLaneOf(laneState(), true);
+  const stage = (id) => lane.stages.find((entry) => entry.id === id);
+  assert.deepEqual(lane.stages.map((entry) => entry.label), ["Plan", "Review", "Run", "Monitor", "Stop"]);
+  assert.match(stage("plan").summary, /8 story angles/, "Plan offers the angles and their proof");
+  assert.match(stage("review").summary, /2 contactable, 3 held/);
+  assert.match(stage("review").summary, /seed list|no email/i, "held contacts must show WHY");
+});
+
+check("Run cannot start anything without approval, and says so", () => {
+  const lane = pressLaneOf(laneState(), true);
+  const run = lane.stages.find((entry) => entry.id === "run");
+  assert.equal(run.state, "stopped", "no press campaign may be running by default");
+  assert.match(run.blockedReason, /nothing sends until you approve/i);
+  assert.equal(run.action.route, "POST /api/outreach/approve",
+    "Run routes through the EXISTING approval endpoint — there is no press send route");
+});
+
+check("warm prior relationships surface as follow-ups, not cold pitches", () => {
+  const lane = pressLaneOf(laneState(), true);
+  const warm = lane.exceptions.find((entry) => entry.id === "press-warm-follow-ups");
+  assert.ok(warm, "prior relationships must be surfaced");
+  assert.match(warm.detail, /follow-ups, not cold pitches/i);
+});
+
+check("no press stage offers a publish or send route", () => {
+  for (const stage of pressLaneOf(laneState(), true).stages) {
+    const route = String(stage.action?.route || "");
+    assert.ok(!/\/send\b|publish/.test(route), `press stage ${stage.id} must not offer ${route}`);
+  }
+});
+
 console.log(`Founder OS Release 8 press: ${checks.length} checks passed.`);
 for (const name of checks) console.log(`  - ${name}`);

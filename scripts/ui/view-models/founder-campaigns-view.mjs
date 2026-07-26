@@ -25,9 +25,11 @@ import {
   FOUNDER_OS_CAMPAIGN_LIFECYCLE
 } from "../founder-os-config.mjs";
 import { buildCampaignCommandView, plainSafetyReasons } from "../../campaign-command.mjs";
+import { PRESS_ANGLES } from "../../press-outreach.mjs";
 
 const list = (value) => Array.isArray(value) ? value : [];
 const clean = (value = "") => String(value ?? "").trim();
+const slug = (value = "") => clean(value).toLocaleLowerCase("en-US").replaceAll(/[^a-z0-9]+/g, "_").replaceAll(/^_+|_+$/g, "");
 
 // Every stage reports one of these. "unavailable" and "not_built" are distinct on purpose:
 // the first means we could not read the source, the second means the thing does not exist yet.
@@ -269,14 +271,73 @@ function partnerOutreachLane(state) {
 // Press outreach — not built.
 // ---------------------------------------------------------------------------------------------
 
-function pressLane() {
-  // Deliberately reports NOT BUILT for every stage rather than zeros. A zero would read as "no
-  // journalists yet" when the truth is "this does not exist yet" (campaigns.md:89-90).
-  return lane("press", FOUNDER_OS_CAMPAIGN_LIFECYCLE.map((entry) =>
-    stage(entry.id, "not_built", "Press outreach is not built yet.")),
-  {
-    available: false,
-    unavailableReason: "Press outreach is not built yet. Nothing here is real, and nothing can be sent."
+function pressLane(state, pressEnabled) {
+  // Until the lane is switched on it reports NOT BUILT for every stage rather than zeros. A zero
+  // would read as "no journalists yet" when the truth is "this does not exist yet"
+  // (campaigns.md:89-90). That remains the flag-off behaviour.
+  if (!pressEnabled) {
+    return lane("press", FOUNDER_OS_CAMPAIGN_LIFECYCLE.map((entry) =>
+      stage(entry.id, "not_built", "Press outreach is not built yet.")),
+    {
+      available: false,
+      unavailableReason: "Press outreach is not built yet. Nothing here is real, and nothing can be sent."
+    });
+  }
+
+  const contacts = list(state.outreachContacts).filter((row) => slug(row.classification) === "press");
+  const sendable = contacts.filter((row) => row.press_sendable === true);
+  const held = contacts.filter((row) => row.press_sendable !== true);
+  const warm = contacts.filter((row) => slug(row.press_outreach_kind) === "warm_follow_up");
+  const placements = list(state.pressPlacements);
+  const approvals = list(state.approvalQueue).filter((row) => slug(row.lane) === "press" && slug(row.status) === "queued_for_approval");
+  const replies = list(state.outreachReplies).filter((row) => slug(row.lane) === "press");
+
+  // Held reasons, counted, so Review can show WHY rather than just a smaller number.
+  const reasons = new Map();
+  for (const row of held) {
+    const reason = clean(row.press_hold_reason) || "unknown";
+    reasons.set(reason, (reasons.get(reason) || 0) + 1);
+  }
+  const reasonSummary = [...reasons.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .map(([reason, count]) => `${count} ${reason.replace(/_/g, " ")}`)
+    .join(", ");
+
+  return lane("press", [
+    stage("plan", PRESS_ANGLES.length ? "ready" : "attention",
+      `${PRESS_ANGLES.length} story angles, each with the proof it needs before you can pitch it.`,
+      { action: { label: "Choose a story angle", route: "GET /api/ui/campaigns", mutates: false } }),
+
+    stage("review", approvals.length ? "attention" : sendable.length ? "ready" : "attention",
+      `${sendable.length} contactable, ${held.length} held (${reasonSummary || "no reasons recorded"}).`,
+      {
+        action: { label: "Review the audience", route: "POST /api/outreach/approve", mutates: true },
+        blockedReason: sendable.length ? "" : "Nothing is contactable yet, so nothing can be approved."
+      }),
+
+    // Run is deliberately identical in shape to reactivation: one approval, no autonomous send.
+    stage("run", "stopped",
+      "No press campaign is running. Sending requires your approval, one campaign at a time.",
+      {
+        action: { label: "Run", route: "POST /api/outreach/approve", mutates: true },
+        blockedReason: "Nothing sends until you approve a campaign, and approval is the only thing that starts it."
+      }),
+
+    stage("monitor", "ready",
+      `${replies.length} repl${replies.length === 1 ? "y" : "ies"}. ${placements.length} placement${placements.length === 1 ? "" : "s"} recorded.`,
+      { action: { label: "Review replies and coverage", route: "GET /api/ui/campaigns", mutates: false } }),
+
+    stage("stop", "ready", "A reply stops that sequence immediately, on its own.")
+  ], {
+    exceptions: warm.length
+      ? [{
+        id: "press-warm-follow-ups",
+        severity: "attention",
+        summary: `${warm.length} prior relationship${warm.length === 1 ? "" : "s"} ready for a follow-up.`,
+        detail: "These people have covered LegalEase before. They are follow-ups, not cold pitches.",
+        action: { label: "Open Campaigns", route: "#campaigns" }
+      }]
+      : []
   });
 }
 
@@ -290,7 +351,7 @@ export function buildFounderCampaignsView(state = {}, options = {}) {
     socialLane(state),
     reactivationLane(state, environment, now),
     partnerOutreachLane(state),
-    pressLane()
+    pressLane(state, options.pressEnabled === true)
   ];
 
   return Object.freeze({

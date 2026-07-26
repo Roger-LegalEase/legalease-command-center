@@ -1053,6 +1053,19 @@ function interactionTimeline(entity, sourceIndex, identifiers, context, outreach
       href:"#support"
     });
   }
+  // Prior press coverage. A placement that already ran is the most useful thing to see before
+  // pitching someone again, so it sits in the timeline rather than in a separate press view.
+  for (const placement of context.founderOs ? relatedRows(sourceIndex, "pressPlacements", identifiers, { allowOrganizationName:true }) : []) {
+    add({
+      id:`press-placement:${recordId(placement)}`,
+      type:"coverage",
+      direction:"inbound",
+      label:`Covered by ${safeText(placement.publication, 120) || "a publication"}`,
+      summary:context.canReadSensitive ? safeText(placement.coverage || placement.recommendedFollowUp, 400) : null,
+      occurredAt:validTimestamp(placement.placedAt) || validTimestamp(placement.imported_at),
+      href:/^https:\/\//i.test(clean(placement.url)) ? clean(placement.url) : "#campaigns"
+    });
+  }
   for (const history of list(entity.partner?.history)) {
     const text = lower(history.action || history.type || history.title);
     add({
