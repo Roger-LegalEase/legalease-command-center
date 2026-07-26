@@ -774,3 +774,58 @@ Roger enabled `FOUNDER_OS_CAMPAIGNS` after Release 4 deployed and verified. An e
 table in this run listed it as off; that was wrong and is corrected here. He agrees the Scoreboard
 and Le-E panel flags stay off until Release 7 ships their surfaces, and that this run does not make
 the environment changes itself.
+
+---
+
+## Release 7 — the finishing pass
+
+**Status: PR #133 open.** Makes Releases 5 and 6 visible.
+
+### Budget
+
+| Build | Bytes | Headroom | Change |
+|---|---|---|---|
+| flags off | 1,645,741 | 4,259 | **0 — byte-identical** |
+| the four flags live in production | 1,628,023 | 21,977 | **0 — byte-identical** |
+| all six flags on | 1,628,531 | 21,469 | **+508** |
+
+Both surfaces are lazy runtime files, so the 508 bytes are the two route-binding lines, which
+are themselves only emitted when the flags are on. **The ceiling was not touched and nothing
+needed reclaiming**, so no ceiling proposal was required.
+
+### What it adds
+
+- **Scoreboard.** `GET /api/ui/scoreboard` carries the Release 5 registry when
+  `FOUNDER_OS_SCOREBOARD` is on — added to the existing body, never replacing it. Platform health
+  is read separately and a failure there degrades to an honest "could not be read" section
+  instead of taking the Scoreboard down. All nine contract fields render per metric, and the
+  honesty rules survive rendering: an unavailable metric renders the word "Unavailable" with no
+  bare zero and no `USD 0`; a missing target renders "No target set" and NO variance; a variance
+  reports direction and whether it is an improvement using the metric's own direction. Flag off,
+  the client renders nothing at all.
+- **Le-E.** A panel host bound on the shell rather than on one route, so it is reachable from
+  every workspace, and it performs **no writes** — a test strips comments and asserts the
+  executable source contains no `fetch`, `XMLHttpRequest`, `sendBeacon`, `POST`, `PUT`, `PATCH`
+  or `DELETE`, with a positive control so the stripping cannot make the check vacuous.
+
+### No route retired, and why that is compliance rather than shortfall
+
+The delivery plan permits retiring a superseded route **only after parity is demonstrated**.
+Parity for these surfaces is not demonstrable from this run: every founder surface is behind
+authentication and production verification here is limited to unauthenticated endpoints. So the
+panel links to `#lee` rather than replacing it, and the Scoreboard registry is additive.
+
+**A prerequisite for any future retirement:** `08_DELIVERY_PLAN.md` names `proofPageHtml` and
+`metricsPageHtml` as renderers to retire. **Neither exists.** The real ones are
+`proofWorkspaceHtml` and `metricsDashboardHtml` (`scripts/ui/navigation.mjs:154,293`). The
+route→renderer mapping must be corrected before a parity check against it could mean anything —
+as written, it would verify nothing.
+
+### Recorded finding — an assertion that matched its own comment
+
+A Release 7 test asserted the Le-E runtime contains no `POST`, and failed on the runtime's **own
+comment** saying "issues no fetch and no POST". This is the same trap the lessons already record
+for `test-operator-consolidation-pass`, where a phrase existing only in a comment was matched
+against source text. Fixed by stripping comments and scanning executable code, plus a positive
+control asserting the stripped source is still substantial — otherwise the fix could have made
+the check vacuous, which would have been worse than the false positive.
