@@ -219,7 +219,17 @@ export async function runHeartbeat(options = {}) {
     // null !== null is false and the diff alone would leave the mid-tick claim persisted,
     // wrongly skipping the next tick for a full TTL.
     delete patch.heartbeatLease;
-    await store.writeCollections(patch);
+    // writeChanges, NOT writeCollections (2026-07-26 write-amplification fix). The reference
+    // diff above narrows to changed COLLECTIONS, but engines spread-copy freely, so a tick
+    // that materially changed a handful of rows still presented ~22,800 rows for rewrite —
+    // hourly, growing with every snapshot ledger. Handing the store before/after lets its
+    // row diff (coreMutationsBetween) persist only rows whose payload actually differs:
+    // the ledger entries, the snapshots, and whatever an engine genuinely changed. Same
+    // serialized executor, same versioned-conflict semantics; the lease keeps its dedicated
+    // mutateCollectionItem below.
+    const patchBefore = {};
+    for (const key of Object.keys(patch)) patchBefore[key] = initialState[key];
+    await store.writeChanges(patchBefore, patch);
     await store.mutateCollectionItem("heartbeatLease", "singleton", (current) => current?.runId === id
       ? { runId:"", holder:"", claimedAt:current.claimedAt || "", expiresAt:"", releasedAt:finishedAt }
       : current, { maxRetries:2 });

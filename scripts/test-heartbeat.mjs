@@ -24,6 +24,9 @@ function makeStore(initial = {}) {
     async writeState(next) { state = JSON.parse(JSON.stringify(next)); this.writes += 1; return state; },
     // Mirrors the real stores' merge semantics (JsonStore merges the patch into full state).
     async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; this.writes += 1; return state; },
+    // The 2026-07-26 amplification fix hands the closing write before/after; the mock applies
+    // the after-side wholesale, which is exactly the merge the real stores converge on.
+    async writeChanges(before, after) { state = { ...state, ...JSON.parse(JSON.stringify(after)) }; this.writes += 1; this.lastWriteChanges = { before:JSON.parse(JSON.stringify(before)), after:JSON.parse(JSON.stringify(after)) }; return state; },
     async mutateCollectionItem(collection, _itemId, mutate, options = {}) {
       const current = state[collection] ?? null;
       if (!current && !options.createIfMissing) throw new Error("Record not found.");
@@ -146,6 +149,7 @@ async function testOverlappingTickMutex() {
     },
     async writeState(next) { state = JSON.parse(JSON.stringify(next)); this.writes += 1; },
     async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; this.writes += 1; },
+    async writeChanges(before, after) { state = { ...state, ...JSON.parse(JSON.stringify(after)) }; this.writes += 1; },
     async mutateCollectionItem(collection, _itemId, mutate, options = {}) {
       const current = state[collection] ?? null;
       if (!current && !options.createIfMissing) throw new Error("Record not found.");

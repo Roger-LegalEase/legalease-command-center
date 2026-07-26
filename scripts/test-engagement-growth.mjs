@@ -39,6 +39,8 @@ function makeStore(initial = {}) {
     async readState() { return JSON.parse(JSON.stringify(state)); },
     async writeState(next) { state = JSON.parse(JSON.stringify(next)); return state; },
     async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; return state; },
+    // 2026-07-26 amplification fix: the heartbeat closing write hands before/after; mocks apply the after side.
+    async writeChanges(before, after) { state = { ...state, ...JSON.parse(JSON.stringify(after)) }; return state; },
     async mutateCollectionItem(collection, _itemId, mutate, options = {}) {
       const current = state[collection] ?? null;
       if (!current && !options.createIfMissing) throw new Error("Record not found.");

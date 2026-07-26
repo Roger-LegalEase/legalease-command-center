@@ -75,6 +75,7 @@ function memStore(initial) {
     async readState() { return state; },
     async writeState(next) { calls.writeState += 1; state = next; },
     async writeCollections(patch) { calls.writeCollections.push(Object.keys(patch).sort()); state = { ...state, ...patch }; },
+    async writeChanges(before, after) { calls.writeCollections.push(Object.keys(after).sort()); state = { ...state, ...after }; },
     async mutateCollectionItem(collection, _itemId, mutate, options = {}) {
       const current = state[collection] ?? null;
       if (!current && !options.createIfMissing) throw new Error("Record not found.");
