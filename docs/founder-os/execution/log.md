@@ -115,6 +115,25 @@ assertions proving the behaviour rather than the count.
 correct: it is not a product route alias, it is a compatibility redirect for a hash that
 only exists when the vNext Outreach page is enabled.
 
+### 2026-07-26 — Release 3's "identity dedup projection" already existed
+
+**Conflict.** `08_DELIVERY_PLAN.md` lists Release 3's projection/adapter as "identity dedup
+projection (email/domain keyed, ambiguity surfaced)", written as work to be done. At HEAD
+`scripts/relationship-service.mjs` is 2,177 lines that already read all seven identity stores,
+already dedupe by email and organization, and are already served in production at
+`/api/ui/relationships/` and inside `/api/ui/partners`.
+
+**Resolution, and why.** Code wins for facts, so the projection was **not** rebuilt and no
+second projection was created — building one would have violated the reuse ledger's
+prohibition on a parallel contact store in the course of satisfying a line that only looked
+unmet. What was genuinely absent was verified by direct grep before any code was written:
+roles as a set, ambiguity surfacing, the two founder-set fields, support issues in the
+timeline, and the charter's filter vocabulary. Release 3 adds exactly those.
+
+**Residual.** The delivery plan's Release 3 row still reads as though the projection is new.
+It is left unedited — the charter is authority for decisions and this is a fact correction,
+recorded here rather than by rewriting the plan.
+
 ---
 
 ## Checkpoints raised
@@ -365,9 +384,12 @@ Verified absent at HEAD before any code was written, by direct grep:
   the fall-through case, and a whole-graph pass for the commoner and more dangerous one —
   two relationships that each resolved perfectly well by their own explicit link and
   nonetheless claim the same email. Reported on every relationship involved, merged on none.
-- **Support issues joined the timeline**, on the **detail** read contract only, so a
-  relationship list does not pay to read a collection it never renders. An open issue reads
-  inbound; a drafted or resolved one reads outbound.
+- **Support issues joined the timeline**, on the **detail** read contract only *and* only when
+  the flag is on, so a relationship list does not pay to read a collection it never renders and
+  the flag-off detail contract reads exactly what it read before. An open issue reads inbound;
+  a drafted or resolved one reads outbound. This is the one place the flag changes an existing
+  value: last-inbound now counts a support issue as inbound contact, which it is. That single
+  shift is asserted by name in the test suite so it can never happen silently or spread.
 - **Relationship strength and strategic priority.** Both founder-set, never inferred. Strength
   is genuinely new and reports "Not set" when unset rather than guessing from activity.
   Strategic priority *extends* the existing partner priority: an explicit value wins, the
@@ -440,7 +462,15 @@ number was the only thing that noticed.
   rollback assertions — including one proving that turning the flag on only ADDS fields and
   never changes an existing one.
 - `tests/browser/founder-os-release-3.spec.mjs` (new): the delivery plan's acceptance scenarios
-  in real Chromium, plus route parity and the rollback.
+  in real Chromium, plus route parity and the rollback. **7 passed** locally.
+- `scripts/test-founder-os-relationships.mjs`: **29 checks passed**, and the whole `npm test`
+  chain is green (exit 0) with the suite registered in it.
+- **Extended differential, CI's own methodology, both sides in clean worktrees:** base
+  (`dc75baa`) 30 failures, head 31. The extra was `test-vnext-performance-contract`, which the
+  triage document names as the contention flake rather than one of the thirty; re-run
+  standalone on the head worktree it **passes**, reporting Partners list 52,351 bytes against a
+  250,000 budget and critical CSS 137,452 against 180,000. **True differential: 30 = 30, zero
+  added, zero removed.**
 
 ### Recorded findings
 

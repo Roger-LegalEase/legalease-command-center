@@ -128,3 +128,33 @@ Still open and unchanged: the ten confirmed stubs in `evidence/loose-ends.md` §
 | Upstash auth store / Supabase store / targeted reads | **Keep** (unchanged) | The storage engine now carries an explicit serialization contract — one active core mutation per process, bounded queue, pre-network deadline, no retries, split read/write capacity, PII-free attribution. Reuse it as-is; do not add a second write path. Full terms in the `01_CURRENT_STATE_REUSE_LEDGER.md` addendum A1 |
 | `social-clean/` directory | **Remove** (unchanged) | Reaffirmed: still present, still unreferenced, now 16 days stale and missing the entire #116–#118 perf arc, including all of the storage protections above. Still a separate future PR |
 | vNext campaign detail + Outreach list projection | **Keep**, with the defects above | Added to this ledger for the first time; see the new loose-ends table |
+
+---
+
+# Addendum — 2026-07-26, Release 3 (Relationships)
+
+Appended, not rewritten. **No status above changes.**
+
+## Routes: nothing was superseded
+
+Release 3 hides no route. The delivery plan permits `partners`, `partner-hub`, `partner-*`,
+`contacts`, `pages` and `pilots` to alias into Relationships **after** parity, and parity for
+the partner sub-pages (programs, dashboards, reports, proposals) means every action they offer
+exists on the unified record. That has not been demonstrated, so every one of them still
+renders exactly what it rendered before, asserted by
+`tests/browser/founder-os-release-3.spec.mjs`. The reclaim stays available to a later release.
+
+## Component-status confirmations
+
+| Component | Status | 2026-07-26 note |
+|---|---|---|
+| `scripts/relationship-service.mjs` | **Keep** | Recorded here for the first time. It is the single CRM projection over the seven identity stores and it already existed at HEAD — Release 3 extended it rather than building a second one. Any future relationship work extends this module; a parallel projection is prohibited by the reuse ledger |
+| Partner records + `partner-api-integration.mjs` | **Keep** (unchanged) | Still the foundation. Release 3 added no partner route and changed no scoped-write allowlist |
+
+## New loose ends (found at `dc75baa`)
+
+| Item | Current behavior | User risk | Immediate treatment | Final treatment |
+|---|---|---|---|---|
+| Email normalization never collapses plus-addressing (`company-memory.mjs:323-328`, `reactivation-os.mjs:167-171`, `outreach-os.mjs:109-111`) | Normalization is trim + lowercase only, everywhere. `f+a@example.com` and `f+b@example.com` are two separate identities in every lane | Moderate: a real person can hold two identities and appear twice, and the CRM cannot tell that they are one | **Label clearly** — the Release 3 ambiguity surface reports records that share an address, but it cannot see this case because the addresses genuinely differ | **Keep** the normalization. The normalized address is hashed into a **persisted** record id (`companyContactId`, `contactIdForEmail`, `lifecycleIdForEmail`), so changing it re-keys live records. Any fix is a data migration with its own PR, never a side effect of a UI release |
+| Mark-sent cascade covers five of the seven identity stores (`communication-composer-service.mjs:36-53`, `:1024-1028`) | `rcapRevenueContacts` and `expungementLifecycleContacts` appear in neither the composer's read collections nor its write list | Moderate: recording a manual send to someone known only through those two lanes updates no last-contact anywhere, so the relationship looks quiet when it is not | **No treatment in Release 3** — it is a write-path gap and Release 3 is read-side | **Keep** the cascade; add the two lanes to its read and write sets with tests, in the release that next touches the composer |
+| Two relationships sharing one contact email | Previously invisible: each record resolved correctly by its own link and nothing compared them | Moderate — the "duplicate people" failure the consolidation exists to prevent | **Resolved for visibility** in Release 3: every relationship involved reports `possibleDuplicates` and `needsIdentityConfirmation`, and nothing is merged | **Keep** the surfacing. A ratified merge writes links and never deletes lane records (`01_CURRENT_STATE_REUSE_LEDGER.md:56`); that action is not built yet |

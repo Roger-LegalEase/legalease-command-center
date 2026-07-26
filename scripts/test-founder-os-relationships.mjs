@@ -23,6 +23,8 @@ import {
   readFounderOsRelationshipsConfig
 } from "./ui/founder-os-config.mjs";
 import {
+  RELATIONSHIP_DETAIL_READ_COLLECTIONS,
+  RELATIONSHIP_FOUNDER_OS_DETAIL_READ_COLLECTIONS,
   buildRelationshipDetail,
   buildRelationshipsView,
   executeRelationshipAction
@@ -437,6 +439,21 @@ check("with the flag off no Release 3 field appears on any item", () => {
   assert.equal(Object.hasOwn(off.filters, "roles"), false);
 });
 
+check("with the flag off support issues stay out of the timeline and out of the read set", () => {
+  const detail = buildRelationshipDetail(baseState(), OWNER, "partner:partner-acme", NOW);
+  assert.equal(detail.available, true);
+  assert.equal(detail.timeline.some((entry) => entry.type === "support"), false,
+    "the rollback must restore the pre-Release-3 timeline exactly, support issues included");
+  // And the detail contract must not pay to read a collection it will not render.
+  assert.equal(RELATIONSHIP_DETAIL_READ_COLLECTIONS.includes("supportIssues"), false);
+  assert.equal(RELATIONSHIP_FOUNDER_OS_DETAIL_READ_COLLECTIONS.includes("supportIssues"), true);
+  assert.deepEqual(
+    RELATIONSHIP_FOUNDER_OS_DETAIL_READ_COLLECTIONS.filter((name) => name !== "supportIssues"),
+    [...RELATIONSHIP_DETAIL_READ_COLLECTIONS],
+    "the flag-on detail read set must be the flag-off set plus exactly supportIssues"
+  );
+});
+
 check("with the flag off the Release 3 filters do not change the result set", () => {
   const plain = buildRelationshipsView(baseState(), OWNER, NOW, { limit:100 });
   for (const query of [{ role:"investor" }, { pipeline:"active" }, { replied:"yes" }, { meeting:"booked" }, { noContactDays:"14" }]) {
@@ -446,14 +463,35 @@ check("with the flag off the Release 3 filters do not change the result set", ()
   }
 });
 
-check("with the flag off the item payload is identical to the pre-Release-3 payload", () => {
+// Turning the flag on adds fields, and changes exactly ONE existing field: last inbound
+// contact. That is not a regression, it is the consequence of the charter's tenth timeline
+// source — a customer raising a support issue IS inbound contact, and before Release 3 it was
+// not counted. It is asserted by name so the change can never happen silently or spread.
+const EXPECTED_SHIFTS = ["lastInboundAt"];
+
+check("turning the flag on adds fields and changes only last-inbound, for a stated reason", () => {
   const off = buildRelationshipsView(baseState(), OWNER, NOW, { limit:100 });
   const on = buildRelationshipsView(baseState(), OWNER, NOW, { limit:100 }, ON);
   assert.equal(off.items.length, on.items.length, "the flag must not change which relationships exist");
   for (const [index, item] of off.items.entries()) {
-    const stripped = Object.fromEntries(Object.entries(on.items[index]).filter(([key]) => !RELEASE_3_FIELDS.includes(key)));
-    assert.deepEqual(item, stripped, "turning the flag on must only ADD fields, never change existing ones");
+    const ignored = [...RELEASE_3_FIELDS, ...EXPECTED_SHIFTS];
+    const strip = (row) => Object.fromEntries(Object.entries(row).filter(([key]) => !ignored.includes(key)));
+    assert.deepEqual(strip(item), strip(on.items[index]),
+      "no field outside the declared additions and last-inbound may change");
   }
+});
+
+check("last inbound moves only because a support issue is inbound contact", () => {
+  const withIssue = baseState();
+  const withoutIssue = baseState({ supportIssues:[] });
+  const on = (state) => danaFrom(buildRelationshipsView(state, OWNER, NOW, { limit:100 }, ON));
+  const off = (state) => danaFrom(buildRelationshipsView(state, OWNER, NOW, { limit:100 }));
+
+  // The support issue is the newest inbound event, so with the flag on it becomes last inbound.
+  assert.equal(on(withIssue).lastInboundAt, withIssue.supportIssues[0].updatedAt);
+  // Remove the support issue and the flag makes no difference at all.
+  assert.equal(on(withoutIssue).lastInboundAt, off(withoutIssue).lastInboundAt,
+    "with no support issue the flag must not move last inbound");
 });
 
 console.log(`Founder OS Release 3 relationships: ${checks.length} checks passed.`);

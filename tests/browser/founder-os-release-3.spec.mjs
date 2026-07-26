@@ -48,7 +48,11 @@ async function startFounderRelationships(context, { seed = {}, env = {} } = {}) 
 
 const page$ = (page) => page.locator("[data-partners-page]");
 const rows = (page) => page.locator("[data-relationship-row]");
-const views = (page) => page.locator("[data-relationship-view]");
+// Pinned views and saved filters deliberately share the same click attribute so they share
+// one handler; they are told apart by their container, which is what a reader sees too.
+const views = (page) => page.locator(".relationship-views [data-relationship-view]");
+const savedFilters = (page) => page.locator(".relationship-saved-filters [data-relationship-view]");
+const activeView = (page) => page.locator(".relationship-views [data-relationship-view].is-active");
 
 async function openRelationships(page, server) {
   await page.goto(`${server.baseUrl}/#partners`);
@@ -134,7 +138,7 @@ test.describe("Founder OS Release 3 — Relationships", () => {
       const advertised = Number((await waitingOnMe.locator("span").textContent()).trim());
 
       await waitingOnMe.click();
-      await expect(page.locator("[data-relationship-view].is-active")).toContainText("Waiting on me");
+      await expect(activeView(page)).toContainText("Waiting on me");
 
       // The advertised count and the returned set agree — a filter that lies about its size is
       // worse than no filter.
@@ -152,6 +156,8 @@ test.describe("Founder OS Release 3 — Relationships", () => {
     try {
       await openRelationships(page, server);
       await expect(views(page)).toHaveCount(6);
+      // The charter's saved filters sit alongside the pinned six, not inside them.
+      await expect(savedFilters(page)).toHaveCount(9);
       const labels = (await views(page).allTextContents()).map((text) => text.replace(/\s*\d+\s*$/, "").trim());
       expect(labels).toEqual([
         "All relationships", "Follow-up due", "Waiting on me", "Waiting on them", "Pipeline", "Suppressed"
@@ -160,7 +166,7 @@ test.describe("Founder OS Release 3 — Relationships", () => {
       // Selecting Pipeline then All returns to the unfiltered set rather than layering filters.
       const total = await rows(page).count();
       await views(page).filter({ hasText:"Pipeline" }).click();
-      await expect(page.locator("[data-relationship-view].is-active")).toContainText("Pipeline");
+      await expect(activeView(page)).toContainText("Pipeline");
       await views(page).filter({ hasText:"All relationships" }).click();
       await expect(rows(page)).toHaveCount(total);
     } finally {

@@ -82,14 +82,21 @@ export const RELATIONSHIP_DETAIL_READ_COLLECTIONS = Object.freeze([
   "dataRoomItems",
   "partnerProgramArtifacts",
   "evidencePackNotes",
-  "reports",
-  // The tenth timeline source (relationships.md:42-45). Detail-only on purpose: the
-  // relationship list never renders support issues, so it must not pay to read them.
+  "reports"
+].sort());
+
+// The tenth timeline source (relationships.md:42-45), read only when
+// FOUNDER_OS_RELATIONSHIPS is on and only on the DETAIL contract. Two reasons it is a
+// separate constant rather than a member of the set above: a relationship LIST never renders
+// support issues so it must not pay to read them, and with the flag off the detail contract
+// must read exactly what it read before, so the rollback costs nothing and changes nothing.
+export const RELATIONSHIP_FOUNDER_OS_DETAIL_READ_COLLECTIONS = Object.freeze([
+  ...RELATIONSHIP_DETAIL_READ_COLLECTIONS,
   "supportIssues"
 ].sort());
 
 const RELATIONSHIP_SOURCE_COLLECTIONS = Object.freeze([
-  ...RELATIONSHIP_DETAIL_READ_COLLECTIONS,
+  ...RELATIONSHIP_FOUNDER_OS_DETAIL_READ_COLLECTIONS,
   // Legacy JSON fixtures can still contain these read-only sources. They are not
   // registered Supabase collections and therefore never enter a targeted query.
   "reactivationReplies",
@@ -1032,7 +1039,7 @@ function interactionTimeline(entity, sourceIndex, identifiers, context, outreach
   // and were the one missing from this merge. They are read on the DETAIL contract only, so
   // a relationship list does not pay for a collection it never displays: relatedRows simply
   // finds nothing when supportIssues is absent from the source index.
-  for (const issue of relatedRows(sourceIndex, "supportIssues", identifiers)) {
+  for (const issue of context.founderOs ? relatedRows(sourceIndex, "supportIssues", identifiers) : []) {
     const status = slug(issue.status);
     add({
       id:`support:${recordId(issue)}`,
