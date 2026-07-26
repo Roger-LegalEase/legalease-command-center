@@ -58,6 +58,7 @@ import {
   partnersHomeBrowserSource
 } from "./pages/partners-home.mjs";
 import { PARTNER_RECORD_STYLESHEET_PATHS, partnerRecordBrowserSource } from "./pages/partner-record.mjs";
+import { FOUNDER_CAMPAIGNS_STYLESHEET_PATH, founderCampaignsBrowserSource } from "./pages/founder-campaigns.mjs";
 import { OUTREACH_HOME_STYLESHEET_PATH, outreachHomeBrowserSource } from "./pages/outreach-home.mjs";
 import { AUTOMATION_CONTROL_CENTER_STYLESHEET_PATH, automationControlCenterBrowserSource } from "./pages/automation-control-center.mjs";
 import { CAMPAIGN_WIZARD_STYLESHEET_PATH, campaignWizardBrowserSource } from "./pages/campaign-wizard.mjs";
@@ -138,6 +139,15 @@ const VNEXT_LAZY_ASSETS = Object.freeze({
     styles:Object.freeze([AUTOMATION_CONTROL_CENTER_STYLESHEET_PATH]),
     source:automationControlCenterBrowserSource,
     outreachOnly:true
+  }),
+  // Founder OS Release 4. Served as a lazy runtime file so the Campaigns lifecycle costs the
+  // initial client-JavaScript budget nothing, and gated on the release flag the same way
+  // automation-control-center is gated on the Outreach flag.
+  "founder-campaigns":Object.freeze({
+    styles:Object.freeze([FOUNDER_CAMPAIGNS_STYLESHEET_PATH]),
+    source:founderCampaignsBrowserSource,
+    api:"__LE_FOUNDER_CAMPAIGNS",
+    founderOsCampaignsOnly:true
   })
 });
 
@@ -155,6 +165,7 @@ export function resolveVNextLazyRuntime(pathname = "", options = {}) {
   if (!match || !Object.hasOwn(VNEXT_LAZY_ASSETS, match[1])) return null;
   const asset = VNEXT_LAZY_ASSETS[match[1]];
   if (!asset || (asset.outreachOnly && options.outreachEnabled !== true)) return null;
+  if (asset.founderOsCampaignsOnly && options.founderOsCampaigns !== true) return null;
   const source = asset.source();
   return typeof source === "string" && source.length <= VNEXT_LAZY_RUNTIME_MAX_BYTES ? source : null;
 }
@@ -284,6 +295,7 @@ function discoveryCaptureSinkBrowserSource() {
 function vnextLazyAssetLoaderScript(options = {}) {
   const manifest = Object.fromEntries(Object.entries(VNEXT_LAZY_ASSETS)
     .filter(([, asset]) => !asset.outreachOnly || options.outreachEnabled === true)
+    .filter(([, asset]) => !asset.founderOsCampaignsOnly || options.founderOsCampaigns === true)
     .map(([id, asset]) => [id, {
       styles:asset.styles.map(assetUrl),
       runtime:`${VNEXT_LAZY_RUNTIME_PATH_PREFIX}${id}.js`,
@@ -353,6 +365,7 @@ function vnextLazyAssetLoaderScript(options = {}) {
       if (["company-health", "os-health"].includes(route) || ["company-health", "os-health", "health", "app-status", "system"].includes(raw)) add("founder-company-health");
       if (route === "queue" && query.get("view") === "weekly") add("social-weekly-planner");
       if (["automation", "automation-control", "automation-control-center"].includes(raw) || (route === "outreach" && query.get("view") === "automation")) add("automation-control-center");
+      ${options.founderOsCampaigns ? `if (["campaigns", "outreach"].includes(route)) add("founder-campaigns");` : ""}
       return required;
     }
     function controlAssets() {

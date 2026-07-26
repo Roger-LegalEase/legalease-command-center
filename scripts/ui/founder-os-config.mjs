@@ -181,3 +181,78 @@ export const FOUNDER_OS_RELATIONSHIP_PRIORITIES = Object.freeze([
   Object.freeze({ key: "low", label: "Low" }),
   Object.freeze({ key: "unset", label: "Not set" })
 ]);
+
+// ---------------------------------------------------------------------------------------------
+// Release 4 — the Campaigns workspace.
+// ---------------------------------------------------------------------------------------------
+//
+// FOUNDER_OS_CAMPAIGNS puts one lifecycle over the campaign lanes
+// (docs/founder-os/workspaces/campaigns.md). Default off; off restores today's surface exactly.
+//
+// THE RELEASE CHANGES THE INTERFACE, NEVER THE CAMPAIGN. Reactivation is live in production
+// with waves 1 and 2 sending and waves 3 and 4 held, so this release adds no mutation route of
+// its own: the projection is read-only and every control points at the route that already
+// implements it. The translation table below changes LANGUAGE only — each internal mechanism in
+// the left column remains the enforcement layer, exactly as the charter requires.
+
+export const FOUNDER_OS_CAMPAIGNS_ENV_KEY = "FOUNDER_OS_CAMPAIGNS";
+
+export function readFounderOsCampaignsConfig(serverEnvironment = {}) {
+  const environment = serverEnvironment && typeof serverEnvironment === "object" ? serverEnvironment : {};
+  const enabled = Object.prototype.hasOwnProperty.call(environment, FOUNDER_OS_CAMPAIGNS_ENV_KEY)
+    && parseFounderOsFlag(environment[FOUNDER_OS_CAMPAIGNS_ENV_KEY]);
+  return Object.freeze({ enabled, source: "server-environment" });
+}
+
+// The press sub-flag is declared here so the lane has one switch, but it is deliberately
+// inert until the lane is built: with nothing behind it, the lane renders the charter's
+// honest not-built state either way (campaigns.md:89-90 — "never a fake one").
+export const FOUNDER_OS_PRESS_ENV_KEY = "FOUNDER_OS_PRESS";
+
+export function readFounderOsPressConfig(serverEnvironment = {}) {
+  const environment = serverEnvironment && typeof serverEnvironment === "object" ? serverEnvironment : {};
+  const enabled = Object.prototype.hasOwnProperty.call(environment, FOUNDER_OS_PRESS_ENV_KEY)
+    && parseFounderOsFlag(environment[FOUNDER_OS_PRESS_ENV_KEY]);
+  return Object.freeze({ enabled, source: "server-environment" });
+}
+
+// "The same five words appear in every lane. No lane invents its own jargon or its own control
+// shapes." (campaigns.md:8-22) These are those five words, in charter order.
+export const FOUNDER_OS_CAMPAIGN_LIFECYCLE = Object.freeze([
+  Object.freeze({ id: "plan", label: "Plan", purpose: "Objective, audience, copy, schedule." }),
+  Object.freeze({ id: "review", label: "Review", purpose: "Approvals: content gates and audience release decisions." }),
+  Object.freeze({ id: "run", label: "Run", purpose: "The Run and Stop control." }),
+  Object.freeze({ id: "monitor", label: "Monitor", purpose: "Sends, delivery, replies, thresholds, exceptions." }),
+  Object.freeze({ id: "stop", label: "Stop", purpose: "Always available, always immediate." })
+]);
+
+// The four lanes from the secondary-views table in 02_TARGET_PRODUCT_AND_IA.md:37.
+export const FOUNDER_OS_CAMPAIGN_LANES = Object.freeze([
+  Object.freeze({ id: "social", label: "Social", built: true }),
+  Object.freeze({ id: "reactivation", label: "Reactivation", built: true }),
+  Object.freeze({ id: "partner_outreach", label: "Partner outreach", built: true }),
+  // No press engine exists in main (01_CURRENT_STATE_REUSE_LEDGER.md P10, re-verified at
+  // 922a555). The lane is present because the charter names it, and it reports that it is not
+  // built rather than rendering an empty campaign that looks real.
+  Object.freeze({ id: "press", label: "Press outreach", built: false })
+]);
+
+// The charter's internal-to-founder translation table, verbatim from campaigns.md:26-35.
+// Language only: every left-hand mechanism stays the enforcement layer.
+export const FOUNDER_OS_CAMPAIGN_TRANSLATIONS = Object.freeze([
+  Object.freeze({ internal: "heartbeat cron", founder: "Next automatic check" }),
+  Object.freeze({ internal: "live mode", founder: "Run / Stop" }),
+  Object.freeze({ internal: "autopilot", founder: "Campaign running" }),
+  Object.freeze({ internal: "released wave", founder: "Audience approved and active" }),
+  Object.freeze({ internal: "threshold trip", founder: "Campaign stopped for safety" }),
+  Object.freeze({ internal: "claim ledger", founder: "Duplicate-send protection" }),
+  Object.freeze({ internal: "suppression", founder: "Not eligible to contact" }),
+  Object.freeze({ internal: "SendGrid webhook health", founder: "Delivery feedback connected" })
+]);
+
+// Engine vocabulary that must never reach the founder surface. Asserted by the Release 4 test
+// suite against the rendered lane payloads, so a future change cannot leak jargon quietly.
+export const FOUNDER_OS_CAMPAIGN_FORBIDDEN_TERMS = Object.freeze([
+  "heartbeat", "autopilot", "live mode", "livemode", "kill_switch", "threshold_tripped",
+  "engine", "cron", "claim ledger", "sendgrid", "webhook"
+]);

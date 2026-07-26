@@ -158,3 +158,24 @@ renders exactly what it rendered before, asserted by
 | Email normalization never collapses plus-addressing (`company-memory.mjs:323-328`, `reactivation-os.mjs:167-171`, `outreach-os.mjs:109-111`) | Normalization is trim + lowercase only, everywhere. `f+a@example.com` and `f+b@example.com` are two separate identities in every lane | Moderate: a real person can hold two identities and appear twice, and the CRM cannot tell that they are one | **Label clearly** — the Release 3 ambiguity surface reports records that share an address, but it cannot see this case because the addresses genuinely differ | **Keep** the normalization. The normalized address is hashed into a **persisted** record id (`companyContactId`, `contactIdForEmail`, `lifecycleIdForEmail`), so changing it re-keys live records. Any fix is a data migration with its own PR, never a side effect of a UI release |
 | Mark-sent cascade covers five of the seven identity stores (`communication-composer-service.mjs:36-53`, `:1024-1028`) | `rcapRevenueContacts` and `expungementLifecycleContacts` appear in neither the composer's read collections nor its write list | Moderate: recording a manual send to someone known only through those two lanes updates no last-contact anywhere, so the relationship looks quiet when it is not | **No treatment in Release 3** — it is a write-path gap and Release 3 is read-side | **Keep** the cascade; add the two lanes to its read and write sets with tests, in the release that next touches the composer |
 | Two relationships sharing one contact email | Previously invisible: each record resolved correctly by its own link and nothing compared them | Moderate — the "duplicate people" failure the consolidation exists to prevent | **Resolved for visibility** in Release 3: every relationship involved reports `possibleDuplicates` and `needsIdentityConfirmation`, and nothing is merged | **Keep** the surfacing. A ratified merge writes links and never deletes lane records (`01_CURRENT_STATE_REUSE_LEDGER.md:56`); that action is not built yet |
+
+---
+
+# Addendum — 2026-07-26, Release 4 (Campaigns)
+
+Appended, not rewritten. **No status above changes.** No route was hidden by Release 4.
+
+## Component-status confirmations
+
+| Component | Status | 2026-07-26 note |
+|---|---|---|
+| Reactivation engine | **Keep** (unchanged) | Release 4 is an interface over it. The projection is read-only, adds no route, and calls no mutating function; the engine's decision functions remain the enforcement layer and produce every number and every blocked reason the surface shows |
+| Campaign command controls | **Keep** (unchanged) | `buildCampaignCommandView` is reused wholesale rather than reimplemented. The Release 4 endpoint reads it through a frozen 13-collection targeted list instead of the full `store.readState()` that `/api/campaign/command` still uses |
+| Press lane | **Deferred by decision** | Roger's answer to the Release 4 build-or-defer checkpoint, 2026-07-26: defer. The lane renders the charter's honest not-built state. `FOUNDER_OS_PRESS` exists so the lane has one switch, and a test asserts enabling it does not fabricate a campaign |
+| Social live-publishing pipeline | **Advanced only** (unchanged) | Reaffirmed. Release 4's Social lane exposes **no publish affordance at all**, so no publish route is relocated and the Publish Now gap cannot be inherited |
+
+## New loose end (found at `922a555`)
+
+| Item | Current behavior | User risk | Immediate treatment | Final treatment |
+|---|---|---|---|---|
+| Two publish paths establish the live gate by different means | `publishPostNow` calls `livePostingEnabledForChannel` (`preview-server.mjs:5858`) and its route is additionally 403'd unconditionally by `auth-endpoint-hardening.mjs`. The **vNext** path (`POST /api/ui/social/post/:id/publish`) never calls that function; it derives `facts.gate` from the **persisted** `state.runtime.livePostingGates`. Verified directly: `runtimeGates` (`post-readiness-sources.mjs:145-156`) accepts a boolean or an `{enabled:boolean}` object and yields `null` otherwise, and `eligibility` blocks on both `"off"` and `"unavailable"` (`post-publishing-controls.mjs:441-442`) — **shape-tolerant and fail-closed. There is no fail-open bug** | Low today, because the vNext path is fail-closed and the legacy route is 403'd. The risk is architectural: a future change to the persisted shape, or someone populating that field, alters a publish decision without touching the function everyone believes governs it | **No treatment in Release 4** — the Social lane has no publish affordance, so the release depends on neither path | **Consolidate**: the vNext path should call `livePostingEnabledForChannel` like the scheduled worker does, with `test-publish-now-live-gate.mjs` promoted out of extended-only into the strict chain, in the release that next activates publishing |
