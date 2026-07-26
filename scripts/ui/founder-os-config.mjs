@@ -55,3 +55,54 @@ export const FOUNDER_OS_ADVANCED_ROUTES = Object.freeze([
   Object.freeze({ route: "production-activation-rcap", label: "RCAP Program Review", note: "Not connected to anything yet." }),
   Object.freeze({ route: "item", label: "Artifact Viewer", note: "The full record behind an item. Secondary only." })
 ]);
+
+// ---------------------------------------------------------------------------------------------
+// Release 2 — the Today operating loop.
+// ---------------------------------------------------------------------------------------------
+//
+// FOUNDER_OS_TODAY turns Today into the charter's five-section ordered work queue (Now, Next,
+// Communications, Meetings, Needs attention) ranked by the rules in
+// docs/founder-os/workspaces/today.md, with the existing task workbench drawer acting as the
+// universal action panel. Default off. Turning it off restores the legacy today/cockpit pages
+// exactly, which is the release's rollback path.
+//
+// Like FOUNDER_OS_SHELL this is read once from the server environment and never from anything
+// request-controlled, so the flag state is identical for every viewer of a given deployment.
+
+export const FOUNDER_OS_TODAY_ENV_KEY = "FOUNDER_OS_TODAY";
+
+export function readFounderOsTodayConfig(serverEnvironment = {}) {
+  const environment = serverEnvironment && typeof serverEnvironment === "object" ? serverEnvironment : {};
+  const enabled = Object.prototype.hasOwnProperty.call(environment, FOUNDER_OS_TODAY_ENV_KEY)
+    && parseFounderOsFlag(environment[FOUNDER_OS_TODAY_ENV_KEY]);
+  return Object.freeze({ enabled, source: "server-environment" });
+}
+
+// The five sections, in charter order. `id` is the payload key; `slot` is the DOM hook the
+// renderer writes into. Nothing else is a Today section.
+export const FOUNDER_OS_TODAY_SECTIONS = Object.freeze([
+  Object.freeze({ id: "now", slot: "now", label: "Now", limit: 1 }),
+  Object.freeze({ id: "next", slot: "next", label: "Next", limit: 5 }),
+  Object.freeze({ id: "communications", slot: "communications", label: "Communications", limit: 6 }),
+  Object.freeze({ id: "meetings", slot: "meetings", label: "Meetings", limit: 6 }),
+  Object.freeze({ id: "needsAttention", slot: "needs-attention", label: "Needs attention", limit: 6 })
+]);
+
+// The Today-family page renderers Release 2 supersedes, per the route map in
+// 02_TARGET_PRODUCT_AND_IA.md. With the flag on each route still resolves — it renders a short
+// pointer into Today instead of its legacy surface, so no bookmark breaks and the legacy
+// renderer's client bytes are never shipped.
+export const FOUNDER_OS_SUPERSEDED_TODAY_ROUTES = Object.freeze([
+  Object.freeze({ route: "cockpit", renderer: "cockpitHomeHtml", label: "Cockpit" }),
+  Object.freeze({ route: "focus", renderer: "focusPageHtml", label: "Focus Mode" }),
+  Object.freeze({ route: "morning-brief", renderer: "morningBriefPageHtml", label: "Morning Brief" }),
+  Object.freeze({ route: "evening-reflection", renderer: "eveningReflectionPageHtml", label: "Evening Reflection" }),
+  Object.freeze({ route: "daily-closeout", renderer: "dailyCloseoutPageHtml", label: "Daily Closeout" }),
+  Object.freeze({ route: "tasks", renderer: "tasksPageHtml", label: "Tasks" }),
+  Object.freeze({ route: "milestones", renderer: "milestonesPageHtml", label: "Milestones" }),
+  Object.freeze({ route: "meetings", renderer: "meetingsPageHtml", label: "Meetings" }),
+  Object.freeze({ route: "support", renderer: "supportPageHtml", label: "Support" }),
+  Object.freeze({ route: "alerts", renderer: "alertsPageHtml", label: "Alerts" }),
+  Object.freeze({ route: "automation", renderer: "automationInboxPageHtml", label: "Automation Inbox" }),
+  Object.freeze({ route: "growth-inbox", renderer: "growthInboxPageHtml", label: "Growth Inbox" })
+]);

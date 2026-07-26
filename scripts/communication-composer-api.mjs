@@ -34,9 +34,21 @@ function publicMutation(result = {}) {
   return body;
 }
 
-async function readComposerState(store) {
+// Founder OS Release 2 adds one thing to the mark-sent cascade: the queue item that put the
+// work in Today turns terminal, so the item leaves. That needs the queue spine in scope, and
+// only when the flag is on — with it off the read set is unchanged.
+export const COMMUNICATION_COMPOSER_FOUNDER_READ_COLLECTIONS = Object.freeze([
+  ...COMMUNICATION_COMPOSER_READ_COLLECTIONS,
+  "queueItems",
+  "approvals",
+  "companyEvents"
+]);
+
+async function readComposerState(store, { completeQueueItems = false } = {}) {
   if (typeof store?.readCollections !== "function") throw new Error("Draft context storage is unavailable.");
-  return store.readCollections(COMMUNICATION_COMPOSER_READ_COLLECTIONS);
+  return store.readCollections(completeQueueItems
+    ? COMMUNICATION_COMPOSER_FOUNDER_READ_COLLECTIONS
+    : COMMUNICATION_COMPOSER_READ_COLLECTIONS);
 }
 
 async function persist(store, result) {
@@ -54,7 +66,8 @@ export async function handleCommunicationComposerApiRequest({
   input = {},
   store,
   actor = {},
-  now = new Date().toISOString()
+  now = new Date().toISOString(),
+  completeQueueItems = false
 } = {}) {
   if (!isCommunicationComposerApiPath(pathname)) return { matched:false };
   if (!enabled) return { matched:true, status:404, body:{ ok:false, outcome:"not_available", message:"Follow-up drafting is unavailable." } };
@@ -84,8 +97,8 @@ export async function handleCommunicationComposerApiRequest({
     const manual = manualSentMatch(pathname);
     if (manual && verb === "POST") {
       if (manual.invalid || [...searchParams.keys()].length) return { matched:true, status:400, body:{ ok:false, outcome:"validation_error", message:"The sent interaction request is invalid." } };
-      const current = await readComposerState(store);
-      const result = markCommunicationDraftSentManually(current, actor, manual.draftId, input, { now });
+      const current = await readComposerState(store, { completeQueueItems });
+      const result = markCommunicationDraftSentManually(current, actor, manual.draftId, input, { now, completeQueueItems });
       await persist(store, result);
       return { matched:true, status:200, body:publicMutation(result) };
     }

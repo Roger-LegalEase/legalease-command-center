@@ -198,7 +198,13 @@ const legacyShellHash = createHash("sha256").update(serverSource.slice(shellStar
 // "Hide now", and the deletion of the unreferenced campaignsPageHtml renderer. With the flag
 // off the shell is byte-identical to before apart from that dead-code deletion, which is the
 // release's rollback path. Behaviour is asserted by tests/browser/founder-os-release-1.spec.mjs.
-assert.equal(legacyShellHash, "2569c3a34d33e0382bf42eb161cc4d173aab8d76512c439d408fe746afaee72f", "Flag-off htmlShell output must remain unchanged.");
+// Re-pinned by Founder OS Release 2. The legacy shell changed in exactly one reviewed way:
+// the five daily-loop renderers the deprecation ledger consolidates into Today (cockpit,
+// focus, morning brief, evening reflection, daily closeout) are now server-side conditionals
+// that emit a short pointer into Today when FOUNDER_OS_TODAY is on and their original source
+// when it is off. With the flag off the shell is byte-identical to Release 1 (measured:
+// 1,647,552 inline client bytes in both states). Behaviour: tests/browser/founder-os-release-2.spec.mjs.
+assert.equal(legacyShellHash, "d77dabc8cfb7628af40982a8098088eee30305910ed23d766a664da76a1f40a0", "Flag-off htmlShell output must remain unchanged.");
 
 assert.equal(packageJson.scripts["test:vnext-desktop-shell"], "node scripts/test-vnext-desktop-shell.mjs");
 assert.match(readFileSync("scripts/run-extended-tests.mjs", "utf8"), /f\.startsWith\("test-"\) && f\.endsWith\("\.mjs"\)/);

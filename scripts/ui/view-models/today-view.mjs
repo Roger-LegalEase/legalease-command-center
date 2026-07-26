@@ -27,7 +27,7 @@ const SOURCE_AVAILABILITY_COLLECTIONS = Object.freeze([
   "soc2Policies"
 ]);
 
-const OBJECT_TYPES = Object.freeze({
+export const OBJECT_TYPES = Object.freeze({
   social_review: "Post",
   campaign_decision: "Campaign",
   partner_followup: "Partner follow-up",
@@ -237,7 +237,9 @@ function sourceRecord(state, candidate) {
   return list(state?.[candidate?.sourceKind]).find((record) => clean(record?.id || record?.key || record?.slug) === candidate?.sourceId) || null;
 }
 
-function isAdvancedCandidate(state, candidate) {
+// Exported for the Founder OS Today projection (Release 2), which ranks the same candidate set
+// and must hide exactly the same machinery items. Behaviour is unchanged for existing callers.
+export function isAdvancedCandidate(state, candidate) {
   const record = sourceRecord(state, candidate);
   if (!record) return false;
   if (record.advanced === true || record.internalOnly === true || record.diagnostic === true || record.systemAdministration === true) return true;

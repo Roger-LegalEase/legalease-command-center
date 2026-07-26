@@ -430,3 +430,44 @@
 @media (prefers-reduced-motion: reduce) {
   .vnext-today-skeleton { animation: none; }
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Founder OS Release 2 — the five-section Today loop.
+
+   The Founder OS page reuses every card, list and action style above; it only needs the three
+   new section slots to inherit what Next and Needs you already look like, and a single-column
+   stack so the ordered queue reads top to bottom in one pass. Ranking is conveyed by order and
+   by the existing meta row, never by colour alone.
+   --------------------------------------------------------------------------------------------- */
+
+.vnext-founder-today .vnext-today-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.vnext-founder-today .vnext-today-communications,
+.vnext-founder-today .vnext-today-meetings,
+.vnext-founder-today .vnext-today-needs-attention {
+  padding: 27px 29px;
+}
+
+.vnext-founder-today .vnext-today-next-list > li {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.vnext-founder-today .vnext-today-next-list > li[data-today-rank-tier="1"] {
+  border-left: 3px solid var(--le-teal-500);
+  padding-left: 15px;
+}
+
+.vnext-founder-today .vnext-today-meta {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 520px) {
+  .vnext-founder-today .vnext-today-communications,
+  .vnext-founder-today .vnext-today-meetings,
+  .vnext-founder-today .vnext-today-needs-attention { padding: 21px 18px; }
+  .vnext-founder-today .vnext-today-next-list > li { grid-template-columns: minmax(0, 1fr); }
+}

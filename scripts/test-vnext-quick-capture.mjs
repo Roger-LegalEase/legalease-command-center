@@ -18,6 +18,7 @@ import {
   renderQuickCaptureForm
 } from "./ui/quick-capture.mjs";
 import { routeRegistry } from "./ui/navigation.mjs";
+import { todayPageBrowserSource } from "./ui/pages/today-page.mjs";
 import { ROUTE_COMPATIBILITY_TOTALS } from "./ui/route-compatibility.mjs";
 import { renderShellBoundary } from "./ui/shell-boundary.mjs";
 
@@ -235,7 +236,13 @@ assert.doesNotMatch(serviceSource, /provider|sendEmail|publish\w*\(|launch\w*\(|
 assert.match(globalCreateSource, /renderQuickCaptureForm/);
 assert.match(globalCreateSource, /window\.__LE_QUICK_CAPTURE\?\.submit/);
 assert.match(todaySource, /vnext:open-quick-capture/);
-assert.equal((todaySource.match(/Open Quick Capture/g) || []).length, 1);
+// Corrected by Founder OS Release 2: today-page.mjs now holds two Today renderers, the legacy
+// one and the FOUNDER_OS_TODAY one, and exactly one of them is ever sent to the browser. The
+// point of this assertion is that a single Today surface offers a single Quick Capture entry
+// point, so it is now asserted per renderer instead of per file.
+assert.equal((todaySource.match(/Open Quick Capture/g) || []).length, 2);
+assert.equal((todayPageBrowserSource().match(/Open Quick Capture/g) || []).length, 1);
+assert.equal((todayPageBrowserSource({ founderOsToday:true }).match(/Open Quick Capture/g) || []).length, 1);
 assert.match(serverSource, /url\.pathname === QUICK_CAPTURE_ENDPOINT && request\.method === "POST"/);
 assert.match(serverSource, /readBoundedJson\(request, \{ limit:QUICK_CAPTURE_BODY_LIMIT \}\)/);
 assert.match(serverSource, /createQuickCapture\(currentState, input, \{ actor, now \}\)/);
@@ -263,7 +270,13 @@ assert.ok(legacyShellStart >= 0 && legacyShellEnd > legacyShellStart);
 // "Hide now", and the deletion of the unreferenced campaignsPageHtml renderer. With the flag
 // off the shell is byte-identical to before apart from that dead-code deletion, which is the
 // release's rollback path. Behaviour is asserted by tests/browser/founder-os-release-1.spec.mjs.
-assert.equal(createHash("sha256").update(serverSource.slice(legacyShellStart, legacyShellEnd)).digest("hex"), "2569c3a34d33e0382bf42eb161cc4d173aab8d76512c439d408fe746afaee72f");
+// Re-pinned by Founder OS Release 2. The legacy shell changed in exactly one reviewed way:
+// the five daily-loop renderers the deprecation ledger consolidates into Today (cockpit,
+// focus, morning brief, evening reflection, daily closeout) are now server-side conditionals
+// that emit a short pointer into Today when FOUNDER_OS_TODAY is on and their original source
+// when it is off. With the flag off the shell is byte-identical to Release 1 (measured:
+// 1,647,552 inline client bytes in both states). Behaviour: tests/browser/founder-os-release-2.spec.mjs.
+assert.equal(createHash("sha256").update(serverSource.slice(legacyShellStart, legacyShellEnd)).digest("hex"), "d77dabc8cfb7628af40982a8098088eee30305910ed23d766a664da76a1f40a0");
 const legacyTodayStart = serverSource.indexOf("    function commandCenterOverviewHtml(posts)");
 const legacyTodayEnd = serverSource.indexOf("\n    function focusItemsForMode", legacyTodayStart);
 assert.ok(legacyTodayStart >= 0 && legacyTodayEnd > legacyTodayStart);
