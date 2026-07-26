@@ -1,5 +1,5 @@
 import { projectCompanyMemory } from "./company-memory-projector.mjs";
-import { stableMemoryId, upsertCompanyContact } from "./company-memory.mjs";
+import { CONTACT_TYPES, stableMemoryId, upsertCompanyContact } from "./company-memory.mjs";
 import { recordVisibleToActor } from "./global-search-service.mjs";
 import { isSuppressed } from "./outreach-os.mjs";
 import {
@@ -10,6 +10,12 @@ import {
 import { roleHasCapability, roles } from "./roles.mjs";
 import { normalizeTaskRecord, updateTaskInState } from "./tasks-engine.mjs";
 import { buildExactObjectLink, buildGenericItemLink } from "./ui/route-compatibility.mjs";
+import {
+  FOUNDER_OS_RELATIONSHIP_FILTERS,
+  FOUNDER_OS_RELATIONSHIP_PRIORITIES,
+  FOUNDER_OS_RELATIONSHIP_STRENGTHS,
+  FOUNDER_OS_RELATIONSHIP_VIEWS
+} from "./ui/founder-os-config.mjs";
 import { INTERNAL_PARTNER_STAGE_MAPPING, PARTNER_STAGE_CONTRACT } from "./ui/view-models/partner-stage.mjs";
 
 const list = (value) => Array.isArray(value) ? value : [];
@@ -76,7 +82,10 @@ export const RELATIONSHIP_DETAIL_READ_COLLECTIONS = Object.freeze([
   "dataRoomItems",
   "partnerProgramArtifacts",
   "evidencePackNotes",
-  "reports"
+  "reports",
+  // The tenth timeline source (relationships.md:42-45). Detail-only on purpose: the
+  // relationship list never renders support issues, so it must not pay to read them.
+  "supportIssues"
 ].sort());
 
 const RELATIONSHIP_SOURCE_COLLECTIONS = Object.freeze([
@@ -122,11 +131,20 @@ const RELATIONSHIP_ACTIONS = new Set([
   "add_note",
   "add_contact",
   "edit_contact",
-  "update_stage"
+  "update_stage",
+  // Release 3: the two founder-set fields the charter requires on every relationship
+  // (relationships.md:26-29). Internal, no external effect, so no confirmation — the same
+  // policy update_stage already carries.
+  "set_relationship_strength",
+  "set_strategic_priority"
 ]);
 const RELATIONSHIP_STAGES = new Set(["new", "qualified", "in_conversation", "proposal", "active", "stalled", "closed"]);
 const RELATIONSHIP_ACTIVITY_TYPES = new Set(["meeting_completed", "reply_recorded", "outreach_recorded", "relationship_updated"]);
 const RELATIONSHIP_TASK_PRIORITIES = new Set(["critical", "high", "medium", "low"]);
+// Writable values for the two Release 3 fields. "unknown"/"unset" are writable on purpose:
+// clearing a value Roger set by mistake must be possible without inventing a delete action.
+const RELATIONSHIP_STRENGTH_KEYS = new Set(FOUNDER_OS_RELATIONSHIP_STRENGTHS.map((option) => option.key));
+const RELATIONSHIP_PRIORITY_KEYS = new Set(FOUNDER_OS_RELATIONSHIP_PRIORITIES.map((option) => option.key));
 const MUTABLE_RELATIONSHIP_COLLECTIONS = new Set([
   "partners",
   "companyContacts",
@@ -154,13 +172,18 @@ function deepFreeze(value) {
   return value;
 }
 
-function actorContext(actor = {}) {
+// `founderOs` carries the FOUNDER_OS_RELATIONSHIPS flag down to the projection. It comes
+// from the server environment by way of the caller and is never read from the request, so
+// every viewer of a deployment sees one behaviour. With it false the projection emits
+// exactly the fields it emitted before Release 3, which is the release's rollback.
+function actorContext(actor = {}, options = {}) {
   const role = lower(actor.role);
   const authorized = actor.authenticated === true && roles.includes(role) && roleHasCapability(role, "read_internal");
   return {
     authorized,
     role:authorized ? role : null,
-    canReadSensitive:authorized && roleHasCapability(role, "read_sensitive")
+    canReadSensitive:authorized && roleHasCapability(role, "read_sensitive"),
+    founderOs:options.founderOs === true
   };
 }
 
@@ -300,7 +323,9 @@ function createEntity({ id, kind, partnerId = null, partner = null } = {}) {
     organizations:[],
     contacts:[],
     sources:[],
-    sourceKeys:new Set()
+    sourceKeys:new Set(),
+    // Ambiguous identity matches found while building the graph. See ambiguousAliasMatches.
+    ambiguous:[]
   };
 }
 
@@ -322,6 +347,18 @@ function addAlias(aliasCandidates, alias, entityId) {
 function uniqueAlias(aliasCandidates, alias) {
   const ids = aliasCandidates.get(clean(alias));
   return ids?.size === 1 ? [...ids][0] : null;
+}
+
+// An alias that matches more than one entity is an AMBIGUOUS identity match. uniqueAlias
+// already refuses to merge on one — it returns null, and the caller falls through to
+// creating a standalone entity. That is the safe half of the charter rule
+// (relationships.md:65-66): never silently merge. The unsafe half is that the ambiguity was
+// then discarded, so the same person could appear as a third record with nobody told why.
+// ambiguousAliasMatches reports the collision so the projection can surface it for founder
+// confirmation instead. Read-only: it resolves nothing and writes nothing.
+function ambiguousAliasMatches(aliasCandidates, alias) {
+  const ids = aliasCandidates.get(clean(alias));
+  return ids && ids.size > 1 ? [...ids].sort((left, right) => left.localeCompare(right, "en-US")) : null;
 }
 
 function collectionRecord(index, collection, itemId) {
@@ -459,11 +496,27 @@ function buildEntityGraph(state = {}, context, now = "") {
         if (entityId) break;
       }
     }
+    // Identity collisions found while resolving this contact. Collected whether or not
+    // resolution eventually succeeds, so the projection can report "this may be the same
+    // person as X" instead of quietly minting a duplicate. Never used to merge.
+    const ambiguity = [];
     const contactEmail = validEmail(contact.email);
-    if (!entityId && contactEmail) entityId = uniqueAlias(aliases, `email:${contactEmail}`);
+    if (!entityId && contactEmail) {
+      entityId = uniqueAlias(aliases, `email:${contactEmail}`);
+      if (!entityId) {
+        const matches = ambiguousAliasMatches(aliases, `email:${contactEmail}`);
+        if (matches) ambiguity.push({ kind:"email", value:contactEmail, entityIds:matches });
+      }
+    }
     if (!entityId) {
       const organizationName = contactOrganizationName(contact, sourceRecords);
-      if (organizationName) entityId = uniqueAlias(aliases, `name:${lower(organizationName)}`);
+      if (organizationName) {
+        entityId = uniqueAlias(aliases, `name:${lower(organizationName)}`);
+        if (!entityId) {
+          const matches = ambiguousAliasMatches(aliases, `name:${lower(organizationName)}`);
+          if (matches) ambiguity.push({ kind:"organization_name", value:organizationName, entityIds:matches });
+        }
+      }
     }
     if (!entityId) {
       const contactId = clean(contact.contact_id);
@@ -472,6 +525,12 @@ function buildEntityGraph(state = {}, context, now = "") {
       entities.set(entityId, createEntity({ id:entityId, kind:"contact" }));
     }
     const entity = entities.get(entityId);
+    for (const match of ambiguity) {
+      // Never point a relationship at itself: the collision is only interesting when it
+      // names some OTHER record.
+      const others = match.entityIds.filter((id) => id !== entityId);
+      if (others.length) entity.ambiguous.push({ ...match, entityIds:others, contactId:clean(contact.contact_id) });
+    }
     const duplicateIndex = entity.contacts.findIndex((existing) => clean(existing.contact_id) === clean(contact.contact_id)
       || contactEmail && validEmail(existing.email) === contactEmail);
     if (duplicateIndex < 0) entity.contacts.push(contact);
@@ -506,6 +565,32 @@ function buildEntityGraph(state = {}, context, now = "") {
     for (const contact of entity.contacts) {
       const email = validEmail(contact.email);
       if (email) addAlias(aliases, `email:${email}`, entity.id);
+    }
+  }
+
+  // Whole-graph identity check. The per-contact capture above only fires for a contact that
+  // failed to resolve; it cannot see the commoner and more dangerous case, where each
+  // relationship resolved perfectly well by its own explicit link and the two nonetheless
+  // claim the SAME person. One email address belonging to two relationships is exactly the
+  // "duplicate people" failure this release exists to prevent, so it is reported on every
+  // relationship involved. Reported only — the charter forbids merging on an ambiguous
+  // match, and two records sharing a contact can be legitimate (one human, two employers).
+  const entityIdsByEmail = new Map();
+  for (const entity of entities.values()) {
+    for (const email of new Set(entity.contacts.map((contact) => validEmail(contact.email)).filter(Boolean))) {
+      const owners = entityIdsByEmail.get(email) || new Set();
+      owners.add(entity.id);
+      entityIdsByEmail.set(email, owners);
+    }
+  }
+  for (const [email, owners] of entityIdsByEmail) {
+    if (owners.size < 2) continue;
+    const sorted = [...owners].sort((left, right) => left.localeCompare(right, "en-US"));
+    for (const entityId of sorted) {
+      const entity = entities.get(entityId);
+      if (!entity) continue;
+      if (entity.ambiguous.some((match) => match.kind === "email" && match.value === email)) continue;
+      entity.ambiguous.push({ kind:"email", value:email, entityIds:sorted.filter((id) => id !== entityId) });
     }
   }
 
@@ -589,6 +674,43 @@ function relatedRows(sourceIndex, collection, identifiers, options = {}) {
   return indexed.rows.filter((_, index) => matches.has(index));
 }
 
+// Roles are a SET on one record, not a single classification (relationships.md:16-19): "An
+// investor who is also a referral source and a Partner contact is one record with three
+// roles, never three records." categoryFor below collapses the same evidence into one
+// primary category for the existing list surface; rolesFor keeps all of it.
+//
+// The vocabulary is the existing CONTACT_TYPES from company-memory.mjs — this introduces no
+// second vocabulary and no new store. A Partner entity always carries partner_contact
+// because the partner record itself is that assertion.
+const ROLE_LABELS = Object.freeze({
+  consumer:"Customer",
+  paid_customer:"Paying customer",
+  abandoned_screening:"Abandoned screening",
+  checkout_abandon:"Abandoned checkout",
+  partner_contact:"Partner contact",
+  prospect:"Prospect",
+  funder:"Funder",
+  investor:"Investor",
+  vendor:"Vendor",
+  attorney:"Attorney",
+  support:"Support",
+  media:"Press",
+  internal:"Internal"
+});
+
+function rolesFor(entity) {
+  const declared = [
+    ...entity.contacts.flatMap((contact) => list(contact.types)),
+    ...entity.organizations.flatMap((organization) => list(organization.types)),
+    entity.kind === "partner" ? "partner_contact" : null
+  ].map(slug).filter(Boolean);
+  const present = new Set(declared);
+  // Only vocabulary members become roles. An unrecognised type is dropped rather than shown
+  // as a role Roger has no definition for.
+  return CONTACT_TYPES.filter((type) => present.has(type))
+    .map((key) => Object.freeze({ key, label:ROLE_LABELS[key] || key }));
+}
+
 function categoryFor(entity) {
   if (entity.kind === "partner") return RELATIONSHIP_CATEGORIES[0];
   const sourceValues = entity.sources.flatMap(({ record }) => record ? [
@@ -637,6 +759,39 @@ function stageFor(entity) {
   if (mapped === "stalled") return { key:"stalled", label:"Stalled", available:true };
   const label = safeText(raw.replaceAll(/[_-]+/g, " ").replace(/^./, (letter) => letter.toUpperCase()), 80);
   return label ? { key:internal, label, available:true } : { key:"unavailable", label:"Stage unavailable", available:false };
+}
+
+// Relationship strength and strategic priority — the two explicit fields the charter
+// requires on every relationship (relationships.md:26-29). Both are FOUNDER-SET and never
+// inferred: an unset relationship reports "Not set", not a guess derived from activity.
+//
+// Neither field introduces a store. They are read from the same canonical source records
+// stageFor reads, and written by the same mechanism updateRelationshipStage uses.
+//
+// Strength is genuinely new, so there is nothing to fall back to. Strategic priority
+// EXTENDS the existing partner priority rather than competing with it, so an explicit
+// strategicPriority wins and the partner's own priority field is honoured when it is absent
+// — that value is founder-set too, just set on the older surface.
+function relationshipSourceRecords(entity) {
+  return [entity.partner, ...entity.organizations, ...entity.contacts, ...entity.sources.map((source) => source.record)].filter(Boolean);
+}
+
+function strengthFor(entity) {
+  const raw = slug(relationshipSourceRecords(entity)
+    .map((record) => clean(record.relationshipStrength || record.relationship_strength))
+    .find(Boolean) || "");
+  const match = FOUNDER_OS_RELATIONSHIP_STRENGTHS.find((option) => option.key === raw && option.key !== "unknown");
+  return match ? { ...match, set:true } : { key:"unknown", label:"Not set", set:false };
+}
+
+function strategicPriorityFor(entity) {
+  const records = relationshipSourceRecords(entity);
+  const explicit = slug(records.map((record) => clean(record.strategicPriority || record.strategic_priority)).find(Boolean) || "");
+  const inherited = explicit ? "" : slug(records.map((record) => clean(record.priority)).find(Boolean) || "");
+  const raw = explicit || (inherited === "normal" ? "medium" : inherited);
+  const match = FOUNDER_OS_RELATIONSHIP_PRIORITIES.find((option) => option.key === raw && option.key !== "unset");
+  if (!match) return { key:"unset", label:"Not set", set:false, source:"unset" };
+  return { ...match, set:true, source:explicit ? "relationship" : "partner" };
 }
 
 function contactView(contact = {}, context, organization = null, primary = false) {
@@ -873,6 +1028,24 @@ function interactionTimeline(entity, sourceIndex, identifiers, context, outreach
       });
     }
   }
+  // Support issues are the tenth timeline source the charter names (relationships.md:42-45)
+  // and were the one missing from this merge. They are read on the DETAIL contract only, so
+  // a relationship list does not pay for a collection it never displays: relatedRows simply
+  // finds nothing when supportIssues is absent from the source index.
+  for (const issue of relatedRows(sourceIndex, "supportIssues", identifiers)) {
+    const status = slug(issue.status);
+    add({
+      id:`support:${recordId(issue)}`,
+      type:"support",
+      // A support issue is the customer raising something, so it is inbound. A drafted or
+      // resolved issue is our move back.
+      direction:["drafted", "resolved", "closed"].includes(status) ? "outbound" : "inbound",
+      label:status === "resolved" || status === "closed" ? "Support issue resolved" : "Support issue raised",
+      summary:context.canReadSensitive ? issue.summary || issue.subject || issue.title : null,
+      occurredAt:issue.updatedAt || issue.updated_at || issue.occurredAt || issue.createdAt || issue.created_at,
+      href:"#support"
+    });
+  }
   for (const history of list(entity.partner?.history)) {
     const text = lower(history.action || history.type || history.title);
     add({
@@ -984,6 +1157,9 @@ function entityProjection(entity, state, sourceIndex, context, now) {
   const lastOutboundAt = newestTimestamp(timeline.filter((item) => item.direction === "outbound").map((item) => item.occurredAt));
   const eligibility = eligibilityFor(entity, primary, outreach, state);
   const partnerHref = entity.partnerId ? buildExactObjectLink({ objectType:"Partner", sourceKind:"partner", sourceId:entity.partnerId })?.target : null;
+  // Release 3 fields. Emitted only under FOUNDER_OS_RELATIONSHIPS so the flag-off payload is
+  // byte-identical to Release 2's and the rollback is exact.
+  const founderOs = context.founderOs ? founderOsFields(entity, signals, timeline, sourceIndex, identifiers, lastInboundAt, lastOutboundAt, now) : null;
   return {
     id:entity.id,
     name:entityName(entity),
@@ -1008,7 +1184,58 @@ function entityProjection(entity, state, sourceIndex, context, now) {
     automatedOutreach:outreach.sequenceActive,
     href:partnerHref || `#partners/relationship/${encodeURIComponent(entity.id)}`,
     partnerId:entity.partnerId,
+    ...(founderOs || {}),
     _detail:{ entity, identifiers, tasks, signals, outreach, timeline, primary }
+  };
+}
+
+const DAY_MS = 86_400_000;
+
+// The Release 3 additions to a projected relationship. Kept in one function so the flag-off
+// path can skip all of it, and so every field here is traceable to a charter line.
+function founderOsFields(entity, signals, timeline, sourceIndex, identifiers, lastInboundAt, lastOutboundAt, now) {
+  // Open commitments: inbox-intelligence commitment signals linked to this relationship
+  // (relationships.md:34, workflow 02). signalsFor has already dropped terminal signals, so
+  // everything here is genuinely open.
+  const commitments = signals.filter((signal) => slug(signal.kind) === "commitment");
+  const nowValue = timestampValue(now);
+  const openCommitments = commitments.map((signal) => ({
+    id:recordId(signal),
+    dueAt:validTimestamp(signal.dueAt || signal.due_at) || null,
+    overdue:Boolean(validTimestamp(signal.dueAt || signal.due_at)
+      && timestampValue(signal.dueAt || signal.due_at) < nowValue)
+  }));
+
+  // Last contact in either direction, for the "no contact in 14/30/60 days" filters.
+  const lastContactAt = newestTimestamp([lastInboundAt, lastOutboundAt].filter(Boolean));
+  const daysSinceContact = lastContactAt && nowValue
+    ? Math.floor((nowValue - timestampValue(lastContactAt)) / DAY_MS)
+    : null;
+
+  // A booked meeting is one that has not happened yet. A past meeting is history, not a
+  // reason to appear in the "Meeting booked" filter.
+  const meetingBooked = meetingsFor(sourceIndex, identifiers)
+    .some((meeting) => meeting.startAt && timestampValue(meeting.startAt) > nowValue);
+
+  return {
+    roles:rolesFor(entity),
+    relationshipStrength:strengthFor(entity),
+    strategicPriority:strategicPriorityFor(entity),
+    openCommitments,
+    openCommitmentCount:openCommitments.length,
+    lastContactAt,
+    daysSinceContact,
+    meetingBooked,
+    replied:timeline.some((item) => item.type === "reply"),
+    // Ambiguous identity matches, surfaced for confirmation rather than merged
+    // (relationships.md:65-66). An entry means "this may be the same person as these other
+    // records"; nothing is merged and nothing is written.
+    possibleDuplicates:list(entity.ambiguous).map((match) => ({
+      kind:match.kind,
+      value:match.kind === "email" ? match.value : safeText(match.value, 180),
+      relationshipIds:match.entityIds
+    })),
+    needsIdentityConfirmation:list(entity.ambiguous).length > 0
   };
 }
 
@@ -1040,6 +1267,22 @@ function optionCounts(items, field) {
   return [...values.values()].sort((left, right) => left.label.localeCompare(right.label, "en-US"));
 }
 
+// optionCounts counts one value per item; a person can hold several roles at once, so roles
+// need a counter that accepts a list. This is the counting half of "one record with three
+// roles": the same person is counted under each role they actually hold.
+function optionCountsFromList(items, field) {
+  const values = new Map();
+  for (const item of items) {
+    for (const value of field(item)) {
+      if (!value?.key) continue;
+      const current = values.get(value.key) || { key:value.key, label:value.label, count:0 };
+      current.count += 1;
+      values.set(value.key, current);
+    }
+  }
+  return [...values.values()].sort((left, right) => left.label.localeCompare(right.label, "en-US"));
+}
+
 function normalizedQuery(query = {}) {
   const search = clean(query.search).slice(0, 120);
   const automationRaw = lower(query.automation);
@@ -1053,8 +1296,36 @@ function normalizedQuery(query = {}) {
     eligibility:slug(query.eligibility),
     owner:lower(query.owner),
     offset:Number.isInteger(Number(query.offset)) && Number(query.offset) >= 0 ? Number(query.offset) : 0,
-    limit:Number.isInteger(Number(query.limit)) && Number(query.limit) > 0 ? Math.min(100, Number(query.limit)) : 50
+    limit:Number.isInteger(Number(query.limit)) && Number(query.limit) > 0 ? Math.min(100, Number(query.limit)) : 50,
+    // Release 3 filters (relationships.md:50-54). Parsed unconditionally so the shape of a
+    // normalized query never depends on the flag; itemMatches only applies them when the
+    // flag is on, so an unknown key on a flag-off deployment is inert rather than a filter
+    // that silently returns the wrong set.
+    role:slug(query.role),
+    pipeline:["active", "true", "yes"].includes(lower(query.pipeline)) ? "active" : "",
+    replied:["yes", "true"].includes(lower(query.replied)) ? "yes" : "",
+    meeting:["booked", "yes", "true"].includes(lower(query.meeting)) ? "booked" : "",
+    noContactDays:[14, 30, 60].includes(Number(query.noContactDays)) ? Number(query.noContactDays) : 0
   };
+}
+
+// "Pipeline" is the charter's commercial-progress view: the stages where an opportunity is
+// genuinely in motion. `new` is not in motion yet and `closed`/`stalled` are not in motion
+// any more, so neither belongs in it.
+const PIPELINE_STAGES = Object.freeze(new Set(["qualified", "in_conversation", "proposal", "active"]));
+
+// Every filter dimension a pinned view or saved filter can set. A view is active when it
+// asks for exactly what the current query asks for on these dimensions and nothing else —
+// so "All relationships" is active only when nothing is filtered, and no two views can ever
+// both claim to be active.
+const RELATIONSHIP_FILTER_DIMENSIONS = Object.freeze([
+  "category", "stage", "followUp", "waiting", "automation", "eligibility", "owner",
+  "role", "pipeline", "replied", "meeting", "noContactDays"
+]);
+
+function viewIsActive(query, viewQuery) {
+  const wanted = normalizedQuery(viewQuery);
+  return RELATIONSHIP_FILTER_DIMENSIONS.every((key) => String(query[key] || "") === String(wanted[key] || ""));
 }
 
 function itemMatches(item, query, context) {
@@ -1068,6 +1339,18 @@ function itemMatches(item, query, context) {
   if (query.category && item.category.key !== query.category) return false;
   if (query.stage && item.stage.key !== query.stage) return false;
   if (query.followUp === "due" && !item.followUpDue) return false;
+  if (context.founderOs) {
+    // "Overdue" is strictly past its date. "Follow-up due" includes today. Keeping them
+    // distinct is why the charter lists both.
+    if (query.followUp === "overdue" && !(item.nextFollowUpAt && timestampValue(item.nextFollowUpAt) < timestampValue(context.now))) return false;
+    if (query.role && !list(item.roles).some((role) => role.key === query.role)) return false;
+    if (query.pipeline === "active" && !PIPELINE_STAGES.has(item.stage.key)) return false;
+    if (query.replied === "yes" && item.replied !== true) return false;
+    if (query.meeting === "booked" && item.meetingBooked !== true) return false;
+    // Never contacted at all is the strongest case of "no contact in N days", so a null
+    // last-contact matches rather than being filtered out and quietly forgotten.
+    if (query.noContactDays && !(item.daysSinceContact === null || item.daysSinceContact >= query.noContactDays)) return false;
+  }
   if (query.waiting && item.waitingState.key !== query.waiting) return false;
   if (query.automation === "automated" && !item.automatedOutreach) return false;
   if (query.automation === "manual" && item.automatedOutreach) return false;
@@ -1083,8 +1366,10 @@ function sortedItems(items) {
     || left.id.localeCompare(right.id, "en-US"));
 }
 
-function projectionBundle(state, actor, now) {
-  const context = actorContext(actor);
+function projectionBundle(state, actor, now, options = {}) {
+  const context = actorContext(actor, options);
+  // The Release 3 date filters compare against the caller's clock, never the process clock.
+  context.now = now;
   if (!context.authorized) return { context, available:false, availability:{ state:"not_authorized", reason:"read_access_required" }, projected:[], graph:null };
   const sourceAvailable = RELATIONSHIP_SOURCE_COLLECTIONS.some((collection) => Array.isArray(state[collection]));
   if (!sourceAvailable) return { context, available:false, availability:{ state:"unavailable", reason:"relationship_data_absent" }, projected:[], graph:null };
@@ -1237,6 +1522,14 @@ function validateActionInput(input = {}) {
     assertActionKeys(input, new Set([...common, "stage"]));
     parsed.stage = slug(actionText(input.stage, "Relationship stage", 80, { required:true }));
     if (!RELATIONSHIP_STAGES.has(parsed.stage)) throw actionError("Choose a supported relationship stage. No changes were made.");
+  } else if (action === "set_relationship_strength") {
+    assertActionKeys(input, new Set([...common, "strength"]));
+    parsed.strength = slug(actionText(input.strength, "Relationship strength", 40, { required:true }));
+    if (!RELATIONSHIP_STRENGTH_KEYS.has(parsed.strength)) throw actionError("Choose a supported relationship strength. No changes were made.");
+  } else if (action === "set_strategic_priority") {
+    assertActionKeys(input, new Set([...common, "priority"]));
+    parsed.priority = slug(actionText(input.priority, "Strategic priority", 40, { required:true }));
+    if (!RELATIONSHIP_PRIORITY_KEYS.has(parsed.priority)) throw actionError("Choose a supported strategic priority. No changes were made.");
   }
   return parsed;
 }
@@ -1948,6 +2241,41 @@ function updateRelationshipStage(state, relationshipId, entity, target, parsed, 
   };
 }
 
+// Both fields are written exactly the way updateRelationshipStage writes the stage: onto the
+// relationship's own canonical source record, through the same location/replace helpers and
+// the same scoped-write allowlist. No new collection, no parallel store.
+function setRelationshipStrength(state, relationshipId, entity, target, parsed, actor, now) {
+  const current = refreshedLocation(state, target);
+  if (!current) throw actionError("This relationship can no longer be changed. Refresh and try again.", 409, "conflict");
+  const updated = { ...current.record, relationshipStrength:parsed.strength, updatedAt:now, updated_at:now };
+  return {
+    state:replaceAtLocation(state, current, updated),
+    activity:relationshipActivity({
+      action:parsed.action, requestId:parsed.requestId, relationshipId, entity, target, actor, now,
+      title:"Relationship strength updated",
+      summary:FOUNDER_OS_RELATIONSHIP_STRENGTHS.find((option) => option.key === parsed.strength)?.label || parsed.strength,
+      eventType:"relationship_strength_changed"
+    }),
+    result:{ relationshipStrength:parsed.strength }
+  };
+}
+
+function setStrategicPriority(state, relationshipId, entity, target, parsed, actor, now) {
+  const current = refreshedLocation(state, target);
+  if (!current) throw actionError("This relationship can no longer be changed. Refresh and try again.", 409, "conflict");
+  const updated = { ...current.record, strategicPriority:parsed.priority, updatedAt:now, updated_at:now };
+  return {
+    state:replaceAtLocation(state, current, updated),
+    activity:relationshipActivity({
+      action:parsed.action, requestId:parsed.requestId, relationshipId, entity, target, actor, now,
+      title:"Strategic priority updated",
+      summary:FOUNDER_OS_RELATIONSHIP_PRIORITIES.find((option) => option.key === parsed.priority)?.label || parsed.priority,
+      eventType:"strategic_priority_changed"
+    }),
+    result:{ strategicPriority:parsed.priority }
+  };
+}
+
 function applyParsedAction(state, relationshipId, projection, target, parsed, actor, now) {
   const entity = projection._detail.entity;
   if (parsed.action === "set_next_action") return setNextAction(state, relationshipId, entity, target, parsed, actor, now);
@@ -1957,6 +2285,8 @@ function applyParsedAction(state, relationshipId, projection, target, parsed, ac
   if (parsed.action === "add_note") return addRelationshipNote(state, relationshipId, entity, target, parsed, actor, now);
   if (parsed.action === "add_contact") return addRelationshipContact(state, relationshipId, entity, target, parsed, actor, now);
   if (parsed.action === "edit_contact") return editRelationshipContact(state, relationshipId, projection, entity, target, parsed, actor, now);
+  if (parsed.action === "set_relationship_strength") return setRelationshipStrength(state, relationshipId, entity, target, parsed, actor, now);
+  if (parsed.action === "set_strategic_priority") return setStrategicPriority(state, relationshipId, entity, target, parsed, actor, now);
   return updateRelationshipStage(state, relationshipId, entity, target, parsed, actor, now);
 }
 
@@ -1968,7 +2298,9 @@ const ACTION_MESSAGES = Object.freeze({
   add_note:"Note added.",
   add_contact:"Contact added.",
   edit_contact:"Contact updated.",
-  update_stage:"Relationship stage updated."
+  update_stage:"Relationship stage updated.",
+  set_relationship_strength:"Relationship strength updated.",
+  set_strategic_priority:"Strategic priority updated."
 });
 
 export function executeRelationshipAction(state = {}, actor = {}, relationshipId = "", now = "", input = {}) {
@@ -2053,9 +2385,9 @@ export function relationshipActionSafeError(error) {
   };
 }
 
-export function buildRelationshipsView(state = {}, actor = {}, now = "", rawQuery = {}) {
+export function buildRelationshipsView(state = {}, actor = {}, now = "", rawQuery = {}, options = {}) {
   const generatedAt = validTimestamp(now);
-  const bundle = projectionBundle(state, actor, generatedAt || new Date(0).toISOString());
+  const bundle = projectionBundle(state, actor, generatedAt || new Date(0).toISOString(), options);
   const query = normalizedQuery(rawQuery);
   if (!bundle.available) return deepFreeze({
     available:false,
@@ -2093,7 +2425,28 @@ export function buildRelationshipsView(state = {}, actor = {}, now = "", rawQuer
       stages:optionCounts(allItems, (item) => item.stage),
       owners,
       waitingStates:optionCounts(allItems, (item) => item.waitingState),
-      eligibility:optionCounts(allItems, (item) => item.eligibility)
+      eligibility:optionCounts(allItems, (item) => item.eligibility),
+      // The charter's pinned views and saved filters, each with the count it would return,
+      // so the surface never offers a filter that leads to an empty page without saying so.
+      ...(bundle.context.founderOs ? {
+        views:FOUNDER_OS_RELATIONSHIP_VIEWS.map((view) => ({
+          id:view.id,
+          label:view.label,
+          query:view.query,
+          active:viewIsActive(query, view.query),
+          count:allItems.filter((item) => itemMatches(item, normalizedQuery(view.query), bundle.context)).length
+        })),
+        savedFilters:FOUNDER_OS_RELATIONSHIP_FILTERS.map((filter) => ({
+          id:filter.id,
+          label:filter.label,
+          query:filter.query,
+          active:viewIsActive(query, filter.query),
+          count:allItems.filter((item) => itemMatches(item, normalizedQuery(filter.query), bundle.context)).length
+        })),
+        roles:optionCountsFromList(allItems, (item) => list(item.roles)),
+        strengths:optionCounts(allItems, (item) => item.relationshipStrength),
+        strategicPriorities:optionCounts(allItems, (item) => item.strategicPriority)
+      } : {})
     },
     query,
     pagination:{ offset:query.offset, limit:query.limit, returned:page.length, hasMore:query.offset + page.length < filtered.length },
@@ -2101,10 +2454,10 @@ export function buildRelationshipsView(state = {}, actor = {}, now = "", rawQuer
   });
 }
 
-export function buildRelationshipDetail(state = {}, actor = {}, relationshipId = "", now = "") {
+export function buildRelationshipDetail(state = {}, actor = {}, relationshipId = "", now = "", options = {}) {
   const generatedAt = validTimestamp(now);
   const id = clean(relationshipId).slice(0, 320);
-  const bundle = projectionBundle(state, actor, generatedAt || new Date(0).toISOString());
+  const bundle = projectionBundle(state, actor, generatedAt || new Date(0).toISOString(), options);
   if (!bundle.available) return deepFreeze({
     available:false,
     generatedAt:generatedAt || null,

@@ -248,7 +248,12 @@ import { incrementSecurityMetric, operationalMetrics } from "./observability.mjs
 import { oauthSigningSecret, signOAuthState, verifyOAuthState, verifyOwnerStartedOAuthState } from "./oauth-state.mjs";
 import { escapeHtml } from "./ui/html.mjs";
 import { readCommandCenterVNextConfig } from "./ui/vnext-config.mjs";
-import { FOUNDER_OS_ADVANCED_ROUTES, readFounderOsShellConfig, readFounderOsTodayConfig } from "./ui/founder-os-config.mjs";
+import {
+  FOUNDER_OS_ADVANCED_ROUTES,
+  readFounderOsRelationshipsConfig,
+  readFounderOsShellConfig,
+  readFounderOsTodayConfig
+} from "./ui/founder-os-config.mjs";
 import { readCommandCenterVNextProductConfig } from "./ui/vnext-config.mjs";
 import { renderShellBoundary } from "./ui/shell-boundary.mjs";
 import { DESIGN_SYSTEM_SHOWCASE_PATH } from "./ui/brand-contract.mjs";
@@ -280,6 +285,7 @@ const socialVNextConfig = readCommandCenterVNextProductConfig(process.env, "soci
 const discoveryVNextConfig = readCommandCenterVNextProductConfig(process.env, "discovery");
 const founderOsShellConfig = readFounderOsShellConfig(process.env);
 const founderOsTodayConfig = readFounderOsTodayConfig(process.env);
+const founderOsRelationshipsConfig = readFounderOsRelationshipsConfig(process.env);
 const globalCreateKindsByPath = Object.freeze(Object.fromEntries(
   Object.entries(GLOBAL_CREATE_ENDPOINTS).map(([kind, endpoint]) => [endpoint, kind])
 ));
@@ -35485,6 +35491,7 @@ function renderVNextApp(options = {}) {
       discoveryEnabled:discoveryVNextConfig.enabled && Boolean(options.discovery),
       founderOsShell:founderOsShellConfig.enabled,
       founderOsToday:founderOsTodayConfig.enabled,
+      founderOsRelationships:founderOsRelationshipsConfig.enabled,
       discovery:options.discovery || null
     });
   }
@@ -36214,7 +36221,8 @@ async function handleRequest(request, response) {
       input,
       store,
       actor:publicActor(accessDecision.actor),
-      now:new Date().toISOString()
+      now:new Date().toISOString(),
+      founderOs:founderOsRelationshipsConfig.enabled
     });
     const result = ["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase())
       ? await execute()
@@ -36234,7 +36242,8 @@ async function handleRequest(request, response) {
       input,
       store,
       actor:publicActor(accessDecision.actor),
-      now:new Date().toISOString()
+      now:new Date().toISOString(),
+      founderOs:founderOsRelationshipsConfig.enabled
     });
     const result = mutation ? await serializeStateMutation(execute) : await execute();
     sendJson(response, result.body || { ok:false, message:"Relationship details are unavailable." }, result.status || 404);

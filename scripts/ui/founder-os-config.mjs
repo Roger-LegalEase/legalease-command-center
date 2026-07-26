@@ -106,3 +106,78 @@ export const FOUNDER_OS_SUPERSEDED_TODAY_ROUTES = Object.freeze([
   Object.freeze({ route: "automation", renderer: "automationInboxPageHtml", label: "Automation Inbox" }),
   Object.freeze({ route: "growth-inbox", renderer: "growthInboxPageHtml", label: "Growth Inbox" })
 ]);
+
+// ---------------------------------------------------------------------------------------------
+// Release 3 — the Relationships workspace.
+// ---------------------------------------------------------------------------------------------
+//
+// FOUNDER_OS_RELATIONSHIPS turns the Partners surface into the charter's single CRM
+// (docs/founder-os/workspaces/relationships.md). Default off. Turning it off restores the
+// current Partners surface exactly, which is the release's rollback path.
+//
+// It is a projection, never a parallel store. scripts/relationship-service.mjs already
+// projects the seven identity stores named in 01_CURRENT_STATE_REUSE_LEDGER.md:53 and is
+// already live behind /api/ui/relationships/. This flag does not introduce a second
+// projection; it turns on the charter behaviour the existing projection does not yet have:
+// roles as a set on one person, ambiguous matches surfaced instead of silently merged,
+// founder-set relationship strength and strategic priority, support issues in the timeline,
+// and the charter's full filter vocabulary.
+
+export const FOUNDER_OS_RELATIONSHIPS_ENV_KEY = "FOUNDER_OS_RELATIONSHIPS";
+
+export function readFounderOsRelationshipsConfig(serverEnvironment = {}) {
+  const environment = serverEnvironment && typeof serverEnvironment === "object" ? serverEnvironment : {};
+  const enabled = Object.prototype.hasOwnProperty.call(environment, FOUNDER_OS_RELATIONSHIPS_ENV_KEY)
+    && parseFounderOsFlag(environment[FOUNDER_OS_RELATIONSHIPS_ENV_KEY]);
+  return Object.freeze({ enabled, source: "server-environment" });
+}
+
+// The six secondary views, verbatim from the table in 02_TARGET_PRODUCT_AND_IA.md:37.
+// "Exactly these, and no others without a charter update." `query` is the filter the view
+// applies to the existing relationship projection — every view is a filter over one list,
+// never a separate fetch.
+export const FOUNDER_OS_RELATIONSHIP_VIEWS = Object.freeze([
+  Object.freeze({ id: "all", label: "All relationships", query: {} }),
+  Object.freeze({ id: "follow_up_due", label: "Follow-up due", query: { followUp: "due" } }),
+  Object.freeze({ id: "waiting_on_me", label: "Waiting on me", query: { waiting: "on_roger" } }),
+  Object.freeze({ id: "waiting_on_them", label: "Waiting on them", query: { waiting: "on_them" } }),
+  Object.freeze({ id: "pipeline", label: "Pipeline", query: { pipeline: "active" } }),
+  Object.freeze({ id: "suppressed", label: "Suppressed", query: { eligibility: "suppressed" } })
+]);
+
+// The charter's saved filters (relationships.md:50-54). The six views above are the pinned
+// subset; these are the rest, and each maps to a query key the projection understands.
+export const FOUNDER_OS_RELATIONSHIP_FILTERS = Object.freeze([
+  Object.freeze({ id: "overdue", label: "Overdue", query: { followUp: "overdue" } }),
+  Object.freeze({ id: "no_contact_14", label: "No contact in 14 days", query: { noContactDays: "14" } }),
+  Object.freeze({ id: "no_contact_30", label: "No contact in 30 days", query: { noContactDays: "30" } }),
+  Object.freeze({ id: "no_contact_60", label: "No contact in 60 days", query: { noContactDays: "60" } }),
+  Object.freeze({ id: "replied", label: "Replied", query: { replied: "yes" } }),
+  Object.freeze({ id: "meeting_booked", label: "Meeting booked", query: { meeting: "booked" } }),
+  Object.freeze({ id: "proposal_active", label: "Proposal active", query: { stage: "proposal" } }),
+  Object.freeze({ id: "stalled", label: "Stalled", query: { stage: "stalled" } }),
+  Object.freeze({ id: "automated", label: "In automated outreach", query: { automation: "automated" } })
+]);
+
+// Relationship strength — a NEW field per relationships.md:26-29. Founder-set, never
+// inferred: an unset relationship reports `unknown` rather than a guess. "How warm the
+// connection is", distinct from strategic priority ("how much it matters"), which extends
+// the existing partner priority vocabulary rather than introducing a second one.
+export const FOUNDER_OS_RELATIONSHIP_STRENGTHS = Object.freeze([
+  Object.freeze({ key: "strong", label: "Strong" }),
+  Object.freeze({ key: "warm", label: "Warm" }),
+  Object.freeze({ key: "cool", label: "Cool" }),
+  Object.freeze({ key: "cold", label: "Cold" }),
+  Object.freeze({ key: "unknown", label: "Not set" })
+]);
+
+// Strategic priority reuses the existing partner priority vocabulary exactly
+// (scripts/partner-lifecycle.mjs normalizePriority), so the field extends the partner
+// system rather than competing with it. `unset` is the honest default.
+export const FOUNDER_OS_RELATIONSHIP_PRIORITIES = Object.freeze([
+  Object.freeze({ key: "critical", label: "Critical" }),
+  Object.freeze({ key: "high", label: "High" }),
+  Object.freeze({ key: "medium", label: "Medium" }),
+  Object.freeze({ key: "low", label: "Low" }),
+  Object.freeze({ key: "unset", label: "Not set" })
+]);

@@ -842,11 +842,15 @@ export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource(options)}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource()}</script>\n<script>${partnerRecordBrowserSource()}</script>\n${options.outreachEnabled ? `<script>${outreachHomeBrowserSource()}</script>\n<script>${campaignWizardBrowserSource()}</script>\n<script>${campaignReviewBrowserSource()}</script>\n<script>${campaignDetailBrowserSource()}</script>` : ""}\n${options.filesEnabled ? `<script>${filesIntegrationBrowserSource()}</script>` : ""}\n${vnextLazyAssetLoaderScript(options)}\n</body>`);
+  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource(options)}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource(options)}</script>\n<script>${partnerRecordBrowserSource()}</script>\n${options.outreachEnabled ? `<script>${outreachHomeBrowserSource()}</script>\n<script>${campaignWizardBrowserSource()}</script>\n<script>${campaignReviewBrowserSource()}</script>\n<script>${campaignDetailBrowserSource()}</script>` : ""}\n${options.filesEnabled ? `<script>${filesIntegrationBrowserSource()}</script>` : ""}\n${vnextLazyAssetLoaderScript(options)}\n</body>`);
   if (options.socialEnabled) {
+    // This match must be rendered with the SAME arguments as the injection above, or it
+    // silently fails to find its anchor and the social production controller is never
+    // injected at all. Found by the Release 3 client-JavaScript measurement: a flag that
+    // should have added bytes removed 6,907 of them.
     html = html.replace(
-      `<script>${partnersHomeBrowserSource()}</script>`,
-      `<script>${socialProductionControllerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource()}</script>`
+      `<script>${partnersHomeBrowserSource(options)}</script>`,
+      `<script>${socialProductionControllerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource(options)}</script>`
     );
   }
   if (options.discoveryEnabled) {

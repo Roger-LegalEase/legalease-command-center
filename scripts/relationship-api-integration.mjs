@@ -95,7 +95,9 @@ export async function handleRelationshipApiRequest({
   input = {},
   store,
   actor = {},
-  now = new Date().toISOString()
+  now = new Date().toISOString(),
+  // FOUNDER_OS_RELATIONSHIPS, supplied by the server from its environment.
+  founderOs = false
 } = {}) {
   const route = matchRelationshipRoute(pathname);
   if (!route) return { matched:false };
@@ -110,7 +112,7 @@ export async function handleRelationshipApiRequest({
   try {
     if (route.kind === "detail" && verb === "GET") {
       assertNoQuery(searchParams);
-      const view = buildRelationshipDetail(await readState(store), actor, route.relationshipId, now);
+      const view = buildRelationshipDetail(await readState(store), actor, route.relationshipId, now, { founderOs });
       return {
         matched:true,
         status:view.available ? 200 : view.availability?.state === "not_authorized" ? 403 : 404,
