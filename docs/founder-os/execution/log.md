@@ -829,3 +829,76 @@ for `test-operator-consolidation-pass`, where a phrase existing only in a commen
 against source text. Fixed by stripping comments and scanning executable code, plus a positive
 control asserting the stripped source is still substantial — otherwise the fix could have made
 the check vacuous, which would have been worse than the false positive.
+
+---
+
+## Release 8 — the Press outreach lane
+
+**Status: PR #135 open.** Roger supplied the content that had been blocking it and ratified the
+lane as new scope; this builds it.
+
+### Scope assessment — the press-media-brain branch is dead weight
+
+Evaluated before any code was written. **None of it is used**, for three independent reasons:
+
+1. **176 commits behind main.** Its merge-base predates the Supabase serialization work, the
+   scoped-write hardening and the entire Founder OS arc. Its 605-line `preview-server.mjs` patch
+   **does not apply** — tested with `git apply --check`, not assumed.
+2. **It builds what this release must not.** A parallel `pressContacts` store with its own id
+   scheme, and its own drafting lane with a `sent_manually` status — a second send path. The
+   reuse ledger prohibits parallel CRM records and campaign engines; Roger's instruction is to
+   attach a press role to the existing person.
+3. **Its content is superseded** by the real workbook, which carries the actual Pitch Map,
+   verification dates and outlet routes.
+
+Starting from scratch was less work than unpicking it.
+
+### What press reuses, and what is genuinely new
+
+| Concern | Treatment |
+|---|---|
+| Approval, suppression, reply-stop, CAN-SPAM, windows, caps, durable claims | **Reused unchanged.** Press contacts are ordinary `outreachContacts` with a `press` classification, so every existing gate applies without modification |
+| Identity | **Reused.** `companyContacts` with the existing `media` type, matched by `companyContactId` |
+| Eligibility, guardrails | **Press-specific**, and the only genuinely press-shaped logic |
+| Storage | **Two new collections**: `pressPlacements`, `pressOutletRoutes` |
+
+**No new send path exists.** A test strips comments and asserts both press modules reference none
+of sendgrid, `fetch`, the claim primitives, `recordSuppression`, `releaseWave` or `planOutreach`.
+
+### The parsing detail that was load-bearing
+
+Empty cells in this workbook are **self-closing**, so a positional scan drops them and shifts
+every later column — which would read a journalist's **email address into the relationship
+field**, in a lane that sends email. Every cell is placed by its own `r="D4"` reference.
+
+**A first pass made exactly that mistake**, and reported the corpus as badly polluted when it is
+clean. The lesson generalises: when a parse makes data look corrupt, suspect the parser before
+reporting a data-quality problem.
+
+### Import results (real corpus, counts only — no address ever printed)
+
+574 outreach records: **120 sendable**, **454 held** (398 `seed_list`, 56 `no_email`). Of the
+sendable, 94 direct and 26 shared newsroom. Plus 49 outlet routes, 18 prior placements, 4 warm
+follow-ups. Matched-to-existing-CRM is **0 against an empty CRM**; the production figure is
+unknown to this run because `companyContacts` sits behind authentication.
+
+Largest contactable audience for a single angle: **33** (applied AI with real-world social
+impact). A realistic first campaign is therefore ~33 people, not 176.
+
+### Budget: zero client bytes
+
+Flags off 1,645,741 unchanged; production's four unchanged; all flags including press 1,628,531,
+**identical to Release 7**. The lane is server-side and renders through the existing campaigns
+runtime.
+
+### Extended differential
+
+Base (`36561e3`) and head both discovered **180** suites with **1** failure — the deliberate
+`test-twitter-x-oauth-callback`. **Zero added, zero removed, no discovery drop.**
+
+### PII containment
+
+`data/private/` verified gitignored with `git check-ignore` **before any work began** and again
+afterwards. Zero tracked files; invisible to `git status`; PII and secret scans clean. Every
+fixture uses reserved example domains, and a test asserts both that no non-reserved address
+appears in the suite and that `data/private/` remains ignored.
