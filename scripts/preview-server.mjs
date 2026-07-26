@@ -249,7 +249,13 @@ import { oauthSigningSecret, signOAuthState, verifyOAuthState, verifyOwnerStarte
 import { escapeHtml } from "./ui/html.mjs";
 import { readCommandCenterVNextConfig } from "./ui/vnext-config.mjs";
 import {
+  FOUNDER_CAMPAIGNS_ENDPOINT,
+  handleFounderCampaignsApiRequest,
+  isFounderCampaignsApiPath
+} from "./founder-campaigns-api.mjs";
+import {
   FOUNDER_OS_ADVANCED_ROUTES,
+  readFounderOsCampaignsConfig,
   readFounderOsRelationshipsConfig,
   readFounderOsShellConfig,
   readFounderOsTodayConfig
@@ -286,6 +292,7 @@ const discoveryVNextConfig = readCommandCenterVNextProductConfig(process.env, "d
 const founderOsShellConfig = readFounderOsShellConfig(process.env);
 const founderOsTodayConfig = readFounderOsTodayConfig(process.env);
 const founderOsRelationshipsConfig = readFounderOsRelationshipsConfig(process.env);
+const founderOsCampaignsConfig = readFounderOsCampaignsConfig(process.env);
 const globalCreateKindsByPath = Object.freeze(Object.fromEntries(
   Object.entries(GLOBAL_CREATE_ENDPOINTS).map(([kind, endpoint]) => [endpoint, kind])
 ));
@@ -9014,7 +9021,11 @@ async function serveAsset(pathname, response) {
 }
 
 function serveVNextLazyRuntime(pathname, response, { headOnly = false } = {}) {
-  const source = resolveVNextLazyRuntime(pathname, { outreachEnabled:outreachVNextConfig.enabled });
+  const source = resolveVNextLazyRuntime(pathname, {
+    outreachEnabled:outreachVNextConfig.enabled,
+    // Without this the Campaigns runtime would be served even on a flag-off deployment.
+    founderOsCampaigns:founderOsCampaignsConfig.enabled
+  });
   if (!source) {
     response.writeHead(404, { "content-type":"text/plain; charset=utf-8", "cache-control":"no-store" });
     response.end(headOnly ? "" : "Not found");
@@ -35500,6 +35511,7 @@ function renderVNextApp(options = {}) {
       founderOsShell:founderOsShellConfig.enabled,
       founderOsToday:founderOsTodayConfig.enabled,
       founderOsRelationships:founderOsRelationshipsConfig.enabled,
+      founderOsCampaigns:founderOsCampaignsConfig.enabled,
       discovery:options.discovery || null
     });
   }
@@ -36050,7 +36062,7 @@ async function handleRequest(request, response) {
       }, accessDecision.status || 403);
       return;
     }
-    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname) || isSocialWeeklyPlannerApiPath(url.pathname) || isFounderScoreboardApiPath(url.pathname) || isFounderSupportApiPath(url.pathname) || isFounderCalendarApiPath(url.pathname) || isFounderCompanyHealthApiPath(url.pathname) || isAutomationControlCenterApiPath(url.pathname)) {
+    else if (isRelationshipApiPath(url.pathname) || isCommunicationComposerApiPath(url.pathname) || isLeeInboxApiPath(url.pathname) || isSocialWeeklyPlannerApiPath(url.pathname) || isFounderScoreboardApiPath(url.pathname) || isFounderSupportApiPath(url.pathname) || isFounderCalendarApiPath(url.pathname) || isFounderCompanyHealthApiPath(url.pathname) || isFounderCampaignsApiPath(url.pathname) || isAutomationControlCenterApiPath(url.pathname)) {
       sendJson(response, {
         ok:false,
         outcome:accessDecision.status === 401 ? "session_expired" : "unauthorized",
@@ -36365,6 +36377,23 @@ async function handleRequest(request, response) {
     const stateChangingCalendarAction = mutation && url.pathname !== "/api/ui/calendar/create-link";
     const result = stateChangingCalendarAction ? await serializeStateMutation(execute) : await execute();
     sendJson(response, result.body || { ok:false, message:"Calendar is unavailable." }, result.status || 404);
+    return;
+  }
+
+  // Founder OS Release 4 — read-only Campaigns lifecycle. Gated on FOUNDER_OS_CAMPAIGNS so a
+  // flag-off deployment answers 404 exactly as it did before this release existed.
+  if (isFounderCampaignsApiPath(url.pathname)) {
+    const result = await handleFounderCampaignsApiRequest({
+      enabled:commandCenterVNextConfig.enabled && founderOsCampaignsConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString(),
+      env:process.env
+    });
+    sendJson(response, result.body || { ok:false, message:"Campaigns are unavailable." }, result.status || 404);
     return;
   }
 

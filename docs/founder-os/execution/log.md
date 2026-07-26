@@ -484,3 +484,127 @@ number was the only thing that noticed.
   `COMMUNICATION_COMPOSER_READ_COLLECTIONS` nor the cascade's write list. Recording a send to
   someone known only through those two lanes will not stamp their last-contact. Out of scope
   for Release 3, which is read-side; recorded so it is not rediscovered.
+
+---
+
+## Release 3 — merged and deployed
+
+**Status: MERGED as `922a555` (PR #125) at 2026-07-26T10:33:04Z. Deployed and verified.**
+
+- All seven required checks green on the pull-request head; soak gate satisfied at **7.80h** on
+  `dc75baa` before the merge.
+- **Post-deploy verification: PASSED** (run `30198784913`). `POST_DEPLOY_EVIDENCE` recorded
+  `expectedCommit` = `deployedCommit` = `922a555…`, `supabaseState: "connected"`, health `ok`,
+  all five routes 200 and serving the shell, verified at 2026-07-26T10:44:22Z. No auto-revert.
+- `GET /api/version` confirms production at `922a555c46004228178b719a744f6409085741c6`,
+  `supabaseConnected: true`, `authProtected: true`, `liveGatesCount: 0`.
+
+---
+
+## Release 4 — the Campaigns workspace
+
+**Status: built on branch `founder-os-release-4`. Not merged.**
+
+### The governing constraint
+
+Reactivation is **live in production** with waves 1 and 2 sending and waves 3 and 4 held. So
+Release 4 changes the interface over the campaign and never the campaign. That is not a
+guideline here, it is the architecture:
+
+- The projection (`scripts/ui/view-models/founder-campaigns-view.mjs`) is **read-only**. It adds
+  no route, calls no mutating function, and reports each control as the route that already
+  implements it. A test asserts state is byte-identical after building the view twice.
+- The endpoint (`GET /api/ui/campaigns`) has **no write verb**. Every other verb returns 405.
+- The client runtime issues **one GET and nothing else**. A Chromium test clicks every action on
+  the page with a request listener attached and asserts zero non-GET requests leave it.
+
+### What it adds, all behind `FOUNDER_OS_CAMPAIGNS` (new, default off)
+
+- **One lifecycle in every lane** — Plan, Review, Run, Monitor, Stop — with the same five words
+  in charter order for Social, Reactivation, Partner outreach and Press.
+- **The charter's translation table**, which the test suite **parses out of
+  `docs/founder-os/workspaces/campaigns.md` and compares verbatim**, so the table cannot drift
+  from the document that defines it. If the charter changes, the test fails and the code follows.
+- **A forbidden-vocabulary guard.** The flattened surface payload must contain none of
+  *heartbeat, autopilot, live mode, kill_switch, threshold_tripped, engine, cron, claim ledger,
+  sendgrid, webhook*. Asserted in Node against the payload and again in Chromium against the
+  rendered text. This is the mechanical form of "Roger never sees engine internals".
+- **Reactivation reuses `buildCampaignCommandView` wholesale.** Every number and every blocked
+  reason comes from the existing decision functions; nothing is recomputed.
+- **Exceptions surface in the lane and in the view-level list Today reads**, in plain language.
+
+### Two honesty decisions worth recording
+
+1. **Run reports two truths, not one.** `gates.liveMode` is the position of the switch;
+   `gates.sendingOn` also requires autopilot and a provider key. Reporting the switch as
+   "Campaign running" while nothing could actually leave would be exactly the false completion
+   the deprecation ledger's rule forbids. The surface says "Run is on, but nothing is sending"
+   and gives the reason.
+2. **`unavailable` and `not_built` are different states.** Collapsing them would let a real
+   outage read as an unfinished feature, and vice versa.
+
+### The Social lane exposes no publish affordance at all
+
+`campaigns.md:53-58` forbids the new surface from inheriting the Publish Now gap. The reading
+taken here is the strict one: **the lane relocates no publish route whatsoever.** It plans,
+approves, and exports for manual posting, which is what the charter says the product is. Two
+tests enforce it — no stage on any lane may name a publish or send route, and every mutating
+route the projection names must already be served by the repository.
+
+This also sidesteps a finding recorded below rather than depending on it being safe.
+
+### Press: deferred, by Roger's decision
+
+The build-or-defer checkpoint was raised once, with an estimate. **Roger chose to defer.** The
+lane ships the charter's honest not-built state: every stage reports `not_built`, offers no
+action, and says plainly that nothing here is real and nothing can be sent. A test asserts that
+enabling `FOUNDER_OS_PRESS` does **not** fabricate a press campaign — the flag exists so the lane
+has one switch, but with nothing behind it the honest state is what renders either way.
+
+### Routes superseded
+
+**None.** Nothing was hidden.
+
+### Release 4 client JavaScript budget
+
+| Build | Bytes | Headroom | Change |
+|---|---|---|---|
+| main (`922a555`), all flags off | 1,645,741 | 4,259 | — |
+| Release 4, flag off | 1,645,741 | 4,259 | **0 — byte-identical** |
+| Release 4, shell + Today + Relationships on | 1,627,800 | 22,200 | — |
+| Release 4, all four flags on | 1,628,023 | 21,977 | **+223** |
+
+Flag-off is byte-identical and flag-on costs 223 bytes, because the Campaigns surface is served
+as a **lazy runtime file** rather than inline — the same mechanism Release 2 used for the action
+panel. The 223 bytes are the loader's route binding, which is itself only emitted when the flag
+is on. The ceiling was not touched.
+
+### A performance improvement that came free
+
+`GET /api/campaign/command` still takes a **full `store.readState()`**
+(`preview-server.mjs:38770`), which `05_DATA_AND_INTEGRATION_CONTRACT.md` names as a legacy
+full-state route to migrate "as they are wrapped". Release 4 wraps it, so the new endpoint reads
+through a frozen 13-collection targeted list instead. The founder surface therefore does not
+inherit the full-table hydration pattern behind the Supabase load incidents of PRs #116–#118.
+
+### Recorded finding — the vNext publish path derives its gate from persisted state
+
+Not a defect to fix in this release, and not the finding a subagent first reported, so it is
+recorded precisely:
+
+`publishPostNow` **does** call `livePostingEnabledForChannel` at HEAD
+(`preview-server.mjs:5858`), and that route is additionally 403'd unconditionally by
+`auth-endpoint-hardening.mjs`. But the **vNext** publish path
+(`POST /api/ui/social/post/:id/publish`) never calls that function. It derives `facts.gate` from
+`state.runtime.livePostingGates`, a **persisted** field.
+
+I verified the safety of that path myself rather than accepting the first reading: `runtimeGates`
+(`post-readiness-sources.mjs:145-156`) accepts a boolean *or* an `{enabled:boolean}` object and
+yields `null` for anything else, and `eligibility` blocks on both `"off"` and `"unavailable"`
+(`post-publishing-controls.mjs:441-442`). It is **shape-tolerant and fail-closed** — there is no
+fail-open bug, contrary to the first report.
+
+The residual concern is architectural, not a live hole: two publish paths establish the same fact
+by different means, and only one of them calls the function the scheduled worker calls. Release 4
+does not depend on either, because its Social lane has no publish affordance. Added to the
+deprecation ledger so it is not rediscovered.

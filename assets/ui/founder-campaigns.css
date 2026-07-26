@@ -1,0 +1,21 @@
+/* Founder OS Release 4 — the Campaigns lifecycle surface.
+   One lane per campaign, five stages each, in the charter's order. Layout only; every colour
+   comes from the shared token stylesheet so the surface inherits contrast decisions already
+   audited by the accessibility check. */
+.founder-campaigns { display: grid; gap: var(--le-space-4, 1rem); }
+.founder-campaign-lanes { display: grid; gap: var(--le-space-4, 1rem); }
+.founder-campaign-lane { border: 1px solid var(--le-border-subtle, #d6dae2); border-radius: 12px; padding: var(--le-space-4, 1rem); }
+.founder-campaign-lane[data-lane-built="false"] { opacity: 0.85; }
+.founder-campaign-lane-note { margin: 0.25rem 0 0; font-size: 0.9rem; }
+.founder-campaign-exceptions { margin: 0.75rem 0 0; padding-left: 1.1rem; }
+.founder-campaign-stages { display: grid; gap: var(--le-space-3, 0.75rem); margin: 0.75rem 0 0; padding: 0; list-style: none; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
+.founder-campaign-stage { border-top: 3px solid var(--le-border-subtle, #d6dae2); padding-top: 0.5rem; }
+.founder-campaign-stage[data-stage-state="running"] { border-top-color: var(--le-success-600, #1c7c4a); }
+.founder-campaign-stage[data-stage-state="attention"] { border-top-color: var(--le-warning-600, #8a5a00); }
+.founder-campaign-stage[data-stage-state="blocked"] { border-top-color: var(--le-danger-600, #a11b2b); }
+.founder-campaign-stage-name { margin: 0; font-weight: 600; }
+.founder-campaign-stage-state { margin: 0.1rem 0 0; font-size: 0.85rem; }
+.founder-campaign-stage-summary { margin: 0.35rem 0 0; font-size: 0.9rem; }
+.founder-campaign-stage-reason { margin: 0.35rem 0 0; font-size: 0.85rem; }
+.founder-campaign-stage-action { margin: 0.5rem 0 0; font-size: 0.9rem; font-weight: 600; }
+@media (max-width: 860px) { .founder-campaign-stages { grid-template-columns: 1fr; } }
