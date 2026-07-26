@@ -297,3 +297,34 @@ note so the reason is not rediscovered.
 
 **This failure is pre-existing on main and therefore does not move the differential gate**, which
 fails only on failures new versus the merge base.
+
+## Correction — retirement by deletion is not permitted, and the pipeline was right
+
+The three suites this document told me to **retire** (`test-every-visible-button-works`,
+`test-founder-language-and-clutter`, `test-social-workspace`) were deleted, and CI refused the
+branch. Not on the failure comparison — that was clean, **base 30, head 1, added failures `[]`** —
+but on a different guard: **"Extended discovery count dropped"** (180 discovered on base, 177 on
+head).
+
+That guard exists so a branch cannot turn `extended` green by removing tests, and
+`test-vnext-launch-gate-contract.mjs:46` contract-protects it along with two siblings
+("Extended tests may not be quarantined", "Previously discovered extended tests disappeared").
+Quarantining is therefore not an escape hatch either; `compare-extended-tests.mjs:142` throws on
+any quarantined suite.
+
+**So "retire" was the wrong disposition for all three, and this document should not offer it
+again.** A suite whose subject was deleted still has a job: proving the subject stayed deleted.
+All three are restored and **inverted**:
+
+| Suite | What it asserts now |
+|---|---|
+| `test-every-visible-button-works` | The toast-only action machinery (`runAction`, `pendingActions`, `socialPageHtml`, `workPageHtml`, `proofPageHtml`, `socialContentCardHtml`, `setFounderCaptureType`) has zero occurrences and must not return, plus the vNext shell is live so it cannot pass on a hollow repository |
+| `test-founder-language-and-clutter` | The consolidated-away renderers stay absent; navigation is read from the registry rather than scraped (the scrape is what rotted); ten vNext destinations against the Founder OS shell's four, and that four is fewer than ten |
+| `test-social-workspace` | The legacy Social workspace stays absent, and the twelve `test-vnext-social-*` suites that supersede it actually exist — so "superseded" is verified, not asserted in a comment |
+
+Final state: **180 discovered, 0 quarantined, 1 failure**
+(`test-twitter-x-oauth-callback`, left failing on purpose and pre-existing on main).
+
+**The general lesson:** in this repository a stale extended suite has exactly two honest
+dispositions — **port it to current truth**, or **invert it to guard the removal**. Deleting it is
+neither, and the pipeline enforces that.
