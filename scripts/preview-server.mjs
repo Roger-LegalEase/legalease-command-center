@@ -128,7 +128,12 @@ import { buildOsHealthSnapshot, saveOsHealthSnapshot } from "./os-health.mjs";
 import { buildOperatorSearchIndex, runOperatorSearchAction, searchOperatorIndex } from "./operator-search.mjs";
 import { searchGlobalRecords, GLOBAL_SEARCH_READ_COLLECTIONS } from "./global-search-service.mjs";
 import { buildAuthorizedInboxPage, INBOX_READ_COLLECTIONS } from "./inbox-page-service.mjs";
-import { buildAuthorizedTodayPage, TODAY_READ_COLLECTIONS } from "./today-page-service.mjs";
+import {
+  buildAuthorizedFounderTodayPage,
+  buildAuthorizedTodayPage,
+  FOUNDER_TODAY_PAGE_READ_COLLECTIONS,
+  TODAY_READ_COLLECTIONS
+} from "./today-page-service.mjs";
 import { buildAuthorizedSocialHome, SOCIAL_HOME_READ_COLLECTIONS, SOCIAL_PRODUCTION_READ_COLLECTIONS } from "./social-home-service.mjs";
 import { buildSocialResultsView } from "./ui/view-models/social-results.mjs";
 import { SOCIAL_RESULTS_READ_COLLECTIONS } from "./ui/view-models/social-results-sources.mjs";
@@ -216,6 +221,7 @@ import {
 } from "./inbox-action-service.mjs";
 import {
   TASK_WORKBENCH_BODY_LIMIT,
+  TASK_WORKBENCH_FOUNDER_READ_COLLECTIONS,
   TASK_WORKBENCH_READ_COLLECTIONS,
   TASK_WORKBENCH_ROUTE,
   applyTaskWorkbenchAction,
@@ -242,7 +248,7 @@ import { incrementSecurityMetric, operationalMetrics } from "./observability.mjs
 import { oauthSigningSecret, signOAuthState, verifyOAuthState, verifyOwnerStartedOAuthState } from "./oauth-state.mjs";
 import { escapeHtml } from "./ui/html.mjs";
 import { readCommandCenterVNextConfig } from "./ui/vnext-config.mjs";
-import { FOUNDER_OS_ADVANCED_ROUTES, readFounderOsShellConfig } from "./ui/founder-os-config.mjs";
+import { FOUNDER_OS_ADVANCED_ROUTES, readFounderOsShellConfig, readFounderOsTodayConfig } from "./ui/founder-os-config.mjs";
 import { readCommandCenterVNextProductConfig } from "./ui/vnext-config.mjs";
 import { renderShellBoundary } from "./ui/shell-boundary.mjs";
 import { DESIGN_SYSTEM_SHOWCASE_PATH } from "./ui/brand-contract.mjs";
@@ -273,6 +279,7 @@ const filesVNextConfig = readCommandCenterVNextProductConfig(process.env, "files
 const socialVNextConfig = readCommandCenterVNextProductConfig(process.env, "social");
 const discoveryVNextConfig = readCommandCenterVNextProductConfig(process.env, "discovery");
 const founderOsShellConfig = readFounderOsShellConfig(process.env);
+const founderOsTodayConfig = readFounderOsTodayConfig(process.env);
 const globalCreateKindsByPath = Object.freeze(Object.fromEntries(
   Object.entries(GLOBAL_CREATE_ENDPOINTS).map(([kind, endpoint]) => [endpoint, kind])
 ));
@@ -25649,7 +25656,11 @@ function htmlShell() {
       </section>\`;
     }
 
-    function morningBriefPageHtml(pageClass) {
+    ${founderOsTodayConfig.enabled ? `function morningBriefPageHtml(pageClass) {
+
+      return founderOsTodayPointerHtml(pageClass, "morning-brief", "Morning Brief");
+
+    }` : `function morningBriefPageHtml(pageClass) {
       const brief = cockpitMorningBriefRecord();
       const saved = savedMorningBriefForToday();
       return \`<section id="morning-brief" class="\${pageClass("morning-brief")} command-page section-page lee-bubble-safe-space">
@@ -25679,9 +25690,13 @@ function htmlShell() {
           <div class="memory-evidence-grid">\${(brief.source_evidence || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Evidence")}</strong><span class="muted">\${esc(item.detail || "Internal evidence.")}</span></article>\`).join("") || '<div class="empty">No source evidence yet.</div>'}</div>
         </section>
       </section>\`;
-    }
+    }`}
 
-    function eveningReflectionPageHtml(pageClass) {
+    ${founderOsTodayConfig.enabled ? `function eveningReflectionPageHtml(pageClass) {
+
+      return founderOsTodayPointerHtml(pageClass, "evening-reflection", "Evening Reflection");
+
+    }` : `function eveningReflectionPageHtml(pageClass) {
       const reflection = cockpitEveningReflectionRecord();
       const saved = savedEveningReflectionForToday();
       return \`<section id="evening-reflection" class="\${pageClass("evening-reflection")} command-page section-page lee-bubble-safe-space">
@@ -25713,9 +25728,13 @@ function htmlShell() {
           <div class="memory-evidence-grid">\${(reflection.source_evidence || []).map(item => \`<article class="memory-history-card"><strong>\${esc(item.title || "Evidence")}</strong><span class="muted">\${esc(item.detail || "Internal evidence.")}</span></article>\`).join("") || '<div class="empty">No source evidence yet.</div>'}</div>
         </section>
       </section>\`;
-    }
+    }`}
 
-    function dailyCloseoutPageHtml(pageClass) {
+    ${founderOsTodayConfig.enabled ? `function dailyCloseoutPageHtml(pageClass) {
+
+      return founderOsTodayPointerHtml(pageClass, "daily-closeout", "Daily Closeout");
+
+    }` : `function dailyCloseoutPageHtml(pageClass) {
       const closeout = cockpitDailyCloseoutRecord();
       const saved = savedDailyCloseoutForToday();
       return \`<section id="daily-closeout" class="\${pageClass("daily-closeout")} command-page section-page lee-bubble-safe-space">
@@ -25752,7 +25771,7 @@ function htmlShell() {
           </div>
         </section>
       </section>\`;
-    }
+    }`}
 
     function healthStatusGridHtml(records = {}) {
       return \`<div class="operating-memory-grid">\${Object.entries(records).map(([key, item]) => \`<section class="operating-memory-tile"><h3>\${esc(item.name || plainOperatorState(key))}</h3><ul><li><strong>\${esc(plainOperatorState(item.status || "unknown"))}</strong><br><span>\${esc(item.detail || "No detail recorded.")}</span></li></ul></section>\`).join("")}</div>\`;
@@ -27154,7 +27173,24 @@ function htmlShell() {
       </section>\`;
     }
 
+    ${founderOsTodayConfig.enabled ? `// Founder OS Release 2: these daily-loop pages are consolidated into Today
+    // (07_MIGRATION_AND_DEPRECATION_LEDGER.md, "Consolidate"). The routes still resolve so no
+    // bookmark breaks; they point at Today instead of rendering a second, competing surface.
+    function founderOsTodayPointerHtml(pageClass, id, title) {
+      return \`<section id="\${id}" class="section command-page \${pageClass(id)}">
+        <div class="panel hero-panel">
+          <div class="eyebrow">Now part of Today</div>
+          <h1 class="big-title">\${esc(title)}</h1>
+          <p class="big-copy">This work now happens in Today, in one ranked queue with the same action panel. Nothing was removed and this address still works.</p>
+          <p><a class="btn" href="#today" data-founder-os-today-pointer="\${esc(id)}">Open Today</a></p>
+        </div>
+      </section>\`;
+    }
     function cockpitHomeHtml(pageClass) {
+
+      return founderOsTodayPointerHtml(pageClass, "cockpit", "Cockpit");
+
+    }` : `function cockpitHomeHtml(pageClass) {
       const ranked = todayRankedWorkItems();
       const liveGates = liveGatesCountFromState(state);
       const queueItems = unifiedReviewQueueItems();
@@ -27202,7 +27238,7 @@ function htmlShell() {
           </div>
         </div>
       </section>\`;
-    }
+    }`}
 
     function uploadListPageHtml(pageClass) {
       return \`<section id="upload" class="\${pageClass("upload")} command-page section-page lee-bubble-safe-space">
@@ -28975,7 +29011,11 @@ function htmlShell() {
       return operatorItems().map(item => make(item, item.type || "operator_item", item.href || "tasks"));
     }
 
-    function focusPageHtml(pageClass) {
+    ${founderOsTodayConfig.enabled ? `function focusPageHtml(pageClass) {
+
+      return founderOsTodayPointerHtml(pageClass, "focus", "Focus Mode");
+
+    }` : `function focusPageHtml(pageClass) {
       const mode = focusModes.find(item => item.id === focusMode) || focusModes[0];
       const items = focusItemsForMode(mode.id);
       if (focusIndex >= items.length) focusIndex = Math.max(0, items.length - 1);
@@ -29009,7 +29049,7 @@ function htmlShell() {
           <div class="card-actions" style="justify-content:center;margin-top:14px"><button class="primary" onclick="location.hash='overview'">Back to Today</button></div>
         </div>\`}
       </section>\`;
-    }
+    }`}
 
     function leeCurrentThreadId() {
       return state.leeMemory?.lastThreadId || state.leeThreads?.[0]?.id || "";
@@ -35444,6 +35484,7 @@ function renderVNextApp(options = {}) {
       filesEnabled:filesVNextConfig.enabled,
       discoveryEnabled:discoveryVNextConfig.enabled && Boolean(options.discovery),
       founderOsShell:founderOsShellConfig.enabled,
+      founderOsToday:founderOsTodayConfig.enabled,
       discovery:options.discovery || null
     });
   }
@@ -36211,7 +36252,8 @@ async function handleRequest(request, response) {
       input,
       store,
       actor:publicActor(accessDecision.actor),
-      now:new Date().toISOString()
+      now:new Date().toISOString(),
+      completeQueueItems:founderOsTodayConfig.enabled
     });
     const result = mutation ? await serializeStateMutation(execute) : await execute();
     sendJson(response, result.body || { ok:false, message:"Follow-up drafting is unavailable." }, result.status || 404);
@@ -36482,8 +36524,11 @@ async function handleRequest(request, response) {
       const actor = publicActor(accessDecision.actor);
       const taskId = decodeURIComponent(taskWorkbenchRoute[1]);
       const result = await serializeStateMutation(async () => {
-        const currentState = await store.readCollections(TASK_WORKBENCH_READ_COLLECTIONS);
-        const action = applyTaskWorkbenchAction(currentState, actor, taskId, input, { now:new Date().toISOString() });
+        const completeQueueItems = founderOsTodayConfig.enabled;
+        const currentState = await store.readCollections(completeQueueItems
+          ? TASK_WORKBENCH_FOUNDER_READ_COLLECTIONS
+          : TASK_WORKBENCH_READ_COLLECTIONS);
+        const action = applyTaskWorkbenchAction(currentState, actor, taskId, input, { now:new Date().toISOString(), completeQueueItems });
         if (Object.keys(action.collections).length) await store.writeCollections(action.collections);
         return action;
       });
@@ -36501,10 +36546,13 @@ async function handleRequest(request, response) {
       return;
     }
     try {
-      const currentState = await store.readCollections(TODAY_READ_COLLECTIONS);
+      const founderToday = founderOsTodayConfig.enabled;
+      const currentState = await store.readCollections(founderToday ? FOUNDER_TODAY_PAGE_READ_COLLECTIONS : TODAY_READ_COLLECTIONS);
       const actor = publicActor(accessDecision.actor);
       const now = new Date().toISOString();
-      sendJson(response, buildAuthorizedTodayPage(currentState, actor, now));
+      sendJson(response, founderToday
+        ? buildAuthorizedFounderTodayPage(currentState, actor, now)
+        : buildAuthorizedTodayPage(currentState, actor, now));
     } catch {
       sendJson(response, { error:"Today could not load. No records were changed. Try again." }, 500);
     }

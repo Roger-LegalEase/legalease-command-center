@@ -2,12 +2,19 @@ import { roleHasCapability } from "./roles.mjs";
 import { resolveRouteCompatibility } from "./ui/route-compatibility.mjs";
 import { inboxActorContext, INBOX_INCLUDED_COLLECTIONS } from "./ui/view-models/inbox-sources.mjs";
 import { buildTodayView } from "./ui/view-models/today-view.mjs";
+import { buildFounderTodayView, FOUNDER_TODAY_READ_COLLECTIONS } from "./ui/view-models/founder-today-view.mjs";
 
 export const TODAY_PAGE_ENDPOINT = "/api/ui/today";
 export const TODAY_READ_COLLECTIONS = Object.freeze([
   ...INBOX_INCLUDED_COLLECTIONS,
   "dailyRunSessions",
   "morningBriefs"
+]);
+
+// The Founder OS Today loop ranks over the same candidates plus the collections that carry
+// meetings, automation exceptions and the queue spine. Read only when the flag is on.
+export const FOUNDER_TODAY_PAGE_READ_COLLECTIONS = Object.freeze([
+  ...new Set([...TODAY_READ_COLLECTIONS, ...FOUNDER_TODAY_READ_COLLECTIONS, "outreachReplies"])
 ]);
 
 const DAILY_RUN_REASON = "This is the current Daily Run item.";
@@ -79,6 +86,74 @@ function easternDateLabel(now = "") {
     day:"numeric",
     timeZone:"America/New_York"
   }).format(new Date(now));
+}
+
+function safeItemHref(value = "") {
+  const href = String(value || "").trim();
+  if (!href) return "";
+  const resolution = resolveRouteCompatibility(href);
+  const usable = ["object", "page"].includes(resolution.kind) && resolution.safeHash === href;
+  return usable ? href : "";
+}
+
+// One shape for every kind of item, because one panel opens all of them. Nothing here is a
+// send control: the panel drafts, records, completes and schedules — it never sends.
+function compactFounderItem(item = {}) {
+  return {
+    id:item.id || "",
+    objectType:item.objectType || "Work item",
+    title:item.title || "",
+    summary:item.summary || "",
+    whyNow:item.whyNow || "",
+    rankTier:item.rankTier,
+    rankReason:item.rankReason || "",
+    priority:item.priority || "normal",
+    priorityLabel:`${(item.priority || "normal").replace(/^./, (character) => character.toUpperCase())} priority`,
+    urgency:item.urgency || "none",
+    urgencyLabel:Object.freeze({
+      blocking:"Blocking now",
+      overdue:"Overdue",
+      imminent:"Starting soon",
+      today:"Due today",
+      aging:"Waiting a while",
+      none:"No deadline"
+    })[item.urgency] || "No deadline",
+    dueAt:item.dueAt || "",
+    owner:item.owner || "",
+    href:safeItemHref(item.href),
+    taskId:item.taskId || "",
+    composeSourceKind:item.composeSourceKind || "",
+    composeSourceId:item.composeSourceId || "",
+    actionLabel:item.actionLabel || "Open"
+  };
+}
+
+// Release 2 payload: the five sections of workspaces/today.md over the existing collections.
+export function buildAuthorizedFounderTodayPage(state = {}, actor = {}, now = "") {
+  const view = buildFounderTodayView(state, actor, now);
+  const actorContext = inboxActorContext(actor);
+  const authorized = actorContext.valid && roleHasCapability(actorContext.role, "read_internal");
+  const section = (key) => view.sections[key].map(compactFounderItem);
+  return deepFreeze({
+    ok:true,
+    founderOsToday:true,
+    generatedAt:view.generatedAt,
+    dateLabel:easternDateLabel(view.generatedAt),
+    sections:{
+      now:section("now"),
+      next:section("next"),
+      communications:section("communications"),
+      meetings:section("meetings"),
+      needsAttention:section("needsAttention")
+    },
+    totals:view.totals,
+    overflow:view.counts.overflow,
+    utilities:{
+      quickCaptureAvailable:authorized && roleHasCapability(actorContext.role, "route_captures"),
+      communicationsHref:"#inbox?group=needs-me",
+      meetingsHref:"#meetings"
+    }
+  });
 }
 
 export function buildAuthorizedTodayPage(state = {}, actor = {}, now = "") {

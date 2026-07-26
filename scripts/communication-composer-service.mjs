@@ -5,6 +5,7 @@ import { partnerFollowUpDraft } from "./partner-lifecycle.mjs";
 import { roleHasCapability } from "./roles.mjs";
 import { prepareSupportDraftReply } from "./support-desk.mjs";
 import { updateTaskInState } from "./tasks-engine.mjs";
+import { transitionQueueItem } from "./company-memory.mjs";
 import { buildExactObjectLink, buildGenericItemLink } from "./ui/route-compatibility.mjs";
 
 const list = (value) => Array.isArray(value) ? value : [];
@@ -867,6 +868,49 @@ function markSourceResolved(state, draft, now) {
   return state;
 }
 
+// Founder OS Release 2, step 10 of workflows/01-clear-a-follow-up.md: "the item disappears from
+// Today". Today is projected from queueItems, so the item leaves when the queue item that points
+// at this work turns terminal. This closes the queue items that reference the draft's own source
+// record or the task the draft completed — never anything else, and never an item Roger already
+// decided (transitionQueueItem refuses terminal-to-terminal moves and returns ok:false).
+//
+// Opt-in: the caller passes completeQueueItems only when FOUNDER_OS_TODAY is on, so with the
+// flag off this function behaves exactly as it did before.
+function completeRelatedQueueItems(state, { draft, originatingTaskId, actor, now }) {
+  const references = new Set();
+  const sourceKind = clean(draft.sourceKind);
+  const sourceId = clean(draft.sourceId);
+  const collectionForSource = Object.freeze({
+    inbox_signal:"inboxSignals",
+    support_issue:"supportIssues",
+    outreach_reply:"outreachReplies",
+    partner:"partners",
+    relationship:"partners",
+    task:"tasks"
+  })[sourceKind];
+  if (collectionForSource && sourceId) references.add(`${collectionForSource}:${sourceId}`);
+  if (originatingTaskId) references.add(`tasks:${originatingTaskId}`);
+  if (!references.size) return { state, completed: [] };
+
+  let next = state;
+  const completed = [];
+  for (const item of list(next.queueItems)) {
+    const reference = `${clean(item?.sourceRef?.collection)}:${clean(item?.sourceRef?.itemId)}`;
+    if (!references.has(reference)) continue;
+    const result = transitionQueueItem(next, {
+      id:clean(item.id),
+      status:"completed",
+      actor:clean(actor.id || actor.role) || "owner",
+      note:"Follow-up recorded as sent manually.",
+      now:() => now
+    });
+    if (!result.ok) continue;
+    next = result.state;
+    completed.push(clean(item.id));
+  }
+  return { state: next, completed };
+}
+
 export function markCommunicationDraftSentManually(state = {}, actor = {}, draftId = "", input = {}, options = {}) {
   assertCapability(actor, "manage_growth");
   const id = identifier(draftId, "Draft");
@@ -925,6 +969,18 @@ export function markCommunicationDraftSentManually(state = {}, actor = {}, draft
     taskCompleted = true;
   }
 
+  let queueItemsCompleted = [];
+  if (options.completeQueueItems === true) {
+    const queueResult = completeRelatedQueueItems(next, {
+      draft:updatedDraft,
+      originatingTaskId:taskCompleted ? originatingTaskId : "",
+      actor,
+      now
+    });
+    next = queueResult.state;
+    queueItemsCompleted = queueResult.completed;
+  }
+
   const activity = {
     id:activityId,
     eventType:"Manual email sent",
@@ -940,6 +996,7 @@ export function markCommunicationDraftSentManually(state = {}, actor = {}, draft
       sourceId:updatedDraft.sourceId,
       originatingTaskId:originatingTaskId || "",
       taskCompleted,
+      queueItemsCompleted,
       nextFollowUpDate:parsed.nextFollowUpDate,
       automationReviewRequired:true,
       queuedAutomationFlagged:automation.flagged,
@@ -955,7 +1012,7 @@ export function markCommunicationDraftSentManually(state = {}, actor = {}, draft
     action:"manual_email_recorded",
     resourceType:"email_draft",
     resourceId:updatedDraft.id,
-    afterValue:{ status:"Sent manually", taskCompleted, nextFollowUpDate:parsed.nextFollowUpDate },
+    afterValue:{ status:"Sent manually", taskCompleted, queueItemsCompleted, nextFollowUpDate:parsed.nextFollowUpDate },
     externalSideEffects:false,
     emailSentByApplication:false
   };
@@ -966,7 +1023,8 @@ export function markCommunicationDraftSentManually(state = {}, actor = {}, draft
   };
   const collectionNames = [
     "emailDrafts", "partners", "companyContacts", "outreachContacts", "reactivationContacts", "prospectCandidates",
-    "approvalQueue", "inboxSignals", "supportIssues", "outreachReplies", "tasks", "activityEvents", "auditHistory"
+    "approvalQueue", "inboxSignals", "supportIssues", "outreachReplies", "tasks", "activityEvents", "auditHistory",
+    "queueItems", "companyEvents", "approvals"
   ];
   const updated = next.emailDrafts.find((item) => clean(item.id) === id) || updatedDraft;
   return {
@@ -975,6 +1033,7 @@ export function markCommunicationDraftSentManually(state = {}, actor = {}, draft
     collections:collectionsChanged(state, next, collectionNames),
     draft:publicDraft(updated, next),
     taskCompleted,
+    queueItemsCompleted,
     nextFollowUpNeeded:!parsed.nextFollowUpDate,
     automation:{ queuedItemsFlagged:automation.flagged, reviewRequired:true },
     alreadyExisted:false,
