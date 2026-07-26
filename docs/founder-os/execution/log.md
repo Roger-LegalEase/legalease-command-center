@@ -62,17 +62,54 @@ Four pieces, all read-only against production:
    `auto-revert-needs-a-non-default-token.md`: without a non-default token the revert
    pull request cannot run its own checks, so it is opened and labelled but needs Roger to
    merge it. Either way the run stops.
-4. **`scripts/founder-os-soak-check.mjs`** — a release may only merge once the previous one
-   has been the deployed commit, connected, and serving every route for at least two hours.
-   Reads the landing time from `git log` and re-runs the identical assertions.
-   - **Verified live** on `1a3d6b7`: correctly refused at `0.20h` elapsed against a 2h
-     requirement while reporting everything else healthy.
+4. **The merge gate.** Originally `scripts/founder-os-soak-check.mjs`: a release could only
+   merge once the previous one had been the deployed commit, connected, and serving every
+   route for at least two hours. Verified live on `1a3d6b7`, where it correctly refused at
+   `0.20h` elapsed.
+   - **SUPERSEDED 2026-07-26 by Roger's instruction.** The wall-clock wait is gone; the
+     protection is not. `scripts/founder-os-release-gate.mjs` replaces it — see "The merge
+     gate, as of 2026-07-26" below. The soak script is deleted so the repository does not
+     describe two different gates.
 
 Acceptance scenarios as Chromium specs need no new plumbing: `playwright.config.mjs` sets
 `testDir: ./tests/browser`, so any spec added there runs inside the `browser` required
 check. PR #120 proved this — its two new specs ran in CI's browser job. Per-release
 fixture servers with the release feature flag enabled are wired in the release that
 introduces the flag, starting with Release 1.
+
+---
+
+## The merge gate, as of 2026-07-26
+
+**Policy change from Roger, effective 2026-07-26: the two-hour soak gate is removed.** It is
+replaced by a faster gate that keeps the real protection. `scripts/founder-os-soak-check.mjs` is
+**deleted** and `scripts/founder-os-release-gate.mjs` takes its place, so the repository does not
+describe two different rules.
+
+A release may merge as soon as all three of these hold **at the moment of merging**:
+
+| Condition | What it proves | How the gate checks it |
+|---|---|---|
+| (a) All seven required checks green on the release's own pull request | The release itself is sound | `gh pr checks <pr>`, compared against a named `REQUIRED_CHECKS` list so a narrowed protection set cannot slip through |
+| (b) The previous release's post-deploy verification concluded `success` | The previous deploy was actually **verified**, not merely attempted | Newest `post-deploy-verification.yml` run for that sha; a re-run supersedes an earlier attempt |
+| (c) A live `GET /api/version` reports the previous release's commit with `supabaseState: "connected"` | That verified deploy is **still** what production is serving | `verifyOnce` — the same assertion set the post-deploy workflow runs, reused rather than restated |
+
+**(b) and (c) are both required, deliberately.** (b) alone would pass for a deploy that has since
+been reverted or drifted. (c) alone would pass for a commit that is serving but whose verification
+failed or never ran. Together they say: the last release was verified, and it is still live. That
+is the property the two-hour wait was a proxy for, established directly instead of by waiting.
+
+Everything else stands unchanged: branch protection, Render's "After CI Checks Pass" auto-deploy,
+post-deploy verification, and auto-revert on verification failure — which still stops the run and
+reports to Roger immediately.
+
+**Verified live on first use.** Run against PR #128 with Release 3 (`922a555`) as the previous
+release, the gate returned `RELEASE_GATE_EVIDENCE` showing post-deploy verification run
+`30198784913` concluded `success`, the deployed commit still `922a555…` with
+`supabaseState: "connected"`, all five routes 200 — **and refused the merge** because
+`extended` was `fail` on the pull request. It caught a genuine problem on its first run rather
+than rubber-stamping. (See the hygiene entry: CI's discovery-count guard, not the failure
+comparison.)
 
 ---
 
@@ -148,7 +185,16 @@ recorded here rather than by rewriting the plan.
    outside. The environment change is Roger's; this run did not make it. A flag flip does not
    change the commit `/api/version` reports, so the flip is not externally observable either
    and is treated as unverified until Roger confirms.
-2. The Press lane build-or-defer question still fires at Release 4.
+2. **2026-07-26 — the Press lane build-or-defer question.** Raised once at Release 4 with an
+   estimate of what building it entails. **Roger chose to defer.** The lane ships the charter's
+   honest not-built state; Press becomes its own release with its own safety review.
+3. **2026-07-26 — production flag state, confirmed by Roger and NOT observable from this side.**
+   `FOUNDER_OS_SHELL` true, `FOUNDER_OS_TODAY` true, `FOUNDER_OS_RELATIONSHIPS` true,
+   `FOUNDER_OS_CAMPAIGNS` false. Roger confirms the navigation shows the four workspaces and Today
+   shows the five sections, so **Releases 1 through 3 are live and working in production**. He
+   will enable `FOUNDER_OS_CAMPAIGNS` after Release 4 deploys. Recorded as his observation rather
+   than a verification of mine: a flag flip does not change the commit `/api/version` reports, so
+   this run cannot confirm it independently.
 
 ---
 
@@ -323,7 +369,7 @@ No auto-revert was triggered and none was required.
 `supabaseConnected: true`, `authStoreConnected: true`, `authProtected: true`,
 `liveGatesCount: 0`, `noSecretsExposed: true`. `GET /api/health` → 200.
 
-### Soak gate
+### Soak gate (the rule in force at the time)
 
 `node scripts/founder-os-soak-check.mjs --commit dc75baa…` →
 **satisfied**, `elapsedHours: 4.895` against `minHours: 2`, deployed commit matching,
