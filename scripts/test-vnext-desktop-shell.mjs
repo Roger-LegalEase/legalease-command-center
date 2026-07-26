@@ -229,7 +229,7 @@ const legacyShellHash = createHash("sha256").update(serverSource.slice(shellStar
 // that emit a short pointer into Today when FOUNDER_OS_TODAY is on and their original source
 // when it is off. With the flag off the shell is byte-identical to Release 1 (measured:
 // 1,647,552 inline client bytes in both states). Behaviour: tests/browser/founder-os-release-2.spec.mjs.
-assert.equal(legacyShellHash, "d77dabc8cfb7628af40982a8098088eee30305910ed23d766a664da76a1f40a0", "Flag-off htmlShell output must remain unchanged.");
+assert.equal(legacyShellHash, "cec80c07192bef3d4b902050b43b2bf0c7f337c4a4b7f8a51d54c280adff45e6", "Flag-off htmlShell output must remain unchanged.");
 
 assert.equal(packageJson.scripts["test:vnext-desktop-shell"], "node scripts/test-vnext-desktop-shell.mjs");
 assert.match(readFileSync("scripts/run-extended-tests.mjs", "utf8"), /f\.startsWith\("test-"\) && f\.endsWith\("\.mjs"\)/);

@@ -175,6 +175,60 @@ actions; daily brief.
 
 ---
 
+## Release 8 — Route retirement (BLOCKED, do not attempt)
+
+Recorded 2026-07-26 on Roger's instruction. Every consolidation release so far has deliberately
+retired **nothing**: `partners`, `partner-hub`, `contacts`, `pilots`, `pages`, `revenue`,
+`metrics`, `proof`, `os-health`, `funnel`, `lee` and the daily-loop routes all still resolve to
+what they resolved to before. That was correct — the charter permits retiring a route only after
+its replacement passes a parity requirement, and no parity requirement has been demonstrated.
+
+Retirement is therefore its own release, and it is **blocked on three things. Do not attempt any
+retirement until all three are cleared.**
+
+### Blocker 1 — the operator search coverage test does not exist
+
+`01_CURRENT_STATE_REUSE_LEDGER.md` P9 (DECIDED 2026-07-26, with qualification) consolidates
+operator search into global Search. Today's operator search performs **real actions from its
+results**, and **no test proves global Search covers them.** Retiring the search route without
+that test would remove working actions with nothing to catch it.
+
+**Required:** a test enumerating every action reachable from operator search and asserting global
+Search offers each one. Roger's qualification makes this explicit: no search route may be retired
+until that test passes.
+
+### Blocker 2 — the plan's route-to-renderer mapping is wrong
+
+This document names `proofPageHtml` and `metricsPageHtml` among the renderers to retire.
+**Neither exists.** The live renderers are `proofWorkspaceHtml` and `metricsDashboardHtml`
+(`scripts/ui/navigation.mjs:154,293`). A parity check written against the mapping as it stands
+would resolve nothing and pass vacuously — the most dangerous possible outcome, because it would
+look like verification.
+
+**Required:** correct the mapping against the route registry at HEAD, for every route proposed for
+retirement, before any parity check is written.
+
+### Blocker 3 — parity cannot be confirmed on authenticated surfaces
+
+Every founder surface is behind authentication. The owner token available to the automated run
+returns **401** against production, and Roger has instructed that no other credentials be tried.
+Production verification is therefore limited to unauthenticated endpoints, which prove routing and
+delivery but **not that any workspace rendered**. Parity — "the replacement does everything the
+retired page did" — is exactly the claim that cannot be checked this way.
+
+**Required:** either a working owner credential for automated read-only verification, or Roger
+confirming parity by hand for each surface before its route retires. See
+`execution/log.md`, "Production verification limits".
+
+### Why this is not simply deferred work
+
+A retired route is the one change in this consolidation that is **not** flag-reversible in the
+usual sense: a bookmark that stops resolving is a broken link for whoever follows it, and the
+charter's promise throughout has been that old links keep working. Retiring on an unverified
+parity claim would trade that promise for tidiness. Nothing so far has needed it.
+
+---
+
 ## Final acceptance standard
 
 The consolidation is done when Roger can truthfully say:

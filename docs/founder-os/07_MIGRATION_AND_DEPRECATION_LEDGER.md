@@ -179,3 +179,38 @@ Appended, not rewritten. **No status above changes.** No route was hidden by Rel
 | Item | Current behavior | User risk | Immediate treatment | Final treatment |
 |---|---|---|---|---|
 | Two publish paths establish the live gate by different means | `publishPostNow` calls `livePostingEnabledForChannel` (`preview-server.mjs:5858`) and its route is additionally 403'd unconditionally by `auth-endpoint-hardening.mjs`. The **vNext** path (`POST /api/ui/social/post/:id/publish`) never calls that function; it derives `facts.gate` from the **persisted** `state.runtime.livePostingGates`. Verified directly: `runtimeGates` (`post-readiness-sources.mjs:145-156`) accepts a boolean or an `{enabled:boolean}` object and yields `null` otherwise, and `eligibility` blocks on both `"off"` and `"unavailable"` (`post-publishing-controls.mjs:441-442`) — **shape-tolerant and fail-closed. There is no fail-open bug** | Low today, because the vNext path is fail-closed and the legacy route is 403'd. The risk is architectural: a future change to the persisted shape, or someone populating that field, alters a publish decision without touching the function everyone believes governs it | **No treatment in Release 4** — the Social lane has no publish affordance, so the release depends on neither path | **Consolidate**: the vNext path should call `livePostingEnabledForChannel` like the scheduled worker does, with `test-publish-now-live-gate.mjs` promoted out of extended-only into the strict chain, in the release that next activates publishing |
+
+---
+
+# Addendum — 2026-07-26: the ten PROPOSED reuse-ledger rows are ratified
+
+Roger ratified all ten **PROPOSED** rows in `01_CURRENT_STATE_REUSE_LEDGER.md` as **DECIDED** on
+2026-07-26, with three qualifications recorded inline on the rows they affect (P7, P8, P9). No
+status in this ledger changes as a result; the rows confirm treatments already being followed.
+
+## The loose-ends row that this closes
+
+| Item | Previous immediate treatment | Now |
+|---|---|---|
+| Review-only imports (`consumer-list-import.mjs`, `expungement-lifecycle-sync.mjs`) | **Label clearly** ("Imported contacts are held for review; nothing sends") | **DONE.** Delivered as a change, not a note, on Roger's instruction that the labelling "is not optional" |
+
+The surface previously said *"No email sends"*, which describes the **import action**. It never
+said the imported **people** are held and cannot be contacted — the thing a founder would actually
+want to know before uploading a list of real people. The upload surface now states, **before the
+action rather than only in the confirmation afterwards**: "Importing a list never contacts anyone.
+Everyone you import is held for review, and nobody can be emailed until you release them
+deliberately from a campaign." The drafting option was relabelled from "asks for approval first",
+which implies a send follows, to "drafts only, never sends".
+
+Two assertions in `scripts/test-founder-os-release-7.mjs` prevent this regressing: the honest
+label must appear **before** the action in source order, and no import action label may contain
+the word "Send".
+
+## Route retirement is now its own release, and it is blocked
+
+Recorded in `08_DELIVERY_PLAN.md` as **Release 8 — Route retirement (BLOCKED, do not attempt)**,
+with three blockers stated plainly: the missing operator-search coverage test, the delivery plan's
+incorrect route-to-renderer mapping (`proofPageHtml` and `metricsPageHtml` do not exist), and the
+inability to confirm parity on authenticated surfaces while the owner token returns 401.
+
+**No route has been retired by any release so far, and none may be until all three clear.**

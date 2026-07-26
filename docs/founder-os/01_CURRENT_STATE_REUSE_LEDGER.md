@@ -180,36 +180,53 @@ surfaced by the regenerated evidence and are for Roger to ratify.
 
 ---
 
-## PROPOSED rows (surfaced by regenerated evidence; for Roger to ratify)
+## PROPOSED rows — **ALL TEN RATIFIED AS DECIDED, 2026-07-26, by Roger**
 
-### P1. Inbox intelligence I1–I4 — Keep → Today Communications / Relationships timelines
+Every row below is now **DECIDED**. Three carry qualifications, recorded inline on the rows they
+affect (P7, P8, P9). Nothing here remains open for ratification.
+
+### P1. Inbox intelligence I1–I4 — **DECIDED 2026-07-26 (Roger)** — Keep → Today Communications / Relationships timelines
 `scripts/inbox-intelligence.mjs` (plan-only engine, single authorized mailbox, toggle-gated, redacted signals only, drafts-never-send), `scripts/inbox-page-service.mjs`, routes `/api/inbox/*`, `/api/ui/inbox*`; collections `inboxSignals`/`inboxConfig`/`emailDrafts` (owner-only). Trust: **Verified** (`test-inbox-intelligence.mjs`, `test-email-draft-safety.mjs` strict gate). This is the signal source for Today Communications; privacy decision record remains binding.
 
-### P2. Support desk — Keep → Today Needs attention + secondary queue
+### P2. Support desk — **DECIDED 2026-07-26 (Roger)** — Keep → Today Needs attention + secondary queue
 `scripts/support-desk.mjs` (states open→drafted→waiting→resolved→closed), founder view `scripts/founder-support-service.mjs`/`-api.mjs`; routes `/api/support/*`, `/api/ui/support*`; collection `supportIssues`. Trust: **Verified** (`test-support-desk.mjs`); founder surface **Partially verified** (extended-only suites).
 
-### P3. Meeting briefs + founder calendar — Keep → Today Meetings
+### P3. Meeting briefs + founder calendar — **DECIDED 2026-07-26 (Roger)** — Keep → Today Meetings
 `scripts/meeting-briefs.mjs` (on-demand Gmail snippets, capped, never background), `scripts/founder-calendar-service.mjs`/`-api.mjs` (writes limited to tasks/audit/activity); routes `/api/meeting-briefs*`, `/api/ui/calendar*`, `/api/calendar/*`; collections `meetingBriefs`, `calendarSignals`. Trust: **Verified** (`test-meeting-briefs.mjs`, `test-calendar-readonly-safety.mjs`).
 
-### P4. Prospect discovery (B5) — Keep → Campaigns Partner outreach (ranked list source)
+### P4. Prospect discovery (B5) — **DECIDED 2026-07-26 (Roger)** — Keep → Campaigns Partner outreach (ranked list source)
 `scripts/prospect-discovery.mjs` + `prospect-datasets.mjs`; gated by `PROSPECT_LIVE_DISCOVERY` (off → zero rows); collections `prospectCandidates`, `prospectDiscoveryRuns`, `prospectConfig`; loaders never attach email so discovered orgs can't become sendable; only `/api/prospects/approve` writes approved. Trust: **Verified** (`test-prospect-discovery.mjs`).
 
-### P5. Company memory projection layer — Keep → foundation for Today and Relationships
+### P5. Company memory projection layer — **DECIDED 2026-07-26 (Roger)** — Keep → foundation for Today and Relationships
 `scripts/company-memory.mjs` + `company-memory-projector.mjs` (queueItems statuses/transitions, contact/org identity rules, capped event feed, approvals model — the data spine of `05_DATA_AND_INTEGRATION_CONTRACT.md`). Trust: **Verified** (`test-company-memory.mjs`, `test-company-memory-projector.mjs`).
 
-### P6. Alerts engine — Keep → Today Needs attention (owner-locked email unchanged)
+### P6. Alerts engine — **DECIDED 2026-07-26 (Roger)** — Keep → Today Needs attention (owner-locked email unchanged)
 `buildAlertsEngine` registered in heartbeat; recipient hard-locked to owner (`preview-server.mjs:5513–5518`); collection `alerts`; settings-gated. Trust: **Verified** (`test-alerts-engine.mjs`).
 
-### P7. Review-only imports (consumer list, expungement lifecycle) — Keep, labeled → Campaigns audience staging
+### P7. Review-only imports (consumer list, expungement lifecycle) — **DECIDED 2026-07-26 (Roger)** — Keep, labeled → Campaigns audience staging
 `scripts/consumer-list-import.mjs` (confirm writes contacts force-held from waves), `scripts/expungement-lifecycle-sync.mjs` (ingest-only, staged always held); the inertness is deliberate safety, but the UI must say so (`07` ledger loose-ends row). Trust: **Partially verified** (both focused tests extended-only).
 
-### P8. RCAP revenue OS + production activation — Keep dormant → Advanced
+> **Roger's qualification, 2026-07-26.** Accepted, and **the honest labelling is not optional.**
+> These surfaces currently imply an import will reach someone, which is the misleading part. It is
+> to be delivered as a **small standalone change, not a documentation note**.
+
+### P8. RCAP revenue OS + production activation — **DECIDED 2026-07-26 (Roger)** — Keep dormant → Advanced
 `scripts/rcap-revenue-os.mjs` (7 `rcapRevenue*` collections), `scripts/production-activation.mjs`, `/api/rcap/partner-ops`, `/api/production-activation/rcap/*`. Not part of the four workspaces; remains Advanced. Trust: **Verified** (`test-rcap-revenue-os-foundation.mjs` + queue tests).
 
-### P9. Operator search — Consolidate → global Search
+> **Roger's qualification, 2026-07-26.** Accepted as dormant under Advanced. **This is a placement
+> decision, not a judgement about the programme.** If RCAP becomes an active revenue line it needs
+> a real home, and this row should be revisited rather than treated as settled against it.
+
+### P9. Operator search — **DECIDED 2026-07-26 (Roger)** — Consolidate → global Search
 `scripts/operator-search.mjs`, `#operator-search` route with real safe actions (`preview-server.mjs:25063–25068`). Trust: **Unverified** for global-search parity (no focused test of search coverage). Becomes the seed of the global Search control.
 
-### P10. Press outreach — **does not exist in main**; NEW scope for the Press lane
+> **Roger's qualification, 2026-07-26.** The direction is accepted. **No search route may be
+> retired until a test proves global Search covers every action today's operator search can
+> perform.** That coverage test is REQUIRED WORK, and route retirement is BLOCKED on it. Retiring
+> the route on the strength of this row without that test would remove working actions with
+> nothing to catch it.
+
+### P10. Press outreach — **DECIDED 2026-07-26 (Roger)** — **does not exist in main**; NEW scope for the Press lane
 Verified absence at `a3793c3`: no press engine, no press collections in
 `coreStateCollections`, no send path; the local branch `command-center-press-media-brain-v1`
 (tip `dcbee05`) is **not** an ancestor of HEAD. What exists is press as a

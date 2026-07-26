@@ -233,5 +233,43 @@ check("a proposal renders as waiting for a decision, never as done", () => {
   assert.match(html, /data-lee-proposal="s1"/);
 });
 
+
+// ---------------------------------------------------------------------------------------------
+// 5. Review-only imports must say, BEFORE you act, that nothing reaches anyone
+//
+// Reuse-ledger row P7, DECIDED 2026-07-26 with Roger's qualification: "the honest labelling is
+// not optional… these surfaces currently imply an import will reach someone."
+//
+// The surface already said "No email sends", which describes the IMPORT action. It never said
+// the imported PEOPLE are held and cannot be contacted — which is the thing a founder would
+// actually want to know before uploading a list of real people. Both must be present, and
+// present before the action rather than only in the confirmation afterwards.
+// ---------------------------------------------------------------------------------------------
+
+check("the upload surface states before you act that nobody is contacted", () => {
+  const server = readFileSync(new URL("./preview-server.mjs", import.meta.url), "utf8");
+  const start = server.indexOf('id="operator-upload-dropzone"');
+  assert.ok(start > 0, "the upload surface must exist");
+  const surface = server.slice(start, server.indexOf('id="operator-upload-result"') + 400);
+
+  assert.match(surface, /Importing a list never contacts anyone/i,
+    "the surface must say plainly that importing contacts nobody");
+  assert.match(surface, /held for review/i, "it must say imported people are held");
+  assert.match(surface, /until you release them/i,
+    "it must say a deliberate release is what changes that");
+  // The claim must appear on the way IN, not only in the post-import confirmation.
+  assert.ok(surface.indexOf("never contacts anyone") < surface.indexOf('id="operator-upload-result"'),
+    "the honest label must appear before the action, not only after it");
+});
+
+check("no import action label implies a send", () => {
+  const server = readFileSync(new URL("./preview-server.mjs", import.meta.url), "utf8");
+  const start = server.indexOf('<option value="hold_for_campaign">');
+  const options = server.slice(start, server.indexOf("</select>", start));
+  assert.match(options, /Draft outreach \(drafts only, never sends\)/,
+    "the drafting option must say it never sends; 'asks for approval first' implies a send follows");
+  assert.ok(!/\bSend\b/.test(options), `no import action may offer a send; got: ${options.replace(/\s+/g, " ").slice(0, 200)}`);
+});
+
 console.log(`Founder OS Release 7: ${checks.length} checks passed.`);
 for (const name of checks) console.log(`  - ${name}`);
