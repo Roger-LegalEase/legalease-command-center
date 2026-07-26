@@ -288,3 +288,67 @@ export const FOUNDER_OS_SCOREBOARD_SECTIONS = Object.freeze([
   Object.freeze({ id: "marketing", label: "Marketing" }),
   Object.freeze({ id: "platform_health", label: "Platform health" })
 ]);
+
+// ---------------------------------------------------------------------------------------------
+// Release 6 — Le-E everywhere.
+// ---------------------------------------------------------------------------------------------
+//
+// FOUNDER_OS_LEE_PANEL makes Le-E a side panel available in every workspace instead of a page
+// you navigate to. Default off; off restores the #lee page exactly, and proposals live in
+// automationSuggestions either way.
+//
+// The panel changes WHERE Le-E is, never WHAT Le-E may do. The confirmation policy below is
+// copied from 06_SAFETY_AND_AUTOMATION_CONTRACT.md and is asserted against that document
+// verbatim by the test suite, so the two cannot drift.
+
+export const FOUNDER_OS_LEE_PANEL_ENV_KEY = "FOUNDER_OS_LEE_PANEL";
+
+export function readFounderOsLeePanelConfig(serverEnvironment = {}) {
+  const environment = serverEnvironment && typeof serverEnvironment === "object" ? serverEnvironment : {};
+  const enabled = Object.prototype.hasOwnProperty.call(environment, FOUNDER_OS_LEE_PANEL_ENV_KEY)
+    && parseFounderOsFlag(environment[FOUNDER_OS_LEE_PANEL_ENV_KEY]);
+  return Object.freeze({ enabled, source: "server-environment" });
+}
+
+// Internal, reversible, and they must NEVER prompt. Verbatim from the safety contract's
+// "Actions requiring no confirmation".
+export const FOUNDER_OS_NO_CONFIRMATION_ACTIONS = Object.freeze([
+  "Complete an internal task",
+  "Add a note",
+  "Set a follow-up date",
+  "Change priority",
+  "Mark waiting or blocked",
+  "Save a draft",
+  "Update an internal relationship stage",
+  "Record a manually sent email"
+]);
+
+// "One clear confirmation — never two, never zero." Verbatim from the safety contract's
+// "Actions requiring exactly one confirmation". Le-E may never reach any of these on its own.
+export const FOUNDER_OS_ONE_CONFIRMATION_ACTIONS = Object.freeze([
+  "Send an external email",
+  "Start a live campaign",
+  "Release a new audience",
+  "Remove suppression",
+  "Publish content",
+  "Delete important information"
+]);
+
+// The suggestion types the existing apply path can execute
+// (preview-server.mjs applyAutomationSuggestionToState). Every one writes an internal record.
+// This list exists so a test can prove the set never grows into a sending or publishing action:
+// adding one here without a confirmation path fails the suite.
+export const FOUNDER_OS_LEE_INTERNAL_SUGGESTION_TYPES = Object.freeze([
+  "create_partner",
+  "update_partner_status",
+  "create_task",
+  "mark_follow_up_due",
+  "update_campaign",
+  "update_funnel_snapshot",
+  "add_data_room_item",
+  "create_pilot",
+  "update_pilot",
+  "create_compliance_item",
+  "generate_report",
+  "add_activity_event"
+]);
