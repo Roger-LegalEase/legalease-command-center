@@ -724,3 +724,53 @@ amend the contract, the blueprint, or the setting.
 - **Auto-merge is disabled repository-wide.** `gh pr merge --auto --squash` returns
   `enablePullRequestAutoMerge`. Merges now use `--squash` only after the release gate passes and
   all seven checks are green, which satisfies the same condition but is not fire-and-forget.
+
+---
+
+## Production verification limits — what this run can and cannot confirm
+
+**Recorded 2026-07-26. This bounds every claim in every release report from here on.**
+
+The owner token in `.env.local` returns **401** against production `POST /api/login`. It was never
+set there (an older note in the run's memory says as much). Roger's instruction: do not attempt
+other credentials against production. So this run's machine verification of production is limited
+to **unauthenticated endpoints only**.
+
+### What CAN be machine-verified against production
+
+- `GET /api/version` — deployed commit, `supabaseState`, `supabaseConnected`, `authStoreConnected`,
+  `authProtected`, `liveGatesCount`, `noSecretsExposed`.
+- `GET /api/health` — status.
+- That `/` and every primary workspace route return 200 and serve the app shell. These are hash
+  routes, so the server returns the same shell for all of them; this proves routing and delivery,
+  **not** that any workspace rendered.
+- Post-deploy verification runs and their `POST_DEPLOY_EVIDENCE`, and the release gate.
+
+### What CANNOT be machine-verified, and depends on Roger looking
+
+Everything behind authentication, which is every founder surface:
+
+- The Scoreboard projection and which metrics show Live / Manual / Unavailable **in production**.
+- The Campaigns workspace and its lifecycle lanes.
+- Relationships, Today's five sections, and Le-E.
+- Any flag's real effect. A flag flip does not change the commit `/api/version` reports, so even
+  the flag STATE is unobservable from here.
+
+### The rule this imposes on release reports
+
+Every release report must say, per claim, whether it is **machine-verified against production**,
+**verified in CI or locally** (Chromium acceptance specs, unit suites, budget measurements — real
+evidence, but not production), or **dependent on Roger's observation**. Numbers derived from
+fixtures must never be presented as production numbers. Where a report says "these metrics went
+Live", it means the code path allows it and tests prove the projection — production confirmation
+is Roger's.
+
+### Current flag state — Roger's observation, 2026-07-26
+
+`FOUNDER_OS_SHELL` true · `FOUNDER_OS_TODAY` true · `FOUNDER_OS_RELATIONSHIPS` true ·
+`FOUNDER_OS_CAMPAIGNS` **true** · `FOUNDER_OS_SCOREBOARD` false · `FOUNDER_OS_LEE_PANEL` false.
+
+Roger enabled `FOUNDER_OS_CAMPAIGNS` after Release 4 deployed and verified. An earlier status
+table in this run listed it as off; that was wrong and is corrected here. He agrees the Scoreboard
+and Le-E panel flags stay off until Release 7 ships their surfaces, and that this run does not make
+the environment changes itself.
