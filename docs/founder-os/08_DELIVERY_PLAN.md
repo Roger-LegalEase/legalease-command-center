@@ -75,6 +75,23 @@ deliberate.
   mode for the same check (staged-blob email scan over CSV/XLSX, suppression-filename
   match) and run it in the privacy job, so the protection no longer depends on
   per-clone hook installation.
+  > **Status 2026-07-26: DELIVERED, and it closed a real hole rather than only moving an
+  > existing check.** `security-scan.mjs` skipped every binary blob *before* looking at it,
+  > so an `.xlsx` — a ZIP archive — was never scanned and **neither was its filename**.
+  > Verified against the real scanner: a file named `suppression-export.xlsx` with binary
+  > bytes produced zero findings and exit 0, while the identical name as text was caught.
+  > Two further gaps were found and closed: `--staged` mode read blobs as UTF-8 and mangled
+  > binary bytes, so the staged scan was blind to workbooks too; and the pre-commit gate's
+  > workbook step depended on the external `unzip` binary, which CI has no guarantee of.
+  > Now: archive text is extracted in pure Node (`security-scan-archive.mjs`), filenames are
+  > checked whatever the bytes are, and the privacy job's existing `pii:scan` and
+  > `secret:scan` steps therefore cover binary CSV/XLSX in CI without any hook installation.
+  > A `--branch-diff` mode was added for per-pull-request scanning and fails loudly when its
+  > base ref is unavailable; **no redundant CI step was added**, because the privacy job's
+  > tracked-mode scan is a strict superset of a branch diff.
+  > Not addressed: `--history` mode takes over three minutes and times out. Measured on the
+  > unmodified base commit as well, so it is pre-existing and not a regression; it is not
+  > part of any CI job.
 
 ---
 
