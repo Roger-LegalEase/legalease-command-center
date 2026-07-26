@@ -256,7 +256,9 @@ import {
 import {
   FOUNDER_OS_ADVANCED_ROUTES,
   readFounderOsCampaignsConfig,
+  readFounderOsLeePanelConfig,
   readFounderOsRelationshipsConfig,
+  readFounderOsScoreboardConfig,
   readFounderOsShellConfig,
   readFounderOsTodayConfig
 } from "./ui/founder-os-config.mjs";
@@ -293,6 +295,8 @@ const founderOsShellConfig = readFounderOsShellConfig(process.env);
 const founderOsTodayConfig = readFounderOsTodayConfig(process.env);
 const founderOsRelationshipsConfig = readFounderOsRelationshipsConfig(process.env);
 const founderOsCampaignsConfig = readFounderOsCampaignsConfig(process.env);
+const founderOsScoreboardConfig = readFounderOsScoreboardConfig(process.env);
+const founderOsLeePanelConfig = readFounderOsLeePanelConfig(process.env);
 const globalCreateKindsByPath = Object.freeze(Object.fromEntries(
   Object.entries(GLOBAL_CREATE_ENDPOINTS).map(([kind, endpoint]) => [endpoint, kind])
 ));
@@ -9024,7 +9028,9 @@ function serveVNextLazyRuntime(pathname, response, { headOnly = false } = {}) {
   const source = resolveVNextLazyRuntime(pathname, {
     outreachEnabled:outreachVNextConfig.enabled,
     // Without this the Campaigns runtime would be served even on a flag-off deployment.
-    founderOsCampaigns:founderOsCampaignsConfig.enabled
+    founderOsCampaigns:founderOsCampaignsConfig.enabled,
+    founderOsScoreboard:founderOsScoreboardConfig.enabled,
+    founderOsLeePanel:founderOsLeePanelConfig.enabled
   });
   if (!source) {
     response.writeHead(404, { "content-type":"text/plain; charset=utf-8", "cache-control":"no-store" });
@@ -35512,6 +35518,8 @@ function renderVNextApp(options = {}) {
       founderOsToday:founderOsTodayConfig.enabled,
       founderOsRelationships:founderOsRelationshipsConfig.enabled,
       founderOsCampaigns:founderOsCampaignsConfig.enabled,
+      founderOsScoreboard:founderOsScoreboardConfig.enabled,
+      founderOsLeePanel:founderOsLeePanelConfig.enabled,
       discovery:options.discovery || null
     });
   }
@@ -36352,7 +36360,8 @@ async function handleRequest(request, response) {
       store,
       actor:publicActor(accessDecision.actor),
       now:new Date().toISOString(),
-      liveMetrics:scoreboardLiveMetrics
+      liveMetrics:scoreboardLiveMetrics,
+      founderOs:founderOsScoreboardConfig.enabled
     });
     const result = mutation ? await serializeStateMutation(execute) : await execute();
     sendJson(response, result.body || { ok:false, message:"Scoreboard is unavailable." }, result.status || 404);

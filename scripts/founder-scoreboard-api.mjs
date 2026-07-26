@@ -1,3 +1,5 @@
+import { buildFounderCompanyHealth, FOUNDER_COMPANY_HEALTH_READ_COLLECTIONS } from "./founder-company-health-service.mjs";
+import { buildFounderScoreboardRegistryView } from "./ui/view-models/founder-scoreboard-registry-view.mjs";
 import {
   buildFounderScoreboard,
   FOUNDER_SCOREBOARD_READ_COLLECTIONS,
@@ -120,7 +122,10 @@ export async function handleFounderScoreboardApiRequest({
   actor = {},
   now = new Date().toISOString(),
   // { stripeRevenue, signups } — supplied by the route, which owns the fetchers.
-  liveMetrics = {}
+  liveMetrics = {},
+  // FOUNDER_OS_SCOREBOARD. When on, the response carries the Release 5 KPI registry
+  // projection alongside the existing payload. Off, the body is byte-identical to before.
+  founderOs = false
 } = {}) {
   if (!isFounderScoreboardApiPath(pathname)) return { matched:false };
   if (!enabled) {
@@ -137,10 +142,22 @@ export async function handleFounderScoreboardApiRequest({
       assertNoQuery(searchParams);
       const state = attachLiveSnapshots(await readState(store), liveMetrics);
       const view = buildFounderScoreboard(state, actor, now);
+      const body = scoreboardBody(view);
+      if (founderOs && view.available) {
+        // Platform health is read separately because it is a different service with its own
+        // collection list. A failure there must not take the Scoreboard down: the registry view
+        // renders an honest "could not be read" section instead.
+        let health = { available:false };
+        try {
+          const healthState = await store.readCollections(FOUNDER_COMPANY_HEALTH_READ_COLLECTIONS);
+          health = buildFounderCompanyHealth(healthState, actor, now);
+        } catch { health = { available:false }; }
+        body.registry = buildFounderScoreboardRegistryView(view, health, state);
+      }
       return {
         matched:true,
         status:view.available ? 200 : view.availability?.state === "not_authorized" ? 403 : 503,
-        body:scoreboardBody(view)
+        body
       };
     }
 
