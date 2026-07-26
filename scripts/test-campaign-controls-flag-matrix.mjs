@@ -51,14 +51,19 @@ assert.equal(campaignsRoute.kind, "page");
 assert.equal(campaignsRoute.canonicalRoute, "campaigns");
 assert.equal(campaignsRoute.destination, "Outreach");
 
-// #outreach is NOT a canonical route. With the Outreach flag off, the client resolver has
-// no alias for it, so a held or bookmarked #outreach URL resolves to nothing and the shell
-// renders Today while the address bar still reads #outreach. That is the one genuinely
-// invisible consequence of the flag flip, and it is why "no visible change" was reported.
+// #outreach is not a canonical route: it exists only when the vNext Outreach page is
+// enabled. It USED to resolve to nothing with that flag off, so a held or bookmarked
+// #outreach silently rendered Today while the address bar still read #outreach — the one
+// genuinely invisible consequence of the flag flip, and part of why "no visible change"
+// was reported. Founder OS Release 1 added a compatibility redirect
+// (route-compatibility.mjs `compatibilityAliases`), so it now lands on Campaigns. This
+// assertion was updated to the corrected behaviour rather than deleted, because the
+// silent-Today outcome is exactly what must never come back.
 const outreachRoute = resolveRouteWithContract("#outreach");
-assert.equal(outreachRoute.kind, "unknown");
-assert.equal(outreachRoute.recoveryReason, "unknown_route");
-assert.equal(outreachRoute.destination, "Today");
+assert.equal(outreachRoute.kind, "page");
+assert.equal(outreachRoute.canonicalRoute, "campaigns");
+assert.equal(outreachRoute.aliasUsed, "outreach");
+assert.notEqual(outreachRoute.destination, "Today", "#outreach must never silently render Today.");
 
 // The legacy aliases keep resolving to the same canonical page regardless.
 for (const alias of ["#campaign", "#campaign-control", "#campaigns-control"]) {

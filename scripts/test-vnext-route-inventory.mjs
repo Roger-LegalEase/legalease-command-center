@@ -9,6 +9,7 @@ import {
   primaryNavigationInventory,
   routeRegistry
 } from "./ui/navigation.mjs";
+import { ROUTE_COMPATIBILITY_TOTALS, resolveRouteWithContract } from "./ui/route-compatibility.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const serverSource = fs.readFileSync(path.join(root, "scripts", "preview-server.mjs"), "utf8");
@@ -160,5 +161,18 @@ assert.deepEqual(
   primaryNavigation.slice().sort((left, right) => left.route.localeCompare(right.route)),
   "Machine-readable primary navigation inventory has drifted from the live markup."
 );
+
+// Founder OS Release 1: #outreach must never silently render Today. Before the compatibility
+// redirect it resolved to nothing when the vNext Outreach page was disabled, so a held or
+// bookmarked #outreach rendered Today while the address bar still read #outreach.
+const outreachResolution = resolveRouteWithContract("#outreach");
+assert.equal(outreachResolution.kind, "page", "#outreach must resolve to a real page.");
+assert.equal(outreachResolution.canonicalRoute, "campaigns", "#outreach must land on Campaigns.");
+assert.notEqual(outreachResolution.destination, "Today", "#outreach must never silently render Today.");
+assert.equal(outreachResolution.aliasUsed, "outreach");
+// The redirect is deliberately NOT a registry alias: the registry's alias list is mirrored in
+// the historical alias map, which the Founder OS charter forbids editing. The counts below
+// therefore stay exactly as they were.
+assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, registryAliasPairs.length, "Registry alias count must stay authoritative.");
 
 console.log(`vNext route inventory verified: ${routeRegistry.length} canonical routes, ${registryAliasPairs.length} aliases, ${primaryNavigation.length} primary navigation items.`);

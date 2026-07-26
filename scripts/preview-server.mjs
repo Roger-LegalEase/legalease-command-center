@@ -242,6 +242,7 @@ import { incrementSecurityMetric, operationalMetrics } from "./observability.mjs
 import { oauthSigningSecret, signOAuthState, verifyOAuthState, verifyOwnerStartedOAuthState } from "./oauth-state.mjs";
 import { escapeHtml } from "./ui/html.mjs";
 import { readCommandCenterVNextConfig } from "./ui/vnext-config.mjs";
+import { FOUNDER_OS_ADVANCED_ROUTES, readFounderOsShellConfig } from "./ui/founder-os-config.mjs";
 import { readCommandCenterVNextProductConfig } from "./ui/vnext-config.mjs";
 import { renderShellBoundary } from "./ui/shell-boundary.mjs";
 import { DESIGN_SYSTEM_SHOWCASE_PATH } from "./ui/brand-contract.mjs";
@@ -271,6 +272,7 @@ const outreachVNextConfig = readCommandCenterVNextProductConfig(process.env, "ou
 const filesVNextConfig = readCommandCenterVNextProductConfig(process.env, "files");
 const socialVNextConfig = readCommandCenterVNextProductConfig(process.env, "social");
 const discoveryVNextConfig = readCommandCenterVNextProductConfig(process.env, "discovery");
+const founderOsShellConfig = readFounderOsShellConfig(process.env);
 const globalCreateKindsByPath = Object.freeze(Object.fromEntries(
   Object.entries(GLOBAL_CREATE_ENDPOINTS).map(([kind, endpoint]) => [endpoint, kind])
 ));
@@ -15731,6 +15733,22 @@ async function exportWeeklyEvidencePack(options = {}) {
   });
 }
 
+// Settings -> Advanced (Founder OS Release 1). The charter removes agents, engines, queues,
+// logs, gates, operating memory and the artifact viewer from navigation; they stay reachable
+// here and nowhere else. Rendered SERVER-side into the client template, so with
+// FOUNDER_OS_SHELL off it contributes zero client bytes and the rollback ships a
+// byte-identical shell.
+function founderOsAdvancedSectionHtml() {
+  if (!founderOsShellConfig.enabled) return "";
+  const rows = FOUNDER_OS_ADVANCED_ROUTES.map((entry) =>
+    '<li><a class="founder-os-advanced-link" href="#' + escapeHtml(entry.route) + '">' + escapeHtml(entry.label) + "</a>"
+    + '<span class="muted"> ' + escapeHtml(entry.note) + "</span></li>").join("");
+  return '<section class="growth-card" data-founder-os-advanced>'
+    + '<div class="growth-card-head"><h2>Advanced</h2><small>Internal machinery. Nothing here is part of the daily loop.</small></div>'
+    + '<p class="muted">These pages are the system talking to itself: agent autonomy, engine state, audit logs, compliance registers, and the full record behind an item. They are kept because they are useful when something breaks, not because they are part of running the company.</p>'
+    + '<ul class="founder-os-advanced-list">' + rows + "</ul></section>";
+}
+
 // Reactivation control block (inside the client script below). The comments that used to
 // sit inside the shipped template literal live here instead — everything inside htmlShell()
 // is downloaded on every page load, and the vNext performance contract keeps a tight
@@ -24280,9 +24298,9 @@ function htmlShell() {
         </li>\`).join("")}</ol>
         <div class="standup-card-actions">
           <button type="button" onclick="location.hash='tasks'">Add Priority</button>
-          <button type="button" onclick="toast('Priority edit saved internally for Roger review.')">Edit Priority</button>
-          <button type="button" onclick="toast('Priority marked done internally. No external calls were made.')">Mark Done</button>
-          <button type="button" onclick="toast('Priority moved to tomorrow internally.')">Move to Tomorrow</button>
+          ${founderOsShellConfig.enabled ? "" : `<button type="button" onclick="toast('Priority edit saved internally for Roger review.')">Edit Priority</button>`}
+          ${founderOsShellConfig.enabled ? "" : `<button type="button" onclick="toast('Priority marked done internally. No external calls were made.')">Mark Done</button>`}
+          ${founderOsShellConfig.enabled ? "" : `<button type="button" onclick="toast('Priority moved to tomorrow internally.')">Move to Tomorrow</button>`}
         </div>
       </section>\`;
     }
@@ -24309,7 +24327,7 @@ function htmlShell() {
         </div>\`).join("") || '<div class="empty-calm">Nothing urgent needs attention right now.</div>'}</div>
         <div class="standup-card-actions">
           <button type="button" onclick="location.hash='tasks'">Add Task</button>
-          <button type="button" onclick="toast('Task marked done internally. No external calls were made.')">Mark Done</button>
+          ${founderOsShellConfig.enabled ? "" : `<button type="button" onclick="toast('Task marked done internally. No external calls were made.')">Mark Done</button>`}
         </div>
       </section>\`;
     }
@@ -24328,7 +24346,7 @@ function htmlShell() {
         </div>\`).join("") || '<div class="empty-calm">No blockers or decisions are waiting right now.</div>'}</div>
         <div class="standup-card-actions">
           <button type="button" onclick="document.getElementById('cockpit-capture')?.focus()">Add Blocker</button>
-          <button type="button" onclick="toast('Blocker resolved internally for Today review.')">Resolve Blocker</button>
+          ${founderOsShellConfig.enabled ? "" : `<button type="button" onclick="toast('Blocker resolved internally for Today review.')">Resolve Blocker</button>`}
           <button type="button" onclick="document.getElementById('cockpit-capture')?.focus()">Add Decision</button>
           <button type="button" onclick="location.hash='daily-closeout'">Move to Tomorrow</button>
         </div>
@@ -25893,6 +25911,7 @@ function htmlShell() {
           <pre class="code-block">\${esc(JSON.stringify({ overall_health:health.overall_health, live_posting_gates:gateConfig, live_gates_count:liveGates, generated_at:health.generated_at, schema_detail:state.schemaStatus?.detail || "", database_error:supabaseHealth?.error || "" }, null, 2))}</pre>
           <div class="card-actions" style="margin-top:12px"><button type="button" onclick="refreshOsHealth()">Refresh OS Health</button><button type="button" onclick="refreshDataIntegrity()">Refresh State Integrity</button><button type="button" onclick="location.hash='os-health'">Open App Status</button><button type="button" onclick="location.hash='data-integrity'">Open Data Check</button></div>
         </details>
+        ${founderOsAdvancedSectionHtml()}
       </section>\`;
     }
 
@@ -30556,43 +30575,6 @@ function htmlShell() {
             </div>
           </div>
         </div>
-      </section>\`;
-    }
-
-    function campaignsPageHtml(pageClass) {
-      const campaigns = growthItems("campaigns");
-      return growthHero(pageClass, "campaigns", "Campaign operations", "Campaigns", "Build partner campaigns that turn RecordShield demand into measurable conversion data.") + \`
-        <details class="panel" open><summary>Add campaign</summary>
-          <form class="mini-form" style="margin-top:12px" onsubmit="saveCampaign(event)">
-            <label>Name<input name="campaignName" required></label>
-            <label>Partner<select name="partnerId"><option value="">Unlinked</option>\${growthItems("partners").map(partner => \`<option value="\${partner.id}">\${esc(partner.organizationName)}</option>\`).join("")}</select></label>
-            <label>Type<select name="campaignType"><option>workforce/reentry</option><option>voter/civic</option><option>employer</option><option>nonprofit</option><option>government</option><option>RecordShield</option><option>expungement</option><option>awareness</option></select></label>
-            <label>Status<select name="status"><option>draft</option><option>assets_needed</option><option>ready</option><option>live</option><option>paused</option><option>completed</option></select></label>
-            <label>Tracking slug<input name="trackingSlug"></label>
-            <label>Target referrals<input type="number" name="targetReferrals" value="100"></label>
-            <button class="primary">Add campaign</button>
-          </form>
-        </details>
-        <div class="grid post-grid section">\${campaigns.map(campaign => {
-          const flags = campaignFlags(campaign);
-          const launchGate = campaignLaunchGate(campaign);
-          const launchBlocked = flags.some(flag => flag.label === "Compliance blocking launch") || !launchGate.ready;
-          return \`<article class="card drawer-card">
-          <div class="row"><span class="badge \${growthTone(campaign.status)}">\${esc(growthLabel(campaign.status))}</span><span class="badge info">\${esc(campaign.campaignType || "campaign")}</span><span class="badge info">Proof L\${proofScoreForItem(campaign, "campaign")}</span><span class="badge \${campaignCountsAsActive(campaign) ? "good" : "warn"}">\${campaignCountsAsActive(campaign) ? "Activation proven" : "Activation unproven"}</span>\${flags.slice(0, 3).map(flag => \`<span class="badge \${flag.tone}">\${esc(flag.label)}</span>\`).join("")}</div>
-          <h2>\${esc(campaign.campaignName)}</h2>
-          <p class="muted">Partner: \${esc(partnerById(campaign.partnerId)?.organizationName || "Unlinked")} · Region: \${esc(campaign.stateRegion || "TBD")} · Tracking: \${esc(campaign.trackingSlug || campaign.trackingUrl || campaign.landingPageUrl || "Tracking missing")}</p>
-          <div class="metric-table">
-            <div class="metric-row"><span>Referrals</span><strong>\${Number(campaign.actualReferrals || 0)} / \${Number(campaign.targetReferrals || 0)}</strong></div>
-            <div class="metric-row"><span>RecordShield starts</span><strong>\${Number(campaign.recordShieldStarts || 0)}</strong></div>
-            <div class="metric-row"><span>Expungement.ai starts</span><strong>\${Number(campaign.expungementStarts || 0)}</strong></div>
-            <div class="metric-row"><span>Paid conversions</span><strong>\${Number(campaign.paidConversions || 0)}</strong></div>
-          </div>
-          <p><strong>Next:</strong> \${esc(campaignNextAction(campaign))}</p>
-          \${launchBlocked ? \`<p class="badge danger">Launch blocked: \${esc(launchGate.missing.join(" · ") || "high-risk compliance is not approved")}</p>\` : ""}
-          <div class="card-actions"><button class="primary" onclick="generateCampaignKit('\${campaign.id}')">Generate campaign kit</button><button onclick="location.hash='queue'">Create social posts</button><button onclick="addCampaignProof('\${campaign.id}')">Add proof artifact</button></div>
-          <details><summary>Campaign kit and copy actions</summary><p class="muted">Landing page copy, partner email, SMS, 5 social drafts, flyer copy, FAQ, talking points, disclaimers, launch timeline, and reporting expectations are exported locally.</p><p><code>\${esc(campaign.latestCampaignKitPath || "No kit generated yet")}</code></p></details>
-        </article>\`;
-        }).join("") || '<div class="empty">Create a campaign from a partner to begin tracking referrals and RecordShield starts.</div>'}</div>
       </section>\`;
     }
 
@@ -35455,12 +35437,13 @@ function buildDiscoveryShellContracts(state = {}, actor = {}, now = "") {
 function renderVNextApp(options = {}) {
   // CCX-100 composes one new navigation shell around the same routed application.
   // Page renderers, state, actions, authorization, and safety systems remain shared.
-  if (socialVNextConfig.enabled || outreachVNextConfig.enabled || filesVNextConfig.enabled || discoveryVNextConfig.enabled) {
+  if (socialVNextConfig.enabled || outreachVNextConfig.enabled || filesVNextConfig.enabled || discoveryVNextConfig.enabled || founderOsShellConfig.enabled) {
     return renderVNextDesktopShell(renderLegacyApp(), {
       socialEnabled:socialVNextConfig.enabled,
       outreachEnabled:outreachVNextConfig.enabled,
       filesEnabled:filesVNextConfig.enabled,
       discoveryEnabled:discoveryVNextConfig.enabled && Boolean(options.discovery),
+      founderOsShell:founderOsShellConfig.enabled,
       discovery:options.discovery || null
     });
   }

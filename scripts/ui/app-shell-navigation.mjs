@@ -1,3 +1,4 @@
+import { FOUNDER_OS_PRIMARY_WORKSPACES } from "./founder-os-config.mjs";
 import { GLOBAL_UTILITIES, PRIMARY_DESTINATIONS } from "./labels.mjs";
 import { GLOBAL_CREATE_OPTIONS } from "./global-create.mjs";
 import { routeRegistry } from "./navigation.mjs";
@@ -20,7 +21,16 @@ export const PRIMARY_SHELL_DESTINATIONS = list([
   { id:"files", label:PRIMARY_DESTINATIONS.files, route:"proof" }
 ]);
 
-export function primaryShellDestinations({ outreachEnabled = false, filesEnabled = false } = {}) {
+export function primaryShellDestinations({ outreachEnabled = false, filesEnabled = false, founderOsShell = false } = {}) {
+  // Founder OS: primary navigation is exactly the charter's four workspaces. Everything
+  // that used to sit here is still reachable — Inbox from Today, Social inside Campaigns,
+  // Support and Calendar and Company Health inside the workspace that needs them, and the
+  // machinery under Settings → Advanced — but none of it is primary any more.
+  if (founderOsShell) {
+    return list(FOUNDER_OS_PRIMARY_WORKSPACES.map((item) => item.id === "outreach" && outreachEnabled
+      ? { ...item, route:"outreach" }
+      : item));
+  }
   return list(PRIMARY_SHELL_DESTINATIONS.map((item) => item.id === "outreach" && outreachEnabled
     ? { ...item, route:"outreach" }
     : item.id === "files" && filesEnabled ? { ...item, route:"files" } : item));

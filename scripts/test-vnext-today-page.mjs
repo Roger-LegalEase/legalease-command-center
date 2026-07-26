@@ -200,7 +200,13 @@ assert.ok(legacyShellStart >= 0 && legacyShellEnd > legacyShellStart);
 // reactivation client comments moved out of the shipped template into server-side notes
 // above htmlShell() to stay inside the vNext client-JavaScript budget. Today's own HTML
 // pin is unchanged. Behavior is asserted by scripts/test-campaign-controls-flag-matrix.mjs.
-assert.equal(createHash("sha256").update(serverSource.slice(legacyShellStart, legacyShellEnd)).digest("hex"), "30f1f42b0a6f3094e45733ec3f56b0087fa860fa1e7375e993d516eb5990430d", "Legacy flag-off shell must remain byte-for-byte unchanged.");
+// Re-pinned by Founder OS Release 1. The legacy shell changed in exactly four reviewed
+// ways, all of them server-side conditionals that emit nothing when FOUNDER_OS_SHELL is off:
+// the Settings -> Advanced section, the five toast-only buttons the deprecation ledger marks
+// "Hide now", and the deletion of the unreferenced campaignsPageHtml renderer. With the flag
+// off the shell is byte-identical to before apart from that dead-code deletion, which is the
+// release's rollback path. Behaviour is asserted by tests/browser/founder-os-release-1.spec.mjs.
+assert.equal(createHash("sha256").update(serverSource.slice(legacyShellStart, legacyShellEnd)).digest("hex"), "2569c3a34d33e0382bf42eb161cc4d173aab8d76512c439d408fe746afaee72f", "Legacy flag-off shell must remain byte-for-byte unchanged.");
 const legacyTodayStart = serverSource.indexOf("    function commandCenterOverviewHtml(posts)");
 const legacyTodayEnd = serverSource.indexOf("\n    function focusItemsForMode", legacyTodayStart);
 assert.ok(legacyTodayStart >= 0 && legacyTodayEnd > legacyTodayStart);
