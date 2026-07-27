@@ -276,7 +276,11 @@ assert.ok(legacyShellStart >= 0 && legacyShellEnd > legacyShellStart);
 // that emit a short pointer into Today when FOUNDER_OS_TODAY is on and their original source
 // when it is off. With the flag off the shell is byte-identical to Release 1 (measured:
 // 1,647,552 inline client bytes in both states). Behaviour: tests/browser/founder-os-release-2.spec.mjs.
-assert.equal(createHash("sha256").update(serverSource.slice(legacyShellStart, legacyShellEnd)).digest("hex"), "d77dabc8cfb7628af40982a8098088eee30305910ed23d766a664da76a1f40a0");
+// Re-pinned 2026-07-26 (outreach priority: prospect bulk approval). One reviewed change: the
+// #prospects page swapped its metrics-only body for a container plus a loader for the LAZY
+// prospect-workbench runtime, keeping bulk approval out of the initial client payload
+// (1,647,021 bytes after, budget 1,650,000). See scripts/test-prospect-bulk-approval.mjs.
+assert.equal(createHash("sha256").update(serverSource.slice(legacyShellStart, legacyShellEnd)).digest("hex"), "781f465153a77b75833d2eb6e7c5bffb267bbf4fd64f5b5ce8922601b5a0b28e");
 const legacyTodayStart = serverSource.indexOf("    function commandCenterOverviewHtml(posts)");
 const legacyTodayEnd = serverSource.indexOf("\n    function focusItemsForMode", legacyTodayStart);
 assert.ok(legacyTodayStart >= 0 && legacyTodayEnd > legacyTodayStart);

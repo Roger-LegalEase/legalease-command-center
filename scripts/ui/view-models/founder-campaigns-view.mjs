@@ -168,8 +168,13 @@ function reactivationLane(state, environment, now) {
             : Number(command.dueNow || 0) === 0 ? command.dueNowPlain : ""
       }),
 
+    // `dueEligible`, not `dueNow`. Outside the send window the planner reports who is due via an
+    // `outside_window` observation and `dueNow` reads 0 — which made Monitor say "0 eligible in
+    // the next window" while Run correctly said the same people were queued and eligible when the
+    // window opens. The sentence here promises "the next window", and `dueEligible` is that
+    // number in every case: equal to `dueNow` inside the window, the queued count outside it.
     stage("monitor", tripped ? "blocked" : exceptions.length ? "attention" : "ready",
-      `${Number(command.dueNow || 0)} ${Number(command.dueNow || 0) === 1 ? "person is" : "people are"} eligible in the next window.`,
+      `${Number(command.dueEligible || 0)} ${Number(command.dueEligible || 0) === 1 ? "person is" : "people are"} eligible in the next window.`,
       { action: { label: "Review replies", route: "GET /api/campaign/command", mutates: false } }),
 
     stage("stop", switchedOn ? "ready" : "stopped",

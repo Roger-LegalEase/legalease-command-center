@@ -587,5 +587,31 @@ check("the audience an angle actually reaches is counted from eligibility, not g
   assert.ok(!held.some((row) => row.press_sendable === true));
 });
 
+// ---------------------------------------------------------------------------------------------
+// 8. The importer is actually reachable — Release 8 shipped it with no server path, so
+//    production's Press lane read 0/0 while 574 records existed only in test runs.
+// ---------------------------------------------------------------------------------------------
+
+check("the press import has a wired server path: dry-run preview + owner-gated confirm", () => {
+  const source = readFileSync(new URL("./preview-server.mjs", import.meta.url), "utf8");
+  assert.ok(source.includes('"/api/press/import/preview"'), "preview endpoint must exist");
+  assert.ok(source.includes('"/api/press/import/confirm"'), "confirm endpoint must exist");
+  // Confirm is owner/admin only, like every other state-writing import.
+  const confirmAt = source.indexOf('"/api/press/import/confirm"');
+  const confirmBlock = source.slice(confirmAt, confirmAt + 2600);
+  assert.match(confirmBlock, /\["owner", "admin"\]\.includes\(actorRole\)/,
+    "confirm must carry the explicit owner/admin guard");
+  // The fail-closed invariant: one contactable row refuses the whole import before any write.
+  assert.ok(confirmBlock.includes("row.press_hold !== true || row.sequence_status !== \"Not Enrolled\""),
+    "confirm must re-verify every row lands held and unenrolled");
+  assert.ok(confirmBlock.includes("Press import refused"), "a violation must abort loudly, not skip quietly");
+  // Preview responds with counts only — no journalist rows in the payload.
+  const previewAt = source.indexOf('"/api/press/import/preview"');
+  const previewBlock = source.slice(previewAt, source.indexOf('"/api/press/import/confirm"'));
+  assert.ok(previewBlock.includes("plan.summary"), "preview reports the summary");
+  assert.ok(!previewBlock.includes("plan.outreachContacts.map") && !previewBlock.includes("rows:"),
+    "preview must not echo contact rows");
+});
+
 console.log(`Founder OS Release 8 press: ${checks.length} checks passed.`);
 for (const name of checks) console.log(`  - ${name}`);

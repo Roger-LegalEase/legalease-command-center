@@ -248,6 +248,30 @@ check("Run reports the switch and whether anything can actually send, as two sep
   assert.equal(stageById(live, "run").summary, "Campaign running.");
 });
 
+check("outside the window, Run and Monitor tell ONE story about who is queued", () => {
+  // The 2026-07-26 production contradiction: Run said people were "queued and eligible when the
+  // window opens" while Monitor said "0 people are eligible in the next window". Cause: outside
+  // the send window the planner reports the due count via an `outside_window` observation and
+  // `dueNow` reads 0, and Monitor was reading `dueNow` under a sentence that promises "the next
+  // window". Monitor must read `dueEligible`, which is that number inside AND outside the window.
+  const sunday = new Date("2026-07-26T14:00:00.000Z"); // a Sunday — outside weekdays-only window
+  const lane = laneById(
+    buildFounderCampaignsView(runningState(), { env:{ SENDGRID_API_KEY:"synthetic" }, now:sunday }),
+    "reactivation");
+  const run = stageById(lane, "run");
+  const monitor = stageById(lane, "monitor");
+  // The fixture's react-1 is enrolled with no touches recorded, so exactly one person is due.
+  assert.match(monitor.summary, /^1 person is eligible in the next window\./,
+    "Monitor must report the queued person, not 0, when the window is merely closed");
+  assert.match(run.blockedReason, /outside the weekday/i);
+  assert.match(run.blockedReason, /1 person is queued and eligible when the window opens/i,
+    "Run keeps explaining the closed window and the queue behind it");
+  // The agreement itself: both surfaces carry the same count.
+  const count = (text) => Number((text.match(/(\d+) (?:person|people)/) || [])[1]);
+  assert.equal(count(monitor.summary), count(run.blockedReason),
+    "Run and Monitor may not disagree about the same queue");
+});
+
 check("a stopped campaign reports stopped, and Stop stays available", () => {
   const state = runningState();
   state.reactivationCampaign.liveMode = false;
