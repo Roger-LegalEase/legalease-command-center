@@ -728,10 +728,23 @@ export async function actOutreach(state = {}, ctx = {}) {
 
   // Existing claims (any status) index — one (contact, step) claim means one send, ever.
   const claimsById = new Map(list(next[OUTREACH_CLAIMS_COLLECTION]).map((c) => [clean(c.id), c]));
-  const markClaim = (claimId, patch) => {
+  // Durable per-row claim resolution — same contract as the reactivation ledger, and for the
+  // same reason. A claim inserted mid-tick is absent from the tick's opening snapshot, so
+  // letting the closing bulk write carry the transition both risked a timeout and guaranteed a
+  // version conflict that aborted the whole batch, stranding the claim at "claimed" forever.
+  // Outreach is marginally worse than reactivation there: the queue-item transition is also
+  // in-memory, so a lost write left the item approved AND permanently blocked by its own claim.
+  const durableClaimFailures = [];
+  const markClaim = async (claimId, patch) => {
     next[OUTREACH_CLAIMS_COLLECTION] = list(next[OUTREACH_CLAIMS_COLLECTION]).map((c) =>
       clean(c.id) === claimId ? { ...c, ...patch } : c);
     claimsById.set(claimId, { ...claimsById.get(claimId), ...patch });
+    if (typeof ctx.resolveOutreachClaim !== "function") return;
+    try {
+      await ctx.resolveOutreachClaim(claimId, patch);
+    } catch (error) {
+      durableClaimFailures.push({ claim_id: claimId, reason: clean(error?.message).slice(0, 200) });
+    }
   };
   // In-tick person-level dedupe: two approved queue items for one person yield one send.
   const processedIdentities = new Set();
@@ -855,7 +868,7 @@ export async function actOutreach(state = {}, ctx = {}) {
         const r = (await ctx.runOutreachSend(item.message, { env })) || {};
         // The send executor can itself fail closed (routing/compliance) — honor it, don't record a send.
         if (lower(r.status) === "not_sent") {
-          if (claimed) markClaim(claimId, { status: "failed", reason: `declined:${r.reason || "not_sent"}`, resolved_at: nowIso() });
+          if (claimed) await markClaim(claimId, { status: "failed", reason: `declined:${r.reason || "not_sent"}`, resolved_at: nowIso() });
           markQueue(next, item.id, "rejected", { reject_reason: `routing:${r.reason || "not_sent"}` });
           results.push({ contact_id: item.contact_id, status: "not_sent", reason: r.reason || "not_sent" });
           continue;
@@ -868,7 +881,7 @@ export async function actOutreach(state = {}, ctx = {}) {
         // touch should still go out, that is an operator decision on a fresh queue item, and
         // the claim ledger will still block the same (contact, step) from double-sending.
         if (claimed) {
-          markClaim(claimId, { status: "failed", reason: String(error.message || error), resolved_at: nowIso() });
+          await markClaim(claimId, { status: "failed", reason: String(error.message || error), resolved_at: nowIso() });
           markQueue(next, item.id, "rejected", { reject_reason: `send_error:${String(error.message || error).slice(0, 200)}` });
         }
         results.push({ contact_id: item.contact_id, status: "error", reason: String(error.message || error) });
@@ -876,7 +889,7 @@ export async function actOutreach(state = {}, ctx = {}) {
       }
     }
     if (claimed) {
-      markClaim(claimId, {
+      await markClaim(claimId, {
         status: sendOutcome.status,
         provider: sendOutcome.provider,
         provider_message_id: sendOutcome.provider_message_id || "",
@@ -904,6 +917,11 @@ export async function actOutreach(state = {}, ctx = {}) {
     results.push({ contact_id: item.contact_id, status: sendOutcome.status, provider: sendOutcome.provider });
   }
 
+  // A claim that could not be confirmed durably is reported on the spot. Silence here is
+  // what let 266 stranded claims go unnoticed for two weeks.
+  for (const failure of durableClaimFailures) {
+    results.push({ contact_id: "", status: "error", reason: `claim_confirm_failed:${failure.reason}`, claim_id: failure.claim_id });
+  }
   return { state: next, results };
 }
 
@@ -934,7 +952,7 @@ export function buildOutreachEngine(deps = {}) {
       // ctx.runOutreachSend injected by the server; absent => dry-run (no network send).
       // ctx.claimOutreachSends is the durable atomic claim path; without it, act() fails
       // CLOSED for live sends: no claim, no SendGrid call.
-      return actOutreach(state, { ...ctx, runOutreachSend: deps.runOutreachSend, claimOutreachSends: deps.claimOutreachSends });
+      return actOutreach(state, { ...ctx, runOutreachSend: deps.runOutreachSend, claimOutreachSends: deps.claimOutreachSends, resolveOutreachClaim: deps.resolveOutreachClaim });
     }
   };
 }

@@ -15,6 +15,7 @@ import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES
 import { applyBulkProspectDecision, selectPendingProspects } from "./prospect-selection.mjs";
 import { applyPressImportPlan, buildPressImportPlan, readPressWorkbook } from "./press-import.mjs";
 import { applyPressCampaignProposal, buildPressCampaignProposal } from "./press-campaign.mjs";
+import { applyReactivationReconciliation, planReactivationReconciliation } from "./reactivation-reconcile.mjs";
 import { reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, buildReactivationLiveStatus, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
 import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, sendgridBatchDigest, sendgridEventDigest, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
@@ -38277,6 +38278,22 @@ async function handleRequest(request, response) {
         // Every live outreach send atomically claims (campaign, contact, step) in
         // outreachSendClaims first; the engine fails closed without this path.
         claimOutreachSends: (claims) => store.claimCollectionItems("outreachSendClaims", claims),
+        // 2026-07-27: the OTHER half of the claim boundary — resolving it. Claiming was already
+        // durable; confirming was not, so it rode the tick's closing bulk write and was lost
+        // whenever that write timed out or conflicted, stranding 266 claims at "claimed" and
+        // permanently blocking those recipients. Each resolution is now its own versioned
+        // single-row upsert, so a confirmed send stays confirmed even if the rest of the tick
+        // dies. returnState:false keeps this off the full-state read path.
+        resolveReactivationClaim: (claimId, patch) => store.mutateCollectionItem(
+          "reactivationSendClaims", claimId,
+          (current) => ({ ...(current || {}), ...patch }),
+          { maxRetries: 3, returnState: false }
+        ),
+        resolveOutreachClaim: (claimId, patch) => store.mutateCollectionItem(
+          "outreachSendClaims", claimId,
+          (current) => ({ ...(current || {}), ...patch }),
+          { maxRetries: 3, returnState: false }
+        ),
         // Phase 18I alert email — owner-only digest and critical breakthroughs. Recipient is
         // env-locked (ALERTS_EMAIL_TO); gated by the in-app email toggle (default OFF) plus
         // ALERTS_LIVE_SEND plus the alerts engine's autopilot toggle (default OFF).
@@ -39521,6 +39538,74 @@ async function handleRequest(request, response) {
   // skips), and confirm re-verifies that invariant on every row and refuses the whole write if a
   // single campaign would land startable. Contacts are never touched: they stay Not Enrolled and
   // press-held exactly as the import left them.
+  // Stranded send-claim reconciliation. /preview is the dry run: it reads SendGrid and returns
+  // the classification with its evidence, and writes nothing at all. /apply performs exactly the
+  // plan it is given, and only for claims still sitting at "claimed".
+  if (url.pathname === "/api/reactivation/reconcile/preview" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin" }, 403);
+      return;
+    }
+    try {
+      const currentState = await store.readState();
+      const plan = await planReactivationReconciliation(currentState, { now: new Date(), env: process.env });
+      sendJson(response, {
+        ok: plan.ok,
+        noWrite: true,
+        candidates: plan.candidates,
+        days: plan.days,
+        counts: plan.counts,
+        evidence: plan.evidence,
+        notes: plan.notes,
+        // A sample per class, so the operator can see WHICH people each class covers without
+        // the whole ledger. Recipient addresses are PII: ids and classes only.
+        sample: plan.decisions.slice(0, 20).map((entry) => ({
+          claim_id: entry.claim_id, contact_id: entry.contact_id, step_number: entry.step_number,
+          claimed_at: entry.claimed_at, classification: entry.classification,
+          resolution: entry.resolution, evidence: entry.evidence
+        }))
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not build the reconciliation plan." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/reactivation/reconcile/apply" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin" }, 403);
+      return;
+    }
+    try {
+      const payload = await readJson(request);
+      // Explicit confirmation, in the shape of the 07-08 reconciliation's --yes-write-prod.
+      if (payload?.confirm !== "resolve-stranded-claims") {
+        sendJson(response, { error: 'Send {"confirm":"resolve-stranded-claims"} to apply the reconciliation.' }, 400);
+        return;
+      }
+      const outcome = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const plan = await planReactivationReconciliation(currentState, { now: new Date(), env: process.env });
+        if (!plan.ok) return { ok: false, error: "SendGrid evidence is unavailable; nothing was changed." };
+        const applied = applyReactivationReconciliation(currentState, plan, {
+          now: new Date(),
+          actor: String(accessDecision.actor?.id || accessDecision.actor?.role || "owner")
+        });
+        await store.writeChanges({ reactivationSendClaims: currentState.reactivationSendClaims }, { reactivationSendClaims: applied.state.reactivationSendClaims });
+        return {
+          ok: true, confirmed: applied.confirmed, released: applied.released,
+          leftBlocked: applied.leftBlocked, counts: plan.counts, noSend: true
+        };
+      });
+      sendJson(response, outcome, outcome.ok === false ? 409 : 200);
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not apply the reconciliation." }, 400);
+    }
+    return;
+  }
+
   if (url.pathname === "/api/press/campaign/preview" && request.method === "POST") {
     try {
       const payload = await readJson(request);

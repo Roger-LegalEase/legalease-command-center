@@ -137,6 +137,10 @@ const coreStateCollections = [
   // deleted (failed sends mark the claim failed); see appendOnlyCollections below.
   // test-reactivation-claims.mjs asserts membership.
   "reactivationSendClaims",
+  // One bounded row per reactivation tick: every distinct (status, reason) the engine decided,
+  // with counts and a small contact sample. Added 2026-07-27 because the engine persisted only
+  // COUNTS, so a tick that proposed 150 and sent 0 could not be explained from stored records.
+  "reactivationDecisions",
   // RCAP revenue/workbook import foundation. MUST stay in sync with rcap-revenue-os.mjs, or
   // workbook accounts/contacts/deal seeds/tasks silently fail to persist to Supabase.
   "rcapRevenueAccounts",

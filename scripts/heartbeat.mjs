@@ -19,6 +19,9 @@ import { APP_TIMEZONE } from "./daily-run-session.mjs";
 
 export const DEFAULT_DAILY_RUN_HOUR_ET = 6;
 export const DEFAULT_LEASE_TTL_MS = 5 * 60 * 1000;
+// Ledgers whose rows are written durably, one row at a time, OUTSIDE the tick's closing bulk
+// write — because they are the permission to send, and must survive a failed tick.
+export const DURABLE_CLAIM_COLLECTIONS = Object.freeze(["reactivationSendClaims", "outreachSendClaims"]);
 
 function bool(value) {
   return ["true", "1", "yes", "on"].includes(String(value ?? "").toLowerCase());
@@ -219,6 +222,18 @@ export async function runHeartbeat(options = {}) {
     // null !== null is false and the diff alone would leave the mid-tick claim persisted,
     // wrongly skipping the next tick for a full TTL.
     delete patch.heartbeatLease;
+    // Send-claim ledgers are owned exclusively by their own durable per-row writes
+    // (claimCollectionItems to insert, mutateCollectionItem to resolve) and must never travel in
+    // this bulk patch.
+    //
+    // 2026-07-27: they used to, and it was fatal. A claim inserted mid-tick is absent from the
+    // opening snapshot above, so the row diff emitted expected_version:null — "this row must not
+    // exist" — for a row that by then did. The store raised a version conflict and the ENTIRE
+    // tick's batch aborted: claim transitions, attempt rows, ledger entries, every engine's
+    // output. That is what left 266 claims stranded at "claimed", permanently blocking those
+    // people, while the campaign reported itself healthy. Excluding them here means a tick that
+    // sends can no longer poison its own closing write.
+    for (const claimCollection of DURABLE_CLAIM_COLLECTIONS) delete patch[claimCollection];
     // writeChanges, NOT writeCollections (2026-07-26 write-amplification fix). The reference
     // diff above narrows to changed COLLECTIONS, but engines spread-copy freely, so a tick
     // that materially changed a handful of rows still presented ~22,800 rows for rewrite —

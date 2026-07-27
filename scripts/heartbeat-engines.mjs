@@ -12,6 +12,7 @@
 
 import { runAutonomyCycleOnState } from "./autonomy-engine.mjs";
 import { buildOutreachEngine, OUTREACH_ENGINE_ID } from "./outreach-os.mjs";
+import { buildReactivationReconcileEngine, RECONCILE_ENGINE_ID } from "./reactivation-reconcile-engine.mjs";
 import { buildProspectEngine, PROSPECT_ENGINE_ID } from "./prospect-discovery.mjs";
 import { buildCodebaseHealthEngine, CODEBASE_HEALTH_ENGINE_ID } from "./codebase-health.mjs";
 import { buildEngagementGrowthEngine, ENGAGEMENT_GROWTH_ENGINE_ID } from "./engagement-growth.mjs";
@@ -86,7 +87,7 @@ export function buildHeartbeatRegistry(deps = {}) {
   // deps.claimOutreachSends is the durable atomic claim path (store.claimCollectionItems on
   // outreachSendClaims) — REQUIRED for any live send: without it the engine fails closed and
   // records not_sent/no_claim_path instead of calling SendGrid unclaimed.
-  engines.push(buildOutreachEngine({ runOutreachSend: deps.runOutreachSend, claimOutreachSends: deps.claimOutreachSends }));
+  engines.push(buildOutreachEngine({ runOutreachSend: deps.runOutreachSend, claimOutreachSends: deps.claimOutreachSends, resolveOutreachClaim: deps.resolveOutreachClaim }));
 
   // B5 prospect discovery (Tier-1 datasets only, NO send path). plan() classifies/dedups/scores
   // staged findings with no network; act() does once/day discovery (behind the inert
@@ -138,9 +139,17 @@ export function buildHeartbeatRegistry(deps = {}) {
   // deps.claimReactivationSends is the durable atomic claim path (store.claimCollectionItems on
   // reactivationSendClaims) — REQUIRED for any live send: without it the engine fails closed and
   // records not_sent/no_claim_path instead of calling SendGrid unclaimed.
+  // Standing reconciliation of stranded send-claims (2026-07-27). plan() always counts and
+  // reports them; act() resolves them against SendGrid's own records, behind its own autopilot
+  // toggle (default OFF). It never sends, and it only releases a claim on proof of a non-send.
+  engines.push(buildReactivationReconcileEngine({ fetchImpl: deps.fetchImpl }));
+
   engines.push(buildReactivationEngine({
     runReactivationSend: deps.runReactivationSend,
-    claimReactivationSends: deps.claimReactivationSends
+    claimReactivationSends: deps.claimReactivationSends,
+    // Resolving the claim is as durable as making it (2026-07-27). Without this the confirmation
+    // rides the tick's bulk write and a failed tick leaves the claim blocking forever.
+    resolveReactivationClaim: deps.resolveReactivationClaim
   }));
 
   // Phase 18I alert system. plan() observes candidate alerts only; act() raises internal alert
@@ -176,4 +185,4 @@ export function buildHeartbeatRegistry(deps = {}) {
 
 // Stable list of registered engine ids (for surfacing autopilot toggles in the UI even
 // when an engine hasn't run yet). Mirrors buildHeartbeatRegistry's ids.
-export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID, ENGAGEMENT_GROWTH_ENGINE_ID, ...OPERATING_LOOP_ENGINE_IDS, REACTIVATION_ENGINE_ID, ALERTS_ENGINE_ID, MEETING_BRIEFS_ENGINE_ID, INBOX_ENGINE_ID, COMPANY_MEMORY_ENGINE_ID];
+export const HEARTBEAT_ENGINE_IDS = ["autonomy-cycle", "sources-daily", "publishing-run", OUTREACH_ENGINE_ID, PROSPECT_ENGINE_ID, CODEBASE_HEALTH_ENGINE_ID, ENGAGEMENT_GROWTH_ENGINE_ID, ...OPERATING_LOOP_ENGINE_IDS, REACTIVATION_ENGINE_ID, RECONCILE_ENGINE_ID, ALERTS_ENGINE_ID, MEETING_BRIEFS_ENGINE_ID, INBOX_ENGINE_ID, COMPANY_MEMORY_ENGINE_ID];
