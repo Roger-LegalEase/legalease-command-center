@@ -1000,7 +1000,12 @@ function coreMutationsBetween(before = {}, after = {}) {
   for (const [key, row] of afterRows) {
     if (!changedCollections.has(row.collection)) continue;
     const prior = beforeRows.get(key);
-    if (prior && stablePayloadKey(prior.payload) === stablePayloadKey(row.payload)) continue;
+    // Fast path first: byte-identical serialisation settles the overwhelming majority. Only a
+    // row that FAILS that check pays for the key-order-insensitive comparison, so the common
+    // case costs exactly what it did before and the expensive path runs only where it can turn
+    // a false "changed" into a skip.
+    if (prior && (JSON.stringify(prior.payload) === JSON.stringify(row.payload)
+      || stablePayloadKey(prior.payload) === stablePayloadKey(row.payload))) continue;
     mutations.push({
       operation:"upsert",
       collection:row.collection,
