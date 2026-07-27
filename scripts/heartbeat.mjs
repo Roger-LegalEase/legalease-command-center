@@ -21,6 +21,8 @@ export const DEFAULT_DAILY_RUN_HOUR_ET = 6;
 export const DEFAULT_LEASE_TTL_MS = 5 * 60 * 1000;
 // Ledgers whose rows are written durably, one row at a time, OUTSIDE the tick's closing bulk
 // write — because they are the permission to send, and must survive a failed tick.
+import { logHeartbeatWriteDiagnostic } from "./heartbeat-write-diagnostic.mjs";
+
 export const DURABLE_CLAIM_COLLECTIONS = Object.freeze(["reactivationSendClaims", "outreachSendClaims"]);
 
 function bool(value) {
@@ -244,6 +246,9 @@ export async function runHeartbeat(options = {}) {
     // mutateCollectionItem below.
     const patchBefore = {};
     for (const key of Object.keys(patch)) patchBefore[key] = initialState[key];
+    // TEMPORARY (2026-07-27): print what production actually sees differ, on the exact objects
+    // this write is about to compare. Removed in the follow-up PR; the permanent alarm stays.
+    logHeartbeatWriteDiagnostic(patchBefore, patch, { runId: id });
     await store.writeChanges(patchBefore, patch);
     await store.mutateCollectionItem("heartbeatLease", "singleton", (current) => current?.runId === id
       ? { runId:"", holder:"", claimedAt:current.claimedAt || "", expiresAt:"", releasedAt:finishedAt }
