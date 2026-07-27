@@ -38625,13 +38625,21 @@ async function handleRequest(request, response) {
       const scoped = {};
       for (const collection of SENDGRID_WEBHOOK_COLLECTIONS) scoped[collection] = serverList(currentState[collection]);
       const { state: reduced, counters } = reduceSendGridEvents(scoped, events);
-      const writePatch = {};
-      for (const collection of SENDGRID_WEBHOOK_COLLECTIONS) writePatch[collection] = reduced[collection];
-      writePatch[SENDGRID_WEBHOOK_HEALTH_COLLECTION] = updateSendGridWebhookHealth(
+      // writeChanges, NOT writeCollections (2026-07-26 write-amplification fix). The snapshot
+      // path upserted every row of every scoped collection — 5,311 rows per batch against a
+      // typical change of one or two — every ~5 minutes, around the clock, which is the load
+      // that helped saturate the database twice. The reducer is immutable (changed rows are
+      // fresh objects, unchanged rows keep their identity and payload), so the store's own
+      // row diff writes exactly what the batch changed and nothing else. Same serialized
+      // executor, same claim ledger, same versioned-conflict semantics as every other write.
+      const changedAfter = {};
+      for (const collection of SENDGRID_WEBHOOK_COLLECTIONS) changedAfter[collection] = reduced[collection];
+      changedAfter[SENDGRID_WEBHOOK_HEALTH_COLLECTION] = updateSendGridWebhookHealth(
         currentState[SENDGRID_WEBHOOK_HEALTH_COLLECTION],
         { ok: true, counters, verified: verification.verified }
       );
-      await store.writeCollections(writePatch);
+      const changedBefore = { ...scoped, [SENDGRID_WEBHOOK_HEALTH_COLLECTION]: currentState[SENDGRID_WEBHOOK_HEALTH_COLLECTION] || {} };
+      await store.writeChanges(changedBefore, changedAfter);
       await store.mutateCollectionItem("webhookReplayClaims", batchId, (claim) => ({ ...claim, status: "processed", processedAt: new Date().toISOString() }), { maxRetries: 1 });
       sendJson(response, { ok: true, processed: events.length, recorded: counters.recorded, verified: verification.verified });
     } catch (error) {
