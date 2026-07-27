@@ -36,6 +36,12 @@ export const RECONCILE_MIN_AGE_MS = 30 * 60 * 1000;
 export const RECONCILE_CLASSES = Object.freeze({
   CONFIRMED_PER_MESSAGE: "confirmed_per_message",
   CONFIRMED_DAILY_TOTALS: "confirmed_daily_totals",
+  // An owner decision, not an inference. Used only for a day the automatic rules decline
+  // because SendGrid's accepted count and the claims created that day do not agree exactly.
+  // Kept as its OWN class, never merged into confirmed_daily_totals, so these stay
+  // distinguishable from evidence-only confirmations and can be revisited if better evidence
+  // ever appears. The evidence recorded on each claim carries the exact discrepancy.
+  CONFIRMED_OWNER_DECISION: "confirmed_day_level_owner_decision",
   NO_RECORD: "no_record",
   UNDETERMINED: "undetermined"
 });
@@ -52,7 +58,13 @@ export function stuckClaims(state = {}, { now = new Date(), minAgeMs = RECONCILE
 // Build the reconciliation plan. READ-ONLY: it returns decisions, it never mutates state and
 // never sends. Apply is a separate, explicitly-invoked step.
 export async function planReactivationReconciliation(state = {}, options = {}) {
-  const { now = new Date(), env = process.env, fetchImpl = fetch, minAgeMs = RECONCILE_MIN_AGE_MS } = options;
+  const {
+    now = new Date(), env = process.env, fetchImpl = fetch, minAgeMs = RECONCILE_MIN_AGE_MS,
+    // Days the owner has explicitly decided to confirm at day level despite the counts not
+    // agreeing exactly. Never a default: an empty list means the automatic rules alone decide.
+    ownerConfirmedDays = [], ownerDecisionBy = "", ownerDecisionNote = ""
+  } = options;
+  const ownerDays = new Set((Array.isArray(ownerConfirmedDays) ? ownerConfirmedDays : []).map(dayOf).filter(Boolean));
   const candidates = stuckClaims(state, { now, minAgeMs });
   const days = [...new Set(candidates.map((claim) => dayOf(claim.claimed_at)).filter(Boolean))].sort();
 
@@ -63,7 +75,8 @@ export async function planReactivationReconciliation(state = {}, options = {}) {
     days,
     evidence: { perMessageDays: [], dailyTotalsDays: [], unavailable: [] },
     decisions: [],
-    counts: { [RECONCILE_CLASSES.CONFIRMED_PER_MESSAGE]: 0, [RECONCILE_CLASSES.CONFIRMED_DAILY_TOTALS]: 0, [RECONCILE_CLASSES.NO_RECORD]: 0, [RECONCILE_CLASSES.UNDETERMINED]: 0 },
+    counts: { [RECONCILE_CLASSES.CONFIRMED_PER_MESSAGE]: 0, [RECONCILE_CLASSES.CONFIRMED_DAILY_TOTALS]: 0, [RECONCILE_CLASSES.CONFIRMED_OWNER_DECISION]: 0, [RECONCILE_CLASSES.NO_RECORD]: 0, [RECONCILE_CLASSES.UNDETERMINED]: 0 },
+    ownerConfirmedDays: [...ownerDays],
     notes: []
   };
   if (!candidates.length) return plan;
@@ -148,6 +161,22 @@ export async function planReactivationReconciliation(state = {}, options = {}) {
         detail: `SendGrid accepted ${verdict.requests} messages on ${day}; ${verdict.claimsCreated} claims were created that day (1:1)`
       }));
       plan.counts[RECONCILE_CLASSES.CONFIRMED_DAILY_TOTALS]++;
+      continue;
+    }
+    if (ownerDays.has(day)) {
+      plan.decisions.push(decision(claim, RECONCILE_CLASSES.CONFIRMED_OWNER_DECISION, {
+        source: "owner_decision_on_daily_totals",
+        detail: verdict
+          ? `SendGrid accepted ${verdict.requests} messages on ${day} against ${verdict.claimsCreated} claims created (${verdict.requests - verdict.claimsCreated}); the owner accepted day-level confirmation for this day`
+          : `no per-message activity for ${day}; the owner accepted day-level confirmation for this day`,
+        requests: verdict?.requests ?? null,
+        claimsCreated: verdict?.claimsCreated ?? null,
+        decidedBy: clean(ownerDecisionBy) || "owner",
+        note: clean(ownerDecisionNote),
+        // Spelled out so a later pass can tell exactly what this rested on, and revisit it.
+        reversible: true
+      }));
+      plan.counts[RECONCILE_CLASSES.CONFIRMED_OWNER_DECISION]++;
       continue;
     }
     plan.decisions.push(decision(claim, RECONCILE_CLASSES.UNDETERMINED, {

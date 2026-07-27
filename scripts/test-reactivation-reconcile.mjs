@@ -133,6 +133,52 @@ check("a claim younger than the grace window is never a candidate", () => {
   assert.equal(stuckClaims(state, { now: NOW }).length, 0, "a send may simply be in flight");
 });
 
+check("an owner-nominated day is confirmed as its OWN class, carrying the discrepancy", async () => {
+  const state = { reactivationSendClaims: [claim("beta"), claim("gamma")] };
+  const plan = await planReactivationReconciliation(state, {
+    now: NOW, env: ENV,
+    // One fewer accepted than claims created: the automatic rule declines this day.
+    fetchImpl: fakeSendGrid({ activityDays: {}, totals: { "2026-07-09": 1 } }),
+    ownerConfirmedDays: ["2026-07-09"], ownerDecisionBy: "Roger", ownerDecisionNote: "at most one missed touch"
+  });
+  assert.equal(plan.counts[RECONCILE_CLASSES.CONFIRMED_OWNER_DECISION], 2);
+  assert.equal(plan.counts[RECONCILE_CLASSES.UNDETERMINED], 0);
+  assert.notEqual(RECONCILE_CLASSES.CONFIRMED_OWNER_DECISION, RECONCILE_CLASSES.CONFIRMED_DAILY_TOTALS,
+    "an owner decision must never be indistinguishable from evidence-only confirmation");
+  const evidence = plan.decisions[0].evidence;
+  assert.equal(evidence.source, "owner_decision_on_daily_totals");
+  assert.equal(evidence.requests, 1);
+  assert.equal(evidence.claimsCreated, 2);
+  assert.equal(evidence.decidedBy, "Roger");
+  assert.equal(evidence.reversible, true, "it must stay revisitable if better evidence appears");
+  assert.match(evidence.detail, /-1/, "the exact discrepancy is recorded, not smoothed over");
+});
+
+check("nominating a day changes nothing for days the evidence already settles", async () => {
+  const state = { reactivationSendClaims: [claim("alpha", { claimed_at: "2026-07-27T12:00:00.000Z" })] };
+  const plan = await planReactivationReconciliation(state, {
+    now: NOW, env: ENV,
+    fetchImpl: fakeSendGrid({ activityDays: { "2026-07-27": ["alpha@example.org"] }, totals: { "2026-07-27": 1 } }),
+    ownerConfirmedDays: ["2026-07-27"]
+  });
+  assert.equal(plan.counts[RECONCILE_CLASSES.CONFIRMED_PER_MESSAGE], 1, "per-message evidence still wins");
+  assert.equal(plan.counts[RECONCILE_CLASSES.CONFIRMED_OWNER_DECISION], 0);
+});
+
+check("proof of a non-send still beats the owner's nomination", async () => {
+  const state = { reactivationSendClaims: [claim("beta")] };
+  const plan = await planReactivationReconciliation(state, {
+    now: NOW, env: ENV,
+    // SendGrid accepted NOTHING that day, so the day is answerable after all: this claim
+    // genuinely never sent. Nominating the day must not overwrite that with a confirmation.
+    fetchImpl: fakeSendGrid({ activityDays: {}, totals: { "2026-07-09": 0 } }),
+    ownerConfirmedDays: ["2026-07-09"]
+  });
+  assert.equal(plan.counts[RECONCILE_CLASSES.NO_RECORD], 1);
+  assert.equal(plan.counts[RECONCILE_CLASSES.CONFIRMED_OWNER_DECISION], 0,
+    "the owner decision applies only where the evidence is genuinely silent");
+});
+
 // ---------------------------------------------------------------------------------------------
 // 2. Applying, and what it does not touch
 // ---------------------------------------------------------------------------------------------
