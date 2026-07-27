@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { buildPartnerProgramAutonomyActions } from "./partner-program-engine.mjs";
 
 const nowIso = () => new Date().toISOString();
@@ -263,7 +265,13 @@ function mergeAutonomyActions(existing = [], generated = []) {
     if (["approved", "executed", "ignored", "blocked"].includes(previous.status) && previous.updatedAt >= action.createdAt) {
       return { ...action, ...previous, title: action.title, description: action.description, decisionClass: action.decisionClass, blockedReason: action.blockedReason || previous.blockedReason };
     }
-    return { ...previous, ...action, createdAt: previous.createdAt || action.createdAt };
+    // Keep the PRIOR updatedAt when nothing else moved. Regenerating an identical action every
+    // hour used to restamp it, which made ~120 unchanged rows differ from storage on every tick
+    // and defeated the store's row-content diff (same write-amplification class as the company
+    // memory projector). createdAt was already protected here; updatedAt was not.
+    const merged = { ...previous, ...action, createdAt: previous.createdAt || action.createdAt };
+    const withPriorStamp = { ...merged, updatedAt: previous.updatedAt };
+    return JSON.stringify(withPriorStamp) === JSON.stringify(previous) ? previous : merged;
   }).concat(list(existing).filter((item) => !generated.some((action) => action.id === item.id)).slice(0, 50)).slice(0, 120);
 }
 
@@ -349,7 +357,10 @@ export function runAutonomyCycleOnState(state = {}, options = {}) {
     userAgent: "preview-server"
   }];
   const decisions = nextActions.map((action) => ({
-    id: uid("autonomy-decision"),
+    // Deterministic id, not a fresh random one per tick. A random id made every hourly tick
+    // insert N new decision rows and evict N old ones from the 1000-row cap — permanent churn
+    // for semantically identical decisions, and pure write amplification.
+    id: `autonomy-decision-${createHash("sha256").update(`${run.id}:${action.id}`).digest("hex").slice(0, 16)}`,
     timestamp: run.finishedAt,
     actionId: action.id,
     actionType: action.actionType,

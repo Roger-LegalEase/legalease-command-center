@@ -38,7 +38,8 @@ export const REACTIVATION_COLLECTIONS = [
   "reactivationContacts",
   "reactivationAttempts",
   "reactivationEvents",     // delivered / bounce / spamreport / click / unsubscribe (from SendGrid webhook)
-  "reactivationSendClaims"  // append-only safety ledger: one atomic claim per (campaign, contact, step)
+  "reactivationSendClaims", // append-only safety ledger: one atomic claim per (campaign, contact, step)
+  "reactivationDecisions"   // per-tick reason codes with counts — why each contact was or wasn't sent to
 ];
 export const REACTIVATION_SINGLETON_COLLECTIONS = ["reactivationCampaign"];
 
@@ -714,6 +715,37 @@ function stratifyDueByProvider(due = []) {
 // tick replanning over a lost attempt ledger loses the insert and SKIPS the send. Claims are
 // never deleted: a failed or timed-out send marks the claim failed/unconfirmed and surfaces in
 // the status view for operator decision — it is never silently re-enqueued.
+export const REACTIVATION_DECISIONS_COLLECTION = "reactivationDecisions";
+export const REACTIVATION_DECISION_LEDGER_LIMIT = 200;
+const REACTIVATION_DECISION_SAMPLE = 25;
+
+// One bounded row per tick: every distinct (status, reason) with its count, plus a small sample
+// of contact ids per reason so a specific person can be traced. Deliberately NOT one row per
+// contact — that would be 150 rows an hour and would recreate the write-amplification problem
+// this same change set is fixing.
+export function summarizeDecisions(results = [], { runId = "", at = "", etDate = "", existing = [] } = {}) {
+  const byReason = new Map();
+  for (const result of list(results)) {
+    const key = `${clean(result?.status) || "unknown"}|${clean(result?.reason)}`;
+    if (!byReason.has(key)) byReason.set(key, { status: clean(result?.status) || "unknown", reason: clean(result?.reason), count: 0, sampleContactIds: [] });
+    const entry = byReason.get(key);
+    entry.count += 1;
+    if (entry.sampleContactIds.length < REACTIVATION_DECISION_SAMPLE && clean(result?.contact_id)) {
+      entry.sampleContactIds.push(clean(result.contact_id));
+    }
+  }
+  const row = {
+    id: `react-decisions-${clean(runId) || clean(at)}`,
+    run_id: clean(runId),
+    et_date: clean(etDate),
+    created_at: clean(at),
+    total: list(results).length,
+    reasons: [...byReason.values()].sort((left, right) => right.count - left.count)
+  };
+  const kept = list(existing).filter((entry) => clean(entry?.id) !== row.id);
+  return [row, ...kept].slice(0, REACTIVATION_DECISION_LEDGER_LIMIT);
+}
+
 export async function actReactivation(state = {}, ctx = {}) {
   const env = ctx.env || process.env;
   // ONE clock for the whole tick. The pre-claim decision and the executor's send-time re-check
@@ -742,10 +774,33 @@ export async function actReactivation(state = {}, ctx = {}) {
   const claimsById = new Map(
     list(next[REACTIVATION_CLAIMS_COLLECTION]).map((c) => [clean(c.id), c])
   );
-  const markClaim = (claimId, patch) => {
+  // A claim transition is written DURABLY, per row, the moment it is known — never left to the
+  // tick's closing bulk write.
+  //
+  // 2026-07-27: leaving it to the bulk write is exactly what stranded 266 claims at "claimed"
+  // and blocked those people permanently. TWO independent failure modes did it:
+  //   1. the bulk write timed out (it was carrying ~4,827 rows / 2.8 MB per tick), and
+  //   2. worse, it was structurally GUARANTEED to conflict on any tick that sent: the claim row
+  //      is inserted mid-tick by claimCollectionItems, so it is absent from the tick's opening
+  //      snapshot. The row diff therefore emits expected_version:null ("this row must not
+  //      exist") for a row that now does, the store raises a version conflict, and the WHOLE
+  //      tick's mutation batch aborts — losing the attempt rows and every other engine's output
+  //      with it. Reproduced directly against the store before this change.
+  // Each transition now goes through its own versioned single-row upsert, so confirmation
+  // survives both; heartbeat.mjs correspondingly keeps claim collections out of the bulk patch.
+  const durableClaimFailures = [];
+  const markClaim = async (claimId, patch) => {
     next[REACTIVATION_CLAIMS_COLLECTION] = list(next[REACTIVATION_CLAIMS_COLLECTION]).map((c) =>
       clean(c.id) === claimId ? { ...c, ...patch } : c);
     claimsById.set(claimId, { ...claimsById.get(claimId), ...patch });
+    if (typeof ctx.resolveReactivationClaim !== "function") return;
+    try {
+      await ctx.resolveReactivationClaim(claimId, patch);
+    } catch (error) {
+      // Never throw from here: the send already happened. Record it loudly instead, so a claim
+      // that could not be confirmed is visible immediately rather than after two weeks.
+      durableClaimFailures.push({ claim_id: claimId, reason: clean(error?.message).slice(0, 200) });
+    }
   };
   // In-tick person-level dedupe — defense in depth UNDER the planner's dedupe (PR #33): even if
   // shredded duplicate rows ever reach the proposals again, one person gets one send per tick.
@@ -805,7 +860,12 @@ export async function actReactivation(state = {}, ctx = {}) {
       // An existing claim in ANY state (claimed / sent / failed) blocks the send: sent means
       // done, claimed means an unconfirmed in-flight or lost-outcome send (operator decision,
       // never auto-retry), failed means a real failure awaiting operator decision.
-      if (claimsById.has(claimId)) {
+      //
+      // The ONE exception is "released": a claim that reconciliation checked against SendGrid's
+      // own records and found no send for. Releasing is the only way a blocked person becomes
+      // eligible again, and it happens only on evidence — never on a guess or a timeout.
+      const existingClaim = claimsById.get(claimId);
+      if (existingClaim && lower(existingClaim.status) !== "released") {
         results.push({ contact_id: contact.contact_id, status: "skipped", reason: "already_claimed", claim_id: claimId });
         continue;
       }
@@ -830,18 +890,30 @@ export async function actReactivation(state = {}, ctx = {}) {
         run_id: clean(ctx.runId),
         claimed_by: clean(ctx.actor) || "heartbeat"
       };
-      let claimOutcome;
-      try {
-        claimOutcome = (await ctx.claimReactivationSends([claim])) || {};
-      } catch (error) {
-        // Claim not durable => no send. The safety ledger IS the permission to send.
-        results.push({ contact_id: contact.contact_id, status: "error", reason: `claim_write_failed:${String(error.message || error)}` });
-        continue;
-      }
-      if (!list(claimOutcome.inserted).some((c) => clean(c.id) === claimId)) {
-        // A concurrent invocation won the unique-key insert. Skip silently, log the skip.
-        results.push({ contact_id: contact.contact_id, status: "skipped", reason: "already_claimed_concurrent", claim_id: claimId });
-        continue;
+      if (existingClaim) {
+        // Re-claiming a RELEASED row. The row still exists, so an insert would be ignored as a
+        // duplicate and the send would be skipped forever; the released claim is re-armed in
+        // place instead. Still one row per (campaign, contact, step) — never a second.
+        try {
+          await markClaim(claimId, { ...claim, reclaimed_at: claim.claimed_at, released_reclaimed: true });
+        } catch (error) {
+          results.push({ contact_id: contact.contact_id, status: "error", reason: `claim_write_failed:${String(error.message || error)}` });
+          continue;
+        }
+      } else {
+        let claimOutcome;
+        try {
+          claimOutcome = (await ctx.claimReactivationSends([claim])) || {};
+        } catch (error) {
+          // Claim not durable => no send. The safety ledger IS the permission to send.
+          results.push({ contact_id: contact.contact_id, status: "error", reason: `claim_write_failed:${String(error.message || error)}` });
+          continue;
+        }
+        if (!list(claimOutcome.inserted).some((c) => clean(c.id) === claimId)) {
+          // A concurrent invocation won the unique-key insert. Skip silently, log the skip.
+          results.push({ contact_id: contact.contact_id, status: "skipped", reason: "already_claimed_concurrent", claim_id: claimId });
+          continue;
+        }
       }
       claimed = true;
       claimsById.set(claimId, claim);
@@ -858,7 +930,7 @@ export async function actReactivation(state = {}, ctx = {}) {
         if (lower(r.status) === "not_sent") {
           // The executor's own re-check declined after we claimed (racing gate change). The
           // claim is marked failed and KEPT: operator decision, never silent re-enqueue.
-          if (claimed) markClaim(claimId, { status: "failed", reason: `declined:${r.reason || "not_sent"}`, resolved_at: nowIso() });
+          if (claimed) await markClaim(claimId, { status: "failed", reason: `declined:${r.reason || "not_sent"}`, resolved_at: nowIso() });
           results.push({ contact_id: contact.contact_id, status: "not_sent", reason: r.reason || "not_sent" });
           continue;
         }
@@ -866,13 +938,13 @@ export async function actReactivation(state = {}, ctx = {}) {
       } catch (error) {
         // Transport failure or timeout: the claim stays, marked failed, and is NEVER deleted or
         // silently re-enqueued — the next tick sees the claim and skips this (contact, step).
-        if (claimed) markClaim(claimId, { status: "failed", reason: String(error.message || error), resolved_at: nowIso() });
+        if (claimed) await markClaim(claimId, { status: "failed", reason: String(error.message || error), resolved_at: nowIso() });
         results.push({ contact_id: contact.contact_id, status: "error", reason: String(error.message || error) });
         continue;
       }
     }
     if (claimed) {
-      markClaim(claimId, {
+      await markClaim(claimId, {
         status: sendOutcome.status,
         provider: sendOutcome.provider,
         provider_message_id: sendOutcome.provider_message_id || "",
@@ -896,6 +968,19 @@ export async function actReactivation(state = {}, ctx = {}) {
     next.reactivationAttempts = [attempt, ...next.reactivationAttempts];
     results.push({ contact_id: contact.contact_id, status: sendOutcome.status, wave: contact.wave, step });
   }
+  // A claim that could not be confirmed durably is reported on the spot. Silence here is
+  // what let 266 stranded claims go unnoticed for two weeks.
+  for (const failure of durableClaimFailures) {
+    results.push({ contact_id: "", status: "error", reason: `claim_confirm_failed:${failure.reason}`, claim_id: failure.claim_id });
+  }
+  // PERSIST THE REASON PER CONTACT, not just the count.
+  //
+  // 2026-07-27: a tick reported "150 proposals, 150 results" and nothing else. Because only
+  // counts were stored, 23 of those 150 could not be explained from production records at all —
+  // the engine knew exactly why it skipped each one and then dropped it on the floor. One
+  // bounded row per tick now carries the tally and a sample, so the next silent stall is
+  // readable from the ledger instead of reconstructed by replaying the engine offline.
+  next.reactivationDecisions = summarizeDecisions(results, { runId: clean(ctx.runId), at: nowIso(), etDate: parts.dateKey, existing: list(state.reactivationDecisions) });
   return { state: next, results };
 }
 
@@ -1002,7 +1087,8 @@ export function buildReactivationEngine(deps = {}) {
         runReactivationSend: deps.runReactivationSend,
         // Durable atomic claim path (store.claimCollectionItems). Without it, act() fails
         // CLOSED for live sends: no claim, no SendGrid call.
-        claimReactivationSends: deps.claimReactivationSends
+        claimReactivationSends: deps.claimReactivationSends,
+        resolveReactivationClaim: deps.resolveReactivationClaim
       });
     }
   };

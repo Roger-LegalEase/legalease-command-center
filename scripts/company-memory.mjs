@@ -27,6 +27,35 @@
 import { createHash } from "node:crypto";
 import { normalizeSourceLink } from "./ui/links.mjs";
 
+// Key-order-independent value comparison, used only to answer "did anything actually change".
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value === undefined ? null : value);
+}
+
+// Restamp `updatedAt` ONLY when some other field actually moved.
+//
+// 2026-07-27 write-amplification fix. The projector re-derives EVERY contact, organization and
+// queue item on every hourly tick. Stamping updatedAt unconditionally made every row's payload
+// differ from the stored one, so the store's row-level content diff (coreMutationsBetween,
+// storage.mjs) could never skip it: ~4,300 semantically unchanged rows were rewritten every
+// hour, about 2.5 MB, which is what pushed the tick's closing write past the Supabase timeout
+// and cost a day of reactivation sends. PR #138 changed the write TRANSPORT to a row diff but
+// could not help while the rows themselves were being restamped.
+//
+// Returning `prior` itself (not a copy) keeps the payload AND the object identity stable, so
+// both the collection-reference gate and the row-content gate drop the row for free.
+function settleProjectedRow(prior, merged, at) {
+  if (!prior) return merged;
+  const { updatedAt: priorStamp, ...priorRest } = prior;
+  const { updatedAt: mergedStamp, ...mergedRest } = merged;
+  if (stableStringify(priorRest) === stableStringify(mergedRest)) return prior;
+  return { ...merged, updatedAt: at };
+}
+
 // Compatibility export: the canonical pure policy now lives with the shared UI
 // link renderer, while existing company-memory consumers keep the same API.
 export { normalizeSourceLink } from "./ui/links.mjs";
@@ -176,7 +205,8 @@ export function upsertQueueItems(existing = [], incoming = [], { now = () => new
     const prior = byId.get(item.id);
     if (prior) {
       const rogerDecided = QUEUE_TERMINAL_STATUSES.includes(prior.status) || prior.status === "snoozed" || prior.status === "approved" || prior.status === "scheduled";
-      byId.set(item.id, {
+      const at = now();
+      byId.set(item.id, settleProjectedRow(prior, {
         ...prior,
         // Refresh the describing fields; keep Roger's decision fields authoritative.
         title: item.title || prior.title,
@@ -188,8 +218,8 @@ export function upsertQueueItems(existing = [], incoming = [], { now = () => new
         related: item.related || prior.related || null,
         metadata: { ...prior.metadata, ...item.metadata },
         status: rogerDecided ? prior.status : item.status,
-        updatedAt: now()
-      });
+        updatedAt: at
+      }, at));
     } else {
       byId.set(item.id, item);
     }
@@ -346,7 +376,7 @@ export function upsertCompanyContact(contacts = [], input = {}, { now = () => ne
   const organizations = list(input.organizations).map(clean).filter(Boolean);
   if (idx >= 0) {
     const prior = next[idx];
-    next[idx] = {
+    next[idx] = settleProjectedRow(prior, {
       ...prior,
       name: clean(input.name) || prior.name,
       email: prior.email || email,
@@ -356,7 +386,7 @@ export function upsertCompanyContact(contacts = [], input = {}, { now = () => ne
       do_not_contact: Boolean(prior.do_not_contact || input.do_not_contact),
       last_event_at: clean(input.last_event_at) || prior.last_event_at || "",
       updatedAt: at
-    };
+    }, at);
     return { contacts: next, contact: next[idx] };
   }
   const contact = {
@@ -386,7 +416,7 @@ export function upsertCompanyOrganization(orgs = [], input = {}, { now = () => n
   const links = list(input.links).filter((l) => l && clean(l.collection));
   if (idx >= 0) {
     const prior = next[idx];
-    next[idx] = {
+    next[idx] = settleProjectedRow(prior, {
       ...prior,
       name: clean(input.name) || prior.name,
       domain: lower(input.domain) || prior.domain,
@@ -394,7 +424,7 @@ export function upsertCompanyOrganization(orgs = [], input = {}, { now = () => n
       links: dedupeLinks([...list(prior.links), ...links]),
       stage: clean(input.stage) || prior.stage || "",
       updatedAt: at
-    };
+    }, at);
     return { organizations: next, organization: next[idx] };
   }
   const organization = {
