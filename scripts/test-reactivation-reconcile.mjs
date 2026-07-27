@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 import {
   RECONCILE_CLASSES,
   applyReactivationReconciliation,
+  restoreReconciledAttempts,
   claimBlocksSend,
   planReactivationReconciliation,
   stuckClaims
@@ -217,6 +218,42 @@ check("only a released claim stops blocking", () => {
     assert.equal(claimBlocksSend({ status }), true, `${status} must still block`);
   }
   assert.equal(claimBlocksSend({ status: "released" }), false);
+});
+
+check("restoring the lost attempts is what lets a person advance to their NEXT touch", () => {
+  const confirmed = {
+    ...claim("beta"),
+    status: "sent",
+    reconciliation: { at: "2026-07-27T16:00:00.000Z", classification: RECONCILE_CLASSES.CONFIRMED_DAILY_TOTALS, evidence: { msgId: "" } }
+  };
+  const state = { reactivationSendClaims: [confirmed], reactivationAttempts: [] };
+  const restored = restoreReconciledAttempts(state, { now: NOW });
+  assert.equal(restored.restored, 1);
+  const row = restored.state.reactivationAttempts[0];
+  assert.equal(row.status, "sent");
+  assert.equal(row.step_number, 2);
+  assert.equal(row.reconstructed, true, "it must never look like a directly observed send");
+  assert.equal(row.source, "reconciliation");
+  assert.equal(row.reconciliation_class, RECONCILE_CLASSES.CONFIRMED_DAILY_TOTALS, "the evidence class travels onto the attempt");
+  assert.equal(row.created_at, confirmed.claimed_at, "the real send time, so cadence and spacing are computed from it");
+  assert.equal(row.sent_date, "2026-07-09", "dated when it was sent, so today's cap does not see it as today's traffic");
+});
+
+check("restoring is idempotent and never invents a second attempt for a step", () => {
+  const confirmed = {
+    ...claim("beta"), status: "sent",
+    reconciliation: { at: "2026-07-27T16:00:00.000Z", classification: RECONCILE_CLASSES.CONFIRMED_PER_MESSAGE, evidence: {} }
+  };
+  const once = restoreReconciledAttempts({ reactivationSendClaims: [confirmed], reactivationAttempts: [] }, { now: NOW });
+  const twice = restoreReconciledAttempts(once.state, { now: NOW });
+  assert.equal(twice.restored, 0, "re-running restores nothing twice");
+  assert.equal(twice.state.reactivationAttempts.length, 1);
+});
+
+check("a claim that was NOT reconciled is never given an attempt", () => {
+  const state = { reactivationSendClaims: [claim("beta")], reactivationAttempts: [] };
+  const restored = restoreReconciledAttempts(state, { now: NOW });
+  assert.equal(restored.restored, 0, "only a claim confirmed against evidence may be reconstructed");
 });
 
 // ---------------------------------------------------------------------------------------------

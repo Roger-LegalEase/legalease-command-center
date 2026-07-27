@@ -15,7 +15,7 @@ import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES
 import { applyBulkProspectDecision, selectPendingProspects } from "./prospect-selection.mjs";
 import { applyPressImportPlan, buildPressImportPlan, readPressWorkbook } from "./press-import.mjs";
 import { applyPressCampaignProposal, buildPressCampaignProposal } from "./press-campaign.mjs";
-import { applyReactivationReconciliation, planReactivationReconciliation } from "./reactivation-reconcile.mjs";
+import { applyReactivationReconciliation, planReactivationReconciliation, restoreReconciledAttempts } from "./reactivation-reconcile.mjs";
 import { reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, buildReactivationLiveStatus, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
 import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, sendgridBatchDigest, sendgridEventDigest, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
@@ -39606,10 +39606,20 @@ async function handleRequest(request, response) {
           now: new Date(),
           actor: String(accessDecision.actor?.id || accessDecision.actor?.role || "owner")
         });
-        await store.writeChanges({ reactivationSendClaims: currentState.reactivationSendClaims }, { reactivationSendClaims: applied.state.reactivationSendClaims });
+        // Confirming the claim is only half the record. The planner derives which touch a
+        // person is due from reactivationAttempts, and those rows were lost in the same
+        // aborted writes — so without restoring them it keeps proposing the step that was
+        // already sent and the claim correctly refuses it, forever. Restoring is what lets
+        // people advance to their NEXT touch on the normal schedule.
+        const restored = restoreReconciledAttempts(applied.state, { now: new Date() });
+        await store.writeChanges(
+          { reactivationSendClaims: currentState.reactivationSendClaims, reactivationAttempts: currentState.reactivationAttempts },
+          { reactivationSendClaims: applied.state.reactivationSendClaims, reactivationAttempts: restored.state.reactivationAttempts }
+        );
         return {
           ok: true, confirmed: applied.confirmed, released: applied.released,
-          leftBlocked: applied.leftBlocked, counts: plan.counts, noSend: true
+          leftBlocked: applied.leftBlocked, attemptsRestored: restored.restored,
+          counts: plan.counts, noSend: true
         };
       });
       sendJson(response, outcome, outcome.ok === false ? 409 : 200);

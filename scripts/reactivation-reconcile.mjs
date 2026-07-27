@@ -250,6 +250,64 @@ export function applyReactivationReconciliation(state = {}, plan = {}, { now = n
   };
 }
 
+export const RECONCILE_ATTEMPTS_COLLECTION = "reactivationAttempts";
+
+// Restore the attempt records that were lost in the same aborted writes as the confirmations.
+//
+// Confirming a claim records "this send happened" in the SAFETY ledger. The planner does not
+// read that ledger — it derives how many touches a person has had, and when, from
+// reactivationAttempts. With those rows missing, the planner keeps proposing the step that was
+// already sent, and the claim correctly refuses it: a permanent loop that confirmation alone
+// cannot break. Restoring the attempt is what tells the planner which step each person actually
+// received, so they advance to the NEXT one on the normal schedule.
+//
+// Every restored row is marked `reconstructed: true` with the evidence class that confirmed its
+// claim, so it can never be mistaken for a directly observed send. The timestamp is the claim's
+// own claimed_at — the real send time — so cadence and the minimum-spacing floor are computed
+// from when the person was actually emailed, not from today.
+export function restoreReconciledAttempts(state = {}, { now = new Date() } = {}) {
+  const at = new Date(now).toISOString();
+  const attempts = list(state[RECONCILE_ATTEMPTS_COLLECTION]);
+  // One attempt per (contact, step) — the same identity the claim ledger uses.
+  const seen = new Set(attempts.map((attempt) => `${clean(attempt.contact_id)}|${Number(attempt.step_number || 0)}`));
+  const restored = [];
+  const skipped = { alreadyRecorded: 0, notReconciled: 0, notConfirmed: 0 };
+  for (const claim of list(state[RECONCILE_CLAIMS_COLLECTION])) {
+    if (!claim?.reconciliation) { skipped.notReconciled++; continue; }
+    if (lower(claim.status) !== "sent") { skipped.notConfirmed++; continue; }
+    const key = `${clean(claim.contact_id)}|${Number(claim.step_number || 0)}`;
+    if (seen.has(key)) { skipped.alreadyRecorded++; continue; }
+    seen.add(key);
+    const evidence = claim.reconciliation.evidence || {};
+    restored.push({
+      // Deterministic id derived from the claim, so re-running restores nothing twice.
+      id: `react-attempt-recon-${clean(claim.id).replace(/^react-claim-/, "")}`,
+      contact_id: clean(claim.contact_id),
+      campaign_id: clean(claim.campaign_id) || "mvp-reactivation",
+      wave: claim.wave,
+      step_number: Number(claim.step_number || 0),
+      to: lower(claim.to),
+      provider: "sendgrid",
+      provider_message_id: clean(evidence.msgId),
+      status: "sent",
+      // The day the message actually went out, NOT today: the daily cap counts by sent_date and
+      // must not see these as today's traffic.
+      sent_date: dayOf(claim.claimed_at),
+      created_at: clean(claim.claimed_at),
+      // Provenance. This row was reconstructed from provider evidence, never observed directly.
+      source: "reconciliation",
+      reconstructed: true,
+      reconciliation_class: clean(claim.reconciliation.classification),
+      reconstructed_at: at
+    });
+  }
+  return {
+    state: { ...state, [RECONCILE_ATTEMPTS_COLLECTION]: [...restored, ...attempts] },
+    restored: restored.length,
+    skipped
+  };
+}
+
 // A released claim must stop blocking. The send path treats an existing claim in ANY state as a
 // block, so "released" is spelled out here as the one status that does not.
 export function claimBlocksSend(claim = {}) {
