@@ -24,8 +24,7 @@ import {
   createAgentRun,
   appendAgentRuns,
   upsertCompanyContact,
-  upsertCompanyOrganization
-} from "./company-memory.mjs";
+  upsertCompanyOrganization, settleProjectedCollection } from "./company-memory.mjs";
 import { campaignRates, evaluateThresholds, reactivationCampaignOf } from "./reactivation-os.mjs";
 import { autonomyLevelFor } from "./autonomy-levels.mjs";
 import { plainSafetyReasons } from "./campaign-command.mjs";
@@ -643,11 +642,14 @@ export function projectCompanyMemory(state = {}, { now = () => new Date().toISOS
     ...eventsFromReactivation(state)
   ], opts);
   const agentRuns = appendAgentRuns(state.agentRuns, agentRunsFromLedgers(state), opts);
-  const companyContacts = projectContacts(state, opts);
-  const companyOrganizations = projectOrganizations(state, opts);
+  // Settle each projected collection against what STORAGE actually held. A contact merged from
+  // several source collections can be restamped by an intermediate pass and then set back, so
+  // only an end-of-projection comparison against the original row can tell "nothing changed".
+  const companyContacts = settleProjectedCollection(state.companyContacts, projectContacts(state, opts), "contact_id");
+  const companyOrganizations = settleProjectedCollection(state.companyOrganizations, projectOrganizations(state, opts), "org_id");
 
   return {
-    state: { ...state, queueItems, companyEvents, agentRuns, companyContacts, companyOrganizations },
+    state: { ...state, queueItems: settleProjectedCollection(state.queueItems, queueItems, "id"), companyEvents, agentRuns, companyContacts, companyOrganizations },
     observations: [{
       type: "company_memory_projection",
       queueOpen: queueItems.filter((i) => !["dismissed", "completed"].includes(i.status)).length,

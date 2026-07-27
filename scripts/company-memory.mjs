@@ -36,6 +36,28 @@ function stableStringify(value) {
   return JSON.stringify(value === undefined ? null : value);
 }
 
+// Settle a whole projected collection against what was STORED, at the end of a projection.
+//
+// 2026-07-27, and this is the one production actually named. settleProjectedRow below compares
+// each upsert against the row as it stands mid-projection, which is not the same thing as the
+// row that came out of the database. A contact is upserted once per SOURCE collection — a
+// person in both reactivationContacts and expungementLifecycleContacts is merged twice — so an
+// early pass can change a field, a later pass can set it back, and the net content is identical
+// to storage while every pass in between restamped updatedAt. The row then differs from storage
+// by the timestamp alone and is rewritten every hour forever.
+//
+// Production's own diagnostic on the live read path: 10 of 10 sampled companyContacts rows
+// differed at exactly one path, `updatedAt`, with byte-identical key order on both sides. This
+// compares the FINAL row against the ORIGINAL and hands back the original when nothing but the
+// timestamp moved, which no amount of per-upsert care can achieve on its own.
+export function settleProjectedCollection(storedRows = [], projectedRows = [], idField = "id") {
+  const stored = new Map(list(storedRows).map((row) => [String(row?.[idField]), row]));
+  return list(projectedRows).map((row) => {
+    const prior = stored.get(String(row?.[idField]));
+    return prior ? settleProjectedRow(prior, row, row?.updatedAt) : row;
+  });
+}
+
 // Restamp `updatedAt` ONLY when some other field actually moved.
 //
 // 2026-07-27 write-amplification fix. The projector re-derives EVERY contact, organization and
