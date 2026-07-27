@@ -938,6 +938,40 @@ function coreRecordsFromState(state = {}) {
 // Also exported (bottom of file): the amplification guard suite measures a writer's
 // rows-written against this exact diff, so the test and the store can never disagree about
 // what "actually changed" means.
+// Write bounds, chosen from measured production timings.
+//
+// Observed on the hourly heartbeat: ~4,800 rows / 2.8 MB normally applied in about 2.0s, but
+// the same shape once took over 8s and hit SUPABASE_TIMEOUT, losing the entire batch. So the
+// danger is variance, not the average. A 1,500-row / 1 MB ceiling is roughly a third of that
+// payload — about 0.6s at the observed nominal rate, and still around 2.5s even in the
+// pathological four-times-slower case, which leaves ample headroom under the 8s timeout.
+export const CORE_MUTATION_MAX_ROWS_PER_WRITE = 1500;
+export const CORE_MUTATION_MAX_BYTES_PER_WRITE = 1_000_000;
+// Above this a write is reported loudly. Normal ticks change tens of rows; four figures means
+// something upstream is rewriting rows it did not change.
+export const CORE_MUTATION_ALARM_ROWS = 1000;
+
+// Split an ordered mutation list into chunks that each respect both bounds. Order is preserved,
+// so dependent rows still land in sequence. A single row can never exceed the byte bound on its
+// own: validateMutableRecord already rejects any record over 1 MB.
+function chunkCoreMutations(mutations = []) {
+  const chunks = [];
+  let current = [];
+  let bytes = 0;
+  for (const mutation of mutations) {
+    const size = JSON.stringify(mutation).length;
+    if (current.length && (current.length >= CORE_MUTATION_MAX_ROWS_PER_WRITE || bytes + size > CORE_MUTATION_MAX_BYTES_PER_WRITE)) {
+      chunks.push(current);
+      current = [];
+      bytes = 0;
+    }
+    current.push(mutation);
+    bytes += size;
+  }
+  if (current.length) chunks.push(current);
+  return chunks;
+}
+
 function coreMutationsBetween(before = {}, after = {}) {
   const beforeRows = new Map(coreRecordsFromState(before).map((row) => [`${row.collection}\u0000${row.item_id}`, row]));
   const afterRows = new Map(coreRecordsFromState(after).map((row) => [`${row.collection}\u0000${row.item_id}`, row]));
@@ -1800,18 +1834,41 @@ export class SupabaseCoreStore extends JsonStore {
     // The gap between this and mutations.length IS the amplification this path avoids.
     const consideredCollections = new Set(mutations.map((mutation) => mutation.collection));
     const rowsConsidered = coreRecordsFromState(after).filter((row) => consideredCollections.has(row.collection)).length;
+    // LOUD ALARM. A write this large is a bug somewhere upstream, and the last one was invisible
+    // for thirteen days because nothing said anything. Naming the responsible collections makes
+    // it same-day diagnosable instead of archaeology.
+    if (mutations.length >= CORE_MUTATION_ALARM_ROWS) {
+      const byCollection = {};
+      for (const mutation of mutations) byCollection[mutation.collection] = (byCollection[mutation.collection] || 0) + 1;
+      const worst = Object.entries(byCollection).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      console.warn(JSON.stringify({
+        level: "warn",
+        event: "excessive_state_write",
+        rowsChanged: mutations.length,
+        threshold: CORE_MUTATION_ALARM_ROWS,
+        responsibleCollections: worst.map(([collection, count]) => ({ collection, rows: count })),
+        message: `A single state write changed ${mutations.length} rows, over the ${CORE_MUTATION_ALARM_ROWS} alarm threshold. Largest contributor: ${worst[0]?.[0]} (${worst[0]?.[1]} rows).`
+      }));
+    }
     try {
       // Through the process-wide executor, NOT supabaseRestRequest directly. This call
       // site is the queue bypass that let a scoped versioned write run concurrently with
       // a queued full-state write (and with every other writeChanges caller) — the
       // application-side half of the 2026-07-25 advisory-lock convoy.
-      await submitCoreMutations(mutations, {
-        operationClass:"writeChanges",
-        requestOptions:{ collection:"batch", expectedVersion:"record versions" },
-        // Written == changed by construction here; amplification 1.0 is the healthy baseline
-        // the production telemetry shows against any remaining snapshot writer.
-        telemetry:{ rowsConsidered, rowsChanged:mutations.length, amplification:1 }
-      });
+      // BOUNDED. One oversized write is how the 2026-07-27 outage began: 4,827 rows / 2.8 MB
+      // hit SUPABASE_TIMEOUT after 8.07s and the whole batch was lost. Chunking keeps every
+      // request comfortably inside the timeout. Each chunk is its own atomic, versioned
+      // transaction applied in order — so a failure stops the sequence with earlier chunks
+      // durable, instead of discarding everything the tick did.
+      for (const chunk of chunkCoreMutations(mutations)) {
+        await submitCoreMutations(chunk, {
+          operationClass:"writeChanges",
+          requestOptions:{ collection:"batch", expectedVersion:"record versions" },
+          // Written == changed by construction here; amplification 1.0 is the healthy baseline
+          // the production telemetry shows against any remaining snapshot writer.
+          telemetry:{ rowsConsidered, rowsChanged:chunk.length, amplification:1 }
+        });
+      }
       this.lastError = "";
       this.recordWriteOutcome();
       return after;

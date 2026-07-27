@@ -16,6 +16,7 @@ import { applyBulkProspectDecision, selectPendingProspects } from "./prospect-se
 import { applyPressImportPlan, buildPressImportPlan, readPressWorkbook } from "./press-import.mjs";
 import { applyPressCampaignProposal, buildPressCampaignProposal } from "./press-campaign.mjs";
 import { applyReactivationReconciliation, planReactivationReconciliation, restoreReconciledAttempts } from "./reactivation-reconcile.mjs";
+import { describeWriteDrift } from "./heartbeat-write-diagnostic.mjs";
 import { reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, buildReactivationLiveStatus, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
 import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, sendgridBatchDigest, sendgridEventDigest, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
@@ -39541,6 +39542,32 @@ async function handleRequest(request, response) {
   // Stranded send-claim reconciliation. /preview is the dry run: it reads SendGrid and returns
   // the classification with its evidence, and writes nothing at all. /apply performs exactly the
   // plan it is given, and only for claims still sitting at "claimed".
+  // TEMPORARY read-only drift diagnostic (2026-07-27). Owner-gated, GET, writes nothing.
+  //
+  // It exists because three offline attempts to explain the rewritten rows failed to reproduce
+  // on a single row against a database DUMP — which means the difference is created by the live
+  // READ path, not by the projector. So this runs the real store.readState(), projects on top of
+  // it, and reports exactly what the store's own row diff would consider changed.
+  //
+  // Deliberately NOT inside the heartbeat tick: putting it there pushed the tick past 60s and
+  // congested the shared write executor.
+  if (url.pathname === "/api/diagnostics/write-drift" && request.method === "GET") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required." }, 403);
+      return;
+    }
+    try {
+      const liveState = await store.readState();
+      const projected = projectCompanyMemory(liveState, {});
+      const nextState = projected.state || projected;
+      sendJson(response, describeWriteDrift(liveState, nextState));
+    } catch (error) {
+      sendJson(response, { error: String(error?.message || error).slice(0, 300) }, 500);
+    }
+    return;
+  }
+
   if (url.pathname === "/api/reactivation/reconcile/preview" && request.method === "POST") {
     const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
     if (!["owner", "admin"].includes(actorRole)) {
