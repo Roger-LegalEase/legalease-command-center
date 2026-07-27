@@ -34,6 +34,7 @@ import { actOutreach, planOutreach } from "./outreach-os.mjs";
 import { buildFounderCampaignsView } from "./ui/view-models/founder-campaigns-view.mjs";
 import { FOUNDER_CAMPAIGNS_READ_COLLECTIONS } from "./founder-campaigns-api.mjs";
 import { buildCampaignDetailView } from "./campaign-detail-service.mjs";
+import { handleOutreachApiRequest } from "./outreach-api-integration.mjs";
 import { campaignDetailBrowserSource, renderCampaignDetail } from "./ui/pages/campaign-detail.mjs";
 
 const NOW = "2026-07-27T12:00:00.000Z";
@@ -430,6 +431,121 @@ check("the Campaigns lane links each proposed campaign, and a running one reads 
   const runningStage = runningView.lanes.find((lane) => lane.id === "press").stages.find((stage) => stage.id === "run");
   assert.equal(runningStage.state, "running", "an approved campaign reads as running");
   assert.ok(runningStage.detail.runningCampaign.href.startsWith("#outreach/campaign/"), "the running campaign is clickable");
+});
+
+// ---------------------------------------------------------------------------------------------
+// 7b. The HTTP request the button actually sends
+//
+// This section exists because of a shipped outage: every check above passed while the button
+// was dead in production. They all called runPressCampaign / buildCampaignDetailView directly,
+// so none of them crossed the API handler — and the handler resolved the campaign row from
+// `detail.campaign.source.sourceId`, a field the detail payload trimmed away. The run was sent
+// to an empty id and came back "This press campaign does not exist.", which the browser then
+// swallowed in silence. Engine-level and view-level proof is not proof of the request path.
+// ---------------------------------------------------------------------------------------------
+
+function memoryStore(initial) {
+  let current = initial;
+  return {
+    snapshot: () => current,
+    async readCollections(names) {
+      return Object.fromEntries((names || []).map((name) => [name, current[name] ?? []]));
+    },
+    async writeChanges(before, after) {
+      current = { ...current, ...after };
+    }
+  };
+}
+
+async function pressRequest(store, { identity, action, actor = OWNER, key = "" }) {
+  return handleOutreachApiRequest({
+    enabled: true,
+    method: "POST",
+    pathname: `/api/ui/outreach/campaign/${encodeURIComponent(identity)}/status-action`,
+    searchParams: new URLSearchParams(),
+    input: { action, idempotencyKey: key || `campaign-${action}-${"k".repeat(30)}` },
+    store,
+    actor,
+    now: NOW
+  });
+}
+
+check("the detail payload carries the record id the run action resolves the campaign by", () => {
+  const detail = buildCampaignDetailView(proposedState(), OWNER, `outreach:${pressCampaignId("ai_guardrails")}`, {});
+  assert.equal(detail.campaign.source.sourceId, pressCampaignId("ai_guardrails"),
+    "source.sourceId must reach the surface — trimming it is what killed the run button");
+});
+
+check("POST press_run over the API runs the campaign and persists it", async () => {
+  const store = memoryStore(proposedState());
+  const identity = `outreach:${pressCampaignId("ai_guardrails")}`;
+  const result = await pressRequest(store, { identity, action: "press_run" });
+  assert.equal(result.status, 200, `press_run must succeed over HTTP, got ${result.status}: ${result.body?.error}`);
+  assert.equal(result.body.ok, true);
+  assert.ok(result.body.enrolled >= 1, "the response reports who was enrolled");
+  assert.equal(result.body.externalActions, 0, "approving enrolls; it does not itself send");
+
+  const stored = store.snapshot().outreachCampaigns.find((row) => row.campaign_id === pressCampaignId("ai_guardrails"));
+  assert.equal(stored.status, "active", "the stored campaign must actually be active afterwards");
+  assert.ok(stored.run_approved?.approved_at, "the run approval is recorded on the stored row");
+
+  const after = buildCampaignDetailView(store.snapshot(), OWNER, identity, { tab: "audience" });
+  assert.equal(after.capabilities.press_stop, true, "the reloaded page offers Stop");
+  assert.equal(after.capabilities.press_run, false, "the reloaded page no longer offers Approve");
+  assert.ok(after.audience.members.some((member) => member.status === "enrolled"), "the roster reads enrolled");
+});
+
+check("every one of the eight campaigns can be approved over the API", async () => {
+  for (const angle of PRESS_ANGLES) {
+    const store = memoryStore(proposedState());
+    const identity = `outreach:${pressCampaignId(angle.id)}`;
+    const detail = buildCampaignDetailView(store.snapshot(), OWNER, identity, {});
+    if (!detail.available) continue; // an angle with no assigned journalist has no campaign row
+    const result = await pressRequest(store, { identity, action: "press_run" });
+    assert.equal(result.status, 200, `${angle.id} must be approvable, got ${result.status}: ${result.body?.error}`);
+    const stored = store.snapshot().outreachCampaigns.find((row) => row.campaign_id === pressCampaignId(angle.id));
+    assert.equal(stored.status, "active", `${angle.id} must end up active`);
+  }
+});
+
+check("the API refuses a second campaign, a viewer, and stops on request", async () => {
+  const store = memoryStore(proposedState());
+  const first = `outreach:${pressCampaignId("ai_guardrails")}`;
+  await pressRequest(store, { identity: first, action: "press_run" });
+
+  const second = await pressRequest(store, {
+    identity: `outreach:${pressCampaignId("nationwide_milestone")}`,
+    action: "press_run",
+    key: `campaign-press_run-${"s".repeat(30)}`
+  });
+  assert.equal(second.status, 409, "one press campaign at a time is enforced on the request path");
+  assert.match(second.body.error, /one press campaign at a time/i, "and the refusal says why");
+
+  const viewer = await pressRequest(store, {
+    identity: first, action: "press_stop", actor: { authenticated: true, role: "viewer" },
+    key: `campaign-press_stop-${"v".repeat(30)}`
+  });
+  assert.ok(viewer.status >= 400, `a viewer must not stop a campaign (got ${viewer.status})`);
+  assert.notEqual(viewer.status, 500, "and the refusal must read as a refusal, not a server fault");
+  assert.equal(
+    store.snapshot().outreachCampaigns.find((row) => row.campaign_id === pressCampaignId("ai_guardrails")).status,
+    "active", "the viewer's attempt changed nothing"
+  );
+
+  const stopped = await pressRequest(store, { identity: first, action: "press_stop", key: `campaign-press_stop-${"o".repeat(30)}` });
+  assert.equal(stopped.status, 200, `stop must succeed over HTTP: ${stopped.body?.error}`);
+  const stored = store.snapshot().outreachCampaigns.find((row) => row.campaign_id === pressCampaignId("ai_guardrails"));
+  assert.equal(stored.status, "stopped", "the stored campaign is stopped");
+});
+
+check("a rejected action is shown to the operator, never swallowed", () => {
+  const runtime = campaignDetailBrowserSource();
+  assert.ok(runtime.includes("data-campaign-action-error") || runtime.includes("campaignActionError"),
+    "the runtime must have somewhere to put the failure");
+  assert.ok(runtime.includes("actionError("), "the runtime must call the failure renderer");
+  assert.ok(/if\(response&&response\.ok\)\{await load\(\);return;\}/.test(runtime),
+    "success reloads; anything else — including a dead connection — falls through to the error branch");
+  assert.ok(runtime.includes("Nothing was changed."), "a failed action must say plainly that nothing changed");
 });
 
 // ---------------------------------------------------------------------------------------------
