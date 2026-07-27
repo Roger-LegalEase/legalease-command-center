@@ -90,7 +90,10 @@ export const routeRegistry = Object.freeze([
     notes: "Unified contacts include outreach, reactivation, prospects, partners, tasks, and read-only Google signals."
   }),
   route("prospects", "Prospects", "rcapProspectsPageHtml", "Queue", "Move into Outreach", "Outreach", ["prospect", "prospects", "rcap-prospects", "rcap-pipeline"], {
-    visibility: { actionCapabilities: ["approve"] },
+    // "approve" is not a capability name; the real one is approve_final_artifact. As written
+    // this denied every role, owner included. Approving a candidate is gated separately at
+    // /api/prospects/approve and is unchanged by this.
+    visibility: { actionCapabilities: ["approve_final_artifact"] },
     notes: "The self-alias #prospects is present in the live alias object; candidate approval/rejection remains gated."
   }),
   route("revenue", "Revenue", "revenuePageHtml", "Campaigns", "Move into Outreach", "Outreach", ["money", "payments", "stripe"], {
