@@ -61,6 +61,8 @@ function makeStore(initial = {}) {
     async readState() { return JSON.parse(JSON.stringify(state)); },
     async writeState(next) { state = JSON.parse(JSON.stringify(next)); return state; },
     async writeCollections(patch) { state = { ...state, ...JSON.parse(JSON.stringify(patch)) }; return state; },
+    // 2026-07-26 amplification fix: the heartbeat closing write hands before/after; mocks apply the after side.
+    async writeChanges(before, after) { state = { ...state, ...JSON.parse(JSON.stringify(after)) }; return state; },
     async mutateCollectionItem(collection, itemId, mutate, options = {}) {
       const singleton = singletonCollections.has(collection);
       const rows = singleton ? (state[collection] ? [state[collection]] : []) : (state[collection] || []);

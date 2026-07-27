@@ -806,7 +806,15 @@ function reportCoreMutationTelemetry(fields = {}) {
     queueWaitMs:Math.max(0, Math.round(Number(fields.queueWaitMs) || 0)),
     executionMs:Math.max(0, Math.round(Number(fields.executionMs) || 0)),
     outcome:["ok", "error", "expired"].includes(String(fields.outcome)) ? String(fields.outcome) : "unknown",
-    errorCode:/^[A-Za-z0-9_]{0,48}$/.test(String(fields.errorCode || "")) ? String(fields.errorCode || "") : "UNKNOWN"
+    errorCode:/^[A-Za-z0-9_]{0,48}$/.test(String(fields.errorCode || "")) ? String(fields.errorCode || "") : "UNKNOWN",
+    // Write-amplification visibility (2026-07-26). rowsConsidered = rows the caller presented
+    // across the collections it wrote; rowsChanged = rows that actually differed (-1 when the
+    // writer cannot know, i.e. a snapshot write with no fresh baseline); amplification =
+    // mutationCount / rowsChanged, the ratio that made tonight's 5,311-rows-per-batch webhook
+    // storm visible only by inference. All primitives, same allowlist discipline as above.
+    rowsConsidered:Number.isFinite(Number(fields.rowsConsidered)) ? Math.max(0, Math.trunc(Number(fields.rowsConsidered))) : 0,
+    rowsChanged:Number.isFinite(Number(fields.rowsChanged)) ? Math.max(-1, Math.trunc(Number(fields.rowsChanged))) : -1,
+    amplification:Number.isFinite(Number(fields.amplification)) ? Math.max(-1, Math.round(Number(fields.amplification) * 10) / 10) : -1
   };
   try {
     coreMutationTelemetrySink(line);
@@ -817,7 +825,7 @@ function reportCoreMutationTelemetry(fields = {}) {
 
 // THE single place in application code that may name rpc/leos_apply_core_mutations.
 // test-supabase-mutation-serialization.mjs asserts that structurally.
-function submitCoreMutations(mutations, { operationClass, requestOptions = {} } = {}) {
+function submitCoreMutations(mutations, { operationClass, requestOptions = {}, telemetry = {} } = {}) {
   const body = { p_mutations:mutations };
   const requestBytes = Buffer.byteLength(JSON.stringify(body));
   const collections = [...new Set(mutations.map((mutation) => mutation.collection))];
@@ -828,7 +836,9 @@ function submitCoreMutations(mutations, { operationClass, requestOptions = {} } 
       prefer:"return=representation",
       ...requestOptions
     }),
-    { operationClass, mutationCount:mutations.length, collections, requestBytes }
+    // `telemetry` carries the amplification fields (rowsConsidered/rowsChanged/amplification);
+    // reportCoreMutationTelemetry sanitizes them through its allowlist like every other field.
+    { operationClass, mutationCount:mutations.length, collections, requestBytes, ...telemetry }
   );
 }
 
@@ -921,6 +931,9 @@ function coreRecordsFromState(state = {}) {
   return [...rowsByKey.values()];
 }
 
+// Also exported (bottom of file): the amplification guard suite measures a writer's
+// rows-written against this exact diff, so the test and the store can never disagree about
+// what "actually changed" means.
 function coreMutationsBetween(before = {}, after = {}) {
   const beforeRows = new Map(coreRecordsFromState(before).map((row) => [`${row.collection}\u0000${row.item_id}`, row]));
   const afterRows = new Map(coreRecordsFromState(after).map((row) => [`${row.collection}\u0000${row.item_id}`, row]));
@@ -1779,6 +1792,10 @@ export class SupabaseCoreStore extends JsonStore {
     for (const mutation of mutations) {
       if (mutation.operation === "upsert") validateMutableRecord(mutation.collection, mutation.item_id, mutation.payload);
     }
+    // rowsConsidered: what a snapshot write of the same collections would have written.
+    // The gap between this and mutations.length IS the amplification this path avoids.
+    const consideredCollections = new Set(mutations.map((mutation) => mutation.collection));
+    const rowsConsidered = coreRecordsFromState(after).filter((row) => consideredCollections.has(row.collection)).length;
     try {
       // Through the process-wide executor, NOT supabaseRestRequest directly. This call
       // site is the queue bypass that let a scoped versioned write run concurrently with
@@ -1786,7 +1803,10 @@ export class SupabaseCoreStore extends JsonStore {
       // application-side half of the 2026-07-25 advisory-lock convoy.
       await submitCoreMutations(mutations, {
         operationClass:"writeChanges",
-        requestOptions:{ collection:"batch", expectedVersion:"record versions" }
+        requestOptions:{ collection:"batch", expectedVersion:"record versions" },
+        // Written == changed by construction here; amplification 1.0 is the healthy baseline
+        // the production telemetry shows against any remaining snapshot writer.
+        telemetry:{ rowsConsidered, rowsChanged:mutations.length, amplification:1 }
       });
       this.lastError = "";
       this.recordWriteOutcome();
@@ -1823,9 +1843,32 @@ export class SupabaseCoreStore extends JsonStore {
     // Same executor as writeChanges: one shared chokepoint, so a full-state snapshot and
     // a scoped versioned write can never hold overlapping advisory locks at once.
     if (rows.length) {
+      // Amplification telemetry: a snapshot write sends EVERY presented row whether or not it
+      // changed. When the read cache holds a same-generation baseline, diff against it so the
+      // ratio (rows written / rows actually changed) is visible in production — this is the
+      // number that would have shown the webhook writing 5,311 rows to change ~2 (2026-07-26).
+      // Telemetry only, guarded: a diff failure must never block the write.
+      let rowsChanged = -1;
+      let amplification = -1;
+      try {
+        if (this._stateCache && this._stateCacheGen === this._writeGen) {
+          const scopedBefore = {};
+          const scopedAfter = {};
+          for (const name of Object.keys(state || {})) {
+            if (!coreStateCollections.includes(name)) continue;
+            scopedBefore[name] = this._stateCache[name];
+            scopedAfter[name] = state[name];
+          }
+          rowsChanged = coreMutationsBetween(scopedBefore, scopedAfter).length;
+          amplification = rows.length / Math.max(1, rowsChanged);
+        }
+      } catch {
+        rowsChanged = -1;
+        amplification = -1;
+      }
       await submitCoreMutations(
         rows.map((row) => ({ operation:"upsert", collection:row.collection, item_id:row.item_id, payload:row.payload, expected_version:row.expected_version })),
-        { operationClass:"writeState" }
+        { operationClass:"writeState", telemetry:{ rowsConsidered:rows.length, rowsChanged, amplification } }
       );
     }
     // Reconcile so the snapshot is the source of truth, matching the JSON backend.
