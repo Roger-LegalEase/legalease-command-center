@@ -75,4 +75,20 @@ const realMutations = coreMutationsBetween(third, projectedThird)
 assert.ok(realMutations.length >= 1, "a genuine source change must still produce a write");
 console.log("  ✓ a genuine change is still written");
 
-console.log("projection write round-trip: 2 checks passed");
+// A row that reads back with its keys in a different order is NOT a change. Postgres jsonb does
+// not preserve key order, so without this every such row is rewritten every tick, forever.
+// Production measured 166 agentRuns rows in exactly this state.
+const reordered = { agentRuns: [{ id: "x", alpha: 1, beta: { one: 1, two: 2 } }] };
+const sameContentOtherOrder = { agentRuns: [{ beta: { two: 2, one: 1 }, id: "x", alpha: 1 }] };
+assert.equal(
+  coreMutationsBetween(reordered, sameContentOtherOrder).length, 0,
+  "identical content in a different key order must not count as a change"
+);
+const genuinelyDifferent = { agentRuns: [{ beta: { two: 2, one: 99 }, id: "x", alpha: 1 }] };
+assert.equal(
+  coreMutationsBetween(reordered, genuinelyDifferent).length, 1,
+  "a real value change must still count, or the comparison would hide writes"
+);
+console.log("  ✓ key order alone is not a change; a real value change still is");
+
+console.log("projection write round-trip: 3 checks passed");

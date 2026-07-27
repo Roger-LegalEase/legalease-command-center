@@ -972,6 +972,26 @@ function chunkCoreMutations(mutations = []) {
   return chunks;
 }
 
+// Key-order-independent payload comparison.
+//
+// Retried 2026-07-27 ONLY because production evidence now supports it. The live drift
+// diagnostic reported 166 agentRuns rows with differingPaths [] and identicalIgnoringKeyOrder
+// true — identical content, different key order, rewritten every hour forever. Payloads live in
+// a Postgres jsonb column and jsonb does not preserve key order, so a row written as
+// {"a":…,"b":…} can read back as {"b":…,"a":…} and a plain JSON.stringify calls that a change.
+//
+// An earlier attempt at this was reverted for the right reason: at the time the evidence did
+// not support it (the companyContacts rows differed genuinely, at `updatedAt`, not by key
+// order) and it changed nothing. That cause is fixed separately in the projector; this one is
+// real and this is its fix.
+function stablePayloadKey(value) {
+  if (Array.isArray(value)) return `[${value.map(stablePayloadKey).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stablePayloadKey(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value === undefined ? null : value);
+}
+
 function coreMutationsBetween(before = {}, after = {}) {
   const beforeRows = new Map(coreRecordsFromState(before).map((row) => [`${row.collection}\u0000${row.item_id}`, row]));
   const afterRows = new Map(coreRecordsFromState(after).map((row) => [`${row.collection}\u0000${row.item_id}`, row]));
@@ -980,7 +1000,7 @@ function coreMutationsBetween(before = {}, after = {}) {
   for (const [key, row] of afterRows) {
     if (!changedCollections.has(row.collection)) continue;
     const prior = beforeRows.get(key);
-    if (prior && JSON.stringify(prior.payload) === JSON.stringify(row.payload)) continue;
+    if (prior && stablePayloadKey(prior.payload) === stablePayloadKey(row.payload)) continue;
     mutations.push({
       operation:"upsert",
       collection:row.collection,
