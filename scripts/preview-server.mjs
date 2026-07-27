@@ -39549,7 +39549,13 @@ async function handleRequest(request, response) {
     }
     try {
       const currentState = await store.readState();
-      const plan = await planReactivationReconciliation(currentState, { now: new Date(), env: process.env });
+      const previewPayload = await readJson(request).catch(() => ({}));
+      const plan = await planReactivationReconciliation(currentState, {
+        now: new Date(), env: process.env,
+        ownerConfirmedDays: Array.isArray(previewPayload?.ownerConfirmedDays) ? previewPayload.ownerConfirmedDays : [],
+        ownerDecisionBy: String(accessDecision.actor?.id || accessDecision.actor?.role || "owner"),
+        ownerDecisionNote: String(previewPayload?.note || "").slice(0, 500)
+      });
       sendJson(response, {
         ok: plan.ok,
         noWrite: true,
@@ -39587,7 +39593,14 @@ async function handleRequest(request, response) {
       }
       const outcome = await serializeStateMutation(async () => {
         const currentState = await store.readState();
-        const plan = await planReactivationReconciliation(currentState, { now: new Date(), env: process.env });
+        const plan = await planReactivationReconciliation(currentState, {
+          now: new Date(), env: process.env,
+          // Day-level confirmation is an OWNER decision, never a default. It is passed in
+          // explicitly per request and recorded as its own evidence class on every claim.
+          ownerConfirmedDays: Array.isArray(payload?.ownerConfirmedDays) ? payload.ownerConfirmedDays : [],
+          ownerDecisionBy: String(accessDecision.actor?.id || accessDecision.actor?.role || "owner"),
+          ownerDecisionNote: String(payload?.note || "").slice(0, 500)
+        });
         if (!plan.ok) return { ok: false, error: "SendGrid evidence is unavailable; nothing was changed." };
         const applied = applyReactivationReconciliation(currentState, plan, {
           now: new Date(),
