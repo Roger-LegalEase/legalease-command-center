@@ -10,6 +10,7 @@ import { buildCampaignReviewStep, createCampaignLaunchPlan } from "./campaign-re
 import { buildCampaignScheduleStep, createCampaignScheduleSavePlan } from "./campaign-schedule-step.mjs";
 import { buildCampaignWizardView, createCampaignWizardSavePlan } from "./campaign-wizard-service.mjs";
 import { pauseCampaign, proposeCampaignResume } from "./campaign-command.mjs";
+import { runPressCampaign, stopPressCampaign } from "./press-campaign.mjs";
 import { requestApproval } from "./company-memory.mjs";
 import { OutreachHomeValidationError, buildAuthorizedOutreachHome } from "./outreach-home-service.mjs";
 import {
@@ -325,6 +326,30 @@ async function runStatusAction(store, state, actor, identity, input, now, enviro
   if (requestAlreadyApplied(state, requestId)) return { status:200, body:{ ok:true, duplicate:true, executed:false, mutations:0, externalActions:0 } };
   const detail = buildCampaignDetailView(state, actor, identity);
   if (!detail.available) throw integrationError("Campaign is not available.", 404, "not_available");
+  // Press run/stop — the one explicit approval per angle campaign, and the immediate stop.
+  // Both delegate to the pure press-campaign engine (enrollment re-checks, one-campaign-at-
+  // a-time, queue archiving); this handler only authorizes, audits and persists scoped.
+  if (["campaign_press_run", "campaign_press_stop"].includes(plan.action)) {
+    if (!["owner", "admin"].includes(clean(actor?.role).toLowerCase())) {
+      throw integrationError("Owner or admin access is required to run or stop a press campaign.", 403, "unauthorized");
+    }
+    const campaignId = clean(detail.campaign.source?.sourceId);
+    const outcome = plan.action === "campaign_press_run"
+      ? runPressCampaign(state, { campaignId, actor:clean(actor?.id || actor?.role), now })
+      : stopPressCampaign(state, { campaignId, actor:clean(actor?.id || actor?.role), now });
+    if (!outcome.ok) throw integrationError(clean(outcome.error) || "The press campaign action was rejected.", 409, "rejected");
+    const next = appendAudit(outcome.state, auditRecord(requestId, plan.action, detail.campaign.stableIdentity, actor, now, {
+      enrolled:outcome.enrolled ?? undefined,
+      archivedQueueItems:outcome.archivedQueueItems ?? undefined,
+      skipped:outcome.skipped ?? undefined
+    }));
+    await writeScoped(store, state, next, ["outreachCampaigns", "outreachContacts", "approvalQueue", "auditHistory"]);
+    return { status:200, body:{
+      ok:true, duplicate:false, executed:true, mutations:1, externalActions:0,
+      enrolled:outcome.enrolled ?? 0, skipped:outcome.skipped ?? {}, archivedQueueItems:outcome.archivedQueueItems ?? 0,
+      noSend:true, campaignStatus:plan.action === "campaign_press_run" ? "active" : "stopped"
+    } };
+  }
   if (!clean(detail.campaign.stableIdentity).startsWith("reactivation:")) throw integrationError("No reviewed status engine is available for this Campaign type.", 503, "failed_closed");
   let result;
   if (plan.action === "campaign_pause") result = pauseCampaign(state, { reason:clean(input.reason), actor:clean(actor?.id || actor?.role), now });

@@ -26,17 +26,23 @@ import {
   buildPressCampaignProposal,
   draftPressPitch,
   matchAngleHint,
-  pressCampaignId
+  pressCampaignId,
+  runPressCampaign,
+  stopPressCampaign
 } from "./press-campaign.mjs";
-import { planOutreach } from "./outreach-os.mjs";
+import { actOutreach, planOutreach } from "./outreach-os.mjs";
 import { buildFounderCampaignsView } from "./ui/view-models/founder-campaigns-view.mjs";
 import { FOUNDER_CAMPAIGNS_READ_COLLECTIONS } from "./founder-campaigns-api.mjs";
+import { buildCampaignDetailView } from "./campaign-detail-service.mjs";
+import { campaignDetailBrowserSource, renderCampaignDetail } from "./ui/pages/campaign-detail.mjs";
 
 const NOW = "2026-07-27T12:00:00.000Z";
 const checks = [];
+const pending = [];
 function check(name, run) {
-  run();
-  checks.push(name);
+  const result = run();
+  if (result && typeof result.then === "function") pending.push(result.then(() => checks.push(name)));
+  else checks.push(name);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -56,6 +62,8 @@ const pressContact = (id, over = {}) => ({
   press_email_type: "Direct public",
   press_coverage_lanes: "",
   press_best_angle: "",
+  // Fresh verification: the run approval re-runs pressEligibility, which requires it.
+  press_verified_at: "2026-07-20",
   ...over
 });
 
@@ -196,20 +204,22 @@ check("the planner skips proposed campaigns entirely", () => {
   assert.deepEqual(planned.proposals, [], "a proposed campaign must queue nothing");
 });
 
-check("even a campaign forced active fails closed at the press classification", () => {
+check("a campaign forced active WITHOUT the run approval still queues nothing", () => {
+  // RE-PINNED (press run path): press now maps to the press-pitch sequence, so the old
+  // unmapped-classification lock is gone BY DESIGN — its replacement is the recorded run
+  // approval, which a bare status flip cannot forge.
   let state = applyPressCampaignProposal(fixtureState(), buildPressCampaignProposal(fixtureState(), { now: NOW }), { now: NOW });
   const target = pressCampaignId("ai_guardrails");
   state = {
     ...state,
-    // Force the worst case: an active press campaign with a contact attached to it directly.
     outreachCampaigns: state.outreachCampaigns.map((row) => row.campaign_id === target ? { ...row, status: "active" } : row),
     outreachContacts: state.outreachContacts.map((row) =>
       row.contact_id === "press-hinted" ? { ...row, campaign_id: target } : row)
   };
   const planned = planOutreach(state, { now: new Date(NOW) });
-  assert.deepEqual(planned.proposals, [], "the unmapped press classification must stop every contact");
-  assert.ok(planned.observations.some((entry) => entry.type === "skip_unmapped_classification"),
-    "the skip must be observed by name, not silent");
+  assert.deepEqual(planned.proposals, [], "no run approval, no queue items — a status flip is not an approval");
+  assert.ok(planned.observations.some((entry) => entry.type === "press_run_not_approved"),
+    "the refusal must be observed by name, not silent");
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -232,7 +242,198 @@ check("the press lane's Run stage lists proposals and keeps its refusal", () => 
 });
 
 // ---------------------------------------------------------------------------------------------
-// 6. No send path, wired endpoints, no real addresses
+// 6. The run path: one approval enrolls and arms; everything downstream is the old machinery
+// ---------------------------------------------------------------------------------------------
+
+const MONDAY_IN_WINDOW = "2026-07-27T15:00:00.000Z";  // Monday 11:00 ET
+const SUNDAY = "2026-07-26T15:00:00.000Z";
+
+function proposedState() {
+  return applyPressCampaignProposal(fixtureState(), buildPressCampaignProposal(fixtureState(), { now: NOW }), { now: NOW });
+}
+
+check("runPressCampaign enrolls the audience, records the approval, and bounds touches to one", () => {
+  const target = pressCampaignId("nationwide_milestone");
+  const run = runPressCampaign(proposedState(), { campaignId: target, actor: "owner", now: NOW });
+  assert.equal(run.ok, true, `run must succeed: ${run.error}`);
+  assert.ok(run.enrolled >= 1, "at least one journalist enrolls");
+  const campaign = run.state.outreachCampaigns.find((row) => row.campaign_id === target);
+  assert.equal(campaign.status, "active");
+  assert.equal(campaign.max_touches, 1, "press pitches are one touch, never a cadence");
+  assert.equal(campaign.run_approved.approved_by, "owner", "the approval is recorded with its actor");
+  const enrolled = run.state.outreachContacts.filter((row) => row.campaign_id === target);
+  assert.equal(enrolled.length, run.enrolled);
+  for (const contact of enrolled) {
+    assert.equal(contact.press_hold, false, "enrollment releases the press hold");
+    assert.equal(contact.sequence_status, "Enrolled");
+  }
+  const untouched = run.state.outreachContacts.filter((row) => row.campaign_id !== target);
+  assert.ok(untouched.every((row) => row.press_hold !== false || row.classification !== "press"),
+    "contacts outside the approved campaign stay exactly as they were");
+});
+
+check("one press campaign at a time, and stop is immediate and archives the queue", () => {
+  const first = runPressCampaign(proposedState(), { campaignId: pressCampaignId("nationwide_milestone"), actor: "owner", now: NOW });
+  const second = runPressCampaign(first.state, { campaignId: pressCampaignId("founder_growth"), actor: "owner", now: NOW });
+  assert.equal(second.ok, false, "a second campaign must be refused while one runs");
+  assert.match(second.error, /one press campaign at a time/i);
+
+  const planned = planOutreach(first.state, { now: new Date(MONDAY_IN_WINDOW) });
+  assert.ok(planned.proposals.length >= 1, "the running campaign queues items");
+  const stopped = stopPressCampaign(planned.state, { campaignId: pressCampaignId("nationwide_milestone"), actor: "owner", now: NOW });
+  assert.equal(stopped.ok, true);
+  assert.equal(stopped.archivedQueueItems, planned.proposals.length, "every unsent queue item is archived");
+  assert.equal(stopped.state.outreachCampaigns.find((row) => row.campaign_id === pressCampaignId("nationwide_milestone")).status, "stopped");
+  const replanned = planOutreach(stopped.state, { now: new Date(MONDAY_IN_WINDOW) });
+  assert.deepEqual(replanned.proposals, [], "a stopped campaign queues nothing ever again");
+  const runAgain = runPressCampaign(stopped.state, { campaignId: pressCampaignId("founder_growth"), actor: "owner", now: NOW });
+  assert.equal(runAgain.ok, true, "after a stop, the next campaign may be approved");
+});
+
+check("run-approved queue items are APPROVED by the one campaign approval, in window only", () => {
+  const run = runPressCampaign(proposedState(), { campaignId: pressCampaignId("nationwide_milestone"), actor: "owner", now: NOW });
+  const sunday = planOutreach(run.state, { now: new Date(SUNDAY) });
+  assert.deepEqual(sunday.proposals, [], "outside the weekday window nothing queues");
+  assert.ok(sunday.observations.some((entry) => entry.reason === "outside_window"), "the window refusal is observed");
+
+  const monday = planOutreach(run.state, { now: new Date(MONDAY_IN_WINDOW) });
+  assert.ok(monday.proposals.length >= 1, "in window the campaign queues");
+  for (const item of monday.proposals) {
+    assert.equal(item.status, "approved", "the run approval covers the campaign's queue items");
+    assert.equal(item.approval_source, "press_campaign_run_approval");
+    assert.equal(item.approved_by, "owner", "the queue item names who approved the run");
+    assert.ok(item.message.text.includes("not a law firm"), "the assembled message carries the boundary language");
+    assert.ok(item.message.headers["List-Unsubscribe"], "CAN-SPAM headers are assembled by the existing machinery");
+  }
+});
+
+check("act sends once (dry-run without a live executor), then the sequence is complete", async () => {
+  const run = runPressCampaign(proposedState(), { campaignId: pressCampaignId("nationwide_milestone"), actor: "owner", now: NOW });
+  const planned = planOutreach(run.state, { now: new Date(MONDAY_IN_WINDOW) });
+  const acted = await actOutreach(planned.state, { now: new Date(MONDAY_IN_WINDOW) });
+  const sent = acted.results.filter((entry) => entry.status === "dry_run");
+  assert.ok(sent.length >= 1, "without a live executor every send is a recorded dry_run, never a network call");
+  const replanned = planOutreach(acted.state, { now: new Date(MONDAY_IN_WINDOW) });
+  assert.deepEqual(replanned.proposals, [], "max_touches 1: after the pitch, the sequence is complete");
+  assert.ok(replanned.observations.some((entry) => entry.type === "sequence_complete"), "completion is observed, not silent");
+});
+
+check("a reply stops that journalist's sequence on its own", () => {
+  const run = runPressCampaign(proposedState(), { campaignId: pressCampaignId("nationwide_milestone"), actor: "owner", now: NOW });
+  const enrolledId = run.state.outreachContacts.find((row) => row.campaign_id === pressCampaignId("nationwide_milestone")).contact_id;
+  const replied = { ...run.state, outreachReplies: [{ id: "reply-1", contact_id: enrolledId, from_email: "", received_at: NOW }] };
+  const planned = planOutreach(replied, { now: new Date(MONDAY_IN_WINDOW) });
+  assert.ok(!planned.proposals.some((item) => item.contact_id === enrolledId), "a replied journalist is never queued again");
+  assert.ok(planned.observations.some((entry) => entry.contact_id === enrolledId && /replied/.test(String(entry.reason))),
+    "the reply suppression is observed by reason");
+});
+
+check("the shared-newsroom masthead cap holds at one per day across the campaign", () => {
+  // Two shared desks on the SAME angle: only one may queue on any given day.
+  const base = fixtureState();
+  base.outreachContacts.push(
+    pressContact("desk2", { press_email_type: "Shared newsroom", press_coverage_lanes: "black founders, startups, venture capital" }),
+    // A different domain, so the per-domain cap cannot fire first and mask the masthead cap.
+    pressContact("desk3", { email: "desk3@example.net", press_email_type: "Shared newsroom", press_coverage_lanes: "black founders, startups, venture capital" })
+  );
+  const state = applyPressCampaignProposal(base, buildPressCampaignProposal(base, { now: NOW }), { now: NOW });
+  const run = runPressCampaign(state, { campaignId: pressCampaignId("founder_growth"), actor: "owner", now: NOW });
+  assert.equal(run.ok, true, `run must succeed: ${run.error}`);
+  const planned = planOutreach(run.state, { now: new Date(MONDAY_IN_WINDOW) });
+  const sharedQueued = planned.proposals.filter((item) => ["press-desk2", "press-desk3"].includes(item.contact_id));
+  assert.equal(sharedQueued.length, 1, "at most ONE shared-newsroom desk queues per day");
+  assert.ok(planned.observations.some((entry) => entry.type === "shared_newsroom_cap"), "the deferral is observed");
+});
+
+check("edited step copy that trips the gate blocks the whole campaign at queue time", () => {
+  const run = runPressCampaign(proposedState(), { campaignId: pressCampaignId("nationwide_milestone"), actor: "owner", now: NOW });
+  const doctored = {
+    ...run.state,
+    outreachSequenceSteps: run.state.outreachSequenceSteps.map((step) =>
+      step.campaign_id === pressCampaignId("nationwide_milestone")
+        ? { ...step, body: `${step.body}\n\nWe guarantee approval and your record will be cleared.` }
+        : step)
+  };
+  const planned = planOutreach(doctored, { now: new Date(MONDAY_IN_WINDOW) });
+  assert.deepEqual(planned.proposals, [], "gated copy queues nothing");
+  assert.ok(planned.observations.some((entry) => entry.type === "press_guardrail_blocked"), "the block is observed by name");
+  const rerun = runPressCampaign(proposedState(), { campaignId: pressCampaignId("nationwide_milestone"), actor: "owner", now: NOW });
+  assert.equal(rerun.ok, true, "clean copy still runs");
+});
+
+// ---------------------------------------------------------------------------------------------
+// 7. The campaign detail surface: what Roger actually sees and clicks
+// ---------------------------------------------------------------------------------------------
+
+const OWNER = { authenticated: true, role: "owner" };
+
+check("a PROPOSED campaign's detail shows the drafted pitch and the assigned journalists", () => {
+  const state = proposedState();
+  const detail = buildCampaignDetailView(state, OWNER, `outreach:${pressCampaignId("ai_guardrails")}`, { tab: "messages" });
+  assert.equal(detail.available, true, "the campaign detail must resolve");
+  assert.equal(detail.messages.steps.length, 1, "the drafted step is in the Messages payload");
+  assert.match(detail.messages.steps[0].subject, /fail-closed guardrails/i);
+  assert.match(detail.messages.steps[0].body, /not a law firm/i, "the BODY itself is in the payload, not a count");
+  assert.ok(detail.audience.members.length >= 1, "the assigned journalists are in the Audience payload");
+  for (const member of detail.audience.members) {
+    assert.ok(member.name, "each member has a name");
+    assert.ok(["assigned", "held", "enrolled", "excluded"].includes(member.status), `status ${member.status} is explained`);
+  }
+  assert.match(detail.audience.summary, /assigned journalist/i, "the summary says assigned-and-held, not '0 enrolled'");
+  assert.equal(detail.capabilities.press_run, true, "the owner is offered the one run approval");
+  assert.equal(detail.capabilities.press_stop, false, "stop is not offered before run");
+});
+
+check("after the run approval the detail flips to running with an immediate stop", () => {
+  const target = pressCampaignId("ai_guardrails");
+  const run = runPressCampaign(proposedState(), { campaignId: target, actor: "owner", now: NOW });
+  const detail = buildCampaignDetailView(run.state, OWNER, `outreach:${target}`, { tab: "audience" });
+  assert.equal(detail.capabilities.press_run, false, "run is a one-time approval");
+  assert.equal(detail.capabilities.press_stop, true, "stop is offered immediately");
+  assert.ok(detail.audience.members.some((member) => member.status === "enrolled"), "enrolled journalists read as enrolled");
+});
+
+check("a viewer is never offered the run approval", () => {
+  const detail = buildCampaignDetailView(proposedState(), { authenticated: true, role: "viewer" }, `outreach:${pressCampaignId("ai_guardrails")}`, {});
+  if (detail.available) {
+    assert.equal(detail.capabilities.press_run, false, "run is owner/admin only");
+    assert.equal(detail.capabilities.press_stop, false, "stop is owner/admin only");
+  }
+});
+
+check("the rendered page carries the pitch body, the roster and the run button", () => {
+  const state = proposedState();
+  const messagesView = { ...buildCampaignDetailView(state, OWNER, `outreach:${pressCampaignId("ai_guardrails")}`, { tab: "messages" }), advancedDelivery: null, repliesOutcomes: null };
+  const messagesHtml = renderCampaignDetail(messagesView);
+  assert.ok(messagesHtml.includes("campaign-detail-message-body"), "Messages renders the body block");
+  assert.ok(messagesHtml.includes("not a law firm"), "the pitch copy is readable on the page");
+  assert.ok(messagesHtml.includes('data-campaign-action="press_run"'), "the one approve action is on the page");
+
+  const audienceView = { ...buildCampaignDetailView(state, OWNER, `outreach:${pressCampaignId("ai_guardrails")}`, { tab: "audience" }), advancedDelivery: null, repliesOutcomes: null };
+  const audienceHtml = renderCampaignDetail(audienceView);
+  assert.ok(audienceHtml.includes("campaign-detail-audience"), "Audience renders the roster");
+
+  const runtime = campaignDetailBrowserSource();
+  for (const marker of ["campaign-detail-message-body", "campaign-detail-audience", "press_run", "press_stop", "window.confirm"]) {
+    assert.ok(runtime.includes(marker), `the browser runtime must carry ${marker}`);
+  }
+});
+
+check("the Campaigns lane links each proposed campaign, and a running one reads as running", () => {
+  const proposed = buildFounderCampaignsView(proposedState(), { pressEnabled: true });
+  const run = proposed.lanes.find((lane) => lane.id === "press").stages.find((stage) => stage.id === "run");
+  assert.ok(run.detail.proposedCampaigns.every((entry) => entry.href.startsWith("#outreach/campaign/")),
+    "every proposal links to its campaign detail page");
+
+  const active = runPressCampaign(proposedState(), { campaignId: pressCampaignId("nationwide_milestone"), actor: "owner", now: NOW });
+  const runningView = buildFounderCampaignsView(active.state, { pressEnabled: true });
+  const runningStage = runningView.lanes.find((lane) => lane.id === "press").stages.find((stage) => stage.id === "run");
+  assert.equal(runningStage.state, "running", "an approved campaign reads as running");
+  assert.ok(runningStage.detail.runningCampaign.href.startsWith("#outreach/campaign/"), "the running campaign is clickable");
+});
+
+// ---------------------------------------------------------------------------------------------
+// 8. No send path, wired endpoints, no real addresses
 // ---------------------------------------------------------------------------------------------
 
 const stripped = (path) => readFileSync(new URL(path, import.meta.url), "utf8")
@@ -278,4 +479,5 @@ check("no real email address appears anywhere in this suite", () => {
   }
 });
 
+await Promise.all(pending);
 console.log(`test-press-campaign: ${checks.length} checks passed`);

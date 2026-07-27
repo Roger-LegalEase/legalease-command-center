@@ -30,11 +30,22 @@ function stageStateLabel(state) {
 
 function stageHtml(stage) {
   const action = stage.action;
+  // Proposed press campaigns are clickable: each link opens the campaign detail page where
+  // the drafted pitch (Messages), the assigned journalists (Audience) and the one run
+  // approval live. A running campaign links the same way. Links only — this surface still
+  // performs no mutation and issues no POST.
+  const proposed = Array.isArray(stage.detail?.proposedCampaigns) ? stage.detail.proposedCampaigns : [];
+  const running = stage.detail?.runningCampaign;
+  const campaignLinks = [...proposed, ...(running ? [running] : [])]
+    .filter((entry) => entry && entry.href)
+    .map((entry) => `<li><a href="${escapeAttribute(entry.href)}">${escapeHtml(entry.label || entry.angleId || "Campaign")}</a>${Number.isFinite(entry.assigned) ? ` — ${escapeHtml(String(entry.assigned))} assigned` : ""}</li>`)
+    .join("");
   return `<li class="founder-campaign-stage" data-campaign-stage="${escapeAttribute(stage.id)}" data-stage-state="${escapeAttribute(stage.state)}">
     <p class="founder-campaign-stage-name">${escapeHtml(stage.label)}</p>
     <p class="founder-campaign-stage-state">${escapeHtml(stageStateLabel(stage.state))}</p>
     <p class="founder-campaign-stage-summary">${escapeHtml(stage.summary || "")}</p>
     ${stage.blockedReason ? `<p class="founder-campaign-stage-reason" role="note">${escapeHtml(stage.blockedReason)}</p>` : ""}
+    ${campaignLinks ? `<ul class="founder-campaign-stage-campaigns" aria-label="Campaigns">${campaignLinks}</ul>` : ""}
     ${action ? `<p class="founder-campaign-stage-action"><span data-campaign-action="${escapeAttribute(stage.id)}">${escapeHtml(action.label)}</span></p>` : ""}
   </li>`;
 }

@@ -296,12 +296,16 @@ assert.doesNotMatch(serverSource, /view-models\/campaign-(?:view|sources)\.mjs/,
 function sha256(source) {
   return createHash("sha256").update(source).digest("hex");
 }
-// Re-pinned 2026-07-25 (campaign surface repair): the reactivation label merge in
-// campaign-sources.mjs and the identityAliases/canonicalActivity passthrough in
-// campaign-view.mjs. Behavior of the merge is asserted by
-// scripts/test-campaign-reactivation-dedupe.mjs; these pins stay as drift guards.
-assert.equal(sha256(campaignViewSource), "fe559cbf2bc3ccdb5ce9e5bebb5c1e3eeccd6dbca1a1e6623079e56eadd6cdd9");
-assert.equal(sha256(campaignSourcesSource), "ec0af09f53f3043b4fc8eae52e38945c27ea9e8db253b20d620466a5e309043a");
+// Re-pinned 2026-07-27 (press run path): campaign-sources.mjs resolves a press proposal's
+// named audience (audience_contact_ids -> assignedContacts); campaign-view.mjs projects the
+// drafted step copy (message.steps), the audience roster (audience.members, status per
+// person), and the press run/stop block. Behavior is asserted by
+// scripts/test-press-campaign.mjs; these pins stay as drift guards.
+// Prior re-pin 2026-07-25 (campaign surface repair): reactivation label merge +
+// identityAliases/canonicalActivity passthrough, asserted by
+// scripts/test-campaign-reactivation-dedupe.mjs.
+assert.equal(sha256(campaignViewSource), "129b98f12b01fe4ff3b154a33a6ac07edd2e81c5b4f3fddf854ca83cd77f0dc0");
+assert.equal(sha256(campaignSourcesSource), "8f520712b97d44aeb4f59478f9172ef97cb5ce9d8d2ebf2f754454ce529d8cca");
 assert.doesNotMatch(serverSource, /from\s+["'][^"']*view-models\/campaign-view\.mjs["']/, "Shared integration must not couple the server directly to CampaignView.");
 assert.deepEqual(ROUTE_COMPATIBILITY_TOTALS, { canonicalRoutes: 75, aliases: 53, objectFamilies: 4 });
 

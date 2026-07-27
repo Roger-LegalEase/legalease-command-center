@@ -377,6 +377,35 @@ Roger`
 ];
 
 // ---------------------------------------------------------------------------
+// Press pitch — ONE touch, no automated follow-up.
+//
+// Press campaigns carry their real per-angle copy in `outreachSequenceSteps` (written by the
+// composer, gated by evaluatePressGuardrails + evaluatePressKitClaims); this registered touch
+// exists so press routes through the SAME fail-closed chokepoint as every other classification
+// instead of around it. The copy below is the composer's generic shell — kit-ratified facts and
+// boundary language only — so even a fallback render never says more than the kit allows.
+// Journalist follow-ups are a human decision, never a cadence: one touch, then silence unless
+// they reply (and a reply suppresses further sends anyway).
+// ---------------------------------------------------------------------------
+export const PRESS_PITCH_TOUCHES = [
+  {
+    step_number: 1,
+    subject: "Story idea: record clearing, bounded by design",
+    body: `Hello,
+
+I'm reaching out from LegalEase about our product Expungement.ai: a free record-clearing eligibility screening in all 50 states and Washington, D.C., with packet preparation at a flat $50 per supported case and guidance only where relief is automatic.
+
+One boundary we state everywhere, including here: LegalEase is not a law firm and does not provide legal advice or representation, and outcome language stays bounded — may be able to, never a promise.
+
+Usage and traction figures are available on request. Co-founder and COO Roger Roman is available for interviews Tuesday through Thursday, 10:00 to 14:00 ET, and the full press kit is one reply away.
+
+Would this fit your coverage?
+
+Roger`
+  }
+];
+
+// ---------------------------------------------------------------------------
 // Sequence registry + routing.
 // ---------------------------------------------------------------------------
 export const OUTREACH_SEQUENCES = Object.freeze({
@@ -399,6 +428,12 @@ export const OUTREACH_SEQUENCES = Object.freeze({
     id: "employer-pathway",
     cadence: OUTREACH_CADENCE_DAYS,
     touches: EMPLOYER_PATHWAY_TOUCHES
+  }),
+  // Single-touch by design — see PRESS_PITCH_TOUCHES. Campaign steps carry the per-angle copy.
+  "press-pitch": Object.freeze({
+    id: "press-pitch",
+    cadence: Object.freeze([1]),
+    touches: PRESS_PITCH_TOUCHES
   })
 });
 
@@ -417,7 +452,12 @@ export const CLASSIFICATION_SEQUENCE_MAP = Object.freeze({
   public_defender: "clinic-extension",
   clinic: "clinic-extension",
   // employer-pathway — second-chance / fair-chance employers
-  second_chance_employer: "employer-pathway"
+  second_chance_employer: "employer-pathway",
+  // press-pitch — journalists (the Press lane). Outside the RCAP prospect vocabulary on
+  // purpose: press contacts are never discovered or promoted by B5, only imported. Routing
+  // here is what lets a run-approved press campaign reach the ONE existing send machinery;
+  // before this entry the classification failed closed at the planner by design.
+  press: "press-pitch"
 });
 
 // Do-not-enroll classifications — recognized, but NEVER auto-enrolled/sent. CSI is handled

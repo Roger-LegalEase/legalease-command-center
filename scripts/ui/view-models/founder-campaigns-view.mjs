@@ -299,6 +299,8 @@ function pressLane(state, pressEnabled) {
   // approval-gated decision that this read-only surface cannot take.
   const proposedCampaigns = list(state.outreachCampaigns)
     .filter((row) => slug(row.classification) === "press" && slug(row.status) === "proposed");
+  const activePress = list(state.outreachCampaigns)
+    .find((row) => slug(row.classification) === "press" && ["active", "running"].includes(slug(row.status)));
   const sendable = contacts.filter((row) => row.press_sendable === true);
   const held = contacts.filter((row) => row.press_sendable !== true);
   const warm = contacts.filter((row) => slug(row.press_outreach_kind) === "warm_follow_up");
@@ -364,28 +366,45 @@ function pressLane(state, pressEnabled) {
       }),
 
     // Run is deliberately identical in shape to reactivation: one approval, no autonomous send.
-    stage("run", "stopped",
-      (proposedCampaigns.length
-        ? `${proposedCampaigns.length} proposed angle campaign${proposedCampaigns.length === 1 ? "" : "s"} drafted and waiting. `
-        : "")
-      + "No press campaign is running. Sending requires your approval, one campaign at a time.",
-      {
-        action: { label: "Run", route: "POST /api/outreach/approve", mutates: true },
-        blockedReason: "Nothing sends until you approve a campaign, and approval is the only thing that starts it.",
-        detail: proposedCampaigns.length
-          ? {
-            proposedCampaigns: Object.freeze(proposedCampaigns.map((row) => Object.freeze({
-              angleId: clean(row.angle_id) || null,
-              label: clean(row.angle_label || row.name) || null,
-              assigned: Number(row.audience?.assigned) || 0,
-              direct: Number(row.audience?.direct) || 0,
-              sharedNewsroom: Number(row.audience?.sharedNewsroom) || 0,
-              proposedAt: clean(row.proposed_at) || null
-            }))),
-            composeRoute: "POST /api/press/campaign/preview"
+    activePress
+      ? stage("run", "running",
+        `"${clean(activePress.name) || clean(activePress.campaign_id)}" is running — one touch per journalist, stop is immediate, a reply stops that journalist on its own.`,
+        {
+          action: { label: "Open the running campaign", route: `#outreach/campaign/${encodeURIComponent(`outreach:${clean(activePress.campaign_id || activePress.id)}`)}`, mutates: false },
+          detail: {
+            runningCampaign: Object.freeze({
+              campaignId: clean(activePress.campaign_id || activePress.id),
+              label: clean(activePress.angle_label || activePress.name) || null,
+              href: `#outreach/campaign/${encodeURIComponent(`outreach:${clean(activePress.campaign_id || activePress.id)}`)}`,
+              approvedAt: clean(activePress.run_approved?.approved_at) || null
+            })
           }
-          : null
-      }),
+        })
+      : stage("run", "stopped",
+        (proposedCampaigns.length
+          ? `${proposedCampaigns.length} proposed angle campaign${proposedCampaigns.length === 1 ? "" : "s"} drafted and waiting — open one to read the pitch and approve it. `
+          : "")
+        + "No press campaign is running. Sending requires your approval, one campaign at a time.",
+        {
+          action: { label: "Run", route: "POST /api/outreach/approve", mutates: true },
+          blockedReason: "Nothing sends until you approve a campaign, and approval is the only thing that starts it.",
+          detail: proposedCampaigns.length
+            ? {
+              proposedCampaigns: Object.freeze(proposedCampaigns.map((row) => Object.freeze({
+                angleId: clean(row.angle_id) || null,
+                label: clean(row.angle_label || row.name) || null,
+                assigned: Number(row.audience?.assigned) || 0,
+                direct: Number(row.audience?.direct) || 0,
+                sharedNewsroom: Number(row.audience?.sharedNewsroom) || 0,
+                proposedAt: clean(row.proposed_at) || null,
+                // The click path: the campaign detail page, where Messages carries the drafted
+                // pitch, Audience the assigned journalists, and the one approval lives.
+                href: `#outreach/campaign/${encodeURIComponent(`outreach:${clean(row.campaign_id || row.id)}`)}`
+              }))),
+              composeRoute: "POST /api/press/campaign/preview"
+            }
+            : null
+        }),
 
     stage("monitor", "ready",
       `${replies.length} repl${replies.length === 1 ? "y" : "ies"}. ${placements.length} placement${placements.length === 1 ? "" : "s"} recorded.`,

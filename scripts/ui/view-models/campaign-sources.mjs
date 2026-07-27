@@ -191,6 +191,13 @@ function partnerContexts(state, role) {
     .map((record) => {
       const sourceId = recordId(record);
       const contacts = visibleRecords(state.outreachContacts, role).filter((item) => directCampaignMatch(item, sourceId));
+      // A press proposal names its audience BEFORE anyone is enrolled (audience_contact_ids,
+      // written by the composer). Resolved here so the Audience tab can list the assigned
+      // journalists while the campaign is still proposed, not only after enrollment.
+      const assignedIds = new Set(list(record.audience_contact_ids).map(clean).filter(Boolean));
+      const assignedContacts = assignedIds.size
+        ? visibleRecords(state.outreachContacts, role).filter((item) => assignedIds.has(clean(item.contact_id)))
+        : [];
       const contactIds = new Set(contacts.map(recordId).filter(Boolean));
       const related = (name) => visibleRecords(state[name], role).filter((item) =>
         directCampaignMatch(item, sourceId) || contactIds.has(clean(item.contact_id || item.contactId))
@@ -207,6 +214,7 @@ function partnerContexts(state, role) {
         href: "#campaigns",
         record,
         contacts,
+        assignedContacts,
         sequenceSteps: visibleRecords(state.outreachSequenceSteps, role).filter((item) => directCampaignMatch(item, sourceId)),
         attempts: related("outreachAttempts"),
         replies: related("outreachReplies"),

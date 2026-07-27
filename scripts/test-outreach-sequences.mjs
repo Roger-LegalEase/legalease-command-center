@@ -79,13 +79,23 @@ function testClassificationMapping() {
   assert.equal(resolveSequenceForClassification("government").sequenceId, "government-accountability", "government moved to government-accountability");
   // case-insensitive
   assert.equal(resolveSequenceForClassification("Nonprofit").sequenceId, "verified-reporting", "case-insensitive");
-  // all four sequences exist and carry the [1,4,9,16,30] cadence with 5 touches
+  // RE-PIN (press run path, 2026-07-27): five sequences. The four RCAP sequences carry the
+  // [1,4,9,16,30] cadence with 5 touches; press-pitch is SINGLE-TOUCH by design — a journalist
+  // follow-up is a human decision, never a cadence, and the per-angle copy lives in the press
+  // campaign's own outreachSequenceSteps rows.
   assert.deepEqual([...OUTREACH_SEQUENCE_IDS].sort(),
-    ["clinic-extension", "employer-pathway", "government-accountability", "verified-reporting"], "four sequences loaded");
+    ["clinic-extension", "employer-pathway", "government-accountability", "press-pitch", "verified-reporting"],
+    "five sequences loaded");
   for (const id of OUTREACH_SEQUENCE_IDS) {
+    if (id === "press-pitch") {
+      assert.deepEqual(OUTREACH_SEQUENCES[id].cadence, [1], `${id} cadence is one touch`);
+      assert.equal(OUTREACH_SEQUENCES[id].touches.length, 1, `${id} has exactly 1 touch — no automated follow-up`);
+      continue;
+    }
     assert.deepEqual(OUTREACH_SEQUENCES[id].cadence, [1, 4, 9, 16, 30], `${id} cadence`);
     assert.equal(OUTREACH_SEQUENCES[id].touches.length, 5, `${id} has 5 touches`);
   }
+  assert.equal(resolveSequenceForClassification("press").sequenceId, "press-pitch", "press routes to press-pitch");
   ok("classifications map to the correct sequences (nonprofit/funders->verified; gov/county_reentry->government-accountability; legal_aid/PD/clinic->clinic; second_chance_employer->employer-pathway)");
 }
 
@@ -194,11 +204,17 @@ function testCalendarLinkRendering() {
   assert.ok(bare.includes(`<a href="${CALENDAR_URL}">grab a time here</a>`), "bare token uses default label");
   assert.ok(renderTouchText("book here: [CALENDAR_LINK]").includes(CALENDAR_URL), "renderTouchText uses raw URL");
 
-  // Every approved touch across all four sequences renders cleanly (no bare URL as text).
+  // Every approved touch renders cleanly (no bare URL as text). The four RCAP sequences carry
+  // a calendar anchor; press-pitch deliberately does NOT — a journalist books through a reply
+  // (the kit's interview-availability section), never a sales calendar link.
   for (const id of OUTREACH_SEQUENCE_IDS) {
     for (const t of OUTREACH_SEQUENCES[id].touches) {
       const html = renderTouchHtml(t.body);
       assert.ok(!html.includes(`>${CALENDAR_URL}<`), `${id} touch ${t.step_number}: no visible raw URL`);
+      if (id === "press-pitch") {
+        assert.ok(!html.includes(CALENDAR_URL), `${id} touch ${t.step_number}: no calendar link in a press pitch`);
+        continue;
+      }
       assert.ok(html.includes(`<a href="${CALENDAR_URL}">`), `${id} touch ${t.step_number}: has calendar anchor`);
     }
   }
