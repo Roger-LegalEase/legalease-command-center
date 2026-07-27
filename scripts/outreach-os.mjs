@@ -33,6 +33,10 @@ import {
   renderTouchText, renderTouchHtml
 } from "./outreach-sequences.mjs";
 export { resolveSequenceForClassification };
+// Press guardrail + approved-claims gate (pure, no send path of its own) and the shared
+// newsroom masthead cap. Press campaigns ride THIS machinery; these are the two press-shaped
+// checks the Pitch Map adds on top of it, enforced at queue time and again at send time.
+import { PRESS_SHARED_ADDRESS_DAILY_CAP, evaluatePressGuardrails } from "./press-outreach.mjs";
 
 // ---------------------------------------------------------------------------
 // 1. DATA MODEL — single source of truth for collection membership.
@@ -491,6 +495,25 @@ export function todaysSendTally(state = {}, parts = etParts()) {
   return { total: sentToday.length, perDomain, perClass };
 }
 
+// Press: a shared newsroom address reaches a masthead, not a person, so shared-newsroom
+// sends carry a tighter CAMPAIGN-WIDE cap — at most PRESS_SHARED_ADDRESS_DAILY_CAP (1) per
+// day across ALL press campaigns, counted at queue time and re-counted on the send day.
+export function isSharedNewsroomPressContact(contact = {}) {
+  return lower(contact.classification) === "press"
+    && lower(contact.press_email_type) === "shared newsroom";
+}
+
+export function sharedNewsroomSendsToday(state = {}, parts = etParts()) {
+  const shared = new Set(
+    list(state.outreachContacts).filter(isSharedNewsroomPressContact).map((c) => clean(c.contact_id))
+  );
+  return list(state.outreachAttempts).filter((a) =>
+    ["sent", "dry_run"].includes(lower(a.status))
+    && clean(a.sent_date) === parts.dateKey
+    && shared.has(clean(a.contact_id))
+  ).length;
+}
+
 // Returns { ok, reason }. tally is mutated by the caller as it commits sends in a batch.
 export function capCheck({ contact = {}, classification = "", caps = DEFAULT_OUTREACH_CAPS, tally, parts = etParts() } = {}) {
   if (!withinSendingWindow(caps, parts)) return { ok: false, reason: "outside_window" };
@@ -560,12 +583,41 @@ export function planOutreach(state = {}, ctx = {}) {
 
   const orgById = new Map(list(state.outreachOrganizations).map((o) => [clean(o.account_id || o.organization_id || o.id), o]));
   const stepsByCampaign = groupBy(list(state.outreachSequenceSteps), (s) => clean(s.campaign_id));
+  // Shared-newsroom masthead cap: sends already made today + shared items queued THIS tick.
+  let sharedNewsroomToday = sharedNewsroomSendsToday(state, parts);
 
   for (const campaign of list(state.outreachCampaigns)) {
     if (lower(campaign.status) && !["active", "running"].includes(lower(campaign.status))) continue;
     const campaignId = clean(campaign.campaign_id || campaign.id);
     const steps = (stepsByCampaign.get(campaignId) || []).slice().sort((a, b) => (a.step_number || 0) - (b.step_number || 0));
     if (!steps.length) continue;
+
+    // ---- Press campaign-level gates (queue time) -------------------------------------------
+    // (1) The one explicit run approval: an active press campaign WITHOUT a recorded run
+    //     approval queues nothing — flipping the status is not enough, on purpose.
+    // (2) The guardrail + claims gate re-runs over every step's stored copy, so copy edited
+    //     after the compose-time gate cannot reach the queue unchecked.
+    const isPress = lower(campaign.classification) === "press";
+    const runApproval = isPress && campaign.run_approved
+      && clean(campaign.run_approved.approved_at || campaign.run_approved.at)
+      ? campaign.run_approved : null;
+    if (isPress) {
+      if (!runApproval) {
+        observations.push({ type: "press_run_not_approved", campaign_id: campaignId });
+        continue;
+      }
+      const blockedStep = steps.find((step) =>
+        !evaluatePressGuardrails(`${clean(step.subject)}\n${clean(step.body)}`, clean(campaign.angle_id)).passed);
+      if (blockedStep) {
+        observations.push({ type: "press_guardrail_blocked", campaign_id: campaignId, step_number: blockedStep.step_number });
+        continue;
+      }
+    }
+    // A campaign may bound its own touches below the global cap (press pitches are exactly
+    // one touch — a journalist follow-up is a human decision, never a cadence).
+    const touchLimit = Number(campaign.max_touches) > 0
+      ? Math.min(caps.maxTouches, Number(campaign.max_touches))
+      : caps.maxTouches;
 
     const enrolled = list(state.outreachContacts).filter(
       (c) => clean(c.campaign_id) === campaignId || isEnrolledIn(c, campaignId)
@@ -582,7 +634,7 @@ export function planOutreach(state = {}, ctx = {}) {
       if (!seqRes.ok) { observations.push({ type: `skip_${seqRes.reason}`, contact_id: contact.contact_id, classification: clean(classification) }); continue; }
 
       const { count, lastAt } = touchesFor(state, contact.contact_id, campaignId);
-      if (count >= caps.maxTouches) { observations.push({ type: "sequence_complete", contact_id: contact.contact_id }); continue; }
+      if (count >= touchLimit) { observations.push({ type: "sequence_complete", contact_id: contact.contact_id }); continue; }
       if (!spacingElapsed(lastAt, caps.minSpacingBusinessDays, nowMs)) { observations.push({ type: "spacing_wait", contact_id: contact.contact_id }); continue; }
 
       const step = steps[count] || steps[steps.length - 1];
@@ -601,12 +653,29 @@ export function planOutreach(state = {}, ctx = {}) {
 
       const cap = capCheck({ contact, classification: contact.classification || campaign.classification, caps, tally, parts });
       if (!cap.ok) { observations.push({ type: "cap_blocked", contact_id: contact.contact_id, reason: cap.reason }); continue; }
+      // Shared-newsroom masthead cap (press): at most one shared-desk send per day, across
+      // every press campaign. Deferred contacts stay eligible for a later day.
+      const sharedContact = isPress && isSharedNewsroomPressContact(contact);
+      if (sharedContact && sharedNewsroomToday >= PRESS_SHARED_ADDRESS_DAILY_CAP) {
+        observations.push({ type: "shared_newsroom_cap", contact_id: contact.contact_id });
+        continue;
+      }
       commitTally(tally, contact, contact.classification || campaign.classification);
+      if (sharedContact) sharedNewsroomToday += 1;
 
       const queueItem = {
         id: `outreach-q-${shortId()}`,
         type: OUTREACH_QUEUE_TYPE,
-        status: "queued_for_approval",
+        // The one explicit run approval covers the campaign's queue items: a run-approved
+        // press campaign queues APPROVED items carrying who approved the run and when. Every
+        // other campaign keeps per-message queue-then-approve, unchanged.
+        status: runApproval ? "approved" : "queued_for_approval",
+        ...(runApproval ? {
+          approved_at: nowIso(),
+          approved_by: clean(runApproval.approved_by || runApproval.by) || "owner",
+          approval_source: "press_campaign_run_approval"
+        } : {}),
+        lane: isPress ? "press" : undefined,
         contact_id: contact.contact_id,
         campaign_id: campaignId,
         step_number: step.step_number,
@@ -666,6 +735,8 @@ export async function actOutreach(state = {}, ctx = {}) {
   };
   // In-tick person-level dedupe: two approved queue items for one person yield one send.
   const processedIdentities = new Set();
+  // Shared-newsroom masthead cap, re-counted on the SEND day (queue day and send day differ).
+  let sharedNewsroomToday = sharedNewsroomSendsToday(state, parts);
 
   for (const item of approved) {
     const contact = contactsById.get(clean(item.contact_id)) || { email: item.to, contact_id: item.contact_id };
@@ -691,6 +762,19 @@ export async function actOutreach(state = {}, ctx = {}) {
       markQueue(next, item.id, "rejected", { reject_reason: `routing:${seqRes.reason}` });
       results.push({ contact_id: item.contact_id, status: "not_sent", reason: seqRes.reason });
       continue;
+    }
+    // Press re-checks at SEND time: a hold re-imposed after enrollment stops the send, and
+    // the shared-newsroom masthead cap applies on the day the send would actually happen.
+    if (lower(item.classification) === "press") {
+      if (contact.press_hold === true) {
+        markQueue(next, item.id, "rejected", { reject_reason: "press_hold_reimposed" });
+        results.push({ contact_id: item.contact_id, status: "blocked", reason: "press_hold_reimposed" });
+        continue;
+      }
+      if (isSharedNewsroomPressContact(contact) && sharedNewsroomToday >= PRESS_SHARED_ADDRESS_DAILY_CAP) {
+        results.push({ contact_id: item.contact_id, status: "deferred", reason: "shared_newsroom_cap" });
+        continue; // leave approved; tomorrow's tick may send it
+      }
     }
     // Re-validate compliance at SEND time.
     const compliance = validateCompliance(item.message || {});
@@ -815,6 +899,7 @@ export async function actOutreach(state = {}, ctx = {}) {
     };
     next.outreachAttempts = [attempt, ...next.outreachAttempts];
     commitTally(tally, contact, item.classification);
+    if (isSharedNewsroomPressContact(contact)) sharedNewsroomToday += 1;
     markQueue(next, item.id, "sent", { sent_at: nowIso(), attempt_id: attempt.id });
     results.push({ contact_id: item.contact_id, status: sendOutcome.status, provider: sendOutcome.provider });
   }

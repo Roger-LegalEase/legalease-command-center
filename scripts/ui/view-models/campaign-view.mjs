@@ -172,16 +172,60 @@ function canonicalAudience(context) {
   };
 }
 
+// One row per person the Audience tab lists: enrolled contacts always; on a campaign that
+// names its audience up front (press proposals), the assigned-but-not-yet-enrolled people
+// too, each with the status that explains WHY nothing has been sent to them yet.
+const AUDIENCE_MEMBER_LIMIT = 200;
+
+function audienceMemberStatus(contact, enrolledIds, context) {
+  if (enrolledIds.has(recordId(contact))) return { status: "enrolled", detail: null };
+  const reasons = contactExclusionReasons(contact, context);
+  if (reasons.length) return { status: "excluded", detail: reasons.join(", ") };
+  if (contact.press_hold === true) {
+    return { status: "held", detail: clean(contact.press_hold_reason).replaceAll("_", " ") || "held until the campaign runs" };
+  }
+  return { status: "assigned", detail: "held until the campaign is approved to run" };
+}
+
+function audienceMembers(context, enrolled) {
+  const enrolledIds = new Set(enrolled.map(recordId).filter(Boolean));
+  const merged = [...enrolled];
+  for (const contact of list(context.assignedContacts)) {
+    if (!enrolledIds.has(recordId(contact))) merged.push(contact);
+  }
+  return merged.slice(0, AUDIENCE_MEMBER_LIMIT).map((contact) => {
+    const { status, detail } = audienceMemberStatus(contact, enrolledIds, context);
+    return {
+      id: recordId(contact),
+      name: firstText(contact.contact_name, contact.name, contact.email) || "Unnamed contact",
+      organization: firstText(contact.organization_name, contact.publication) || null,
+      emailType: firstText(contact.press_email_type) || null,
+      status,
+      detail
+    };
+  });
+}
+
 function relatedAudience(context) {
   const collection = context.kind === "partnerOutreach" ? "outreachContacts" : "reactivationContacts";
   const available = context.availability[collection] === true;
   const contacts = context.contacts;
   const excluded = exclusionSummary(context, contacts, available);
+  const assigned = list(context.assignedContacts);
+  const members = context.kind === "partnerOutreach" && available ? audienceMembers(context, contacts) : [];
+  const summary = !available
+    ? null
+    : contacts.length
+      ? `${contacts.length} enrolled recipient${contacts.length === 1 ? "" : "s"}${assigned.length > contacts.length ? ` of ${assigned.length} assigned` : ""}`
+      : assigned.length
+        ? `${assigned.length} assigned journalist${assigned.length === 1 ? "" : "s"} — held until this campaign is approved to run`
+        : "0 enrolled recipients";
   return {
     available,
-    summary: available ? `${contacts.length} enrolled recipient${contacts.length === 1 ? "" : "s"}` : null,
-    includedCount: available ? contacts.length - excluded.count : null,
-    excluded
+    summary,
+    includedCount: available ? (contacts.length ? contacts.length - excluded.count : assigned.length) : null,
+    excluded,
+    members
   };
 }
 
@@ -202,6 +246,16 @@ function messageProjection(context, deliveryMode) {
     sequenceName: firstText(record.sequenceName, record.sequence_name, record.sequenceVariant, record.sequence_variant) || null,
     stepCount: stepCount || null,
     firstSubject: firstText(steps[0]?.subject, record.subject) || null,
+    // The drafted copy itself, so the Messages tab shows what would actually be sent instead
+    // of a step count that reads as empty. Ordered by step number; body is the stored draft.
+    steps: steps
+      .slice()
+      .sort((left, right) => (Number(left.step_number || left.stepNumber) || 0) - (Number(right.step_number || right.stepNumber) || 0))
+      .map((step) => ({
+        stepNumber: Number(step.step_number || step.stepNumber) || 1,
+        subject: firstText(step.subject) || null,
+        body: firstText(step.body) || null
+      })),
     cadenceDays: context.kind === "reactivation" ? [1, 4, 9, 16, 30] : []
   };
 }
@@ -418,6 +472,17 @@ function projectCampaign(context) {
     owner: firstText(record.owner, record.ownerName, record.owner_name) || null,
     status,
     nextAction: firstText(record.nextAction, record.next_action) || null,
+    // Present only on a press outreach campaign: what the detail surface needs to offer the
+    // one run approval (or the stop) without re-deriving press-ness from raw records.
+    press: context.kind === "partnerOutreach" && lower(record.classification) === "press"
+      ? {
+        angleId: firstText(record.angle_id) || null,
+        guardrail: firstText(record.guardrail) || null,
+        runApproved: Boolean(record.run_approved && clean(record.run_approved.approved_at || record.run_approved.at)),
+        proposed: lower(record.status) === "proposed",
+        active: ["active", "running"].includes(lower(record.status))
+      }
+      : null,
     audience: audienceProjection(context),
     message: messageProjection(context, deliveryMode),
     schedule,

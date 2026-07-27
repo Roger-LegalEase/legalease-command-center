@@ -22,8 +22,11 @@
 // unassigned rather than shoehorned. Warm prior relationships are EXCLUDED — they are follow-ups
 // Roger drafts from the recorded recommendation, not cold pitches (press-outreach.mjs says so).
 
-import { PRESS_ANGLES, evaluatePressGuardrails } from "./press-outreach.mjs";
+import { PRESS_ANGLES, evaluatePressGuardrails, pressEligibility } from "./press-outreach.mjs";
 import { PRESS_ANGLE_BEATS, PRESS_KIT, pressProofPlan } from "./press-kit.mjs";
+// The suppression truth used at queue and send time — re-used here so an enrollment decision
+// can never be more permissive than the machinery that will actually send.
+import { isSuppressed } from "./outreach-os.mjs";
 
 const list = (value) => Array.isArray(value) ? value : [];
 const clean = (value = "") => String(value ?? "").trim();
@@ -404,4 +407,131 @@ export function applyPressCampaignProposal(state = {}, plan = {}, { now = new Da
   next[PRESS_SEQUENCE_STEPS_COLLECTION] = [...steps.values()];
 
   return next;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Run — the one explicit approval per angle campaign.
+//
+// Modeled on reactivation: ONE recorded owner decision arms the campaign, and everything after
+// it is the existing machinery under its existing gates (window, caps, suppression, compliance,
+// durable claims — none of which this module implements or touches). What the approval does:
+//   * re-verifies the campaign is a press proposal and that NO other press campaign is running
+//     (one campaign at a time, enforced here and nowhere weaker);
+//   * re-runs the guardrail + claims gate over the stored step copy;
+//   * enrolls each assigned journalist ONLY if they still pass, per contact: press_sendable,
+//     fresh pressEligibility (verification staleness re-checked at run time), and isSuppressed
+//     — the same suppression truth the send path re-checks again later;
+//   * records the approval on the campaign row. The planner refuses press campaigns without it.
+// ---------------------------------------------------------------------------------------------
+
+export function runPressCampaign(state = {}, { campaignId = "", actor = "", now = new Date().toISOString() } = {}) {
+  const id = clean(campaignId);
+  const campaigns = list(state[PRESS_CAMPAIGNS_COLLECTION]);
+  const campaign = campaigns.find((row) => clean(row.campaign_id || row.id) === id);
+  if (!campaign) return { ok: false, error: "This press campaign does not exist." };
+  if (lower(campaign.classification) !== "press") return { ok: false, error: "Only a press campaign can be run from here." };
+  if (lower(campaign.status) !== PRESS_CAMPAIGN_STATUS) {
+    return { ok: false, error: `This campaign is ${clean(campaign.status) || "not proposed"}, so there is nothing to approve.` };
+  }
+  const running = campaigns.find((row) =>
+    lower(row.classification) === "press" && ["active", "running"].includes(lower(row.status)));
+  if (running) {
+    return { ok: false, error: `One press campaign at a time: "${clean(running.name) || clean(running.campaign_id)}" is already running. Stop it first.` };
+  }
+  const steps = list(state[PRESS_SEQUENCE_STEPS_COLLECTION]).filter((row) => clean(row.campaign_id) === id);
+  if (!steps.length) return { ok: false, error: "This campaign has no drafted pitch, so it cannot run." };
+  for (const step of steps) {
+    const gate = evaluatePressGuardrails(`${clean(step.subject)}\n${clean(step.body)}`, clean(campaign.angle_id));
+    if (!gate.passed) {
+      return { ok: false, error: `The drafted pitch no longer passes the guardrail gate (${gate.hardFails.map((f) => f.rule).join(", ")}). Nothing was started.` };
+    }
+  }
+
+  const audienceIds = new Set(list(campaign.audience_contact_ids).map(clean).filter(Boolean));
+  let enrolled = 0;
+  const skipped = {};
+  const skip = (reason) => { skipped[reason] = (skipped[reason] || 0) + 1; };
+
+  const outreachContacts = list(state.outreachContacts).map((contact) => {
+    if (!audienceIds.has(clean(contact.contact_id))) return contact;
+    // Per-contact re-checks at ENROLLMENT time. The send path re-checks suppression, routing,
+    // compliance and caps again at queue AND send time — this is the first gate, not the last.
+    if (contact.press_sendable !== true) { skip("not_sendable"); return contact; }
+    const eligibility = pressEligibility(contact, { now });
+    if (eligibility.sendable !== true) { skip(eligibility.reason || "ineligible"); return contact; }
+    const suppression = isSuppressed(contact, { state, org: {} });
+    if (suppression.suppressed) { skip(`suppressed_${suppression.reason}`); return contact; }
+    enrolled += 1;
+    return {
+      ...contact,
+      campaign_id: id,
+      sequence_status: "Enrolled",
+      enrolled_at: now,
+      press_hold: false,
+      press_hold_reason: null,
+      press_hold_detail: null,
+      press_released_at: now,
+      press_release_campaign: id,
+      updated_at: now
+    };
+  });
+
+  if (!enrolled) {
+    return { ok: false, error: "No assigned journalist passed the enrollment re-checks, so nothing was started.", skipped };
+  }
+
+  const run_approved = { approved_by: clean(actor) || "owner", approved_at: now };
+  const nextCampaigns = campaigns.map((row) => clean(row.campaign_id || row.id) === id
+    ? {
+      ...row,
+      status: "active",
+      run_approved,
+      // Press pitches are exactly one touch: no automated follow-up, ever. A reply is the
+      // only continuation, and a reply suppresses further sends anyway.
+      max_touches: 1,
+      activated_at: now,
+      updated_at: now
+    }
+    : row);
+
+  return {
+    ok: true,
+    state: { ...state, [PRESS_CAMPAIGNS_COLLECTION]: nextCampaigns, outreachContacts },
+    campaignId: id,
+    enrolled,
+    skipped,
+    run_approved
+  };
+}
+
+// Stop — immediate. The campaign leaves the planner's reach (status), and every unsent press
+// queue item for it is archived so an already-approved item cannot ride a later tick out.
+export function stopPressCampaign(state = {}, { campaignId = "", actor = "", now = new Date().toISOString() } = {}) {
+  const id = clean(campaignId);
+  const campaigns = list(state[PRESS_CAMPAIGNS_COLLECTION]);
+  const campaign = campaigns.find((row) => clean(row.campaign_id || row.id) === id);
+  if (!campaign) return { ok: false, error: "This press campaign does not exist." };
+  if (lower(campaign.classification) !== "press") return { ok: false, error: "Only a press campaign can be stopped from here." };
+  if (!["active", "running"].includes(lower(campaign.status))) {
+    return { ok: false, error: `This campaign is ${clean(campaign.status) || "not running"}, so there is nothing to stop.` };
+  }
+
+  let archivedQueueItems = 0;
+  const approvalQueue = list(state.approvalQueue).map((item) => {
+    if (clean(item.campaign_id) !== id) return item;
+    if (!["queued_for_approval", "approved"].includes(lower(item.status))) return item;
+    archivedQueueItems += 1;
+    return { ...item, status: "archived", archived_reason: "campaign_stopped", archived_at: now };
+  });
+
+  const nextCampaigns = campaigns.map((row) => clean(row.campaign_id || row.id) === id
+    ? { ...row, status: "stopped", stopped_at: now, stopped_by: clean(actor) || "owner", updated_at: now }
+    : row);
+
+  return {
+    ok: true,
+    state: { ...state, [PRESS_CAMPAIGNS_COLLECTION]: nextCampaigns, approvalQueue },
+    campaignId: id,
+    archivedQueueItems
+  };
 }
