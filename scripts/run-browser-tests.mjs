@@ -445,7 +445,11 @@ function todayFixtureState(seed) {
     dailyRunSessions:[{
       session_id:"today-browser-current-run",
       status:"active",
-      started_at:new Date(fixtureNow.getTime() - (4 * 60 * 60 * 1_000)).toISOString(),
+      // 5 minutes, NOT hours: a longer lookback crosses ET midnight when the suite runs
+      // between 00:00 and 04:00 ET, the session then reads as yesterday's and goes stale,
+      // and the Now slot falls back to the urgent post — which failed today-page.spec:51/:342
+      // and founder-task-workbench only in that window (proven both ways on 2026-07-27).
+      started_at:new Date(fixtureNow.getTime() - (5 * 60 * 1_000)).toISOString(),
       last_active_at:fixtureNow.toISOString(),
       current_bucket_key:"due_today",
       bucket_snapshot:{ buckets:[{ key:"due_today", items:[{ id:"today-browser-now-task", type:"task", route:"tasks", source:"tasks" }] }] },
