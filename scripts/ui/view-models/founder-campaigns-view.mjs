@@ -294,6 +294,11 @@ function pressLane(state, pressEnabled) {
   }
 
   const contacts = list(state.outreachContacts).filter((row) => slug(row.classification) === "press");
+  // Multi-angle composer proposals: inert campaign rows the composer wrote with status
+  // "proposed". Surfaced so Roger can see what is drafted; starting one stays a separate,
+  // approval-gated decision that this read-only surface cannot take.
+  const proposedCampaigns = list(state.outreachCampaigns)
+    .filter((row) => slug(row.classification) === "press" && slug(row.status) === "proposed");
   const sendable = contacts.filter((row) => row.press_sendable === true);
   const held = contacts.filter((row) => row.press_sendable !== true);
   const warm = contacts.filter((row) => slug(row.press_outreach_kind) === "warm_follow_up");
@@ -360,10 +365,26 @@ function pressLane(state, pressEnabled) {
 
     // Run is deliberately identical in shape to reactivation: one approval, no autonomous send.
     stage("run", "stopped",
-      "No press campaign is running. Sending requires your approval, one campaign at a time.",
+      (proposedCampaigns.length
+        ? `${proposedCampaigns.length} proposed angle campaign${proposedCampaigns.length === 1 ? "" : "s"} drafted and waiting. `
+        : "")
+      + "No press campaign is running. Sending requires your approval, one campaign at a time.",
       {
         action: { label: "Run", route: "POST /api/outreach/approve", mutates: true },
-        blockedReason: "Nothing sends until you approve a campaign, and approval is the only thing that starts it."
+        blockedReason: "Nothing sends until you approve a campaign, and approval is the only thing that starts it.",
+        detail: proposedCampaigns.length
+          ? {
+            proposedCampaigns: Object.freeze(proposedCampaigns.map((row) => Object.freeze({
+              angleId: clean(row.angle_id) || null,
+              label: clean(row.angle_label || row.name) || null,
+              assigned: Number(row.audience?.assigned) || 0,
+              direct: Number(row.audience?.direct) || 0,
+              sharedNewsroom: Number(row.audience?.sharedNewsroom) || 0,
+              proposedAt: clean(row.proposed_at) || null
+            }))),
+            composeRoute: "POST /api/press/campaign/preview"
+          }
+          : null
       }),
 
     stage("monitor", "ready",
