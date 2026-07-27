@@ -21,6 +21,8 @@ export const FOUNDER_CAMPAIGNS_READ_COLLECTIONS = Object.freeze([
   "approvalQueue",
   "pressPlacements",
   "autopilotSettings",
+  // The press lane's Run stage lists the composer's proposed (inert) campaign rows.
+  "outreachCampaigns",
   "outreachContacts",
   "outreachReplies",
   "outreachSuppressions",

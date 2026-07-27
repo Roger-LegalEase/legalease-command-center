@@ -14,6 +14,7 @@ import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_Q
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
 import { applyBulkProspectDecision, selectPendingProspects } from "./prospect-selection.mjs";
 import { applyPressImportPlan, buildPressImportPlan, readPressWorkbook } from "./press-import.mjs";
+import { applyPressCampaignProposal, buildPressCampaignProposal } from "./press-campaign.mjs";
 import { reactivationCampaignOf, reactivationLiveSendEnabled, resolveReactivationSendDecision, buildReactivationLiveStatus, evaluateThresholds, waveMetrics, campaignRates, REACTIVATION_ENGINE_ID } from "./reactivation-os.mjs";
 import { previewConsumerImport, confirmConsumerImport, CONSUMER_LIST_TYPE } from "./consumer-list-import.mjs";
 import { SENDGRID_WEBHOOK_COLLECTIONS, SENDGRID_WEBHOOK_HEALTH_COLLECTION, SENDGRID_SIGNATURE_HEADER, SENDGRID_TIMESTAMP_HEADER, verifySendGridSignature, reduceSendGridEvents, sendgridBatchDigest, sendgridEventDigest, updateSendGridWebhookHealth, sendgridWebhookHealthSummary } from "./sendgrid-webhook.mjs";
@@ -39509,6 +39510,71 @@ async function handleRequest(request, response) {
       sendJson(response, { ok: true, summary: outcome.summary, noSend: true, allHeld: true });
     } catch (error) {
       sendJson(response, { error: error.message || "Could not import the press workbook." }, 400);
+    }
+    return;
+  }
+
+  // ---- Press multi-angle campaign composer (propose-only; 2026-07-27) -----------------------
+  // Same shape as the import pair: preview is a faithful dry-run that writes nothing; confirm is
+  // owner/admin-gated and writes records only. PROPOSE-ONLY BY CONSTRUCTION is enforced twice —
+  // buildPressCampaignProposal writes every campaign with status "proposed" (which the planner
+  // skips), and confirm re-verifies that invariant on every row and refuses the whole write if a
+  // single campaign would land startable. Contacts are never touched: they stay Not Enrolled and
+  // press-held exactly as the import left them.
+  if (url.pathname === "/api/press/campaign/preview" && request.method === "POST") {
+    try {
+      const payload = await readJson(request);
+      const currentState = await store.readState();
+      const plan = buildPressCampaignProposal(currentState, {
+        now: new Date().toISOString(),
+        angleIds: Array.isArray(payload?.angleIds) ? payload.angleIds : null
+      });
+      // Drafts are template copy (no PII); contact rows and ids stay out of the preview payload.
+      sendJson(response, {
+        ok: true,
+        summary: plan.summary,
+        drafts: plan.drafts,
+        noSend: true,
+        wouldWrite: {
+          outreachCampaigns: plan.outreachCampaigns.length,
+          outreachSequenceSteps: plan.outreachSequenceSteps.length
+        }
+      });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not preview the press campaign proposal." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/press/campaign/confirm" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const payload = await readJson(request);
+      const outcome = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const now = new Date().toISOString();
+        const plan = buildPressCampaignProposal(currentState, {
+          now,
+          angleIds: Array.isArray(payload?.angleIds) ? payload.angleIds : null
+        });
+        // The propose-only invariant: every campaign row is an inert press proposal, whatever
+        // the plan said. A single violation aborts the write before anything is persisted.
+        for (const row of plan.outreachCampaigns) {
+          if (row.status !== "proposed" || row.classification !== "press") {
+            throw new Error("Press campaign refused: a campaign row would land startable. Nothing was written.");
+          }
+        }
+        const nextState = applyPressCampaignProposal(currentState, plan, { now });
+        await writeChangedCollections(currentState, nextState);
+        return { summary: plan.summary };
+      });
+      sendJson(response, { ok: true, summary: outcome.summary, noSend: true, allProposed: true });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not store the press campaign proposal." }, 400);
     }
     return;
   }
