@@ -21,6 +21,10 @@ export const DEFAULT_DAILY_RUN_HOUR_ET = 6;
 export const DEFAULT_LEASE_TTL_MS = 5 * 60 * 1000;
 // Ledgers whose rows are written durably, one row at a time, OUTSIDE the tick's closing bulk
 // write — because they are the permission to send, and must survive a failed tick.
+// Warn when a tick's peak heap crosses this. The heap ceiling in production is 384 MB
+// (NODE_OPTIONS); ticks that reached ~330 MB aborted with SIGABRT. 260 MB gives real headroom
+// to notice the climb before it aborts.
+export const HEARTBEAT_PEAK_HEAP_WARN_BYTES = 260 * 1024 * 1024;
 export const DURABLE_CLAIM_COLLECTIONS = Object.freeze(["reactivationSendClaims", "outreachSendClaims"]);
 
 function bool(value) {
@@ -104,10 +108,20 @@ export async function runHeartbeat(options = {}) {
   const parts = etParts(now, tz);
 
   try {
+    // Peak-memory sampling for this tick (2026-07-27). The tick aborted with SIGABRT / exit 134
+    // three times in a row before anyone knew memory was the cause; Render's alert email was the
+    // only signal. Sampling here makes the peak visible in our own logs, the same day.
+    const memorySamples = [];
+    const sampleMemory = () => { try { memorySamples.push(process.memoryUsage().heapUsed); } catch { /* non-node host */ } };
+    const memoryTimer = setInterval(sampleMemory, 1_000);
+    if (typeof memoryTimer?.unref === "function") memoryTimer.unref();
+    sampleMemory();
+    const tickStartedMs = Date.now();
     let state = await store.readState();
+    sampleMemory();
     // Snapshot for the closing diff-scoped write: engines thread state immutably
     // (state = planResult.state), so a collection changed exactly when its reference did.
-    const initialState = state;
+    let initialState = state;
 
     // Layer 3: lease guard (cross-restart / duplicate cron delivery). force overrides.
     // Claim the lease with versioned compare-and-swap. The mutator is re-evaluated after
@@ -242,13 +256,44 @@ export async function runHeartbeat(options = {}) {
     // the ledger entries, the snapshots, and whatever an engine genuinely changed. Same
     // serialized executor, same versioned-conflict semantics; the lease keeps its dedicated
     // mutateCollectionItem below.
+    // Read the "before" side for ONLY the collections that changed, instead of retaining the
+    // whole pre-tick graph. `initialState` kept every replaced collection's old array alive for
+    // the entire tick — two live copies of everything an engine touched — which is memory the
+    // 384 MB heap ceiling could not spare. Reference identity above still decides WHAT changed;
+    // this only decides what we hold while deciding it.
+    const changedKeys = Object.keys(patch);
+    // Hold the "before" side for ONLY the collections that changed — which is all the diff has
+    // ever needed — and then release the whole pre-tick graph.
+    const beforeRefs = {};
+    for (const key of changedKeys) beforeRefs[key] = initialState[key];
+    // Release the rest of the pre-tick graph NOW. Every collection an engine replaced still had its old
+    // array reachable through initialState; dropping the reference here lets the collector take
+    // them before the write's own serialisation allocations, which is exactly where the peak is.
+    initialState = null;
     const patchBefore = {};
-    for (const key of Object.keys(patch)) patchBefore[key] = initialState[key];
+    for (const key of changedKeys) patchBefore[key] = beforeRefs[key];
+    sampleMemory();
     await store.writeChanges(patchBefore, patch);
     await store.mutateCollectionItem("heartbeatLease", "singleton", (current) => current?.runId === id
       ? { runId:"", holder:"", claimedAt:current.claimedAt || "", expiresAt:"", releasedAt:finishedAt }
       : current, { maxRetries:2 });
 
+    sampleMemory();
+    clearInterval(memoryTimer);
+    const peakHeapBytes = Math.max(0, ...memorySamples);
+    if (peakHeapBytes >= HEARTBEAT_PEAK_HEAP_WARN_BYTES) {
+      // Distinct, loud, and same-day. Before this the only signal that a tick was about to abort
+      // with SIGABRT was a Render alert email after the fact.
+      console.warn(JSON.stringify({
+        level: "warn",
+        event: "heartbeat_peak_memory",
+        runId: id,
+        peakHeapMb: Math.round(peakHeapBytes / 1048576),
+        thresholdMb: Math.round(HEARTBEAT_PEAK_HEAP_WARN_BYTES / 1048576),
+        durationMs: Date.now() - tickStartedMs,
+        message: `Heartbeat tick peaked at ${Math.round(peakHeapBytes / 1048576)} MB of heap, over the ${Math.round(HEARTBEAT_PEAK_HEAP_WARN_BYTES / 1048576)} MB warning threshold. The Node heap ceiling is set by NODE_OPTIONS; a tick that reaches it aborts with SIGABRT and the service restarts.`
+      }));
+    }
     return {
       ok: true,
       runId: id,
@@ -256,6 +301,8 @@ export async function runHeartbeat(options = {}) {
       etHour: parts.hour,
       ran: engineResults.filter((r) => r.status === "success").length,
       acted: engineResults.filter((r) => r.acted).length,
+      durationMs: Date.now() - tickStartedMs,
+      peakHeapMb: Math.round(Math.max(0, ...memorySamples) / 1048576),
       engines: engineResults
     };
   } finally {

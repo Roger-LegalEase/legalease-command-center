@@ -38340,14 +38340,38 @@ async function handleRequest(request, response) {
       // collections landing mid-tick (an operator arming/disarming a campaign, a webhook
       // event) would still be reverted by the tick's closing write. Serializing closes that
       // window; mutations queue until the tick finishes.
-      const result = await serializeStateMutation(() => runHeartbeat({
+      const tick = () => serializeStateMutation(() => runHeartbeat({
         store,
         registry,
         env: process.env,
         force: payload && payload.force === true,
         actor: accessDecision.actor?.role || "cron"
       }));
-      sendJson(response, result);
+      // ACKNOWLEDGE FIRST, then finish the work (2026-07-27).
+      //
+      // The Render cron calls this with `curl --max-time 60`. A tick that legitimately takes
+      // longer made curl exit 28 and the cron report failure, which reads as "the heartbeat is
+      // broken" even when the work is fine — and it hid a real crash behind the same symptom.
+      // The tick's own single-flight mutex, the per-engine idempotency ledger and the lease are
+      // what actually prevent double runs, not the caller holding the socket open. The result is
+      // recorded in heartbeatRuns either way, which is where it should be read from.
+      //
+      // `ack=false` keeps the old synchronous behaviour for tests and manual invocation.
+      const acknowledgeEarly = !(payload && payload.ack === false);
+      if (!acknowledgeEarly) {
+        sendJson(response, await tick());
+        return;
+      }
+      sendJson(response, { ok: true, accepted: true, runId: null, note: "Heartbeat tick accepted; it continues in the background and records its outcome in heartbeatRuns." }, 202);
+      tick().then(
+        (result) => console.log(JSON.stringify({
+          level: "info", event: "heartbeat_tick_complete", runId: result?.runId || "",
+          ran: result?.ran, acted: result?.acted, durationMs: result?.durationMs, peakHeapMb: result?.peakHeapMb
+        })),
+        (error) => console.error(JSON.stringify({
+          level: "error", event: "heartbeat_tick_failed", error: String(error?.message || error).slice(0, 300)
+        }))
+      );
     } catch (error) {
       sendJson(response, { error: error.message || "Heartbeat tick failed." }, 500);
     }
