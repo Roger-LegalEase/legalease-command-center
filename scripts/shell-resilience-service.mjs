@@ -42,6 +42,17 @@ function routeCapabilities(route, role) {
 }
 
 function roleAllows(role, capabilities) {
+  // The owner can always OPEN a page. This is page access only — every action on every page
+  // keeps its own authorization, unchanged.
+  //
+  // 2026-07-27: #prospects declared actionCapabilities ["approve"], and "approve" is not a real
+  // capability (the real one is "approve_final_artifact"). Because the owner role is literally
+  // [...capabilities], a name that is not in that list is held by NOBODY — so a single typo
+  // silently locked the page against every role including the owner, and reported it as
+  // "your account needs additional access". The typo is fixed too, but a system whose owner can
+  // be locked out of his own machinery by a misspelling is the actual defect, so the owner is
+  // structurally incapable of being refused a page.
+  if (String(role || "").toLowerCase() === "owner") return true;
   return capabilities.every((capability) => capability === "admin"
     ? ["owner", "admin"].includes(String(role || ""))
     : roleHasCapability(role, capability));
