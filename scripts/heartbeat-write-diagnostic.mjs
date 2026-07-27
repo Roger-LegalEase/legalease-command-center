@@ -56,6 +56,47 @@ function stable(value) {
   return JSON.stringify(value === undefined ? null : value);
 }
 
+// Returns the drift report instead of logging it, so it can be served on demand rather than
+// computed inside the tick.
+export function describeWriteDrift(before = {}, after = {}) {
+  const mutations = coreMutationsBetween(before, after);
+  const perCollection = {};
+  for (const mutation of mutations) {
+    perCollection[mutation.collection] = perCollection[mutation.collection] || { changed: 0, considered: 0 };
+    perCollection[mutation.collection].changed += 1;
+  }
+  const afterRows = coreRecordsFromState(after);
+  for (const row of afterRows) {
+    if (perCollection[row.collection]) perCollection[row.collection].considered += 1;
+  }
+  const largest = Object.entries(perCollection).sort((a, b) => b[1].changed - a[1].changed)[0];
+  const report = { rowsChanged: mutations.length, perCollection, samples: [], summary: null };
+  if (!largest) return report;
+  const [collection] = largest;
+  const beforeByKey = new Map(coreRecordsFromState(before).filter((r) => r.collection === collection).map((r) => [r.item_id, r]));
+  const afterByKey = new Map(afterRows.filter((r) => r.collection === collection).map((r) => [r.item_id, r]));
+  const changedIds = mutations.filter((m) => m.collection === collection).slice(0, MAX_SAMPLE_ROWS).map((m) => m.item_id);
+  let orderOnly = 0, realContent = 0, noPrior = 0;
+  for (const itemId of changedIds) {
+    const prior = beforeByKey.get(itemId);
+    const next = afterByKey.get(itemId);
+    if (!prior || !next) { noPrior += 1; continue; }
+    const sameStable = stable(prior.payload) === stable(next.payload);
+    if (sameStable) orderOnly += 1; else realContent += 1;
+    report.samples.push({
+      itemIdHash: createHash("sha256").update(String(itemId)).digest("hex").slice(0, 10),
+      identicalIgnoringKeyOrder: sameStable,
+      differingPaths: differingPaths(prior.payload, next.payload),
+      storedKeyOrder: Object.keys(prior.payload || {}),
+      projectedKeyOrder: Object.keys(next.payload || {}),
+      stored: redact(prior.payload),
+      projected: redact(next.payload)
+    });
+  }
+  report.summary = { collection, sampled: changedIds.length, identicalIgnoringKeyOrder: orderOnly, genuinelyDifferent: realContent, rowsWithNoPrior: noPrior };
+  return report;
+}
+
 export function logHeartbeatWriteDiagnostic(before = {}, after = {}, { runId = "", log = console.log } = {}) {
   try {
     const mutations = coreMutationsBetween(before, after);
