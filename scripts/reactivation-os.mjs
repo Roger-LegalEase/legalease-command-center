@@ -980,7 +980,16 @@ export async function actReactivation(state = {}, ctx = {}) {
   // the engine knew exactly why it skipped each one and then dropped it on the floor. One
   // bounded row per tick now carries the tally and a sample, so the next silent stall is
   // readable from the ledger instead of reconstructed by replaying the engine offline.
-  next.reactivationDecisions = summarizeDecisions(results, { runId: clean(ctx.runId), at: nowIso(), etDate: parts.dateKey, existing: list(state.reactivationDecisions) });
+  // Bracket notation via the constant, the same convention this module already uses for the
+  // claims ledger: these collections are written by the engine but are deliberately NOT part of
+  // the Today summary's targeted read, and the hydration-bounds drift guard reads dotted access
+  // as "Today must hydrate this".
+  next[REACTIVATION_DECISIONS_COLLECTION] = summarizeDecisions(results, {
+    runId: clean(ctx.runId),
+    at: nowIso(),
+    etDate: parts.dateKey,
+    existing: list(state[REACTIVATION_DECISIONS_COLLECTION])
+  });
   return { state: next, results };
 }
 
