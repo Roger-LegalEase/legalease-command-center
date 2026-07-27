@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { buildPartnersTrainScenario } from "./fixtures/vnext-partners-train.mjs";
+import { applyPressCampaignProposal, buildPressCampaignProposal } from "./press-campaign.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const seedPath = path.join(projectRoot, "data", "seed", "social-command-center.seed.json");
@@ -826,6 +827,41 @@ filesState.dataRoomItems = [{
   updatedAt:"2026-07-18T12:00:00.000Z",
   allowedRoles:["owner", "admin", "operator", "viewer"]
 }];
+// A real press campaign proposal, built by the shipped composer from synthetic journalists on
+// reserved domains. The press-campaign spec clicks the run approval on this fixture: the
+// button's whole point is that clicking it changes the campaign, and only a browser proves it.
+const pressJournalist = (id, lanes, hint = "") => ({
+  contact_id:`press-${id}`,
+  email:`${id}@example.org`,
+  contact_name:`Synthetic ${id}`,
+  organization_name:"Example Outlet",
+  classification:"press",
+  sequence_status:"Not Enrolled",
+  press_hold:true,
+  press_sendable:true,
+  press_outreach_kind:"cold_pitch",
+  press_email_type:"Direct public",
+  press_coverage_lanes:lanes,
+  press_best_angle:hint,
+  press_verified_at:new Date(Date.now() - (7 * 24 * 60 * 60 * 1_000)).toISOString().slice(0, 10)
+});
+const pressSeedState = {
+  ...structuredClone(fixtureState),
+  outreachContacts:[
+    // Two hinted onto the angle the spec clicks, so the fixture always has that campaign and
+    // a roster with more than one name; the third lands elsewhere by beats, which gives the
+    // spec a second campaign to prove one-press-campaign-at-a-time against.
+    pressJournalist("alpha", "criminal justice, reentry, courts", "AI guardrails in everyday legal help"),
+    pressJournalist("beta", "ai, technology, courts", "AI guardrails in everyday legal help"),
+    pressJournalist("gamma", "black founders, startups, venture capital")
+  ]
+};
+const pressNow = new Date().toISOString();
+const pressState = applyPressCampaignProposal(
+  pressSeedState,
+  buildPressCampaignProposal(pressSeedState, { now:pressNow }),
+  { now:pressNow }
+);
 const founderOperationsState = structuredClone(fixtureState);
 const founderOperationsNow = new Date();
 const founderOperationsMeetingStart = new Date(founderOperationsNow.getTime() + 24 * 60 * 60 * 1_000);
@@ -885,6 +921,7 @@ const founderTaskDataPath = path.join(tempRoot, "founder-task-state.json");
 const founderOperationsDataPath = path.join(tempRoot, "founder-operations-state.json");
 const founderSocialDataPath = path.join(tempRoot, "founder-social-state.json");
 const founderPartnersDataPath = path.join(tempRoot, "founder-partners-state.json");
+const pressCampaignDataPath = path.join(tempRoot, "press-campaign-state.json");
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
@@ -906,7 +943,8 @@ await Promise.all([
   writeFile(founderTaskDataPath, `${JSON.stringify(todayState, null, 2)}\n`, { mode:0o600 }),
   writeFile(founderOperationsDataPath, `${JSON.stringify(founderOperationsState, null, 2)}\n`, { mode:0o600 }),
   writeFile(founderSocialDataPath, `${JSON.stringify(socialState, null, 2)}\n`, { mode:0o600 }),
-  writeFile(founderPartnersDataPath, `${JSON.stringify(partnersState, null, 2)}\n`, { mode:0o600 })
+  writeFile(founderPartnersDataPath, `${JSON.stringify(partnersState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(pressCampaignDataPath, `${JSON.stringify(pressState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
 const restrictedSessionSecret = crypto.randomBytes(32).toString("base64url");
@@ -1048,6 +1086,12 @@ try {
     vnext:true,
     productFlags:{ outreach:true }
   }));
+  servers.push(await startServer({
+    name:"press-campaign",
+    dataPath:pressCampaignDataPath,
+    vnext:true,
+    productFlags:{ outreach:true }
+  }));
   const runnerEnv = {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -1077,6 +1121,7 @@ try {
     BROWSER_TEST_FOUNDER_OPERATIONS_BASE_URL:servers[18].baseURL,
     BROWSER_TEST_FOUNDER_SOCIAL_BASE_URL:servers[19].baseURL,
     BROWSER_TEST_FOUNDER_PARTNERS_BASE_URL:servers[20].baseURL,
+    BROWSER_TEST_PRESS_CAMPAIGN_BASE_URL:servers[21].baseURL,
     BROWSER_TEST_COMPOSER_RESTRICTED_CREDENTIALS:JSON.stringify(composerRestrictedCredentials)
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));

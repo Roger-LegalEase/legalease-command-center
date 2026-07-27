@@ -102,7 +102,11 @@ function allowedOrigins(baseURL) {
     process.env.BROWSER_TEST_FOUNDER_TASK_BASE_URL,
     process.env.BROWSER_TEST_FOUNDER_OPERATIONS_BASE_URL,
     process.env.BROWSER_TEST_FOUNDER_SOCIAL_BASE_URL,
-    process.env.BROWSER_TEST_FOUNDER_PARTNERS_BASE_URL
+    process.env.BROWSER_TEST_FOUNDER_PARTNERS_BASE_URL,
+    process.env.BROWSER_TEST_PRESS_CAMPAIGN_BASE_URL
+    // A fixture server missing from this list is not merely unreachable: every request to it
+    // is fulfilled with a 204 above, so navigation fails as ERR_ABORTED rather than anything
+    // that names the real cause. Add the base URL here whenever you add a fixture server.
   ].filter(Boolean).map((value) => new URL(value).origin));
 }
 

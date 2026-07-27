@@ -321,7 +321,16 @@ async function runReviewAction(store, state, actor, identity, input, now, adapte
 }
 
 async function runStatusAction(store, state, actor, identity, input, now, environment) {
-  const plan = createCampaignStatusActionPlan(state, actor, identity, input);
+  // A refused action is a refusal, not a server fault. The plan builder throws a plain Error
+  // when the action is not offered to this actor for this campaign (a viewer, or a second
+  // click after the first already ran); that used to surface as an opaque 500. The operator
+  // now reads these messages on the page, so they must say what is actually true.
+  let plan;
+  try { plan = createCampaignStatusActionPlan(state, actor, identity, input); }
+  catch (error) {
+    if (error?.name === "OutreachIntegrationError") throw error;
+    throw integrationError(clean(error?.message) || "This Campaign action is not currently available.", 409, "rejected");
+  }
   const requestId = requireRequestId(plan.idempotencyKey, "idempotency key");
   if (requestAlreadyApplied(state, requestId)) return { status:200, body:{ ok:true, duplicate:true, executed:false, mutations:0, externalActions:0 } };
   const detail = buildCampaignDetailView(state, actor, identity);
@@ -333,7 +342,11 @@ async function runStatusAction(store, state, actor, identity, input, now, enviro
     if (!["owner", "admin"].includes(clean(actor?.role).toLowerCase())) {
       throw integrationError("Owner or admin access is required to run or stop a press campaign.", 403, "unauthorized");
     }
+    // Fail LOUD on an unresolvable record id. When the detail payload trimmed sourceId away
+    // this read as an empty string, and the press engine answered the honest-but-misleading
+    // "This press campaign does not exist." — a wiring fault wearing a business-rule's face.
     const campaignId = clean(detail.campaign.source?.sourceId);
+    if (!campaignId) throw integrationError("The press campaign record could not be resolved from this Campaign. Nothing was changed.", 500, "failed_closed");
     const outcome = plan.action === "campaign_press_run"
       ? runPressCampaign(state, { campaignId, actor:clean(actor?.id || actor?.role), now })
       : stopPressCampaign(state, { campaignId, actor:clean(actor?.id || actor?.role), now });

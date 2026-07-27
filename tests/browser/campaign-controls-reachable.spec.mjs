@@ -59,8 +59,17 @@ for (const scenario of CASES) {
       await expect(surface.getByRole("button", { name:/Pause campaign now|Propose resume/ })).toHaveCount(1);
 
       // And Preview next sends actually answers who is due — read-only, no release, no send.
+      //
+      // The answer's WORDING depends on the wall clock and the gate state, neither of which
+      // this spec controls: inside the weekday 8am–5pm ET window with sending off it reads
+      // "…would get an email in this window"; outside the window, "…outside the weekday
+      // 8am–5pm ET sending window"; with sending on, "…are due an email…"; paused or tripped,
+      // "nothing sends…". Pinning only two of those made this spec fail for every CI run that
+      // landed inside the window — reproduced on untouched main at 2026-07-27 08:40 ET.
+      // Assert that it ANSWERED, not the hour it was asked.
       await surface.getByRole("button", { name:"Preview next sends" }).first().click();
-      await expect(page.locator("#campaign-command-action")).toContainText(/due|Sending window/i, { timeout:15_000 });
+      await expect(page.locator("#campaign-command-action"))
+        .toContainText(/due|would get an email|sending window|nothing sends/i, { timeout:15_000 });
     } finally {
       await server.stop();
     }
