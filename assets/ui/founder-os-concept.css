@@ -32,6 +32,10 @@
   --le-concept-orange-soft: #fff0eb;
   --le-concept-ink: #182230;
   --le-concept-muted: #697586;
+  /* The concept's muted grey is a 4.34:1 foreground on the concept's own canvas, just under
+     WCAG AA for body text. The token above is kept verbatim so the palette is the concept's;
+     this is the one derived value, used wherever muted grey is actually READ. */
+  --le-concept-muted-text: #5a6474;
   --le-concept-muted-2: #98a2b3;
   --le-concept-border: #e4e7ec;
   --le-concept-border-2: #d7dce3;
@@ -59,11 +63,34 @@
   --le-status-manual-soft: var(--le-concept-amber-soft);
   --le-status-attention: var(--le-concept-red);
   --le-status-attention-soft: var(--le-concept-red-soft);
-  --le-status-unavailable: var(--le-concept-muted);
+  --le-status-unavailable: var(--le-concept-muted-text);
   --le-status-unavailable-soft: var(--le-concept-canvas);
 
   color: var(--le-concept-ink);
 }
+
+/* The legacy shell hides every `header`, and `header h2` inside it, to suppress the old page
+   chrome (`header { display:none }` in the shell stylesheet). The founder workspaces are
+   rendered INTO that shell, so their own section and card headers inherited the rule and
+   disappeared — which is why the Campaigns workspace had no visible title and no visible lane
+   names. Restored here, scoped to the founder roots only, so the legacy pages keep the rule. */
+.vnext-founder-today header,
+.founder-campaigns header,
+.kpi-registry header,
+.partners-page:has(.relationship-views) header { display: block; }
+
+.vnext-founder-today header h2,
+.founder-campaigns header h2,
+.kpi-registry header h2,
+.partners-page:has(.relationship-views) header h2 { display: block; }
+
+.founder-campaigns header h2 { margin: 0 0 0.25rem; font-size: 1.5rem; }
+.founder-campaigns > header > p { margin: 0; color: var(--le-concept-muted-text); }
+.founder-campaign-lane > header > h3 { margin: 0 0 0.25rem; }
+
+/* A not-built lane used to be dimmed to 85% opacity, which pushed its own text under the
+   contrast floor. It reads as unbuilt from its words and its neutral status chip instead. */
+.founder-campaigns .founder-campaign-lane[data-lane-built="false"] { opacity: 1; }
 
 /* ---------------------------------------------------------------------------------------------
    The status chip. One shape, one set of colours, four meanings.
@@ -159,8 +186,9 @@
 /* The one primary action on a card carries the brand colour; everything else is quiet. */
 .founder-campaign-stage[data-stage-state="attention"] .founder-campaign-action,
 .founder-campaign-stage[data-stage-state="blocked"] .founder-campaign-action {
-  border-color: var(--le-concept-orange);
-  background: var(--le-concept-orange);
+  /* orange-dark, not orange: white on #ff3b00 does not reach 4.5:1. */
+  border-color: var(--le-concept-orange-dark);
+  background: var(--le-concept-orange-dark);
   color: var(--le-concept-card);
 }
 
@@ -182,7 +210,7 @@
 }
 
 .founder-campaign-setup h3 { margin: 0 0 0.25rem; }
-.founder-campaign-setup p { margin: 0 0 0.5rem; color: var(--le-concept-muted); }
+.founder-campaign-setup p { margin: 0 0 0.5rem; color: var(--le-concept-muted-text); }
 .founder-campaign-setup-actions { margin: 0; }
 
 .founder-campaign-controls {
@@ -194,8 +222,8 @@
 }
 
 .founder-campaign-controls > summary { cursor: pointer; font-weight: 600; }
-.founder-campaign-controls-note { margin: 1rem 0 0; color: var(--le-concept-muted); font-size: 0.9rem; }
-.founder-campaign-stage-reason { color: var(--le-concept-muted); }
+.founder-campaign-controls-note { margin: 1rem 0 0; color: var(--le-concept-muted-text); font-size: 0.9rem; }
+.founder-campaign-stage-reason { color: var(--le-concept-muted-text); }
 
 /* ---------------------------------------------------------------------------------------------
    Relationships — the summary counts are the filters.
@@ -214,7 +242,7 @@
 }
 
 .relationship-summary-count span { font-size: 1.4rem; font-weight: 700; display: block; }
-.relationship-summary-count small { color: var(--le-concept-muted); }
+.relationship-summary-count small { color: var(--le-concept-muted-text); }
 .relationship-summary-count:hover span { color: var(--le-concept-orange-dark); }
 
 /* ---------------------------------------------------------------------------------------------
@@ -238,12 +266,14 @@
 
 .kpi-registry .kpi-exceptions h3 { margin: 0 0 0.35rem; color: var(--le-status-attention); }
 .kpi-registry .kpi-definition,
-.kpi-registry .kpi-derived { color: var(--le-concept-muted); }
+.kpi-registry .kpi-derived { color: var(--le-concept-muted-text); }
 .kpi-registry .kpi-value { font-size: 1.6rem; font-weight: 700; margin: 0.35rem 0; }
 .kpi-registry .kpi-variance[data-tone="better"] { color: var(--le-status-live); }
 .kpi-registry .kpi-variance[data-tone="worse"] { color: var(--le-status-attention); }
+/* "No target set" is information, not decoration: it was dimmed to 0.75 opacity, which put it
+   at 1.97:1. It reads as secondary through colour alone now. */
 .kpi-registry .kpi-variance.is-absent,
-.kpi-registry .kpi-target.is-absent { color: var(--le-concept-muted-2); }
+.kpi-registry .kpi-target.is-absent { color: var(--le-concept-muted-text); opacity: 1; }
 
 /* ---------------------------------------------------------------------------------------------
    Today
@@ -253,13 +283,27 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 0.72rem;
-  color: var(--le-concept-muted);
+  color: var(--le-concept-muted-text);
 }
 
 .vnext-founder-today .vnext-today-why { color: var(--le-concept-ink); }
-.vnext-founder-today .vnext-today-period { color: var(--le-concept-muted); }
+.vnext-founder-today .vnext-today-period { color: var(--le-concept-muted-text); }
 
 @media (max-width: 860px) {
   .relationships-header-actions { width: 100%; }
   .founder-campaign-setup { padding: 0.75rem; }
+}
+
+/* ---------------------------------------------------------------------------------------------
+   The two legacy-shell destinations this release adopts: Partner outreach approvals and the
+   audience importer. They keep the legacy layout — this is a naming and reachability release,
+   not a rebuild — but they are founder destinations now, so their primary control has to be
+   readable. The legacy `.primary` is white on #00a99d, which is 2.93:1. Darkened to 4.9:1 HERE
+   ONLY, so no other legacy page changes.
+   --------------------------------------------------------------------------------------------- */
+#prospects .primary,
+#upload .primary {
+  background: #007f76;
+  border-color: #007f76;
+  color: #ffffff;
 }

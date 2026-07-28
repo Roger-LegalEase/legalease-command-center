@@ -111,7 +111,7 @@ function laneHtml(lane) {
       <h3 id="campaign-lane-${escapeAttribute(lane.id)}">${escapeHtml(lane.label)}</h3>
       ${lane.unavailableReason ? `<p class="founder-campaign-lane-note" role="note">${escapeHtml(lane.unavailableReason)}</p>` : ""}
     </header>
-    ${lane.exceptions.length ? `<ul class="founder-campaign-exceptions" aria-label="Needs attention">${lane.exceptions.map((exception) => `<li data-campaign-exception="${escapeAttribute(exception.id)}"><strong>${escapeHtml(exception.summary)}</strong>${exception.detail ? ` ${escapeHtml(exception.detail)}` : ""}</li>`).join("")}</ul>` : ""}
+    ${lane.exceptions.length ? `<ul class="founder-campaign-exceptions" aria-label="Needs attention">${lane.exceptions.map((exception) => `<li data-campaign-exception="${escapeAttribute(exception.id)}"><strong>${escapeHtml(exception.summary)}</strong>${exception.detail ? ` ${escapeHtml(exception.detail)}` : ""}${actionHtml({ id:exception.id, label:exception.summary, action:exception.action })}</li>`).join("")}</ul>` : ""}
     <ol class="founder-campaign-stages">${lane.stages.map(stageHtml).join("")}</ol>
   </section>`;
 }

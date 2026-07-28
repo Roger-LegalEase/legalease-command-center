@@ -20077,7 +20077,7 @@ function htmlShell() {
       const views = [
         ["first_wave_ready", "First Wave Ready"],
         ["needs_human_approval", "Needs Human Approval"],
-        ["suppression_data_cleanup", "Suppression / Data Cleanup"],
+        ["suppression_data_cleanup", "Not eligible / data cleanup"],
         ["hot_accounts", "Hot Accounts"],
         ["proposal_follow_up", "Proposal Follow-Up"],
         ["funding_nurture", "Funding Nurture"],
@@ -27309,7 +27309,7 @@ function htmlShell() {
             </select></label>
             <label>Where did this list come from?<input name="sourceNote" required placeholder="Required source note, e.g. partner workbook, Google Sheet, manual export"></label>
             <label>Choose file<input name="file" type="file" required accept=".csv,.xlsx,.json,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
-            <div id="operator-upload-dropzone" class="campaign-import-status">Drag/drop or choose a file. Preview checks missing emails, invalid emails, duplicates, and do-not-contact/suppressed rows before saving.</div>
+            <div id="operator-upload-dropzone" class="campaign-import-status">Drag/drop or choose a file. Preview checks missing emails, invalid emails, duplicates, and do-not-contact rows before saving.</div>
             <div class="campaign-safety-lines">
               <span>Requires list type</span><span>Requires source note</span><span>Preview before saving</span><span>Dedupe by email or stable ID where possible</span><span>Cleanup work items are created where existing import logic supports it</span><span>No email sends</span>
             </div>
@@ -27358,7 +27358,7 @@ function htmlShell() {
                 <option value="checkout_abandoned">Checkout abandoned</option>
                 <option value="screening_completed">Screening completed</option>
                 <option value="paid">Paid</option>
-                <option value="suppressed">Unsubscribed / suppressed</option>
+                <option value="suppressed">Unsubscribed / not eligible</option>
                 <option value="deleted">Deleted / erasure requested</option>
                 <option value="revoked">Revoked consent</option>
               </select>
@@ -29893,8 +29893,8 @@ function htmlShell() {
       ];
       const savedViews = rcapRevenueSavedViews(state);
       return \`<section id="rcap-revenue-import" class="growth-card">
-        <div class="growth-card-head"><h2>RCAP Revenue OS</h2><small>Workbook import foundation</small></div>
-        <p class="muted">Import parsed RCAP workbook sheets into durable internal records and create suppression-gated internal Queue tasks.</p>
+        <div class="growth-card-head"><h2>Partner revenue workbook</h2><small>Workbook import foundation</small></div>
+        <p class="muted">Import parsed partner revenue workbook sheets into durable internal records and create internal Queue tasks that respect who may not be contacted.</p>
         <div class="campaign-preview-metrics">\${metrics.map(([value, label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
         <div class="campaign-preview-metrics">\${savedViews.slice(0, 4).map(view => \`<article class="campaign-preview-metric"><strong>\${esc(String(view.count || 0))}</strong><span>\${esc(view.label)}</span></article>\`).join("")}</div>
         <div class="campaign-safety-lines">
@@ -29902,7 +29902,7 @@ function htmlShell() {
           <span>Calendar writes: Off</span>
           <span>External outreach actions: Off</span>
           <span>Queue task generation: Active</span>
-          <span>Suppression latch: Active</span>
+          <span>Not eligible to contact: enforced</span>
           <span>Internal-only scoring: Active</span>
         </div>
         <details>

@@ -143,7 +143,9 @@ function reactivationLane(state, environment, now) {
       // "threshold trip" -> "Campaign stopped for safety", per the translation table.
       summary: "Campaign stopped for safety.",
       detail: safetyPlain || "A safety limit was reached.",
-      action: { label: "Review the safety limit", route: "GET /api/campaign/command" }
+      // The safety limit and the switch that clears it live in the same controls. The renderer
+      // draws this as a button that opens them; it cannot clear anything itself.
+      action: controlAction("Open sending controls", "reactivation-controls", "GET /api/campaign/command", false)
     });
   }
   if (command.telemetry && command.telemetry.trusted === false) {
@@ -153,7 +155,10 @@ function reactivationLane(state, environment, now) {
       // "SendGrid webhook health" -> "Delivery feedback connected".
       summary: "Delivery feedback is not connected.",
       detail: "Delivery and reply numbers may be incomplete until it reconnects.",
-      action: null
+      // Connecting it is a setup step, and the connections surface already exists. The
+      // exception used to carry no action at all, so the founder was told about a problem and
+      // given nowhere to fix it.
+      action: linkAction("Open connections", "#settings", "GET /api/connectors/status")
     });
   }
 
@@ -496,7 +501,7 @@ function pressLane(state, pressEnabled) {
         severity: "attention",
         summary: `${warm.length} prior relationship${warm.length === 1 ? "" : "s"} ready for a follow-up.`,
         detail: "These people have covered LegalEase before. They are follow-ups, not cold pitches.",
-        action: { label: "Open Campaigns", route: "#campaigns" }
+        action: null
       }]
       : []
   });

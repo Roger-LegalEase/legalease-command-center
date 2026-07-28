@@ -28,7 +28,7 @@ export const LEGACY_SHELL_BYTE_BUDGET = 1_650_000;
 // Last re-pinned 2026-07-26 (prospect bulk approval): the #prospects page swapped its
 // metrics-only body for a container plus a loader for the LAZY prospect-workbench runtime,
 // keeping bulk approval out of the initial client payload.
-export const LEGACY_SHELL_HASH = "44345c9c3f8854821a6a40f76447ab132b8052963eb5c83ce082ee1f16a913db";
+export const LEGACY_SHELL_HASH = "a2559c2f662e216e4a8b663842b5379b14183e33c985604089b9ac9c7f8e9455";
 // ---------------------------------------------------------------------------------------------
 
 export function readLegacyShellSource(file = LEGACY_SHELL_SOURCE_FILE) {

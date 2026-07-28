@@ -6,8 +6,10 @@ string. "Clicks from workspace" starts with that workspace already open and excl
 "Prior knowledge required" is Yes when Roger must know a hidden route, an internal term, a
 Settings location, a non-obvious menu, or an undocumented relationship between two surfaces.
 
-**Post-change result is recorded as `Not yet implemented` throughout.** This audit is Phase 3;
-the corrections it specifies are not built yet. Nothing in this column may be read as shipped.
+**The Post-change column is now the implementation record.** Every "Done" in it is proven by a
+browser test in `tests/browser/command-center-discoverability.spec.mjs`, driven against the real
+server with the Founder OS flags on — not by reading source. Implementation screenshots at 1600,
+1024 and 390 are in `implementation-evidence/`.
 
 ## The canonical four workspaces
 
@@ -34,11 +36,15 @@ repository, and it changes the answer for bulk upload — both cases are given b
 |---|---|---|---|
 | Today | `scripts/ui/pages/today-page.mjs` | inline in shell | **replaces** it |
 | Relationships | `scripts/ui/pages/partners-home.mjs` | inline in shell | **replaces** it |
-| Campaigns | `scripts/ui/pages/founder-campaigns.mjs` | lazy runtime | **prepends — the legacy page stays visible below** |
+| Campaigns | `scripts/ui/pages/founder-campaigns.mjs` | lazy runtime | **replaces** it (was: prepended) |
 | Scoreboard | `scripts/ui/pages/founder-scoreboard.mjs` | lazy runtime | **replaces** it |
 
-That Campaigns row is the source of most of the vocabulary damage below: Roger sees the clean
-founder block and the legacy page, with contradictory language, on one screen.
+That Campaigns row was the source of most of the vocabulary damage below: Roger saw the clean
+founder block and the legacy page, with contradictory language, on one screen. **Corrected.** The
+founder workspace now owns the section and carries exactly one legacy node forward — the
+reactivation control surface, which is the only home of Run, Stop, Pause and audience release —
+behind a founder-labelled disclosure. With `COMMAND_CENTER_UX_VNEXT_OUTREACH` on, the vNext
+Outreach page stands down on this route instead of fighting for the same element.
 
 ---
 
@@ -76,28 +82,28 @@ receive fabricated mutation controls.
 
 | Workspace | Visible information | Current route/component | Requires action? | Current control beside it | Actual action location | Clicks | Prior knowledge? | Concept target | Planned correction | Post-change result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Today | Now item: title, `whyNow`, rank meta | `today-page.mjs:232-238` | Yes | `Open` / `Draft reply` button | in-place panel | 1 | No | 01/02 — action beside the item | Keep; align labels to concept | Not yet implemented |
-| Today | `Advanced full record` link | `today-page.mjs:245` | No | link | Artifact viewer | 1 | **Yes** — "Advanced" is shell vocabulary | 01 | Rename to `Open full record` | Not yet implemented |
-| Today | `N further ranked items are open but not needed today.` | `today-page.mjs:226-229` | No | **none** | **nowhere** | ∞ | Yes | 01 | Link to the filtered queue | Not yet implemented |
-| Today | Needs attention — `Automation stopped for safety and nothing will resume until you decide.` | `founder-today-view.mjs:409-414` | **Yes — hard decision** | **none**; `href:""` (`:426`), `actionLabel:"Review"` (`:432`) renders `null` | unknown to the UI; `queueItemId` is stripped by `compactFounderItem` (`today-page-service.mjs:101-128`) | **no path exists** | Yes | 01 | Carry `queueItemId` through and link to the existing guarded review surface | Not yet implemented |
-| Today | Needs attention — stalled queue rows `No movement for N days.` | `founder-today-view.mjs:464-483` | Yes | none for queue-backed rows | task workbench (tasks only) | none | Yes | 01 | Same correction | Not yet implemented |
-| Today | Meetings — `Open brief` | `founder-today-view.mjs:382-388` | Partly | link → `#meetings` | `#meetings` | 1 | **Yes** — not in the four-item nav, no return path | 01 | Keep link; add return context | Not yet implemented |
-| Relationships | `Follow-ups due` count tile | `partners-home.mjs:164` | **Yes** | **none on the tile** | separate filter button | 2 | No | 03 — count opens its list | Make the count itself the control | Not yet implemented |
-| Relationships | `Waiting on Roger` count tile | `partners-home.mjs:164` | **Yes** | none on the tile | filter button | 2 | No | 03 | Same | Not yet implemented |
-| Relationships | Row `Next action` / `No next action set` | `partners-home.mjs:100` | **Yes** | no dedicated control | drawer → `Set next action` | 2 | Partly | 03/04 — next move exposed on the row | Surface the next move without an overflow guess | Not yet implemented |
-| Relationships | Row `Eligibility: Suppressed` | `partners-home.mjs:107`, `relationship-service.mjs:43-48` | Yes | **none** | **no UI exists in any of the four workspaces to lift a suppression** | none | Yes | 03 — protected and visible | Keep protection visible; rename to `Not eligible to contact`; do **not** add a lift control in this release | Not yet implemented |
-| Relationships | `Possible duplicate: … Nothing has been merged.` | `partners-home.mjs:146-151` | **Yes — a correction** | **none** (a `<p role="note">`) | **no merge/confirm UI exists** | none | Yes | 03 | Out of scope for this release; record as a gap | Not yet implemented |
-| Relationships | `Import` / `Add relationship` | header, concept 03 | Yes | `Add Partner` exists; **`Import` does not** | `#upload` | ≥1 + prior knowledge | Yes | 03 — both in the header | Add `Import relationships` to the header | Not yet implemented |
-| Campaigns | **All 20 lifecycle stage actions** across four campaign types | `founder-campaigns.mjs:49` | **Yes** | **none — every action renders as a `<span>`**, no `<a>`, no `<button>`, no handler | scattered legacy controls | varies, often ∞ | Yes | 05 — one primary control per card | Render the existing action as a real control that navigates to the existing guarded workflow | Not yet implemented |
-| Campaigns | Partner outreach `N items need your approval…` | `founder-campaigns-view.mjs:258-262` | **Yes** | **none** | `#prospects`, unlinked | ∞ | **Yes** | 05 — `Review approvals` on the card | Primary control `Review approvals` → existing ranked list; filter the queue half by lane | Not yet implemented |
-| Campaigns | Reactivation Review — `The next audience is ready for your approval (N people).` | `founder-campaigns-view.mjs:145-151` | **Yes — approval** | **span** | legacy: preview → wave → send to queue → `#queue` → run | **4–5** | Yes | 05 | Single primary control to the existing approval surface | Not yet implemented |
-| Campaigns | Reactivation exception — `Delivery feedback is not connected.` | `founder-campaigns-view.mjs:127-135` | **Yes — setup** | **none** (`action:null`) | Settings → Integrations | ≥3 | Yes | 05 | Link to the existing connections surface | Not yet implemented |
-| Campaigns | Campaign-type exception actions (e.g. `Review the safety limit`) | `founder-campaigns-view.mjs:124` | Yes | **dropped by the renderer** (`founder-campaigns.mjs:59` prints summary+detail only) | legacy card / `#queue` | ≥2 | Yes | 05 | Render the action | Not yet implemented |
-| Campaigns | Bulk upload entry | `preview-server.mjs:27400` | Yes | `Upload a list` on the **legacy** hero | `#upload` | 1 (or none with outreach flag on) | Yes | 05 — inside Plan/setup | Add `Import audience` to campaign setup | Not yet implemented |
-| Scoreboard | `N Needs attention` summary count | `founder-scoreboard.mjs:25-28` | **Yes** | **none — the counts are `<span>`s** | per-card `Open source`, if any | ≥2 | Yes | 07 | Corrective action beside the metric | Not yet implemented |
-| Scoreboard | Card detail — `Add the current cash balance and an as-of date.`, `The cash as-of date is more than 45 days old.` | `founder-scoreboard.mjs:216-222`, service `:264,318` | **Yes — correction** | **none**; only `Open source` | owner-input form on the same page | 1–3 | Partly | 07 — `Update financials` | Bind the detail to the existing owner-input form | Not yet implemented |
-| Scoreboard | Health card — `Open Company Health for the next safe step.` | service `:418` | **Yes** | none | `#os-health`, not in the four-item nav nor Advanced; reachable via Settings → technical details | **3** | **Yes** | 07 — `Connect analytics` / setup action | Link the existing setup surface | Not yet implemented |
-| Scoreboard | Corrective actions per metric | `founder-scoreboard-registry.mjs:72` | Yes | exist **only** behind `FOUNDER_OS_SCOREBOARD`, which is **off in production** | — | — | Yes | 07 | Decide flag strategy; do not fabricate | Not yet implemented |
+| Today | Now item: title, `whyNow`, rank meta | `today-page.mjs:232-238` | Yes | `Open` / `Draft reply` button | in-place panel | 1 | No | 01/02 — action beside the item | Keep; align labels to concept | **Done** — kept, labels aligned |
+| Today | `Advanced full record` link | `today-page.mjs:245` | No | link | Artifact viewer | 1 | **Yes** — "Advanced" is shell vocabulary | 01 | Rename to `Open full record` | **Done** — `Open full record` |
+| Today | `N further ranked items are open but not needed today.` | `today-page.mjs:226-229` | No | **none** | **nowhere** | ∞ | Yes | 01 | Link to the filtered queue | **Done** — links to the filtered list |
+| Today | Needs attention — `Automation stopped for safety and nothing will resume until you decide.` | `founder-today-view.mjs:409-414` | **Yes — hard decision** | **none**; `href:""` (`:426`), `actionLabel:"Review"` (`:432`) renders `null` | unknown to the UI; `queueItemId` is stripped by `compactFounderItem` (`today-page-service.mjs:101-128`) | **no path exists** | Yes | 01 | Carry `queueItemId` through and link to the existing guarded review surface | **Done** — server-vetted `#item/…` destination on the row |
+| Today | Needs attention — stalled queue rows `No movement for N days.` | `founder-today-view.mjs:464-483` | Yes | none for queue-backed rows | task workbench (tasks only) | none | Yes | 01 | Same correction | **Done** — same correction |
+| Today | Meetings — `Open brief` | `founder-today-view.mjs:382-388` | Partly | link → `#meetings` | `#meetings` | 1 | **Yes** — not in the four-item nav, no return path | 01 | Keep link; add return context | **Done** — link kept; browser Back returns to Today |
+| Relationships | `Follow-ups due` count tile | `partners-home.mjs:164` | **Yes** | **none on the tile** | separate filter button | 2 | No | 03 — count opens its list | Make the count itself the control | **Done** — the count is the filter |
+| Relationships | `Waiting on Roger` count tile | `partners-home.mjs:164` | **Yes** | none on the tile | filter button | 2 | No | 03 | Same | **Done** — the count is the filter, as `Waiting on me` |
+| Relationships | Row `Next action` / `No next action set` | `partners-home.mjs:100` | **Yes** | no dedicated control | drawer → `Set next action` | 2 | Partly | 03/04 — next move exposed on the row | Surface the next move without an overflow guess | **Done** — the row reads `Set next action` when none is set |
+| Relationships | Row `Eligibility: Suppressed` | `partners-home.mjs:107`, `relationship-service.mjs:43-48` | Yes | **none** | **no UI exists in any of the four workspaces to lift a suppression** | none | Yes | 03 — protected and visible | Keep protection visible; rename to `Not eligible to contact`; do **not** add a lift control in this release | **Done** — reads `Not eligible to contact`; no lift control added |
+| Relationships | `Possible duplicate: … Nothing has been merged.` | `partners-home.mjs:146-151` | **Yes — a correction** | **none** (a `<p role="note">`) | **no merge/confirm UI exists** | none | Yes | 03 | Out of scope for this release; record as a gap | **Not built** — no approved merge action exists (§ gaps) |
+| Relationships | `Import` / `Add relationship` | header, concept 03 | Yes | `Add Partner` exists; **`Import` does not** | `#upload` | ≥1 + prior knowledge | Yes | 03 — both in the header | Add `Import relationships` to the header | **Done** — `Import relationships` and `Add relationship` in the header |
+| Campaigns | **All 20 lifecycle stage actions** across four campaign types | `founder-campaigns.mjs:49` | **Yes** | **none — every action renders as a `<span>`**, no `<a>`, no `<button>`, no handler | scattered legacy controls | varies, often ∞ | Yes | 05 — one primary control per card | Render the existing action as a real control that navigates to the existing guarded workflow | **Done** — 10 real controls, 10 plain status (§ lifecycle) |
+| Campaigns | Partner outreach `N items need your approval…` | `founder-campaigns-view.mjs:258-262` | **Yes** | **none** | `#prospects`, unlinked | ∞ | **Yes** | 05 — `Review approvals` on the card | Primary control `Review approvals` → existing ranked list; filter the queue half by lane | **Done** — count corrected; `Review approvals` opens the ranked list |
+| Campaigns | Reactivation Review — `The next audience is ready for your approval (N people).` | `founder-campaigns-view.mjs:145-151` | **Yes — approval** | **span** | legacy: preview → wave → send to queue → `#queue` → run | **4–5** | Yes | 05 | Single primary control to the existing approval surface | **Done** — one control opens the existing sending controls |
+| Campaigns | Reactivation exception — `Delivery feedback is not connected.` | `founder-campaigns-view.mjs:127-135` | **Yes — setup** | **none** (`action:null`) | Settings → Integrations | ≥3 | Yes | 05 | Link to the existing connections surface | **Done** — `Open connections` on the exception |
+| Campaigns | Campaign-type exception actions (e.g. `Review the safety limit`) | `founder-campaigns-view.mjs:124` | Yes | **dropped by the renderer** (`founder-campaigns.mjs:59` prints summary+detail only) | legacy card / `#queue` | ≥2 | Yes | 05 | Render the action | **Done** — lane exceptions now render their action |
+| Campaigns | Bulk upload entry | `preview-server.mjs:27400` | Yes | `Upload a list` on the **legacy** hero | `#upload` | 1 (or none with outreach flag on) | Yes | 05 — inside Plan/setup | Add `Import audience` to campaign setup | **Done** — `Import audience` in Plan and setup, both flag states |
+| Scoreboard | `N Needs attention` summary count | `founder-scoreboard.mjs:25-28` | **Yes** | **none — the counts are `<span>`s** | per-card `Open source`, if any | ≥2 | Yes | 07 | Corrective action beside the metric | **Done** — counted heading; each row links to its corrective action |
+| Scoreboard | Card detail — `Add the current cash balance and an as-of date.`, `The cash as-of date is more than 45 days old.` | `founder-scoreboard.mjs:216-222`, service `:264,318` | **Yes — correction** | **none**; only `Open source` | owner-input form on the same page | 1–3 | Partly | 07 — `Update financials` | Bind the detail to the existing owner-input form | **Done** — `Update financials` to the owner-input form |
+| Scoreboard | Health card — `Open Company Health for the next safe step.` | service `:418` | **Yes** | none | `#os-health`, not in the four-item nav nor Advanced; reachable via Settings → technical details | **3** | **Yes** | 07 — `Connect analytics` / setup action | Link the existing setup surface | **Done** — `Open platform health` beside the metric |
+| Scoreboard | Corrective actions per metric | `founder-scoreboard-registry.mjs:72` | Yes | exist **only** behind `FOUNDER_OS_SCOREBOARD`, which is **off in production** | — | — | Yes | 07 | Decide flag strategy; do not fabricate | **Done behind `FOUNDER_OS_SCOREBOARD`** — the flag is NOT enabled |
 
 ### Purely informational (no mutation control to be added)
 
@@ -173,8 +179,32 @@ legacy readout saying `Running — heartbeat is sending eligible reactivation em
 ## Totals
 
 - **Actionable items inventoried: 22.**
-- **Requiring prior knowledge today: 17.**
-- **Corrected so far: 0** — implementation is Phase 4 and has not started.
-- Unresolved and deliberately out of scope for a navigation/naming/placement release: the missing
-  suppression-lift UI and the missing duplicate-merge UI. Both are new business actions, and the
-  brief forbids creating a second business action to improve placement.
+- **Corrected: 21.** The 22nd — confirming or merging a possible duplicate — is not built.
+- **Required prior knowledge before: 17. After: 0.** All seventeen are now reachable by clicking a
+  visible label from a workspace in primary navigation.
+
+## Unresolved product capabilities
+
+Three, and none of them is a placement problem. Each would need a business action that does not
+exist, so this release states the condition plainly and adds no control that pretends otherwise.
+
+| Gap | What is missing | What this release does instead |
+|---|---|---|
+| Lifting a contact's suppression | No route, no engine path, no approval rule. Removing suppression is a one-confirmation action in `06_SAFETY_AND_AUTOMATION_CONTRACT.md`, and nothing implements it | Shows the condition as `Not eligible to contact` on the relationship, and adds no lift control anywhere |
+| Confirming or merging a possible duplicate | No merge route and no identity-resolution decision record. Merging two people is irreversible without one | Keeps `Possible duplicate: … Nothing has been merged.` visible, with no control |
+| Approving a drafted partner email | `POST /api/outreach/approve` is server-authorized and still has **no client caller**. No reviewed workflow can display one of these messages, let alone decide it | Counts them **out** of the approval number and names them in words: "N drafted partner emails are also waiting, and there is no way to review them here yet." Wiring the endpoint would add a sending gate to a read-model correction, which is out of scope |
+
+## The twenty lifecycle actions
+
+Ten became real controls; ten are plain status because no truthful action exists at that stage.
+
+| Lane | Real controls | Plain status |
+|---|---|---|
+| Social | Plan → `#social?view=weekly`; Review → `#social`; Run → `#social?view=weekly`; Monitor → `#social?view=weekly` (4) | Stop — posting is manual, nothing runs to stop (1) |
+| Reactivation | Review, Run and Stop → one button that opens the existing sending controls (3) | Plan and Monitor — readings, not decisions (2) |
+| Partner outreach | Plan → `#prospects`; Review → `#prospects` as `Review approvals` (2) | Run, Monitor, Stop — approving on Review is the only decision (3) |
+| Press outreach (flag off, which is production) | Run → the drafted campaign, when one exists (1, and 0 with the flag off) | The rest report NOT BUILT, and a not-built lane offers nothing (4–5) |
+
+No `<span>` action survives: the browser test asserts every `[data-campaign-action]` is an `<a>`
+with a resolvable hash or a `<button>` with a registered control, and the renderer refuses to draw
+a control whose target is not on the page.

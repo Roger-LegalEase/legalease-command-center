@@ -461,7 +461,7 @@ function relationshipsCards(state, now, role) {
   const stalled = partners ? partners.filter((partner) => STALLED_STAGES.has(slug(partner.stage || partner.status)) || lower(partner.relationshipHealth).includes("risk")) : [];
   const partnerPulse = sortedSnapshots(state, "partner-health");
   return [
-    countCard({ id:"active_partner_opportunities", group:"relationships", label:"Active Partner opportunities", rows:activeOpportunities, filtered:activeOpportunities || [], source:"Partner and prospect records", href:"#partners" }),
+    countCard({ id:"active_partner_opportunities", group:"relationships", label:"Active Partner opportunities", rows:activeOpportunities, filtered:activeOpportunities || [], source:"Partner records and potential partners", href:"#partners" }),
     countCard({ id:"followups_due", group:"relationships", label:"Follow-ups due", rows:tasks, filtered:followUps, source:"Relationship tasks", href:"#partners" }),
     countCard({ id:"meetings_booked", group:"relationships", label:"Meetings booked", rows:meetings, filtered:futureMeetings, source:"Read-only Calendar", href:"#calendar" }),
     countCard({ id:"proposals_active", group:"relationships", label:"Proposals active", rows:partners, filtered:proposals, source:"Partner records", href:"#partners" }),
