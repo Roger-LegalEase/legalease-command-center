@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+
+import { assertLegacyShellUnchanged } from "./test-support/legacy-shell-guard.mjs";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
@@ -213,32 +215,11 @@ const shellStart = serverSource.indexOf("function htmlShell()");
 const shellEnd = serverSource.indexOf("\nfunction renderLegacyApp()", shellStart);
 assert.ok(shellStart >= 0 && shellEnd > shellStart);
 const legacyShellHash = createHash("sha256").update(serverSource.slice(shellStart, shellEnd)).digest("hex");
-// Re-pinned 2026-07-25 (campaign surface repair). The legacy shell changed in exactly two
-// reviewed ways: the reactivation control surface (the #campaigns auto-load hook, the
-// "Preview next sends" control, the data-reactivation-control-surface marker the vNext
-// Outreach page uses to carry the card over instead of deleting it), and the campaign/
-// reactivation client comments moved out of the shipped template into server-side notes
-// above htmlShell() to stay inside the vNext client-JavaScript budget. Today's own HTML
-// pin is unchanged. Behavior is asserted by scripts/test-campaign-controls-flag-matrix.mjs.
-// Re-pinned by Founder OS Release 1. The legacy shell changed in exactly four reviewed
-// ways, all of them server-side conditionals that emit nothing when FOUNDER_OS_SHELL is off:
-// the Settings -> Advanced section, the five toast-only buttons the deprecation ledger marks
-// "Hide now", and the deletion of the unreferenced campaignsPageHtml renderer. With the flag
-// off the shell is byte-identical to before apart from that dead-code deletion, which is the
-// release's rollback path. Behaviour is asserted by tests/browser/founder-os-release-1.spec.mjs.
-// Re-pinned by Founder OS Release 2. The legacy shell changed in exactly one reviewed way:
-// the five daily-loop renderers the deprecation ledger consolidates into Today (cockpit,
-// focus, morning brief, evening reflection, daily closeout) are now server-side conditionals
-// that emit a short pointer into Today when FOUNDER_OS_TODAY is on and their original source
-// when it is off. With the flag off the shell is byte-identical to Release 1 (measured:
-// 1,647,552 inline client bytes in both states). Behaviour: tests/browser/founder-os-release-2.spec.mjs.
-// Re-pinned 2026-07-26 (outreach priority: prospect bulk approval). The legacy shell changed
-// in exactly one reviewed way: the #prospects page swapped its metrics-only body for a
-// container plus a loader that fetches the LAZY prospect-workbench runtime (scripts/ui/pages/
-// prospect-workbench.mjs), keeping the bulk-approval surface out of the initial client payload
-// (measured after: 1,647,021 inline client bytes, budget 1,650,000). Behaviour is asserted by
-// scripts/test-prospect-bulk-approval.mjs.
-assert.equal(legacyShellHash, "781f465153a77b75833d2eb6e7c5bffb267bbf4fd64f5b5ce8922601b5a0b28e", "Flag-off htmlShell output must remain unchanged.");
+// The legacy flag-off shell must stay byte-for-byte unchanged: that is the rollback path.
+// This suite owns that guard for the whole repo. The hash lives in ONE place now —
+// scripts/test-support/legacy-shell-guard.mjs — because it used to be pinned as a literal in
+// eleven suites, so any edit to any inline page failed all eleven. Re-pin: npm run repin:shell
+assertLegacyShellUnchanged();
 
 assert.equal(packageJson.scripts["test:vnext-desktop-shell"], "node scripts/test-vnext-desktop-shell.mjs");
 assert.match(readFileSync("scripts/run-extended-tests.mjs", "utf8"), /f\.startsWith\("test-"\) && f\.endsWith\("\.mjs"\)/);
