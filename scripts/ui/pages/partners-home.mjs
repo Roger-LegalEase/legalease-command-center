@@ -131,7 +131,7 @@ function founderOsHeaderActions() {
 // The summary counts were read-only numbers with a separate filter control elsewhere on the
 // page. Each count IS its filter now: one click, from the number Roger is looking at.
 function founderOsSummary(view) {
-  const tile = (label, count, query) => `<div><dt>${escapeHtml(label)}</dt><dd><button type="button" class="relationship-summary-count" data-relationship-view="${escapeAttribute(JSON.stringify(query))}"><span>${Number(count || 0)}</span> <small>${escapeHtml(label)}</small></button></dd></div>`;
+  const tile = (label, count, query) => `<div><dt>${escapeHtml(label)}</dt><dd><button type="button" class="relationship-summary-count" aria-label="Show ${escapeAttribute(label)}" data-relationship-view="${escapeAttribute(JSON.stringify(query))}">${Number(count || 0)}</button></dd></div>`;
   return `<dl class="partners-summary relationships-summary" aria-label="Relationship summary">
     <div><dt>Relationships</dt><dd>${Number(view.summary?.totalRelationships || 0)}</dd></div>
     ${tile("Follow-up due", view.summary?.followUpsDue, { followUp:"due" })}

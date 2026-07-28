@@ -241,9 +241,8 @@
   text-align: left;
 }
 
-.relationship-summary-count span { font-size: 1.4rem; font-weight: 700; display: block; }
-.relationship-summary-count small { color: var(--le-concept-muted-text); }
-.relationship-summary-count:hover span { color: var(--le-concept-orange-dark); }
+.relationship-summary-count { font-size: 1.4rem; font-weight: 700; }
+.relationship-summary-count:hover { color: var(--le-concept-orange-dark); text-decoration: underline; }
 
 /* ---------------------------------------------------------------------------------------------
    Scoreboard
