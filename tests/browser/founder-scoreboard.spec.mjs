@@ -17,7 +17,9 @@ test("founder reviews truthful KPIs and saves manual runway inputs", async ({ pa
   await expect(scoreboard).toBeVisible();
   await expect(scoreboard).toHaveAttribute("data-loaded", "true");
   await expect(scoreboard.locator("[data-scoreboard-card]")).toHaveCount(35);
-  for (const group of ["Financial", "Acquisition", "Relationships", "Customer", "Marketing", "Health"]) {
+  // The charter's six section names (FOUNDER_OS_SCOREBOARD_SECTIONS). The group KEYS are
+  // unchanged — "relationships" and "health" — so no card, filter or stored preference moved.
+  for (const group of ["Financial", "Acquisition", "Pipeline", "Customer", "Marketing", "Platform health"]) {
     await expect(scoreboard.getByRole("heading", { name:group, exact:true })).toBeVisible();
   }
 
