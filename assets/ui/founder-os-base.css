@@ -1,0 +1,124 @@
+/* Founder OS — the base layer. Every page inside the shell, not only the four workspaces.
+ ===============================================================================================
+
+ Releases 1-7 scoped the concept's component treatments to four surface roots, so a founder who
+ left Campaigns for Settings, Partner outreach approvals or SOC 2 crossed into a different-looking
+ product. The TOKENS always rode `.le-os` — the shell root — and therefore already reached every
+ page; only these treatments stopped short. This file gives the shared page vocabulary the same
+ treatments, keyed off that same root, so `.le-os` remains the one switch.
+
+ WHY A SEPARATE FILE, LOADED LAZILY. founder-os-concept.css is linked unconditionally, so every
+ byte added to it is spent on flag-off pages too — both against the critical-CSS budget and
+ against the promise that flag-off rendering is byte-identical. Editing it would have broken
+ both. This file is a lazy asset requested only when FOUNDER_OS_SHELL is on, exactly the way
+ #153 delivered the four workspace layers, so flag-off serves and downloads nothing new.
+
+ SPECIFICITY IS THE MECHANISM, and it was chosen the hard way. The first attempt wrapped this
+ file in `@layer`, so that the four workspaces — all unlayered — would always win. That worked
+ too well: unlayered rules beat layered ones REGARDLESS of specificity, so the legacy page
+ stylesheets beat it too and the machinery pages kept their old panels. Measured on #settings:
+ border-radius stayed 10px and the border stayed the legacy green-grey.
+
+ So these rules are unlayered and deliberately three deep — `.le-os .page-section .panel` —
+ which clears the legacy page rules (mostly one class) while the workspace layers, which name
+ their own components (.founder-campaign-lane, .kpi-card, .relationship-*), never collide.
+
+ NO PAGE-LOCAL HEX. Every value below is a token declared in founder-os-concept.css. */
+
+.le-os .page-section { color: var(--le-concept-ink); font-size: var(--le-type-body); }
+
+.le-os .page-section h1,
+.le-os .page-section h2,
+.le-os .page-section h3,
+.le-os .page-section .big-title { color: var(--le-concept-ink); letter-spacing: -0.01em; font-weight: 800; }
+.le-os .page-section h1,
+.le-os .page-section .big-title { font-size: 1.5rem; }
+.le-os .page-section h2 { font-size: 1.125rem; }
+.le-os .page-section h3 { font-size: 1rem; font-weight: 700; }
+.le-os .page-section .eyebrow {
+  color: var(--le-concept-muted-2); font-size: var(--le-type-label);
+  font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+}
+.le-os .page-section .muted,
+.le-os .page-section .meta,
+.le-os .page-section label { color: var(--le-concept-muted-text); }
+.le-os .page-section label { font-size: var(--le-type-meta); }
+.le-os .page-section a { color: var(--le-concept-orange-text); }
+
+/* The card family. Every machinery page draws one of these names; they become one surface. */
+.le-os .page-section .panel,
+.le-os .page-section .card,
+.le-os .page-section .hero-panel,
+.le-os .page-section .command-panel,
+.le-os .page-section .cockpit-card,
+.le-os .page-section .growth-card,
+.le-os .page-section .readiness-card,
+.le-os .page-section .memory-history-card,
+.le-os .page-section .operating-memory-card,
+.le-os .page-section .operating-memory-tile,
+.le-os .page-section .simple-panel {
+  border: 1px solid var(--le-concept-border);
+  border-radius: var(--le-radius-card);
+  background: var(--le-concept-card);
+  box-shadow: var(--le-concept-shadow);
+}
+.le-os .page-section .simple-panel-head,
+.le-os .page-section .command-panel-head,
+.le-os .page-section .cockpit-card-head,
+.le-os .page-section .growth-card-head { color: var(--le-concept-ink); font-weight: 800; }
+
+/* Controls. The concept's button is one shape; a page may not invent a second. */
+.le-os .page-section button,
+.le-os .page-section .button {
+  border-radius: var(--le-radius-control); font-weight: 700; font-size: var(--le-type-body);
+}
+.le-os .page-section button.primary,
+.le-os .page-section .button.primary {
+  border: 1px solid var(--le-concept-orange-dark);
+  background: var(--le-concept-orange-dark);
+  color: var(--le-concept-card);
+}
+.le-os .page-section input,
+.le-os .page-section select,
+.le-os .page-section textarea {
+  border: 1px solid var(--le-concept-border-2);
+  border-radius: var(--le-radius-control);
+  background: var(--le-concept-card);
+  color: var(--le-concept-ink);
+  font-size: var(--le-type-body);
+}
+.le-os .page-section button:focus-visible,
+.le-os .page-section a:focus-visible,
+.le-os .page-section input:focus-visible,
+.le-os .page-section select:focus-visible,
+.le-os .page-section textarea:focus-visible {
+  outline: 2px solid var(--le-concept-orange-dark); outline-offset: 2px;
+}
+
+/* Tables. The concept's table is quiet: a ruled body, an uppercase label row, no zebra. */
+.le-os .page-section table,
+.le-os .page-section .metric-table { border-collapse: collapse; width: 100%; }
+.le-os .page-section table th,
+.le-os .page-section .metric-table th {
+  border-bottom: 1px solid var(--le-concept-border-2);
+  color: var(--le-concept-muted-2);
+  font-size: var(--le-type-label);
+  font-weight: 700; letter-spacing: .06em; text-transform: uppercase; text-align: left;
+}
+.le-os .page-section table td,
+.le-os .page-section .metric-table td { border-bottom: 1px solid var(--le-concept-border); color: var(--le-concept-ink); }
+.le-os .page-section .metric-row { border-bottom: 1px solid var(--le-concept-border); }
+
+/* The badge is the status chip's plain cousin: neutral until a state names it. The four
+   meanings are the fixed mapping — Live green, Manual amber, Needs attention red,
+   Unavailable neutral grey — read from the status tokens, never restated. */
+.le-os .page-section .badge {
+  display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 10px;
+  background: var(--le-status-unavailable-soft); color: var(--le-status-unavailable);
+  font-size: var(--le-type-label); font-weight: 700;
+}
+.le-os .page-section .badge.ok,
+.le-os .page-section .badge.live { background: var(--le-status-live-soft); color: var(--le-status-live); }
+.le-os .page-section .badge.warn { background: var(--le-status-manual-soft); color: var(--le-status-manual); }
+.le-os .page-section .badge.bad,
+.le-os .page-section .badge.error { background: var(--le-status-attention-soft); color: var(--le-status-attention); }
