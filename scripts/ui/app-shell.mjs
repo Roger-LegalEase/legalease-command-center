@@ -369,6 +369,17 @@ function discoveryCaptureSinkBrowserSource() {
   })();`;
 }
 
+// ONE PRIMARY SURFACE PER ROUTE. PR 152 established the rule on Campaigns: under a Founder OS flag
+// the new surface REPLACES the legacy one rather than joining it, and the way it does that is by
+// not shipping the legacy runtime at all. Scoreboard had never been given the same treatment, so
+// #revenue mounted the KPI registry AND the legacy Founder Scoreboard — and the registry prepends
+// itself, which is exactly what Roger saw: the concept scoreboard, then platform health, then the
+// same numbers again in the old surface underneath. The legacy asset is now gated on the flag
+// being OFF, so the route resolves either way and only one primary surface ever mounts.
+//
+// NOTE FOR ANYONE EDITING THE TEMPLATE BELOW: its output is newline-stripped by the .replace() at
+// the end of this function, so a `//` comment inside it silently comments out the whole remaining
+// script. That cost a debugging cycle here. Explain things out here, never in there.
 function vnextLazyAssetLoaderScript(options = {}) {
   const manifest = Object.fromEntries(Object.entries(VNEXT_LAZY_ASSETS)
     .filter(([, asset]) => !asset.outreachOnly || options.outreachEnabled === true)
@@ -442,7 +453,7 @@ function vnextLazyAssetLoaderScript(options = {}) {
       if (route === "partners" || objectType === "Partner") add("relationship-drawer", "task-workbench", "communication-composer");
       if (route === "support") add("founder-support", "relationship-drawer", "task-workbench", "communication-composer");
       if (route === "meetings") add("founder-calendar", "relationship-drawer", "task-workbench", "communication-composer");
-      if (["revenue", "metrics"].includes(route) || ["revenue", "scoreboard", "metrics", "kpis"].includes(raw)) add("founder-scoreboard");
+      ${options.founderOsScoreboard ? "" : `if (["revenue", "metrics"].includes(route) || ["revenue", "scoreboard", "metrics", "kpis"].includes(raw)) add("founder-scoreboard");`}
       if (["company-health", "os-health"].includes(route) || ["company-health", "os-health", "health", "app-status", "system"].includes(raw)) add("founder-company-health");
       if (route === "queue" && query.get("view") === "weekly") add("social-weekly-planner");
       if (["automation", "automation-control", "automation-control-center"].includes(raw) || (route === "outreach" && query.get("view") === "automation")) add("automation-control-center");

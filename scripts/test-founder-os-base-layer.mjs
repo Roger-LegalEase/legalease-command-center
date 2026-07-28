@@ -32,8 +32,9 @@ check("every selector in the base layer is scoped to the shell root", () => {
     .map((match) => match[2].trim())
     .filter((selector) => selector && !selector.startsWith("@"));
   assert.ok(selectors.length > 10, `expected a real stylesheet; found ${selectors.length} selectors`);
-  const unscoped = selectors.flatMap((group) => group.split(",").map((s) => s.trim()))
-    .filter((selector) => selector && !selector.startsWith(".le-os"));
+  // Splitting on "," would cut `:is(h1, h2, h3)` into fragments, so the check is per RULE: every
+  // rule must open at the shell root, written plainly or inside `:where()` (see check 3b).
+  const unscoped = selectors.filter((group) => !/^(?::where\()?\.le-os\b/.test(group.trim()));
   assert.deepEqual(unscoped, [], `every rule must start at .le-os or it can reach a flag-off page: ${unscoped.join(" | ")}`);
 });
 
@@ -52,8 +53,34 @@ check("the base layer states no colour of its own", () => {
 check("the base layer is unlayered, so it clears the legacy page rules", () => {
   assert.doesNotMatch(css, /@layer\s+[a-z-]+\s*\{/,
     "@layer would put this below every unlayered legacy rule and the machinery pages would keep the old look");
-  const generic = [...css.matchAll(/^\.le-os \.page-section [^,{]*[.a-z][^,{]*[,{]/gm)];
+  const generic = [...css.matchAll(/^:?(?:where\()?\.le-os \.page-section\)? [^,{]*[.a-z][^,{]*[,{]/gm)];
   assert.ok(generic.length > 5, "the base layer must reach the shared page vocabulary, not only the shell");
+});
+
+// ---- 3b. a floor, not a ceiling ---------------------------------------------------------------
+// Three class-weights aimed at a bare TAG is how the first cut beat every component that had
+// named its own control with one class — and it beat them on ONE property, which is worse than
+// losing outright. Measured on #support: `.le-os .page-section a { color }` won over
+// `.founder-support__inbox-link { color:#fff }`, leaving orange text on the component's own teal
+// fill at about 2:1. Tag-level rules must therefore weigh what they select, and `:where()` is how.
+check("tag-level rules carry no specificity, so a component that names itself always wins", () => {
+  const body = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const selectors = [...body.matchAll(/(^|[}{])\s*([^{}@]+?)\s*\{/gm)]
+    .flatMap((match) => match[2].split(/,(?![^(]*\))/).map((value) => value.trim()))
+    .filter(Boolean);
+  // A rule is TAG-LEVEL when, once the shell scope is removed, nothing is left but element
+  // names — no class, id or attribute of its own to justify the weight it would carry.
+  const withoutScope = (selector) => selector.replace(/^(?::where\()?\.le-os \.page-section\)?/, "").trim();
+  const tagLevel = selectors.filter((selector) => {
+    const rest = withoutScope(selector);
+    return rest && !/[.#\[]/.test(rest);
+  });
+  // :focus-visible is the keyboard floor, not a preference a component may overrule. It is the
+  // one documented exception to this rule and it is named here so it cannot be widened silently.
+  const overweight = tagLevel.filter((selector) => selector.startsWith(".le-os") && !selector.includes(":focus-visible"));
+  assert.deepEqual(overweight, [],
+    "a tag-level rule must be written `:where(.le-os .page-section) tag` so a component's own rule outranks it");
+  assert.ok(tagLevel.length > 5, "the base layer must still state the element defaults it is there to state");
 });
 
 // ---- 4 and 5. what the shell actually serves ----------------------------------------------------

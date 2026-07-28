@@ -190,22 +190,44 @@ export function founderScoreboardRegistryBrowserSource() {
   return `(() => { "use strict";
     const endpoint=${endpoint}; ${renderer}
     const metrics={requests:0,mutations:0,externalActions:0}; window.__LE_FOUNDER_SCOREBOARD_REGISTRY_METRICS=metrics;
-    let loading=false;
+    let loading=false; let lastHtml="";
     function host(){return document.querySelector("main#app #revenue.page-section.active, main#app #metrics.page-section.active");}
     function onRoute(){const r=window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(location.hash||"#today");return r?.kind==="page"&&["revenue","metrics"].includes(r.canonicalRoute);}
-    function mount(html){const target=host();if(!target)return;let slot=target.querySelector("[data-kpi-registry-slot]");if(!slot){slot=document.createElement("div");slot.setAttribute("data-kpi-registry-slot","");target.prepend(slot);}slot.innerHTML=html;}
+    // REPLACE, DO NOT PREPEND. This mounted into a slot at the top of the section and left the
+    // legacy Revenue page standing underneath it, so #revenue answered "open the Scoreboard"
+    // with two scoreboards, one above the other. #152 settled the rule for Campaigns: under a
+    // Founder OS flag the new surface REPLACES the legacy one. The legacy body is not deleted —
+    // it is carried into a disclosure the way Campaigns carries its sending controls, and its
+    // own hero is dropped because the registry's header is already the page's voice.
+    function detachLegacy(target){const nodes=[...target.children].filter((node)=>!node.hasAttribute("data-kpi-registry")&&!node.hasAttribute("data-kpi-registry-legacy"));for(const node of nodes)node.remove();return nodes;}
+    function attachLegacy(target,nodes){if(!nodes.length)return;
+      const details=document.createElement("details");details.className="kpi-registry-legacy";details.setAttribute("data-kpi-registry-legacy","");
+      const summary=document.createElement("summary");summary.textContent="Detailed revenue records";details.append(summary);
+      for(const node of nodes){node.querySelector?.(".hero-panel")?.remove();if(node.classList?.contains("hero-panel"))continue;details.append(node);}
+      target.append(details);}
+    function mount(html){const target=host();if(!target)return;
+      // Empty html is the rollback path — flag off or a failed read. Put the legacy page back
+      // exactly as it was rather than leaving the founder an empty section.
+      if(!html){const kept=target.querySelector("[data-kpi-registry-legacy]");if(kept){target.replaceChildren(...kept.childNodes);target.querySelector("summary")?.remove();}target.dataset.kpiRegistryOwned="";return;}
+      const legacy=detachLegacy(target);target.innerHTML=html;target.dataset.kpiRegistryOwned="true";attachLegacy(target,legacy);}
+    function ownedAndCurrent(){const target=host();return Boolean(target&&target.dataset.kpiRegistryOwned==="true"&&target.querySelector("[data-kpi-registry]"));}
     async function load(){if(!onRoute()||loading)return null;loading=true;metrics.requests+=1;
       try{const response=await fetch(endpoint,{credentials:"same-origin",headers:{accept:"application/json"}});
         const body=await response.json().catch(()=>({}));
         if(!onRoute())return null;
         // No registry block means the flag is off. Render nothing rather than an empty shell.
-        if(!body||!body.registry){mount("");return null;}
-        mount(founderScoreboardRegistryHtml(body.registry));
+        if(!body||!body.registry){lastHtml="";mount("");return null;}
+        lastHtml=founderScoreboardRegistryHtml(body.registry);
+        mount(lastHtml);
         return body;}
-      catch{if(onRoute())mount("");return null;}
+      catch{if(onRoute()){lastHtml="";mount("");}return null;}
       finally{loading=false;}}
     function routeChanged(){if(onRoute())void load();}
     window.addEventListener("hashchange",routeChanged);
+    // The legacy renderer rewrites this section on every state refresh. Re-taking ownership on
+    // mutation is what stops it re-appearing underneath the registry.
+    const appRoot=document.querySelector("main#app");
+    if(appRoot)new MutationObserver(()=>{if(onRoute()&&lastHtml&&!ownedAndCurrent())mount(lastHtml);}).observe(appRoot,{childList:true,subtree:true,attributes:true,attributeFilter:["class"]});
     window.__LE_FOUNDER_SCOREBOARD_REGISTRY=Object.freeze({load:()=>load(),activate:routeChanged});
     routeChanged();
   })();`;

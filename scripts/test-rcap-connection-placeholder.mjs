@@ -22,7 +22,7 @@ const rcapHelper = functionBlock("openRcapConnectionChecklist");
 const channelCards = functionBlock("channelCards");
 
 assert(settingsArea.includes("<summary>Integrations</summary>"), "Settings should expose an Integrations section.");
-assert(settingsArea.includes("rcapConnectionCardHtml()"), "Settings integrations should render RCAP Connection.");
+assert(settingsArea.includes("rcapConnectionCardHtml()"), "Settings integrations should render the partner program connection.");
 assert(settingsArea.includes("channel-readiness-strip"), "Channels should show one section-level safety strip.");
 assert(settingsArea.includes("channel-readiness-list"), "Channels should render as a calm readiness list.");
 assert(!settingsArea.includes("grid channel-grid settings-card-grid"), "Channels should not render the old cramped card grid.");
@@ -34,9 +34,12 @@ assert(!channelCards.includes("Run Dry Test"), "Channels should not show disable
 assert(!channelCards.includes("Disconnect"), "Channels should not show disabled disconnect controls on every row.");
 
 for (const required of [
-  "RCAP Connection",
+  // Renamed for the founder: "RCAP" is the internal acronym, and Settings is on the walk
+  // Roger runs. The class names, route alias and helper keep the old spelling on purpose —
+  // renaming those would break the #rcap bookmark this file also pins.
+  "Partner program connection",
   "Not connected",
-  "RCAP is being built separately.",
+  "The partner program is being built separately.",
   "partner pages, dashboards, Wilma eligibility chat, signup, Briefcase, and document generation",
   "Prepare connection",
   "Connection checklist",
@@ -62,7 +65,7 @@ assert(source.includes(".rcap-connection-card { grid-column:1 / -1; }"), "RCAP c
 assert(source.includes(".rcap-connection-row { display:flex;"), "RCAP checklist rows should use a readable row layout.");
 assert(source.includes("word-break:normal"), "RCAP checklist labels should not wrap letter by letter.");
 assert(routeAliases.includes('rcap:"production-activation-rcap"'), "#rcap route alias should remain preserved.");
-assert(!nav.includes(">RCAP<") && !nav.includes("RCAP Connection"), "RCAP should not become a top-level nav item.");
+assert(!nav.includes(">RCAP<") && !nav.includes("Partner program connection"), "The partner program connection should not become a top-level nav item.");
 
 for (const forbidden of [
   "Generate Live Petition",

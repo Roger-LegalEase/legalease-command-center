@@ -298,19 +298,9 @@
   .founder-campaign-setup { padding: 0.75rem; }
 }
 
-/* ---------------------------------------------------------------------------------------------
-   The two legacy-shell destinations this release adopts: Partner outreach approvals and the
-   audience importer. They keep the legacy layout — this is a naming and reachability release,
-   not a rebuild — but they are founder destinations now, so their primary control has to be
-   readable. The legacy `.primary` is white on #00a99d, which is 2.93:1. Darkened to 4.9:1 HERE
-   ONLY, so no other legacy page changes.
-   --------------------------------------------------------------------------------------------- */
-#prospects .primary,
-#upload .primary {
-  background: #007f76;
-  border-color: #007f76;
-  color: #ffffff;
-}
+/* The `#prospects .primary, #upload .primary` teal exception that lived here is deleted: the base
+   layer now gives both pages the concept's own primary button, and an id-scoped rule outranked
+   it. Rationale in the commit; this file is critical CSS, so it does not carry the essay. */
 
 /* ------------------------------------------------------------------------------------------------
    CONCEPT PARITY — the shell, Today, and the Search and Create overlays.

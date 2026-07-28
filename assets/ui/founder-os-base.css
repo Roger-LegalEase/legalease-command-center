@@ -23,27 +23,40 @@
  which clears the legacy page rules (mostly one class) while the workspace layers, which name
  their own components (.founder-campaign-lane, .kpi-card, .relationship-*), never collide.
 
- NO PAGE-LOCAL HEX. Every value below is a token declared in founder-os-concept.css. */
+ NO PAGE-LOCAL HEX. Every value below is a token declared in founder-os-concept.css.
 
-.le-os .page-section { color: var(--le-concept-ink); font-size: var(--le-type-body); }
+ THE BASE LAYER IS A FLOOR, NOT A CEILING — and the first cut got that backwards. Rules that
+ select a bare TAG were written `.le-os .page-section a`, which is three class-weights of
+ specificity aimed at a selector that names nothing. It therefore beat every component that had
+ named its own control with one class, and it beat them on ONE property, which is worse than
+ losing outright. Measured on #support: `.le-os .page-section a { color: … }` won over
+ `.founder-support__inbox-link { color: #fff }`, so a filled teal button kept its teal fill and
+ took orange text — rgb(184,48,0) on rgb(22,126,119), about 2:1, unreadable.
 
-.le-os .page-section h1,
-.le-os .page-section h2,
-.le-os .page-section h3,
+ So every TAG-level rule below is scoped with `:where(.le-os .page-section)`, which contributes
+ no specificity at all. The rule still reaches only pages inside the shell, but it now weighs
+ exactly what it selects — one tag — so any component that states a colour, radius or size for
+ itself keeps it, and only the unclaimed elements inherit the concept. The CLASS-level rules
+ below (.panel, .badge, .eyebrow, .muted, .metric-table) deliberately keep their full weight:
+ those names ARE the legacy page vocabulary, and clearing the legacy page rules is their job. */
+
+:where(.le-os .page-section) { color: var(--le-concept-ink); font-size: var(--le-type-body); }
+
+:where(.le-os .page-section) :is(h1, h2, h3),
 .le-os .page-section .big-title { color: var(--le-concept-ink); letter-spacing: -0.01em; font-weight: 800; }
-.le-os .page-section h1,
+:where(.le-os .page-section) h1,
 .le-os .page-section .big-title { font-size: 1.5rem; }
-.le-os .page-section h2 { font-size: 1.125rem; }
-.le-os .page-section h3 { font-size: 1rem; font-weight: 700; }
+:where(.le-os .page-section) h2 { font-size: 1.125rem; }
+:where(.le-os .page-section) h3 { font-size: 1rem; font-weight: 700; }
 .le-os .page-section .eyebrow {
   color: var(--le-concept-muted-2); font-size: var(--le-type-label);
   font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
 }
 .le-os .page-section .muted,
 .le-os .page-section .meta,
-.le-os .page-section label { color: var(--le-concept-muted-text); }
-.le-os .page-section label { font-size: var(--le-type-meta); }
-.le-os .page-section a { color: var(--le-concept-orange-text); }
+:where(.le-os .page-section) label { color: var(--le-concept-muted-text); }
+:where(.le-os .page-section) label { font-size: var(--le-type-meta); }
+:where(.le-os .page-section) a { color: var(--le-concept-orange-text); }
 
 /* The card family. Every machinery page draws one of these names; they become one surface. */
 .le-os .page-section .panel,
@@ -67,8 +80,8 @@
 .le-os .page-section .cockpit-card-head,
 .le-os .page-section .growth-card-head { color: var(--le-concept-ink); font-weight: 800; }
 
-/* Controls. The concept's button is one shape; a page may not invent a second. */
-.le-os .page-section button,
+/* Controls. The concept's button is one shape; a page that does not name its own keeps it. */
+:where(.le-os .page-section) button,
 .le-os .page-section .button {
   border-radius: var(--le-radius-control); font-weight: 700; font-size: var(--le-type-body);
 }
@@ -78,14 +91,37 @@
   background: var(--le-concept-orange-dark);
   color: var(--le-concept-card);
 }
-.le-os .page-section input,
-.le-os .page-section select,
-.le-os .page-section textarea {
+:where(.le-os .page-section) input:not([type="checkbox"]):not([type="radio"]),
+:where(.le-os .page-section) select,
+:where(.le-os .page-section) textarea {
   border: 1px solid var(--le-concept-border-2);
   border-radius: var(--le-radius-control);
   background: var(--le-concept-card);
   color: var(--le-concept-ink);
   font-size: var(--le-type-body);
+}
+
+/* A CHECKBOX IS NOT A TEXT FIELD, and one legacy rule had been insisting otherwise product-wide:
+   `input, textarea, select { width: 100%; padding: 10px }`. It applies to every input type, so
+   every checkbox and radio in the Command Center rendered as a full-width block. Measured on
+   #prospects at 1600: an 805px checkbox, which is the "empty box with one stray checkbox" Roger
+   reported — the box IS the checkbox, and the row's own text is squeezed into whatever strip is
+   left at the right edge. It reads as a broken list; it is a control with no width of its own.
+
+   Fixed here rather than on #prospects because it was never a #prospects bug: it is every
+   checkbox on every page, and a per-page override would have left the rest of them wrong.
+
+   This one and the focus ring below keep their full weight ON PURPOSE, against the `:where()`
+   rule stated at the top. Neither states a preference a component is entitled to overrule: this
+   one CORRECTS a legacy global that no page ever asked for, and the focus ring is the keyboard
+   floor. Everything else in this file yields to a component that names itself. */
+.le-os .page-section input[type="checkbox"],
+.le-os .page-section input[type="radio"] {
+  width: auto;
+  min-width: 0;
+  flex: none;
+  padding: 0;
+  margin: 0;
 }
 .le-os .page-section button:focus-visible,
 .le-os .page-section a:focus-visible,
@@ -95,17 +131,35 @@
   outline: 2px solid var(--le-concept-orange-dark); outline-offset: 2px;
 }
 
+/* The partner-outreach approval row borrows the legacy Customer Care row for its box, which
+   paints every <span> in that page's teal and right-aligns it — so an organisation's name read
+   as a teal status value pushed to the right edge of the row it was supposed to lead. The box is
+   kept; the borrowed meaning is not. */
+.le-os .page-section .prospect-review-row span {
+  color: inherit;
+  text-align: left;
+  font-weight: inherit;
+}
+
+/* The legacy command button carries a count badge painted `var(--teal)`. Navy the button may
+   keep — the concept has navy — but the concept has no teal, and this badge is the teal a
+   founder meets on Settings. A class-level rule, so it clears the legacy one it replaces. */
+.le-os .page-section .command-run-button .count {
+  background: var(--le-concept-orange-soft);
+  color: var(--le-concept-orange-dark);
+}
+
 /* Tables. The concept's table is quiet: a ruled body, an uppercase label row, no zebra. */
-.le-os .page-section table,
+:where(.le-os .page-section) table,
 .le-os .page-section .metric-table { border-collapse: collapse; width: 100%; }
-.le-os .page-section table th,
+:where(.le-os .page-section) table th,
 .le-os .page-section .metric-table th {
   border-bottom: 1px solid var(--le-concept-border-2);
   color: var(--le-concept-muted-2);
   font-size: var(--le-type-label);
   font-weight: 700; letter-spacing: .06em; text-transform: uppercase; text-align: left;
 }
-.le-os .page-section table td,
+:where(.le-os .page-section) table td,
 .le-os .page-section .metric-table td { border-bottom: 1px solid var(--le-concept-border); color: var(--le-concept-ink); }
 .le-os .page-section .metric-row { border-bottom: 1px solid var(--le-concept-border); }
 
