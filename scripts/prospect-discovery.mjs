@@ -117,12 +117,27 @@ export function normalizeName(value = "") {
   return n;
 }
 
+// A shared-mailbox provider is NOT an identity. Seven distinct organisations in the 2026 clinic
+// directory publish a gmail.com address; keyed on domain they would be one organisation — one
+// candidate row, and, worse, one outreachOrganization at promotion time, since promoteApproved
+// links by exactly these keys. The domain field itself is still recorded; it just cannot decide
+// who someone is. (No production candidate carries a domain today, so no existing id moves.)
+const FREE_EMAIL_DOMAINS = new Set([
+  "gmail.com", "googlemail.com", "yahoo.com", "ymail.com", "hotmail.com", "outlook.com",
+  "live.com", "msn.com", "aol.com", "icloud.com", "me.com", "mac.com", "proton.me",
+  "protonmail.com", "gmx.com", "mail.com", "zoho.com", "comcast.net", "verizon.net",
+  "att.net", "sbcglobal.net", "bellsouth.net", "cox.net", "juno.com"
+]);
+export function isFreeEmailDomain(value = "") {
+  return FREE_EMAIL_DOMAINS.has(normalizeDomain(value));
+}
+
 export function prospectKeys(candidate = {}) {
   const keys = [];
   const ein = normalizeEin(candidate.ein);
   if (ein) keys.push(`ein:${ein}`);
   const domain = normalizeDomain(candidate.domain || candidate.website || candidate.email);
-  if (domain) keys.push(`domain:${domain}`);
+  if (domain && !FREE_EMAIL_DOMAINS.has(domain)) keys.push(`domain:${domain}`);
   const name = normalizeName(candidate.organization_name || candidate.name);
   if (name) keys.push(`name:${name}`);
   return keys;

@@ -130,6 +130,9 @@ export function permissionForRequest(method = "GET", pathname = "/") {
   // admin-only. GET status falls through to the "read" rule above.
   if (pathname === "/api/prospects/approve" || pathname === "/api/prospects/reject") return "approve";
   if (pathname.startsWith("/api/prospects/")) return "admin";
+  // Clinic directory import: staging a review queue, not an audience. Admin at the role layer,
+  // and /confirm re-checks for owner/admin inside the handler like every other import.
+  if (pathname.startsWith("/api/clinics/")) return "admin";
   if (/\/api\/channels|\/api\/oauth|\/api\/settings|\/api\/backups\/restore/.test(pathname)) return "admin";
   if (/\/api\/publish|\/api\/linkedin\/publish|\/api\/publishing\/run|\/api\/posts\/.*\/publish|\/api\/posts\/.*\/upload-public-image|\/api\/posts\/batch-upload-public-images/.test(pathname)) return "social_publish";
   if (/\/api\/approval|\/api\/autonomy\/actions|\/api\/automation\/suggestions/.test(pathname)) return "approve";

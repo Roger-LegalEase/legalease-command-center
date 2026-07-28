@@ -111,6 +111,11 @@ const coreStateCollections = [
   "prospectCandidates",
   "prospectDiscoveryRuns",
   "prospectConfig",
+  // The 2026 clinic directory's person-level layer. MUST stay in sync with
+  // CLINIC_NAMED_CONTACTS_COLLECTION in clinic-directory-import.mjs (same trap as above; rows
+  // carry `id`, so they get stable per-record keys). Reference rows only — a named contact here
+  // is not an outreach contact and has no send path. test-clinic-directory-import.mjs asserts it.
+  "clinicNamedContacts",
   // B3 codebase-health monitor. MUST stay in sync with CODEBASE_HEALTH_COLLECTIONS in
   // codebase-health.mjs, or the findings report silently fails to persist to Supabase (the
   // B1/B2/B5 trap). test-codebase-health.mjs asserts membership — and B3 itself flags this drift.

@@ -14,6 +14,7 @@ import { verifyUnsubscribeToken, recordSuppression, outreachConfigOf, OUTREACH_Q
 import { prospectConfigOf, PROSPECT_ENGINE_ID, PROSPECT_REVIEW, PROSPECT_SOURCES, normalizeClassification } from "./prospect-discovery.mjs";
 import { applyBulkProspectDecision, selectPendingProspects } from "./prospect-selection.mjs";
 import { applyPressImportPlan, buildPressImportPlan, readPressWorkbook } from "./press-import.mjs";
+import { applyClinicImportPlan, buildClinicImportPlan, clinicImportViolations, readClinicWorkbook } from "./clinic-directory-import.mjs";
 import { applyPressCampaignProposal, buildPressCampaignProposal } from "./press-campaign.mjs";
 import { applyReactivationReconciliation, planReactivationReconciliation, restoreReconciledAttempts } from "./reactivation-reconcile.mjs";
 import { describeWriteDrift } from "./heartbeat-write-diagnostic.mjs";
@@ -39565,6 +39566,63 @@ async function handleRequest(request, response) {
     return;
   }
 
+  // ---- Clinic directory import (2026-07-28) -------------------------------------------------
+  // The national expungement / record-clearance clinic directory: 249 organisations, 99 named
+  // people. Same shape as the press pair above — preview is a faithful dry-run that writes
+  // nothing and returns the FULL report a human reads before deciding; confirm is owner/admin
+  // gated and writes records only.
+  //
+  // REVIEW-ONLY BY CONSTRUCTION, enforced twice: buildClinicImportPlan writes every organisation
+  // at review_state "pending_review" and writes no outreach contact at all, and confirm re-runs
+  // clinicImportViolations() over every row and refuses the whole import if one would land
+  // approved or enrolled. The fourteen organisations with no address import exactly like the
+  // rest — visibly uncontactable rather than dropped.
+  if (url.pathname === "/api/clinics/import/preview" && request.method === "POST") {
+    try {
+      // The workbook arrives base64 in the body and is larger than the default JSON bound
+      // (a 212 KB xlsx is ~283 KB encoded), so this reads at the import bound like every other
+      // file upload. Discovered by uploading the real file: the module-level tests could never
+      // have caught it, because they never crossed the request path.
+      const payload = await readBoundedJson(request, { limit: REQUEST_LIMITS.import });
+      const workbook = readClinicWorkbook(Buffer.from(String(payload?.workbookBase64 || ""), "base64"));
+      const currentState = await store.readState();
+      const plan = buildClinicImportPlan(currentState, workbook, { now: new Date().toISOString() });
+      // The report names organisations (public bodies) but never prints an address.
+      sendJson(response, { ok: true, noSend: true, report: plan.report, violations: clinicImportViolations(plan) });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not preview the clinic directory workbook." }, 400);
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/clinics/import/confirm" && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required.", requiredPermission: "owner/admin", actor: publicActor(accessDecision.actor) }, 403);
+      return;
+    }
+    try {
+      const payload = await readBoundedJson(request, { limit: REQUEST_LIMITS.import });
+      const workbook = readClinicWorkbook(Buffer.from(String(payload?.workbookBase64 || ""), "base64"));
+      const outcome = await serializeStateMutation(async () => {
+        const currentState = await store.readState();
+        const now = new Date().toISOString();
+        const plan = buildClinicImportPlan(currentState, workbook, { now });
+        const violations = clinicImportViolations(plan);
+        if (violations.length) {
+          throw new Error(`Clinic import refused: ${violations.length} row(s) would land approved or enrolled. Nothing was written.`);
+        }
+        const nextState = applyClinicImportPlan(currentState, plan, { now });
+        await writeChangedCollections(currentState, nextState);
+        return { report: plan.report };
+      });
+      sendJson(response, { ok: true, noSend: true, allPending: true, report: outcome.report });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not import the clinic directory workbook." }, 400);
+    }
+    return;
+  }
+
   // ---- Press multi-angle campaign composer (propose-only; 2026-07-27) -----------------------
   // Same shape as the import pair: preview is a faithful dry-run that writes nothing; confirm is
   // owner/admin-gated and writes records only. PROPOSE-ONLY BY CONSTRUCTION is enforced twice —
@@ -40029,6 +40087,13 @@ async function handleRequest(request, response) {
       classification: url.searchParams.get("classification") || "",
       source: url.searchParams.get("source") || "",
       stateCode: url.searchParams.get("state") || "",
+      // Directory facets (2026-07-28). Every facet the module knows about must be read here or
+      // the filter silently matches everything — which is how a filtered approval becomes an
+      // approval of the whole list.
+      emailType: url.searchParams.get("emailType") || "",
+      emailTypeGroup: url.searchParams.get("emailTypeGroup") || "",
+      tier: url.searchParams.get("tier") || "",
+      contactStatus: url.searchParams.get("contactStatus") || "",
       minScore: url.searchParams.get("minScore") || "",
       maxScore: url.searchParams.get("maxScore") || "",
       q: url.searchParams.get("q") || ""
