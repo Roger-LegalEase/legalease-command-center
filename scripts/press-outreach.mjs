@@ -183,6 +183,63 @@ const CONSENT_MARKER_PATTERN = /\bconsent (recorded|on file|obtained|given)\b|\b
 const CITATION_PATTERN = /\b(according to|study|studies|research|survey|reported by|data from|per the|bureau of|census|found that)\b/i;
 const OWNERSHIP_PATTERN = /\b(our|we|us|legalease|expungement\.ai)\b/i;
 
+// ---------------------------------------------------------------------------------------------
+// Subject standards — a reporter's inbox, not a conference programme.
+//
+// Roger rejected "A legal AI designed to stop: fail-closed guardrails in Expungement.ai" because
+// it reads like a talk title: an abstract thesis, a colon, then the product's internal vocabulary.
+// The copy that produced it was fine by every rule we had, because every rule we had was about
+// CLAIMS. Nothing checked whether the subject carried news.
+//
+// So the standard is enforced here rather than written down and hoped for. A subject line states
+// what happened or what is true, in under 60 characters, in words a reporter would use with an
+// editor. These rules are deliberately narrow — they catch the four failure modes we have actually
+// produced, and they do not attempt to score prose quality.
+export const PRESS_SUBJECT_MAX_LENGTH = 60;
+
+export const PRESS_SUBJECT_RULES = Object.freeze([
+  Object.freeze({
+    id: "subject_too_long",
+    summary: `Subject exceeds ${PRESS_SUBJECT_MAX_LENGTH} characters and will be truncated in the inbox preview.`,
+    test: (subject) => subject.length > PRESS_SUBJECT_MAX_LENGTH
+  }),
+  Object.freeze({
+    id: "subject_product_jargon",
+    summary: "Subject uses internal product vocabulary a reporter would not write.",
+    // Every one of these is legitimate INSIDE the body, where there is room to define it. In a
+    // subject it is the writer's vocabulary, not the reader's.
+    test: (subject) => /\b(fail-closed|fails? closed|guardrails?|rules? engine|deterministic|packet-capable|jurisdiction profile|workflow|platform|solution|end-to-end|seamless|robust|scalable|AI-powered|next-gen|innovative|revolutionary|game-chang\w*|leverag\w+)\b/i.test(subject)
+  }),
+  Object.freeze({
+    id: "subject_marketing_voice",
+    summary: "Subject announces or sells rather than reporting what is true.",
+    test: (subject) => /\b(introducing|announcing|unveil\w*|excited to|thrilled to|proud to|press release|exclusive|don't miss|must-read|op-ed offer|partnership opportunity)\b/i.test(subject)
+  }),
+  Object.freeze({
+    id: "subject_conference_talk",
+    summary: "Subject is a thesis-colon-feature construction naming the product; it reads as a talk title.",
+    // The exact shape Roger rejected: anything before a colon, the product name after it.
+    test: (subject) => /:[^:]*\b(expungement\.ai|legalease|rcap)\b/i.test(subject)
+  })
+]);
+
+/**
+ * Judges a subject line alone. Exported so a composer can check its own copy before it ever
+ * reaches the draft surface, and so the standard has exactly one definition.
+ */
+export function evaluatePressSubject(subject = "") {
+  const line = clean(subject);
+  const hardFails = PRESS_SUBJECT_RULES
+    .filter((rule) => rule.test(line))
+    .map((rule) => ({ rule: rule.id, summary: rule.summary }));
+  return Object.freeze({
+    passed: hardFails.length === 0,
+    hardFails: Object.freeze(hardFails),
+    length: line.length,
+    maxLength: PRESS_SUBJECT_MAX_LENGTH
+  });
+}
+
 /**
  * Hard-fail gate for a press draft. Mirrors the social guidelines gate's shape: a list of
  * hardFails, and a `passed` boolean that callers treat as blocking.
@@ -192,10 +249,15 @@ const OWNERSHIP_PATTERN = /\b(our|we|us|legalease|expungement\.ai)\b/i;
  * a Pitch Map breach is — a draft that says the $50 includes representation is as unapprovable as
  * one that says LegalEase replaces a lawyer.
  */
-export function evaluatePressGuardrails(text = "", angleId = "") {
+export function evaluatePressGuardrails(text = "", angleId = "", { subject = null } = {}) {
   const body = clean(text);
   const angle = pressAngle(angleId);
   const hardFails = [];
+
+  // Subject standards are opt-in by argument rather than sniffed from the first line: this gate is
+  // also called on free text (approval surfaces, ad-hoc checks) where line one is not a subject,
+  // and inventing a subject there would fail drafts for a line they never had.
+  if (subject !== null) hardFails.push(...evaluatePressSubject(subject).hardFails);
 
   for (const rule of PRESS_GUARDRAIL_RULES) {
     if (rule.negationAware ? !assertsContradiction(body, rule.pattern) : !rule.pattern.test(body)) continue;
