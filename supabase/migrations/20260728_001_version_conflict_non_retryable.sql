@@ -25,6 +25,11 @@
 -- retry and surfaces as a hard write error. scripts/storage.mjs accepts BOTH codes, so ship the
 -- app first, then apply this. Rollback is in supabase/recovery/20260728_001_version_conflict_non_retryable.md.
 
+-- Transactional, as scripts/validate-migrations.mjs requires: CREATE OR REPLACE FUNCTION is
+-- transactional in Postgres, so all three definitions swap together or none of them do. There is
+-- no half-applied state in which some CAS paths raise P0001 while others still raise 40001.
+begin;
+
 create or replace function public.leos_upsert_record_cas(p_collection text, p_item_id text, p_payload jsonb, p_expected_version bigint default null)
 returns table(version bigint)
 language plpgsql
@@ -145,3 +150,5 @@ begin
   return query select true;
 end;
 $function$;
+
+commit;
