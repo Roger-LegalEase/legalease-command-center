@@ -20,6 +20,7 @@
    colour. Nothing in this file is a fixture value: it carries no numbers, names or content, only
    the visual system. */
 
+.le-os,
 .vnext-founder-today,
 .founder-campaigns,
 .kpi-registry,
@@ -29,6 +30,10 @@
   --le-concept-navy-3: #192842;
   --le-concept-orange: #ff3b00;
   --le-concept-orange-dark: #d93204;
+  /* Orange as FOREGROUND on a light surface. #d93204 is 4.42:1 on the canvas and 4.29:1 on its own
+     tint — both just under AA, the same way the concept's muted grey was. orange-dark stays the
+     background colour (white on it is 6.7:1); this is the one used wherever orange is read. */
+  --le-concept-orange-text: #b83000;
   --le-concept-orange-soft: #fff0eb;
   --le-concept-ink: #182230;
   --le-concept-muted: #697586;
@@ -171,7 +176,7 @@
 .kpi-action-link:hover,
 .relationships-header-actions .partners-secondary:hover {
   border-color: var(--le-concept-orange);
-  color: var(--le-concept-orange-dark);
+  color: var(--le-concept-orange-text);
   background: var(--le-concept-orange-soft);
 }
 
@@ -242,7 +247,7 @@
 }
 
 .relationship-summary-count { font-size: 1.4rem; font-weight: 700; }
-.relationship-summary-count:hover { color: var(--le-concept-orange-dark); text-decoration: underline; }
+.relationship-summary-count:hover { color: var(--le-concept-orange-text); text-decoration: underline; }
 
 /* ---------------------------------------------------------------------------------------------
    Scoreboard
@@ -306,3 +311,228 @@
   border-color: #007f76;
   color: #ffffff;
 }
+
+/* ------------------------------------------------------------------------------------------------
+   CONCEPT PARITY — the shell, Today, and the Search and Create overlays.
+
+   Campaigns, Scoreboard, Relationships and Le-E are NOT here. Each of those surfaces ships a
+   stylesheet that loads with its lazy runtime, so its concept layer is paid for by the workspace
+   that uses it rather than by every page in the critical stylesheet budget. What remains below is
+   what the shell itself and the inline-rendered Today need at first paint.
+   ------------------------------------------------------------------------------------------------ */
+/* Founder OS — the concept design system, scoped. */
+.le-os,
+.vnext-founder-today,
+.founder-campaigns,
+.kpi-registry,
+.partners-page:has(.relationship-views) { --le-concept-navy: #0b1424; --le-concept-navy-2: #111d31; --le-concept-navy-3: #192842; --le-concept-orange: #ff3b00; --le-concept-orange-dark: #d93204; --le-concept-orange-soft: #fff0eb; --le-concept-ink: #182230; --le-concept-muted: #697586; /* The concept's muted grey is a 4.34:1 foreground on the concept's own canvas, just under
+     WCAG AA for body text. The token above is kept verbatim so the palette is the concept's;
+     this is the one derived value, used wherever muted grey is actually READ. */ --le-concept-muted-text: #5a6474; --le-concept-muted-2: #98a2b3; --le-concept-border: #e4e7ec; --le-concept-border-2: #d7dce3; --le-concept-canvas: #f5f6f8; --le-concept-card: #ffffff; --le-concept-green: #117a65; --le-concept-green-soft: #e8f7f3; --le-concept-amber: #9a6700; --le-concept-amber-soft: #fff6d8; --le-concept-red: #b42318; --le-concept-red-soft: #fff0ee; --le-concept-blue: #175cd3; --le-concept-blue-soft: #eef4ff; --le-concept-purple: #6941c6; --le-concept-purple-soft: #f4f0ff; --le-concept-teal: #0e7490; --le-concept-teal-soft: #ecfeff; --le-concept-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 12px 28px rgba(16, 24, 40, .06); --le-concept-shadow-lg: 0 24px 70px rgba(16, 24, 40, .22); /* The four status pairs. Nothing else may be a status. */ --le-status-live: var(--le-concept-green); --le-status-live-soft: var(--le-concept-green-soft); --le-status-manual: var(--le-concept-amber); --le-status-manual-soft: var(--le-concept-amber-soft); --le-status-attention: var(--le-concept-red); --le-status-attention-soft: var(--le-concept-red-soft); --le-status-unavailable: var(--le-concept-muted-text); --le-status-unavailable-soft: var(--le-concept-canvas); /* The concept's type scale. It runs small — 9px in places — which is below the size this
+     product will ship text at. These are the floored equivalents: the RATIO between steps is
+     the concept's, the smallest step is 11px rather than 9px, and nothing that carries meaning
+     is drawn below it. */ --le-type-page-title: 1.75rem; --le-type-card-title: 1.375rem; --le-type-body: 0.8125rem; --le-type-meta: 0.75rem; --le-type-label: 0.6875rem; --le-radius-card: 16px; --le-radius-control: 10px; }
+/* THE SHELL  Everything below is scoped to .le-os, the attribute the shell writes only when FOUNDER_OS_SHELL is on. */
+.le-os .le-icon { width: 18px; height: 18px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.le-os .le-icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+/* --- Sidebar  The concept's sidebar is a single dark column: brand, a section label, the four workspaces, a spacer, the assistant card, and the account. */
+.le-os .vnext-sidebar { gap: 0; padding: 22px 16px 18px; background: linear-gradient(180deg, var(--le-concept-navy) 0%, #0b1526 100%); border-right-color: rgba(255, 255, 255, .06); }
+.le-os .vnext-logo-link { width: auto; display: flex; flex-direction: column; gap: 6px; padding: 4px 8px 18px; }
+.le-os .le-brand-surface { color: #9facbe; font-size: var(--le-type-label); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.le-os .le-nav-label { margin: 0 0 8px; padding: 0 12px; color: #7c89a0; font-size: var(--le-type-label); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.le-os .vnext-primary-navigation,
+.le-os .vnext-secondary-navigation { gap: 5px; }
+.le-os .vnext-nav-link { min-height: 44px; gap: 12px; border-radius: 11px; color: #b6c0cf; font-weight: 600; }
+/* The concept's nav row has an icon where the built shell had a small ring. */
+.le-os .vnext-nav-indicator { display: none; }
+.le-os .vnext-nav-link:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+.le-os .vnext-nav-link.is-selected,
+.le-os .vnext-nav-link[aria-current="page"] { position: relative; border-color: transparent; background: linear-gradient(90deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .07)); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .05); color: #fff; }
+.le-os .vnext-nav-link.is-selected::before,
+.le-os .vnext-nav-link[aria-current="page"]::before { content: ""; position: absolute; left: -16px; top: 10px; width: 3px; height: 24px; border-radius: 0 3px 3px 0; background: var(--le-concept-orange); }
+.le-os .vnext-nav-link.is-selected .le-icon,
+.le-os .vnext-nav-link[aria-current="page"] .le-icon { color: #ff6a3c; }
+.le-os .vnext-sidebar-divider { margin: 14px 12px; background: rgba(255, 255, 255, .08); }
+.le-os .le-sidebar-spacer { flex: 1 1 auto; min-height: 18px; }
+/* The Le-E card. A second door to the panel the utilities nav already opens. */
+.le-os .le-assistant-card { margin: 10px 4px 14px; padding: 14px; border: 1px solid rgba(255, 255, 255, .09); border-radius: 14px; background: linear-gradient(145deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, .035)); color: #fff; }
+.le-os .le-assistant-top { display: flex; align-items: center; gap: 10px; }
+.le-os .le-assistant-orb { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border-radius: 11px; background: linear-gradient(135deg, #ff6a3d, var(--le-concept-orange)); color: #fff; box-shadow: 0 8px 18px rgba(255, 59, 0, .22); }
+.le-os .le-assistant-name strong { display: block; font-size: var(--le-type-body); }
+.le-os .le-assistant-name span { display: block; color: #9aa6b7; font-size: var(--le-type-label); }
+.le-os .le-assistant-card p { margin: 9px 0 10px; color: #b3bdcc; font-size: var(--le-type-label); line-height: 1.45; }
+.le-os .le-assistant-action { width: 100%; min-height: 34px; border: 0; border-radius: 9px; background: #fff; color: var(--le-concept-navy); font: inherit; font-size: var(--le-type-meta); font-weight: 700; cursor: pointer; }
+.le-os .le-assistant-action:hover { background: var(--le-concept-orange-soft); color: var(--le-concept-orange-text); }
+/* The account block. */
+.le-os .le-account { display: flex; align-items: center; gap: 10px; padding: 8px 6px 0; }
+.le-os .le-account-avatar { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border: 1px solid rgba(255, 255, 255, .1); border-radius: 50%; background: #263550; color: #fff; font-size: var(--le-type-meta); font-weight: 700; }
+.le-os .le-account-copy { min-width: 0; flex: 1 1 auto; }
+.le-os .le-account-copy strong { display: block; color: #fff; font-size: var(--le-type-meta); }
+.le-os .le-account-copy span { display: block; color: #8e9bb0; font-size: var(--le-type-label); }
+.le-os .le-account-settings { color: #8e9bb0; }
+.le-os .le-account-settings:hover { color: #fff; }
+/* --- Top bar  The concept's bar is a breadcrumb on the left, a wide search field in the middle, and the actions on the right. */
+.le-os .vnext-topbar { min-height: 72px; gap: 18px; padding: 0 30px; border-bottom: 1px solid var(--le-concept-border); background: rgba(255, 255, 255, .95); box-shadow: none; }
+.le-os .vnext-mobile-leading { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.le-os .le-crumb-root { color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
+.le-os .le-crumb-separator { color: #c4c9d0; }
+.le-os .vnext-current-context { color: var(--le-concept-ink); font-size: var(--le-type-body); }
+.le-os .vnext-search-trigger { min-width: 22.5rem; min-height: 40px; margin-left: auto; gap: 10px; border: 1px solid var(--le-concept-border-2); border-radius: 11px; background: #f8f9fb; color: #6b7686; font-size: var(--le-type-meta); }
+.le-os .vnext-search-trigger:hover,
+.le-os .vnext-search-trigger[aria-expanded="true"] { border-color: var(--le-concept-orange); background: #fff; }
+.le-os .vnext-search-shortcut { margin-left: auto; border: 1px solid #d8dde4; border-radius: 6px; background: #fff; color: #7d8797; font-size: var(--le-type-label); }
+.le-os .vnext-topbar-actions { gap: 10px; }
+.le-os .vnext-topbar-link,
+.le-os .vnext-profile-trigger,
+.le-os .vnext-create-trigger { min-height: 40px; border-radius: var(--le-radius-control); font-size: var(--le-type-meta); font-weight: 700; }
+.le-os .vnext-create-trigger { /* orange-dark, not the concept's orange: white on #ff3b00 does not reach 4.5:1. */ border-color: var(--le-concept-orange-dark); background: var(--le-concept-orange-dark); color: #fff; box-shadow: 0 7px 17px rgba(255, 59, 0, .18); }
+/* The plus is drawn, not typed: a `content` string would join the button's accessible name. */
+.le-os .vnext-create-trigger::before { content: ""; width: 0.7em; height: 0.7em; margin-right: 7px; background: linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat, linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat; }
+/* The profile control becomes the concept's round avatar. */
+.le-os .vnext-profile-trigger { width: 40px; padding: 0; border-color: transparent; background: transparent; }
+.le-os .vnext-profile-trigger .vnext-topbar-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--le-concept-navy); color: #fff; font-size: var(--le-type-meta); font-weight: 700; }
+.le-os .vnext-profile-trigger .vnext-topbar-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* --- The canvas */
+.le-os .vnext-routed-content { background: var(--le-concept-canvas); }
+.le-os:has(.vnext-founder-today) .vnext-routed-content,
+.le-os:has(.founder-campaigns) .vnext-routed-content,
+.le-os:has(.kpi-registry) .vnext-routed-content,
+.le-os:has(.relationship-views) .vnext-routed-content { background: radial-gradient(circle at 80% 0%, rgba(255, 255, 255, .9), transparent 28%), var(--le-concept-canvas); }
+/* Below this width the breadcrumb and the top bar's controls compete for the same row. */
+@media (max-width: 1180px) {
+.le-os .le-crumb-root,
+  .le-os .le-crumb-separator { display: none; }
+.le-os .vnext-search-trigger { min-width: 12rem; }
+}
+@media (max-width: 860px) {
+.le-os .vnext-search-trigger { min-width: 0; }
+}
+/* TODAY  The concept opens with a greeting and a one-line summary, and carries a right-hand column of three typed lanes beside the ranked queue. */
+.vnext-founder-today { padding: 30px 34px 34px; font-size: var(--le-type-body); }
+.vnext-founder-today .vnext-today-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin: 0 0 22px; padding: 0; border: 0; background: none; }
+.vnext-founder-today .vnext-today-date { margin: 0 0 6px; color: var(--le-concept-orange-text); font-size: var(--le-type-label); font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.vnext-founder-today .vnext-today-header h1 { margin: 0; font-size: var(--le-type-page-title); font-weight: 800; line-height: 1.12; letter-spacing: -.02em; }
+.vnext-founder-today .vnext-today-header > div > p:last-child { margin: 7px 0 0; color: var(--le-concept-muted-text); }
+.vnext-founder-today .vnext-today-header-actions { display: flex; align-items: center; gap: 10px; }
+.vnext-founder-today .vnext-today-header-action { min-height: 40px; display: inline-flex; align-items: center; gap: 8px; padding: 0 15px; border: 1px solid var(--le-concept-border-2); border-radius: var(--le-radius-control); background: var(--le-concept-card); color: var(--le-concept-navy); font-size: var(--le-type-meta); font-weight: 700; text-decoration: none; box-shadow: 0 1px 2px rgba(16, 24, 40, .04); }
+.vnext-founder-today .vnext-today-header-action::after { content: "→"; }
+.vnext-founder-today .vnext-today-header-action:hover { border-color: var(--le-concept-orange); color: var(--le-concept-orange-text); }
+/* --- The two columns */
+.vnext-founder-today .vnext-today-content { display: grid; grid-template-columns: minmax(0, 1.72fr) minmax(330px, .78fr); align-items: start; gap: 18px; }
+.vnext-founder-today .vnext-today-live { grid-column: 1 / -1; }
+.vnext-founder-today .vnext-today-column { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+/* --- Cards */
+.vnext-founder-today .vnext-today-answer { margin: 0; padding: 17px 18px; border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-card); background: var(--le-concept-card); box-shadow: var(--le-concept-shadow); }
+.vnext-founder-today .vnext-today-section-count { padding: 2px 7px; border-radius: 9px; background: #eef1f5; color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; letter-spacing: 0; }
+/* The heading repeats the label when the lane has work. It stays as the section's accessible name and is taken out of the visual flow only in that case. */
+.vnext-founder-today .vnext-today-answer h2[data-today-heading="label"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.vnext-founder-today .vnext-today-answer h2[data-today-heading="empty"] { margin: 8px 0 0; color: var(--le-concept-muted-text); font-size: var(--le-type-body); font-weight: 600; }
+.vnext-founder-today .vnext-today-empty-copy { display: none; }
+/* --- Now */
+.vnext-founder-today .vnext-today-now { position: relative; overflow: hidden; padding: 20px 22px 19px; background: linear-gradient(135deg, #fff 0%, #fff 63%, #fff5f1 100%); }
+.vnext-founder-today .vnext-today-now::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--le-concept-orange); }
+.vnext-founder-today .vnext-today-now .vnext-today-context { margin: 0 0 4px; color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.vnext-founder-today .vnext-today-now h3 { margin: 0 0 7px; font-size: var(--le-type-card-title); font-weight: 800; line-height: 1.18; letter-spacing: -.02em; }
+.vnext-founder-today .vnext-today-now .vnext-today-why { margin: 0 0 4px; font-weight: 600; }
+.vnext-founder-today .vnext-today-now .vnext-today-summary { margin: 0 0 14px; color: var(--le-concept-muted-text); max-width: 62ch; }
+/* --- Meta chips */
+.vnext-founder-today .vnext-today-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 0 0 14px; padding: 0; list-style: none; }
+.vnext-founder-today .vnext-today-meta span { padding: 3px 9px; border-radius: 999px; background: #f2f4f7; color: #475467; font-size: var(--le-type-label); font-weight: 700; }
+.vnext-founder-today .vnext-today-meta[data-today-rank="1"] span:first-child { background: var(--le-concept-orange-soft); color: var(--le-concept-orange-text); }
+/* --- Actions */
+.vnext-founder-today .vnext-today-primary-action,
+.vnext-founder-today .vnext-today-item-action { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 15px; border: 1px solid var(--le-concept-border-2); border-radius: var(--le-radius-control); background: var(--le-concept-card); color: var(--le-concept-navy); font: inherit; font-size: var(--le-type-meta); font-weight: 700; text-decoration: none; cursor: pointer; }
+.vnext-founder-today .vnext-today-primary-action { /* orange-dark, not the concept's orange: white on #ff3b00 does not reach 4.5:1. */ border-color: var(--le-concept-orange-dark); background: var(--le-concept-orange-dark); color: #fff; box-shadow: 0 7px 17px rgba(255, 59, 0, .18); }
+.vnext-founder-today .vnext-today-item-action:hover { border-color: var(--le-concept-orange); color: var(--le-concept-orange-text); }
+.vnext-founder-today .vnext-today-text-action { margin-left: 12px; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); font-weight: 600; }
+.vnext-founder-today .vnext-today-text-action:hover { color: var(--le-concept-orange-text); }
+/* --- Next: a numbered work list */
+.vnext-founder-today .vnext-today-next-list { counter-reset: le-today-row; margin: 4px 0 0; padding: 0; list-style: none; }
+.vnext-founder-today .vnext-today-next-list > li { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eff1f4; }
+.vnext-founder-today .vnext-today-next-list > li:last-child { border-bottom: 0; }
+.vnext-founder-today .vnext-today-next-list > li::before { counter-increment: le-today-row; content: counter(le-today-row); width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; background: #f2f4f7; color: #475467; font-size: var(--le-type-meta); font-weight: 800; }
+/* Only the ranked queue is numbered. The three typed lanes on the right are not a ranking. */
+.vnext-founder-today .vnext-today-column-side .vnext-today-next-list { counter-reset: none; }
+.vnext-founder-today .vnext-today-column-side .vnext-today-next-list > li { grid-template-columns: minmax(0, 1fr) auto auto; }
+.vnext-founder-today .vnext-today-column-side .vnext-today-next-list > li::before { content: none; }
+.vnext-founder-today .vnext-today-item-body { min-width: 0; }
+.vnext-founder-today .vnext-today-item-body h3 { margin: 0 0 3px; font-size: var(--le-type-body); font-weight: 700; }
+.vnext-founder-today .vnext-today-item-body .vnext-today-why { margin: 0; font-size: var(--le-type-meta); font-weight: 600; }
+.vnext-founder-today .vnext-today-item-body .vnext-today-summary { margin: 2px 0 0; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
+.vnext-founder-today .vnext-today-item-body .vnext-today-meta { margin: 6px 0 0; }
+.vnext-founder-today .vnext-today-next-list .vnext-today-text-action { margin: 0; white-space: nowrap; }
+/* --- The right-hand lanes */
+.vnext-founder-today .vnext-today-column-side .vnext-today-answer { padding: 15px 16px; }
+.vnext-founder-today .vnext-today-column-side .vnext-today-item-body h3 { font-size: var(--le-type-meta); }
+.vnext-founder-today .vnext-today-column-side .vnext-today-meta span { font-size: var(--le-type-label); }
+.vnext-founder-today .vnext-today-needs-attention { border-color: color-mix(in srgb, var(--le-status-attention) 30%, var(--le-concept-border)); }
+.vnext-founder-today .vnext-today-needs-attention .vnext-today-section-label { color: var(--le-status-attention); }
+.vnext-founder-today .vnext-today-quick-capture { margin: 0; padding: 15px 16px; border: 1px dashed var(--le-concept-border-2); border-radius: var(--le-radius-card); background: var(--le-concept-card); }
+.vnext-founder-today .vnext-today-quick-capture h2 { margin: 0; font-size: var(--le-type-body); }
+.vnext-founder-today .vnext-today-quick-capture p { margin: 4px 0 8px; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
+@media (max-width: 1180px) {
+.vnext-founder-today .vnext-today-content { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+.vnext-founder-today { padding: 18px 16px 28px; }
+.vnext-founder-today .vnext-today-header { flex-direction: column; align-items: stretch; }
+.vnext-founder-today .vnext-today-next-list > li { grid-template-columns: 28px minmax(0, 1fr); }
+.vnext-founder-today .vnext-today-next-list .vnext-today-item-action { grid-column: 2 / -1; justify-self: start; }
+}
+/* The column wrappers are layout, not surfaces. */
+.vnext-founder-today .vnext-today-column { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+/* The navigation trigger belongs to the responsive drawer. */
+@media (min-width: 861px) {
+.le-os .vnext-navigation-trigger { display: none; }
+}
+/* The logo link is an anchor; the surface name beneath it is not a second link. */
+.le-os .vnext-logo-link,
+.le-os .vnext-logo-link:hover { text-decoration: none; }
+.le-os .le-brand-surface { text-decoration: none; }
+/* GLOBAL SURFACES — Search, Create, Le-E  The concept renders Search and Create as overlays and Le-E as a right-hand panel. */
+.le-os .vnext-search-backdrop:not([hidden]),
+.le-os .vnext-create-backdrop:not([hidden]) { background: rgba(11, 20, 36, .45); backdrop-filter: blur(2px); }
+.le-os .vnext-search-dialog:not([hidden]) { width: min(68rem, calc(100vw - 4rem)); max-width: none; padding: 0; border: 1px solid var(--le-concept-border); border-radius: 18px; background: var(--le-concept-card); box-shadow: var(--le-concept-shadow-lg); }
+/* The concept's search bar is the whole header. */
+.le-os .vnext-search-header > div { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.le-os .vnext-search-header { align-items: center; justify-content: flex-end; padding: 0; border: 0; }
+.le-os .vnext-search-close { position: absolute; top: 16px; right: 18px; z-index: 1; border: 1px solid var(--le-concept-border); border-radius: 8px; background: var(--le-concept-card); color: var(--le-concept-muted-text); }
+.le-os .vnext-search-field { display: grid; gap: 0; padding: 18px 64px 18px 22px; border-bottom: 1px solid var(--le-concept-border); }
+.le-os .vnext-search-field label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.le-os .vnext-search-field input { min-height: 40px; padding: 0; border: 0; background: none; color: var(--le-concept-ink); font-size: 1.125rem; font-weight: 600; }
+.le-os .vnext-search-field input:focus { outline: none; }
+.le-os .vnext-search-filters { margin: 0; padding: 12px 22px; border: 0; border-bottom: 1px solid #eff1f4; }
+.le-os .vnext-search-filters legend { padding: 0; color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.le-os .vnext-search-filters > div { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+.le-os .vnext-search-filters label { font-size: var(--le-type-meta); font-weight: 600; }
+.le-os .vnext-search-state { margin: 0; padding: 12px 22px 0; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
+.le-os .vnext-search-results { max-height: 26rem; padding: 8px 12px 14px; overflow-y: auto; }
+.le-os .vnext-search-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 11px 10px; border: 0; border-radius: var(--le-radius-control); background: none; }
+.le-os .vnext-search-result:hover,
+.le-os .vnext-search-result[aria-selected="true"] { background: #f4f6f9; }
+.le-os .vnext-search-result > :first-child { font-size: var(--le-type-body); font-weight: 700; }
+.le-os .vnext-search-result-context { grid-column: 1; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
+.le-os .vnext-search-result-meta { grid-row: 1; grid-column: 2; align-self: start; color: var(--le-concept-muted-2); font-size: var(--le-type-label); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.le-os .vnext-search-footer { display: flex; align-items: center; gap: 16px; padding: 12px 22px; border-top: 1px solid var(--le-concept-border); background: #fafbfc; border-radius: 0 0 18px 18px; color: var(--le-concept-muted-text); font-size: var(--le-type-label); }
+.le-os .vnext-search-footer kbd { padding: 2px 7px; border: 1px solid #d8dde4; border-radius: 6px; background: #fff; color: #7d8797; font-size: var(--le-type-label); }
+/* --- Create  The concept shows the option list and the chosen form side by side. */
+.le-os .vnext-create-menu { width: 20rem; padding: 8px; border: 1px solid var(--le-concept-border); border-radius: 14px; background: var(--le-concept-card); box-shadow: var(--le-concept-shadow-lg); }
+.le-os .vnext-create-menu button { display: grid; gap: 2px; padding: 10px 11px; border-radius: var(--le-radius-control); text-align: left; }
+.le-os .vnext-create-menu button strong { font-size: var(--le-type-body); font-weight: 700; }
+.le-os .vnext-create-menu button span { color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
+.le-os .vnext-create-menu button:hover { background: var(--le-concept-orange-soft); }
+.le-os .vnext-create-workspace:not([hidden]) { width: min(46rem, calc(100vw - 4rem)); padding: 22px; border: 1px solid var(--le-concept-border); border-radius: 18px; background: var(--le-concept-card); box-shadow: var(--le-concept-shadow-lg); }
+.le-os .vnext-create-form-header h2 { margin: 0 0 4px; font-size: 1.25rem; font-weight: 800; }
+.le-os .vnext-create-form-header p { margin: 0 0 14px; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
+/* Narrow widths: nothing may push a workspace wider than its column. */
+.founder-campaigns > *,
+.partners-page:has(.relationship-views) > *,
+.vnext-founder-today > *,
+.kpi-registry > * { min-width: 0; }
+.founder-campaign-table-card,
+.relationships-table-card { overflow: hidden; }
+.founder-campaign-table-scroll,
+.relationships-table-scroll { min-width: 0; max-width: 100%; }
+.founder-campaign-types > *,
+.founder-campaign-lifecycle > *,
+.founder-campaign-lanes > *,
+.kpi-cards > * { min-width: 0; }

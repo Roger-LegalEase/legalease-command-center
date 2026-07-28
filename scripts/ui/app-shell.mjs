@@ -62,6 +62,7 @@ import { PARTNER_RECORD_STYLESHEET_PATHS, partnerRecordBrowserSource } from "./p
 import { FOUNDER_CAMPAIGNS_STYLESHEET_PATH, founderCampaignsBrowserSource } from "./pages/founder-campaigns.mjs";
 import { FOUNDER_SCOREBOARD_REGISTRY_STYLESHEET_PATH, founderScoreboardRegistryBrowserSource } from "./pages/founder-scoreboard-registry.mjs";
 import { FOUNDER_LEE_PANEL_STYLESHEET_PATH, founderLeePanelBrowserSource } from "./pages/founder-lee-panel.mjs";
+import { FOUNDER_RELATIONSHIPS_STYLESHEET_PATH, founderRelationshipsStyleBrowserSource } from "./pages/founder-relationships-style.mjs";
 import { OUTREACH_HOME_STYLESHEET_PATH, outreachHomeBrowserSource } from "./pages/outreach-home.mjs";
 import { AUTOMATION_CONTROL_CENTER_STYLESHEET_PATH, automationControlCenterBrowserSource } from "./pages/automation-control-center.mjs";
 import { CAMPAIGN_WIZARD_STYLESHEET_PATH, campaignWizardBrowserSource } from "./pages/campaign-wizard.mjs";
@@ -89,6 +90,15 @@ import {
   SECONDARY_SHELL_CONTROLS,
   TOP_BAR_CONTROLS
 } from "./app-shell-navigation.mjs";
+import {
+  accountInitials,
+  founderUtilityIcon,
+  founderWorkspaceIcon,
+  renderFounderAccount,
+  renderFounderAssistantCard,
+  renderFounderBrand,
+  renderFounderIconSprite
+} from "./founder-os-chrome.mjs";
 
 export const DESKTOP_SHELL_STYLESHEET_PATH = "assets/ui/desktop-shell.css";
 // The Founder OS concept token layer. Loaded unconditionally and SCOPED to the four Founder OS
@@ -170,6 +180,13 @@ const VNEXT_LAZY_ASSETS = Object.freeze({
     api:"__LE_FOUNDER_LEE_PANEL",
     founderOsLeePanelOnly:true
   }),
+  // Concept parity: the Relationships table's visual layer. Styles only — see the module's note.
+  "founder-relationships":Object.freeze({
+    styles:Object.freeze([FOUNDER_RELATIONSHIPS_STYLESHEET_PATH]),
+    source:founderRelationshipsStyleBrowserSource,
+    api:"__LE_FOUNDER_RELATIONSHIPS_STYLE",
+    founderOsRelationshipsOnly:true
+  }),
   // 2026-07-26: the prospect bulk-approval workbench. Lazy for the same reason as every runtime
   // above — the legacy #prospects page ships only a container and a loader, so 313 pending
   // organisations can be reviewed and decided without the initial payload paying for it. No
@@ -199,6 +216,7 @@ export function resolveVNextLazyRuntime(pathname = "", options = {}) {
   if (asset.founderOsCampaignsOnly && options.founderOsCampaigns !== true) return null;
   if (asset.founderOsScoreboardOnly && options.founderOsScoreboard !== true) return null;
   if (asset.founderOsLeePanelOnly && options.founderOsLeePanel !== true) return null;
+  if (asset.founderOsRelationshipsOnly && options.founderOsRelationships !== true) return null;
   const source = asset.source();
   return typeof source === "string" && source.length <= VNEXT_LAZY_RUNTIME_MAX_BYTES ? source : null;
 }
@@ -230,27 +248,31 @@ function primaryNavigationHtml(options = {}) {
     : (item.id === "partners" ? "Partners" : item.label);
   return primaryShellDestinations(options).map((item, index) => {
     const count = item.id === "inbox" ? '<span class="vnext-inbox-count" data-shell-inbox-count hidden></span>' : "";
+    // The concept's nav rows carry an icon. It is decoration next to a label that already names
+    // the destination, so it is aria-hidden and the accessible name is unchanged.
+    const icon = options.founderOsShell ? founderWorkspaceIcon(item.id) : "";
     return `
         <a class="vnext-nav-link${index === 0 ? " is-selected" : ""}" href="${escapeAttribute(routeHref(item.route))}" data-shell-destination="${escapeAttribute(destinationName(item))}"${index === 0 ? ' aria-current="page"' : ""}>
-          <span class="vnext-nav-indicator" aria-hidden="true"></span>
+          <span class="vnext-nav-indicator" aria-hidden="true"></span>${icon}
           <span>${escapeHtml(item.label)}</span>${count}
         </a>`;
   }).join("");
 }
 
-function secondaryNavigationHtml() {
+function secondaryNavigationHtml(options = {}) {
   return SECONDARY_SHELL_CONTROLS.map((item) => {
+    const icon = options.founderOsShell ? founderUtilityIcon(item.id) : "";
     if (item.kind === "action") {
       return `
         <button class="vnext-nav-link vnext-nav-button" type="button" data-shell-action="${escapeAttribute(item.action)}" data-shell-destination="${escapeAttribute(item.label)}">
-          <span class="vnext-nav-indicator" aria-hidden="true"></span>
+          <span class="vnext-nav-indicator" aria-hidden="true"></span>${icon}
           <span>${escapeHtml(item.label)}</span>
         </button>`;
     }
     const count = item.id === "inbox" ? '<span class="vnext-inbox-count" data-shell-inbox-count hidden></span>' : "";
     return `
         <a class="vnext-nav-link" href="${escapeAttribute(routeHref(item.route))}" data-shell-destination="${escapeAttribute(item.label)}">
-          <span class="vnext-nav-indicator" aria-hidden="true"></span>
+          <span class="vnext-nav-indicator" aria-hidden="true"></span>${icon}
           <span>${escapeHtml(item.label)}</span>${count}
         </a>`;
   }).join("");
@@ -266,19 +288,30 @@ export function renderVNextDesktopShellChrome(options = {}) {
   const helpControl = options.discoveryEnabled
     ? `<button class="vnext-topbar-link" type="button" data-shell-action="open-contextual-help" aria-label="${escapeAttribute(help.label)}"><span class="vnext-topbar-icon" aria-hidden="true">?</span><span class="vnext-topbar-label">${escapeHtml(help.label)}</span></button>`
     : `<a class="vnext-topbar-link" href="${escapeAttribute(routeHref(help.route))}" aria-label="${escapeAttribute(help.label)}"><span class="vnext-topbar-icon" aria-hidden="true">?</span><span class="vnext-topbar-label">${escapeHtml(help.label)}</span></a>`;
+  // Founder OS concept chrome. Server-rendered markup only — none of it reaches a <script>, so
+  // the sidebar, the icons and the account block cost the initial client-JavaScript budget
+  // nothing. All of it is gated on the shell flag and keyed off one root attribute, so with the
+  // flag off the shell is what it was.
+  const founder = options.founderOsShell === true;
+  const leeLabel = SECONDARY_SHELL_CONTROLS.find((item) => item.id === "lee")?.label || "Le-E";
   return Object.freeze({
-    start:`<div class="vnext-shell" data-vnext-shell="desktop">
+    start:`<div class="vnext-shell${founder ? " le-os" : ""}" data-vnext-shell="desktop"${founder ? ' data-founder-os-shell="true"' : ""}>
+    ${founder ? renderFounderIconSprite() : ""}
     <button class="vnext-drawer-overlay" type="button" data-shell-action="close-navigation" aria-label="Close navigation" tabindex="-1" hidden></button>
     <aside class="vnext-sidebar" aria-label="Command Center sidebar" id="${RESPONSIVE_NAVIGATION_DRAWER_ID}" data-shell-drawer>
       <a class="vnext-logo-link" href="#today" aria-label="LegalEase Command Center home">
-        <img class="vnext-shell-logo" src="${escapeAttribute(assetUrl(APPROVED_WHITE_LOGO_PATH))}" width="1920" height="1080" alt="LegalEase">
+        <img class="vnext-shell-logo" src="${escapeAttribute(assetUrl(APPROVED_WHITE_LOGO_PATH))}" width="1920" height="1080" alt="LegalEase">${founder ? renderFounderBrand() : ""}
       </a>
       <button class="vnext-drawer-close" type="button" data-shell-action="close-navigation" aria-label="Close navigation"><span aria-hidden="true">×</span></button>
+      ${founder ? '<p class="le-nav-label" aria-hidden="true">Operate</p>' : ""}
       <nav class="vnext-primary-navigation" aria-label="Primary destinations">${primaryNavigationHtml(options)}
       </nav>
       <div class="vnext-sidebar-divider" aria-hidden="true"></div>
-      <nav class="vnext-secondary-navigation" aria-label="Command Center utilities">${secondaryNavigationHtml()}
+      <nav class="vnext-secondary-navigation" aria-label="Command Center utilities">${secondaryNavigationHtml(options)}
       </nav>
+      ${founder ? `<div class="le-sidebar-spacer" aria-hidden="true"></div>
+      ${renderFounderAssistantCard(leeLabel)}
+      ${renderFounderAccount(options.account || {})}` : ""}
     </aside>
     <div class="vnext-shell-stage">
       <header class="vnext-topbar" aria-label="Application controls">
@@ -286,6 +319,7 @@ export function renderVNextDesktopShellChrome(options = {}) {
           <button class="vnext-navigation-trigger" type="button" data-shell-action="open-navigation" aria-label="Open navigation" aria-expanded="false" aria-controls="${RESPONSIVE_NAVIGATION_DRAWER_ID}">
             <span class="vnext-menu-icon" aria-hidden="true"><span></span><span></span><span></span></span>
           </button>
+          ${founder ? '<span class="le-crumb-root" aria-hidden="true">Command Center</span><span class="le-crumb-separator" aria-hidden="true">/</span>' : ""}
           <strong class="vnext-current-context" data-shell-current-context aria-live="polite">Today</strong>
         </div>
         ${renderGlobalSearchTrigger()}
@@ -297,7 +331,7 @@ export function renderVNextDesktopShellChrome(options = {}) {
           </div>
           ${helpControl}
           <div class="vnext-menu">
-            <button class="vnext-profile-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="vnext-profile-menu"><span class="vnext-topbar-icon" aria-hidden="true">●</span><span class="vnext-topbar-label">Profile</span></button>
+            <button class="vnext-profile-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="vnext-profile-menu"><span class="vnext-topbar-icon" aria-hidden="true">${founder && accountInitials(options.account?.label) ? escapeHtml(accountInitials(options.account?.label)) : "●"}</span><span class="vnext-topbar-label">Profile</span></button>
             <div class="vnext-menu-panel vnext-profile-menu" id="vnext-profile-menu" role="menu" aria-label="Profile" hidden>
               <a role="menuitem" href="#settings">Settings</a>
               ${options.discoveryEnabled ? '<button role="menuitem" type="button" data-shell-action="open-discovery-checklist">Getting started</button><button role="menuitem" type="button" data-shell-action="start-product-tour-again">Start product tour again</button>' : ""}
@@ -331,6 +365,7 @@ function vnextLazyAssetLoaderScript(options = {}) {
     .filter(([, asset]) => !asset.founderOsCampaignsOnly || options.founderOsCampaigns === true)
     .filter(([, asset]) => !asset.founderOsScoreboardOnly || options.founderOsScoreboard === true)
     .filter(([, asset]) => !asset.founderOsLeePanelOnly || options.founderOsLeePanel === true)
+    .filter(([, asset]) => !asset.founderOsRelationshipsOnly || options.founderOsRelationships === true)
     .map(([id, asset]) => [id, {
       styles:asset.styles.map(assetUrl),
       runtime:`${VNEXT_LAZY_RUNTIME_PATH_PREFIX}${id}.js`,
@@ -403,6 +438,7 @@ function vnextLazyAssetLoaderScript(options = {}) {
       ${options.founderOsCampaigns ? `if (["campaigns", "outreach"].includes(route)) add("founder-campaigns");` : ""}
       ${options.founderOsScoreboard ? `if (["revenue", "metrics"].includes(route) || ["revenue", "scoreboard", "metrics", "kpis"].includes(raw)) add("founder-scoreboard-registry");` : ""}
       ${options.founderOsLeePanel ? `add("founder-lee-panel");` : ""}
+      ${options.founderOsRelationships ? `if (route === "partners" || objectType === "Partner") add("founder-relationships");` : ""}
       return required;
     }
     function controlAssets() {
@@ -432,7 +468,12 @@ function vnextLazyAssetLoaderScript(options = {}) {
 </script>`.replace(/\n\s*/g, "");
 }
 
-function shellClientScript() {
+// Under the Founder OS shell the primary destinations carry the charter's names, so a nav item's
+// own destination attribute is "Relationships" and "Campaigns" while the route registry still
+// resolves "Partners" and "Outreach". syncShell translates between them below; without it the
+// selected state never matched on those two routes and the breadcrumb read the old name. The
+// translation is emitted ONLY under the flag, so the flag-off script is byte-for-byte what it was.
+function shellClientScript(options = {}) {
   const recovery = JSON.stringify(routeRecoveryHtml).replaceAll("<", "\\u003c");
   return `<script>
   (() => {
@@ -539,7 +580,9 @@ function shellClientScript() {
     function syncShell() {
       normalizeNestedMainRegions();
       const resolution = currentRouteResolution();
-      const destination = resolution.destination || "Today";
+      const destination = ${options.founderOsShell === true
+        ? '({ Partners:"Relationships", Outreach:"Campaigns" })[resolution.destination] || resolution.destination || "Today"'
+        : 'resolution.destination || "Today"'};
       document.body.dataset.shellDestination = destination;
       const currentContext = document.querySelector("[data-shell-current-context]");
       if (currentContext) currentContext.textContent = destination === "Partners" ? "Relationships" : destination;
@@ -892,7 +935,7 @@ export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript()}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource(options)}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource(options)}</script>\n<script>${partnerRecordBrowserSource()}</script>\n${options.outreachEnabled ? `${options.founderOsCampaigns ? "" : `<script>${outreachHomeBrowserSource()}</script>\n`}<script>${campaignWizardBrowserSource()}</script>\n<script>${campaignReviewBrowserSource()}</script>\n<script>${campaignDetailBrowserSource()}</script>` : ""}\n${options.filesEnabled ? `<script>${filesIntegrationBrowserSource()}</script>` : ""}\n${vnextLazyAssetLoaderScript(options)}\n</body>`);
+  html = html.replace("</body>", `${shellClientScript(options)}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource(options)}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource(options)}</script>\n<script>${partnerRecordBrowserSource()}</script>\n${options.outreachEnabled ? `${options.founderOsCampaigns ? "" : `<script>${outreachHomeBrowserSource()}</script>\n`}<script>${campaignWizardBrowserSource()}</script>\n<script>${campaignReviewBrowserSource()}</script>\n<script>${campaignDetailBrowserSource()}</script>` : ""}\n${options.filesEnabled ? `<script>${filesIntegrationBrowserSource()}</script>` : ""}\n${vnextLazyAssetLoaderScript(options)}\n</body>`);
   if (options.socialEnabled) {
     // This match must be rendered with the SAME arguments as the injection above, or it
     // silently fails to find its anchor and the social production controller is never

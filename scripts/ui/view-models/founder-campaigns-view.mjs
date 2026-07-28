@@ -87,6 +87,14 @@ function lane(id, stages, options = {}) {
     id,
     label: definition?.label || id,
     built: definition?.built === true,
+    // Fixed copy and glyph for the type card. Not data; see FOUNDER_OS_CAMPAIGN_LANES.
+    description: definition?.description || "",
+    icon: definition?.icon || "",
+    // The named campaign records this lane can actually point at. Most lanes have none: this
+    // product has one reactivation campaign and a set of press angle campaigns, and nothing
+    // else in the projection is a campaign with an identity of its own. A lane with no named
+    // record contributes no table row rather than a row named after the lane.
+    campaigns: Object.freeze(list(options.campaigns).map((entry) => Object.freeze({ ...entry }))),
     available: options.available !== false,
     // Why the lane is unavailable or not built, stated plainly rather than left to a zero.
     unavailableReason: clean(options.unavailableReason) || null,
@@ -215,7 +223,34 @@ function reactivationLane(state, environment, now) {
       switchedOn
         ? { action: controlAction("Open sending controls", "reactivation-controls", "POST /api/reactivation/live-mode", false) }
         : {})
-  ], { exceptions });
+  ], {
+    exceptions,
+    // The one named reactivation campaign, for the Active campaigns table.
+    //
+    // PROGRESS is released audiences over total audiences — a ratio the campaign already
+    // maintains, not an estimate of completion. A campaign with no audiences defined has no
+    // progress and the cell is left out.
+    //
+    // OUTCOME is the recorded send count. It is the one delivery number this projection can
+    // state without interpretation; open and reply rates are reported by the sending controls
+    // and are not restated here.
+    campaigns: clean(command.campaignId) ? [{
+      id: clean(command.campaignId),
+      name: clean(command.campaignId),
+      subtitle: command.statusPlain || "",
+      progress: list(command.waves).length
+        ? {
+          complete: list(command.releasedWaves).length,
+          total: list(command.waves).length,
+          label: `${list(command.releasedWaves).length} of ${list(command.waves).length} audiences approved`
+        }
+        : null,
+      outcome: Number.isFinite(Number(command.rates?.sent))
+        ? { value: String(Number(command.rates.sent)), label: Number(command.rates.sent) === 1 ? "email sent" : "emails sent" }
+        : null,
+      href: ""
+    }] : []
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -495,6 +530,29 @@ function pressLane(state, pressEnabled) {
 
     stage("stop", "ready", "A reply stops that sequence immediately, on its own.")
   ], {
+    // The named press campaigns, for the Active campaigns table: the running one, then each
+    // drafted angle campaign. `assigned` is the journalist count the campaign actually carries,
+    // reported as the outcome; there is no denominator for it, so no progress bar is drawn.
+    campaigns: [
+      ...(activePress ? [{
+        id: clean(activePress.campaign_id || activePress.id),
+        name: clean(activePress.angle_label || activePress.name) || clean(activePress.campaign_id),
+        subtitle: "Running — one touch per journalist",
+        progress: null,
+        outcome: null,
+        href: `#outreach/campaign/${encodeURIComponent(`outreach:${clean(activePress.campaign_id || activePress.id)}`)}`
+      }] : []),
+      ...proposedCampaigns.map((row) => ({
+        id: clean(row.campaign_id || row.id),
+        name: clean(row.angle_label || row.name) || clean(row.campaign_id || row.id),
+        subtitle: "Drafted — waiting for your approval",
+        progress: null,
+        outcome: Number(row.audience?.assigned)
+          ? { value: String(Number(row.audience.assigned)), label: "journalists assigned" }
+          : null,
+        href: `#outreach/campaign/${encodeURIComponent(`outreach:${clean(row.campaign_id || row.id)}`)}`
+      }))
+    ],
     exceptions: warm.length
       ? [{
         id: "press-warm-follow-ups",
@@ -508,6 +566,85 @@ function pressLane(state, pressEnabled) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The type card, the stepper and the table.
+//
+// All three are DERIVED FROM THE LANES ABOVE. Nothing below reads state, adds a number, or
+// invents a state: it re-shapes what the lanes already reported into the three compositions the
+// concept screen shows.
+// ---------------------------------------------------------------------------------------------
+
+// Where a lane is in the lifecycle right now.
+//
+// The rule, applied in this order and applied once: the earliest stage that is BLOCKED, then the
+// earliest WAITING ON A PERSON, then the one that is RUNNING, then the earliest that is STOPPED.
+// A lane whose every stage is ready, unreadable or not built has no current step, and none is
+// marked for it.
+//
+// This is a reading of the stage states the decision functions produced, not a second opinion
+// about them.
+function currentStageOf(lane) {
+  const stages = list(lane.stages);
+  return stages.find((entry) => entry.state === "blocked")
+    || stages.find((entry) => entry.state === "attention")
+    || stages.find((entry) => entry.state === "running")
+    || stages.find((entry) => entry.state === "stopped")
+    || null;
+}
+
+// The four type cards. Each carries the lane's fixed description, its real current stage, and
+// the one action that stage already offers. The concept also shows a headline number on every
+// card ("9 planned this week"); no lane reports a single figure that could fill it, so no card
+// draws one — see the omissions list in the release notes.
+function typeCard(lane) {
+  const current = currentStageOf(lane);
+  return Object.freeze({
+    id: lane.id,
+    label: lane.label,
+    description: lane.description,
+    icon: lane.icon,
+    built: lane.built,
+    available: lane.available,
+    unavailableReason: lane.unavailableReason,
+    // The status pill: the current stage's name, and its state for colour. A lane with no
+    // current step reports none rather than a default.
+    stage: current ? Object.freeze({ id: current.id, label: current.label, state: current.state }) : null,
+    // The status line beneath the description, in the lane's own words.
+    status: current ? current.summary : (lane.stages[0]?.summary || ""),
+    action: current?.action ? Object.freeze({ ...current.action }) : null
+  });
+}
+
+// The lifecycle bar. A step is marked current when at least one lane is standing on it; the
+// earliest such step is THE current one, so exactly one is highlighted or none is.
+function lifecycleSteps(lanes) {
+  const standing = new Set(lanes.map((entry) => currentStageOf(entry)?.id).filter(Boolean));
+  const currentId = FOUNDER_OS_CAMPAIGN_LIFECYCLE.find((step) => standing.has(step.id))?.id || "";
+  return Object.freeze(FOUNDER_OS_CAMPAIGN_LIFECYCLE.map((step, index) => Object.freeze({
+    ...step,
+    position: index + 1,
+    current: step.id === currentId,
+    // How many lanes are standing on this step. Real, and it is what makes the highlight
+    // explicable rather than decorative.
+    lanes: lanes.filter((entry) => currentStageOf(entry)?.id === step.id).map((entry) => entry.label)
+  })));
+}
+
+// The Active campaigns table. One row per NAMED campaign record; a lane that cannot name one
+// contributes nothing, and the surface says which lanes those are rather than inventing a row
+// named after the lane.
+function campaignRows(lanes) {
+  return Object.freeze(lanes.flatMap((entry) => {
+    const current = currentStageOf(entry);
+    return list(entry.campaigns).map((campaign) => Object.freeze({
+      ...campaign,
+      laneId: entry.id,
+      laneLabel: entry.label,
+      icon: entry.icon,
+      stage: current ? Object.freeze({ id: current.id, label: current.label, state: current.state }) : null,
+      nextAction: current?.action ? Object.freeze({ ...current.action }) : null
+    }));
+  }));
+}
 
 export function buildFounderCampaignsView(state = {}, options = {}) {
   const environment = options.env && typeof options.env === "object" ? options.env : {};
@@ -521,7 +658,12 @@ export function buildFounderCampaignsView(state = {}, options = {}) {
   ];
 
   return Object.freeze({
-    lifecycle: FOUNDER_OS_CAMPAIGN_LIFECYCLE,
+    lifecycle: lifecycleSteps(lanes),
+    // The four type cards, in the concept's order.
+    types: Object.freeze(lanes.map(typeCard)),
+    // Every named campaign, and the lanes that have none.
+    campaigns: campaignRows(lanes),
+    unnamedLanes: Object.freeze(lanes.filter((entry) => entry.available && !list(entry.campaigns).length).map((entry) => entry.label)),
     lanes: Object.freeze(lanes),
     // Plan and setup for the workspace as a whole, not for one lane. Bringing an audience in
     // is the first step of Plan for every lane that has an audience, and until now the only

@@ -18,3 +18,83 @@
 .kpi-derived, .kpi-action { margin: 0.5rem 0 0; font-size: 0.8rem; }
 .kpi-exceptions ul, .kpi-platform { margin: 0.35rem 0 0; padding-left: 1.1rem; }
 @media (max-width: 860px) { .kpi-cards { grid-template-columns: 1fr; } }
+
+/* Concept parity. Loaded with the Scoreboard registry runtime, not in the head. Tokens come from
+   assets/ui/founder-os-concept.css. */
+/* Scoreboard */
+.kpi-registry .kpi-card { background: var(--le-concept-card); border: 1px solid var(--le-concept-border); border-radius: 12px; padding: 1rem; box-shadow: var(--le-concept-shadow); }
+.kpi-registry .kpi-exceptions { border: 1px solid color-mix(in srgb, var(--le-status-attention) 35%, transparent); background: var(--le-status-attention-soft); border-radius: 12px; padding: 0.75rem 1rem; }
+.kpi-registry .kpi-exceptions h3 { margin: 0 0 0.35rem; color: var(--le-status-attention); }
+.kpi-registry .kpi-definition,
+.kpi-registry .kpi-derived { color: var(--le-concept-muted-text); }
+.kpi-registry .kpi-value { font-size: 1.6rem; font-weight: 700; margin: 0.35rem 0; }
+.kpi-registry .kpi-variance[data-tone="better"] { color: var(--le-status-live); }
+.kpi-registry .kpi-variance[data-tone="worse"] { color: var(--le-status-attention); }
+/* "No target set" is information, not decoration: it was dimmed to 0.75 opacity, which put it at 1.97:1. It reads as secondary through colour alone now. */
+.kpi-registry .kpi-variance.is-absent,
+.kpi-registry .kpi-target.is-absent { color: var(--le-concept-muted-text); opacity: 1; }
+/* SCOREBOARD The concept is a row of metric cards, a large chart, and a right-hand column carrying Needs attention and Data sources. The chart is not drawn: this product stores a current value and one prior period per metric, and two points are not a time series. Everything else is here. */
+.kpi-registry { padding: 30px 34px 34px; font-size: var(--le-type-body); }
+.kpi-registry > header { margin: 0 0 22px; }
+.kpi-eyebrow { margin: 0 0 6px; color: var(--le-concept-orange-text); font-size: var(--le-type-label); font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.kpi-registry > header h2 { margin: 0; font-size: var(--le-type-page-title); font-weight: 800; line-height: 1.12; letter-spacing: -.02em; }
+.kpi-registry > header p:last-child { margin: 7px 0 0; color: var(--le-concept-muted-text); }
+.kpi-layout { display: grid; grid-template-columns: minmax(0, 1.62fr) minmax(300px, .72fr); align-items: start; gap: 16px; }
+.kpi-main { min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+.kpi-side { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.kpi-group > h3 { margin: 0 0 10px; color: #475467; font-size: var(--le-type-label); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+/* Four metric cards in a row, as the concept shows them. */
+.kpi-registry .kpi-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; }
+.kpi-registry .kpi-card { display: flex; flex-direction: column; gap: 6px; padding: 14px 15px; }
+.kpi-registry .kpi-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.kpi-registry .kpi-card h4 { margin: 0; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); font-weight: 700; }
+.kpi-registry .kpi-value { margin: 4px 0 0; font-size: 1.5rem; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; }
+.kpi-registry .kpi-definition { margin: 0; font-size: var(--le-type-label); line-height: 1.4; }
+.kpi-registry .kpi-fields { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; margin: 6px 0 0; padding-top: 8px; border-top: 1px solid #eff1f4; font-size: var(--le-type-label); }
+.kpi-registry .kpi-fields dt { color: var(--le-concept-muted-text); font-weight: 700; }
+.kpi-registry .kpi-fields dd { margin: 0; }
+.kpi-registry .kpi-derived { margin: 0; font-size: var(--le-type-label); }
+.kpi-registry .kpi-action { margin: auto 0 0; padding-top: 8px; }
+.kpi-registry .kpi-action-link { font-size: var(--le-type-label); }
+.kpi-registry .kpi-source-link { margin: 6px 0 0; font-size: var(--le-type-label); }
+.kpi-registry .kpi-status { font-size: var(--le-type-label); }
+.kpi-registry .kpi-platform { margin: 0; padding: 0 0 0 1.05rem; font-size: var(--le-type-meta); }
+/* --- The right-hand column --------------------------------------------------------------------- */
+.kpi-registry .kpi-exceptions,
+.kpi-registry .kpi-sources { padding: 15px 16px; border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-card); background: var(--le-concept-card); box-shadow: var(--le-concept-shadow); }
+.kpi-registry .kpi-exceptions { border-color: color-mix(in srgb, var(--le-status-attention) 35%, transparent); background: var(--le-status-attention-soft); }
+.kpi-registry .kpi-exceptions h3,
+.kpi-registry .kpi-side-head h3 { margin: 0 0 8px; font-size: var(--le-type-label); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.kpi-registry .kpi-side-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.kpi-registry .kpi-side-head h3 { margin: 0; color: #475467; }
+.kpi-registry .kpi-side-head > span { padding: 2px 7px; border-radius: 9px; background: #eef1f5; color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; }
+.kpi-registry .kpi-exceptions ul,
+.kpi-registry .kpi-sources ul { margin: 0; padding: 0; list-style: none; }
+.kpi-registry .kpi-exceptions li { padding: 6px 0; font-size: var(--le-type-meta); }
+.kpi-registry .kpi-sources li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid #eff1f4; }
+.kpi-registry .kpi-sources li:last-child { border-bottom: 0; }
+.kpi-source-name strong { display: block; font-size: var(--le-type-meta); }
+.kpi-source-name small { display: block; color: var(--le-concept-muted-text); font-size: var(--le-type-label); }
+@media (max-width: 1400px) {
+  .kpi-registry .kpi-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 1180px) {
+  .kpi-layout { grid-template-columns: minmax(0, 1fr); }
+  .kpi-registry .kpi-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  .kpi-registry { padding: 18px 16px 28px; }
+  .kpi-registry .kpi-cards { grid-template-columns: minmax(0, 1fr); }
+}
+/* The first group is the concept's full-width row of metric cards; everything below it shares the canvas with the right-hand column. */
+.kpi-registry .kpi-headline { margin: 0 0 18px; }
+.kpi-registry .kpi-headline .kpi-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.kpi-registry .kpi-main .kpi-cards { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+/* The right-hand stack is an `aside`, which the legacy shell styles as a surface. */
+.kpi-registry .kpi-side { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+@media (max-width: 1180px) {
+  .kpi-registry .kpi-headline .kpi-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  .kpi-registry .kpi-headline .kpi-cards { grid-template-columns: minmax(0, 1fr); }
+}

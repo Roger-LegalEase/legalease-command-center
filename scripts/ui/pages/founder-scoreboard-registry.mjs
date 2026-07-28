@@ -92,6 +92,42 @@ function groupHtml(group) {
   </section>`;
 }
 
+// The concept's right-hand Data sources panel.
+//
+// It is DERIVED, not declared: every metric already names the source it was read from and the
+// state that source is in, so the panel groups the metrics by source and reports the state each
+// one is actually in. A source that no metric names does not appear, and no source is listed as
+// live because it is expected to be.
+//
+// The concept also puts a large time-series chart beside this panel. Nothing in this product
+// stores a metric's history — the registry carries a current value and one prior period, and
+// two points are not a chart — so no chart is drawn. See the omissions list in the release notes.
+function sourcePanelHtml(registry) {
+  const cards = (registry.groups || []).flatMap((group) => group.cards || []);
+  const sources = new Map();
+  for (const card of cards) {
+    const label = clean(card.sourceKind || card.source?.label);
+    if (!label) continue;
+    const status = clean(card.status?.key) || "unavailable";
+    const entry = sources.get(label) || { label, statuses:new Map(), metrics:0 };
+    entry.metrics += 1;
+    entry.statuses.set(status, (entry.statuses.get(status) || 0) + 1);
+    sources.set(label, entry);
+  }
+  if (!sources.size) return "";
+  const rows = [...sources.values()].map((entry) => {
+    // The source's state is the state of the metrics that come from it. Mixed states are
+    // reported as the worst one, because a source that is failing some metrics is not healthy.
+    const status = ["unavailable", "needs_attention", "manual", "live"].find((key) => entry.statuses.has(key)) || "unavailable";
+    const label = { live:"Live", manual:"Manual", needs_attention:"Needs attention", unavailable:"Unavailable" }[status];
+    return `<li data-kpi-source-row="${escapeAttribute(entry.label)}"><span class="kpi-source-name"><strong>${escapeHtml(entry.label)}</strong><small>${entry.metrics} ${entry.metrics === 1 ? "metric" : "metrics"}</small></span><span class="kpi-status" data-status="${escapeAttribute(status)}">${escapeHtml(label)}</span></li>`;
+  }).join("");
+  return `<section class="kpi-sources" aria-labelledby="kpi-sources-title">
+      <div class="kpi-side-head"><h3 id="kpi-sources-title">Data sources</h3><span>${sources.size}</span></div>
+      <ul>${rows}</ul>
+    </section>`;
+}
+
 function platformHtml(platform, folded = false) {
   if (!platform) return "";
   if (platform.available !== true) {
@@ -108,15 +144,30 @@ export function founderScoreboardRegistryHtml(registry = null) {
     return `<section class="kpi-registry" data-kpi-registry><p role="status">${escapeHtml(registry.availability?.reason || "The Scoreboard could not be read.")}</p></section>`;
   }
   const exceptions = registry.exceptions || [];
+  // The concept's composition: the metric grid on the left, Needs attention and Data sources in
+  // a right-hand column. Both panels are the ones this surface already had; only their position
+  // and their shape changed.
   return `<section class="kpi-registry" data-kpi-registry aria-labelledby="kpi-registry-title">
-    <header><h2 id="kpi-registry-title">Scoreboard</h2><p>Every number shows where it comes from, how fresh it is, and what to do about it.</p></header>
-    ${exceptions.length ? `<section class="kpi-exceptions" aria-label="Needs attention" data-kpi-exceptions="${exceptions.length}"><h3>${exceptions.length} ${exceptions.length === 1 ? "metric needs" : "metrics need"} attention</h3><ul>${exceptions.map((exception) => {
-      const href = safeScoreboardHref(exception.action?.target);
-      const label = escapeHtml(exception.label);
-      return `<li data-kpi-exception="${escapeAttribute(exception.id)}">${href ? `<a href="${escapeAttribute(href)}" data-kpi-exception-action="${escapeAttribute(exception.id)}">${label}</a>` : `<strong>${label}</strong>`}${exception.detail ? ` — ${escapeHtml(exception.detail)}` : ""}</li>`;
-    }).join("")}</ul></section>` : ""}
-    ${(registry.groups || []).map((group) => groupHtml(group) + (group.key === "health" ? platformHtml(registry.platformHealth, true) : "")).join("")}
-    ${(registry.groups || []).some((group) => group.key === "health") ? "" : platformHtml(registry.platformHealth)}
+    <header>
+      <p class="kpi-eyebrow">One trusted operating picture</p>
+      <h2 id="kpi-registry-title">Scoreboard</h2>
+      <p>Every number shows where it comes from, how fresh it is, and what to do about it.</p>
+    </header>
+    ${(registry.groups || []).slice(0, 1).map((group) => `<div class="kpi-headline">${groupHtml(group)}</div>`).join("")}
+    <div class="kpi-layout">
+      <div class="kpi-main">
+        ${(registry.groups || []).slice(1).map((group) => groupHtml(group) + (group.key === "health" ? platformHtml(registry.platformHealth, true) : "")).join("")}
+        ${(registry.groups || []).some((group) => group.key === "health") ? "" : platformHtml(registry.platformHealth)}
+      </div>
+      <aside class="kpi-side" aria-label="Scoreboard exceptions and sources">
+        ${exceptions.length ? `<section class="kpi-exceptions" aria-label="Needs attention" data-kpi-exceptions="${exceptions.length}"><h3>${exceptions.length} ${exceptions.length === 1 ? "metric needs" : "metrics need"} attention</h3><ul>${exceptions.map((exception) => {
+          const href = safeScoreboardHref(exception.action?.target);
+          const label = escapeHtml(exception.label);
+          return `<li data-kpi-exception="${escapeAttribute(exception.id)}">${href ? `<a href="${escapeAttribute(href)}" data-kpi-exception-action="${escapeAttribute(exception.id)}">${label}</a>` : `<strong>${label}</strong>`}${exception.detail ? ` — ${escapeHtml(exception.detail)}` : ""}</li>`;
+        }).join("")}</ul></section>` : ""}
+        ${sourcePanelHtml(registry)}
+      </aside>
+    </div>
   </section>`;
 }
 
@@ -133,6 +184,7 @@ export function founderScoreboardRegistryBrowserSource() {
     `const metricHtml=${metricHtml.toString()};`,
     `const groupHtml=${groupHtml.toString()};`,
     `const platformHtml=${platformHtml.toString()};`,
+    `const sourcePanelHtml=${sourcePanelHtml.toString()};`,
     `const founderScoreboardRegistryHtml=${founderScoreboardRegistryHtml.toString()};`
   ].join("\n");
   return `(() => { "use strict";

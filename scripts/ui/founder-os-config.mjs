@@ -229,14 +229,42 @@ export const FOUNDER_OS_CAMPAIGN_LIFECYCLE = Object.freeze([
 ]);
 
 // The four lanes from the secondary-views table in 02_TARGET_PRODUCT_AND_IA.md:37.
+// `description` and `icon` are the type card's fixed copy and glyph. They describe what the lane
+// IS, are the same on every render, and carry no count, name, date or status — so unlike the
+// numbers beside them they can never be stale. The status line on each card comes from the
+// lane's real stage state.
 export const FOUNDER_OS_CAMPAIGN_LANES = Object.freeze([
-  Object.freeze({ id: "social", label: "Social", built: true }),
-  Object.freeze({ id: "reactivation", label: "Reactivation", built: true }),
-  Object.freeze({ id: "partner_outreach", label: "Partner outreach", built: true }),
+  Object.freeze({
+    id: "social",
+    label: "Social",
+    built: true,
+    icon: "globe",
+    description: "Weekly content plan, platform variants, approvals, and manual posting."
+  }),
+  Object.freeze({
+    id: "reactivation",
+    label: "Reactivation",
+    built: true,
+    icon: "play",
+    description: "Approved audience waves, delivery outcomes, replies, and safety limits."
+  }),
+  Object.freeze({
+    id: "partner_outreach",
+    label: "Partner outreach",
+    built: true,
+    icon: "users",
+    description: "Ranked potential partners, personalised drafts, bounded follow-ups, and reply handoff."
+  }),
   // No press engine exists in main (01_CURRENT_STATE_REUSE_LEDGER.md P10, re-verified at
   // 922a555). The lane is present because the charter names it, and it reports that it is not
   // built rather than rendering an empty campaign that looks real.
-  Object.freeze({ id: "press", label: "Press outreach", built: false })
+  Object.freeze({
+    id: "press",
+    label: "Press outreach",
+    built: false,
+    icon: "megaphone",
+    description: "Journalists, story angles, approved claims, individual pitches, and coverage."
+  })
 ]);
 
 // The charter's internal-to-founder translation table, verbatim from campaigns.md:26-35.

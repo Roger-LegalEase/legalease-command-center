@@ -116,6 +116,111 @@ function laneHtml(lane) {
   </section>`;
 }
 
+// One icon per campaign type, from the sprite the Founder OS shell renders. A type whose glyph
+// is missing draws no icon rather than a stand-in.
+const CAMPAIGN_ICONS = Object.freeze(["globe", "play", "users", "megaphone"]);
+
+function campaignIcon(name) {
+  return CAMPAIGN_ICONS.includes(clean(name))
+    ? `<svg class="le-icon" aria-hidden="true" focusable="false"><use href="#le-i-${clean(name)}"></use></svg>`
+    : "";
+}
+
+// The four campaign-type cards. Each shows what the concept shows EXCEPT the headline number:
+// no lane reports a single figure that would fill it, and a number is not invented to fill a
+// slot. The status pill is the lane's current stage, the status line is that stage's own
+// sentence, and the link is that stage's own action.
+function typeCardHtml(type) {
+  const href = type.action?.kind === "link" ? safeCampaignHref(type.action.href) : "";
+  const link = href
+    ? `<a class="founder-campaign-type-link" href="${escapeAttribute(href)}" data-campaign-type-action="${escapeAttribute(type.id)}">${escapeHtml(type.action.label)}</a>`
+    : "";
+  const pill = type.stage
+    ? `<span class="founder-campaign-stage-state" data-campaign-status="${escapeAttribute(type.stage.state)}">${escapeHtml(type.stage.label)}</span>`
+    : "";
+  return `<article class="founder-campaign-type" data-campaign-type="${escapeAttribute(type.id)}" data-campaign-type-state="${escapeAttribute(type.stage?.state || "none")}">
+      <div class="founder-campaign-type-top"><span class="founder-campaign-type-icon" aria-hidden="true">${campaignIcon(type.icon)}</span>${pill}</div>
+      <h3>${escapeHtml(type.label)}</h3>
+      <p class="founder-campaign-type-description">${escapeHtml(type.description)}</p>
+      <p class="founder-campaign-type-status"><span class="founder-campaign-type-dot" data-campaign-status="${escapeAttribute(type.stage?.state || "unavailable")}" aria-hidden="true"></span>${escapeHtml(type.unavailableReason || type.status || "")}</p>
+      ${link}
+    </article>`;
+}
+
+// The lifecycle bar: five numbered steps, with the step the workspace is standing on marked.
+// The mark is derived in the projection from the lanes' real stage states; when no lane is
+// waiting or running, no step is marked.
+function lifecycleHtml(lifecycle) {
+  const steps = (Array.isArray(lifecycle) ? lifecycle : []).map((step) => `<li class="founder-campaign-step" data-campaign-step="${escapeAttribute(step.id)}"${step.current ? ' data-campaign-step-current="true" aria-current="step"' : ""}>
+        <span class="founder-campaign-step-number" aria-hidden="true">${Number(step.position || 0)}</span>
+        <span class="founder-campaign-step-copy"><strong>${escapeHtml(step.label)}</strong><span>${escapeHtml(step.purpose || "")}</span></span>
+      </li>`).join("");
+  return `<ol class="founder-campaign-lifecycle" aria-label="Campaign lifecycle">${steps}</ol>`;
+}
+
+// A cell that has nothing behind it is not drawn. The concept shows a progress bar and an
+// outcome figure on every row; this product supplies them for some campaigns and not others,
+// so the cell is empty rather than filled with a zero or a guess.
+function progressCellHtml(progress) {
+  if (!progress || !Number(progress.total)) return "";
+  const percent = Math.max(0, Math.min(100, Math.round((Number(progress.complete) / Number(progress.total)) * 100)));
+  return `<span class="founder-campaign-progress" role="img" aria-label="${escapeAttribute(progress.label || `${progress.complete} of ${progress.total}`)}"><i style="width:${percent}%"></i></span>
+        <small>${escapeHtml(progress.label || "")}</small>`;
+}
+
+function outcomeCellHtml(outcome) {
+  if (!outcome || !clean(outcome.value)) return "";
+  return `<strong>${escapeHtml(outcome.value)}</strong> <small>${escapeHtml(outcome.label || "")}</small>`;
+}
+
+function campaignRowHtml(row) {
+  const href = safeCampaignHref(row.href);
+  const name = href
+    ? `<a href="${escapeAttribute(href)}">${escapeHtml(row.name)}</a>`
+    : escapeHtml(row.name);
+  const nextHref = row.nextAction?.kind === "link" ? safeCampaignHref(row.nextAction.href) : "";
+  const next = row.nextAction
+    ? (nextHref
+      ? `<a class="founder-campaign-action" href="${escapeAttribute(nextHref)}">${escapeHtml(row.nextAction.label)}</a>`
+      : row.nextAction.kind === "control" && controlAvailable(row.nextAction.control)
+        ? `<button class="founder-campaign-action" type="button" data-campaign-control="${escapeAttribute(row.nextAction.control)}">${escapeHtml(row.nextAction.label)}</button>`
+        : "")
+    : "";
+  return `<tr data-campaign-row="${escapeAttribute(row.id)}">
+        <th scope="row"><span class="founder-campaign-row-name"><span class="founder-campaign-type-icon" aria-hidden="true">${campaignIcon(row.icon)}</span><span>${name}${row.subtitle ? `<small>${escapeHtml(row.subtitle)}</small>` : ""}</span></span></th>
+        <td>${escapeHtml(row.laneLabel)}</td>
+        <td>${row.stage ? `<span class="founder-campaign-stage-state" data-campaign-status="${escapeAttribute(row.stage.state)}">${escapeHtml(row.stage.label)}</span>` : ""}</td>
+        <td class="founder-campaign-progress-cell">${progressCellHtml(row.progress)}</td>
+        <td class="founder-campaign-outcome-cell">${outcomeCellHtml(row.outcome)}</td>
+        <td>${next}</td>
+      </tr>`;
+}
+
+function campaignTableHtml(payload) {
+  const rows = Array.isArray(payload.campaigns) ? payload.campaigns : [];
+  const unnamed = Array.isArray(payload.unnamedLanes) ? payload.unnamedLanes : [];
+  // Lanes with no named campaign record are stated, so an empty-looking table is never read as
+  // "nothing is running".
+  const note = unnamed.length
+    ? `<p class="founder-campaign-table-note">${escapeHtml(unnamed.join(" and "))} ${unnamed.length === 1 ? "has" : "have"} no separately named campaign. Their status is on the cards above.</p>`
+    : "";
+  if (!rows.length) {
+    return `<section class="founder-campaign-table-card" aria-labelledby="founder-campaigns-active-title">
+      <div class="founder-campaign-card-head"><h3 id="founder-campaigns-active-title">Active campaigns</h3></div>
+      <p class="founder-campaign-table-note">No campaign has a name of its own yet.</p>${note}
+    </section>`;
+  }
+  return `<section class="founder-campaign-table-card" aria-labelledby="founder-campaigns-active-title">
+      <div class="founder-campaign-card-head"><h3 id="founder-campaigns-active-title">Active campaigns</h3><span class="founder-campaign-count">${rows.length}</span></div>
+      <div class="founder-campaign-table-scroll" tabindex="0" role="region" aria-label="Active campaigns">
+      <table class="founder-campaign-table">
+        <thead><tr><th scope="col">Campaign</th><th scope="col">Campaign type</th><th scope="col">Stage</th><th scope="col">Progress</th><th scope="col">Outcome</th><th scope="col">Next action</th></tr></thead>
+        <tbody>${rows.map(campaignRowHtml).join("")}</tbody>
+      </table>
+      </div>${note}
+    </section>`;
+}
+
 function setupHtml(payload) {
   const entries = (Array.isArray(payload.setup) ? payload.setup : [])
     .map((entry) => ({ ...entry, href:safeCampaignHref(entry.href) }))
@@ -137,10 +242,15 @@ export function founderCampaignsPageHtml(payload = null) {
   }
   return `<section class="founder-campaigns" data-founder-campaigns aria-labelledby="founder-campaigns-title" aria-busy="false">
     <header>
+      <p class="founder-campaign-eyebrow">${payload.lifecycle.map((entry) => escapeHtml(entry.label)).join(" → ")}</p>
       <h2 id="founder-campaigns-title">Campaigns</h2>
-      <p>Every campaign runs the same five steps: ${payload.lifecycle.map((entry) => escapeHtml(entry.label)).join(" → ")}.</p>
+      <p>Every growth motion in one place, with the same controls and plain-language status.</p>
     </header>
+    <div class="founder-campaign-types">${(payload.types || []).map(typeCardHtml).join("")}</div>
+    ${lifecycleHtml(payload.lifecycle)}
+    ${campaignTableHtml(payload)}
     ${setupHtml(payload)}
+    <h3 class="founder-campaign-lanes-title">Every step, campaign type by campaign type</h3>
     <div class="founder-campaign-lanes">${payload.lanes.map(laneHtml).join("")}</div>
     <div data-founder-campaigns-preserved></div>
   </section>`;
@@ -159,6 +269,14 @@ export function founderCampaignsBrowserSource() {
     `const actionHtml=${actionHtml.toString()};`,
     `const stageHtml=${stageHtml.toString()};`,
     `const laneHtml=${laneHtml.toString()};`,
+    `const CAMPAIGN_ICONS=${JSON.stringify(CAMPAIGN_ICONS)};`,
+    `const campaignIcon=${campaignIcon.toString()};`,
+    `const typeCardHtml=${typeCardHtml.toString()};`,
+    `const lifecycleHtml=${lifecycleHtml.toString()};`,
+    `const progressCellHtml=${progressCellHtml.toString()};`,
+    `const outcomeCellHtml=${outcomeCellHtml.toString()};`,
+    `const campaignRowHtml=${campaignRowHtml.toString()};`,
+    `const campaignTableHtml=${campaignTableHtml.toString()};`,
     `const setupHtml=${setupHtml.toString()};`,
     `const founderCampaignsPageHtml=${founderCampaignsPageHtml.toString()};`
   ].join("\n");

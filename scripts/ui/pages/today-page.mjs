@@ -73,24 +73,39 @@ const FOUNDER_SECTION_COPY = Object.freeze({
   "needs-attention":Object.freeze({ label:"Needs attention", empty:"Nothing has stopped or escalated." })
 });
 
+// The concept's Today is two columns: the ranked queue on the left, and the three typed lanes
+// on the right. The sections themselves are unchanged — Release 2 built all five — so this is a
+// wrapper around each stack and a stylesheet, not a second renderer. Every section keeps its
+// data-today-answer hook, and renderSection still finds it by attribute wherever it sits.
+const FOUNDER_TODAY_COLUMNS = Object.freeze({
+  main:Object.freeze(["now", "next"]),
+  side:Object.freeze(["communications", "meetings", "needs-attention"])
+});
+
 export function renderFounderTodayLoading() {
-  const sections = FOUNDER_TODAY_PAGE_CONTRACT.sections.map((slot) => `      <section class="vnext-today-answer vnext-today-${slot}" data-today-answer="${slot}" aria-labelledby="vnext-today-${slot}-title">
-        <p class="vnext-today-section-label">${FOUNDER_SECTION_COPY[slot].label}</p>
-        <h2 id="vnext-today-${slot}-title">Loading ${FOUNDER_SECTION_COPY[slot].label.toLowerCase()}</h2>
-        <div class="vnext-today-skeleton" aria-hidden="true"></div>
-      </section>`).join("\n");
+  const section = (slot) => `        <section class="vnext-today-answer vnext-today-${slot}" data-today-answer="${slot}" aria-labelledby="vnext-today-${slot}-title">
+          <p class="vnext-today-section-label">${FOUNDER_SECTION_COPY[slot].label}</p>
+          <h2 id="vnext-today-${slot}-title">Loading ${FOUNDER_SECTION_COPY[slot].label.toLowerCase()}</h2>
+          <div class="vnext-today-skeleton" aria-hidden="true"></div>
+        </section>`;
   return `<section class="vnext-today-page vnext-founder-today" data-today-page data-founder-today aria-labelledby="vnext-today-title">
     <header class="vnext-today-header">
       <div>
-        <h1 id="vnext-today-title">Today</h1>
-        <p>Everything that needs you today, in the order it needs you.</p>
+        <p class="vnext-today-date" data-today-date aria-live="polite"></p>
+        <h1 id="vnext-today-title" data-today-greeting>Today</h1>
+        <p data-today-summary>Everything that needs you today, in the order it needs you.</p>
       </div>
-      <p class="vnext-today-date" data-today-date aria-live="polite"></p>
+      <div class="vnext-today-header-actions" data-today-header-actions></div>
     </header>
     <div class="vnext-today-content" data-today-content aria-busy="true">
       <div class="vnext-today-live" data-today-live role="status" aria-live="polite">Loading Today</div>
-${sections}
-      <div data-today-utility></div>
+      <div class="vnext-today-column vnext-today-column-main">
+${FOUNDER_TODAY_COLUMNS.main.map(section).join("\n")}
+        <div data-today-utility></div>
+      </div>
+      <aside class="vnext-today-column vnext-today-column-side" aria-label="Today's lanes">
+${FOUNDER_TODAY_COLUMNS.side.map(section).join("\n")}
+      </aside>
     </div>
   </section>`;
 }
@@ -218,9 +233,20 @@ function founderTodayBrowserSource() {
       const section = node('[data-today-answer="' + slot + '"]');
       if (!section) return;
       const copy = sectionCopy[slot] || { label:slot, empty:"Nothing here." };
-      const children = [text("p", copy.label, "vnext-today-section-label")];
+      // The concept's card head is the label and the lane's size. The count is the total the
+      // server reported for the lane, so a lane with nothing in it draws no count rather than a
+      // zero. Sections whose size is not reported draw no count either.
+      const label = text("p", copy.label, "vnext-today-section-label");
+      const laneTotal = Number(total || 0) || items.length;
+      // Now is a single card, not a lane, so it carries no size.
+      if (slot !== "now" && laneTotal > 0) label.append(text("span", String(laneTotal), "vnext-today-section-count"));
+      const children = [label];
       const heading = text("h2", items.length ? copy.label : copy.empty);
       heading.id = "vnext-today-" + slot + "-title";
+      // When the lane has work, the heading repeats the label directly above it. It stays in the
+      // DOM because it is this section's accessible name, and is hidden from sight only in that
+      // case; the empty-state wording is always visible.
+      heading.dataset.todayHeading = items.length ? "label" : "empty";
       children.push(heading);
       const hidden = Math.max(0, Number(total || 0) - items.length);
       if (hidden > 0) children.push(text("p", hidden + " more " + (hidden === 1 ? "item is" : "items are") + " already ranked above.", "vnext-today-period"));
@@ -286,6 +312,20 @@ function founderTodayBrowserSource() {
       if (content) content.setAttribute("aria-busy", "false");
       const date = node("[data-today-date]");
       if (date) date.textContent = payload.dateLabel || "";
+      // Greeting and summary come from the server, which reads the same Eastern clock as the
+      // date and the same ranked count as the sections. A payload without them leaves the
+      // scaffold's own words in place rather than blanking the heading.
+      const greeting = node("[data-today-greeting]");
+      if (greeting && payload.greeting) greeting.textContent = payload.greeting;
+      const summary = node("[data-today-summary]");
+      if (summary && payload.summary) summary.textContent = payload.summary;
+      // "View full queue" is the concept's one header action. It is drawn only when the server
+      // supplied a route for it, so it is never a control that goes nowhere.
+      const headerActions = node("[data-today-header-actions]");
+      if (headerActions) {
+        const queue = routeLink("View full queue", payload.overflowHref || "", "vnext-today-header-action");
+        headerActions.replaceChildren(...(queue ? [queue] : []));
+      }
       const sections = payload.sections || {};
       const totals = payload.totals || {};
       currentOverflow = Number(payload.overflow || 0);
