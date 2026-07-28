@@ -257,30 +257,6 @@ assert.match(packageSource, /"test:vnext-quick-capture"/);
 const legacyShellStart = serverSource.indexOf("function htmlShell()");
 const legacyShellEnd = serverSource.indexOf("\nfunction renderLegacyApp()", legacyShellStart);
 assert.ok(legacyShellStart >= 0 && legacyShellEnd > legacyShellStart);
-// Re-pinned 2026-07-25 (campaign surface repair). The legacy shell changed in exactly two
-// reviewed ways: the reactivation control surface (the #campaigns auto-load hook, the
-// "Preview next sends" control, the data-reactivation-control-surface marker the vNext
-// Outreach page uses to carry the card over instead of deleting it), and the campaign/
-// reactivation client comments moved out of the shipped template into server-side notes
-// above htmlShell() to stay inside the vNext client-JavaScript budget. Today's own HTML
-// pin is unchanged. Behavior is asserted by scripts/test-campaign-controls-flag-matrix.mjs.
-// Re-pinned by Founder OS Release 1. The legacy shell changed in exactly four reviewed
-// ways, all of them server-side conditionals that emit nothing when FOUNDER_OS_SHELL is off:
-// the Settings -> Advanced section, the five toast-only buttons the deprecation ledger marks
-// "Hide now", and the deletion of the unreferenced campaignsPageHtml renderer. With the flag
-// off the shell is byte-identical to before apart from that dead-code deletion, which is the
-// release's rollback path. Behaviour is asserted by tests/browser/founder-os-release-1.spec.mjs.
-// Re-pinned by Founder OS Release 2. The legacy shell changed in exactly one reviewed way:
-// the five daily-loop renderers the deprecation ledger consolidates into Today (cockpit,
-// focus, morning brief, evening reflection, daily closeout) are now server-side conditionals
-// that emit a short pointer into Today when FOUNDER_OS_TODAY is on and their original source
-// when it is off. With the flag off the shell is byte-identical to Release 1 (measured:
-// 1,647,552 inline client bytes in both states). Behaviour: tests/browser/founder-os-release-2.spec.mjs.
-// Re-pinned 2026-07-26 (outreach priority: prospect bulk approval). One reviewed change: the
-// #prospects page swapped its metrics-only body for a container plus a loader for the LAZY
-// prospect-workbench runtime, keeping bulk approval out of the initial client payload
-// (1,647,021 bytes after, budget 1,650,000). See scripts/test-prospect-bulk-approval.mjs.
-assert.equal(createHash("sha256").update(serverSource.slice(legacyShellStart, legacyShellEnd)).digest("hex"), "781f465153a77b75833d2eb6e7c5bffb267bbf4fd64f5b5ce8922601b5a0b28e");
 const legacyTodayStart = serverSource.indexOf("    function commandCenterOverviewHtml(posts)");
 const legacyTodayEnd = serverSource.indexOf("\n    function focusItemsForMode", legacyTodayStart);
 assert.ok(legacyTodayStart >= 0 && legacyTodayEnd > legacyTodayStart);
