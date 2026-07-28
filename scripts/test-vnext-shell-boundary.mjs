@@ -138,7 +138,25 @@ assert.match(serverSource, /loadLocalEnv\(\);\s*const commandCenterVNextConfig =
 assert.match(serverSource, /function renderLegacyApp\(\) \{\s*return htmlShell\(\);\s*\}/);
 assert.match(serverSource, /function renderVNextApp\(options = \{\}\) \{[\s\S]*?discoveryEnabled:discoveryVNextConfig\.enabled && Boolean\(options\.discovery\),[\s\S]*?return renderVNextDesktopShell\(renderLegacyApp\(\)\);\s*\}/);
 assert.match(serverSource, /function renderCommandCenterApp\(options = \{\}\) \{\s*return renderShellBoundary\(\{[\s\S]*?config: commandCenterVNextConfig,[\s\S]*?renderLegacyApp,[\s\S]*?renderVNextApp:\(\) => renderVNextApp\(options\)[\s\S]*?\}\);\s*\}/);
-assert.match(serverSource, /const html = sanitizeOutboundText\(renderCommandCenterApp\(\{ discovery \}\)\);/);
+// The shell render call. Two things about it are load-bearing and one is not.
+//
+// LOAD-BEARING: the HTML goes through sanitizeOutboundText, and the actor the shell may name comes
+// from the ACCESS DECISION rather than from the request or from state. The Founder OS account block
+// renders that actor's own label, so "which actor" is a security property, not a presentation one.
+//
+// NOT LOAD-BEARING: the exact option list. It was pinned literally as `{ discovery }` and this
+// release added the actor, which broke the pin without anything about the boundary changing. The
+// options are matched loosely and the two properties are asserted on their own, so the call can
+// grow an option again without this failing, while dropping the sanitizer or sourcing the account
+// from anywhere but the authorizer still does.
+const shellRenderCall = serverSource.match(/const html = sanitizeOutboundText\(renderCommandCenterApp\(\{([^}]*)\}\)\);/);
+assert.ok(shellRenderCall, "The shell HTML must be rendered through sanitizeOutboundText(renderCommandCenterApp({ … })).");
+assert.match(shellRenderCall[1], /\bdiscovery\b/, "The shell render must still receive the discovery contracts.");
+assert.match(
+  shellRenderCall[1],
+  /actor:publicActor\(accessDecision\.actor\)/,
+  "The shell may only name the actor the authorizer resolved, never one read from the request or from state."
+);
 
 const shellStart = serverSource.indexOf("function htmlShell()");
 const shellEnd = serverSource.indexOf("function renderLegacyApp()", shellStart);
@@ -148,7 +166,7 @@ assert.doesNotMatch(
   /COMMAND_CENTER_UX_VNEXT/,
   "The deployment flag must never be embedded in client-side HTML or JavaScript."
 );
-assert.ok(serverSource.indexOf("const accessDecision = authorizeRequest") < serverSource.indexOf("sanitizeOutboundText(renderCommandCenterApp({ discovery }))"), "Authorization must remain before shell rendering.");
+assert.ok(serverSource.indexOf("const accessDecision = authorizeRequest") < shellRenderCall.index, "Authorization must remain before shell rendering.");
 
 function requiredMatch(pattern, label) {
   const match = serverSource.match(pattern);
