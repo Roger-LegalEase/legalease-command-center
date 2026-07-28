@@ -39,6 +39,28 @@ export const FOUNDER_OS_CAMPAIGN_STAGE_STATES = Object.freeze([
   "ready", "attention", "blocked", "running", "stopped", "unavailable", "not_built"
 ]);
 
+// One action shape for the whole surface, so the renderer never has to guess what a stage
+// action is. `kind` decides what is drawn, and it is the ONLY thing that makes a control
+// appear:
+//
+//   "link"    — a real anchor to a route that already resolves. Opening it navigates and
+//               nothing else; no send, release, approval, publication or suppression change
+//               can be caused by following it.
+//   "control" — a button that calls a client operation THIS RELEASE DID NOT WRITE, named by
+//               `control`. The renderer refuses to draw one it does not recognise, so a
+//               handler can never be fabricated by adding a string here.
+//   absent    — there is no action. The stage renders as plain status with its explanation.
+//
+// `route` stays exactly what it always was: the route that already implements the action,
+// reported and never called from here.
+function linkAction(label, href, route, options = {}) {
+  return { label, href, kind: "link", route, mutates: options.mutates === true };
+}
+
+function controlAction(label, control, route, mutates = true) {
+  return { label, kind: "control", control, route, mutates };
+}
+
 function stage(id, state, summary, options = {}) {
   const definition = FOUNDER_OS_CAMPAIGN_LIFECYCLE.find((entry) => entry.id === id);
   return Object.freeze({
@@ -121,7 +143,9 @@ function reactivationLane(state, environment, now) {
       // "threshold trip" -> "Campaign stopped for safety", per the translation table.
       summary: "Campaign stopped for safety.",
       detail: safetyPlain || "A safety limit was reached.",
-      action: { label: "Review the safety limit", route: "GET /api/campaign/command" }
+      // The safety limit and the switch that clears it live in the same controls. The renderer
+      // draws this as a button that opens them; it cannot clear anything itself.
+      action: controlAction("Open sending controls", "reactivation-controls", "GET /api/campaign/command", false)
     });
   }
   if (command.telemetry && command.telemetry.trusted === false) {
@@ -131,7 +155,10 @@ function reactivationLane(state, environment, now) {
       // "SendGrid webhook health" -> "Delivery feedback connected".
       summary: "Delivery feedback is not connected.",
       detail: "Delivery and reply numbers may be incomplete until it reconnects.",
-      action: null
+      // Connecting it is a setup step, and the connections surface already exists. The
+      // exception used to carry no action at all, so the founder was told about a problem and
+      // given nowhere to fix it.
+      action: linkAction("Open connections", "#settings", "GET /api/connectors/status")
     });
   }
 
@@ -140,14 +167,16 @@ function reactivationLane(state, environment, now) {
       releasedWaves > 0
         ? `${releasedWaves} audience${releasedWaves === 1 ? "" : "s"} approved and active.`
         : "No audience is approved and active yet.",
-      { action: { label: "Preview next sends", route: "GET /api/campaign/command", mutates: false } }),
+      // Previewing, releasing, running and stopping all live in the one set of controls this
+      // release did not write. Plan is a reading, so it carries no control of its own.
+      {}),
 
     stage("review", nextWave ? "attention" : "ready",
       nextWave
         ? `The next audience is ready for your approval (${Number(nextWave.eligibleOnRelease || 0)} people).`
         : "No audience is waiting for approval.",
       nextWave
-        ? { action: { label: "Release next approved audience", route: "POST /api/campaign/wave-release/propose", mutates: true } }
+        ? { action: controlAction("Open sending controls", "reactivation-controls", "POST /api/campaign/wave-release/propose", false) }
         : {}),
 
     stage("run", sending ? "running" : "stopped",
@@ -158,7 +187,9 @@ function reactivationLane(state, environment, now) {
           ? "Run is on, but nothing is sending."
           : paused ? "Campaign stopped." : "Campaign not running.",
       {
-        action: { label: switchedOn ? "Stop" : "Run", route: "POST /api/reactivation/live-mode", mutates: true },
+        // The button opens the existing controls; it never runs or stops anything itself.
+        // This surface has no write path, and a control that could send from here would be one.
+        action: controlAction("Open sending controls", "reactivation-controls", "POST /api/reactivation/live-mode", false),
         // The exact reason, taken from the decision functions rather than re-derived. Precedence
         // matches theirs: a tripped limit outranks everything, then whatever the planner says.
         blockedReason: tripped
@@ -175,11 +206,15 @@ function reactivationLane(state, environment, now) {
     // number in every case: equal to `dueNow` inside the window, the queued count outside it.
     stage("monitor", tripped ? "blocked" : exceptions.length ? "attention" : "ready",
       `${Number(command.dueEligible || 0)} ${Number(command.dueEligible || 0) === 1 ? "person is" : "people are"} eligible in the next window.`,
-      { action: { label: "Review replies", route: "GET /api/campaign/command", mutates: false } }),
+      // Monitor is a reading, not a decision. There is no separate replies destination for
+      // reactivation, so it stays plain status rather than a control that goes nowhere.
+      {}),
 
     stage("stop", switchedOn ? "ready" : "stopped",
       switchedOn ? "Stopping takes effect immediately." : "Already stopped.",
-      { action: { label: "Stop", route: "POST /api/reactivation/live-mode", mutates: true } })
+      switchedOn
+        ? { action: controlAction("Open sending controls", "reactivation-controls", "POST /api/reactivation/live-mode", false) }
+        : {})
   ], { exceptions });
 }
 
@@ -206,13 +241,13 @@ function socialLane(state) {
   return lane("social", [
     stage("plan", drafts > 0 ? "ready" : "attention",
       drafts > 0 ? `${drafts} draft${drafts === 1 ? "" : "s"} in progress.` : "No drafts in progress.",
-      { action: { label: "Plan the week", route: "GET /api/ui/social/weekly", mutates: false } }),
+      { action: linkAction("Plan the week", "#social?view=weekly", "GET /api/ui/social/weekly") }),
 
     stage("review", awaitingReview > 0 ? "attention" : "ready",
       awaitingReview > 0
         ? `${awaitingReview} post${awaitingReview === 1 ? "" : "s"} waiting for your approval.`
         : "Nothing is waiting for approval.",
-      { action: { label: "Review drafts", route: "GET /api/ui/social", mutates: false } }),
+      { action: linkAction("Review drafts", "#social", "GET /api/ui/social") }),
 
     // "Run" for Social is a person posting by hand. Saying so is the honest translation, and it
     // is why this stage offers an export rather than a publish.
@@ -220,11 +255,13 @@ function socialLane(state) {
       approved > 0
         ? `${approved} approved post${approved === 1 ? "" : "s"} ready for you to post by hand.`
         : "No approved posts ready to post.",
-      { action: { label: "Copy or export for posting", route: "POST /api/ui/social/weekly/export", mutates: true } }),
+      // A link to the plan, where the export control already lives. Opening the plan exports
+      // nothing; the existing confirmed control there does the work.
+      { action: linkAction("Copy or export for posting", "#social?view=weekly", "POST /api/ui/social/weekly/export", { mutates:true }) }),
 
     stage("monitor", "ready",
       `${published} post${published === 1 ? "" : "s"} recorded as published.`,
-      { action: { label: "Record a published link", route: "POST /api/ui/social/weekly/posts/:postId/manual-publication", mutates: true } }),
+      { action: linkAction("Record a published link", "#social?view=weekly", "POST /api/ui/social/weekly/posts/:postId/manual-publication", { mutates:true }) }),
 
     // Nothing automatic is running, so there is nothing to stop. Saying that plainly beats
     // showing a Stop button that does nothing.
@@ -240,37 +277,73 @@ function partnerOutreachLane(state) {
   if (!Array.isArray(state.prospectCandidates) && !Array.isArray(state.outreachContacts)) {
     return unavailableLane("partner_outreach", "Partner outreach data could not be read.");
   }
+  // Whether the ranked list could be read at all. A missing collection is NOT zero: an
+  // unreadable list says so, because "0 waiting for you" and "we could not look" are
+  // different sentences and only one of them is safe to act on.
+  const rankedListReadable = Array.isArray(state.prospectCandidates);
   const candidates = list(state.prospectCandidates);
-  const pending = candidates.filter((candidate) => String(candidate.review_state || "") === "pending_review").length;
-  const approved = candidates.filter((candidate) => String(candidate.review_state || "") === "approved").length;
-  const queued = list(state.approvalQueue).filter((item) => String(item.status || "") === "queued_for_approval").length;
+  const pending = candidates.filter((candidate) => slug(candidate.review_state) === "pending_review").length;
+  const approved = candidates.filter((candidate) => slug(candidate.review_state) === "approved").length;
+
+  // THE APPROVAL COUNT. It used to be `pending + every queued approvalQueue row`, and the
+  // queued half was never filtered by campaign type — unlike the press lane, which is — so a
+  // social or review-desk approval inflated a number labelled "partner outreach". Two rules
+  // now govern it:
+  //
+  //   1. The number on the card is the number of records the destination shows. Review
+  //      approvals opens the ranked list, whose server projection selects exactly
+  //      `review_state === "pending_review"` (prospect-selection.mjs `pendingTotal`), so the
+  //      card counts exactly that and nothing else.
+  //   2. Nothing enters the count that Roger cannot then review. Drafted partner emails do
+  //      sit in `approvalQueue`, and they ARE classifiable — `type === "outreach_message"`
+  //      with a `lane` that is not press — but no reviewed client workflow can display or
+  //      decide one (`POST /api/outreach/approve` still has no caller). They are reported
+  //      separately, in words, and never folded into a count that promises a review.
+  const queuedPartnerMessages = list(state.approvalQueue)
+    .filter((item) => slug(item.type) === "outreach_message")
+    .filter((item) => slug(item.status) === "queued_for_approval")
+    .filter((item) => slug(item.lane) !== "press")
+    .length;
+  const dormantNote = queuedPartnerMessages > 0
+    ? ` ${queuedPartnerMessages} drafted partner email${queuedPartnerMessages === 1 ? " is" : "s are"} also waiting, and there is no way to review ${queuedPartnerMessages === 1 ? "it" : "them"} here yet.`
+    : "";
+
   const replies = list(state.outreachReplies).length;
   // "suppression" -> "Not eligible to contact".
   const notEligible = list(state.outreachSuppressions).length + list(state.outreachUnsubscribes).length;
 
   return lane("partner_outreach", [
-    stage("plan", candidates.length > 0 ? "ready" : "attention",
-      candidates.length > 0
-        ? `${candidates.length} organisation${candidates.length === 1 ? "" : "s"} on the ranked list.`
-        : "No organisations on the ranked list yet.",
-      { action: { label: "Review the ranked list", route: "GET /api/prospects/status", mutates: false } }),
+    stage("plan", !rankedListReadable ? "unavailable" : candidates.length > 0 ? "ready" : "attention",
+      !rankedListReadable
+        ? "The list of organisations could not be read, so no number is shown."
+        : candidates.length > 0
+          ? `${candidates.length} organisation${candidates.length === 1 ? "" : "s"} on the ranked list.`
+          : "No organisations on the ranked list yet.",
+      rankedListReadable
+        ? { action: linkAction("Open the ranked list", "#prospects", "GET /api/prospects/status") }
+        : {}),
 
-    stage("review", pending > 0 || queued > 0 ? "attention" : "ready",
-      pending > 0 || queued > 0
-        ? `${pending + queued} item${pending + queued === 1 ? "" : "s"} need your approval before anything goes out.`
-        : "Nothing is waiting for approval.",
-      { action: { label: "Approve or reject", route: "POST /api/prospects/approve", mutates: true } }),
+    stage("review", !rankedListReadable ? "unavailable" : pending > 0 ? "attention" : "ready",
+      !rankedListReadable
+        ? "The number waiting for your approval could not be read, so none is shown."
+        : (pending > 0
+          ? `${pending} organisation${pending === 1 ? "" : "s"} need${pending === 1 ? "s" : ""} your approval before anything goes out.`
+          : "Nothing is waiting for approval.") + dormantNote,
+      rankedListReadable
+        ? { action: linkAction("Review approvals", "#prospects", "POST /api/prospects/approve", { mutates:true }) }
+        : {}),
 
     stage("run", approved > 0 ? "ready" : "stopped",
       approved > 0
         ? `${approved} approved organisation${approved === 1 ? "" : "s"} can be contacted.`
         : "Nothing is approved, so nothing can be contacted.",
-      { action: { label: "Review outreach status", route: "GET /api/outreach/status", mutates: false } },
-    ),
+      // Approving is the only decision here, and it is on Review. Nothing is started from
+      // this stage, so it stays plain status rather than a control that does nothing.
+      { blockedReason: approved > 0 ? "" : "Approve organisations on Review before any of them can be contacted." }),
 
     stage("monitor", "ready",
       `${replies} repl${replies === 1 ? "y" : "ies"} received. ${notEligible} contact${notEligible === 1 ? "" : "s"} not eligible to contact.`,
-      { action: { label: "Review replies", route: "GET /api/outreach/status", mutates: false } }),
+      {}),
 
     stage("stop", "ready", "A reply stops that sequence immediately, on its own.")
   ]);
@@ -348,7 +421,8 @@ function pressLane(state, pressEnabled) {
       `${angles.length} story angles, all pitchable on the press kit alone. `
       + `${fullyProven.length} need nothing beyond it; the rest carry the same claims and offer figures or a participant story on request.`,
       {
-        action: { label: "Choose a story angle", route: "GET /api/ui/campaigns", mutates: false },
+        // The angles are shown here, in full. There is nowhere else to go, so this stage
+        // carries no control.
         detail: {
           approvedSource: PRESS_KIT.file,
           approvedSourceCurrentAsOf: PRESS_KIT.currentAsOf,
@@ -361,8 +435,9 @@ function pressLane(state, pressEnabled) {
     stage("review", approvals.length ? "attention" : sendable.length ? "ready" : "attention",
       `${sendable.length} contactable, ${held.length} held (${reasonSummary || "no reasons recorded"}).`,
       {
-        action: { label: "Review the audience", route: "POST /api/outreach/approve", mutates: true },
-        blockedReason: sendable.length ? "" : "Nothing is contactable yet, so nothing can be approved."
+        blockedReason: sendable.length
+          ? "Approving the audience happens on the campaign itself, one campaign at a time."
+          : "Nothing is contactable yet, so nothing can be approved."
       }),
 
     // Run is deliberately identical in shape to reactivation: one approval, no autonomous send.
@@ -370,7 +445,9 @@ function pressLane(state, pressEnabled) {
       ? stage("run", "running",
         `"${clean(activePress.name) || clean(activePress.campaign_id)}" is running — one touch per journalist, stop is immediate, a reply stops that journalist on its own.`,
         {
-          action: { label: "Open the running campaign", route: `#outreach/campaign/${encodeURIComponent(`outreach:${clean(activePress.campaign_id || activePress.id)}`)}`, mutates: false },
+          action: linkAction("Open the running campaign",
+            `#outreach/campaign/${encodeURIComponent(`outreach:${clean(activePress.campaign_id || activePress.id)}`)}`,
+            `#outreach/campaign/${encodeURIComponent(`outreach:${clean(activePress.campaign_id || activePress.id)}`)}`),
           detail: {
             runningCampaign: Object.freeze({
               campaignId: clean(activePress.campaign_id || activePress.id),
@@ -386,7 +463,13 @@ function pressLane(state, pressEnabled) {
           : "")
         + "No press campaign is running. Sending requires your approval, one campaign at a time.",
         {
-          action: { label: "Run", route: "POST /api/outreach/approve", mutates: true },
+          // The approval lives on the campaign itself. When one is drafted, the control is a
+          // link to it; with nothing drafted there is nothing to open, and the stage says so.
+          action: proposedCampaigns.length
+            ? linkAction("Open the first drafted campaign",
+              `#outreach/campaign/${encodeURIComponent(`outreach:${clean(proposedCampaigns[0].campaign_id || proposedCampaigns[0].id)}`)}`,
+              "POST /api/outreach/approve", { mutates:true })
+            : null,
           blockedReason: "Nothing sends until you approve a campaign, and approval is the only thing that starts it.",
           detail: proposedCampaigns.length
             ? {
@@ -408,7 +491,7 @@ function pressLane(state, pressEnabled) {
 
     stage("monitor", "ready",
       `${replies.length} repl${replies.length === 1 ? "y" : "ies"}. ${placements.length} placement${placements.length === 1 ? "" : "s"} recorded.`,
-      { action: { label: "Review replies and coverage", route: "GET /api/ui/campaigns", mutates: false } }),
+      {}),
 
     stage("stop", "ready", "A reply stops that sequence immediately, on its own.")
   ], {
@@ -418,7 +501,7 @@ function pressLane(state, pressEnabled) {
         severity: "attention",
         summary: `${warm.length} prior relationship${warm.length === 1 ? "" : "s"} ready for a follow-up.`,
         detail: "These people have covered LegalEase before. They are follow-ups, not cold pitches.",
-        action: { label: "Open Campaigns", route: "#campaigns" }
+        action: null
       }]
       : []
   });
@@ -440,6 +523,13 @@ export function buildFounderCampaignsView(state = {}, options = {}) {
   return Object.freeze({
     lifecycle: FOUNDER_OS_CAMPAIGN_LIFECYCLE,
     lanes: Object.freeze(lanes),
+    // Plan and setup for the workspace as a whole, not for one lane. Bringing an audience in
+    // is the first step of Plan for every lane that has an audience, and until now the only
+    // way to reach it was a button on the legacy page — which the Outreach flag deleted.
+    // It lives here so it survives both flags and does not depend on any legacy markup.
+    setup: Object.freeze([
+      Object.freeze(linkAction("Import audience", "#upload", "POST /api/intake/preview", { mutates:true }))
+    ]),
     // Every exception across every lane, for Today Needs attention to read.
     exceptions: Object.freeze(lanes.flatMap((entry) => entry.exceptions)),
     // The projection's own contract. Asserted by the test suite: this release reads, and that

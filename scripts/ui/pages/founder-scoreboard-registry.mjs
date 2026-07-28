@@ -50,6 +50,17 @@ function varianceHtml(variance, label) {
   return `<span class="kpi-variance" data-tone="${escapeAttribute(tone)}">${arrow} ${escapeHtml(String(Math.abs(variance.difference).toLocaleString("en-US", { maximumFractionDigits:2 })))}${escapeHtml(share)} vs ${escapeHtml(label)}</span>`;
 }
 
+// Every destination on this surface goes through one check. A hash the route resolver does
+// not confirm renders as plain text rather than as a link to somewhere unexpected.
+function safeScoreboardHref(href) {
+  const value = String(href ?? "").trim();
+  if (!value.startsWith("#")) return "";
+  const resolver = typeof window === "undefined" ? null : window.__LE_VNEXT_ROUTE_COMPATIBILITY;
+  if (!resolver) return /^#[a-z0-9?=&:/%_-]+$/i.test(value) ? value : "";
+  const resolved = resolver.resolve(value);
+  return resolved && ["page", "object"].includes(resolved.kind) && resolved.safeHash === value ? value : "";
+}
+
 function metricHtml(card) {
   const target = card.target === null || card.target === undefined
     ? `<dd class="kpi-target is-absent">No target set</dd>`
@@ -69,7 +80,8 @@ function metricHtml(card) {
       <dt>Variance</dt><dd>${varianceHtml(card.varianceToTarget, "target")} ${varianceHtml(card.varianceToPrevious, "prior")}</dd>
     </dl>
     ${card.derivedFrom ? `<p class="kpi-derived">Derived from ${escapeHtml(card.derivedFrom)}.</p>` : ""}
-    ${card.correctiveAction ? `<p class="kpi-action"><a href="${escapeAttribute(card.correctiveAction.target)}" data-kpi-action="${escapeAttribute(card.id)}">${escapeHtml(card.correctiveAction.label)}</a></p>` : ""}
+    ${card.correctiveAction && safeScoreboardHref(card.correctiveAction.target) ? `<p class="kpi-action"><a class="kpi-action-link" href="${escapeAttribute(safeScoreboardHref(card.correctiveAction.target))}" data-kpi-action="${escapeAttribute(card.id)}">${escapeHtml(card.correctiveAction.label)}</a></p>` : ""}
+    ${card.current?.available !== true && safeScoreboardHref(card.href) ? `<p class="kpi-source-link"><a href="${escapeAttribute(safeScoreboardHref(card.href))}" data-kpi-source="${escapeAttribute(card.id)}">Open the source for ${escapeHtml(card.label || card.id)}</a></p>` : ""}
   </article>`;
 }
 
@@ -80,12 +92,12 @@ function groupHtml(group) {
   </section>`;
 }
 
-function platformHtml(platform) {
+function platformHtml(platform, folded = false) {
   if (!platform) return "";
   if (platform.available !== true) {
-    return `<section class="kpi-group" data-kpi-group="platform_health"><h3>Platform health</h3><p role="note">${escapeHtml(platform.unavailableReason || "Platform health could not be read.")}</p></section>`;
+    return `<section class="kpi-group" data-kpi-group="platform_health">${folded ? "" : "<h3>Platform health</h3>"}<p role="note">${escapeHtml(platform.unavailableReason || "Platform health could not be read.")}</p></section>`;
   }
-  return `<section class="kpi-group" data-kpi-group="platform_health" aria-labelledby="kpi-group-platform"><h3 id="kpi-group-platform">Platform health</h3>
+  return `<section class="kpi-group" data-kpi-group="platform_health"${folded ? "" : ` aria-labelledby="kpi-group-platform"`}>${folded ? "" : `<h3 id="kpi-group-platform">Platform health</h3>`}
     <ul class="kpi-platform">${(platform.components || []).map((component) => `<li data-platform-component="${escapeAttribute(component.id)}" data-status="${escapeAttribute(component.status?.key || "unavailable")}"><strong>${escapeHtml(component.label)}</strong> — ${escapeHtml(component.status?.label || "Unavailable")}${component.summary ? ` · ${escapeHtml(component.summary)}` : ""}</li>`).join("")}</ul>
   </section>`;
 }
@@ -98,9 +110,13 @@ export function founderScoreboardRegistryHtml(registry = null) {
   const exceptions = registry.exceptions || [];
   return `<section class="kpi-registry" data-kpi-registry aria-labelledby="kpi-registry-title">
     <header><h2 id="kpi-registry-title">Scoreboard</h2><p>Every number shows where it comes from, how fresh it is, and what to do about it.</p></header>
-    ${exceptions.length ? `<section class="kpi-exceptions" aria-label="Needs attention"><h3>Needs attention</h3><ul>${exceptions.map((exception) => `<li data-kpi-exception="${escapeAttribute(exception.id)}"><strong>${escapeHtml(exception.label)}</strong>${exception.detail ? ` — ${escapeHtml(exception.detail)}` : ""}</li>`).join("")}</ul></section>` : ""}
-    ${(registry.groups || []).map(groupHtml).join("")}
-    ${platformHtml(registry.platformHealth)}
+    ${exceptions.length ? `<section class="kpi-exceptions" aria-label="Needs attention" data-kpi-exceptions="${exceptions.length}"><h3>${exceptions.length} ${exceptions.length === 1 ? "metric needs" : "metrics need"} attention</h3><ul>${exceptions.map((exception) => {
+      const href = safeScoreboardHref(exception.action?.target);
+      const label = escapeHtml(exception.label);
+      return `<li data-kpi-exception="${escapeAttribute(exception.id)}">${href ? `<a href="${escapeAttribute(href)}" data-kpi-exception-action="${escapeAttribute(exception.id)}">${label}</a>` : `<strong>${label}</strong>`}${exception.detail ? ` — ${escapeHtml(exception.detail)}` : ""}</li>`;
+    }).join("")}</ul></section>` : ""}
+    ${(registry.groups || []).map((group) => groupHtml(group) + (group.key === "health" ? platformHtml(registry.platformHealth, true) : "")).join("")}
+    ${(registry.groups || []).some((group) => group.key === "health") ? "" : platformHtml(registry.platformHealth)}
   </section>`;
 }
 
@@ -112,6 +128,7 @@ export function founderScoreboardRegistryBrowserSource() {
     `const escapeAttribute=(value="")=>escapeHtml(value).replace(/[\\u0000-\\u001f\\u007f\\x60]/g,character=>"&#"+character.codePointAt(0)+";");`,
     `const formatValue=${formatValue.toString()};`,
     `const formatFreshness=${formatFreshness.toString()};`,
+    `const safeScoreboardHref=${safeScoreboardHref.toString()};`,
     `const varianceHtml=${varianceHtml.toString()};`,
     `const metricHtml=${metricHtml.toString()};`,
     `const groupHtml=${groupHtml.toString()};`,

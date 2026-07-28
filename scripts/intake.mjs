@@ -69,8 +69,8 @@ export const INTAKE_TYPES = {
     fileHints: ["consumer", "reactivation", "checkout", "mvp"]
   },
   rcap_prospects: {
-    label: "RCAP prospects",
-    description: "Agencies, nonprofits, or employers to consider for the RCAP partner program.",
+    label: "Potential partners",
+    description: "Agencies, nonprofits, or employers to consider for the partner program.",
     route: "memory",
     contactType: "prospect",
     orgType: "rcap_prospect",
@@ -82,7 +82,7 @@ export const INTAKE_TYPES = {
   },
   partner_contacts: {
     label: "Partner contacts",
-    description: "People at current or launching RCAP partners.",
+    description: "People at current or launching partners.",
     route: "memory",
     contactType: "partner_contact",
     orgType: "rcap_partner",
@@ -157,7 +157,7 @@ export const INTAKE_ACTIONS = {
     happens: "People are added to Contacts and an approval request is created. Nothing is drafted or sent until you approve."
   },
   suppress: {
-    label: "Suppress / do not contact",
+    label: "Not eligible to contact",
     happens: "These people are marked do-not-contact. That mark is sticky and nothing is ever sent to them."
   }
 };

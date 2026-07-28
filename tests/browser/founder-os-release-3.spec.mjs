@@ -159,9 +159,14 @@ test.describe("Founder OS Release 3 — Relationships", () => {
       // The charter's saved filters sit alongside the pinned six, not inside them.
       await expect(savedFilters(page)).toHaveCount(9);
       const labels = (await views(page).allTextContents()).map((text) => text.replace(/\s*\d+\s*$/, "").trim());
+      // The charter names the sixth view "suppressed"; Roger never sees that word. The label is
+      // what he reads, and the query behind it — asserted below — is unchanged.
       expect(labels).toEqual([
-        "All relationships", "Follow-up due", "Waiting on me", "Waiting on them", "Pipeline", "Suppressed"
+        "All relationships", "Follow-up due", "Waiting on me", "Waiting on them", "Pipeline",
+        "Not eligible to contact"
       ]);
+      expect(JSON.parse(await views(page).nth(5).getAttribute("data-relationship-view")))
+        .toEqual({ eligibility:"suppressed" });
 
       // Selecting Pipeline then All returns to the unfiltered set rather than layering filters.
       const total = await rows(page).count();

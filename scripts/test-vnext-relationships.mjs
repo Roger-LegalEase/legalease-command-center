@@ -193,7 +193,8 @@ assert.equal(partner.nextFollowUpDate, partner.nextFollowUpAt);
 
 const prospect = view.items.find((item) => item.organization === "Future Partner Example");
 assert.ok(prospect, "the prospect organization and outreach contact should collapse into one relationship");
-assert.equal(prospect.category.label, "Partner prospect");
+assert.equal(prospect.category.key, "partner_prospect", "the stored category key is unchanged");
+assert.equal(prospect.category.label, "Potential partner");
 assert.equal(prospect.primaryContact, "Dana Prospect");
 assert.equal(prospect.automatedOutreach, true);
 assert.equal(prospect.campaign.name, "Partner introductions");

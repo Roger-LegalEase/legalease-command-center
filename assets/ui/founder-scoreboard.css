@@ -339,7 +339,9 @@
   padding: 0 17px;
   border: 1px solid var(--scoreboard-teal-dark);
   border-radius: var(--le-radius-md, 9px);
-  background: var(--scoreboard-teal);
+  /* teal-dark, not teal: white on the lighter teal is 2.23:1. This is the owner-input form the
+     Scoreboard's "Update financials" action opens, so it has to be readable. */
+  background: var(--scoreboard-teal-dark);
   color: #fff;
   font-weight: 800;
   cursor: pointer;
@@ -348,7 +350,7 @@
 }
 
 .founder-scoreboard__save:hover:not(:disabled) {
-  background: var(--scoreboard-teal-dark);
+  background: var(--le-teal-800, #054b46);
   box-shadow: 0 9px 22px rgb(8 102 95 / 22%);
   transform: translateY(-1px);
 }

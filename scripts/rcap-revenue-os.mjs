@@ -862,7 +862,7 @@ const rcapSavedViewDefinitions = [
   },
   {
     key: "suppression_data_cleanup",
-    label: "Suppression / Data Cleanup",
+    label: "Not eligible / data cleanup",
     description: "Suppressed, bounced, unsubscribed, missing-provenance, or cleanup-only records.",
     filterOnly: true,
     actions: []

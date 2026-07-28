@@ -96,6 +96,22 @@ function safeItemHref(value = "") {
   return usable ? href : "";
 }
 
+// Needs attention carries the hardest decisions in the queue and used to carry no way to open
+// them: the id needed to build a route was stripped here, so the item had `href:""` and an
+// action label that rendered as nothing at all.
+//
+// The route is derived HERE, on the server, and validated by the same route resolver the
+// browser would use, so the payload hands the client a destination rather than the internal
+// collection identity to build one from. A queue item is preferred over the record it points
+// at, because the queue item IS the guarded review record.
+function guardedRecordHref(item = {}) {
+  const queueItemId = String(item.queueItemId ?? "").trim();
+  const collection = queueItemId ? "queueItems" : String(item.sourceKind ?? "").trim();
+  const itemId = queueItemId || String(item.sourceId ?? "").trim();
+  if (!collection || !itemId) return "";
+  return safeItemHref(`#item/${collection}/${encodeURIComponent(itemId)}`);
+}
+
 // One shape for every kind of item, because one panel opens all of them. Nothing here is a
 // send control: the panel drafts, records, completes and schedules — it never sends.
 function compactFounderItem(item = {}) {
@@ -120,7 +136,7 @@ function compactFounderItem(item = {}) {
     })[item.urgency] || "No deadline",
     dueAt:item.dueAt || "",
     owner:item.owner || "",
-    href:safeItemHref(item.href),
+    href:safeItemHref(item.href) || guardedRecordHref(item),
     taskId:item.taskId || "",
     composeSourceKind:item.composeSourceKind || "",
     composeSourceId:item.composeSourceId || "",
@@ -148,6 +164,8 @@ export function buildAuthorizedFounderTodayPage(state = {}, actor = {}, now = ""
     },
     totals:view.totals,
     overflow:view.counts.overflow,
+    // Where the overflow count goes. Same filtered list Communications uses, vetted here.
+    overflowHref:safeItemHref("#inbox?group=needs-me"),
     utilities:{
       quickCaptureAvailable:authorized && roleHasCapability(actorContext.role, "route_captures"),
       communicationsHref:"#inbox?group=needs-me",

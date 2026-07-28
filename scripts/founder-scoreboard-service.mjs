@@ -49,10 +49,12 @@ export const SCOREBOARD_STATUSES = Object.freeze({
 export const SCOREBOARD_GROUPS = Object.freeze([
   Object.freeze({ key:"financial", label:"Financial" }),
   Object.freeze({ key:"acquisition", label:"Acquisition" }),
-  Object.freeze({ key:"relationships", label:"Relationships" }),
+  // The charter's section names (founder-os-config FOUNDER_OS_SCOREBOARD_SECTIONS). The keys
+  // stay as they are so no card, test or stored preference has to move.
+  Object.freeze({ key:"relationships", label:"Pipeline" }),
   Object.freeze({ key:"customer", label:"Customer" }),
   Object.freeze({ key:"marketing", label:"Marketing" }),
-  Object.freeze({ key:"health", label:"Health" })
+  Object.freeze({ key:"health", label:"Platform health" })
 ]);
 
 const FUNNEL_FIELDS = Object.freeze({
@@ -459,7 +461,7 @@ function relationshipsCards(state, now, role) {
   const stalled = partners ? partners.filter((partner) => STALLED_STAGES.has(slug(partner.stage || partner.status)) || lower(partner.relationshipHealth).includes("risk")) : [];
   const partnerPulse = sortedSnapshots(state, "partner-health");
   return [
-    countCard({ id:"active_partner_opportunities", group:"relationships", label:"Active Partner opportunities", rows:activeOpportunities, filtered:activeOpportunities || [], source:"Partner and prospect records", href:"#partners" }),
+    countCard({ id:"active_partner_opportunities", group:"relationships", label:"Active Partner opportunities", rows:activeOpportunities, filtered:activeOpportunities || [], source:"Partner records and potential partners", href:"#partners" }),
     countCard({ id:"followups_due", group:"relationships", label:"Follow-ups due", rows:tasks, filtered:followUps, source:"Relationship tasks", href:"#partners" }),
     countCard({ id:"meetings_booked", group:"relationships", label:"Meetings booked", rows:meetings, filtered:futureMeetings, source:"Read-only Calendar", href:"#calendar" }),
     countCard({ id:"proposals_active", group:"relationships", label:"Proposals active", rows:partners, filtered:proposals, source:"Partner records", href:"#partners" }),

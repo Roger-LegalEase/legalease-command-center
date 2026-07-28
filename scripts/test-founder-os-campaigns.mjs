@@ -28,6 +28,9 @@ import {
   readFounderOsPressConfig
 } from "./ui/founder-os-config.mjs";
 import { buildFounderCampaignsView } from "./ui/view-models/founder-campaigns-view.mjs";
+// The destination's own projection: the card count is asserted against what the ranked list
+// will actually show, not against a second copy of the rule.
+import { selectPendingProspects } from "./prospect-selection.mjs";
 
 const NOW = new Date("2026-07-27T14:00:00.000Z"); // a Monday, 10:00 Eastern — inside the window
 const checks = [];
@@ -239,8 +242,12 @@ check("Run reports the switch and whether anything can actually send, as two sep
   assert.match(armedRun.summary, /nothing is sending/i);
   assert.ok(armedRun.blockedReason, "the founder must be told why nothing is sending");
   assert.match(armedRun.blockedReason, /nobody receives an email/i);
-  // The control still offers Stop, because the switch is on.
-  assert.equal(armedRun.action.label, "Stop");
+  // The one control opens the existing sending controls. It never runs or stops anything
+  // itself: a button on this surface that could send would give it the write path the release
+  // is defined by not having.
+  assert.equal(armedRun.action.label, "Open sending controls");
+  assert.equal(armedRun.action.kind, "control");
+  assert.equal(armedRun.action.mutates, false);
 
   // Switch on AND provider key present: genuinely running.
   const live = laneById(buildFounderCampaignsView(runningState(), { env:{ SENDGRID_API_KEY:"synthetic" }, now:NOW }), "reactivation");
@@ -276,7 +283,7 @@ check("a stopped campaign reports stopped, and Stop stays available", () => {
   const state = runningState();
   state.reactivationCampaign.liveMode = false;
   const lane = laneById(buildFounderCampaignsView(state, { env:{}, now:NOW }), "reactivation");
-  assert.equal(stageById(lane, "run").action.label, "Run");
+  assert.equal(stageById(lane, "run").action.label, "Open sending controls");
   assert.equal(stageById(lane, "stop").state, "stopped");
   assert.match(stageById(lane, "stop").summary, /already stopped/i);
 });
@@ -307,11 +314,67 @@ check("an unreadable lane says so instead of showing zeros", () => {
 check("Partner outreach reports what needs approval before anything goes out", () => {
   const lane = laneById(buildFounderCampaignsView(baseState(), { env:{}, now:NOW }), "partner_outreach");
   assert.equal(stageById(lane, "review").state, "attention");
-  assert.match(stageById(lane, "review").summary, /need your approval before anything goes out/i);
+  assert.match(stageById(lane, "review").summary, /your approval before anything goes out/i);
   assert.equal(stageById(lane, "review").action.route, "POST /api/prospects/approve");
+  // The button says what it does and goes where the records are.
+  assert.equal(stageById(lane, "review").action.label, "Review approvals");
+  assert.equal(stageById(lane, "review").action.kind, "link");
+  assert.equal(stageById(lane, "review").action.href, "#prospects");
   // "suppression" -> "Not eligible to contact".
   assert.match(stageById(lane, "monitor").summary, /not eligible to contact/i);
   assert.match(stageById(lane, "stop").summary, /a reply stops that sequence immediately/i);
+});
+
+// ---------------------------------------------------------------------------------------------
+// The approval count. It was `pending prospects + EVERY queued approvalQueue row`, with the
+// queued half never filtered by campaign type — so a social or review-desk approval inflated a
+// number labelled "partner outreach", and half of what it counted had no interface at all.
+// ---------------------------------------------------------------------------------------------
+
+const countOf = (text) => Number((String(text).match(/^(\d+) organisation/) || [])[1]);
+
+check("the approval count equals the records the ranked list will show, and nothing else", () => {
+  const state = baseState({
+    prospectCandidates:[
+      { id:"c1", review_state:"pending_review" },
+      { id:"c2", review_state:"pending_review" },
+      { id:"c3", review_state:"approved" },
+      { id:"c4", review_state:"rejected" }
+    ],
+    approvalQueue:[
+      // Not partner outreach at all: a review-desk item with no campaign type. It used to be
+      // counted purely because its status was queued.
+      { id:"q1", type:"content_review", status:"queued_for_approval", title:"A post needs review" },
+      // Partner outreach, correctly discriminated — but no reviewed workflow can show it.
+      { id:"q2", type:"outreach_message", status:"queued_for_approval", to:"a@example.org" },
+      // Press, which belongs to the press lane and never to this one.
+      { id:"q3", type:"outreach_message", lane:"press", status:"queued_for_approval" },
+      // Already approved: not waiting for anything.
+      { id:"q4", type:"outreach_message", status:"approved" }
+    ]
+  });
+  const review = stageById(laneById(buildFounderCampaignsView(state, { env:{}, now:NOW }), "partner_outreach"), "review");
+  // The destination selects exactly `review_state === "pending_review"`
+  // (prospect-selection.mjs pendingTotal). Two of the four candidates qualify.
+  const pendingTotal = selectPendingProspects(state, {}).pendingTotal;
+  assert.equal(pendingTotal, 2, "the fixture must have two reviewable records");
+  assert.equal(countOf(review.summary), pendingTotal,
+    "the number on the card must equal the number of records the destination shows");
+  // The one genuinely partner-outreach queued message is reported in words, never folded in.
+  assert.match(review.summary, /1 drafted partner email is also waiting/i);
+  assert.match(review.summary, /no way to review it here yet/i);
+  assert.ok(!review.summary.includes("3 organisation"), "unclassifiable rows may not inflate the count");
+});
+
+check("an unreadable ranked list says so instead of reporting zero waiting for approval", () => {
+  const state = baseState();
+  delete state.prospectCandidates;
+  const lane = laneById(buildFounderCampaignsView(state, { env:{}, now:NOW }), "partner_outreach");
+  const review = stageById(lane, "review");
+  assert.equal(review.state, "unavailable");
+  assert.match(review.summary, /could not be read/i);
+  assert.ok(!/\b0\b/.test(review.summary), "missing data must never be shown as a zero");
+  assert.equal(review.action, null, "there is no review to offer when the list cannot be read");
 });
 
 check("with nothing approved, Partner outreach says nothing can be contacted", () => {

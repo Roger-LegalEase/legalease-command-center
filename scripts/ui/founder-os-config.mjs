@@ -142,7 +142,9 @@ export const FOUNDER_OS_RELATIONSHIP_VIEWS = Object.freeze([
   Object.freeze({ id: "waiting_on_me", label: "Waiting on me", query: { waiting: "on_roger" } }),
   Object.freeze({ id: "waiting_on_them", label: "Waiting on them", query: { waiting: "on_them" } }),
   Object.freeze({ id: "pipeline", label: "Pipeline", query: { pipeline: "active" } }),
-  Object.freeze({ id: "suppressed", label: "Suppressed", query: { eligibility: "suppressed" } })
+  // The charter names this view "suppressed"; the founder never sees that word. The id and
+  // the query keep the internal name so nothing downstream has to change.
+  Object.freeze({ id: "suppressed", label: "Not eligible to contact", query: { eligibility: "suppressed" } })
 ]);
 
 // The charter's saved filters (relationships.md:50-54). The six views above are the pinned

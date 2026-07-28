@@ -25,7 +25,7 @@ const slug = (value = "") => lower(value).replaceAll(/[^a-z0-9]+/g, "_").replace
 
 export const RELATIONSHIP_CATEGORIES = Object.freeze([
   Object.freeze({ key:"partner", label:"Partner" }),
-  Object.freeze({ key:"partner_prospect", label:"Partner prospect" }),
+  Object.freeze({ key:"partner_prospect", label:"Potential partner" }),
   Object.freeze({ key:"investor", label:"Investor" }),
   Object.freeze({ key:"press", label:"Press" }),
   Object.freeze({ key:"vendor", label:"Vendor" }),
@@ -43,7 +43,7 @@ export const RELATIONSHIP_WAITING_STATES = Object.freeze([
 
 export const RELATIONSHIP_ELIGIBILITY_STATES = Object.freeze([
   Object.freeze({ key:"eligible", label:"Eligible" }),
-  Object.freeze({ key:"suppressed", label:"Suppressed" }),
+  Object.freeze({ key:"suppressed", label:"Not eligible to contact" }),
   Object.freeze({ key:"ineligible", label:"Ineligible" }),
   Object.freeze({ key:"unavailable", label:"Unavailable" })
 ]);
