@@ -413,8 +413,22 @@ check("Run cannot start anything without approval, and says so", () => {
   const run = lane.stages.find((entry) => entry.id === "run");
   assert.equal(run.state, "stopped", "no press campaign may be running by default");
   assert.match(run.blockedReason, /nothing sends until you approve/i);
-  assert.equal(run.action.route, "POST /api/outreach/approve",
+  // With nothing drafted there is nothing to open, so Run carries no control at all rather
+  // than a button that would have to invent the campaign it approves.
+  assert.equal(run.action, null, "an action with no destination must not be rendered as one");
+
+  // With a campaign drafted, the control is a LINK to that campaign — the approval lives on
+  // the campaign itself, and opening it approves nothing.
+  const drafted = laneState();
+  drafted.outreachCampaigns = [{
+    id:"press-c1", campaign_id:"press-c1", classification:"press", status:"proposed",
+    angle_id:"applied-ai", angle_label:"Applied AI", audience:{ assigned:12 }
+  }];
+  const draftedRun = pressLaneOf(drafted, true).stages.find((entry) => entry.id === "run");
+  assert.equal(draftedRun.action.kind, "link");
+  assert.equal(draftedRun.action.route, "POST /api/outreach/approve",
     "Run routes through the EXISTING approval endpoint — there is no press send route");
+  assert.match(draftedRun.action.href, /^#outreach\/campaign\//);
 });
 
 check("warm prior relationships surface as follow-ups, not cold pitches", () => {

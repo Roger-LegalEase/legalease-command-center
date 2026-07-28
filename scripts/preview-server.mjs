@@ -27281,17 +27281,17 @@ function htmlShell() {
     function uploadListPageHtml(pageClass) {
       return \`<section id="upload" class="\${pageClass("upload")} command-page section-page lee-bubble-safe-space">
         <div class="panel hero-panel">
-          <div><div class="eyebrow">One front door</div><h1 class="big-title">Upload a list</h1><p class="muted">Choose the list type, add where it came from, preview before saving, then route to the existing import logic. No shell commands, no deploys, no external sends.</p></div>
+          <div><div class="eyebrow">One front door</div><h1 class="big-title">Import an audience</h1><p class="muted">Choose what kind of list this is, say where it came from, and preview it before anything is saved. Importing never contacts anyone.</p></div>
           <div class="card-actions"><button type="button" onclick="location.hash='cockpit'">Back to Cockpit</button></div>
         </div>
         <section class="growth-card">
-          <div class="growth-card-head"><h2>List intake</h2><small>Required before import</small></div>
+          <div class="growth-card-head"><h2>Audience details</h2><small>Required before import</small></div>
           <form id="operator-upload-flow" class="rail-form" onsubmit="operatorUploadFlowSubmit(event)">
             <label>What kind of list is this?<select name="listType" required>
               <option value="">Choose list type</option>
               <option value="expungement_lifecycle">People who used Expungement.ai</option>
               <option value="consumer">People stuck at checkout / reactivation list</option>
-              <option value="rcap_prospects">RCAP prospects</option>
+              <option value="rcap_prospects">Potential partners</option>
               <option value="partner_contacts">Partner contacts</option>
               <option value="social_calendar">Social content calendar</option>
               <option value="revenue_workbook">Revenue workbook</option>
@@ -27305,7 +27305,7 @@ function htmlShell() {
               <option value="hold_for_campaign">Hold for campaign review</option>
               <option value="create_followups">Create follow-up tasks</option>
               <option value="draft_outreach">Draft outreach (asks for approval first)</option>
-              <option value="suppress">Suppress / do not contact</option>
+              <option value="suppress">Not eligible to contact</option>
             </select></label>
             <label>Where did this list come from?<input name="sourceNote" required placeholder="Required source note, e.g. partner workbook, Google Sheet, manual export"></label>
             <label>Choose file<input name="file" type="file" required accept=".csv,.xlsx,.json,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
@@ -27321,10 +27321,10 @@ function htmlShell() {
           <div id="operator-upload-result" class="campaign-import-status">Upload Preview: choose list type, source note, and file.</div>
         </section>
         <section class="growth-card">
-          <div class="growth-card-head"><h2>Internal routes</h2><small>Existing engines reused</small></div>
+          <div class="growth-card-head"><h2>Where each list goes</h2><small>Existing imports reused</small></div>
           <div class="campaign-preview-metrics">
             <article class="campaign-preview-metric"><strong>Expungement.ai + checkout</strong><span>Existing reactivation and lifecycle imports — people land held, nothing sends</span></article>
-            <article class="campaign-preview-metric"><strong>Prospects, partners, support</strong><span>People land in Contacts with no duplicates; do-not-contact stays sticky</span></article>
+            <article class="campaign-preview-metric"><strong>Potential partners, partners, support</strong><span>People land in Contacts with no duplicates; not-eligible-to-contact stays sticky</span></article>
             <article class="campaign-preview-metric"><strong>Social calendars</strong><span>Reviewed only here; the calendar import card below brings drafts in</span></article>
             <article class="campaign-preview-metric"><strong>Revenue workbooks</strong><span>Reviewed only — money records never change from an upload</span></article>
           </div>
@@ -27445,9 +27445,9 @@ function htmlShell() {
       const revenueAccounts = list(state.rcapRevenueAccounts);
       setTimeout(prospectWorkbenchMount, 0);
       return \`<section id="prospects" class="\${pageClass("prospects")} command-page section-page lee-bubble-safe-space">
-        <div class="panel hero-panel"><div><div class="eyebrow">RCAP pipeline</div><h1 class="big-title">RCAP Prospects</h1><p class="muted">The ranked list. Filter to a selection, uncheck anyone you want out, then approve the whole selection in one confirmed step. Approval does not send anything; every outreach gate still applies.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='upload'">Upload RCAP prospect list</button><button onclick="location.hash='production-activation-rcap'">Open RCAP review</button></div></div>
-        <div class="campaign-preview-metrics">\${[[candidates.length,"prospect candidates"],[revenueAccounts.length,"revenue accounts"],[candidates.filter(c => /pending|review/i.test(String(c.status || c.review_state || "pending_review"))).length,"needs review"],[candidates.filter(c => /approved|ready/i.test(String(c.status || c.review_state))).length,"ready"]].map(([value,label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
-        <div id="prospect-workbench-slot"><p class="muted">Loading the ranked list…</p></div>
+        <div class="panel hero-panel"><div><div class="eyebrow">Partner outreach</div><h1 class="big-title">Partner outreach approvals</h1><p class="muted">Organizations ready for your review, in ranked order. Filter to a selection, uncheck anyone you want out, then approve the whole selection in one confirmed step. Approving does not contact anyone; every safeguard still applies.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='upload'">Import audience</button><button onclick="location.hash='production-activation-rcap'">Open the partner program review</button></div></div>
+        <div class="campaign-preview-metrics">\${[[candidates.length,"organizations"],[revenueAccounts.length,"partner accounts"],[candidates.filter(c => /pending|review/i.test(String(c.status || c.review_state || "pending_review"))).length,"ready for review"],[candidates.filter(c => /approved|ready/i.test(String(c.status || c.review_state))).length,"approved"]].map(([value,label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
+        <div id="prospect-workbench-slot"><p class="muted">Loading the organizations ready for review…</p></div>
       </section>\`;
     }
 

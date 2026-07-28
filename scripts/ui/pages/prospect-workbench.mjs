@@ -106,7 +106,7 @@ export function prospectWorkbenchBrowserSource() {
           +(withEmail===0
             ?"None of them has an email address on file yet, so this makes nobody contactable by itself. "
             :withEmail+" of them "+(withEmail===1?"has":"have")+" an email address on file. ")
-          +"Contact discovery, suppression checks, sending windows and every outreach gate still apply before any email exists or sends."
+          +"Contact discovery, not-eligible-to-contact checks, sending windows and every safeguard still apply before any email exists or sends."
         :"Reject "+ids.length+" "+noun+"? They leave the ranked list and will not be contacted.";
       if(!window.confirm(message))return;
       busy=true;updateCount();status(kind==="approve"?"Approving…":"Rejecting…");
