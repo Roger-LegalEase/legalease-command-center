@@ -18,7 +18,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { PRESS_ANGLES, evaluatePressGuardrails } from "./press-outreach.mjs";
+import {
+  PRESS_ANGLES,
+  PRESS_SUBJECT_MAX_LENGTH,
+  evaluatePressGuardrails,
+  evaluatePressSubject
+} from "./press-outreach.mjs";
 import {
   PRESS_CAMPAIGN_STATUS,
   applyPressCampaignProposal,
@@ -98,9 +103,35 @@ check("all eight angle drafts exist and pass the guardrail + claims gate", () =>
     const draft = draftPressPitch(angle);
     assert.ok(draft, `${angle.id} must have a draft`);
     assert.ok(draft.subject.length > 20 && draft.body.length > 400, `${angle.id} draft must be substantial`);
-    const gate = evaluatePressGuardrails(`${draft.subject}\n${draft.body}`, angle.id);
+    const gate = evaluatePressGuardrails(`${draft.subject}\n${draft.body}`, angle.id, { subject: draft.subject });
     assert.deepEqual(gate.hardFails, [], `${angle.id} draft must pass: ${JSON.stringify(gate.hardFails)}`);
   }
+});
+
+// The standard that produced "A legal AI designed to stop: fail-closed guardrails in
+// Expungement.ai" was a comment. This is the version that can fail a build.
+check("every angle subject meets the journalist standard", () => {
+  for (const angle of PRESS_ANGLES) {
+    const draft = draftPressPitch(angle);
+    const verdict = evaluatePressSubject(draft.subject);
+    assert.deepEqual(
+      verdict.hardFails, [],
+      `${angle.id} subject "${draft.subject}" (${verdict.length} chars): ${JSON.stringify(verdict.hardFails)}`
+    );
+    assert.ok(draft.subject.length <= PRESS_SUBJECT_MAX_LENGTH, `${angle.id} subject must survive the inbox preview`);
+  }
+});
+
+check("the subject standard rejects the line Roger rejected", () => {
+  const rejected = evaluatePressSubject("A legal AI designed to stop: fail-closed guardrails in Expungement.ai");
+  assert.equal(rejected.passed, false, "the conference-talk subject must not pass");
+  const rules = rejected.hardFails.map((failure) => failure.rule).sort();
+  assert.deepEqual(rules, ["subject_conference_talk", "subject_product_jargon", "subject_too_long"]);
+  // And the marketing-voice rule is not decorative.
+  assert.equal(evaluatePressSubject("Op-ed offer: why automation should refuse").passed, false);
+  assert.equal(evaluatePressSubject("Introducing a faster way to clear a record").passed, false);
+  // A subject that states what is true, briefly, passes.
+  assert.equal(evaluatePressSubject("In some states, expungement is automatic. Few know it.").passed, true);
 });
 
 check("drafts offer follow-up artifacts instead of claiming figures", () => {
@@ -373,7 +404,7 @@ check("a PROPOSED campaign's detail shows the drafted pitch and the assigned jou
   const detail = buildCampaignDetailView(state, OWNER, `outreach:${pressCampaignId("ai_guardrails")}`, { tab: "messages" });
   assert.equal(detail.available, true, "the campaign detail must resolve");
   assert.equal(detail.messages.steps.length, 1, "the drafted step is in the Messages payload");
-  assert.match(detail.messages.steps[0].subject, /fail-closed guardrails/i);
+  assert.match(detail.messages.steps[0].subject, /stops when the case gets hard/i);
   assert.match(detail.messages.steps[0].body, /not a law firm/i, "the BODY itself is in the payload, not a count");
   assert.ok(detail.audience.members.length >= 1, "the assigned journalists are in the Audience payload");
   for (const member of detail.audience.members) {

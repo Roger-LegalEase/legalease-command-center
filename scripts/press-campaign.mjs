@@ -63,11 +63,11 @@ const PITCH_CLOSING = "Would this fit your coverage?";
 
 const PITCH_LEDES = Object.freeze({
   nationwide_milestone: Object.freeze({
-    subject: "Record-clearing paperwork at a flat $50, now with a route in all 51 US jurisdictions",
+    subject: "Record-clearing help now runs in all 51 US jurisdictions",
     paragraphs: Object.freeze([
-      "I'm reaching out from LegalEase with a legal-tech milestone I think fits your beat: our "
-      + "product Expungement.ai now offers a free record-clearing eligibility screening in all 50 "
-      + "states and Washington, D.C. — 51 jurisdictions, each with at least one packet-capable route.",
+      "A free check for whether a criminal record can be cleared now exists in all 50 states and "
+      + "Washington, D.C. — 51 jurisdictions, each with at least one route that produces "
+      + "filing-ready paperwork. It is built by LegalEase, and the product is Expungement.ai.",
       "The model is deliberately simple. The eligibility check is $0, with no account or payment "
       + "required. Packet preparation is a flat $50 per supported case, with no subscription, in EN "
       + "and ES. Where relief is automatic or agency-led, the product gives guidance only and sells "
@@ -75,11 +75,11 @@ const PITCH_LEDES = Object.freeze({
     ])
   }),
   founder_growth: Object.freeze({
-    subject: "Two Howard alumni built a 51-jurisdiction legal product that refuses to oversell",
+    subject: "The attorney-legislator behind a 50-state legal product",
     paragraphs: Object.freeze([
-      "There's a Black founders story here with the business substance to carry it. LegalEase was "
-      + "built by two Howard University alumni — Lawrence Blackmon, an attorney and Mississippi "
-      + "state legislator, and Roger Roman — and its product Expungement.ai now runs in 51 "
+      "Two Howard University alumni — Lawrence Blackmon, an attorney and sitting Mississippi state "
+      + "legislator, and Roger Roman — built record-clearing software whose defining feature is "
+      + "what it refuses to sell. LegalEase is the company; its product Expungement.ai now runs in 51 "
       + "jurisdictions: attorney-reviewed document logic, a deterministic rules engine, and a hard "
       + "rule against selling where relief is automatic.",
       "The pitch is identity plus the build, never identity plus a hype number. The product is $0 "
@@ -88,10 +88,11 @@ const PITCH_LEDES = Object.freeze({
     ])
   }),
   economic_mobility: Object.freeze({
-    subject: "The economics of clearing a record: $0 to find out, $50 when a route exists",
+    subject: "A record follows you for decades. Finding out is free.",
     paragraphs: Object.freeze([
-      "Record clearing is an economic-mobility story, and the interesting part is the access "
-      + "mechanics rather than any outcome claim. With Expungement.ai it costs $0 to find out "
+      "A criminal record can shadow applications for work and housing for decades, and the first "
+      + "barrier is usually not the law but the cost of finding out whether relief exists at all. "
+      + "With LegalEase's Expungement.ai it costs $0 to find out "
       + "whether a supported record-clearing route exists, and a packet is prepared for a flat $50 "
       + "only when one does. Where relief is automatic or agency-led, the product gives guidance "
       + "and charges nothing — the point where most people never learn they had an option.",
@@ -101,10 +102,11 @@ const PITCH_LEDES = Object.freeze({
     ])
   }),
   ai_guardrails: Object.freeze({
-    subject: "A legal AI designed to stop: fail-closed guardrails in Expungement.ai",
+    subject: "The legal AI that stops when the case gets hard",
     paragraphs: Object.freeze([
-      "Most AI-in-law coverage is about where models overreach. Expungement.ai is a story about "
-      + "the opposite design: a deterministic rules engine makes the eligibility decision and the "
+      "Most reporting on AI in law is about where models overreach; the more useful story may be "
+      + "software built to do the opposite — to stop, say why, and refuse the sale. That is the "
+      + "design behind LegalEase's Expungement.ai: a deterministic rules engine makes the eligibility decision and the "
       + "assistant only explains it — it is not a chatbot ruling on people's records. When a case "
       + "is uncertain, complex or contested, the workflow fails closed: it stops, states the "
       + "reason, and withholds checkout rather than guessing.",
@@ -115,12 +117,12 @@ const PITCH_LEDES = Object.freeze({
     ])
   }),
   implementation_gap: Object.freeze({
-    subject: "The record-clearing implementation gap, documented jurisdiction by jurisdiction",
+    subject: "In some states, expungement is automatic. Few know it.",
     paragraphs: Object.freeze([
-      "The under-covered story in record clearing is not eligibility law — it is implementation. "
-      + "In a meaningful share of jurisdictions, relief exists automatically or through agency-led "
-      + "processes, and no filing is required; those are exactly the places where people never "
-      + "learn their options. The press kit's state coverage table documents this jurisdiction by "
+      "In a meaningful share of US jurisdictions, record relief is already automatic or agency-led "
+      + "— no filing required — and those are precisely the places where people never learn they "
+      + "had an option. The under-covered story in record clearing is not eligibility law; it is "
+      + "implementation. LegalEase's press kit documents this jurisdiction by "
       + "jurisdiction, separating packet-capable routes from guidance-only ones, drawn from "
       + "statutes, court rules and official forms.",
       "This is data-and-documents reporting rather than a launch pitch: the timing gates the "
@@ -130,10 +132,11 @@ const PITCH_LEDES = Object.freeze({
     ])
   }),
   rcap_partner_model: Object.freeze({
-    subject: "How nonprofits sponsor record-clearing help without building legal tech: the RCAP model",
+    subject: "How nonprofits sponsor record clearing they don't build",
     paragraphs: Object.freeze([
-      "For organizations that serve people with records — reentry programs, legal aid, workforce "
-      + "nonprofits — LegalEase runs a partner model called RCAP: the same screening workflow and "
+      "Reentry programs, legal aid offices and workforce nonprofits increasingly want to offer "
+      + "record-clearing help without building or buying legal technology themselves. "
+      + "LegalEase runs a partner model called RCAP for exactly that: the same screening workflow and "
       + "the same guardrails, behind a partner-sponsored payment gate, so a sponsored participant "
       + "pays nothing at checkout. Partner sponsorship is custom-priced, and the consumer "
       + "workflow is visible in the kit's current Briefcase screenshots.",
@@ -142,9 +145,11 @@ const PITCH_LEDES = Object.freeze({
     ])
   }),
   mississippi_to_nationwide: Object.freeze({
-    subject: "From the Mississippi statehouse to a 51-jurisdiction product",
+    subject: "From a Mississippi statehouse to all 50 states",
     paragraphs: Object.freeze([
-      "This one is a throughline story: LegalEase started in Mississippi — co-founder Lawrence "
+      "Record clearing is decided state by state, which is why a company that started in "
+      + "Mississippi — one of the states where the implementation gap is widest — is a useful lens "
+      + "on all 51 jurisdictions. LegalEase began there; co-founder Lawrence "
       + "Blackmon is an attorney and a sitting Mississippi state legislator — and today "
       + "Mississippi is one row in a 51-jurisdiction coverage listing. The current product "
       + "supersedes the early MVP: pricing today is a $0 eligibility check and a flat $50 packet "
@@ -155,12 +160,13 @@ const PITCH_LEDES = Object.freeze({
     ])
   }),
   thought_leadership: Object.freeze({
-    subject: "Op-ed offer: why legal automation should be designed to refuse",
+    subject: "Why legal automation should be built to refuse",
     paragraphs: Object.freeze([
-      "An op-ed or interview thesis, offered with the disclosure up front: I work with LegalEase, "
+      "Record clearing cannot be automated with one generic national form; it needs state-by-state "
+      + "rules and software willing to stop. Offered as an op-ed or interview thesis, with the "
+      + "disclosure up front: I work with LegalEase, "
       + "so this is an interested perspective, and the piece should teach a pattern rather than "
-      + "pitch a product. The thesis: record clearing cannot be automated with one generic "
-      + "national form — it needs state-by-state rules, and an engine willing to stop. Fail-closed "
+      + "pitch a product. Fail-closed "
       + "design is the transferable lesson: when the system is uncertain, it should refuse to "
       + "sell, state its reason and hand back a next step.",
       "The supporting framework — rules engine, hard gates, four review layers, bounded outcome "
@@ -290,7 +296,10 @@ export function buildPressCampaignProposal(state = {}, { now = new Date().toISOS
     if (!draft) {
       throw new Error(`Press campaign refused: no pitch copy exists for the ${angle.id} angle. Nothing was written.`);
     }
-    const gate = evaluatePressGuardrails(`${draft.subject}\n${draft.body}`, angle.id);
+    // Subject standards are checked HERE, at compose time, and deliberately not in the run gate
+    // below: a campaign Roger has already approved must not become unrunnable because the standard
+    // moved under it. New copy is held to it; stored copy keeps whatever verdict it was approved on.
+    const gate = evaluatePressGuardrails(`${draft.subject}\n${draft.body}`, angle.id, { subject: draft.subject });
     if (!gate.passed) {
       const rules = gate.hardFails.map((failure) => failure.rule).join(", ");
       throw new Error(`Press campaign refused: the ${angle.id} draft failed the guardrail gate (${rules}). Nothing was written.`);
