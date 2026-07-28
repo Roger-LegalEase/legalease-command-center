@@ -536,7 +536,15 @@ function supabaseParseResponse(response, text, options) {
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
   if (!response.ok) {
     const detail = typeof data === "string" ? data : data?.message || data?.error || response.statusText;
-    if (data?.code === "40001" || /version_conflict/i.test(String(detail))) {
+    // A version conflict is a DETERMINISTIC answer ("your version is stale"), never a transient
+    // one. It used to be raised as SQLSTATE 40001 (serialization_failure), which PostgREST retries
+    // itself, server-side, in an unbounded loop — one conflicting request measured 157,901 raises
+    // in 126s on production and kept going after the client disconnected (2026-07-28 CPU incident;
+    // see supabase/migrations/20260728_001_version_conflict_non_retryable.sql). The functions now
+    // raise P0001. BOTH codes are accepted so the app can be deployed before the migration is
+    // applied, and so a rollback of the migration cannot break conflict detection. The message
+    // match is the belt-and-braces path: the functions say "version conflict", with a space.
+    if (data?.code === "P0001" || data?.code === "40001" || /version[_ ]conflict/i.test(String(detail))) {
       throw new StorageConflictError(options.collection || "record", options.itemId || "unknown", options.expectedVersion ?? null);
     }
     const error = new Error("Supabase DB " + response.status + ": " + String(detail).slice(0, 300));
