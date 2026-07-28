@@ -1,0 +1,126 @@
+/* Founder OS Relationships — the concept layer for the relationship table.
+
+   Loaded with the Relationships lazy asset, not in the head: it is needed only on this one route,
+   and the critical stylesheet budget is shared by every page. Tokens come from
+   assets/ui/founder-os-concept.css, which does load in the head. */
+/* Today */
+@media (max-width: 860px) {
+.relationships-header-actions { width: 100%; }
+}
+/* RELATIONSHIPS  The concept is filter tabs carrying counts above a table with seven columns. */
+.partners-page:has(.relationship-views) { padding: 30px 34px 34px; font-size: var(--le-type-body); }
+.partners-page:has(.relationship-views) .relationships-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin: 0 0 18px; padding: 0; border: 0; background: none; }
+.partners-page:has(.relationship-views) .relationships-header .eyebrow { margin: 0 0 6px; color: var(--le-concept-orange-text); font-size: var(--le-type-label); font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.partners-page:has(.relationship-views) .relationships-header h1 { margin: 0; font-size: var(--le-type-page-title); font-weight: 800; line-height: 1.12; letter-spacing: -.02em; }
+.partners-page:has(.relationship-views) .relationships-header > div > p:last-child { margin: 7px 0 0; color: var(--le-concept-muted-text); }
+.partners-page:has(.relationship-views) .relationships-header-actions .partners-primary { min-height: 40px; padding: 0 15px; border: 1px solid var(--le-concept-orange-dark); border-radius: var(--le-radius-control); background: var(--le-concept-orange-dark); color: #fff; font: inherit; font-size: var(--le-type-meta); font-weight: 700; cursor: pointer; }
+/* --- The filter tabs */
+.partners-page:has(.relationship-views) .relationship-views { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; width: max-content; max-width: 100%; margin: 0 0 12px; padding: 4px; border-radius: var(--le-radius-control); background: #eceff3; }
+.partners-page:has(.relationship-views) .relationship-views button { min-height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #5c6674; font: inherit; font-size: var(--le-type-meta); font-weight: 700; cursor: pointer; }
+.partners-page:has(.relationship-views) .relationship-views button.is-active { background: var(--le-concept-card); color: var(--le-concept-ink); box-shadow: 0 1px 3px rgba(16, 24, 40, .08); }
+.partners-page:has(.relationship-views) .relationship-views button > span { padding: 1px 6px; border-radius: 8px; background: rgba(16, 24, 40, .07); font-size: var(--le-type-label); }
+.partners-page:has(.relationship-views) .relationship-saved-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.partners-page:has(.relationship-views) .relationship-saved-filters button { min-height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border: 1px solid var(--le-concept-border); border-radius: 9px; background: var(--le-concept-card); color: #475467; font: inherit; font-size: var(--le-type-meta); font-weight: 700; cursor: pointer; }
+.partners-page:has(.relationship-views) .relationship-saved-filters button.is-active { border-color: var(--le-concept-orange); background: var(--le-concept-orange-soft); color: var(--le-concept-orange-text); }
+.partners-page:has(.relationship-views) .relationships-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 9px; margin: 0 0 14px; padding: 0; border: 0; background: none; }
+.partners-page:has(.relationship-views) .relationships-filters label { display: grid; gap: 3px; color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; }
+.partners-page:has(.relationship-views) .relationships-filters input,
+.partners-page:has(.relationship-views) .relationships-filters select { min-height: 36px; padding: 0 10px; border: 1px solid var(--le-concept-border); border-radius: 9px; background: var(--le-concept-card); color: var(--le-concept-ink); font: inherit; font-size: var(--le-type-meta); }
+.partners-page:has(.relationship-views) .relationships-summary { display: flex; flex-wrap: wrap; gap: 22px; margin: 0 0 14px; padding: 0; }
+.partners-page:has(.relationship-views) .relationships-summary dt { color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.partners-page:has(.relationship-views) .relationships-summary dd { margin: 2px 0 0; font-size: 1.25rem; font-weight: 800; }
+.partners-page:has(.relationship-views) .partners-announcement { margin: 0 0 10px; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
+/* --- The table */
+.relationships-table-card { overflow: hidden; border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-card); background: var(--le-concept-card); box-shadow: var(--le-concept-shadow); }
+.relationships-table-scroll { overflow-x: auto; }
+.relationships-table { width: 100%; border-collapse: collapse; }
+.relationships-table th[scope="col"] { height: 40px; padding: 0 14px; border-bottom: 1px solid var(--le-concept-border); background: #f9fafb; color: #5c6674; font-size: var(--le-type-label); font-weight: 800; letter-spacing: .07em; text-align: left; text-transform: uppercase; white-space: nowrap; }
+.relationships-table td,
+.relationships-table th[scope="row"] { padding: 12px 14px; border-bottom: 1px solid #edf0f3; font-size: var(--le-type-meta); font-weight: 400; text-align: left; vertical-align: middle; }
+.relationships-table tr:last-child td,
+.relationships-table tr:last-child th[scope="row"] { border-bottom: 0; }
+.relationships-table tr.is-due th[scope="row"] { box-shadow: inset 3px 0 0 var(--le-concept-orange); }
+.relationships-table .relationship-identity { display: flex; align-items: center; gap: 10px; min-width: 15rem; }
+.relationships-table .relationship-avatar { width: 36px; height: 36px; flex: 0 0 36px; display: grid; place-items: center; border-radius: 50%; background: #eef1f6; color: #344054; font-size: var(--le-type-label); font-weight: 800; }
+.relationships-table .relationship-identity-copy { min-width: 0; }
+.relationships-table .relationship-name { padding: 0; border: 0; background: none; color: var(--le-concept-navy); font: inherit; font-size: var(--le-type-meta); font-weight: 700; text-align: left; cursor: pointer; }
+.relationships-table .relationship-name:hover { color: var(--le-concept-orange-text); text-decoration: underline; }
+.relationships-table .relationship-identity-copy small { display: block; color: var(--le-concept-muted-text); font-size: var(--le-type-label); }
+.relationships-table .relationship-identity-copy small a { color: inherit; }
+.relationships-table .relationship-roles { display: flex; flex-wrap: wrap; gap: 4px; }
+.relationships-table .relationship-role-chip,
+.relationships-table .relationship-status-chip { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef1f5; color: #475467; font-size: var(--le-type-label); font-weight: 700; white-space: nowrap; }
+.relationships-table .relationship-role-chip:first-child { background: #e9edf4; color: #24334d; }
+.relationships-table .relationship-status-chip[data-kind="attention"] { background: var(--le-status-attention-soft); color: var(--le-status-attention); }
+.relationships-table .relationship-next-cell small { display: block; margin-top: 2px; color: var(--le-concept-muted-text); font-size: var(--le-type-label); }
+.relationships-table .relationship-next-cell small.is-overdue { color: var(--le-status-attention); font-weight: 700; }
+/* The column header already names the field, so the in-cell label is for assistive technology and for the narrow layout, where the header row is gone. */
+.relationship-cell-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.relationships-table .relationship-strength { display: flex; align-items: center; gap: 7px; }
+.relationships-table .relationship-strength-bars { display: flex; gap: 2px; }
+.relationships-table .relationship-strength-bars i { width: 3px; height: 12px; border-radius: 2px; background: #e4e7ec; }
+.relationships-table .relationship-strength-bars i.is-on { background: var(--le-concept-orange-dark); }
+.relationships-table .relationship-priority { display: flex; align-items: center; gap: 6px; }
+.relationships-table .relationship-priority i { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: #d0d5dd; }
+.relationships-table .relationship-priority[data-priority="high"] i { background: var(--le-status-attention); }
+.relationships-table .relationship-priority[data-priority="critical"] i { background: #7f1d1d; }
+.relationships-table .relationship-priority[data-priority="medium"] i { background: var(--le-status-manual); }
+.relationships-table .relationship-actions-cell { min-width: 12rem; }
+.relationships-table .relationship-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.relationships-table .relationship-row-actions button,
+.relationships-table .relationship-row-actions a { min-height: 32px; display: inline-flex; align-items: center; padding: 0 11px; border: 1px solid var(--le-concept-border-2); border-radius: 8px; background: var(--le-concept-card); color: var(--le-concept-navy); font: inherit; font-size: var(--le-type-label); font-weight: 700; text-decoration: none; cursor: pointer; }
+.relationships-table .relationship-row-actions .is-primary { border-color: var(--le-concept-orange-dark); background: var(--le-concept-orange-dark); color: #fff; }
+/* Everything the concept's table has no column for. It stays on the row, one disclosure away, rather than being dropped to make the layout match. */
+.relationships-table .relationship-row-more { margin-top: 6px; }
+.relationships-table .relationship-row-more > summary { color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; cursor: pointer; }
+.relationships-table .relationship-row-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin: 8px 0 0; }
+.relationships-table .relationship-row-details dt { color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; }
+.relationships-table .relationship-row-details dd { margin: 0; font-size: var(--le-type-label); }
+.relationships-table .relationship-duplicate-notice { margin: 4px 0 0; color: var(--le-status-attention); font-size: var(--le-type-label); }
+/* Narrow: the table becomes one card per relationship, and each cell names its own field. */
+@media (max-width: 1100px) {
+.relationships-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.relationships-table tr { display: block; padding: 12px 14px; border-bottom: 1px solid #edf0f3; }
+.relationships-table td,
+  .relationships-table th[scope="row"] { display: block; padding: 4px 0; border: 0; }
+.relationship-cell-label { position: static; width: auto; height: auto; clip-path: none; display: block; color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; }
+}
+@media (max-width: 860px) {
+.partners-page:has(.relationship-views) { padding: 18px 16px 28px; }
+.partners-page:has(.relationship-views) .relationships-header { flex-direction: column; align-items: stretch; }
+}
+/* The legacy card list and the concept table share class names, because the row IS the same record and the tests that prove it key off the same hooks. */
+.partners-page:has(.relationship-views) .partners-header,
+.partners-page:has(.relationship-views) .partners-summary > div,
+.partners-page:has(.relationship-views) .partners-filters { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.partners-page:has(.relationship-views) .partners-header h1 { margin: 0; font-size: var(--le-type-page-title); letter-spacing: -.02em; }
+.partners-page:has(.relationship-views) .partners-header p { max-width: 62ch; }
+.partners-page:has(.relationship-views) .partners-summary dd { font-size: 1.25rem; }
+.partners-page:has(.relationship-views) .relationship-summary-count { font-size: 1.25rem; }
+.relationships-table tr.relationship-row { display: table-row; gap: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; transition: none; }
+.relationships-table tr.relationship-row:hover { background: #fcfcfd; box-shadow: none; }
+.relationships-table tr.relationship-row.is-due { border-left: 0; }
+.relationships-table .relationship-name { font-size: var(--le-type-meta); text-decoration: none; }
+.relationships-table .relationship-row-actions { display: flex; gap: 6px; }
+.relationships-table .relationship-row-actions button,
+.relationships-table .relationship-row-actions a { display: inline-flex; min-height: 32px; padding: 0 11px; border-radius: 8px; font-size: var(--le-type-label); }
+@media (max-width: 1100px) {
+.relationships-table tr.relationship-row { display: block; border-bottom: 1px solid #edf0f3; }
+}
+/* The concept's table ends in a single overflow control. */
+.relationships-table .relationship-identity { min-width: 13rem; }
+.relationships-table .relationship-actions-cell { width: 10.5rem; min-width: 10.5rem; }
+.relationships-table .relationship-row-actions { display: grid; gap: 5px; justify-items: stretch; }
+.relationships-table .relationship-row-actions button,
+.relationships-table .relationship-row-actions a { justify-content: center; text-align: center; }
+.relationships-table .relationship-next-cell { min-width: 9rem; }
+/* The Relationships table has to fit its card at 1600, where the concept's does. */
+.relationships-table .relationship-actions-cell { width: 9rem; min-width: 9rem; }
+.relationships-table td,
+.relationships-table th[scope="row"] { padding: 10px; }
+.relationships-table .relationship-row-actions button,
+.relationships-table .relationship-row-actions a { padding: 4px 8px; text-align: center; white-space: normal; }
+/* The view tabs are a segmented control sized to its contents on a wide screen and a wrapping row on a narrow one. */
+.partners-page:has(.relationship-views) .relationship-views { width: auto; max-width: 100%; }
+/* A scrollable region has to be reachable from the keyboard, so it takes focus and says what it is. */
+.relationships-table-scroll:focus-visible { outline: 2px solid var(--le-concept-blue); outline-offset: -2px; }

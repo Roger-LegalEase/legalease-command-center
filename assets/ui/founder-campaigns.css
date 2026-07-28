@@ -19,3 +19,111 @@
 .founder-campaign-stage-reason { margin: 0.35rem 0 0; font-size: 0.85rem; }
 .founder-campaign-stage-action { margin: 0.5rem 0 0; font-size: 0.9rem; font-weight: 600; }
 @media (max-width: 860px) { .founder-campaign-stages { grid-template-columns: 1fr; } }
+
+/* Concept parity. Loaded with the Campaigns runtime, not in the head: this workspace's layer is
+   paid for by the workspace, not by every page. Tokens come from assets/ui/founder-os-concept.css. */
+.founder-campaigns header h2 { margin: 0 0 0.25rem; font-size: 1.5rem; }
+.founder-campaigns > header > p { margin: 0; color: var(--le-concept-muted-text); }
+.founder-campaign-lane > header > h3 { margin: 0 0 0.25rem; }
+/* A not-built lane used to be dimmed to 85% opacity, which pushed its own text under the contrast floor. It reads as unbuilt from its words and its neutral status chip instead. */
+.founder-campaigns .founder-campaign-lane[data-lane-built="false"] { opacity: 1; }
+/* The one primary action on a card carries the brand colour; everything else is quiet. */
+.founder-campaign-stage[data-stage-state="attention"] .founder-campaign-action,
+.founder-campaign-stage[data-stage-state="blocked"] .founder-campaign-action { /* orange-dark, not orange: white on #ff3b00 does not reach 4.5:1. */ border-color: var(--le-concept-orange-dark); background: var(--le-concept-orange-dark); color: var(--le-concept-card); }
+/* Campaigns */
+.founder-campaigns .founder-campaign-lane { background: var(--le-concept-card); border-color: var(--le-concept-border); box-shadow: var(--le-concept-shadow); }
+.founder-campaign-setup { border: 1px solid var(--le-concept-border); border-radius: 12px; padding: 1rem; background: var(--le-concept-blue-soft); }
+.founder-campaign-setup h3 { margin: 0 0 0.25rem; }
+.founder-campaign-setup p { margin: 0 0 0.5rem; color: var(--le-concept-muted-text); }
+.founder-campaign-setup-actions { margin: 0; }
+.founder-campaign-controls { margin-top: 0.5rem; border: 1px solid var(--le-concept-border); border-radius: 12px; background: var(--le-concept-card); padding: 0.75rem 1rem; }
+.founder-campaign-controls > summary { cursor: pointer; font-weight: 600; }
+.founder-campaign-controls-note { margin: 1rem 0 0; color: var(--le-concept-muted-text); font-size: 0.9rem; }
+.founder-campaign-stage-reason { color: var(--le-concept-muted-text); }
+@media (max-width: 860px) {
+  .founder-campaign-setup { padding: 0.75rem; }
+}
+/* CAMPAIGNS The concept opens with four campaign-type cards in a row, a numbered five-step lifecycle bar beneath them, and an Active campaigns table beneath that. The per-lane lifecycle detail that Release 4 shipped stays below the table: its stage actions are working controls with tests that prove them, and this release changes presentation only. */
+.founder-campaigns { padding: 30px 34px 34px; font-size: var(--le-type-body); }
+.founder-campaigns > header { margin: 0 0 22px; }
+.founder-campaign-eyebrow { margin: 0 0 6px; color: var(--le-concept-orange-text); font-size: var(--le-type-label); font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.founder-campaigns header h2 { margin: 0 0 7px; font-size: var(--le-type-page-title); font-weight: 800; line-height: 1.12; letter-spacing: -.02em; }
+/* --- The four type cards ---------------------------------------------------------------------- */
+.founder-campaign-types { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 0 0 16px; }
+.founder-campaign-type { position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-card); background: var(--le-concept-card); box-shadow: var(--le-concept-shadow); }
+.founder-campaign-type::after { content: ""; position: absolute; right: -50px; top: -48px; width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 59, 0, .08), transparent 70%); pointer-events: none; }
+.founder-campaign-type-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.founder-campaign-type-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px; background: #f2f4f7; color: #344054; }
+.founder-campaign-type[data-campaign-type="social"] .founder-campaign-type-icon { background: var(--le-concept-orange-soft); color: var(--le-concept-orange-text); }
+.founder-campaign-type[data-campaign-type="reactivation"] .founder-campaign-type-icon { background: var(--le-concept-green-soft); color: var(--le-concept-green); }
+.founder-campaign-type[data-campaign-type="partner_outreach"] .founder-campaign-type-icon { background: var(--le-concept-blue-soft); color: var(--le-concept-blue); }
+.founder-campaign-type[data-campaign-type="press"] .founder-campaign-type-icon { background: var(--le-concept-purple-soft); color: var(--le-concept-purple); }
+.founder-campaign-type h3 { margin: 4px 0 0; font-size: 1rem; font-weight: 800; }
+.founder-campaign-type-description { margin: 0; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
+.founder-campaign-type-status { margin: auto 0 0; padding-top: 10px; border-top: 1px solid #eff1f4; color: var(--le-concept-ink); font-size: var(--le-type-meta); font-weight: 600; }
+.founder-campaign-type-link { align-self: flex-start; color: var(--le-concept-orange-text); font-size: var(--le-type-meta); font-weight: 800; text-decoration: none; }
+.founder-campaign-type-link::after { content: " →"; }
+.founder-campaign-type-link:hover { text-decoration: underline; }
+/* --- The lifecycle bar ------------------------------------------------------------------------ */
+.founder-campaign-lifecycle { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 0 0 16px; padding: 12px 15px; border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-card); background: var(--le-concept-card); box-shadow: var(--le-concept-shadow); list-style: none; }
+.founder-campaign-step { min-height: 48px; display: flex; align-items: center; gap: 9px; padding: 0 12px; border: 1px solid #edf0f3; border-radius: var(--le-radius-control); background: #f7f8fa; color: var(--le-concept-muted-text); }
+.founder-campaign-step-number { width: 24px; height: 24px; flex: 0 0 24px; display: grid; place-items: center; border: 1px solid #e1e5ea; border-radius: 7px; background: #fff; font-size: var(--le-type-label); font-weight: 800; }
+.founder-campaign-step-copy { min-width: 0; }
+.founder-campaign-step-copy strong { display: block; font-size: var(--le-type-meta); }
+.founder-campaign-step-copy span { display: block; overflow: hidden; font-size: var(--le-type-label); line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.founder-campaign-step[data-campaign-step-current="true"] { border-color: #ffd7ca; background: var(--le-concept-orange-soft); color: var(--le-concept-orange-text); }
+.founder-campaign-step[data-campaign-step-current="true"] .founder-campaign-step-number { border-color: var(--le-concept-orange-dark); background: var(--le-concept-orange-dark); color: #fff; }
+/* --- The Active campaigns table ---------------------------------------------------------------- */
+.founder-campaign-table-card { margin: 0 0 16px; border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-card); background: var(--le-concept-card); box-shadow: var(--le-concept-shadow); }
+.founder-campaign-card-head { display: flex; align-items: center; gap: 8px; padding: 15px 18px; border-bottom: 1px solid #edf0f3; }
+.founder-campaign-card-head h3 { margin: 0; font-size: var(--le-type-label); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #475467; }
+.founder-campaign-count { padding: 2px 7px; border-radius: 9px; background: #eef1f5; color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; }
+.founder-campaign-table-scroll { overflow-x: auto; }
+.founder-campaign-table { width: 100%; border-collapse: collapse; }
+.founder-campaign-table th[scope="col"] { height: 40px; padding: 0 14px; border-bottom: 1px solid var(--le-concept-border); background: #f9fafb; color: #5c6674; font-size: var(--le-type-label); font-weight: 800; letter-spacing: .07em; text-align: left; text-transform: uppercase; white-space: nowrap; }
+.founder-campaign-table td,
+.founder-campaign-table th[scope="row"] { height: 64px; padding: 10px 14px; border-bottom: 1px solid #edf0f3; font-size: var(--le-type-meta); font-weight: 400; text-align: left; vertical-align: middle; }
+.founder-campaign-table tr:last-child td,
+.founder-campaign-table tr:last-child th[scope="row"] { border-bottom: 0; }
+.founder-campaign-row-name { display: flex; align-items: center; gap: 10px; }
+.founder-campaign-row-name .founder-campaign-type-icon { width: 32px; height: 32px; flex: 0 0 32px; border-radius: 10px; }
+.founder-campaign-row-name a { color: var(--le-concept-navy); font-weight: 700; text-decoration: none; }
+.founder-campaign-row-name a:hover { color: var(--le-concept-orange-text); text-decoration: underline; }
+.founder-campaign-row-name small { display: block; margin-top: 2px; color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 400; }
+.founder-campaign-progress { display: block; width: 110px; height: 6px; overflow: hidden; border-radius: 6px; background: #eceff3; }
+.founder-campaign-progress i { display: block; height: 100%; border-radius: 6px; background: var(--le-concept-orange-dark); }
+.founder-campaign-progress-cell small,
+.founder-campaign-outcome-cell small { display: block; margin-top: 4px; color: var(--le-concept-muted-text); font-size: var(--le-type-label); }
+.founder-campaign-outcome-cell strong { font-size: var(--le-type-body); }
+.founder-campaign-table-note { margin: 0; padding: 12px 18px; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
+/* --- The lifecycle detail, lane by lane --------------------------------------------------------- */
+.founder-campaign-lanes-title { margin: 22px 0 12px; font-size: var(--le-type-label); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #475467; }
+.founder-campaigns .founder-campaign-lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.founder-campaigns .founder-campaign-lane { padding: 16px 18px; border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-card); }
+.founder-campaigns .founder-campaign-stages { margin: 10px 0 0; padding: 0; list-style: none; }
+.founder-campaigns .founder-campaign-stage { padding: 10px 0; border-bottom: 1px solid #eff1f4; }
+.founder-campaigns .founder-campaign-stage:last-child { border-bottom: 0; }
+.founder-campaigns .founder-campaign-stage-name { margin: 0; font-size: var(--le-type-meta); font-weight: 800; }
+.founder-campaigns .founder-campaign-stage-state { margin: 4px 0; }
+.founder-campaigns .founder-campaign-stage-summary { margin: 4px 0 0; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
+.founder-campaigns .founder-campaign-stage-action { margin: 8px 0 0; }
+.founder-campaigns .founder-campaign-exceptions { margin: 10px 0 0; padding: 0 0 0 1.1rem; font-size: var(--le-type-meta); }
+@media (max-width: 1180px) {
+  .founder-campaign-types { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .founder-campaign-lifecycle { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  .founder-campaigns { padding: 18px 16px 28px; }
+  .founder-campaign-types,
+  .founder-campaign-lifecycle { grid-template-columns: minmax(0, 1fr); }
+}
+/* The concept marks each type card's status line with a dot in the status colour. It repeats what the pill above already says in words, so it is decoration and is hidden from assistive technology. */
+.founder-campaign-type-status { display: flex; align-items: baseline; gap: 8px; }
+.founder-campaign-type-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--le-status-unavailable); transform: translateY(-1px); }
+.founder-campaign-type-dot[data-campaign-status="running"],
+.founder-campaign-type-dot[data-campaign-status="ready"] { background: var(--le-status-live); }
+.founder-campaign-type-dot[data-campaign-status="stopped"] { background: var(--le-status-manual); }
+.founder-campaign-type-dot[data-campaign-status="attention"],
+.founder-campaign-type-dot[data-campaign-status="blocked"] { background: var(--le-status-attention); }
+/* A scrollable region has to be reachable from the keyboard, so it takes focus and says what it is. */
+.founder-campaign-table-scroll:focus-visible { outline: 2px solid var(--le-concept-blue); outline-offset: -2px; }

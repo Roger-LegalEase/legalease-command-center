@@ -163,6 +163,92 @@ function founderOsRowDetails(item) {
       <div><dt>Open commitments</dt><dd>${commitments}${overdue ? `<small class="is-overdue">${overdue} overdue</small>` : ""}</dd></div>
       <div><dt>Last contact</dt><dd>${escapeHtml(contact)}</dd></div>`;
 }
+// The concept's Relationships screen is a table: relationship, roles, stage, next move, next
+// action, strength, priority. This renders that table, and only under the Release 3 projection —
+// the legacy card list above is untouched and is still what a flag-off bundle ships.
+//
+// Every column is a field the projection already carries. Strength renders as three bars because
+// `relationshipStrength` is a three-step scale; a relationship with no strength recorded draws no
+// bars and says "Not set", because an empty meter would read as "weak" rather than "unknown".
+//
+// The fields the concept's table has no column for — open commitments, last contact, last inbound
+// and outbound, owner, outreach and eligibility — are NOT dropped. They move into a per-row
+// disclosure, so the default view is the concept's and nothing that was on the row before has
+// left it.
+function founderOsInitials(name = "") {
+  const words = clean(name).split(/\s+/).filter(Boolean);
+  if (!words.length) return "";
+  return (words.length === 1 ? words[0].slice(0, 2) : `${words[0][0]}${words[words.length - 1][0]}`).toUpperCase();
+}
+// The concept's meter has three bars. This product's strength scale has FOUR named steps —
+// strong, warm, cool, cold — so the meter has four, because three bars cannot show four states
+// without one of them lying. A relationship with no strength recorded draws no bars at all: an
+// empty meter would read as "weak" when the truth is "not known".
+function founderOsStrength(item) {
+  const level = { strong:4, warm:3, cool:2, cold:1 }[clean(item.relationshipStrength?.key)] || 0;
+  const label = clean(item.relationshipStrength?.label) || "Not set";
+  const bars = [1, 2, 3, 4].map((step) => `<i class="${level >= step ? "is-on" : ""}"></i>`).join("");
+  return `<span class="relationship-strength"><span class="relationship-strength-bars" aria-hidden="true">${level ? bars : ""}</span><span><span class="relationship-cell-label">Strength</span>${escapeHtml(label)}</span></span>`;
+}
+function founderOsPriority(item) {
+  const label = clean(item.strategicPriority?.label) || "Not set";
+  return `<span class="relationship-priority" data-priority="${escapeAttribute(clean(item.strategicPriority?.key) || "none")}"><i aria-hidden="true"></i><span><span class="relationship-cell-label">Strategic priority</span>${escapeHtml(label)}</span></span>`;
+}
+function founderOsRelationshipRow(item) {
+  const name = clean(item.name || item.organization) || "Unnamed relationship";
+  const organization = clean(item.organization) && clean(item.organization) !== name ? item.organization : "";
+  const outreach = item.campaign?.name || (item.automatedOutreach ? "Automated sequence" : "No active sequence");
+  const result = item.replyState?.label || item.result?.label || "No recent result";
+  const commitments = Number(item.openCommitmentCount || 0);
+  const overdue = (item.openCommitments || []).filter((commitment) => commitment.overdue).length;
+  const contact = item.daysSinceContact === null || item.daysSinceContact === undefined
+    ? "No contact recorded"
+    : `${Number(item.daysSinceContact)} day${Number(item.daysSinceContact) === 1 ? "" : "s"} ago`;
+  return `<tr class="relationship-row${item.followUpDue ? " is-due" : ""}" data-relationship-row>
+      <th scope="row">
+        <span class="relationship-identity">
+          <span class="relationship-avatar" aria-hidden="true">${escapeHtml(founderOsInitials(name))}</span>
+          <span class="relationship-identity-copy">
+            <button type="button" class="relationship-name" data-relationship-open="${escapeAttribute(item.id)}" data-relationship-id="${escapeAttribute(item.id)}">${escapeHtml(name)}</button>
+            <small>${organization ? `${escapeHtml(organization)} · ` : ""}${value(item.primaryContact, "No primary contact")}</small>
+            ${item.email ? `<small><a href="mailto:${escapeAttribute(item.email)}">${escapeHtml(item.email)}</a></small>` : ""}
+            ${item.needsIdentityConfirmation ? founderOsDuplicateNotice(item) : ""}
+          </span>
+        </span>
+      </th>
+      <td>${founderOsRoles(item)}</td>
+      <td>${statusChip(item.stage, "stage")}</td>
+      <td>${value(item.waitingState?.label, "Not set")}</td>
+      <td class="relationship-next-cell">${value(item.nextAction, "No next action set")}<small class="${item.followUpDue ? "is-overdue" : ""}">${item.nextFollowUpAt ? `${item.followUpDue ? "Due " : "Follow-up "}${date(item.nextFollowUpAt)}` : "No follow-up date"}</small></td>
+      <td>${founderOsStrength(item)}</td>
+      <td>${founderOsPriority(item)}</td>
+      <td class="relationship-actions-cell">
+        <div class="relationship-row-actions">
+          <button type="button" class="is-primary" data-compose-source-kind="relationship" data-compose-source-id="${escapeAttribute(item.id)}">Draft follow-up</button>
+          <button type="button" data-relationship-open="${escapeAttribute(item.id)}" data-relationship-id="${escapeAttribute(item.id)}">${item.nextAction ? "Open relationship" : "Set next action"}</button>
+          ${item.partnerId && item.href ? `<a href="${escapeAttribute(item.href)}">Full Partner record</a>` : ""}
+        </div>
+        <details class="relationship-row-more"><summary>More</summary>
+          <dl class="relationship-row-details">
+            <div><dt>Open commitments</dt><dd>${commitments}${overdue ? `<small class="is-overdue">${overdue} overdue</small>` : ""}</dd></div>
+            <div><dt>Last contact</dt><dd>${escapeHtml(contact)}</dd></div>
+            <div><dt>Last inbound</dt><dd>${date(item.lastInboundAt)}</dd></div>
+            <div><dt>Last outbound</dt><dd>${date(item.lastOutboundAt)}</dd></div>
+            <div><dt>Owner</dt><dd>${value(item.owner, "Unassigned")}</dd></div>
+            <div><dt>Open tasks</dt><dd>${Number(item.openTaskCount || 0)}</dd></div>
+            <div><dt>Outreach</dt><dd>${escapeHtml(outreach)}<small>${escapeHtml(result)}</small></dd></div>
+            <div><dt>Eligibility</dt><dd>${statusChip(item.eligibility, ["suppressed", "ineligible"].includes(item.eligibility?.key) ? "attention" : "eligible")}</dd></div>
+          </dl>
+        </details>
+      </td>
+    </tr>`;
+}
+function founderOsRelationshipTable(items) {
+  return `<div class="relationships-table-card"><div class="relationships-table-scroll" tabindex="0" role="region" aria-label="Relationships"><table class="relationships-table">
+      <thead><tr><th scope="col">Relationship</th><th scope="col">Roles</th><th scope="col">Stage</th><th scope="col">Next move</th><th scope="col">Next action</th><th scope="col">Strength</th><th scope="col">Priority</th><th scope="col"><span class="relationship-cell-label">Actions</span></th></tr></thead>
+      <tbody>${items.map(founderOsRelationshipRow).join("")}</tbody>
+    </table></div></div>`;
+}
 function founderOsDuplicateNotice(item) {
   if (!item.needsIdentityConfirmation) return "";
   const count = (item.possibleDuplicates || []).length;
@@ -184,7 +270,7 @@ export function partnersHomePageHtml(payload = null) {
     ${view.filters?.views ? founderOsSummary(view) : `<dl class="partners-summary relationships-summary" aria-label="Relationship summary"><div><dt>Relationships</dt><dd>${Number(view.summary?.totalRelationships || 0)}</dd></div><div><dt>Follow-ups due</dt><dd>${Number(view.summary?.followUpsDue || 0)}</dd></div><div><dt>Waiting on Roger</dt><dd>${Number(view.summary?.waitingOnRoger || 0)}</dd></div><div><dt>Automated outreach</dt><dd>${Number(view.summary?.automatedOutreach || 0)}</dd></div></dl>`}
     ${view.filters?.views ? founderOsViewTabs(view) : quickFilters(view)}${relationshipFilters(view)}${view.filters?.savedFilters ? founderOsSavedFilters(view) : ""}
     <div class="partners-announcement" role="status" aria-live="polite">Showing ${Number(view.summary?.matchingRelationships || 0)} relationship${Number(view.summary?.matchingRelationships || 0) === 1 ? "" : "s"}.</div>
-    <div class="partners-content relationships-list">${items.length ? items.map(relationshipRow).join("") : relationshipEmpty(view)}</div>
+    <div class="partners-content relationships-list">${items.length ? (view.filters?.views ? founderOsRelationshipTable(items) : items.map(relationshipRow).join("")) : relationshipEmpty(view)}</div>
     ${payload.pagination?.nextCursor ? '<button class="partners-load-more" type="button" data-partners-load-more>Next relationships</button>' : ""}
   </section>`;
 }
@@ -216,7 +302,12 @@ export function partnersHomeBrowserSource(options = {}) {
       `const founderOsSavedFilters=${founderOsSavedFilters.toString()};`,
       `const founderOsRoles=${founderOsRoles.toString()};`,
       `const founderOsRowDetails=${founderOsRowDetails.toString()};`,
-      `const founderOsDuplicateNotice=${founderOsDuplicateNotice.toString()};`
+      `const founderOsDuplicateNotice=${founderOsDuplicateNotice.toString()};`,
+      `const founderOsInitials=${founderOsInitials.toString()};`,
+      `const founderOsStrength=${founderOsStrength.toString()};`,
+      `const founderOsPriority=${founderOsPriority.toString()};`,
+      `const founderOsRelationshipRow=${founderOsRelationshipRow.toString()};`,
+      `const founderOsRelationshipTable=${founderOsRelationshipTable.toString()};`
     ] : []),
     `const GLOBAL_CREATE_ENDPOINTS={partner:"/api/ui/create/partner"};`,
     `const partnersHomePageHtml=${partnersHomePageHtml.toString()};`

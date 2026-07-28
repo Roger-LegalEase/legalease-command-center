@@ -88,6 +88,29 @@ function easternDateLabel(now = "") {
   }).format(new Date(now));
 }
 
+// The concept opens Today with a greeting and a one-line summary of the day.
+//
+// The greeting is time-aware and reads the SAME Eastern clock the date label already reads. It
+// carries no name: the session proves a role, not a person, and this product has no store of the
+// operator's own name. A greeting that addressed a name would be inventing one, so it addresses
+// nobody — which is the omission rule, applied to a word rather than to a card.
+function easternGreeting(now = "") {
+  const hour = Number(new Intl.DateTimeFormat("en-US", { hour:"numeric", hour12:false, timeZone:"America/New_York" }).format(new Date(now)));
+  if (!Number.isFinite(hour)) return "Good day.";
+  if (hour < 12) return "Good morning.";
+  if (hour < 17) return "Good afternoon.";
+  return "Good evening.";
+}
+
+// The one-line summary, from the ranked count the view already produced. The concept's second
+// clause — "three can be closed in under ten minutes" — needs an estimate of how long a piece of
+// work takes, which nothing in this product records, so that clause is not written.
+function founderTodaySummary(counts = {}) {
+  const ranked = Number(counts.ranked || 0);
+  if (!ranked) return "Nothing needs you today.";
+  return `${ranked} item${ranked === 1 ? "" : "s"} need${ranked === 1 ? "s" : ""} you today, in the order ${ranked === 1 ? "it needs" : "they need"} you.`;
+}
+
 function safeItemHref(value = "") {
   const href = String(value || "").trim();
   if (!href) return "";
@@ -155,6 +178,8 @@ export function buildAuthorizedFounderTodayPage(state = {}, actor = {}, now = ""
     founderOsToday:true,
     generatedAt:view.generatedAt,
     dateLabel:easternDateLabel(view.generatedAt),
+    greeting:easternGreeting(view.generatedAt),
+    summary:founderTodaySummary(view.counts),
     sections:{
       now:section("now"),
       next:section("next"),

@@ -270,6 +270,7 @@ import {
 } from "./ui/founder-os-config.mjs";
 import { readCommandCenterVNextProductConfig } from "./ui/vnext-config.mjs";
 import { renderShellBoundary } from "./ui/shell-boundary.mjs";
+import { founderShellAccount } from "./ui/founder-os-chrome.mjs";
 import { DESIGN_SYSTEM_SHOWCASE_PATH } from "./ui/brand-contract.mjs";
 import { renderDesignSystemShowcase } from "./ui/design-system-showcase.mjs";
 import {
@@ -9037,7 +9038,8 @@ function serveVNextLazyRuntime(pathname, response, { headOnly = false } = {}) {
     // Without this the Campaigns runtime would be served even on a flag-off deployment.
     founderOsCampaigns:founderOsCampaignsConfig.enabled,
     founderOsScoreboard:founderOsScoreboardConfig.enabled,
-    founderOsLeePanel:founderOsLeePanelConfig.enabled
+    founderOsLeePanel:founderOsLeePanelConfig.enabled,
+    founderOsRelationships:founderOsRelationshipsConfig.enabled
   });
   if (!source) {
     response.writeHead(404, { "content-type":"text/plain; charset=utf-8", "cache-control":"no-store" });
@@ -35544,6 +35546,9 @@ function renderVNextApp(options = {}) {
       founderOsCampaigns:founderOsCampaignsConfig.enabled,
       founderOsScoreboard:founderOsScoreboardConfig.enabled,
       founderOsLeePanel:founderOsLeePanelConfig.enabled,
+      // The sidebar account block, from the AUTHENTICATED SESSION and nowhere else. There is no
+      // default and no placeholder: an unauthenticated or unnamed session renders no block.
+      account:founderShellAccount(options.actor || {}),
       discovery:options.discovery || null
     });
   }
@@ -42409,7 +42414,7 @@ async function handleRequest(request, response) {
       discovery = null;
     }
   }
-  const html = sanitizeOutboundText(renderCommandCenterApp({ discovery }));
+  const html = sanitizeOutboundText(renderCommandCenterApp({ discovery, actor:publicActor(accessDecision.actor) }));
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
   response.end(html);
 }
