@@ -3,9 +3,9 @@
 // Served as a LAZY RUNTIME FILE, not inline, so it costs the initial client-JavaScript budget
 // nothing at all. That is the same mechanism Release 2 used for the action panel.
 //
-// It renders what /api/ui/campaigns returns and does nothing else. Every control is a link to
-// the surface that already owns that action, or a button that calls a client operation this
-// file did not write; nothing here performs a mutation or issues a POST, because Release 4
+// It renders what /api/ui/campaigns returns and does nothing else. Every control is either a
+// link to the surface that already owns that action, or the one button that opens the existing
+// sending controls. Nothing here performs a mutation or issues a POST, because Release 4
 // changes the interface over a live campaign and never the campaign.
 //
 // OWNERSHIP. With FOUNDER_OS_CAMPAIGNS on, this surface OWNS the Campaigns page. It used to
@@ -25,15 +25,11 @@ export const FOUNDER_CAMPAIGNS_STYLESHEET_PATH = "assets/ui/founder-campaigns.cs
 // The legacy node this surface carries forward, and the disclosure it lives behind.
 export const FOUNDER_CAMPAIGNS_PRESERVED_SELECTOR = "[data-reactivation-control-surface]";
 
-// Every client operation a stage may drive, mapped to the global the legacy shell already
-// defines. A control whose global is missing is NOT drawn: an action that cannot run must not
-// look like one that can. Nothing may be added here that this release would have to write.
-const FOUNDER_CAMPAIGN_CONTROLS = Object.freeze({
-  "reactivation-run":"reactivationRunCampaignConfirm",
-  "reactivation-stop":"reactivationStopCampaign",
-  "reactivation-preview":"campaignPreviewNextSends",
-  "reactivation-controls":""
-});
+// Every client operation a stage may drive. There is exactly one, and it opens the existing
+// controls rather than calling anything: this surface has no write path, and a button that
+// could stop or start a live campaign from here would be one. A control whose target is not
+// on the page is NOT drawn — an action that cannot run must not look like one that can.
+const FOUNDER_CAMPAIGN_CONTROLS = Object.freeze({ "reactivation-controls":"" });
 
 const clean = (value = "") => String(value ?? "").trim();
 

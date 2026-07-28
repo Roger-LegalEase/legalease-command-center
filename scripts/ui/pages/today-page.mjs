@@ -116,6 +116,7 @@ function founderTodayBrowserSource() {
     let bootWaitTimer = null;
     let settledPageState = "";
     let currentOverflow = 0;
+    let currentOverflowHref = "";
 
     function app() { return document.querySelector("main#app"); }
     function resolution() { return window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(location.hash || "#today"); }
@@ -209,7 +210,7 @@ function founderTodayBrowserSource() {
         action.setAttribute("aria-label", (item.actionLabel || "Open") + " " + item.title);
         row.append(action);
       }
-      const record = routeLink("Advanced full record", item.href, "vnext-today-text-action");
+      const record = routeLink("Open full record", item.href, "vnext-today-text-action");
       if (record && action) row.append(record);
       return row;
     }
@@ -225,7 +226,12 @@ function founderTodayBrowserSource() {
       if (hidden > 0) children.push(text("p", hidden + " more " + (hidden === 1 ? "item is" : "items are") + " already ranked above.", "vnext-today-period"));
       if (slot === "next" && Number(currentOverflow || 0) > 0) {
         const overflow = Number(currentOverflow);
-        children.push(text("p", overflow + " further ranked " + (overflow === 1 ? "item is" : "items are") + " open but not needed today.", "vnext-today-period"));
+        const line = text("p", overflow + " further ranked " + (overflow === 1 ? "item is" : "items are") + " open but not needed today. ", "vnext-today-period");
+        // The count used to be the end of the sentence: a number with nowhere to go. The
+        // destination is the server's, vetted there, so the browser never builds a route.
+        const rest = routeLink("See the rest of the open work", currentOverflowHref, "vnext-today-text-action");
+        if (rest) line.append(rest);
+        children.push(line);
       }
       if (!items.length) {
         children.push(text("p", copy.empty, "vnext-today-empty-copy"));
@@ -242,7 +248,7 @@ function founderTodayBrowserSource() {
           action.dataset.todayNow = "true";
           children.push(action);
         }
-        const record = routeLink("Advanced full record", item.href, "vnext-today-text-action");
+        const record = routeLink("Open full record", item.href, "vnext-today-text-action");
         if (record) children.push(record);
       } else {
         const listTag = slot === "next" ? "ol" : "ul";
@@ -283,6 +289,7 @@ function founderTodayBrowserSource() {
       const sections = payload.sections || {};
       const totals = payload.totals || {};
       currentOverflow = Number(payload.overflow || 0);
+      currentOverflowHref = payload.overflowHref || "";
       for (const slot of contract.sections) {
         const key = payloadKeys[slot];
         renderSection(slot, Array.isArray(sections[key]) ? sections[key] : [], totals[key]);

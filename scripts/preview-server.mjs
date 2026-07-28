@@ -27324,11 +27324,11 @@ function htmlShell() {
           <div class="growth-card-head"><h2>Where each list goes</h2><small>Existing imports reused</small></div>
           <div class="campaign-preview-metrics">
             <article class="campaign-preview-metric"><strong>Expungement.ai + checkout</strong><span>Existing reactivation and lifecycle imports — people land held, nothing sends</span></article>
-            <article class="campaign-preview-metric"><strong>Potential partners, partners, support</strong><span>People land in Contacts with no duplicates; not-eligible-to-contact stays sticky</span></article>
+            <article class="campaign-preview-metric"><strong>Potential partners and support</strong><span>People land in Contacts with no duplicates; do-not-contact stays sticky</span></article>
             <article class="campaign-preview-metric"><strong>Social calendars</strong><span>Reviewed only here; the calendar import card below brings drafts in</span></article>
             <article class="campaign-preview-metric"><strong>Revenue workbooks</strong><span>Reviewed only — money records never change from an upload</span></article>
           </div>
-          <details><summary>View technical details</summary><p class="muted">Universal intake previews via /api/intake/preview and imports via /api/intake/confirm. Consumer and Expungement.ai lists route to the existing reactivation/lifecycle importers (always held). Prospect, partner, and support lists write identity-only records to companyContacts/companyOrganizations. Every confirmed import records an event, an agent run, and an approval audit record; review-needed imports create queue items.</p></details>
+          <details><summary>View technical details</summary><p class="muted">Every confirmed import records an event and an approval audit record, and an import that needs review creates a review item. Consumer and Expungement.ai lists are always held.</p></details>
         </section>
         <section class="growth-card">
           <div class="growth-card-head"><h2>Expungement.ai sync</h2><small>Ingest only — nothing sends</small></div>
@@ -27445,9 +27445,9 @@ function htmlShell() {
       const revenueAccounts = list(state.rcapRevenueAccounts);
       setTimeout(prospectWorkbenchMount, 0);
       return \`<section id="prospects" class="\${pageClass("prospects")} command-page section-page lee-bubble-safe-space">
-        <div class="panel hero-panel"><div><div class="eyebrow">Partner outreach</div><h1 class="big-title">Partner outreach approvals</h1><p class="muted">Organizations ready for your review, in ranked order. Filter to a selection, uncheck anyone you want out, then approve the whole selection in one confirmed step. Approving does not contact anyone; every safeguard still applies.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='upload'">Import audience</button><button onclick="location.hash='production-activation-rcap'">Open the partner program review</button></div></div>
+        <div class="panel hero-panel"><div><div class="eyebrow">Partner outreach</div><h1 class="big-title">Partner outreach approvals</h1><p class="muted">Organizations ready for your review, in ranked order. Filter, uncheck anyone you want out, then approve the selection in one confirmed step. Approving contacts nobody; every safeguard still applies.</p></div><div class="card-actions"><button class="primary" onclick="location.hash='upload'">Import audience</button><button onclick="location.hash='production-activation-rcap'">Open the partner program review</button></div></div>
         <div class="campaign-preview-metrics">\${[[candidates.length,"organizations"],[revenueAccounts.length,"partner accounts"],[candidates.filter(c => /pending|review/i.test(String(c.status || c.review_state || "pending_review"))).length,"ready for review"],[candidates.filter(c => /approved|ready/i.test(String(c.status || c.review_state))).length,"approved"]].map(([value,label]) => \`<article class="campaign-preview-metric"><strong>\${esc(String(value))}</strong><span>\${esc(label)}</span></article>\`).join("")}</div>
-        <div id="prospect-workbench-slot"><p class="muted">Loading the organizations ready for review…</p></div>
+        <div id="prospect-workbench-slot"><p class="muted">Loading the ranked list…</p></div>
       </section>\`;
     }
 

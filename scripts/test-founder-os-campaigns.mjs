@@ -242,8 +242,12 @@ check("Run reports the switch and whether anything can actually send, as two sep
   assert.match(armedRun.summary, /nothing is sending/i);
   assert.ok(armedRun.blockedReason, "the founder must be told why nothing is sending");
   assert.match(armedRun.blockedReason, /nobody receives an email/i);
-  // The control still offers Stop, because the switch is on.
-  assert.equal(armedRun.action.label, "Stop");
+  // The one control opens the existing sending controls. It never runs or stops anything
+  // itself: a button on this surface that could send would give it the write path the release
+  // is defined by not having.
+  assert.equal(armedRun.action.label, "Open sending controls");
+  assert.equal(armedRun.action.kind, "control");
+  assert.equal(armedRun.action.mutates, false);
 
   // Switch on AND provider key present: genuinely running.
   const live = laneById(buildFounderCampaignsView(runningState(), { env:{ SENDGRID_API_KEY:"synthetic" }, now:NOW }), "reactivation");
@@ -279,7 +283,7 @@ check("a stopped campaign reports stopped, and Stop stays available", () => {
   const state = runningState();
   state.reactivationCampaign.liveMode = false;
   const lane = laneById(buildFounderCampaignsView(state, { env:{}, now:NOW }), "reactivation");
-  assert.equal(stageById(lane, "run").action.label, "Run");
+  assert.equal(stageById(lane, "run").action.label, "Open sending controls");
   assert.equal(stageById(lane, "stop").state, "stopped");
   assert.match(stageById(lane, "stop").summary, /already stopped/i);
 });

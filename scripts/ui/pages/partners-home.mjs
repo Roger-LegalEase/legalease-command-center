@@ -75,7 +75,7 @@ function quickFilters(view) {
     <button type="button" class="${active("waiting", "on_them")}" data-relationship-filter="waiting" data-relationship-filter-value="on_them">Waiting on them <span>${Number(view.summary?.waitingOnThem || 0)}</span></button>
     <button type="button" class="${active("waiting", "on_roger")}" data-relationship-filter="waiting" data-relationship-filter-value="on_roger">Waiting on Roger <span>${Number(view.summary?.waitingOnRoger || 0)}</span></button>
     <button type="button" class="${active("automation", "automated")}" data-relationship-filter="automation" data-relationship-filter-value="automated">Automated outreach <span>${Number(view.summary?.automatedOutreach || 0)}</span></button>
-    <button type="button" class="${active("eligibility", "suppressed")}" data-relationship-filter="eligibility" data-relationship-filter-value="suppressed">Suppressed <span>${Number(view.summary?.suppressedOrIneligible || 0)}</span></button>
+    <button type="button" class="${active("eligibility", "suppressed")}" data-relationship-filter="eligibility" data-relationship-filter-value="suppressed">Not eligible to contact <span>${Number(view.summary?.suppressedOrIneligible || 0)}</span></button>
   </div>`;
 }
 function statusChip(item, kind = "neutral") {
@@ -109,7 +109,7 @@ function relationshipRow(item) {
     </dl>
     <div class="relationship-row-actions">
       <button type="button" class="is-primary" data-compose-source-kind="relationship" data-compose-source-id="${escapeAttribute(item.id)}">Draft follow-up</button>
-      <button type="button" data-relationship-open="${escapeAttribute(item.id)}" data-relationship-id="${escapeAttribute(item.id)}">Open relationship</button>
+      <button type="button" data-relationship-open="${escapeAttribute(item.id)}" data-relationship-id="${escapeAttribute(item.id)}">${item.nextAction ? "Open relationship" : "Set next action"}</button>
       ${item.partnerId && item.href ? `<a href="${escapeAttribute(item.href)}">Full Partner record</a>` : ""}
     </div>
   </article>`;
@@ -119,6 +119,26 @@ function relationshipRow(item) {
 // off the payload's shape rather than a second flag, so there is exactly one source of
 // truth for whether the Founder OS behaviour is live, and the flag-off bundle never ships
 // the helpers at all (see partnersHomeBrowserSource).
+// Import and Add belong in the header (relationships.md). Import did not exist anywhere in
+// this workspace: the audience importer was reachable only from a legacy campaigns hero.
+// Both reuse the workflows that already exist — the create workflow and the #upload importer.
+function founderOsHeaderActions() {
+  return `<div class="relationships-header-actions">
+      <a class="partners-secondary" href="#upload" data-relationships-import>Import relationships</a>
+      <button class="partners-primary" type="button" data-partners-add data-create-endpoint="${escapeAttribute(GLOBAL_CREATE_ENDPOINTS.partner)}">Add relationship</button>
+    </div>`;
+}
+// The summary counts were read-only numbers with a separate filter control elsewhere on the
+// page. Each count IS its filter now: one click, from the number Roger is looking at.
+function founderOsSummary(view) {
+  const tile = (label, count, query) => `<div><dt>${escapeHtml(label)}</dt><dd><button type="button" class="relationship-summary-count" data-relationship-view="${escapeAttribute(JSON.stringify(query))}"><span>${Number(count || 0)}</span> <small>${escapeHtml(label)}</small></button></dd></div>`;
+  return `<dl class="partners-summary relationships-summary" aria-label="Relationship summary">
+    <div><dt>Relationships</dt><dd>${Number(view.summary?.totalRelationships || 0)}</dd></div>
+    ${tile("Follow-up due", view.summary?.followUpsDue, { followUp:"due" })}
+    ${tile("Waiting on me", view.summary?.waitingOnRoger, { waiting:"on_roger" })}
+    ${tile("In automated outreach", view.summary?.automatedOutreach, { automation:"automated" })}
+  </dl>`;
+}
 function founderOsViewTabs(view) {
   return `<nav class="relationship-views" aria-label="Relationship views">${(view.filters?.views || []).map((item) => `<button type="button" class="${item.active ? "is-active" : ""}" data-relationship-view="${escapeAttribute(JSON.stringify(item.query))}" aria-current="${item.active ? "page" : "false"}">${escapeHtml(item.label)} <span>${Number(item.count || 0)}</span></button>`).join("")}</nav>`;
 }
@@ -160,8 +180,8 @@ export function partnersHomePageHtml(payload = null) {
   if (view.available !== true) return `<section class="partners-page" data-partners-page><div class="partners-state" role="alert"><p class="eyebrow">Unavailable</p><h1>Relationships are unavailable</h1><p>Relationship data could not be read. No changes were made.</p></div></section>`;
   const items = view.items || [];
   return `<section class="partners-page relationships-page" data-partners-page aria-labelledby="partners-title" aria-busy="false">
-    <header class="partners-header relationships-header"><div><p class="eyebrow">Founder CRM</p><h1 id="partners-title">Relationships</h1><p>Keep people, conversations, commitments, and outreach moving from one truthful view.</p></div><button class="partners-primary" type="button" data-partners-add data-create-endpoint="${GLOBAL_CREATE_ENDPOINTS.partner}">Add Partner</button></header>
-    <dl class="partners-summary relationships-summary" aria-label="Relationship summary"><div><dt>Relationships</dt><dd>${Number(view.summary?.totalRelationships || 0)}</dd></div><div><dt>Follow-ups due</dt><dd>${Number(view.summary?.followUpsDue || 0)}</dd></div><div><dt>Waiting on Roger</dt><dd>${Number(view.summary?.waitingOnRoger || 0)}</dd></div><div><dt>Automated outreach</dt><dd>${Number(view.summary?.automatedOutreach || 0)}</dd></div></dl>
+    <header class="partners-header relationships-header"><div><p class="eyebrow">Founder CRM</p><h1 id="partners-title">Relationships</h1><p>Keep people, conversations, commitments, and outreach moving from one truthful view.</p></div>${view.filters?.views ? founderOsHeaderActions() : `<button class="partners-primary" type="button" data-partners-add data-create-endpoint="${GLOBAL_CREATE_ENDPOINTS.partner}">Add Partner</button>`}</header>
+    ${view.filters?.views ? founderOsSummary(view) : `<dl class="partners-summary relationships-summary" aria-label="Relationship summary"><div><dt>Relationships</dt><dd>${Number(view.summary?.totalRelationships || 0)}</dd></div><div><dt>Follow-ups due</dt><dd>${Number(view.summary?.followUpsDue || 0)}</dd></div><div><dt>Waiting on Roger</dt><dd>${Number(view.summary?.waitingOnRoger || 0)}</dd></div><div><dt>Automated outreach</dt><dd>${Number(view.summary?.automatedOutreach || 0)}</dd></div></dl>`}
     ${view.filters?.views ? founderOsViewTabs(view) : quickFilters(view)}${relationshipFilters(view)}${view.filters?.savedFilters ? founderOsSavedFilters(view) : ""}
     <div class="partners-announcement" role="status" aria-live="polite">Showing ${Number(view.summary?.matchingRelationships || 0)} relationship${Number(view.summary?.matchingRelationships || 0) === 1 ? "" : "s"}.</div>
     <div class="partners-content relationships-list">${items.length ? items.map(relationshipRow).join("") : relationshipEmpty(view)}</div>
@@ -190,6 +210,8 @@ export function partnersHomeBrowserSource(options = {}) {
     `const partnersFilteredEmptyHtml=${JSON.stringify(partnersFilteredEmptyHtml).replaceAll("<", "\\u003c")};`,
     `const relationshipEmpty=${relationshipEmpty.toString()};`,
     ...(founderOs ? [
+      `const founderOsHeaderActions=${founderOsHeaderActions.toString()};`,
+      `const founderOsSummary=${founderOsSummary.toString()};`,
       `const founderOsViewTabs=${founderOsViewTabs.toString()};`,
       `const founderOsSavedFilters=${founderOsSavedFilters.toString()};`,
       `const founderOsRoles=${founderOsRoles.toString()};`,

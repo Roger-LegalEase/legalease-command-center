@@ -54,9 +54,17 @@ check("the flag is off unless the environment says exactly true", () => {
 });
 
 check("the six pinned views are exactly the charter's six, in charter order", () => {
-  assert.deepEqual(FOUNDER_OS_RELATIONSHIP_VIEWS.map((view) => view.label), [
-    "All relationships", "Follow-up due", "Waiting on me", "Waiting on them", "Pipeline", "Suppressed"
+  // The charter names the sixth view "suppressed". Roger never sees that word — the id and the
+  // query keep the internal name, the LABEL says what it means to a person.
+  assert.deepEqual(FOUNDER_OS_RELATIONSHIP_VIEWS.map((view) => view.id), [
+    "all", "follow_up_due", "waiting_on_me", "waiting_on_them", "pipeline", "suppressed"
   ]);
+  assert.deepEqual(FOUNDER_OS_RELATIONSHIP_VIEWS.map((view) => view.label), [
+    "All relationships", "Follow-up due", "Waiting on me", "Waiting on them", "Pipeline",
+    "Not eligible to contact"
+  ]);
+  assert.deepEqual(FOUNDER_OS_RELATIONSHIP_VIEWS.at(-1).query, { eligibility:"suppressed" },
+    "the filter the view applies is unchanged");
 });
 
 // ---------------------------------------------------------------------------------------------

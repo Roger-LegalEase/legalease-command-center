@@ -74,19 +74,19 @@ export const FOUNDER_KPI_REGISTRY = Object.freeze([
   metric("cash_available",
     "Money actually in the bank on the as-of date you entered. Not Stripe payments, and not revenue.",
     KPI_SOURCE_KINDS.manual_finance,
-    { label: "Update cash and burn", target: "#revenue" },
+    { label: "Update financials", target: "#revenue" },
     { targetSource: KPI_TARGET_SOURCES.manual_finance, betterWhen: "higher" }),
 
   metric("monthly_burn",
     "What the company spends in a month, as you entered it.",
     KPI_SOURCE_KINDS.manual_finance,
-    { label: "Update cash and burn", target: "#revenue" },
+    { label: "Update financials", target: "#revenue" },
     { targetSource: KPI_TARGET_SOURCES.manual_finance, betterWhen: "lower" }),
 
   metric("runway",
     "Months of runway left. Derived from the cash and burn you entered, and from nothing else.",
     KPI_SOURCE_KINDS.manual_finance,
-    { label: "Update cash and burn", target: "#revenue" },
+    { label: "Update financials", target: "#revenue" },
     { targetSource: KPI_TARGET_SOURCES.settings, targetKey: "runwayMonthsTarget", betterWhen: "higher",
       derivedFrom: "cash available ÷ monthly burn" }),
 

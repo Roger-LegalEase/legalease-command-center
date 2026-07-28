@@ -49,10 +49,12 @@ export const SCOREBOARD_STATUSES = Object.freeze({
 export const SCOREBOARD_GROUPS = Object.freeze([
   Object.freeze({ key:"financial", label:"Financial" }),
   Object.freeze({ key:"acquisition", label:"Acquisition" }),
-  Object.freeze({ key:"relationships", label:"Relationships" }),
+  // The charter's section names (founder-os-config FOUNDER_OS_SCOREBOARD_SECTIONS). The keys
+  // stay as they are so no card, test or stored preference has to move.
+  Object.freeze({ key:"relationships", label:"Pipeline" }),
   Object.freeze({ key:"customer", label:"Customer" }),
   Object.freeze({ key:"marketing", label:"Marketing" }),
-  Object.freeze({ key:"health", label:"Health" })
+  Object.freeze({ key:"health", label:"Platform health" })
 ]);
 
 const FUNNEL_FIELDS = Object.freeze({

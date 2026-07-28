@@ -162,14 +162,16 @@ function reactivationLane(state, environment, now) {
       releasedWaves > 0
         ? `${releasedWaves} audience${releasedWaves === 1 ? "" : "s"} approved and active.`
         : "No audience is approved and active yet.",
-      { action: controlAction("Preview next sends", "reactivation-preview", "GET /api/campaign/command", false) }),
+      // Previewing, releasing, running and stopping all live in the one set of controls this
+      // release did not write. Plan is a reading, so it carries no control of its own.
+      {}),
 
     stage("review", nextWave ? "attention" : "ready",
       nextWave
         ? `The next audience is ready for your approval (${Number(nextWave.eligibleOnRelease || 0)} people).`
         : "No audience is waiting for approval.",
       nextWave
-        ? { action: controlAction("Release next approved audience", "reactivation-controls", "POST /api/campaign/wave-release/propose") }
+        ? { action: controlAction("Open sending controls", "reactivation-controls", "POST /api/campaign/wave-release/propose", false) }
         : {}),
 
     stage("run", sending ? "running" : "stopped",
@@ -180,8 +182,9 @@ function reactivationLane(state, environment, now) {
           ? "Run is on, but nothing is sending."
           : paused ? "Campaign stopped." : "Campaign not running.",
       {
-        action: controlAction(switchedOn ? "Stop" : "Run",
-          switchedOn ? "reactivation-stop" : "reactivation-run", "POST /api/reactivation/live-mode"),
+        // The button opens the existing controls; it never runs or stops anything itself.
+        // This surface has no write path, and a control that could send from here would be one.
+        action: controlAction("Open sending controls", "reactivation-controls", "POST /api/reactivation/live-mode", false),
         // The exact reason, taken from the decision functions rather than re-derived. Precedence
         // matches theirs: a tripped limit outranks everything, then whatever the planner says.
         blockedReason: tripped
@@ -205,7 +208,7 @@ function reactivationLane(state, environment, now) {
     stage("stop", switchedOn ? "ready" : "stopped",
       switchedOn ? "Stopping takes effect immediately." : "Already stopped.",
       switchedOn
-        ? { action: controlAction("Stop", "reactivation-stop", "POST /api/reactivation/live-mode") }
+        ? { action: controlAction("Open sending controls", "reactivation-controls", "POST /api/reactivation/live-mode", false) }
         : {})
   ], { exceptions });
 }
