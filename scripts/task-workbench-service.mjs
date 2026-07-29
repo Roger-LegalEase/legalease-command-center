@@ -31,6 +31,9 @@ const ACTIONS = Object.freeze(new Set([
   "snooze",
   "update_due_date",
   "update_priority",
+  // The endpoint has always accepted `assign`; nothing exposed it, so a task's owner could be set
+  // once and never changed. Same authorization as every other action here (manage_tasks).
+  "assign",
   "add_note",
   "reopen"
 ]));
@@ -200,7 +203,7 @@ function availableActions(task = {}, writable = false) {
   if (!writable) return [];
   const status = clean(task.status || "open").toLowerCase();
   if (["done", "archived"].includes(status)) return status === "done" ? ["reopen", "add_note"] : ["add_note"];
-  return ["done", ...(status === "in_progress" ? [] : ["in_progress"]), "waiting", "blocked", "snooze", "update_due_date", "update_priority", "add_note"];
+  return ["done", ...(status === "in_progress" ? [] : ["in_progress"]), "waiting", "blocked", "snooze", "update_due_date", "assign", "update_priority", "add_note"];
 }
 
 export function buildTaskWorkbenchView(state = {}, actor = {}, taskId = "") {
@@ -250,12 +253,14 @@ export function parseTaskWorkbenchAction(input = {}) {
     throw new TaskWorkbenchError("Choose a valid priority.", 400, "validation_error", "priority");
   }
   const dueDate = action === "update_due_date" ? dateOnly(input.dueDate) : "";
+  const owner = action === "assign" ? safeText(input.owner, "owner", 80) : "";
+  if (action === "assign" && !owner) throw new TaskWorkbenchError("Enter an owner before saving.", 400, "validation_error", "owner");
   const days = action === "snooze" ? Number(input.days || 3) : 0;
   if (action === "snooze" && (![1, 3, 7, 14, 30].includes(days))) {
     throw new TaskWorkbenchError("Choose a valid snooze period.", 400, "validation_error", "days");
   }
   if (action === "add_note" && !note) throw new TaskWorkbenchError("Enter a note before saving.", 400, "validation_error", "note");
-  return Object.freeze({ action, expectedVersion:expectedVersion === "legacy" ? "legacy" : timestamp(expectedVersion), note, waitingOn, blockerReason, dueDate, priority, days });
+  return Object.freeze({ action, expectedVersion:expectedVersion === "legacy" ? "legacy" : timestamp(expectedVersion), note, waitingOn, blockerReason, dueDate, owner, priority, days });
 }
 
 export function applyTaskWorkbenchAction(state = {}, actor = {}, taskId = "", input = {}, options = {}) {
@@ -270,6 +275,7 @@ export function applyTaskWorkbenchAction(state = {}, actor = {}, taskId = "", in
     waiting_on:parsed.waitingOn,
     blocker_reason:parsed.blockerReason,
     due_date:parsed.dueDate,
+    owner:parsed.owner,
     priority:parsed.priority,
     days:parsed.days,
     ...(parsed.action === "done" ? { completion_note:parsed.note || "Completed from the task panel." } : {})

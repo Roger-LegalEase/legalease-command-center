@@ -7,7 +7,7 @@ export function taskWorkbenchBrowserSource() {
     "use strict";
     const endpointPrefix = ${endpointPrefix};
     const statusLabels = Object.freeze({ open:"Open", in_progress:"In progress", waiting:"Waiting", blocked:"Blocked", done:"Done", archived:"Archived" });
-    const actionLabels = Object.freeze({ done:"Completing…", in_progress:"Saving…", waiting:"Saving…", blocked:"Saving…", snooze:"Saving…", update_due_date:"Saving…", update_priority:"Saving…", add_note:"Saving…", reopen:"Reopening…" });
+    const actionLabels = Object.freeze({ done:"Completing…", in_progress:"Saving…", waiting:"Saving…", blocked:"Saving…", snooze:"Saving…", update_due_date:"Saving…", assign:"Saving…", update_priority:"Saving…", add_note:"Saving…", reopen:"Reopening…" });
     let current = null;
     let lastTrigger = null;
     let inFlight = false;
@@ -45,6 +45,7 @@ export function taskWorkbenchBrowserSource() {
               + '<form data-task-form="waiting"><label>Waiting on<input name="waitingOn" type="text" maxlength="500" placeholder="Person, decision, or dependency" /></label><p class="founder-field-error" data-task-field-error="waitingOn"></p><button type="submit">Set waiting</button></form>'
               + '<form data-task-form="blocked"><label>Blocker reason<input name="blockerReason" type="text" maxlength="500" placeholder="What prevents progress?" /></label><p class="founder-field-error" data-task-field-error="blockerReason"></p><button type="submit">Mark blocked</button></form>'
               + '<form data-task-form="due"><label>Due date<input name="dueDate" type="date" /></label><p class="founder-field-error" data-task-field-error="dueDate"></p><button type="submit">Change due date</button></form>'
+              + '<form data-task-form="owner"><label>Owner<input name="owner" type="text" maxlength="80" /></label><p class="founder-field-error" data-task-field-error="owner"></p><button type="submit">Change owner</button></form>'
               + '<form data-task-form="priority"><label>Priority<select name="priority"><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label><p class="founder-field-error" data-task-field-error="priority"></p><button type="submit">Change priority</button></form>'
               + '<form data-task-form="snooze"><label>Snooze<select name="days"><option value="1">Until tomorrow</option><option value="3">For 3 days</option><option value="7">For 1 week</option><option value="14">For 2 weeks</option><option value="30">For 30 days</option></select></label><p class="founder-field-error" data-task-field-error="days"></p><button type="submit">Snooze</button></form>'
             + '</div>'
@@ -137,7 +138,7 @@ export function taskWorkbenchBrowserSource() {
     }
     function syncForms(task) {
       const set = new Set(task.actions || []);
-      const formAction = { waiting:"waiting", blocked:"blocked", due:"update_due_date", priority:"update_priority", snooze:"snooze", note:"add_note" };
+      const formAction = { waiting:"waiting", blocked:"blocked", due:"update_due_date", owner:"assign", priority:"update_priority", snooze:"snooze", note:"add_note" };
       for (const [name, action] of Object.entries(formAction)) {
         const form = node('[data-task-form="' + name + '"]');
         if (form) form.hidden = !set.has(action);
@@ -146,6 +147,8 @@ export function taskWorkbenchBrowserSource() {
       if (due) due.value = /^\d{4}-\d{2}-\d{2}$/.test(task.dueDate || "") ? task.dueDate : String(task.dueDate || "").slice(0, 10);
       const priority = node('[name="priority"]');
       if (priority) priority.value = task.priority || "medium";
+      const owner = node('[name="owner"]');
+      if (owner) owner.value = task.owner || "";
       const waiting = node('[name="waitingOn"]');
       if (waiting) waiting.value = task.waitingOn || "";
       const blocker = node('[name="blockerReason"]');
