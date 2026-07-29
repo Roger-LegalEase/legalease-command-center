@@ -16,7 +16,7 @@
 //   5. with the flag off, nothing about it is served — the rollback path.
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 import { FOUNDER_OS_BASE_STYLESHEET_PATH } from "./ui/pages/founder-os-base-style.mjs";
 import { renderVNextDesktopShellChrome } from "./ui/app-shell.mjs";
@@ -117,41 +117,141 @@ check("with the shell flag off, the shell root does not carry the base layer's h
 // So the ratio is pinned here, at the token, rather than left to whichever page a browser suite
 // happens to open. Colour and copy stay free to change — this fails only when text becomes
 // unreadable, which is the thing that actually matters.
-check("no text in the base layer falls below 4.5:1 against the surface it actually sits on", () => {
+check("no text falls below 4.5:1 against the surface it actually renders on", () => {
+  // WHY THIS WAS REWRITTEN (2026-07-29). The first version judged a rule against the background
+  // that rule itself declares, and against white when it declared none. The relationship record's
+  // title proved that wrong: `.partner-record-header` sets a navy background and white text, its
+  // `h1` sets no colour of its own, and the base layer's tag-level `:is(h1,h2,h3){color:ink}` beat
+  // the INHERITED white — inheritance carries no specificity. Ink on navy is 1.4:1, and the guard
+  // passed it because it judged that rule against white.
+  //
+  // So a rule with no declared background is now judged against the background it actually renders
+  // on, resolved from the nearest ancestor selector that declares one, across every founder
+  // stylesheet rather than this one alone.
+  const stylesheets = readdirSync(new URL("../assets/ui/", import.meta.url))
+    .filter((name) => name.endsWith(".css"))
+    .map((name) => [name, readFileSync(new URL(`../assets/ui/${name}`, import.meta.url), "utf8")]);
+
   const tokens = Object.fromEntries([...conceptCss.matchAll(/(--le-concept-[a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\b/g)]
     .map((match) => [match[1], match[2]]));
-  const channel = (value) => {
-    const c = value / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  const hex = (value = "") => {
+    const text = String(value).trim();
+    const token = text.match(/^var\((--le-concept-[a-z0-9-]+)\)/)?.[1];
+    if (token) return tokens[token] || null;
+    const short = text.match(/^#([0-9a-fA-F]{3})\b/)?.[1];
+    if (short) return `#${short.split("").map((c) => c + c).join("")}`;
+    return text.match(/^#[0-9a-fA-F]{6}\b/)?.[0] || null;
   };
-  const luminance = (hex) => 0.2126 * channel(parseInt(hex.slice(1, 3), 16))
-    + 0.7152 * channel(parseInt(hex.slice(3, 5), 16))
-    + 0.0722 * channel(parseInt(hex.slice(5, 7), 16));
-  const ratio = (a, b) => {
-    const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-    return (high + 0.05) / (low + 0.05);
-  };
-  // A rule that declares its own background is judged against THAT surface — which is how white
-  // on the orange button passes and orange on its own tint does not. A rule that declares none
-  // is judged against both surfaces this layer paints on.
-  const defaults = [tokens["--le-concept-card"], tokens["--le-concept-canvas"]];
-  assert.ok(defaults.every(Boolean), "the card and canvas tokens must be readable to test against");
+  const channel = (value) => { const c = value / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const luminance = (colour) => 0.2126 * channel(parseInt(colour.slice(1, 3), 16))
+    + 0.7152 * channel(parseInt(colour.slice(3, 5), 16)) + 0.0722 * channel(parseInt(colour.slice(5, 7), 16));
+  const ratio = (a, b) => { const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (high + 0.05) / (low + 0.05); };
 
-  const body = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  const rules = [...body.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
-  assert.ok(rules.length > 10, `expected a real stylesheet; found ${rules.length} rules`);
-
-  const failures = [];
-  for (const [, selector, declarations] of rules) {
-    const foreground = tokens[declarations.match(/(?:^|;)\s*color:\s*var\((--le-concept-[a-z0-9-]+)\)/)?.[1]];
-    if (!foreground) continue;                 // no colour, or a status alias resolved elsewhere
-    const declared = tokens[declarations.match(/(?:^|;)\s*background(?:-color)?:\s*var\((--le-concept-[a-z0-9-]+)\)/)?.[1]];
-    for (const surface of declared ? [declared] : defaults) {
-      const value = ratio(foreground, surface);
-      if (value < 4.5) failures.push(`${selector.trim().split("\n")[0]} — ${foreground} on ${surface} is ${value.toFixed(2)}:1`);
+  // Every rule in every founder stylesheet, as (selector, colour, background).
+  const rules = [];
+  for (const [file, css] of stylesheets) {
+    const body = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const [, selectorGroup, declarations] of body.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (selectorGroup.trim().startsWith("@")) continue;
+      const colour = declarations.match(/(?:^|;)\s*color:\s*([^;]+)/)?.[1];
+      const background = declarations.match(/(?:^|;)\s*background(?:-color)?:\s*([^;]+)/)?.[1];
+      for (const selector of selectorGroup.split(",").map((part) => part.trim()).filter(Boolean)) {
+        rules.push({ file, selector, colour: colour ? hex(colour) : null,
+          background: background ? hex(background) : null,
+          // A gradient, image or keyword background is a surface we cannot evaluate. Judging such
+          // a rule against white invents a failure (white-on-white); it is skipped instead.
+          opaqueBackground: Boolean(background) && !hex(background) });
+      }
     }
   }
-  assert.deepEqual(failures, [], `text below WCAG AA:\n  ${failures.join("\n  ")}`);
+
+  // Backgrounds by selector, for ancestor resolution.
+  const backgrounds = new Map();
+  for (const rule of rules) if (rule.background && !backgrounds.has(rule.selector)) backgrounds.set(rule.selector, rule.background);
+
+  // The background a selector renders on: its own, else the nearest ancestor prefix that declares
+  // one, else the two surfaces the shell paints on.
+  const defaults = [tokens["--le-concept-card"], tokens["--le-concept-canvas"]].filter(Boolean);
+  const surfacesFor = (selector, own, unresolved) => {
+    if (own) return [own];
+    if (unresolved) return [];
+    const parts = selector.split(/\s+/).filter(Boolean);
+    for (let depth = parts.length - 1; depth > 0; depth -= 1) {
+      const ancestor = parts.slice(0, depth).join(" ");
+      if (backgrounds.has(ancestor)) return [backgrounds.get(ancestor)];
+      const last = parts[depth - 1];
+      if (backgrounds.has(last)) return [backgrounds.get(last)];
+    }
+    return defaults;
+  };
+
+  const failures = [];
+  for (const rule of rules) {
+    if (!rule.colour) continue;
+    for (const surface of surfacesFor(rule.selector, rule.background, rule.opaqueBackground)) {
+      if (!surface) continue;
+      const value = ratio(rule.colour, surface);
+      if (value < 4.5) failures.push(`${rule.file}  ${rule.selector} — ${rule.colour} on ${surface} is ${value.toFixed(2)}:1`);
+    }
+  }
+  if (process.env.GUARD_DUMP) console.log(failures.join("\n"));
+
+  // A RATCHET, NOT A MUTE. Broadening this check from one stylesheet to all of them surfaced 94
+  // pre-existing sub-AA pairs that predate this branch. Every one is listed by name in
+  // test-support/contrast-baseline.json — nothing is hidden, and the file is the work list. The
+  // assertion below is what matters: a pair NOT in that file fails immediately, and the baseline
+  // may only ever shrink, so this cannot quietly grow back.
+  const baseline = new Set(JSON.parse(readFileSync(new URL("./test-support/contrast-baseline.json", import.meta.url), "utf8")));
+  const introduced = failures.filter((finding) => !baseline.has(finding));
+  assert.deepEqual(introduced, [], `NEW text below WCAG AA:\n  ${introduced.join("\n  ")}`);
+  const fixed = [...baseline].filter((finding) => !failures.includes(finding));
+  assert.ok(failures.length <= baseline.size,
+    `the contrast baseline may only shrink: ${failures.length} findings against a baseline of ${baseline.size}`);
+  if (fixed.length) console.log(`    (${fixed.length} baselined contrast findings are now fixed — remove them from contrast-baseline.json)`);
+});
+
+// ---- 6b. a dark surface must state its own heading colour --------------------------------------
+// The precise shape of the bug above: the base layer paints every heading ink at tag level, and
+// inheritance cannot beat it. So any surface dark enough that ink is unreadable on it MUST declare
+// a colour for the headings inside it, or those headings render ink on dark.
+check("a heading inside a dark surface states its own colour", () => {
+  // The exact shape of the relationship-title bug, and nothing wider. The base layer paints every
+  // heading ink at TAG level; inheritance carries no specificity, so a heading sitting inside a
+  // dark panel renders ink-on-dark unless some rule sets its colour explicitly. This flags only
+  // surfaces that actually contain a heading — a dark button or avatar has none and is not a bug.
+  const tokens = Object.fromEntries([...conceptCss.matchAll(/(--le-concept-[a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\b/g)]
+    .map((match) => [match[1], match[2]]));
+  const ink = tokens["--le-concept-ink"];
+  const channel = (value) => { const c = value / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const luminance = (colour) => 0.2126 * channel(parseInt(colour.slice(1, 3), 16))
+    + 0.7152 * channel(parseInt(colour.slice(3, 5), 16)) + 0.0722 * channel(parseInt(colour.slice(5, 7), 16));
+  const ratio = (a, b) => { const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (high + 0.05) / (low + 0.05); };
+  const HEADING = /(^|\s|>)(h1|h2|h3)(\s|$|[,:>])|:is\([^)]*h[123]/;
+
+  const darkSurfaces = [];
+  const headingRules = [];
+  for (const name of readdirSync(new URL("../assets/ui/", import.meta.url)).filter((file) => file.endsWith(".css"))) {
+    const css = readFileSync(new URL(`../assets/ui/${name}`, import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const [, selectorGroup, declarations] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (selectorGroup.trim().startsWith("@")) continue;
+      const background = declarations.match(/(?:^|;)\s*background(?:-color)?:\s*(#[0-9a-fA-F]{6})\b/)?.[1];
+      const setsColour = /(?:^|;)\s*color:/.test(declarations);
+      for (const selector of selectorGroup.split(",").map((part) => part.trim()).filter(Boolean)) {
+        if (background && ratio(ink, background) < 4.5) darkSurfaces.push({ name, selector, background });
+        if (HEADING.test(selector)) headingRules.push({ selector, setsColour });
+      }
+    }
+  }
+
+  const failures = [];
+  for (const surface of darkSurfaces) {
+    const headings = headingRules.filter((rule) => rule.selector.startsWith(`${surface.selector} `));
+    if (!headings.length) continue;                       // no heading renders here
+    if (headings.some((rule) => rule.setsColour)) continue; // its colour is stated
+    failures.push(`${surface.name}  ${surface.selector} (${ratio(ink, surface.background).toFixed(2)}:1 against ink) contains a heading that states no colour`);
+  }
+  if (process.env.GUARD_DUMP) console.log("DARK:\n" + failures.join("\n"));
+  assert.deepEqual(failures, [], `headings that would render ink on a dark surface:\n  ${failures.join("\n  ")}`);
 });
 
 console.log(`test-founder-os-base-layer: ${checks} checks passed`);
