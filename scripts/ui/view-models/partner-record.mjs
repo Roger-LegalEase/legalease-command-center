@@ -79,16 +79,10 @@ export function buildPartnerRecordView(state = {}, actor = {}, partnerId = "", n
   if (!record) return deepFreeze({ available:false, availability:{ state:"not_found_or_unauthorized" }, partnerId:id, tabs:PARTNER_RECORD_TABS });
   const activity = buildPartnerActivity(state, actor, id, now);
   const selectedTab = PARTNER_RECORD_TABS.some((tab) => tab.key === options.tab) ? options.tab : "overview";
-  // Staleness is derived from the date the record already carries — no new field, and no claim
-  // the data cannot support: a next action with no due date is not overdue, it is undated.
-  const dueTime = Date.parse(stageView.nextAction.dueAt || "");
-  const nowTime = Date.parse(now);
   const nextAction = {
     available:Boolean(stageView.nextAction.summary),
     summary:stageView.nextAction.summary,
     dueAt:stageView.nextAction.dueAt,
-    overdue:Boolean(stageView.nextAction.summary) && Number.isFinite(dueTime) && Number.isFinite(nowTime) && dueTime < nowTime,
-    setEndpoint:`/api/ui/partners/${encodeURIComponent(id)}/next-action`,
     completeEndpoint:`/api/ui/partners/${encodeURIComponent(id)}/next-action/complete`
   };
   return deepFreeze({
