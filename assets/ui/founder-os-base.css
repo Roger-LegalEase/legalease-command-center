@@ -49,7 +49,7 @@
 :where(.le-os .page-section) h2 { font-size: 1.125rem; }
 :where(.le-os .page-section) h3 { font-size: 1rem; font-weight: 700; }
 .le-os .page-section .eyebrow {
-  color: var(--le-concept-muted-2); font-size: var(--le-type-label);
+  color: var(--le-concept-muted-2-text); font-size: var(--le-type-label);
   font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
 }
 .le-os .page-section .muted,
@@ -146,18 +146,27 @@
    founder meets on Settings. A class-level rule, so it clears the legacy one it replaces. */
 .le-os .page-section .command-run-button .count {
   background: var(--le-concept-orange-soft);
-  color: var(--le-concept-orange-dark);
+  color: var(--le-concept-orange-text);
 }
 
 /* Tables. The concept's table is quiet: a ruled body, an uppercase label row, no zebra. */
 :where(.le-os .page-section) table,
 .le-os .page-section .metric-table { border-collapse: collapse; width: 100%; }
-:where(.le-os .page-section) table th,
-.le-os .page-section .metric-table th {
+/* COLUMN headers only. A `th[scope="row"]` is the row's own name — content, not a label — and
+   the uppercase 12px light-grey treatment made it unreadable in both senses: the Campaigns
+   table's campaign name rendered at 2.58:1, and it read as a column heading rather than as the
+   campaign. Row headers fall through to the td rule below and stay ink. */
+:where(.le-os .page-section) table th:not([scope="row"]),
+.le-os .page-section .metric-table th:not([scope="row"]) {
   border-bottom: 1px solid var(--le-concept-border-2);
-  color: var(--le-concept-muted-2);
+  color: var(--le-concept-muted-2-text);
   font-size: var(--le-type-label);
   font-weight: 700; letter-spacing: .06em; text-transform: uppercase; text-align: left;
+}
+:where(.le-os .page-section) table th[scope="row"],
+.le-os .page-section .metric-table th[scope="row"] {
+  border-bottom: 1px solid var(--le-concept-border);
+  color: var(--le-concept-ink); font-weight: 700; text-align: left;
 }
 :where(.le-os .page-section) table td,
 .le-os .page-section .metric-table td { border-bottom: 1px solid var(--le-concept-border); color: var(--le-concept-ink); }

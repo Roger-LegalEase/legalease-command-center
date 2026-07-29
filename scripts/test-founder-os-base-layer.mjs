@@ -22,6 +22,8 @@ import { FOUNDER_OS_BASE_STYLESHEET_PATH } from "./ui/pages/founder-os-base-styl
 import { renderVNextDesktopShellChrome } from "./ui/app-shell.mjs";
 
 const css = readFileSync(new URL(`../${FOUNDER_OS_BASE_STYLESHEET_PATH}`, import.meta.url), "utf8");
+// The token layer this one draws every colour from; check 6 resolves those tokens to real values.
+const conceptCss = readFileSync(new URL("../assets/ui/founder-os-concept.css", import.meta.url), "utf8");
 let checks = 0;
 const check = (name, fn) => { fn(); checks += 1; console.log(`  ✓ ${name}`); };
 
@@ -104,6 +106,52 @@ check("the base layer is requested on EVERY route, not one", () => {
 check("with the shell flag off, the shell root does not carry the base layer's hook", () => {
   const markup = html(withoutShell);
   assert.ok(!/vnext-shell[^"]*\ble-os\b/.test(markup), "flag-off must not emit .le-os, or the rollback is not a rollback");
+});
+
+// ---- 6. every token this layer READS text with clears the contrast floor ----------------------
+// The Campaigns table failed axe at three widths because this layer painted `th` with
+// --le-concept-muted-2, a PALETTE value (2.58:1 on white) rather than one of the concept's
+// derived *-text values. axe only caught it because a table happened to render in an audited
+// workspace; a page with no visible table would have shipped the same unreadable token.
+//
+// So the ratio is pinned here, at the token, rather than left to whichever page a browser suite
+// happens to open. Colour and copy stay free to change — this fails only when text becomes
+// unreadable, which is the thing that actually matters.
+check("no text in the base layer falls below 4.5:1 against the surface it actually sits on", () => {
+  const tokens = Object.fromEntries([...conceptCss.matchAll(/(--le-concept-[a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\b/g)]
+    .map((match) => [match[1], match[2]]));
+  const channel = (value) => {
+    const c = value / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = (hex) => 0.2126 * channel(parseInt(hex.slice(1, 3), 16))
+    + 0.7152 * channel(parseInt(hex.slice(3, 5), 16))
+    + 0.0722 * channel(parseInt(hex.slice(5, 7), 16));
+  const ratio = (a, b) => {
+    const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (high + 0.05) / (low + 0.05);
+  };
+  // A rule that declares its own background is judged against THAT surface — which is how white
+  // on the orange button passes and orange on its own tint does not. A rule that declares none
+  // is judged against both surfaces this layer paints on.
+  const defaults = [tokens["--le-concept-card"], tokens["--le-concept-canvas"]];
+  assert.ok(defaults.every(Boolean), "the card and canvas tokens must be readable to test against");
+
+  const body = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const rules = [...body.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  assert.ok(rules.length > 10, `expected a real stylesheet; found ${rules.length} rules`);
+
+  const failures = [];
+  for (const [, selector, declarations] of rules) {
+    const foreground = tokens[declarations.match(/(?:^|;)\s*color:\s*var\((--le-concept-[a-z0-9-]+)\)/)?.[1]];
+    if (!foreground) continue;                 // no colour, or a status alias resolved elsewhere
+    const declared = tokens[declarations.match(/(?:^|;)\s*background(?:-color)?:\s*var\((--le-concept-[a-z0-9-]+)\)/)?.[1]];
+    for (const surface of declared ? [declared] : defaults) {
+      const value = ratio(foreground, surface);
+      if (value < 4.5) failures.push(`${selector.trim().split("\n")[0]} — ${foreground} on ${surface} is ${value.toFixed(2)}:1`);
+    }
+  }
+  assert.deepEqual(failures, [], `text below WCAG AA:\n  ${failures.join("\n  ")}`);
 });
 
 console.log(`test-founder-os-base-layer: ${checks} checks passed`);

@@ -25,10 +25,16 @@ export const LEGACY_SHELL_BYTE_BUDGET = 1_650_000;
 
 // ---------------------------------------------------------------------------------------------
 // THE PINNED VALUE. Re-pin with: npm run repin:shell
-// Last re-pinned 2026-07-26 (prospect bulk approval): the #prospects page swapped its
-// metrics-only body for a container plus a loader for the LAZY prospect-workbench runtime,
-// keeping bulk approval out of the initial client payload.
-export const LEGACY_SHELL_HASH = "652493e1dc2e8fc4ad569d33ab6fa8a236bb83c7465a0a6049c6e686c18358f3";
+// Last re-pinned 2026-07-28 (the design system rides the shell): the flag-OFF shell changed on
+// purpose this time, in three reviewed ways, all of them inside the legacy pages themselves:
+//   * two layout repairs from the 67-page sweep — `overflow-wrap:anywhere` on .kpi-detail/.muted
+//     so a slashed label stops overrunning its grid cell, and .ops-row switching from a hard
+//     repeat(4) to implicit columns so Access Reviews stops wrapping onto a second line;
+//   * founder language: "RCAP" became "the partner program" in the Production Activation copy;
+//   * one intake sentence reworded ("internal intake lane" -> "internal place to capture").
+// No flagged behaviour leaked: the diff of the hashed slice is those edits and nothing else, and
+// test-founder-os-base-layer.mjs still asserts flag-off emits no .le-os root. +357 bytes.
+export const LEGACY_SHELL_HASH = "051dec9df058457d226009ce8f37780b2d2a53048d513619d90fd466bd67c379";
 // ---------------------------------------------------------------------------------------------
 
 export function readLegacyShellSource(file = LEGACY_SHELL_SOURCE_FILE) {
