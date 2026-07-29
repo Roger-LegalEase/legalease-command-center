@@ -24,7 +24,11 @@ function optionsHtml(values, selected) {
 function rowHtml(row) {
   const meta = ["score " + row.score, row.classification || "unclassified", row.source,
     [row.city, row.state].filter(Boolean).join(", "), row.ntee_label].filter(Boolean).join(" · ");
-  return "<div class=\"support-status-row\" style=\"align-items:center\">"
+  // Keeps the legacy row box (so a flag-off rollback looks exactly as it did) and adds a name
+  // of its own, which founder-os-base.css uses to stop the row inheriting Customer Care's
+  // meaning: .support-status-row paints every <span> teal and right-aligns it, so an
+  // organisation's name read as a status value pushed to the right edge of its own row.
+  return "<div class=\"support-status-row prospect-review-row\">"
     + "<label style=\"display:flex;gap:10px;align-items:center;flex:1;min-width:0\">"
     + "<input type=\"checkbox\" data-prospect-id=\"" + escapeHtml(row.id) + "\">"
     + "<span style=\"min-width:0\"><strong>" + escapeHtml(row.organization_name) + "</strong> "

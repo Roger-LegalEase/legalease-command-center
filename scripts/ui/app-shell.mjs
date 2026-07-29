@@ -62,6 +62,7 @@ import { PARTNER_RECORD_STYLESHEET_PATHS, partnerRecordBrowserSource } from "./p
 import { FOUNDER_CAMPAIGNS_STYLESHEET_PATH, founderCampaignsBrowserSource } from "./pages/founder-campaigns.mjs";
 import { FOUNDER_SCOREBOARD_REGISTRY_STYLESHEET_PATH, founderScoreboardRegistryBrowserSource } from "./pages/founder-scoreboard-registry.mjs";
 import { FOUNDER_LEE_PANEL_STYLESHEET_PATH, founderLeePanelBrowserSource } from "./pages/founder-lee-panel.mjs";
+import { FOUNDER_OS_BASE_STYLESHEET_PATH, founderOsBaseStyleBrowserSource } from "./pages/founder-os-base-style.mjs";
 import { FOUNDER_RELATIONSHIPS_STYLESHEET_PATH, founderRelationshipsStyleBrowserSource } from "./pages/founder-relationships-style.mjs";
 import { OUTREACH_HOME_STYLESHEET_PATH, outreachHomeBrowserSource } from "./pages/outreach-home.mjs";
 import { AUTOMATION_CONTROL_CENTER_STYLESHEET_PATH, automationControlCenterBrowserSource } from "./pages/automation-control-center.mjs";
@@ -180,6 +181,14 @@ const VNEXT_LAZY_ASSETS = Object.freeze({
     api:"__LE_FOUNDER_LEE_PANEL",
     founderOsLeePanelOnly:true
   }),
+  // Concept parity: the base layer every page inside the shell inherits. Styles only, gated on
+  // the shell flag, and requested on every route rather than one — it is the floor, not a page.
+  "founder-os-base":Object.freeze({
+    styles:Object.freeze([FOUNDER_OS_BASE_STYLESHEET_PATH]),
+    source:founderOsBaseStyleBrowserSource,
+    api:"__LE_FOUNDER_OS_BASE_STYLE",
+    founderOsShellOnly:true
+  }),
   // Concept parity: the Relationships table's visual layer. Styles only — see the module's note.
   "founder-relationships":Object.freeze({
     styles:Object.freeze([FOUNDER_RELATIONSHIPS_STYLESHEET_PATH]),
@@ -217,6 +226,7 @@ export function resolveVNextLazyRuntime(pathname = "", options = {}) {
   if (asset.founderOsScoreboardOnly && options.founderOsScoreboard !== true) return null;
   if (asset.founderOsLeePanelOnly && options.founderOsLeePanel !== true) return null;
   if (asset.founderOsRelationshipsOnly && options.founderOsRelationships !== true) return null;
+  if (asset.founderOsShellOnly && options.founderOsShell !== true) return null;
   const source = asset.source();
   return typeof source === "string" && source.length <= VNEXT_LAZY_RUNTIME_MAX_BYTES ? source : null;
 }
@@ -359,6 +369,17 @@ function discoveryCaptureSinkBrowserSource() {
   })();`;
 }
 
+// ONE PRIMARY SURFACE PER ROUTE. PR 152 established the rule on Campaigns: under a Founder OS flag
+// the new surface REPLACES the legacy one rather than joining it, and the way it does that is by
+// not shipping the legacy runtime at all. Scoreboard had never been given the same treatment, so
+// #revenue mounted the KPI registry AND the legacy Founder Scoreboard — and the registry prepends
+// itself, which is exactly what Roger saw: the concept scoreboard, then platform health, then the
+// same numbers again in the old surface underneath. The legacy asset is now gated on the flag
+// being OFF, so the route resolves either way and only one primary surface ever mounts.
+//
+// NOTE FOR ANYONE EDITING THE TEMPLATE BELOW: its output is newline-stripped by the .replace() at
+// the end of this function, so a `//` comment inside it silently comments out the whole remaining
+// script. That cost a debugging cycle here. Explain things out here, never in there.
 function vnextLazyAssetLoaderScript(options = {}) {
   const manifest = Object.fromEntries(Object.entries(VNEXT_LAZY_ASSETS)
     .filter(([, asset]) => !asset.outreachOnly || options.outreachEnabled === true)
@@ -366,6 +387,7 @@ function vnextLazyAssetLoaderScript(options = {}) {
     .filter(([, asset]) => !asset.founderOsScoreboardOnly || options.founderOsScoreboard === true)
     .filter(([, asset]) => !asset.founderOsLeePanelOnly || options.founderOsLeePanel === true)
     .filter(([, asset]) => !asset.founderOsRelationshipsOnly || options.founderOsRelationships === true)
+    .filter(([, asset]) => !asset.founderOsShellOnly || options.founderOsShell === true)
     .map(([id, asset]) => [id, {
       styles:asset.styles.map(assetUrl),
       runtime:`${VNEXT_LAZY_RUNTIME_PATH_PREFIX}${id}.js`,
@@ -431,12 +453,13 @@ function vnextLazyAssetLoaderScript(options = {}) {
       if (route === "partners" || objectType === "Partner") add("relationship-drawer", "task-workbench", "communication-composer");
       if (route === "support") add("founder-support", "relationship-drawer", "task-workbench", "communication-composer");
       if (route === "meetings") add("founder-calendar", "relationship-drawer", "task-workbench", "communication-composer");
-      if (["revenue", "metrics"].includes(route) || ["revenue", "scoreboard", "metrics", "kpis"].includes(raw)) add("founder-scoreboard");
+      ${options.founderOsScoreboard ? "" : `if (["revenue", "metrics"].includes(route) || ["revenue", "scoreboard", "metrics", "kpis"].includes(raw)) add("founder-scoreboard");`}
       if (["company-health", "os-health"].includes(route) || ["company-health", "os-health", "health", "app-status", "system"].includes(raw)) add("founder-company-health");
       if (route === "queue" && query.get("view") === "weekly") add("social-weekly-planner");
       if (["automation", "automation-control", "automation-control-center"].includes(raw) || (route === "outreach" && query.get("view") === "automation")) add("automation-control-center");
       ${options.founderOsCampaigns ? `if (["campaigns", "outreach"].includes(route)) add("founder-campaigns");` : ""}
       ${options.founderOsScoreboard ? `if (["revenue", "metrics"].includes(route) || ["revenue", "scoreboard", "metrics", "kpis"].includes(raw)) add("founder-scoreboard-registry");` : ""}
+      ${options.founderOsShell ? `add("founder-os-base");` : ""}
       ${options.founderOsLeePanel ? `add("founder-lee-panel");` : ""}
       ${options.founderOsRelationships ? `if (route === "partners" || objectType === "Partner") add("founder-relationships");` : ""}
       return required;

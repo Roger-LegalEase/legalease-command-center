@@ -42,6 +42,10 @@
      this is the one derived value, used wherever muted grey is actually READ. */
   --le-concept-muted-text: #5a6474;
   --le-concept-muted-2: #98a2b3;
+  /* Same story one step lighter: #98a2b3 is 2.58:1 on white, so the palette token stays the
+     concept's and this derived value is used wherever the lighter grey is READ. 4.97:1 on
+     white, 4.60:1 on the canvas, still lighter than muted-text so the hierarchy survives. */
+  --le-concept-muted-2-text: #667085;
   --le-concept-border: #e4e7ec;
   --le-concept-border-2: #d7dce3;
   --le-concept-canvas: #f5f6f8;
@@ -298,19 +302,9 @@
   .founder-campaign-setup { padding: 0.75rem; }
 }
 
-/* ---------------------------------------------------------------------------------------------
-   The two legacy-shell destinations this release adopts: Partner outreach approvals and the
-   audience importer. They keep the legacy layout — this is a naming and reachability release,
-   not a rebuild — but they are founder destinations now, so their primary control has to be
-   readable. The legacy `.primary` is white on #00a99d, which is 2.93:1. Darkened to 4.9:1 HERE
-   ONLY, so no other legacy page changes.
-   --------------------------------------------------------------------------------------------- */
-#prospects .primary,
-#upload .primary {
-  background: #007f76;
-  border-color: #007f76;
-  color: #ffffff;
-}
+/* The `#prospects .primary, #upload .primary` teal exception that lived here is deleted: the base
+   layer now gives both pages the concept's own primary button, and an id-scoped rule outranked
+   it. Rationale in the commit; this file is critical CSS, so it does not carry the essay. */
 
 /* ------------------------------------------------------------------------------------------------
    CONCEPT PARITY — the shell, Today, and the Search and Create overlays.
@@ -327,7 +321,7 @@
 .kpi-registry,
 .partners-page:has(.relationship-views) { --le-concept-navy: #0b1424; --le-concept-navy-2: #111d31; --le-concept-navy-3: #192842; --le-concept-orange: #ff3b00; --le-concept-orange-dark: #d93204; --le-concept-orange-soft: #fff0eb; --le-concept-ink: #182230; --le-concept-muted: #697586; /* The concept's muted grey is a 4.34:1 foreground on the concept's own canvas, just under
      WCAG AA for body text. The token above is kept verbatim so the palette is the concept's;
-     this is the one derived value, used wherever muted grey is actually READ. */ --le-concept-muted-text: #5a6474; --le-concept-muted-2: #98a2b3; --le-concept-border: #e4e7ec; --le-concept-border-2: #d7dce3; --le-concept-canvas: #f5f6f8; --le-concept-card: #ffffff; --le-concept-green: #117a65; --le-concept-green-soft: #e8f7f3; --le-concept-amber: #9a6700; --le-concept-amber-soft: #fff6d8; --le-concept-red: #b42318; --le-concept-red-soft: #fff0ee; --le-concept-blue: #175cd3; --le-concept-blue-soft: #eef4ff; --le-concept-purple: #6941c6; --le-concept-purple-soft: #f4f0ff; --le-concept-teal: #0e7490; --le-concept-teal-soft: #ecfeff; --le-concept-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 12px 28px rgba(16, 24, 40, .06); --le-concept-shadow-lg: 0 24px 70px rgba(16, 24, 40, .22); /* The four status pairs. Nothing else may be a status. */ --le-status-live: var(--le-concept-green); --le-status-live-soft: var(--le-concept-green-soft); --le-status-manual: var(--le-concept-amber); --le-status-manual-soft: var(--le-concept-amber-soft); --le-status-attention: var(--le-concept-red); --le-status-attention-soft: var(--le-concept-red-soft); --le-status-unavailable: var(--le-concept-muted-text); --le-status-unavailable-soft: var(--le-concept-canvas); /* The concept's type scale. It runs small — 9px in places — which is below the size this
+     this is the one derived value, used wherever muted grey is actually READ. */ --le-concept-muted-text: #5a6474; --le-concept-muted-2: #98a2b3; --le-concept-muted-2-text: #667085; --le-concept-border: #e4e7ec; --le-concept-border-2: #d7dce3; --le-concept-canvas: #f5f6f8; --le-concept-card: #ffffff; --le-concept-green: #117a65; --le-concept-green-soft: #e8f7f3; --le-concept-amber: #9a6700; --le-concept-amber-soft: #fff6d8; --le-concept-red: #b42318; --le-concept-red-soft: #fff0ee; --le-concept-blue: #175cd3; --le-concept-blue-soft: #eef4ff; --le-concept-purple: #6941c6; --le-concept-purple-soft: #f4f0ff; --le-concept-teal: #0e7490; --le-concept-teal-soft: #ecfeff; --le-concept-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 12px 28px rgba(16, 24, 40, .06); --le-concept-shadow-lg: 0 24px 70px rgba(16, 24, 40, .22); /* The four status pairs. Nothing else may be a status. */ --le-status-live: var(--le-concept-green); --le-status-live-soft: var(--le-concept-green-soft); --le-status-manual: var(--le-concept-amber); --le-status-manual-soft: var(--le-concept-amber-soft); --le-status-attention: var(--le-concept-red); --le-status-attention-soft: var(--le-concept-red-soft); --le-status-unavailable: var(--le-concept-muted-text); --le-status-unavailable-soft: var(--le-concept-canvas); /* The concept's type scale. It runs small — 9px in places — which is below the size this
      product will ship text at. These are the floored equivalents: the RATIO between steps is
      the concept's, the smallest step is 11px rather than 9px, and nothing that carries meaning
      is drawn below it. */ --le-type-page-title: 1.75rem; --le-type-card-title: 1.375rem; --le-type-body: 0.8125rem; --le-type-meta: 0.75rem; --le-type-label: 0.6875rem; --le-radius-card: 16px; --le-radius-control: 10px; }
@@ -511,7 +505,7 @@
 .le-os .vnext-search-result[aria-selected="true"] { background: #f4f6f9; }
 .le-os .vnext-search-result > :first-child { font-size: var(--le-type-body); font-weight: 700; }
 .le-os .vnext-search-result-context { grid-column: 1; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
-.le-os .vnext-search-result-meta { grid-row: 1; grid-column: 2; align-self: start; color: var(--le-concept-muted-2); font-size: var(--le-type-label); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.le-os .vnext-search-result-meta { grid-row: 1; grid-column: 2; align-self: start; color: var(--le-concept-muted-2-text); font-size: var(--le-type-label); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .le-os .vnext-search-footer { display: flex; align-items: center; gap: 16px; padding: 12px 22px; border-top: 1px solid var(--le-concept-border); background: #fafbfc; border-radius: 0 0 18px 18px; color: var(--le-concept-muted-text); font-size: var(--le-type-label); }
 .le-os .vnext-search-footer kbd { padding: 2px 7px; border: 1px solid #d8dde4; border-radius: 6px; background: #fff; color: #7d8797; font-size: var(--le-type-label); }
 /* --- Create  The concept shows the option list and the chosen form side by side. */

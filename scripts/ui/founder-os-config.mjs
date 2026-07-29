@@ -52,7 +52,11 @@ export const FOUNDER_OS_ADVANCED_ROUTES = Object.freeze([
   Object.freeze({ route: "soc2-changes", label: "Change Management", note: "Change register." }),
   Object.freeze({ route: "soc2-vendors", label: "Vendor Inventory", note: "Vendor register." }),
   Object.freeze({ route: "soc2-incidents", label: "Incident Register", note: "Active incidents also surface in Today." }),
-  Object.freeze({ route: "production-activation-rcap", label: "RCAP Program Review", note: "Not connected to anything yet." }),
+  // Labelled for the founder, not for the workspace. Settings is on the walk Roger runs, and
+  // "RCAP" is the internal acronym for Record Clearing Access Program. The destination page
+  // keeps its own name — several suites pin it — and the #production-activation-rcap route is
+  // untouched, so every bookmark still resolves.
+  Object.freeze({ route: "production-activation-rcap", label: "Partner program review", note: "Not connected to anything yet." }),
   Object.freeze({ route: "item", label: "Artifact Viewer", note: "The full record behind an item. Secondary only." })
 ]);
 

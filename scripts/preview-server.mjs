@@ -9039,7 +9039,8 @@ function serveVNextLazyRuntime(pathname, response, { headOnly = false } = {}) {
     founderOsCampaigns:founderOsCampaignsConfig.enabled,
     founderOsScoreboard:founderOsScoreboardConfig.enabled,
     founderOsLeePanel:founderOsLeePanelConfig.enabled,
-    founderOsRelationships:founderOsRelationshipsConfig.enabled
+    founderOsRelationships:founderOsRelationshipsConfig.enabled,
+    founderOsShell:founderOsShellConfig.enabled
   });
   if (!source) {
     response.writeHead(404, { "content-type":"text/plain; charset=utf-8", "cache-control":"no-store" });
@@ -15792,7 +15793,7 @@ function founderOsAdvancedSectionHtml() {
     + '<span class="muted"> ' + escapeHtml(entry.note) + "</span></li>").join("");
   return '<section class="growth-card" data-founder-os-advanced>'
     + '<div class="growth-card-head"><h2>Advanced</h2><small>Internal machinery. Nothing here is part of the daily loop.</small></div>'
-    + '<p class="muted">These pages are the system talking to itself: agent autonomy, engine state, audit logs, compliance registers, and the full record behind an item. They are kept because they are useful when something breaks, not because they are part of running the company.</p>'
+    + '<p class="muted">These pages are the system talking to itself: agent autonomy, automation state, audit logs, compliance registers, and the full record behind an item. They are kept because they are useful when something breaks, not because they are part of running the company.</p>'
     + '<ul class="founder-os-advanced-list">' + rows + "</ul></section>";
 }
 
@@ -15929,7 +15930,8 @@ function htmlShell() {
     .metric { border-top:3px solid var(--line); padding-top:8px; min-width:0; }
     .kpi-label { color:#737988; font-size:14px; font-weight:650; }
     .kpi-value { margin-top:4px; font-size:25px; font-weight:760; }
-    .kpi-detail,.muted { color:#6f7684; font-size:13px; }
+    /* anywhere: a slash is not a break opportunity, so long labels overran their grid cell. */
+    .kpi-detail,.muted { color:#6f7684; font-size:13px; overflow-wrap:anywhere; }
     .big-title { margin:0; font-size:28px; letter-spacing:0; }
     .big-copy { color:#4e5664; max-width:760px; margin:8px 0 0; }
     h3 { margin:10px 0 0; font-size:16px; }
@@ -16822,7 +16824,9 @@ function htmlShell() {
     .board-column { display:grid; gap:10px; min-height:120px; border:1px solid rgba(8,20,95,.08); border-radius:18px; padding:12px; background:rgba(255,255,255,.58); }
     .board-column h3 { margin:0; display:flex; justify-content:space-between; gap:10px; align-items:center; color:var(--ink); }
     .ops-table { display:grid; gap:8px; }
-    .ops-row { display:grid; grid-template-columns:minmax(180px,1.4fr) repeat(4,minmax(90px,.6fr)) minmax(160px,1fr); gap:10px; align-items:center; padding:12px; border:1px solid rgba(8,20,95,.08); border-radius:14px; background:white; }
+    /* One explicit wide column; every remaining cell flows into an implicit one, so the row fits
+       its own field count. A hard repeat(4) wrapped Access Reviews onto a second line. */
+    .ops-row { display:grid; grid-template-columns:minmax(150px,1.4fr); grid-auto-flow:column; grid-auto-columns:minmax(80px,.7fr); gap:10px; align-items:center; padding:12px; border:1px solid rgba(8,20,95,.08); border-radius:14px; background:white; }
     .ops-row.header { background:transparent; box-shadow:none; border:0; color:var(--muted); font-size:12px; font-weight:900; text-transform:uppercase; letter-spacing:.08em; }
     .drawer-card { display:grid; gap:12px; border:1px solid rgba(8,20,95,.08); border-radius:18px; padding:16px; background:white; }
     .mini-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; }
@@ -21119,7 +21123,7 @@ function htmlShell() {
       ];
       return \`<article class="channel-row rcap-connection-card">
         <div class="channel-row-main">
-          <h3>RCAP Connection</h3>
+          <h3>Partner program connection</h3>
           <p>Future connection point for partner pages, dashboards, Wilma eligibility chat, signup, Briefcase, and document generation.</p>
         </div>
         <div class="channel-row-status"><span class="badge warn">Not connected</span></div>
@@ -21128,7 +21132,7 @@ function htmlShell() {
         </div>
         <details id="rcap-connection-details" class="rcap-connection-details">
           <summary class="muted">Connection checklist</summary>
-          <p class="muted">RCAP is being built separately. Use this checklist when that build is ready for a safe Command Center connection review.</p>
+          <p class="muted">The partner program is being built separately. Use this checklist when that build is ready for a safe Command Center connection review.</p>
           <div class="rcap-connection-list">
             \${checklist.map(([label, status]) => \`<div class="rcap-connection-row"><span>\${esc(label)}</span><span class="badge warn">\${esc(status)}</span></div>\`).join("")}
           </div>
@@ -24151,7 +24155,7 @@ function htmlShell() {
           <div><span>Missing details</span><strong>\${esc(readiness.missing.length)}</strong></div>
         </div>
         <p class="muted">\${esc(readiness.next)}</p>
-        <button class="wide" type="button" onclick="location.hash='production-activation-rcap'">Open RCAP Program Review</button>
+        <button class="wide" type="button" onclick="location.hash='production-activation-rcap'">Open the partner program review</button>
       </section>\`;
     }
 
@@ -26757,7 +26761,7 @@ function htmlShell() {
         <div class="panel hero-panel">
           <div class="eyebrow">Le-E Quick Capture</div>
           <h1 class="big-title">Capture Inbox</h1>
-          <p class="muted">One internal intake lane for tasks, partner updates, ideas, meeting notes, conversation takeaways, blockers, decisions, risks, carry-forward items, and reflection notes. Review required before anything changes the brief or saved notes.</p>
+          <p class="muted">One internal place to capture tasks, partner updates, ideas, meeting notes, conversation takeaways, blockers, decisions, risks, carry-forward items, and reflection notes. Review required before anything changes the brief or saved notes.</p>
           <div class="card-actions">
             <button type="button" onclick="location.hash='overview'">Back to Today</button>
             <button type="button" onclick="location.hash='operating-memory'">Open Notes & Decisions</button>
