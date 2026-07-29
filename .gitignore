@@ -71,6 +71,13 @@ expungement_ai_mvp_users_organized.xlsx
 *mvp_users*.xlsx
 *mvp-users*.xlsx
 
+# The national expungement / record-clearance clinic directory workbook: 249 organisations and
+# 99 named people, with their addresses. Every address is published on a public page, but this
+# is still a bulk contact list, and the press workbook set the rule — the file is read locally
+# (or uploaded to /api/clinics/import/*) and never committed.
+national_expungement_record_clearance_clinic_directory*.xlsx
+*clinic_directory*.xlsx
+
 # Local planning artifacts (kept local, not versioned)
 LegalEase_Fresh_Start_Sprint_Wilma_Optimized.xlsx
 legalease-os-redesign.html

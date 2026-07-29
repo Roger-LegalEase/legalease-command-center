@@ -26,17 +26,37 @@ export const PROSPECT_PENDING_STATE = "pending_review";
 
 // The filterable facets, fixed so the surface and the tests agree on what selection means.
 // score is the rank the list is already sorted by; classification is the segment.
-export const PROSPECT_SELECTION_FACETS = Object.freeze(["classification", "source", "stateCode", "minScore", "maxScore", "q"]);
+//
+// emailType / emailTypeGroup were added with the 2026 clinic directory import. Email Type is not
+// decoration: a named staff address and a general info@ inbox are different permissions, and
+// approving them together is the thing this filter exists to prevent. emailType matches the
+// workbook's exact label (there are sixteen); emailTypeGroup matches the bucket, so "the named
+// people" is one selection rather than three near-identical labels. tier is the directory's own
+// A/B/C priority.
+export const PROSPECT_SELECTION_FACETS = Object.freeze([
+  "classification", "source", "stateCode", "emailType", "emailTypeGroup", "tier",
+  "contactStatus", "minScore", "maxScore", "q"
+]);
 
 function matchesFilter(candidate, filter) {
   if (filter.classification && lower(candidate.classification) !== filter.classification) return false;
-  if (filter.source && lower(candidate.source) !== filter.source) return false;
+  // An enriched candidate keeps its original source and gains the importer's; filtering by
+  // either finds it, so provenance survives without hiding the row from the source filter.
+  if (filter.source) {
+    const sources = [lower(candidate.source), ...(Array.isArray(candidate.sources) ? candidate.sources.map(lower) : [])];
+    if (!sources.includes(filter.source)) return false;
+  }
   if (filter.stateCode && lower(candidate.state) !== filter.stateCode) return false;
+  if (filter.emailType && lower(candidate.email_type) !== filter.emailType) return false;
+  if (filter.emailTypeGroup && lower(candidate.email_type_group) !== filter.emailTypeGroup) return false;
+  if (filter.tier && lower(candidate.tier) !== filter.tier) return false;
+  if (filter.contactStatus && lower(candidate.contact_status) !== filter.contactStatus) return false;
   const score = Number(candidate.score || 0);
   if (filter.minScore !== null && score < filter.minScore) return false;
   if (filter.maxScore !== null && score > filter.maxScore) return false;
   if (filter.q) {
-    const haystack = lower([candidate.organization_name, candidate.city, candidate.state, candidate.ntee_label].filter(Boolean).join(" "));
+    const haystack = lower([candidate.organization_name, candidate.city, candidate.state, candidate.ntee_label,
+      candidate.program, candidate.organization_type, candidate.contact_name, candidate.state_name].filter(Boolean).join(" "));
     if (!haystack.includes(filter.q)) return false;
   }
   return true;
@@ -51,6 +71,10 @@ export function normalizeProspectFilter(input = {}) {
     classification: lower(input.classification),
     source: lower(input.source),
     stateCode: lower(input.stateCode || input.state),
+    emailType: lower(input.emailType),
+    emailTypeGroup: lower(input.emailTypeGroup),
+    tier: lower(input.tier),
+    contactStatus: lower(input.contactStatus),
     minScore: input.minScore === undefined || input.minScore === "" ? null : numeric(input.minScore),
     maxScore: input.maxScore === undefined || input.maxScore === "" ? null : numeric(input.maxScore),
     q: lower(input.q)
@@ -76,13 +100,21 @@ export function selectPendingProspects(state = {}, filterInput = {}) {
 
   const byClassification = {};
   const bySource = {};
+  const byEmailType = {};
+  const byEmailTypeGroup = {};
+  const byTier = {};
   let withEmail = 0;
+  let withNamedContact = 0;
   for (const candidate of matched) {
     const segment = lower(candidate.classification) || "unclassified";
     byClassification[segment] = (byClassification[segment] || 0) + 1;
     const source = lower(candidate.source) || "unknown";
     bySource[source] = (bySource[source] || 0) + 1;
+    if (clean(candidate.email_type)) byEmailType[clean(candidate.email_type)] = (byEmailType[clean(candidate.email_type)] || 0) + 1;
+    if (clean(candidate.email_type_group)) byEmailTypeGroup[lower(candidate.email_type_group)] = (byEmailTypeGroup[lower(candidate.email_type_group)] || 0) + 1;
+    if (clean(candidate.tier)) byTier[clean(candidate.tier).toUpperCase()] = (byTier[clean(candidate.tier).toUpperCase()] || 0) + 1;
     if (clean(candidate.email)) withEmail += 1;
+    if (candidate.has_named_contact === true) withNamedContact += 1;
   }
 
   return Object.freeze({
@@ -93,8 +125,14 @@ export function selectPendingProspects(state = {}, filterInput = {}) {
     // organisations have any address on file at all. For discovery candidates this is 0 by
     // design — loaders never attach email — and the surface says so instead of implying reach.
     withEmail,
+    // How many of the shown organisations route to a named person rather than an inbox — the
+    // count Roger needs to approve those separately.
+    withNamedContact,
     byClassification: Object.freeze(byClassification),
     bySource: Object.freeze(bySource),
+    byEmailType: Object.freeze(byEmailType),
+    byEmailTypeGroup: Object.freeze(byEmailTypeGroup),
+    byTier: Object.freeze(byTier),
     rows: Object.freeze(matched.map((candidate) => Object.freeze({
       id: clean(candidate.id),
       organization_name: clean(candidate.organization_name),
@@ -104,7 +142,24 @@ export function selectPendingProspects(state = {}, filterInput = {}) {
       state: clean(candidate.state),
       city: clean(candidate.city),
       ntee_label: clean(candidate.ntee_label),
+      // Directory fields. email_type travels to the row itself, not just the filter, so an
+      // operator can see what kind of address they are approving without opening anything.
+      email_type: clean(candidate.email_type),
+      email_type_group: lower(candidate.email_type_group),
+      tier: clean(candidate.tier).toUpperCase(),
+      program: clean(candidate.program),
+      clinic_verification: clean(candidate.clinic_verification),
+      organization_type: clean(candidate.organization_type),
+      contact_name: clean(candidate.contact_name),
+      contact_role: clean(candidate.contact_role),
+      email_source: clean(candidate.email_source),
+      contact_status: lower(candidate.contact_status),
+      hasNamedContact: candidate.has_named_contact === true,
       hasEmail: Boolean(clean(candidate.email)),
+      // Why it is not contactable, in the workbook's own words ("No public email found").
+      no_email_reason: clean(candidate.email) ? "" : clean(candidate.email_research_status),
+      shared_address_with: Object.freeze(list(candidate.shared_address_with).map(clean)),
+      name_collision_with: Object.freeze(list(candidate.name_collision_with).map(clean)),
       is_duplicate: candidate.is_duplicate === true
     })))
   });

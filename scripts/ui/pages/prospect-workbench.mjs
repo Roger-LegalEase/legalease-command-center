@@ -22,8 +22,21 @@ function optionsHtml(values, selected) {
 }
 
 function rowHtml(row) {
-  const meta = ["score " + row.score, row.classification || "unclassified", row.source,
-    [row.city, row.state].filter(Boolean).join(", "), row.ntee_label].filter(Boolean).join(" · ");
+  const meta = ["score " + row.score, row.tier ? "tier " + row.tier : "", row.classification || "unclassified", row.source,
+    [row.city, row.state].filter(Boolean).join(", "), row.organization_type || row.ntee_label,
+    row.program, row.clinic_verification].filter(Boolean).join(" · ");
+  // What kind of address this is, on the row itself. Approving a named person and approving a
+  // general info@ inbox are different decisions, so they must not look identical in the list.
+  const addressBadge = !row.hasEmail ? ""
+    : row.contact_status === "named_person"
+      ? " <span class=\"badge good\">" + escapeHtml([row.contact_name, row.email_type || "named contact"].filter(Boolean).join(" · ")) + "</span>"
+      : " <span class=\"badge\">" + escapeHtml(row.email_type || "organisation inbox") + "</span>";
+  const noEmailBadge = row.hasEmail ? ""
+    : " <span class=\"badge info\">" + escapeHtml(row.no_email_reason || "no email yet") + "</span>";
+  const sharedBadge = (row.shared_address_with && row.shared_address_with.length)
+    ? " <span class=\"badge warn\">address shared with " + row.shared_address_with.length + " other</span>" : "";
+  const collisionBadge = (row.name_collision_with && row.name_collision_with.length)
+    ? " <span class=\"badge warn\">same name as " + escapeHtml(row.name_collision_with.join(", ")) + "</span>" : "";
   // Keeps the legacy row box (so a flag-off rollback looks exactly as it did) and adds a name
   // of its own, which founder-os-base.css uses to stop the row inheriting Customer Care's
   // meaning: .support-status-row paints every <span> teal and right-aligns it, so an
@@ -33,21 +46,36 @@ function rowHtml(row) {
     + "<input type=\"checkbox\" data-prospect-id=\"" + escapeHtml(row.id) + "\">"
     + "<span style=\"min-width:0\"><strong>" + escapeHtml(row.organization_name) + "</strong> "
     + "<span class=\"muted\">" + escapeHtml(meta) + "</span>"
-    + (row.hasEmail ? "" : " <span class=\"badge info\">no email yet</span>")
+    + addressBadge + noEmailBadge + sharedBadge + collisionBadge
     + (row.is_duplicate ? " <span class=\"badge warn\">possible duplicate</span>" : "")
     + "</span></label></div>";
 }
 
-function workbenchHtml(view, filters, segments, sources) {
+function workbenchHtml(view, filters, segments, sources, emailTypes, tiers) {
   const rows = view.rows || [];
-  const filtering = Boolean(filters.classification || filters.source || filters.minScore || filters.q);
+  const filtering = Boolean(filters.classification || filters.source || filters.minScore || filters.q
+    || filters.emailType || filters.emailTypeGroup || filters.tier);
+  // The mix of what is shown, stated before any box is ticked: how many of these are a route to
+  // a person, how many an inbox, how many have no address at all.
+  const named = Number(view.withNamedContact || 0);
+  const addressed = Number(view.withEmail || 0);
+  const mix = rows.length
+    ? addressed + " with an address (" + named + " to a named person, " + (addressed - named) + " to an inbox), "
+      + (rows.length - addressed) + " with none"
+    : "";
   return "<section class=\"growth-card\">"
     + "<div class=\"growth-card-head\"><h2>Build a selection</h2><small>" + rows.length + " of " + view.pendingTotal + " pending shown" + (filtering ? " (filtered)" : "") + "</small></div>"
+    + (mix ? "<p class=\"muted\">" + escapeHtml(mix) + "</p>" : "")
     + "<div class=\"card-actions\" style=\"flex-wrap:wrap;gap:8px;align-items:flex-end\">"
     + "<label>Segment <select data-prospect-filter=\"classification\">" + optionsHtml(segments, filters.classification) + "</select></label>"
     + "<label>Source <select data-prospect-filter=\"source\">" + optionsHtml(sources, filters.source) + "</select></label>"
+    + "<label>Address kind <select data-prospect-filter=\"emailTypeGroup\">"
+    + optionsHtml(["named_person", "program_inbox", "organization_inbox", "media_inbox", "partnership_inbox", "administrative_inbox", "none"], filters.emailTypeGroup)
+    + "</select></label>"
+    + "<label>Email type <select data-prospect-filter=\"emailType\">" + optionsHtml(emailTypes, filters.emailType) + "</select></label>"
+    + "<label>Tier <select data-prospect-filter=\"tier\">" + optionsHtml(tiers, filters.tier) + "</select></label>"
     + "<label>Min score <input data-prospect-filter=\"minScore\" type=\"number\" inputmode=\"numeric\" style=\"width:90px\" value=\"" + escapeHtml(filters.minScore) + "\"></label>"
-    + "<label>Search <input data-prospect-filter=\"q\" type=\"search\" placeholder=\"Name, city, state, NTEE\" value=\"" + escapeHtml(filters.q) + "\"></label>"
+    + "<label>Search <input data-prospect-filter=\"q\" type=\"search\" placeholder=\"Name, city, state, programme\" value=\"" + escapeHtml(filters.q) + "\"></label>"
     + "<button class=\"primary\" data-prospect-action=\"apply\">Apply filters</button>"
     + "<button data-prospect-action=\"clear\">Clear</button>"
     + "</div></section>"
@@ -76,7 +104,7 @@ export function prospectWorkbenchBrowserSource() {
   return `(() => { "use strict";
     ${renderer}
     let root=null, view=null, busy=false;
-    const filters={classification:"",source:"",minScore:"",q:""};
+    const filters={classification:"",source:"",emailType:"",emailTypeGroup:"",tier:"",minScore:"",q:""};
     function cookieValue(name){const parts=String(document.cookie||"").split("; ");for(const part of parts){if(part.indexOf(name+"=")===0)return decodeURIComponent(part.slice(name.length+1));}return "";}
     function status(message,isError){const el=root&&root.querySelector("[data-prospect-status]");if(el){el.textContent=message||"";el.style.color=isError?"var(--danger,#b00020)":"";}}
     function selectedIds(){return Array.prototype.slice.call(root.querySelectorAll("input[data-prospect-id]:checked")).map(box=>box.getAttribute("data-prospect-id"));}
@@ -89,6 +117,9 @@ export function prospectWorkbenchBrowserSource() {
     function query(){const params=new URLSearchParams();
       if(filters.classification)params.set("classification",filters.classification);
       if(filters.source)params.set("source",filters.source);
+      if(filters.emailType)params.set("emailType",filters.emailType);
+      if(filters.emailTypeGroup)params.set("emailTypeGroup",filters.emailTypeGroup);
+      if(filters.tier)params.set("tier",filters.tier);
       if(filters.minScore)params.set("minScore",filters.minScore);
       if(filters.q)params.set("q",filters.q);
       const text=params.toString();return text?"?"+text:"";}
@@ -100,16 +131,19 @@ export function prospectWorkbenchBrowserSource() {
     function segmentsOf(){const seen=[];(view&&view.rows||[]).forEach(row=>{if(row.classification&&seen.indexOf(row.classification)<0)seen.push(row.classification);});
       Object.keys(view&&view.byClassification||{}).forEach(key=>{if(seen.indexOf(key)<0)seen.push(key);});return seen.sort();}
     function sourcesOf(){const seen=Object.keys(view&&view.bySource||{});(view&&view.rows||[]).forEach(row=>{if(row.source&&seen.indexOf(row.source)<0)seen.push(row.source);});return seen.sort();}
-    function draw(){if(!root)return;root.innerHTML=workbenchHtml(view||{rows:[],pendingTotal:0},filters,segmentsOf(),sourcesOf());updateCount();}
+    function emailTypesOf(){const seen=Object.keys(view&&view.byEmailType||{});(view&&view.rows||[]).forEach(row=>{if(row.email_type&&seen.indexOf(row.email_type)<0)seen.push(row.email_type);});return seen.sort();}
+    function tiersOf(){const seen=Object.keys(view&&view.byTier||{});(view&&view.rows||[]).forEach(row=>{if(row.tier&&seen.indexOf(row.tier)<0)seen.push(row.tier);});return seen.sort();}
+    function draw(){if(!root)return;root.innerHTML=workbenchHtml(view||{rows:[],pendingTotal:0},filters,segmentsOf(),sourcesOf(),emailTypesOf(),tiersOf());updateCount();}
     async function decide(kind){if(busy)return;const ids=selectedIds();if(!ids.length)return;
       const chosen={};ids.forEach(id=>{chosen[id]=true;});
-      let withEmail=0;(view.rows||[]).forEach(row=>{if(chosen[row.id]&&row.hasEmail)withEmail+=1;});
+      let withEmail=0,named=0;(view.rows||[]).forEach(row=>{if(!chosen[row.id])return;if(row.hasEmail)withEmail+=1;if(row.hasEmail&&row.contact_status==="named_person")named+=1;});
       const noun=ids.length===1?"organisation":"organisations";
       const message=kind==="approve"
         ?"Approve "+ids.length+" "+noun+" for partner outreach? "
           +(withEmail===0
             ?"None of them has an email address on file yet, so this makes nobody contactable by itself. "
-            :withEmail+" of them "+(withEmail===1?"has":"have")+" an email address on file. ")
+            :withEmail+" of them "+(withEmail===1?"has":"have")+" an email address on file"
+              +(named>0?" — "+named+" to a named person, "+(withEmail-named)+" to a general inbox":"")+". ")
           +"Contact discovery, not-eligible-to-contact checks, sending windows and every safeguard still apply before any email exists or sends."
         :"Reject "+ids.length+" "+noun+"? They leave the ranked list and will not be contacted.";
       if(!window.confirm(message))return;
@@ -134,7 +168,7 @@ export function prospectWorkbenchBrowserSource() {
         root.addEventListener("click",event=>{const button=event.target&&event.target.closest?event.target.closest("[data-prospect-action]"):null;if(!button)return;
           const action=button.getAttribute("data-prospect-action");
           if(action==="apply"){readFilters();void load();}
-          else if(action==="clear"){filters.classification="";filters.source="";filters.minScore="";filters.q="";void load();}
+          else if(action==="clear"){filters.classification="";filters.source="";filters.emailType="";filters.emailTypeGroup="";filters.tier="";filters.minScore="";filters.q="";void load();}
           else if(action==="all")setAll(true);
           else if(action==="none")setAll(false);
           else if(action==="approve")void decide("approve");
