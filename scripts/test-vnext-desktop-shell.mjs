@@ -108,17 +108,25 @@ assert.equal(VNEXT_LAZY_RUNTIME_MAX_BYTES, 64 * 1024);
 // with a no-op runtime, and it is lazy for a sharper reason — founder-os-concept.css is linked
 // unconditionally, so putting the base layer there would have spent it on flag-off pages too and
 // broken the byte-identical rollback. That is the deliberate decision this pin forces.
-assert.equal(VNEXT_LAZY_ASSET_CONTRACT.runtimeIds.length, 16, "The sixteen Founder-only browser runtimes must be route-loaded.");
-for (const id of ["founder-campaigns", "founder-scoreboard-registry", "founder-lee-panel", "founder-relationships", "founder-os-base"]) {
+// 17 since 2026-07-29: the relationship record joined them. It was inline at ~14 KB of the initial
+// client payload for a page most sessions never open, which is also why adding two controls to it
+// blew the ceiling. Lazy, it reclaimed 18,675 bytes of JavaScript and 5,803 of critical CSS.
+assert.equal(VNEXT_LAZY_ASSET_CONTRACT.runtimeIds.length, 17, "The seventeen Founder-only browser runtimes must be route-loaded.");
+for (const id of ["founder-campaigns", "founder-scoreboard-registry", "founder-lee-panel", "founder-relationships", "founder-os-base", "partner-record"]) {
   assert.ok(VNEXT_LAZY_ASSET_CONTRACT.runtimeIds.includes(id), `${id} must be a lazy runtime, never inline.`);
 }
 // The count above is a budget guard; this is the behaviour it protects. Named separately so the
 // count can move for a deliberate addition while losing the base layer still fails outright.
 assert.ok(
+  VNEXT_LAZY_ASSET_CONTRACT.stylesheetPaths.some((path) => path.includes("partner-record.css")),
+  "the relationship record's stylesheet must travel with its lazy runtime, not be linked eagerly"
+);
+assert.ok(
   VNEXT_LAZY_ASSET_CONTRACT.stylesheetPaths.includes("assets/ui/founder-os-base.css"),
   "the design system's base layer must ship as a route-loaded stylesheet, or every page but four reverts to the old look."
 );
-assert.equal(VNEXT_LAZY_ASSET_CONTRACT.stylesheetPaths.length, 16, "The sixteen Founder-only stylesheets must be route-loaded.");
+// 19 since 2026-07-29: the record brought its three stylesheets with it out of the eager <head>.
+assert.equal(VNEXT_LAZY_ASSET_CONTRACT.stylesheetPaths.length, 19, "The nineteen Founder-only stylesheets must be route-loaded.");
 // Both conditional runtimes are enabled here: automation-control-center is gated on the Outreach
 // flag and founder-campaigns on FOUNDER_OS_CAMPAIGNS, so the manifest can only be asserted in
 // full with both on. That the manifest OMITS them when their flag is off is asserted separately

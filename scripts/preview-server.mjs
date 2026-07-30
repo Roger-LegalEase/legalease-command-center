@@ -2680,7 +2680,7 @@ async function updateTaskRecord(id = "", action = "in_progress", patch = {}) {
     const state = await store.readState();
     const existing = (state.tasks || []).find((task) => task.id === id);
     if (!existing) throw new Error("Task not found.");
-    const internalActions = new Set(["in_progress", "waiting", "blocked", "block", "done", "reopen", "archive", "add_note", "update_priority", "update_due_date", "snooze", "assign", "dismiss"]);
+    const internalActions = new Set(["update_title", "in_progress", "waiting", "blocked", "block", "done", "reopen", "archive", "add_note", "update_priority", "update_due_date", "snooze", "assign", "dismiss"]);
     if (internalActions.has(action)) {
       const result = updateTaskInState(state, id, action, patch || {}, { actor: "owner_token" });
       const nextState = analyzeOperations(result.state);
@@ -40187,7 +40187,56 @@ async function handleRequest(request, response) {
     return;
   }
 
-  const taskAction = url.pathname.match(/^\/api\/tasks\/([^/]+)\/(in_progress|waiting|blocked|done|reopen|archive|add_note|update_priority|update_due_date|snooze|assign|dismiss|block|convert-report-note|convert-content-idea)$/);
+  // TASK DELETION (2026-07-30, approved by Roger). The only task action that destroys rather than
+  // transitions, so it carries what the others do not:
+  //   * OWNER/ADMIN, checked here as well as at the role layer — every other task action is
+  //     manage_tasks, which an operator has;
+  //   * ONE confirmation, made in the client from the title this endpoint returns in its refusal;
+  //   * REFUSE OR CLEAR: a task that is a relationship's next action cannot simply vanish, or the
+  //     record is left with an empty next-action panel and no way forward — the same dead end the
+  //     completion flow just stopped creating. Without `clearNextAction: true` this refuses and
+  //     names the relationship; with it, the next action is cleared in the SAME write.
+  if (url.pathname.match(/^\/api\/tasks\/([^/]+)\/delete$/) && request.method === "POST") {
+    const actorRole = String(accessDecision.actor?.role || "").toLowerCase();
+    if (!["owner", "admin"].includes(actorRole)) {
+      sendJson(response, { error: "Owner or admin access required to delete a task.", requiredPermission: "owner/admin" }, 403);
+      return;
+    }
+    const taskId = decodeURIComponent(url.pathname.match(/^\/api\/tasks\/([^/]+)\/delete$/)[1]);
+    try {
+      const payload = request.headers["content-length"] === "0" ? {} : await readJson(request);
+      const outcome = await serializeStateMutation(async () => {
+        const current = await store.readState();
+        const tasks = Array.isArray(current.tasks) ? current.tasks : [];
+        const task = tasks.find((row) => String(row.id) === taskId);
+        if (!task) throw Object.assign(new Error("Task not found."), { status: 404 });
+        const title = String(task.title || "Untitled task");
+        const partners = Array.isArray(current.partners) ? current.partners : [];
+        const linked = String(task.partnerId || task.linked_partner || task.linkedPartner || "").trim();
+        const owningPartner = linked
+          ? partners.find((row) => String(row.partner_id || row.id) === linked
+            && String(row.nextAction || "").trim() && String(row.nextAction).trim() === title.trim())
+          : null;
+        if (owningPartner && payload?.clearNextAction !== true) {
+          throw Object.assign(new Error(`"${title}" is the next action on ${String(owningPartner.name || "a relationship")}. Deleting it would leave that record with no next action. Confirm again to delete it and clear the next action.`), { status: 409 });
+        }
+        const next = { ...current, tasks: tasks.filter((row) => String(row.id) !== taskId) };
+        if (owningPartner) {
+          next.partners = partners.map((row) => (row === owningPartner
+            ? { ...row, nextAction: "", nextActionDueDate: "", nextFollowUpDate: "", updatedAt: new Date().toISOString() }
+            : row));
+        }
+        await writeChangedCollections(current, next);
+        return { title, clearedNextActionOn: owningPartner ? String(owningPartner.name || "") : "" };
+      });
+      sendJson(response, { ok: true, deleted: true, ...outcome });
+    } catch (error) {
+      sendJson(response, { error: error.message || "Could not delete the task." }, Number(error?.status) || 400);
+    }
+    return;
+  }
+
+  const taskAction = url.pathname.match(/^\/api\/tasks\/([^/]+)\/(in_progress|waiting|blocked|done|reopen|archive|add_note|update_priority|update_due_date|update_title|snooze|assign|dismiss|block|convert-report-note|convert-content-idea)$/);
   if (taskAction && request.method === "POST") {
     try {
       const payload = request.headers["content-length"] === "0" ? {} : await readJson(request);

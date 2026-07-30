@@ -22,7 +22,9 @@ import {
   emitCompanyEvent,
   recordAgentRun,
   requestApproval,
-  COMPANY_EVENTS_CAP
+  COMPANY_EVENTS_CAP,
+  upsertCompanyContacts,
+  upsertCompanyOrganizations
 } from "./company-memory.mjs";
 import { coreStateCollections } from "./storage.mjs";
 
@@ -170,6 +172,53 @@ check("user-facing fields carry no engineering jargon defaults", () => {
   for (const field of [item.title, item.summary, item.recommendation]) {
     assert(!/heartbeat|mutex|act\(\)|registry|lease|collection|JSON/i.test(field), `jargon leaked into: ${field}`);
   }
+});
+
+
+// ---------------------------------------------------------------------------------------------
+// The indexed upsert must be indistinguishable from the one it replaced (2026-07-29).
+// The single-item function was O(n) per call — a copy plus a linear scan — which made the
+// relationship projection quadratic and cost 3.4s of CPU on every GET /api/ui/partners. The batch
+// path builds one index instead. If these two ever disagree, the projection silently changes
+// shape, so the equivalence is pinned rather than assumed.
+// ---------------------------------------------------------------------------------------------
+check("batch contact upsert equals folding the single-item upsert over the same rows", () => {
+  const now = () => "2026-07-29T00:00:00.000Z";
+  const seed = [
+    { contact_id:"cc-1", email:"a@example.org", name:"A", types:["consumer"], organizations:[], links:[{ collection:"x", itemId:"1" }] },
+    { contact_id:"cc-2", email:"b@example.org", name:"B", types:["prospect"], organizations:["org-1"], links:[] }
+  ];
+  const inputs = [
+    { email:"a@example.org", name:"A updated", types:["prospect"], links:[{ collection:"y", itemId:"2" }] },
+    { email:"c@example.org", name:"C", types:["media"] },
+    { contact_id:"cc-2", email:"b@example.org", do_not_contact:true, organizations:["org-2"] },
+    { email:"", name:"no identity" },
+    { email:"C@EXAMPLE.ORG", name:"C again", types:["investor"] }
+  ];
+  let folded = seed;
+  for (const input of inputs) ({ contacts: folded } = upsertCompanyContact(folded, input, { now }));
+  const { contacts: batched } = upsertCompanyContacts(seed, inputs, { now });
+  assert.deepEqual(batched, folded, "batch and folded single-item upserts must produce identical arrays");
+  assert.equal(batched.length, 3, "two seeded plus one new contact");
+  assert.equal(batched[0].types.includes("prospect"), true, "types merge as a set");
+  assert.equal(batched[2].types.includes("investor"), true, "a case-different email matches the same person");
+  assert.deepEqual(seed.map((row) => row.name), ["A", "B"], "the input array is never mutated");
+});
+
+check("batch organisation upsert equals folding the single-item upsert", () => {
+  const now = () => "2026-07-29T00:00:00.000Z";
+  const seed = [{ org_id:"co-1", name:"One", domain:"one.org", types:["legal_aid"], links:[] }];
+  const inputs = [
+    { org_id:"co-1", name:"One renamed", types:["reentry"] },
+    { name:"Two", domain:"two.org", types:["legal_aid"] },
+    { name:"", domain:"" },
+    { name:"Two", domain:"two.org", stage:"approved" }
+  ];
+  let folded = seed;
+  for (const input of inputs) ({ organizations: folded } = upsertCompanyOrganization(folded, input, { now }));
+  const { organizations: batched } = upsertCompanyOrganizations(seed, inputs, { now });
+  assert.deepEqual(batched, folded);
+  assert.equal(batched.length, 2, "domain-or-name identity keeps Two a single organisation");
 });
 
 console.log(`\ntest-company-memory: ${passed} checks passed`);

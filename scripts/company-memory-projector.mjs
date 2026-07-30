@@ -23,8 +23,11 @@ import {
   appendCompanyEvents,
   createAgentRun,
   appendAgentRuns,
-  upsertCompanyContact,
-  upsertCompanyOrganization, settleProjectedCollection } from "./company-memory.mjs";
+  applyContactUpsert,
+  applyOrganizationUpsert,
+  createCompanyContactIndex,
+  createCompanyOrganizationIndex,
+  settleProjectedCollection } from "./company-memory.mjs";
 import { campaignRates, evaluateThresholds, reactivationCampaignOf } from "./reactivation-os.mjs";
 import { autonomyLevelFor } from "./autonomy-levels.mjs";
 import { plainSafetyReasons } from "./campaign-command.mjs";
@@ -483,7 +486,9 @@ function suppressedEmailSet(state) {
 }
 
 function projectContacts(state, { now }) {
-  let contacts = list(state.companyContacts);
+  // ONE index for the whole pass. Previously each upsert copied and scanned the contact array,
+  // which is what made this projection quadratic (see company-memory.mjs).
+  const index = createCompanyContactIndex(state.companyContacts);
   const suppressed = suppressedEmailSet(state);
 
   // reactivationContacts: snake_case; {contact_id,email,first_name,full_name,do_not_contact,
@@ -491,14 +496,14 @@ function projectContacts(state, { now }) {
   for (const row of list(state.reactivationContacts)) {
     const email = lower(row.email);
     if (!email) continue;
-    ({ contacts } = upsertCompanyContact(contacts, {
+    applyContactUpsert(index, {
       email,
       name: clean(row.full_name || row.first_name),
       types: ["consumer"],
       links: [{ collection: "reactivationContacts", itemId: clean(row.contact_id) }],
       do_not_contact: suppressed.has(email) || Boolean(row.do_not_contact || row.unsubscribed),
       last_event_at: clean(row.updated_at)
-    }, { now }));
+    }, { now });
   }
 
   // expungementLifecycleContacts: {lifecycle_contact_id,email,first_name,lifecycle_stage,
@@ -511,35 +516,35 @@ function projectContacts(state, { now }) {
       : /screening/i.test(String(row.lifecycle_stage)) && clean(row.dropoff_step) ? ["abandoned_screening"]
       : /checkout/i.test(String(row.lifecycle_stage)) ? ["checkout_abandon"]
       : ["consumer"];
-    ({ contacts } = upsertCompanyContact(contacts, {
+    applyContactUpsert(index, {
       email,
       name: clean(row.first_name),
       types,
       links: [{ collection: "expungementLifecycleContacts", itemId: clean(row.lifecycle_contact_id) }],
       do_not_contact: suppressed.has(email) || Boolean(row.do_not_contact || row.unsubscribed),
       last_event_at: clean(row.last_seen_at || row.updated_at)
-    }, { now }));
+    }, { now });
   }
 
   // outreachContacts: {contact_id,email,contact_name,organization_name,linked_account_id}.
   for (const row of list(state.outreachContacts)) {
     const email = lower(row.email);
     if (!email) continue;
-    ({ contacts } = upsertCompanyContact(contacts, {
+    applyContactUpsert(index, {
       email,
       name: clean(row.contact_name),
       types: ["partner_contact", "prospect"],
       organizations: [clean(row.linked_account_id)].filter(Boolean),
       links: [{ collection: "outreachContacts", itemId: clean(row.contact_id) }],
       do_not_contact: suppressed.has(email)
-    }, { now }));
+    }, { now });
   }
 
   // rcapRevenueContacts use public_email + suppression_status, not email/do_not_contact.
   for (const row of list(state.rcapRevenueContacts)) {
     const email = lower(row.public_email);
     if (!email) continue;
-    ({ contacts } = upsertCompanyContact(contacts, {
+    applyContactUpsert(index, {
       email,
       name: clean(row.contact_name),
       types: ["partner_contact"],
@@ -547,14 +552,14 @@ function projectContacts(state, { now }) {
       links: [{ collection: "rcapRevenueContacts", itemId: clean(row.contact_id) }],
       do_not_contact: suppressed.has(email) || /bounced|unsubscribed|suppressed/i.test(String(row.suppression_status)),
       last_event_at: clean(row.last_touch)
-    }, { now }));
+    }, { now });
   }
 
-  return contacts;
+  return index.rows;
 }
 
 function projectOrganizations(state, { now }) {
-  let organizations = list(state.companyOrganizations);
+  const index = createCompanyOrganizationIndex(state.companyOrganizations);
   const classify = (text) => /legal.aid/i.test(text) ? ["legal_aid"]
     : /reentry/i.test(text) ? ["reentry"]
     : /workforce/i.test(text) ? ["workforce"]
@@ -565,52 +570,52 @@ function projectOrganizations(state, { now }) {
   for (const row of list(state.partners)) {
     const name = clean(row.name || row.partnerName || row.organization || row.title);
     if (!name) continue;
-    ({ organizations } = upsertCompanyOrganization(organizations, {
+    applyOrganizationUpsert(index, {
       name,
       types: ["rcap_partner"],
       links: [{ collection: "partners", itemId: clean(row.id) }],
       stage: clean(row.status || row.stage)
-    }, { now }));
+    }, { now });
   }
 
   // outreachOrganizations: {account_id,organization_name,domain,website,classification}.
   for (const row of list(state.outreachOrganizations)) {
     const name = clean(row.organization_name);
     if (!name) continue;
-    ({ organizations } = upsertCompanyOrganization(organizations, {
+    applyOrganizationUpsert(index, {
       name,
       domain: lower(row.domain || row.website || "").replace(/^https?:\/\//, "").replace(/\/.*$/, ""),
       types: ["rcap_prospect", ...classify(String(row.classification))],
       links: [{ collection: "outreachOrganizations", itemId: clean(row.account_id) }]
-    }, { now }));
+    }, { now });
   }
 
   // rcapRevenueAccounts: {account_id,organization_name,org_type,segment,account_status}.
   for (const row of list(state.rcapRevenueAccounts)) {
     const name = clean(row.organization_name);
     if (!name) continue;
-    ({ organizations } = upsertCompanyOrganization(organizations, {
+    applyOrganizationUpsert(index, {
       name,
       types: ["rcap_prospect", ...classify(String(row.org_type))],
       links: [{ collection: "rcapRevenueAccounts", itemId: clean(row.account_id) }],
       stage: clean(row.account_status)
-    }, { now }));
+    }, { now });
   }
 
   // prospectCandidates: {id,organization_name,domain,website,classification,review_state}.
   for (const row of list(state.prospectCandidates)) {
     const name = clean(row.organization_name);
     if (!name) continue;
-    ({ organizations } = upsertCompanyOrganization(organizations, {
+    applyOrganizationUpsert(index, {
       name,
       domain: lower(row.domain || row.website || "").replace(/^https?:\/\//, "").replace(/\/.*$/, ""),
       types: ["rcap_prospect", ...classify(String(row.classification))],
       links: [{ collection: "prospectCandidates", itemId: clean(row.id) }],
       stage: clean(row.review_state)
-    }, { now }));
+    }, { now });
   }
 
-  return organizations;
+  return index.rows;
 }
 
 // ---------------------------------------------------------------------------------------------

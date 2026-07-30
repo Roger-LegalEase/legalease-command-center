@@ -373,6 +373,13 @@ export function updateTask(existing = {}, action = "in_progress", patch = {}, op
     return { ...base, status: "waiting", due_date: due, dueDate: due, waiting_on: patch.waiting_on || "Snoozed by operator.", waitingOn: patch.waiting_on || "Snoozed by operator." };
   }
   if (normalizedAction === "assign") return { ...base, owner: patch.owner || existing.owner || "Roger" };
+  // Renaming a task was impossible: there was no action for it, so a typo in a title was permanent.
+  // Internal and reversible, so no confirmation — the safety contract's no-prompt list.
+  if (normalizedAction === "update_title") {
+    const title = clean(patch.title);
+    if (!title) throw new Error("Task rename requires a title.");
+    return { ...base, title };
+  }
   return normalizeTaskRecord({ ...base, ...patch, status: patch.status || normalizedAction || existing.status }, { now });
 }
 

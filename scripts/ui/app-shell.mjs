@@ -205,6 +205,15 @@ const VNEXT_LAZY_ASSETS = Object.freeze({
     styles:Object.freeze([]),
     source:prospectWorkbenchBrowserSource,
     api:"__LE_PROSPECT_WORKBENCH"
+  }),
+  // The relationship record. It was inline, and at ~14 KB it was the single largest thing the
+  // initial payload carried for a page most sessions never open — which is also why adding two
+  // controls to it blew the client-JavaScript ceiling. Lazy, it costs the initial payload
+  // nothing and the record gains room to hold its own actions. Its stylesheets travel with it.
+  "partner-record":Object.freeze({
+    styles:PARTNER_RECORD_STYLESHEET_PATHS,
+    source:partnerRecordBrowserSource,
+    api:"__LE_PARTNER_RECORD"
   })
 });
 
@@ -450,7 +459,7 @@ function vnextLazyAssetLoaderScript(options = {}) {
       const add = (...ids) => ids.forEach((id) => required.add(id));
       if (route === "today") add("task-workbench", "communication-composer");
       if (route === "inbox") add("lee-inbox", "task-workbench", "communication-composer", "relationship-drawer");
-      if (route === "partners" || objectType === "Partner") add("relationship-drawer", "task-workbench", "communication-composer");
+      if (route === "partners" || objectType === "Partner") add("partner-record", "relationship-drawer", "task-workbench", "communication-composer");
       if (route === "support") add("founder-support", "relationship-drawer", "task-workbench", "communication-composer");
       if (route === "meetings") add("founder-calendar", "relationship-drawer", "task-workbench", "communication-composer");
       ${options.founderOsScoreboard ? "" : `if (["revenue", "metrics"].includes(route) || ["revenue", "scoreboard", "metrics", "kpis"].includes(raw)) add("founder-scoreboard");`}
@@ -934,7 +943,7 @@ export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
   html = replaceInitialLoadingSurface(html);
   html = html.replace(
     "</head>",
-    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_HOME_STYLESHEET_PATH))}" />\n  ${PARTNER_RECORD_STYLESHEET_PATHS.map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ")}\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_ACCESSIBILITY_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(FOUNDER_OS_CONCEPT_STYLESHEET_PATH))}" />\n  ${options.outreachEnabled ? [OUTREACH_HOME_STYLESHEET_PATH, CAMPAIGN_WIZARD_STYLESHEET_PATH, CAMPAIGN_DETAIL_STYLESHEET_PATH].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  ${options.filesEnabled ? [FILES_HOME_STYLESHEET, "/assets/ui/files-organization.css", FILE_DETAILS_STYLESHEET, FILE_UPLOAD_STYLESHEET, INVESTOR_ROOM_STYLESHEET].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  <script>${routeCompatibilityBrowserSource(options)}</script>\n</head>`
+    `  <link rel="stylesheet" href="${escapeAttribute(assetUrl(DESKTOP_SHELL_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(INBOX_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(TODAY_PAGE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(QUICK_CAPTURE_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(SOCIAL_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(POST_COMPOSER_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_HOME_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(PARTNERS_ACCESSIBILITY_STYLESHEET_PATH))}" />\n  <link rel="stylesheet" href="${escapeAttribute(assetUrl(FOUNDER_OS_CONCEPT_STYLESHEET_PATH))}" />\n  ${options.outreachEnabled ? [OUTREACH_HOME_STYLESHEET_PATH, CAMPAIGN_WIZARD_STYLESHEET_PATH, CAMPAIGN_DETAIL_STYLESHEET_PATH].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  ${options.filesEnabled ? [FILES_HOME_STYLESHEET, "/assets/ui/files-organization.css", FILE_DETAILS_STYLESHEET, FILE_UPLOAD_STYLESHEET, INVESTOR_ROOM_STYLESHEET].map((path) => `<link rel="stylesheet" href="${escapeAttribute(assetUrl(path))}" />`).join("\n  ") : ""}\n  <script>${routeCompatibilityBrowserSource(options)}</script>\n</head>`
   );
   if (options.discoveryEnabled) {
     const discoveryStyles = [DISCOVERY_ONBOARDING_STYLESHEET, DISCOVERY_CHECKLIST_STYLESHEET, "/assets/ui/discovery-empty-states.css", DISCOVERY_HELP_STYLESHEET]
@@ -958,7 +967,7 @@ export function renderVNextDesktopShell(legacyHtml = "", options = {}) {
   html = html.replace(shellMarker, `${chrome.start}\n  ${shellMarker}`);
   const toastIndex = html.indexOf(toastMarker);
   html = html.slice(0, toastIndex) + chrome.end + "\n  " + html.slice(toastIndex);
-  html = html.replace("</body>", `${shellClientScript(options)}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource(options)}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource(options)}</script>\n<script>${partnerRecordBrowserSource()}</script>\n${options.outreachEnabled ? `${options.founderOsCampaigns ? "" : `<script>${outreachHomeBrowserSource()}</script>\n`}<script>${campaignWizardBrowserSource()}</script>\n<script>${campaignReviewBrowserSource()}</script>\n<script>${campaignDetailBrowserSource()}</script>` : ""}\n${options.filesEnabled ? `<script>${filesIntegrationBrowserSource()}</script>` : ""}\n${vnextLazyAssetLoaderScript(options)}\n</body>`);
+  html = html.replace("</body>", `${shellClientScript(options)}\n<script>${shellResilienceBrowserSource()}</script>\n<script>${globalCreateBrowserSource()}</script>\n<script>${quickCaptureBrowserSource()}</script>\n<script>${globalSearchBrowserSource()}</script>\n<script>${todayPageBrowserSource(options)}</script>\n<script>${inboxPageBrowserSource()}</script>\n<script>${inboxActionBrowserSource()}</script>\n<script>${socialHomeBrowserSource()}</script>\n<script>${socialResultsBrowserSource()}</script>\n<script>${postComposerBrowserSource()}</script>\n<script>${partnersHomeBrowserSource(options)}</script>\n${options.outreachEnabled ? `${options.founderOsCampaigns ? "" : `<script>${outreachHomeBrowserSource()}</script>\n`}<script>${campaignWizardBrowserSource()}</script>\n<script>${campaignReviewBrowserSource()}</script>\n<script>${campaignDetailBrowserSource()}</script>` : ""}\n${options.filesEnabled ? `<script>${filesIntegrationBrowserSource()}</script>` : ""}\n${vnextLazyAssetLoaderScript(options)}\n</body>`);
   if (options.socialEnabled) {
     // This match must be rendered with the SAME arguments as the injection above, or it
     // silently fails to find its anchor and the social production controller is never

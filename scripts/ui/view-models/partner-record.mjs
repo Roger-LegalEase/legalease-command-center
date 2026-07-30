@@ -78,17 +78,48 @@ export function buildPartnerRecordView(state = {}, actor = {}, partnerId = "", n
   const record = rawPartner(state, actor, id);
   if (!record) return deepFreeze({ available:false, availability:{ state:"not_found_or_unauthorized" }, partnerId:id, tabs:PARTNER_RECORD_TABS });
   const activity = buildPartnerActivity(state, actor, id, now);
+  // Tasks belonging to this relationship. `tasks` is already in the record's read set, so this
+  // reads what is there rather than widening the contract. Terminal tasks are excluded: the
+  // record is for work in flight, and the full history stays in the task views.
+  const canManageTasks = roleHasCapability(String(actor.role || "").toLowerCase(), "manage_tasks");
+  const partnerTasks = (Array.isArray(state.tasks) ? state.tasks : [])
+    .filter((task) => {
+      const linked = String(task.partnerId || task.linked_partner || task.linkedPartner || "").trim();
+      return linked === id && !["done", "archived"].includes(String(task.status || "open").toLowerCase());
+    })
+    .map((task) => Object.freeze({
+      id:String(task.id || ""),
+      title:String(task.title || "Untitled task"),
+      status:String(task.status || "open"),
+      dueAt:String(task.due_date || task.dueDate || ""),
+      owner:String(task.owner || ""),
+      priority:String(task.priority || "")
+    }))
+    .filter((task) => task.id);
+  const tasks = Object.freeze({
+    available:canManageTasks,
+    // The panel is the one authorized place a task changes; the record opens it against a task.
+    editable:canManageTasks,
+    items:Object.freeze(partnerTasks)
+  });
   const selectedTab = PARTNER_RECORD_TABS.some((tab) => tab.key === options.tab) ? options.tab : "overview";
+  // Staleness is derived from the date the record already carries — no new field, and no claim
+  // the data cannot support: a next action with no due date is not overdue, it is undated.
+  const dueTime = Date.parse(stageView.nextAction.dueAt || "");
+  const nowTime = Date.parse(now);
   const nextAction = {
     available:Boolean(stageView.nextAction.summary),
     summary:stageView.nextAction.summary,
     dueAt:stageView.nextAction.dueAt,
+    overdue:Boolean(stageView.nextAction.summary) && Number.isFinite(dueTime) && Number.isFinite(nowTime) && dueTime < nowTime,
+    setEndpoint:`/api/ui/partners/${encodeURIComponent(id)}/next-action`,
     completeEndpoint:`/api/ui/partners/${encodeURIComponent(id)}/next-action/complete`
   };
   return deepFreeze({
     available:true,
     availability:{ state:"available" },
     partnerId:id,
+    tasks,
     href:stageView.exactPartnerLink,
     header:{
       name:stageView.name || "Unnamed Partner",

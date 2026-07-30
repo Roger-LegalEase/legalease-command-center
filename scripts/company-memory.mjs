@@ -385,20 +385,54 @@ export function companyOrganizationId(name = "", domain = "") {
   return `co-${createHash("sha256").update(key).digest("hex").slice(0, 16)}`;
 }
 
-// Upsert one person. Never duplicates (email-keyed); merges types/links/orgs as sets.
-export function upsertCompanyContact(contacts = [], input = {}, { now = () => new Date().toISOString() } = {}) {
+// ---------------------------------------------------------------------------------------------
+// INDEXED UPSERT. The single-item functions below scanned the whole array on every call AND
+// copied it, which is O(n) per upsert and therefore O(n^2) for a projection pass. Measured on
+// production data (2026-07-29): the relationship projection performs ~12,000 contact upserts
+// against a ~4,000-row array, and GET /api/ui/partners spent 3.4 seconds there — 7.6s end to end
+// — on EVERY request, cache or no cache, because the projection itself is not cached.
+//
+// The index makes lookup O(1) and lets a batch mutate one array instead of copying it per row.
+// The merge semantics live in applyContactUpsert / applyOrganizationUpsert and are shared by the
+// single-item and batch entry points, so the two can never drift. Ordering is preserved exactly:
+// a Map keyed on first-seen position reproduces findIndex's "first row matching either key".
+// ---------------------------------------------------------------------------------------------
+
+export function createCompanyContactIndex(contacts = []) {
+  const rows = [...list(contacts)];
+  const byId = new Map();
+  const byEmail = new Map();
+  rows.forEach((row, position) => {
+    const id = row?.contact_id;
+    if (id !== undefined && id !== null && !byId.has(id)) byId.set(id, position);
+    const email = lower(row?.email);
+    if (email && !byEmail.has(email)) byEmail.set(email, position);
+  });
+  return { rows, byId, byEmail };
+}
+
+// The exact position findIndex would have returned for (id, email), or -1.
+function contactPosition(index, id, email) {
+  const byId = index.byId.has(id) ? index.byId.get(id) : -1;
+  const byEmail = email && index.byEmail.has(email) ? index.byEmail.get(email) : -1;
+  if (byId < 0) return byEmail;
+  if (byEmail < 0) return byId;
+  return Math.min(byId, byEmail);
+}
+
+/** Applies one contact upsert to an index, in place. Returns the resulting row, or null. */
+export function applyContactUpsert(index, input = {}, { now = () => new Date().toISOString() } = {}) {
   const email = lower(input.email);
   const id = clean(input.contact_id) || companyContactId(email);
-  if (!id) return { contacts: list(contacts), contact: null };
+  if (!id) return null;
   const at = now();
-  const next = [...list(contacts)];
-  const idx = next.findIndex((c) => c.contact_id === id || (email && lower(c.email) === email));
+  const idx = contactPosition(index, id, email);
   const types = list(input.types).filter((t) => CONTACT_TYPES.includes(t));
   const links = list(input.links).filter((l) => l && clean(l.collection));
   const organizations = list(input.organizations).map(clean).filter(Boolean);
   if (idx >= 0) {
-    const prior = next[idx];
-    next[idx] = settleProjectedRow(prior, {
+    const prior = index.rows[idx];
+    index.rows[idx] = settleProjectedRow(prior, {
       ...prior,
       name: clean(input.name) || prior.name,
       email: prior.email || email,
@@ -409,7 +443,10 @@ export function upsertCompanyContact(contacts = [], input = {}, { now = () => ne
       last_event_at: clean(input.last_event_at) || prior.last_event_at || "",
       updatedAt: at
     }, at);
-    return { contacts: next, contact: next[idx] };
+    // A merged row can gain an email it did not have; index it so a later row finds this one.
+    const merged = lower(index.rows[idx].email);
+    if (merged && !index.byEmail.has(merged)) index.byEmail.set(merged, idx);
+    return index.rows[idx];
   }
   const contact = {
     contact_id: id,
@@ -424,21 +461,51 @@ export function upsertCompanyContact(contacts = [], input = {}, { now = () => ne
     createdAt: at,
     updatedAt: at
   };
-  next.push(contact);
-  return { contacts: next, contact };
+  const position = index.rows.push(contact) - 1;
+  if (!index.byId.has(id)) index.byId.set(id, position);
+  if (email && !index.byEmail.has(email)) index.byEmail.set(email, position);
+  return contact;
 }
 
-export function upsertCompanyOrganization(orgs = [], input = {}, { now = () => new Date().toISOString() } = {}) {
+/** Batch upsert — one index build, then O(1) per row. Same result as folding the single-item
+ *  version over the same inputs; test-company-memory asserts that equivalence. */
+export function upsertCompanyContacts(contacts = [], inputs = [], options = {}) {
+  const index = createCompanyContactIndex(contacts);
+  for (const input of list(inputs)) applyContactUpsert(index, input, options);
+  return { contacts: index.rows };
+}
+
+// Upsert one person. Never duplicates (email-keyed); merges types/links/orgs as sets.
+export function upsertCompanyContact(contacts = [], input = {}, { now = () => new Date().toISOString() } = {}) {
+  const email = lower(input.email);
+  const id = clean(input.contact_id) || companyContactId(email);
+  if (!id) return { contacts: list(contacts), contact: null };
+  const index = createCompanyContactIndex(contacts);
+  const contact = applyContactUpsert(index, input, { now });
+  return { contacts: index.rows, contact };
+}
+
+export function createCompanyOrganizationIndex(orgs = []) {
+  const rows = [...list(orgs)];
+  const byId = new Map();
+  rows.forEach((row, position) => {
+    const id = row?.org_id;
+    if (id !== undefined && id !== null && !byId.has(id)) byId.set(id, position);
+  });
+  return { rows, byId };
+}
+
+/** Applies one organisation upsert to an index, in place. Returns the row, or null. */
+export function applyOrganizationUpsert(index, input = {}, { now = () => new Date().toISOString() } = {}) {
   const id = clean(input.org_id) || companyOrganizationId(input.name, input.domain);
-  if (!id) return { organizations: list(orgs), organization: null };
+  if (!id) return null;
   const at = now();
-  const next = [...list(orgs)];
-  const idx = next.findIndex((o) => o.org_id === id);
+  const idx = index.byId.has(id) ? index.byId.get(id) : -1;
   const types = list(input.types).filter((t) => ORGANIZATION_TYPES.includes(t));
   const links = list(input.links).filter((l) => l && clean(l.collection));
   if (idx >= 0) {
-    const prior = next[idx];
-    next[idx] = settleProjectedRow(prior, {
+    const prior = index.rows[idx];
+    index.rows[idx] = settleProjectedRow(prior, {
       ...prior,
       name: clean(input.name) || prior.name,
       domain: lower(input.domain) || prior.domain,
@@ -447,7 +514,7 @@ export function upsertCompanyOrganization(orgs = [], input = {}, { now = () => n
       stage: clean(input.stage) || prior.stage || "",
       updatedAt: at
     }, at);
-    return { organizations: next, organization: next[idx] };
+    return index.rows[idx];
   }
   const organization = {
     org_id: id,
@@ -459,8 +526,23 @@ export function upsertCompanyOrganization(orgs = [], input = {}, { now = () => n
     createdAt: at,
     updatedAt: at
   };
-  next.push(organization);
-  return { organizations: next, organization };
+  const position = index.rows.push(organization) - 1;
+  if (!index.byId.has(id)) index.byId.set(id, position);
+  return organization;
+}
+
+export function upsertCompanyOrganizations(orgs = [], inputs = [], options = {}) {
+  const index = createCompanyOrganizationIndex(orgs);
+  for (const input of list(inputs)) applyOrganizationUpsert(index, input, options);
+  return { organizations: index.rows };
+}
+
+export function upsertCompanyOrganization(orgs = [], input = {}, { now = () => new Date().toISOString() } = {}) {
+  const id = clean(input.org_id) || companyOrganizationId(input.name, input.domain);
+  if (!id) return { organizations: list(orgs), organization: null };
+  const index = createCompanyOrganizationIndex(orgs);
+  const organization = applyOrganizationUpsert(index, input, { now });
+  return { organizations: index.rows, organization };
 }
 
 function dedupeLinks(links = []) {
