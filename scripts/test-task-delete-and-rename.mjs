@@ -91,6 +91,49 @@ try {
     assert.ok([401, 403].includes(anonymous.status), `an unauthenticated delete must be refused, got ${anonymous.status}`);
     ok("an unauthenticated delete is refused");
   }
+
+  // ---- the stage control, through the request path -------------------------------------------
+  // Stage was effectively read-only: the only write required a reply suggestion, and no reply is
+  // ever recorded. These cross the ROUTE, not the module, because a route nothing calls and a
+  // module nothing routes to are the two failures this project has already shipped.
+  {
+    const refused = await post("/api/ui/partners/p-elev/stage", { stage:"active_pilot", requestId:"stage-test-unconfirmed-01" });
+    assert.equal(refused.status, 400, "an unconfirmed stage change must be refused");
+    // The partner API sanitises handler messages to one generic sentence, so the guarantee tested
+    // here is the refusal and the absence of a write, not the wording.
+    assert.match((await refused.json()).error, /Nothing was saved/, "and must say nothing was saved");
+
+    const invalid = await post("/api/ui/partners/p-elev/stage", { stage:"not_a_stage", confirmed:true, requestId:"stage-test-invalid-000001" });
+    assert.equal(invalid.status, 400, "a stage outside the vocabulary is refused");
+    assert.match((await invalid.json()).error, /Nothing was saved/);
+    assert.equal(stored().partners[0].stage, "pilot", "and nothing was written");
+    ok("the stage route refuses an unconfirmed change and an unknown stage");
+
+    const response = await post("/api/ui/partners/p-elev/stage", { stage:"active_pilot", note:"Pilot signed on the call", confirmed:true, requestId:"stage-test-accepted-00001" });
+    assert.equal(response.status, 200, `a confirmed valid change is accepted, got ${response.status}`);
+    const state = stored();
+    assert.equal(state.partners[0].stage, "active_pilot", "the stage moved");
+    assert.equal(state.partners[0].status, "active_pilot", "status tracks it, as the suggestion path does");
+    const activity = state.activityEvents.find((row) => row.eventType === "stage_changed");
+    assert.ok(activity, "a stage_changed activity event is written, identical in type to the suggestion path");
+    assert.equal(activity.fromStage, "pilot");
+    assert.equal(activity.toStage, "active_pilot");
+    const audit = state.auditHistory.find((row) => row.action === "partner_stage_changed");
+    assert.ok(audit, "and an audit row");
+    assert.match(audit.detail, /pilot to active_pilot/);
+    ok("a confirmed change moves the stage and writes the same activity and audit rows");
+  }
+
+  // ---- the control on the record actually reaches that route ---------------------------------
+  {
+    const runtime = readFileSync(new URL("./ui/pages/partner-record.mjs", import.meta.url), "utf8");
+    assert.match(runtime, /data-partner-action="set_stage"/, "the record must carry a visible stage control");
+    assert.match(runtime, /\/stage"/, "and it must post to the stage route");
+    assert.match(runtime, /confirmed:true/, "sending the confirmation the endpoint requires");
+    assert.match(runtime, /requestId:"stage-"/, "and the requestId the endpoint requires — without it the control 400s, which is how a dead button ships");
+    assert.match(runtime, /window\.confirm\(/, "behind exactly one confirmation");
+    ok("the record's stage control posts to the stage route behind one confirmation");
+  }
 } finally {
   await server.stop();
 }

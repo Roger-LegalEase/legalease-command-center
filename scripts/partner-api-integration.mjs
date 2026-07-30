@@ -6,6 +6,7 @@ import {
   PARTNER_ARTIFACT_READ_COLLECTIONS
 } from "./partner-artifact-service.mjs";
 import {
+  applyPartnerStage,
   applyPartnerStageSuggestion,
   buildOneToOnePartnerFollowUp,
   buildPartnerCampaignSelection,
@@ -122,6 +123,7 @@ export const PARTNER_API_ENDPOINTS = Object.freeze([
   "GET /api/ui/partners/:id/outreach",
   "GET /api/ui/partners/:id/files",
   "POST /api/ui/partners/:id/activity",
+  "POST /api/ui/partners/:id/stage",
   "POST /api/ui/partners/:id/next-action",
   "POST /api/ui/partners/:id/next-action/complete",
   "POST /api/ui/partners/outreach/selection",
@@ -266,6 +268,8 @@ function matchPath(pathname) {
   if (parts.length === 2 && parts[1] === "outreach") return { kind:"outreach", partnerId };
   if (parts.length === 2 && parts[1] === "files") return { kind:"files", partnerId };
   if (parts.length === 2 && parts[1] === "activity") return { kind:"activity", partnerId };
+  // A DIRECT stage change. Distinct from kind:"stage" below, which is the reply-suggestion path.
+  if (parts.length === 2 && parts[1] === "stage") return { kind:"set_stage", partnerId };
   if (parts.length === 2 && parts[1] === "next-action") return { kind:"next_action", partnerId };
   if (parts.length === 3 && parts[1] === "next-action" && parts[2] === "complete") return { kind:"complete_next_action", partnerId };
   if (parts.length === 3 && parts[1] === "outreach" && parts[2] === "follow-up") return { kind:"follow_up", partnerId };
@@ -322,6 +326,18 @@ export async function handlePartnerApiRequest({
       const state = await readState(store, PARTNER_SELECTION_READ_COLLECTIONS);
       const selection = buildPartnerCampaignSelection(state, actor, input.partnerIds);
       return { matched:true, status:200, body:{ ok:true, ...selection, mutations:0, externalActions:0 } };
+    }
+    if (route.kind === "set_stage" && verb === "POST") {
+      noQuery(searchParams);
+      const stageInput = { stage:input.stage, note:input.note, confirmed:input.confirmed, requestId:input.requestId };
+      const result = await runMutation({
+        store, actor, now, input:stageInput,
+        apply:(state, options) => applyPartnerStage(state, route.partnerId, stageInput, options),
+        allowedCollections:["partners", "activityEvents", "auditHistory"],
+        readCollections:PARTNER_OUTREACH_READ_COLLECTIONS,
+        response:(saved) => ({ partnerId:route.partnerId, stage:saved.stage || null })
+      });
+      return { matched:true, ...result };
     }
     if (route.kind === "follow_up" && verb === "POST") {
       noQuery(searchParams);

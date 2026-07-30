@@ -298,6 +298,9 @@ export function taskWorkbenchBrowserSource() {
       if (name === "waiting") return { action:"waiting", values:{ waitingOn:String(values.waitingOn || "").trim() }, required:["waitingOn"] };
       if (name === "blocked") return { action:"blocked", values:{ blockerReason:String(values.blockerReason || "").trim() }, required:["blockerReason"] };
       if (name === "due") return { action:"update_due_date", values:{ dueDate:String(values.dueDate || "") }, required:["dueDate"] };
+      // Without this branch the owner form fell through to the add_note default below and submitted
+      // an empty note, so "Change owner" appeared to work and saved nothing.
+      if (name === "owner") return { action:"assign", values:{ owner:String(values.owner || "").trim() }, required:["owner"] };
       if (name === "priority") return { action:"update_priority", values:{ priority:String(values.priority || "") }, required:["priority"] };
       if (name === "snooze") return { action:"snooze", values:{ days:Number(values.days || 3) }, required:[] };
       return { action:"add_note", values:{ note:String(values.note || "").trim() }, required:["note"] };

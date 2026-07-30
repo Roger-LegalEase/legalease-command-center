@@ -1,5 +1,6 @@
 import { createGlobalObject } from "./global-create-service.mjs";
 import { recordVisibleToActor } from "./global-search-service.mjs";
+import { INTERNAL_PARTNER_STAGE_MAPPING } from "./ui/view-models/partner-stage.mjs";
 import { partnerFollowUpDraft } from "./partner-lifecycle.mjs";
 import { roleHasCapability, roles } from "./roles.mjs";
 import { buildCampaignViews } from "./ui/view-models/campaign-view.mjs";
@@ -159,6 +160,69 @@ export function buildPartnerOutreachIntegration(state = {}, actor = {}, partnerI
   const campaigns = campaignsForPartner(state, actor, id);
   const suggestions = reviewedReplySuggestions(state, actor, id, now);
   return Object.freeze({ available:true, state:campaigns.length ? "available" : "available_empty", partner:{ id, name:partner.name, href:partner.exactPartnerLink }, campaigns:Object.freeze(campaigns), suggestions:Object.freeze(suggestions), actions:Object.freeze({ createCampaign:PARTNER_OUTREACH_ENDPOINTS.createCampaign, followUp:PARTNER_OUTREACH_ENDPOINTS.followUp.replace(":partnerId", encodeURIComponent(id)) }), safety:Object.freeze({ campaignCopies:0, partnerCopies:0, silentStageChanges:0, externalActions:0 }) });
+}
+
+/**
+ * A DIRECT stage change (2026-07-30). Until now the only way to move a stage was to apply a
+ * reviewed reply suggestion — and no reply is ever recorded anywhere in the system, so in practice
+ * a founder could not change a stage at all.
+ *
+ * It writes exactly what the suggestion path writes: the same partner fields, the same
+ * `stage_changed` activity event, the same audit row. Only the trigger differs, so a stage moved by
+ * hand and a stage moved from a suggestion are indistinguishable downstream and in the audit trail.
+ *
+ * The stage is validated against INTERNAL_PARTNER_STAGE_MAPPING — the vocabulary the projection
+ * already reads — so an unknown stage is refused rather than stored and rendered as "unavailable".
+ * `confirmed: true` is required, matching the suggestion path: one confirmation, never zero.
+ */
+export function applyPartnerStage(state = {}, partnerId = "", input = {}, options = {}) {
+  authorize(options.actor, "mutate_state");
+  const id = clean(partnerId);
+  const request = requestId(input.requestId);
+  if (input.confirmed !== true) throw new PartnerOutreachError("Confirm the stage change. Nothing was saved.", 400);
+  const stage = clean(input.stage).toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(INTERNAL_PARTNER_STAGE_MAPPING, stage)) {
+    throw new PartnerOutreachError("That is not a stage this product recognises. Nothing was saved.", 400);
+  }
+  const eventId = `activity-partner-stage-direct-${request}`;
+  if (list(state.activityEvents).some((event) => event.id === eventId)) return Object.freeze({ state, alreadyExisted:true });
+  const partnerIndex = list(state.partners).findIndex((record) => clean(record.id || record.partnerId) === id && recordVisibleToActor(record, options.actor));
+  if (partnerIndex < 0) throw new PartnerOutreachError("Partner was not found or is not available for this account.", 404);
+  const current = state.partners[partnerIndex];
+  const now = clean(options.now);
+  const fromStage = clean(current.stage || current.status);
+  const note = clean(input.note).slice(0, 500);
+  const updated = { ...current, stage, status:stage, updatedAt:now };
+  const activity = {
+    id:eventId,
+    eventType:"stage_changed",
+    title:note || `Partner stage changed to ${stage}`,
+    partnerId:id,
+    relatedObjectType:"partner",
+    relatedObjectId:id,
+    fromStage,
+    toStage:stage,
+    createdAt:now,
+    metadata:{ externalAction:false, changedDirectly:true }
+  };
+  const audit = {
+    id:`audit-partner-stage-direct-${request}`,
+    timestamp:now,
+    actor:clean(options.actor.id || options.actor.role),
+    action:"partner_stage_changed",
+    target:id,
+    detail:`${fromStage || "unset"} to ${stage}`
+  };
+  return Object.freeze({
+    state:{
+      ...state,
+      partners:state.partners.map((partner, index) => index === partnerIndex ? updated : partner),
+      activityEvents:[activity, ...list(state.activityEvents)],
+      auditHistory:[audit, ...list(state.auditHistory)]
+    },
+    alreadyExisted:false,
+    stage
+  });
 }
 
 export function applyPartnerStageSuggestion(state = {}, partnerId = "", input = {}, options = {}) {
