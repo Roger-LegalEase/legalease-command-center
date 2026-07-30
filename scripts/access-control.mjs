@@ -116,6 +116,9 @@ export function permissionForRequest(method = "GET", pathname = "/") {
     return "read";
   }
   if (/\/api\/soc2\/evidence\/|\/api\/growth\/upsert/.test(pathname) && /compliance|soc2/i.test(pathname)) return "compliance_review";
+  // Deleting a task destroys a record rather than transitioning it; the handler additionally
+  // requires owner/admin. Every other /api/tasks action stays on the default write permission.
+  if (/^\/api\/tasks\/[^/]+\/delete$/.test(pathname)) return "admin";
   if (pathname === "/api/heartbeat/autopilot") return "admin";
   if (pathname === "/api/heartbeat/tick") return "write";
   // Reactivation live mode — the owner Run/Stop switch that arms real consumer email sending.

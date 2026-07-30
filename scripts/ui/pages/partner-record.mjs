@@ -12,13 +12,31 @@ export const PARTNER_RECORD_STYLESHEET_PATHS = Object.freeze([
 
 function overview(view) {
   const relationship = view.overview.relationship;
+  // WHY OVERVIEW CARRIES ACTIVITY (2026-07-30). Adding a note from this record saved correctly —
+  // the POST returned ok and the row landed in activityEvents — and then nothing on the page
+  // changed, because the feed lives on the Activity tab and the record opens on Overview. The
+  // note was neither filtered nor unprojected; it was one tab away from the button that created
+  // it. So the surface you act on now shows what you just did, and the Activity tab remains the
+  // full history.
+  // Tasks, with the panel opened against the task itself. [data-task-open] is the contract the
+  // task panel already listens for document-wide, and that panel is already route-loaded here —
+  // so due date and owner become changeable from the record without a new endpoint or a new
+  // surface. Owner in particular had an endpoint (`assign`) that nothing had ever called.
+  const tasks = !view.tasks || !view.tasks.available
+    ? "<p>Tasks require additional access.</p>"
+    : view.tasks.items.length
+      ? `<ul class="partner-record-tasks">${view.tasks.items.map((task) => `<li><strong>${escapeHtml(task.title)}</strong><span>${escapeHtml(task.status)}${task.dueAt ? ` · due ${date(task.dueAt)}` : " · no due date"}${task.owner ? ` · ${escapeHtml(task.owner)}` : " · unassigned"}</span><button type="button" data-task-open data-task-id="${escapeAttribute(task.id)}">Change due date or owner</button></li>`).join("")}</ul>`
+      : "<p>No open tasks for this relationship.</p>";
+  const recent = view.activity.available && view.activity.events.length
+    ? `<ul>${view.activity.events.slice(0, 4).map((event) => `<li><strong>${escapeHtml(event.summary)}</strong><span>${escapeHtml(event.label)} · ${date(event.occurredAt)}</span></li>`).join("")}</ul>`
+    : "<p>Nothing logged yet. Add a note or log activity and it appears here.</p>";
   const contacts = view.overview.contacts.available
     ? view.overview.contacts.items.length ? `<ul>${view.overview.contacts.items.map((item) => `<li><strong>${display(item.name, "Contact")}</strong><span>${display(item.title, "Role unavailable")}</span>${item.email ? `<span>${escapeHtml(item.email)}</span>` : ""}</li>`).join("")}</ul>` : "<p>No contacts recorded.</p>"
     : "<p>Contact details require additional access.</p>";
   const notes = view.overview.notes.available
     ? view.overview.notes.items.length ? `<ul>${view.overview.notes.items.map((item) => `<li>${escapeHtml(item.summary)}</li>`).join("")}</ul>` : "<p>No relationship notes recorded.</p>"
     : "<p>Relationship notes require additional access.</p>";
-  return `<div class="partner-record-grid"><section><h2>Relationship</h2><dl><div><dt>Type</dt><dd>${display(relationship.type)}</dd></div><div><dt>Geography</dt><dd>${display(relationship.geography)}</dd></div><div><dt>Opportunity</dt><dd>${display(relationship.opportunity)}</dd></div><div><dt>Blocker</dt><dd>${display(relationship.blocker)}</dd></div></dl></section><section><h2>Contacts</h2>${contacts}</section><section><h2>Notes</h2>${notes}</section><section><h2>Programs</h2>${view.overview.programs.length ? `<ul>${view.overview.programs.map((program) => `<li><strong>${display(program.name, "Program")}</strong><span>${display(program.status)}</span></li>`).join("")}</ul>` : "<p>No programs recorded.</p>"}</section></div>`;
+  return `<div class="partner-record-grid"><section class="partner-record-tasks-card"><h2>Tasks</h2>${tasks}</section><section class="partner-record-recent"><h2>Recent activity</h2>${recent}</section><section><h2>Relationship</h2><dl><div><dt>Type</dt><dd>${display(relationship.type)}</dd></div><div><dt>Geography</dt><dd>${display(relationship.geography)}</dd></div><div><dt>Opportunity</dt><dd>${display(relationship.opportunity)}</dd></div><div><dt>Blocker</dt><dd>${display(relationship.blocker)}</dd></div></dl></section><section><h2>Contacts</h2>${contacts}</section><section><h2>Notes</h2>${notes}</section><section><h2>Programs</h2>${view.overview.programs.length ? `<ul>${view.overview.programs.map((program) => `<li><strong>${display(program.name, "Program")}</strong><span>${display(program.status)}</span></li>`).join("")}</ul>` : "<p>No programs recorded.</p>"}</section></div>`;
 }
 
 function activity(view) {

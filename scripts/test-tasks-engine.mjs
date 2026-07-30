@@ -65,4 +65,15 @@ const snoozed = updateTask(merged.tasks[1], "snooze", { days: 3 }, { now: "2026-
 assert.equal(snoozed.status, "waiting");
 assert.equal(snoozed.dueDate, "2026-05-29");
 
+
+// Rename (2026-07-30, approved). There was no action for it, so a typo in a title was permanent.
+{
+  const renamed = updateTask({ id:"t-1", title:"Old title", status:"open" }, "update_title", { title:"  New title  " }, { now:"2026-07-30T00:00:00.000Z" });
+  assert.equal(renamed.title, "New title", "a rename trims and replaces the title");
+  assert.equal(renamed.status, "open", "renaming does not move the task");
+  assert.equal(renamed.history[0].action, "update_title", "the rename is recorded in history");
+  assert.throws(() => updateTask({ id:"t-1", title:"Old" }, "update_title", { title:"   " }), /requires a title/,
+    "an empty rename is refused rather than blanking the title");
+  console.log("  \u2713 a task can be renamed, and an empty title is refused");
+}
 console.log("tasks engine tests passed");

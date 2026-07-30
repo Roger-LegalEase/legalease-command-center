@@ -346,7 +346,14 @@ function eventSummary(kind, record, stage, canReadSensitive) {
   }
   if (kind === "reply") return "Partner reply recorded.";
   if (kind === "meeting") return canReadSensitive && safeDisplayText(record.title || record.name, 120) || "Partner meeting recorded.";
-  if (kind === "note") return "Partner note recorded.";
+  // A note's own words, not a label about it (2026-07-30). Adding a note from the record stored
+  // the text in `title` and the feed showed the generic sentence, so the note was written and its
+  // content never displayed anywhere. Gated on canReadSensitive like meetings: the text is
+  // operator-entered content, not a status.
+  if (kind === "note") {
+    return (canReadSensitive && safeDisplayText(record.title || record.summary || record.note, 200))
+      || "Partner note recorded.";
+  }
   if (kind === "outreach") return "Partner outreach sent.";
   if (kind === "document") return safeDisplayText(record.reportTitle || record.title || record.name, 120) || "Partner document created.";
   if (kind === "file") return safeDisplayText(record.title || record.name || record.fileName, 120) || "Partner file shared.";
