@@ -259,8 +259,41 @@ assert.doesNotMatch(sources, /(?:^|[^\w])(?:save|send|email|schedule|upload|shar
 const previewSource = readFileSync("scripts/preview-server.mjs", "utf8");
 assert.doesNotMatch(previewSource, /view-models\/partner-activity(?:-sources)?\.mjs/);
 assert.match(readFileSync("package.json", "utf8"), /"test:vnext-partner-activity": "node scripts\/test-vnext-partner-activity\.mjs"/);
+// A note logged FROM the record must show the operator's own words, and the legacy history body
+// must still never project. Both directions are pinned here so the hash below is not the only
+// guard: the summary rule can be re-pinned for a deliberate change, but losing either behaviour
+// fails on its own terms.
+{
+  const noteState = {
+    partners:[{ id:"partner-note-vis", organizationName:"Note Visible Partner", status:"active" }],
+    activityEvents:[
+      { id:"act-note-title", eventType:"note_added", title:"Clinic lead wants an August start",
+        partnerId:"partner-note-vis", relatedObjectType:"partner", relatedObjectId:"partner-note-vis",
+        createdAt:"2026-07-18T09:00:00.000Z" }
+    ]
+  };
+  const visible = buildPartnerActivity(noteState, OWNER, "partner-note-vis", NOW);
+  const noteEvent = visible.events.find((event) => /note/i.test(event.label));
+  assert.ok(noteEvent, "a note logged on the record must appear in its activity");
+  assert.equal(noteEvent.summary, "Clinic lead wants an August start",
+    "and it must show the words the operator typed, not a label about them");
+
+  const redacted = buildPartnerActivity(noteState, { authenticated:true, role:"viewer" }, "partner-note-vis", NOW);
+  const redactedEvent = (redacted.events || []).find((event) => /note/i.test(event.label));
+  if (redactedEvent) {
+    assert.equal(redactedEvent.summary, "Partner note recorded.",
+      "a role without sensitive access sees that a note exists, never its text");
+  }
+}
+
 function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
-assert.equal(sha256(readFileSync("scripts/ui/view-models/partner-activity.mjs")), "3d2f8820dc20c91d3dd8ac14b0f50846c38a4777376433eed741e063629509c8");
+// Re-pinned 2026-07-30 for ONE reviewed change: eventSummary's note branch returns the event's
+// `title` — the operator's own words, written by the record's Add-note flow — instead of the fixed
+// sentence "Partner note recorded.". `record.note`, the legacy partner.history body, is still never
+// read; the first attempt did read it and leaked "Sensitive note body must not project." to an
+// owner, which the forbidden-strings contract above caught in CI. The behaviour this hash used to
+// be the only guard for is now asserted directly, just above.
+assert.equal(sha256(readFileSync("scripts/ui/view-models/partner-activity.mjs")), "08c91aed1a5c65c45b0e9c6acea4309a081cca2e5da75153247737f323395c42");
 assert.equal(sha256(readFileSync("scripts/ui/view-models/partner-activity-sources.mjs")), "c7ba13cc3002e0fdf0fb0a83f1f75b825be27e7689009c4f5f929230ca3db82b");
 assert.doesNotMatch(previewSource, /from\s+["'][^"']*view-models\/partner-activity(?:-sources)?\.mjs["']/, "Shared integration must not couple the server directly to the activity projection.");
 

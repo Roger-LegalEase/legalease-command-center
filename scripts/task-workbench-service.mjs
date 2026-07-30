@@ -46,6 +46,12 @@ const ALLOWED_KEYS = Object.freeze(new Set([
   "waitingOn",
   "blockerReason",
   "dueDate",
+  // Without these two the panel's own request was rejected as "unsupported information": `assign`
+  // and `update_title` were allowed ACTIONS while their fields were not allowed KEYS, so the
+  // request 400'd and the form looked like it had saved nothing. Two allow-lists, one of which
+  // was missed.
+  "owner",
+  "title",
   "priority",
   "days"
 ]));

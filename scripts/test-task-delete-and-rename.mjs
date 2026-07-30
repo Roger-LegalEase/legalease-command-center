@@ -28,6 +28,7 @@ const server = await startPreviewServer({ seed, env:{ COMMAND_CENTER_UX_VNEXT:"t
 const stored = () => JSON.parse(readFileSync(server.dataPath, "utf8"));
 try {
   const owner = await loginWithCredential(server, server.ownerCredential);
+  const owner_cookie = owner.cookie;
   const post = (path, body, auth = owner) => fetch(`${server.baseUrl}${path}`, {
     method:"POST",
     headers:{ cookie:auth.cookie, "content-type":"application/json", "x-csrf-token":auth.csrfToken },
@@ -43,6 +44,18 @@ try {
     ok("update_title renames through the request path and persists");
   }
 
+
+  // The two allow-lists (2026-07-30). `assign` and `update_title` were permitted ACTIONS while
+  // `owner` and `title` were not permitted KEYS, so the panel's own request came back 400
+  // "unsupported information" and the form looked like it had saved nothing. Pinned over the wire.
+  {
+    const owner = await post("/api/ui/tasks/t-next/action", { action:"assign", owner:"Lawrence", expectedVersion:"legacy" });
+    assert.equal(owner.status, 200, `assign must be accepted over the wire, got ${owner.status}`);
+    assert.equal(stored().tasks.find((row) => row.id === "t-next").owner, "Lawrence", "and the owner must persist");
+    ok("assign passes both the action allow-list and the field allow-list");
+    // update_title over the PANEL route additionally needs the fresh expectedVersion handshake and
+    // is not asserted here; the rename itself is pinned above on /api/tasks/:id/update_title.
+  }
   // ---- deletion removes exactly one row ------------------------------------------------------
   {
     const before = stored().tasks.length;

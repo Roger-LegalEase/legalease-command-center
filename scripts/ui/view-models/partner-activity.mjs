@@ -351,8 +351,13 @@ function eventSummary(kind, record, stage, canReadSensitive) {
   // content never displayed anywhere. Gated on canReadSensitive like meetings: the text is
   // operator-entered content, not a status.
   if (kind === "note") {
-    return (canReadSensitive && safeDisplayText(record.title || record.summary || record.note, 200))
-      || "Partner note recorded.";
+    // ONLY `title`. A note logged from the record puts the operator's own words there, and showing
+    // them is the point — a note that saves and is never displayed is a note that was lost.
+    // `record.note` is the LEGACY partner.history body and is deliberately withheld: this
+    // projection is a ledger of what happened, not a content store, and its redaction contract
+    // lists note bodies beside email bodies and tokens. Reading it leaked
+    // "Sensitive note body must not project." to an owner, which is what CI caught.
+    return (canReadSensitive && safeDisplayText(record.title, 200)) || "Partner note recorded.";
   }
   if (kind === "outreach") return "Partner outreach sent.";
   if (kind === "document") return safeDisplayText(record.reportTitle || record.title || record.name, 120) || "Partner document created.";
