@@ -50,10 +50,10 @@ assert.deepEqual(
 
 // Headers are matched, not assumed by position: casing, punctuation, and spacing vary between
 // exports of the same workbook.
-const mapped = mapRcapWorkbookRow({ "  ORGANIZATION  ": "Test Org", "program/clinic": "A Clinic", "Public  Email": "a@b.example.org" });
+const mapped = mapRcapWorkbookRow({ "  ORGANIZATION  ": "Test Org", "program/clinic": "A Clinic", "Public  Email": "a@b.test" });
 assert.equal(mapped.organization, "Test Org");
 assert.equal(mapped.program, "A Clinic");
-assert.equal(mapped.publicEmail, "a@b.example.org");
+assert.equal(mapped.publicEmail, "a@b.test");
 assert.equal(mapRcapWorkbookRow({}).organization, "", "A missing header yields empty, never undefined.");
 assert.equal(mapRcapWorkbookRow({ "Unmapped Column": "x" }).organization, "", "Unknown headers are ignored, not guessed at.");
 
@@ -68,7 +68,7 @@ assert.equal(normalizeDomain(""), "");
 assert.equal(normalizeDomain("javascript:alert(1)"), "", "A scheme-shaped value is not a domain.");
 
 assert.equal(normalizeEmailValue("  Dana@Example.ORG "), "dana@example.org");
-for (const invalid of ["sam ortiz (at) lakeshore", "no-at-sign", "a@b", "a@@b.org", "", "a b@c.org"]) {
+for (const invalid of ["sam ortiz (at) lakeshore", "no-at-sign", "a@b", "a@@b.org", "", "a b@c.test"]) {
   assert.equal(normalizeEmailValue(invalid), "", `${JSON.stringify(invalid)} must not be accepted as an address.`);
 }
 
@@ -88,17 +88,17 @@ assert.equal(
 // Address and phone classification
 // ---------------------------------------------------------------------------------------------
 
-assert.equal(classifyEmailAddress("dana.whitfield@x.example.org").addressType, "named_route");
-assert.equal(classifyEmailAddress("info@x.example.org").addressType, "shared_inbox");
-assert.equal(classifyEmailAddress("intake@x.example.org").addressType, "client_intake");
-assert.equal(classifyEmailAddress("help@x.example.org").addressType, "client_intake");
+assert.equal(classifyEmailAddress("dana.whitfield@x.test").addressType, "named_route");
+assert.equal(classifyEmailAddress("info@x.test").addressType, "shared_inbox");
+assert.equal(classifyEmailAddress("intake@x.test").addressType, "client_intake");
+assert.equal(classifyEmailAddress("help@x.test").addressType, "client_intake");
 assert.equal(classifyEmailAddress("garbage").addressType, "none");
 
 // The classification must line up with the eligibility registry's send policy.
-assert.equal(rcapContactIsSendable(classifyEmailAddress("dana@x.example.org").eligibility), true);
-assert.equal(rcapContactIsSendable(classifyEmailAddress("info@x.example.org").eligibility), true, "A shared inbox is usable, with a warning.");
+assert.equal(rcapContactIsSendable(classifyEmailAddress("dana@x.test").eligibility), true);
+assert.equal(rcapContactIsSendable(classifyEmailAddress("info@x.test").eligibility), true, "A shared inbox is usable, with a warning.");
 assert.equal(
-  rcapContactIsSendable(classifyEmailAddress("intake@x.example.org").eligibility),
+  rcapContactIsSendable(classifyEmailAddress("intake@x.test").eligibility),
   false,
   "A client-intake address must never be sendable."
 );
@@ -154,9 +154,9 @@ assert.ok(
 const riverside = rowFor(plan, 2);
 assert.equal(riverside.action, "create_account");
 assert.equal(riverside.matchResult, "no_existing_match");
-assert.equal(riverside.proposedAccount.domain, "riverside-justice.example.org");
+assert.equal(riverside.proposedAccount.domain, "riverside-justice.test");
 assert.equal(riverside.proposedAccount.programRole, "operator", "The row says the center operates the clinic.");
-assert.equal(riverside.proposedContact.email, "dana.whitfield@riverside-justice.example.org");
+assert.equal(riverside.proposedContact.email, "dana.whitfield@riverside-justice.test");
 assert.equal(riverside.proposedContact.eligibility, "direct_public_business");
 assert.equal(riverside.profileDocAction, "record_reference_only", "Column R is a reference, never the canonical profile.");
 assert.equal(riverside.humanDecisionRequired, false);
@@ -236,7 +236,7 @@ assert.equal(reimport.rows[0].action, "skip_duplicate", "An unchanged re-import 
 
 // Stable source ID beats everything else.
 const bySourceId = resolveRcapIdentity(
-  { sourceProspectId: "PROSPECT-4411", organization: "Something Else Entirely", website: "https://other.example.org" },
+  { sourceProspectId: "PROSPECT-4411", organization: "Something Else Entirely", website: "https://other.test" },
   buildRcapImportIndex(state)
 );
 assert.equal(bySourceId.reason, "stable_source_id");
@@ -246,13 +246,13 @@ assert.equal(bySourceId.match.id, "rcap-account-existing-lakefront");
 // --- Existing correspondence changes the motion ----------------------------------------------
 const withHistory = planRcapProspectImport(state, [{
   __rowNumber: 2, "Organization": "Synthetic New Name For Houston", "State": "TX",
-  "Website": "https://cjp-houston.example.org"
+  "Website": "https://cjp-houston.test"
 }], { workbookName: "fixture" });
 assert.equal(withHistory.rows[0].matchedAccountId, "co-existing-houston", "The domain still identifies the account.");
 
 const unknownOrgKnownDomain = planRcapProspectImport(
-  { companyContacts: [{ companyContactId: "cc-1", name: "Someone", email: "someone@newdomain.example.org", companyOrganizationId: "" }] },
-  [{ __rowNumber: 2, "Organization": "Synthetic Unseen Org", "Website": "https://newdomain.example.org" }],
+  { companyContacts: [{ companyContactId: "cc-1", name: "Someone", email: "someone@newdomain.test", companyOrganizationId: "" }] },
+  [{ __rowNumber: 2, "Organization": "Synthetic Unseen Org", "Website": "https://newdomain.test" }],
   { workbookName: "fixture" }
 );
 assert.equal(unknownOrgKnownDomain.rows[0].action, "conflict");
@@ -262,14 +262,14 @@ assert.ok(unknownOrgKnownDomain.rows[0].warnings.some((w) => w.includes("not a c
 // --- Canonical values are never overwritten silently -------------------------------------------
 const conflictingDomain = planRcapProspectImport(state, [{
   __rowNumber: 2, "Organization": "Synthetic Lakefront Legal Aid", "State": "WI",
-  "Website": "https://lakefront-legal-new.example.org"
+  "Website": "https://lakefront-legal-new.test"
 }], { workbookName: "fixture" });
 const updates = conflictingDomain.rows[0].proposedUpdates || [];
 // The row matched on name+geography, and the differing domain is proposed for review.
 if (conflictingDomain.rows[0].matchedAccountId) {
   const domainUpdate = updates.find((update) => update.field === "domain");
   if (domainUpdate) {
-    assert.equal(domainUpdate.currentValue, "lakefront-legal.example.org");
+    assert.equal(domainUpdate.currentValue, "lakefront-legal.test");
     assert.equal(domainUpdate.requiresReview, true, "A differing canonical value must be reviewed, never overwritten.");
   }
 }

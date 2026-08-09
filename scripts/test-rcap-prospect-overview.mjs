@@ -40,19 +40,19 @@ function check(name, run) { run(); checks.push(name); }
 function baseState() {
   return {
     outreachOrganizations: [
-      { account_id: "acct-riverside", organization_name: "Synthetic Riverside Justice Center", domain: "riverside-justice.example.org", classification: "legal aid" },
-      { account_id: "acct-prairie", organization_name: "Synthetic Prairie Legal Services", domain: "prairie-legal.example.org", classification: "legal aid" }
+      { account_id: "acct-riverside", organization_name: "Synthetic Riverside Justice Center", domain: "riverside-justice.test", classification: "legal aid" },
+      { account_id: "acct-prairie", organization_name: "Synthetic Prairie Legal Services", domain: "prairie-legal.test", classification: "legal aid" }
     ],
     outreachContacts: [
-      { contact_id: "oc-dana", email: "dana.whitfield@riverside-justice.example.org", contact_name: "Dana Whitfield", organization_name: "Synthetic Riverside Justice Center", linked_account_id: "acct-riverside" },
-      { contact_id: "oc-prairie", email: "intake@prairie-legal.example.org", contact_name: "Prairie Desk", organization_name: "Synthetic Prairie Legal Services", linked_account_id: "acct-prairie" }
+      { contact_id: "oc-dana", email: "dana.whitfield@riverside-justice.test", contact_name: "Dana Whitfield", organization_name: "Synthetic Riverside Justice Center", linked_account_id: "acct-riverside" },
+      { contact_id: "oc-prairie", email: "intake@prairie-legal.test", contact_name: "Prairie Desk", organization_name: "Synthetic Prairie Legal Services", linked_account_id: "acct-prairie" }
     ],
     tasks: [
-      { id: "task-riverside", title: "Send the assisted-use overview", nextAction: "Send the assisted-use overview", dueDate: daysAgo(2), status: "open", owner: "Roger", email: "dana.whitfield@riverside-justice.example.org" }
+      { id: "task-riverside", title: "Send the assisted-use overview", nextAction: "Send the assisted-use overview", dueDate: daysAgo(2), status: "open", owner: "Roger", email: "dana.whitfield@riverside-justice.test" }
     ],
     activityEvents: [
-      { id: "act-1", kind: "email_sent", direction: "outbound", occurredAt: daysAgo(6), title: "Intro email", email: "dana.whitfield@riverside-justice.example.org", outcomeState: "sent" },
-      { id: "act-2", kind: "email_drafted", direction: "outbound", occurredAt: daysAgo(7), title: "Draft prepared", email: "dana.whitfield@riverside-justice.example.org", outcomeState: "drafted" }
+      { id: "act-1", kind: "email_sent", direction: "outbound", occurredAt: daysAgo(6), title: "Intro email", email: "dana.whitfield@riverside-justice.test", outcomeState: "sent" },
+      { id: "act-2", kind: "email_drafted", direction: "outbound", occurredAt: daysAgo(7), title: "Draft prepared", email: "dana.whitfield@riverside-justice.test", outcomeState: "drafted" }
     ],
     companyContacts: [], companyOrganizations: [], companyEvents: [], auditHistory: [],
     automationEvents: [], inboxSignals: [], outreachCampaigns: [], outreachAttempts: [],
@@ -368,7 +368,7 @@ check("a stale version is refused rather than silently overwriting", () => {
 check("a reply does not move the stage", () => {
   const withReply = baseState();
   withReply.outreachReplies = [{
-    id: "reply-1", contact_id: "oc-dana", email: "dana.whitfield@riverside-justice.example.org",
+    id: "reply-1", contact_id: "oc-dana", email: "dana.whitfield@riverside-justice.test",
     status: "replied", classification: "interested", created_at: daysAgo(1)
   }];
   const after = buildRcapProspectOverview(withReply, OWNER, idFor(withReply, "Riverside"), NOW, ON);
@@ -386,8 +386,8 @@ check("a reply does not move the stage", () => {
 check("no fact, contact, or task crosses between accounts", () => {
   const serializedComplete = JSON.stringify(complete);
   const serializedBlocked = JSON.stringify(blocked);
-  assert.ok(!serializedComplete.includes("intake@prairie-legal.example.org"), "Prairie's address must not appear on Riverside.");
-  assert.ok(!serializedBlocked.includes("dana.whitfield@riverside-justice.example.org"), "Riverside's contact must not appear on Prairie.");
+  assert.ok(!serializedComplete.includes("intake@prairie-legal.test"), "Prairie's address must not appear on Riverside.");
+  assert.ok(!serializedBlocked.includes("dana.whitfield@riverside-justice.test"), "Riverside's contact must not appear on Prairie.");
   assert.ok(!serializedBlocked.includes("Send the assisted-use overview"), "Riverside's task must not appear on Prairie.");
 });
 

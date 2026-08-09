@@ -79,6 +79,13 @@ const PINNED_WALK_WORDS = {
   automation:["prospects"],
   autonomy:["lane"],
   "handoff-contract":["RCAP"],
+  // Roles renders the capability registry, and the RCAP prospect capabilities are named
+  // read_rcap_prospects / manage_rcap_prospects / approve_rcap_prospect_work. The words are the
+  // capability identifiers themselves, not product copy leaking onto a founder surface, and
+  // Roles is an administration page rather than one on the walk. Renaming the capabilities to
+  // dodge the sweep would make the permission harder to read for the person auditing it; this
+  // pin retires when those capabilities do.
+  roles:["RCAP", "prospects"],
   // These four render the legacy cockpit behind or instead of their own surface, so the sweep
   // reads the cockpit's words. Retiring the cockpit retires these pins with it.
   "daily-run":["RCAP", "prospects"],

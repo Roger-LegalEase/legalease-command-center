@@ -1,8 +1,9 @@
 // Synthetic RCAP prospect fixtures (Wave 1).
 //
-// Every organization, person, address, and number here is invented. Addresses use example.org
-// / example.com per AGENTS.md, and nothing in this file corresponds to a real organization,
-// a real clinic, or a real person. The real workbook was not available to this session
+// Every organization, person, address, and number here is invented. Addresses use the reserved
+// .test TLD, which the repository's privacy scanner accepts and which can never resolve to a
+// real host; distinct subdomains matter because the identity tests turn on domain difference.
+// Nothing in this file corresponds to a real organization, a real clinic, or a real person. The real workbook was not available to this session
 // (RCAP_WORKBOOK_PATH empty), so these fixtures encode the A-R schema and the hard cases the
 // import has to survive.
 //
@@ -21,10 +22,10 @@ export const RCAP_WORKBOOK_FIXTURE_ROWS = Object.freeze([
     "Clinic Verification": "Verified; the center operates the clinic and staffs it with its own attorneys",
     "Cadence / Most Recent": "Quarterly; most recent 2026-06-14",
     "Key Contact": "Dana Whitfield", "Contact Role": "Director of Legal Programs",
-    "Public Email": "dana.whitfield@riverside-justice.example.org", "Phone": "(313) 555-0142",
+    "Public Email": "dana.whitfield@riverside-justice.test", "Phone": "(313) 555-0142",
     "Why It Matters": "Runs a recurring clinic with volunteer attorneys and tracks outcomes by hand.",
     "Recommended Partnership Angle": "Assisted-use pathway alongside their existing attorneys.",
-    "Website": "https://www.riverside-justice.example.org/programs",
+    "Website": "https://www.riverside-justice.test/programs",
     "Evidence Source": "Program page", "Confidence": "High", "Last Verified": "2026-07-02",
     "NOTES": "https://docs.google.com/document/d/synthetic-riverside-profile/edit"
   }),
@@ -37,10 +38,10 @@ export const RCAP_WORKBOOK_FIXTURE_ROWS = Object.freeze([
     "Clinic Verification": "The alliance promotes the event; a partner legal aid provides the attorneys",
     "Cadence / Most Recent": "Annual; most recent 2026-05-03",
     "Key Contact": "", "Contact Role": "",
-    "Public Email": "info@buckeye-reentry.example.org", "Phone": "614-555-0175",
+    "Public Email": "info@buckeye-reentry.test", "Phone": "614-555-0175",
     "Why It Matters": "Coordinates a large annual event with several legal partners.",
     "Recommended Partnership Angle": "Volume screening ahead of the event.",
-    "Website": "buckeye-reentry.example.org",
+    "Website": "buckeye-reentry.test",
     "Evidence Source": "Event page", "Confidence": "Medium", "Last Verified": "2026-06-20",
     "NOTES": ""
   }),
@@ -53,10 +54,10 @@ export const RCAP_WORKBOOK_FIXTURE_ROWS = Object.freeze([
     "Clinic Verification": "Operates its own help desk",
     "Cadence / Most Recent": "Monthly; most recent 2026-07-01",
     "Key Contact": "", "Contact Role": "",
-    "Public Email": "intake@prairie-legal.example.org", "Phone": "507-555-0110",
+    "Public Email": "intake@prairie-legal.test", "Phone": "507-555-0110",
     "Why It Matters": "Handles sealing petitions in-house for a wide rural service area.",
     "Recommended Partnership Angle": "Reduce manual eligibility screening.",
-    "Website": "https://prairie-legal.example.org",
+    "Website": "https://prairie-legal.test",
     "Evidence Source": "Services page", "Confidence": "High", "Last Verified": "2026-06-28",
     "NOTES": "Intake line only; hotline staffed for applicants"
   }),
@@ -69,10 +70,10 @@ export const RCAP_WORKBOOK_FIXTURE_ROWS = Object.freeze([
     "Clinic Verification": "Hosts the clinic at its community center; legal work by a partner firm",
     "Cadence / Most Recent": "Monthly",
     "Key Contact": "Marcus Reed", "Contact Role": "Program Manager",
-    "Public Email": "marcus.reed@cjp-houston.example.org", "Phone": "",
+    "Public Email": "marcus.reed@cjp-houston.test", "Phone": "",
     "Why It Matters": "Hosts a monthly clinic with a partner firm doing the legal work.",
     "Recommended Partnership Angle": "Support the host, not the legal provider.",
-    "Website": "https://cjp-houston.example.org",
+    "Website": "https://cjp-houston.test",
     "Evidence Source": "Clinic page", "Confidence": "Medium", "Last Verified": "2026-05-19",
     "NOTES": ""
   }),
@@ -85,10 +86,10 @@ export const RCAP_WORKBOOK_FIXTURE_ROWS = Object.freeze([
     "Clinic Verification": "Operates the clinic",
     "Cadence / Most Recent": "Quarterly",
     "Key Contact": "Priya Raman", "Contact Role": "Staff Attorney",
-    "Public Email": "praman@cjp-oakland.example.org", "Phone": "",
+    "Public Email": "praman@cjp-oakland.test", "Phone": "",
     "Why It Matters": "Small operation running its own quarterly clinic.",
     "Recommended Partnership Angle": "Assisted-use for a small legal team.",
-    "Website": "https://cjp-oakland.example.org",
+    "Website": "https://cjp-oakland.test",
     "Evidence Source": "About page", "Confidence": "Medium", "Last Verified": "2026-04-30",
     "NOTES": ""
   }),
@@ -104,7 +105,7 @@ export const RCAP_WORKBOOK_FIXTURE_ROWS = Object.freeze([
     "Public Email": "", "Phone": "404-555-0188",
     "Why It Matters": "Refers job seekers who need records cleared before placement.",
     "Recommended Partnership Angle": "Referral pathway for placement candidates.",
-    "Website": "https://peachtree-workforce.example.org",
+    "Website": "https://peachtree-workforce.test",
     "Evidence Source": "Staff page", "Confidence": "Low", "Last Verified": "2026-03-11",
     "NOTES": ""
   }),
@@ -120,7 +121,7 @@ export const RCAP_WORKBOOK_FIXTURE_ROWS = Object.freeze([
     "Public Email": "sam ortiz (at) lakeshore", "Phone": "call the office",
     "Why It Matters": "Community trust exploring reentry support.",
     "Recommended Partnership Angle": "Early exploratory conversation.",
-    "Website": "https://lakeshore-trust.example.org",
+    "Website": "https://lakeshore-trust.test",
     "Evidence Source": "", "Confidence": "Low", "Last Verified": "",
     "NOTES": ""
   }),
@@ -130,7 +131,7 @@ export const RCAP_WORKBOOK_FIXTURE_ROWS = Object.freeze([
     "Tier": "C2", "State": "NV", "Region / Metro": "Las Vegas",
     "Organization": "   ",
     "Program / Clinic": "Unnamed clinic",
-    "Public Email": "someone@unknown.example.org",
+    "Public Email": "someone@unknown.test",
     "Why It Matters": "Row captured without an organization.",
     "Website": "", "Evidence Source": "", "Confidence": "", "Last Verified": "", "NOTES": ""
   }),
@@ -143,7 +144,7 @@ export const RCAP_WORKBOOK_FIXTURE_ROWS = Object.freeze([
     "Key Contact": "", "Contact Role": "",
     "Public Email": "", "Phone": "",
     "Why It Matters": "Duplicate capture of the same organization.",
-    "Website": "https://riverside-justice.example.org",
+    "Website": "https://riverside-justice.test",
     "Evidence Source": "", "Confidence": "", "Last Verified": "", "NOTES": ""
   })
 ]);
@@ -156,7 +157,7 @@ export function rcapImportFixtureState() {
         account_id: "rcap-account-existing-lakefront",
         source_prospect_id: "PROSPECT-4411",
         organization_name: "Synthetic Lakefront Legal Aid",
-        website: "https://lakefront-legal.example.org",
+        website: "https://lakefront-legal.test",
         service_area: "WI",
         aliases: ["Lakefront Legal"]
       }
@@ -165,13 +166,13 @@ export function rcapImportFixtureState() {
       {
         companyOrganizationId: "co-existing-houston",
         name: "Community Justice Project",
-        domain: "cjp-houston.example.org",
+        domain: "cjp-houston.test",
         geography: "TX"
       },
       {
         companyOrganizationId: "co-existing-oakland",
         name: "Community Justice Project",
-        domain: "cjp-oakland.example.org",
+        domain: "cjp-oakland.test",
         geography: "CA"
       }
     ],
@@ -179,7 +180,7 @@ export function rcapImportFixtureState() {
       {
         companyContactId: "cc-existing-marcus",
         name: "Marcus Reed",
-        email: "marcus.reed@cjp-houston.example.org",
+        email: "marcus.reed@cjp-houston.test",
         companyOrganizationId: "co-existing-houston"
       }
     ],
@@ -196,7 +197,7 @@ export const RCAP_UNCHANGED_REIMPORT_ROW = Object.freeze({
   __rowNumber: 2,
   "Organization": "Synthetic Lakefront Legal Aid",
   "State": "WI",
-  "Website": "https://lakefront-legal.example.org",
+  "Website": "https://lakefront-legal.test",
   "Public Email": "",
   "Program / Clinic": "",
   "NOTES": ""

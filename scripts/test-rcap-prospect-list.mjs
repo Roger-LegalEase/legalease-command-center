@@ -40,30 +40,30 @@ function check(name, run) { run(); checks.push(name); }
 // `outreachOrganizations` supplies the organization side. Field spellings are the projector's
 // (contact_id / organization_name / linked_account_id), not invented ones.
 //
-// Everything is synthetic: example.org addresses, invented organizations, no real person.
+// Everything is synthetic: reserved .test addresses, invented organizations, no real person.
 
 function prospectState() {
   return {
     outreachOrganizations: [
-      { account_id: "acct-riverside", organization_name: "Synthetic Riverside Justice Center", domain: "riverside-justice.example.org", classification: "legal aid" },
-      { account_id: "acct-buckeye", organization_name: "Synthetic Buckeye Reentry Alliance", domain: "buckeye-reentry.example.org", classification: "reentry" },
-      { account_id: "acct-prairie", organization_name: "Synthetic Prairie Legal Services", domain: "prairie-legal.example.org", classification: "legal aid" },
-      { account_id: "acct-quiet", organization_name: "Synthetic Quiet Trust", domain: "quiet-trust.example.org", classification: "nonprofit" }
+      { account_id: "acct-riverside", organization_name: "Synthetic Riverside Justice Center", domain: "riverside-justice.test", classification: "legal aid" },
+      { account_id: "acct-buckeye", organization_name: "Synthetic Buckeye Reentry Alliance", domain: "buckeye-reentry.test", classification: "reentry" },
+      { account_id: "acct-prairie", organization_name: "Synthetic Prairie Legal Services", domain: "prairie-legal.test", classification: "legal aid" },
+      { account_id: "acct-quiet", organization_name: "Synthetic Quiet Trust", domain: "quiet-trust.test", classification: "nonprofit" }
     ],
     outreachContacts: [
-      { contact_id: "oc-dana", email: "dana.whitfield@riverside-justice.example.org", contact_name: "Dana Whitfield", organization_name: "Synthetic Riverside Justice Center", linked_account_id: "acct-riverside" },
-      { contact_id: "oc-buckeye", email: "info@buckeye-reentry.example.org", contact_name: "", organization_name: "Synthetic Buckeye Reentry Alliance", linked_account_id: "acct-buckeye" },
-      { contact_id: "oc-prairie", email: "intake@prairie-legal.example.org", contact_name: "Prairie Desk", organization_name: "Synthetic Prairie Legal Services", linked_account_id: "acct-prairie" }
+      { contact_id: "oc-dana", email: "dana.whitfield@riverside-justice.test", contact_name: "Dana Whitfield", organization_name: "Synthetic Riverside Justice Center", linked_account_id: "acct-riverside" },
+      { contact_id: "oc-buckeye", email: "info@buckeye-reentry.test", contact_name: "", organization_name: "Synthetic Buckeye Reentry Alliance", linked_account_id: "acct-buckeye" },
+      { contact_id: "oc-prairie", email: "intake@prairie-legal.test", contact_name: "Prairie Desk", organization_name: "Synthetic Prairie Legal Services", linked_account_id: "acct-prairie" }
     ],
     tasks: [
-      { id: "task-riverside", title: "Send the assisted-use overview", nextAction: "Send the assisted-use overview", dueDate: daysAgo(2), status: "open", owner: "Roger", email: "dana.whitfield@riverside-justice.example.org" }
+      { id: "task-riverside", title: "Send the assisted-use overview", nextAction: "Send the assisted-use overview", dueDate: daysAgo(2), status: "open", owner: "Roger", email: "dana.whitfield@riverside-justice.test" }
     ],
     activityEvents: [
-      { id: "act-riverside", kind: "email_sent", direction: "outbound", occurredAt: daysAgo(6), title: "Intro email", email: "dana.whitfield@riverside-justice.example.org" }
+      { id: "act-riverside", kind: "email_sent", direction: "outbound", occurredAt: daysAgo(6), title: "Intro email", email: "dana.whitfield@riverside-justice.test" }
     ],
     // The intake address is suppressed, which must show as blocked rather than as a usable route.
     outreachSuppressions: [
-      { id: "supp-prairie", email: "intake@prairie-legal.example.org", reason: "client_intake" }
+      { id: "supp-prairie", email: "intake@prairie-legal.test", reason: "client_intake" }
     ],
     companyContacts: [], companyOrganizations: [],
     companyEvents: [], auditHistory: [], automationEvents: [], inboxSignals: [],
