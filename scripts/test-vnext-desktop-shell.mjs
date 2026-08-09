@@ -111,7 +111,10 @@ assert.equal(VNEXT_LAZY_RUNTIME_MAX_BYTES, 64 * 1024);
 // 17 since 2026-07-29: the relationship record joined them. It was inline at ~14 KB of the initial
 // client payload for a page most sessions never open, which is also why adding two controls to it
 // blew the ceiling. Lazy, it reclaimed 18,675 bytes of JavaScript and 5,803 of critical CSS.
-assert.equal(VNEXT_LAZY_ASSET_CONTRACT.runtimeIds.length, 17, "The seventeen Founder-only browser runtimes must be route-loaded.");
+// 18 since Wave 1B: the RCAP Prospects list and Prospect Overview. Lazy and gated on
+// COMMAND_CENTER_RCAP_CRM_V1, so a flag-off deployment ships neither the runtime nor its
+// stylesheet and the Partners page it mounts inside is byte-identical to today's.
+assert.equal(VNEXT_LAZY_ASSET_CONTRACT.runtimeIds.length, 18, "The eighteen Founder-only browser runtimes must be route-loaded.");
 for (const id of ["founder-campaigns", "founder-scoreboard-registry", "founder-lee-panel", "founder-relationships", "founder-os-base", "partner-record"]) {
   assert.ok(VNEXT_LAZY_ASSET_CONTRACT.runtimeIds.includes(id), `${id} must be a lazy runtime, never inline.`);
 }
@@ -126,12 +129,13 @@ assert.ok(
   "the design system's base layer must ship as a route-loaded stylesheet, or every page but four reverts to the old look."
 );
 // 19 since 2026-07-29: the record brought its three stylesheets with it out of the eager <head>.
-assert.equal(VNEXT_LAZY_ASSET_CONTRACT.stylesheetPaths.length, 19, "The nineteen Founder-only stylesheets must be route-loaded.");
+// 20 since Wave 1B added the RCAP presentation layer, which travels with its runtime.
+assert.equal(VNEXT_LAZY_ASSET_CONTRACT.stylesheetPaths.length, 20, "The twenty Founder-only stylesheets must be route-loaded.");
 // Both conditional runtimes are enabled here: automation-control-center is gated on the Outreach
 // flag and founder-campaigns on FOUNDER_OS_CAMPAIGNS, so the manifest can only be asserted in
 // full with both on. That the manifest OMITS them when their flag is off is asserted separately
 // below, which is the property that actually matters for a flag-off deployment.
-const founderFixture = renderVNextDesktopShell(legacyFixture, { outreachEnabled:true, founderOsCampaigns:true, founderOsScoreboard:true, founderOsLeePanel:true, founderOsRelationships:true, founderOsShell:true });
+const founderFixture = renderVNextDesktopShell(legacyFixture, { outreachEnabled:true, founderOsCampaigns:true, founderOsScoreboard:true, founderOsLeePanel:true, founderOsRelationships:true, founderOsShell:true, rcapCrm:true });
 const criticalStyles = [...founderFixture.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g)].map((match) => match[1]);
 for (const path of VNEXT_LAZY_ASSET_CONTRACT.stylesheetPaths) {
   assert.ok(!criticalStyles.includes(`/${path.replace(/^\/+/, "")}`), `${path} must not remain in the global critical CSS set.`);
@@ -139,19 +143,19 @@ for (const path of VNEXT_LAZY_ASSET_CONTRACT.stylesheetPaths) {
 // A flag-gated runtime must be absent from the manifest when its flag is off. If it leaked in,
 // a flag-off deployment would advertise, and serve, a surface that is supposed to not exist.
 const flagOffFixture = renderVNextDesktopShell(legacyFixture, { outreachEnabled:true });
-for (const id of ["founder-campaigns", "founder-scoreboard-registry", "founder-lee-panel", "founder-relationships"]) {
+for (const id of ["founder-campaigns", "founder-scoreboard-registry", "founder-lee-panel", "founder-relationships", "rcap-prospects"]) {
   assert.ok(!flagOffFixture.includes(`/assets/ui/runtime/${id}.js`),
     `${id} must be absent from the manifest when its Founder OS flag is off.`);
 }
 // And the server must refuse to serve the file itself, not merely omit it from the manifest.
-for (const id of ["founder-campaigns", "founder-scoreboard-registry", "founder-lee-panel", "founder-relationships", "founder-os-base"]) {
+for (const id of ["founder-campaigns", "founder-scoreboard-registry", "founder-lee-panel", "founder-relationships", "founder-os-base", "rcap-prospects"]) {
   assert.equal(resolveVNextLazyRuntime(`${VNEXT_LAZY_RUNTIME_PATH_PREFIX}${id}.js`, { outreachEnabled:true }), null,
     `${id} must not be served at all when its Founder OS flag is off.`);
 }
 for (const id of VNEXT_LAZY_ASSET_CONTRACT.runtimeIds) {
   const runtimePath = `${VNEXT_LAZY_RUNTIME_PATH_PREFIX}${id}.js`;
   assert.match(founderFixture, new RegExp(runtimePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${id} must be available through the lazy manifest.`);
-  const source = resolveVNextLazyRuntime(runtimePath, { outreachEnabled:true, founderOsCampaigns:true, founderOsScoreboard:true, founderOsLeePanel:true, founderOsRelationships:true, founderOsShell:true });
+  const source = resolveVNextLazyRuntime(runtimePath, { outreachEnabled:true, founderOsCampaigns:true, founderOsScoreboard:true, founderOsLeePanel:true, founderOsRelationships:true, founderOsShell:true, rcapCrm:true });
   assert.ok(source && source.length <= VNEXT_LAZY_RUNTIME_MAX_BYTES, `${id} must resolve to a bounded allowlisted runtime.`);
   assert.ok(!founderFixture.includes(source), `${id} must not be injected into the initial shell.`);
 }

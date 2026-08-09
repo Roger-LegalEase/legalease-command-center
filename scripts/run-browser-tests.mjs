@@ -56,6 +56,8 @@ function serverEnvironment({ dataPath, vnext, restricted = false, restrictedCred
     COMMAND_CENTER_UX_VNEXT_OUTREACH:productFlags.outreach === true ? "true" : "false",
     COMMAND_CENTER_UX_VNEXT_FILES:productFlags.files === true ? "true" : "false",
     COMMAND_CENTER_UX_VNEXT_DISCOVERY:productFlags.discovery === true ? "true" : "false",
+    // Wave 1B. Off for every other server, so those suites still prove the flag-off surface.
+    COMMAND_CENTER_RCAP_CRM_V1:productFlags.rcapCrm === true ? "true" : "false",
     COMMAND_CENTER_FILES_CURSOR_SECRET:productFlags.files === true ? "synthetic-browser-files-cursor-secret" : "",
     LIVE_POSTING_ENABLED:"false",
     ENABLE_LIVE_LINKEDIN_POSTING:"false",
@@ -922,6 +924,32 @@ const founderOperationsDataPath = path.join(tempRoot, "founder-operations-state.
 const founderSocialDataPath = path.join(tempRoot, "founder-social-state.json");
 const founderPartnersDataPath = path.join(tempRoot, "founder-partners-state.json");
 const pressCampaignDataPath = path.join(tempRoot, "press-campaign-state.json");
+const rcapDataPath = path.join(tempRoot, "rcap-state.json");
+// Wave 1B RCAP fixture. Two organizations on the real source collections the company-memory
+// projector reads: one healthy and one blocked by an intake-only address, which are exactly the
+// complete and blocked Overview states the release has to prove. Every value is synthetic and
+// every address sits under the reserved .test TLD.
+const rcapDaysAgo = (days) => new Date(Date.parse("2026-08-09T15:00:00.000Z") - days * 86_400_000).toISOString();
+const rcapState = {
+  outreachOrganizations:[
+    { account_id:"acct-riverside", organization_name:"Synthetic Riverside Justice Center", domain:"riverside-justice.test", classification:"legal aid" },
+    { account_id:"acct-prairie", organization_name:"Synthetic Prairie Legal Services", domain:"prairie-legal.test", classification:"legal aid" },
+    { account_id:"acct-buckeye", organization_name:"Synthetic Buckeye Reentry Alliance", domain:"buckeye-reentry.test", classification:"reentry" }
+  ],
+  outreachContacts:[
+    { contact_id:"oc-dana", email:"dana.whitfield@riverside-justice.test", contact_name:"Dana Whitfield", organization_name:"Synthetic Riverside Justice Center", linked_account_id:"acct-riverside" },
+    { contact_id:"oc-prairie", email:"intake@prairie-legal.test", contact_name:"Prairie Desk", organization_name:"Synthetic Prairie Legal Services", linked_account_id:"acct-prairie" },
+    { contact_id:"oc-buckeye", email:"info@buckeye-reentry.test", contact_name:"", organization_name:"Synthetic Buckeye Reentry Alliance", linked_account_id:"acct-buckeye" }
+  ],
+  tasks:[
+    { id:"task-riverside", title:"Send the assisted-use overview", nextAction:"Send the assisted-use overview", dueDate:rcapDaysAgo(2), status:"open", owner:"Roger", email:"dana.whitfield@riverside-justice.test" }
+  ],
+  activityEvents:[
+    { id:"rcap-act-1", kind:"email_sent", direction:"outbound", occurredAt:rcapDaysAgo(6), title:"Intro email", email:"dana.whitfield@riverside-justice.test", outcomeState:"sent" },
+    { id:"rcap-act-2", kind:"email_drafted", direction:"outbound", occurredAt:rcapDaysAgo(7), title:"Draft prepared", email:"dana.whitfield@riverside-justice.test", outcomeState:"drafted" }
+  ]
+};
+
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
   writeFile(vnextDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),
@@ -944,6 +972,7 @@ await Promise.all([
   writeFile(founderOperationsDataPath, `${JSON.stringify(founderOperationsState, null, 2)}\n`, { mode:0o600 }),
   writeFile(founderSocialDataPath, `${JSON.stringify(socialState, null, 2)}\n`, { mode:0o600 }),
   writeFile(founderPartnersDataPath, `${JSON.stringify(partnersState, null, 2)}\n`, { mode:0o600 }),
+  writeFile(rcapDataPath, `${JSON.stringify(rcapState, null, 2)}\n`, { mode:0o600 }),
   writeFile(pressCampaignDataPath, `${JSON.stringify(pressState, null, 2)}\n`, { mode:0o600 })
 ]);
 const restrictedCredential = crypto.randomBytes(32).toString("base64url");
@@ -1087,11 +1116,22 @@ try {
     productFlags:{ outreach:true }
   }));
   servers.push(await startServer({
+    name:"rcap",
+    dataPath:rcapDataPath,
+    vnext:true,
+    productFlags:{ rcapCrm:true }
+  }));
+  servers.push(await startServer({
     name:"press-campaign",
     dataPath:pressCampaignDataPath,
     vnext:true,
     productFlags:{ outreach:true }
   }));
+  const serverNamed = (name) => {
+    const match = servers.find((server) => server.name === name);
+    if (!match) throw new Error(`Browser fixture server "${name}" was not started.`);
+    return match;
+  };
   const runnerEnv = {
     ...inheritedEnvironment(),
     NODE_ENV:"test",
@@ -1121,7 +1161,10 @@ try {
     BROWSER_TEST_FOUNDER_OPERATIONS_BASE_URL:servers[18].baseURL,
     BROWSER_TEST_FOUNDER_SOCIAL_BASE_URL:servers[19].baseURL,
     BROWSER_TEST_FOUNDER_PARTNERS_BASE_URL:servers[20].baseURL,
-    BROWSER_TEST_PRESS_CAMPAIGN_BASE_URL:servers[21].baseURL,
+    // Looked up by NAME, not by position: inserting a server used to renumber every index
+    // below it, which is a silent way to point a suite at the wrong fixture.
+    BROWSER_TEST_PRESS_CAMPAIGN_BASE_URL:serverNamed("press-campaign").baseURL,
+    BROWSER_TEST_RCAP_BASE_URL:serverNamed("rcap").baseURL,
     BROWSER_TEST_COMPOSER_RESTRICTED_CREDENTIALS:JSON.stringify(composerRestrictedCredentials)
   };
   exitCode = await runPlaywright(runnerEnv, process.argv.slice(2));

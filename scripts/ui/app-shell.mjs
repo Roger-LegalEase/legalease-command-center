@@ -18,6 +18,7 @@ import { inboxActionBrowserSource } from "./inbox-action-ui.mjs";
 import { LEE_INBOX_PANEL_STYLESHEET_PATH, leeInboxPanelBrowserSource } from "./lee-inbox-panel.mjs";
 import { TASK_WORKBENCH_STYLESHEET_PATH, taskWorkbenchBrowserSource } from "./task-workbench.mjs";
 import { prospectWorkbenchBrowserSource } from "./pages/prospect-workbench.mjs";
+import { RCAP_PROSPECTS_STYLESHEET_PATH, rcapProspectsBrowserSource } from "./pages/rcap-prospects.mjs";
 import {
   COMMUNICATION_COMPOSER_LAYOUT_STYLESHEET_PATH,
   COMMUNICATION_COMPOSER_STYLESHEET_PATH,
@@ -214,6 +215,16 @@ const VNEXT_LAZY_ASSETS = Object.freeze({
     styles:PARTNER_RECORD_STYLESHEET_PATHS,
     source:partnerRecordBrowserSource,
     api:"__LE_PARTNER_RECORD"
+  }),
+  // Wave 1B: the rendered RCAP Prospects saved view and Prospect Overview. Lazy for the same
+  // reason as every runtime above, and gated on COMMAND_CENTER_RCAP_CRM_V1 exactly as
+  // founder-campaigns is gated on its own release flag — with the flag off, neither the runtime
+  // nor its stylesheet is served, and the Partners page is byte-identical to today's.
+  "rcap-prospects":Object.freeze({
+    styles:Object.freeze([RCAP_PROSPECTS_STYLESHEET_PATH]),
+    source:rcapProspectsBrowserSource,
+    api:"__LE_RCAP_PROSPECTS",
+    rcapCrmOnly:true
   })
 });
 
@@ -236,6 +247,7 @@ export function resolveVNextLazyRuntime(pathname = "", options = {}) {
   if (asset.founderOsLeePanelOnly && options.founderOsLeePanel !== true) return null;
   if (asset.founderOsRelationshipsOnly && options.founderOsRelationships !== true) return null;
   if (asset.founderOsShellOnly && options.founderOsShell !== true) return null;
+  if (asset.rcapCrmOnly && options.rcapCrm !== true) return null;
   const source = asset.source();
   return typeof source === "string" && source.length <= VNEXT_LAZY_RUNTIME_MAX_BYTES ? source : null;
 }
@@ -397,6 +409,7 @@ function vnextLazyAssetLoaderScript(options = {}) {
     .filter(([, asset]) => !asset.founderOsLeePanelOnly || options.founderOsLeePanel === true)
     .filter(([, asset]) => !asset.founderOsRelationshipsOnly || options.founderOsRelationships === true)
     .filter(([, asset]) => !asset.founderOsShellOnly || options.founderOsShell === true)
+    .filter(([, asset]) => !asset.rcapCrmOnly || options.rcapCrm === true)
     .map(([id, asset]) => [id, {
       styles:asset.styles.map(assetUrl),
       runtime:`${VNEXT_LAZY_RUNTIME_PATH_PREFIX}${id}.js`,
@@ -471,6 +484,7 @@ function vnextLazyAssetLoaderScript(options = {}) {
       ${options.founderOsShell ? `add("founder-os-base");` : ""}
       ${options.founderOsLeePanel ? `add("founder-lee-panel");` : ""}
       ${options.founderOsRelationships ? `if (route === "partners" || objectType === "Partner") add("founder-relationships");` : ""}
+      ${options.rcapCrm ? `if (route === "partners" && query.get("view") === "rcap-prospects") add("rcap-prospects");` : ""}
       return required;
     }
     function controlAssets() {

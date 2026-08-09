@@ -149,6 +149,8 @@ import {
   handleRelationshipApiRequest,
   isRelationshipApiPath
 } from "./relationship-api-integration.mjs";
+import { readRcapCrmConfig } from "./ui/rcap-crm-config.mjs";
+import { handleRcapProspectsApiRequest, isRcapProspectsApiPath } from "./rcap-prospects-api.mjs";
 import {
   COMMUNICATION_COMPOSER_BODY_LIMIT,
   handleCommunicationComposerApiRequest,
@@ -302,6 +304,9 @@ const discoveryVNextConfig = readCommandCenterVNextProductConfig(process.env, "d
 const founderOsShellConfig = readFounderOsShellConfig(process.env);
 const founderOsTodayConfig = readFounderOsTodayConfig(process.env);
 const founderOsRelationshipsConfig = readFounderOsRelationshipsConfig(process.env);
+// Wave 1B. Read once from the server environment, exactly like every flag above it, so the
+// RCAP surfaces are on or off for the whole deployment and never per request.
+const rcapCrmConfig = readRcapCrmConfig(process.env);
 const founderOsCampaignsConfig = readFounderOsCampaignsConfig(process.env);
 const founderOsPressConfig = readFounderOsPressConfig(process.env);
 const founderOsScoreboardConfig = readFounderOsScoreboardConfig(process.env);
@@ -9041,7 +9046,8 @@ function serveVNextLazyRuntime(pathname, response, { headOnly = false } = {}) {
     founderOsScoreboard:founderOsScoreboardConfig.enabled,
     founderOsLeePanel:founderOsLeePanelConfig.enabled,
     founderOsRelationships:founderOsRelationshipsConfig.enabled,
-    founderOsShell:founderOsShellConfig.enabled
+    founderOsShell:founderOsShellConfig.enabled,
+    rcapCrm:rcapCrmConfig.enabled
   });
   if (!source) {
     response.writeHead(404, { "content-type":"text/plain; charset=utf-8", "cache-control":"no-store" });
@@ -35539,7 +35545,7 @@ function buildDiscoveryShellContracts(state = {}, actor = {}, now = "") {
 function renderVNextApp(options = {}) {
   // CCX-100 composes one new navigation shell around the same routed application.
   // Page renderers, state, actions, authorization, and safety systems remain shared.
-  if (socialVNextConfig.enabled || outreachVNextConfig.enabled || filesVNextConfig.enabled || discoveryVNextConfig.enabled || founderOsShellConfig.enabled) {
+  if (socialVNextConfig.enabled || outreachVNextConfig.enabled || filesVNextConfig.enabled || discoveryVNextConfig.enabled || founderOsShellConfig.enabled || rcapCrmConfig.enabled) {
     return renderVNextDesktopShell(renderLegacyApp(), {
       socialEnabled:socialVNextConfig.enabled,
       outreachEnabled:outreachVNextConfig.enabled,
@@ -35551,6 +35557,7 @@ function renderVNextApp(options = {}) {
       founderOsCampaigns:founderOsCampaignsConfig.enabled,
       founderOsScoreboard:founderOsScoreboardConfig.enabled,
       founderOsLeePanel:founderOsLeePanelConfig.enabled,
+      rcapCrm:rcapCrmConfig.enabled,
       // The sidebar account block, from the AUTHENTICATED SESSION and nowhere else. There is no
       // default and no placeholder: an unauthenticated or unnamed session renders no block.
       account:founderShellAccount(options.actor || {}),
@@ -36309,6 +36316,23 @@ async function handleRequest(request, response) {
     });
     const result = mutation ? await serializeStateMutation(execute) : await execute();
     sendJson(response, result.body || { ok:false, message:"Relationship details are unavailable." }, result.status || 404);
+    return;
+  }
+
+  // Wave 1B: the rendered RCAP surfaces read from here. GET only — the four safe writes the
+  // Overview offers are posted to the relationship action endpoint above, which already owns
+  // their request-id and expected-version contract.
+  if (isRcapProspectsApiPath(url.pathname)) {
+    const result = await handleRcapProspectsApiRequest({
+      enabled:rcapCrmConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    sendJson(response, result.body || { ok:false, error:"RCAP prospects are unavailable." }, result.status || 404);
     return;
   }
 

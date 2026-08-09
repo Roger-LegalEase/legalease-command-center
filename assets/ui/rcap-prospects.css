@@ -1,0 +1,290 @@
+/* RCAP Prospect CRM — Wave 1B presentation layer.
+
+   Loaded with the rcap-prospects lazy asset, not in the head: it is needed only on the
+   RCAP saved view and its account surface, and the critical stylesheet budget is shared by
+   every page. Every colour, radius, shadow and type size below comes from the tokens in
+   assets/ui/founder-os-concept.css — nothing here introduces a second palette, a second
+   accent, or a competing type scale.
+
+   One rule governs the whole file: exactly one warm-orange primary action per decision
+   surface. On the list that is "Add prospect"; on an account it is the Next Best Step
+   button. Everything else is a neutral control, so the eye has one place to land. */
+
+/* SELF-SUFFICIENT TOKENS. Every var() below carries its literal fallback, because the
+   --le-concept-* tokens live in assets/ui/founder-os-concept.css, which is linked only under
+   some flag combinations. Without the fallbacks this surface renders white text on a white
+   canvas the moment the RCAP flag is on and the concept layer is not -- which is exactly what
+   axe caught: the navy avatar and the orange primary button both resolved to no background.
+   The fallbacks are copied from that file and must stay in step with it. */
+
+/* ============================================================================
+   Shared
+   ========================================================================== */
+
+.rcap-page { padding: 30px 34px 34px; color: var(--le-concept-ink, #182230); font-size: var(--le-type-body, 0.8125rem); }
+.rcap-page *:focus-visible { outline: 2px solid var(--le-concept-orange, #ff3b00); outline-offset: 2px; border-radius: 6px; }
+
+/* Announcements are read by assistive technology; they are not a visual element. */
+.rcap-announcement { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+.rcap-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin: 0 0 18px; }
+.rcap-header .rcap-eyebrow { margin: 0 0 6px; color: var(--le-concept-orange-text, #b83000); font-size: var(--le-type-label, 0.6875rem); font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.rcap-header h1 { margin: 0; font-size: var(--le-type-page-title, 1.75rem); font-weight: 800; line-height: 1.12; letter-spacing: -.02em; }
+.rcap-header .rcap-subtitle { margin: 7px 0 0; max-width: 62ch; color: var(--le-concept-muted-text, #5a6474); }
+.rcap-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+
+/* The single dominant action. Used once per surface. */
+.rcap-primary { min-height: 40px; display: inline-flex; align-items: center; gap: 7px; padding: 0 16px; border: 1px solid var(--le-concept-orange-dark, #d93204); border-radius: var(--le-radius-control, 10px); background: var(--le-concept-orange-dark, #d93204); color: #fff; font: inherit; font-size: var(--le-type-meta, 0.75rem); font-weight: 700; text-decoration: none; cursor: pointer; }
+/* The shell's own `button:hover` sets a near-white background. It is a weaker selector than
+   `.rcap-primary` but a stronger one than nothing, so a hover rule that only tweaks `filter`
+   loses the background and leaves white text on #f8fafc. Every hover state below therefore
+   restates the colours it owns rather than inheriting them. */
+.rcap-primary:hover { border-color: var(--le-concept-orange-dark, #d93204); background: var(--le-concept-orange-dark, #d93204); color: #fff; filter: brightness(1.06); }
+.rcap-secondary { min-height: 40px; display: inline-flex; align-items: center; gap: 7px; padding: 0 14px; border: 1px solid var(--le-concept-border, #e4e7ec); border-radius: var(--le-radius-control, 10px); background: var(--le-concept-card, #ffffff); color: var(--le-concept-ink, #182230); font: inherit; font-size: var(--le-type-meta, 0.75rem); font-weight: 700; text-decoration: none; cursor: pointer; }
+.rcap-secondary:hover { border-color: #d3d8e0; background: #f9fafb; color: var(--le-concept-ink, #182230); }
+
+/* A control that genuinely cannot act yet. It is visibly inert AND explains itself, which is
+   the opposite of a dead control: the reason travels with it. */
+/* --le-concept-muted (#697586) on the canvas tint measures about 4.4:1 and axe flags it. A
+   disabled control here always carries a reason the reader needs, so it uses the darker
+   muted-text token instead of the decorative one. */
+.rcap-primary[disabled], .rcap-secondary[disabled] { border-color: var(--le-concept-border, #e4e7ec); background: var(--le-concept-canvas, #f5f6f8); color: var(--le-concept-muted-text, #5a6474); cursor: not-allowed; filter: none; }
+.rcap-disabled-reason { margin: 6px 0 0; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
+
+.rcap-card { border: 1px solid var(--le-concept-border, #e4e7ec); border-radius: var(--le-radius-card, 16px); background: var(--le-concept-card, #ffffff); box-shadow: var(--le-concept-shadow, 0 1px 2px rgba(16,24,40,.04), 0 12px 28px rgba(16,24,40,.06)); }
+.rcap-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 15px 18px 0; }
+.rcap-card-head h2 { margin: 0; font-size: 1rem; font-weight: 800; letter-spacing: -.01em; }
+.rcap-card-head h3 { margin: 0; font-size: .9375rem; font-weight: 800; }
+.rcap-card-head small { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.rcap-card-body { padding: 12px 18px 18px; }
+
+/* Amber text sits on the amber-soft tint at about 4.4:1 with the token colour, which is under
+   AA — and a warning is the last thing that should be hard to read. These four use a darker
+   amber of the same hue instead. */
+/* Status pills. Restrained: a tinted background and a text colour, never a saturated block.
+   Every pill carries its own word, so status is never communicated by colour alone. */
+.rcap-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; background: var(--le-status-unavailable-soft, #eaeef3); color: var(--le-status-unavailable, #4a5566); font-size: var(--le-type-label, 0.6875rem); font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
+.rcap-pill.is-urgent { background: var(--le-concept-red-soft, #fff0ee); color: var(--le-concept-red, #b42318); }
+.rcap-pill.is-warn { background: var(--le-concept-amber-soft, #fff6d8); color: #7a5200; }
+.rcap-pill.is-action { background: var(--le-concept-orange-soft, #fff0eb); color: var(--le-concept-orange-text, #b83000); }
+.rcap-pill.is-info { background: var(--le-concept-blue-soft, #eef4ff); color: var(--le-concept-blue, #175cd3); }
+.rcap-pill.is-good { background: var(--le-concept-green-soft, #e8f7f3); color: var(--le-concept-green, #117a65); }
+
+/* A value that is not known. Visually distinct from a real value so an absence can never be
+   misread as data, and never rendered as a zero. */
+.rcap-unknown { color: var(--le-concept-muted-text, #5a6474); font-style: normal; }
+
+/* Fact provenance. A verified fact and a recommendation must not look the same (rule 23):
+   they carry different labels, different tints, and different words. */
+.rcap-factlabel { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 6px; font-size: var(--le-type-label, 0.6875rem); font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.rcap-factlabel.is-verified { background: var(--le-concept-green-soft, #e8f7f3); color: var(--le-concept-green, #117a65); }
+.rcap-factlabel.is-inferred { background: var(--le-concept-blue-soft, #eef4ff); color: var(--le-concept-blue, #175cd3); }
+.rcap-factlabel.is-recommendation { background: var(--le-concept-purple-soft, #f4f0ff); color: var(--le-concept-purple, #6941c6); }
+.rcap-factlabel.is-question { background: var(--le-concept-amber-soft, #fff6d8); color: #7a5200; }
+
+/* Truthful page states. Each explains itself; none is a blank card. */
+.rcap-state { display: grid; gap: 8px; justify-items: start; padding: 34px 18px; border: 1px solid var(--le-concept-border, #e4e7ec); border-radius: var(--le-radius-card, 16px); background: var(--le-concept-card, #ffffff); }
+.rcap-state h2 { margin: 0; font-size: 1rem; font-weight: 800; }
+.rcap-state p { margin: 0; max-width: 60ch; color: var(--le-concept-muted-text, #5a6474); }
+
+/* ============================================================================
+   List
+   ========================================================================== */
+
+.rcap-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; padding: 0; }
+.rcap-summary button { min-width: 132px; min-height: 62px; display: grid; gap: 2px; padding: 10px 14px; border: 1px solid var(--le-concept-border, #e4e7ec); border-radius: var(--le-radius-control, 10px); background: var(--le-concept-card, #ffffff); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.rcap-summary button:hover { border-color: #d3d8e0; background: #fcfcfd; }
+.rcap-summary button.is-active { border-color: var(--le-concept-orange, #ff3b00); background: var(--le-concept-orange-soft, #fff0eb); }
+.rcap-summary .rcap-summary-value { font-size: 1.25rem; font-weight: 800; line-height: 1.1; }
+.rcap-summary .rcap-summary-value.is-unknown { font-size: var(--le-type-meta, 0.75rem); font-weight: 700; color: var(--le-concept-muted-text, #5a6474); }
+.rcap-summary .rcap-summary-label { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+
+.rcap-views { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; width: max-content; max-width: 100%; margin: 0 0 12px; padding: 4px; border-radius: var(--le-radius-control, 10px); background: #eceff3; }
+.rcap-views a { min-height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 8px; color: #5c6674; font-size: var(--le-type-meta, 0.75rem); font-weight: 700; text-decoration: none; }
+.rcap-views a.is-active { background: var(--le-concept-card, #ffffff); color: var(--le-concept-ink, #182230); box-shadow: 0 1px 3px rgba(16, 24, 40, .08); }
+.rcap-views a span { padding: 1px 6px; border-radius: 8px; background: rgba(16, 24, 40, .07); font-size: var(--le-type-label, 0.6875rem); }
+
+.rcap-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 9px; margin: 0 0 14px; }
+.rcap-filters label { display: grid; gap: 3px; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 700; }
+.rcap-filters select { min-height: 36px; width: 154px; max-width: 100%; padding: 0 10px; border: 1px solid var(--le-concept-border, #e4e7ec); border-radius: 9px; background: var(--le-concept-card, #ffffff); color: var(--le-concept-ink, #182230); font: inherit; font-size: var(--le-type-meta, 0.75rem); }
+
+.rcap-table-card { overflow: hidden; border: 1px solid var(--le-concept-border, #e4e7ec); border-radius: var(--le-radius-card, 16px); background: var(--le-concept-card, #ffffff); box-shadow: var(--le-concept-shadow, 0 1px 2px rgba(16,24,40,.04), 0 12px 28px rgba(16,24,40,.06)); }
+.rcap-table-scroll { overflow-x: auto; }
+/* Declared column shares. Auto layout handed the account name a quarter of the width the
+   email column took, so a four-word organisation name wrapped onto four lines beside three
+   columns holding two words each. The shares below are sized to the longest real value in
+   each column, and the table scrolls inside its own card below 980px rather than squeezing. */
+.rcap-table { width: 100%; min-width: 1010px; table-layout: fixed; border-collapse: collapse; }
+.rcap-table th[scope="col"]:nth-child(1) { width: 20%; }
+.rcap-table th[scope="col"]:nth-child(2) { width: 11%; }
+.rcap-table th[scope="col"]:nth-child(3) { width: 9%; }
+.rcap-table th[scope="col"]:nth-child(4) { width: 16%; }
+.rcap-table th[scope="col"]:nth-child(5) { width: 9%; }
+.rcap-table th[scope="col"]:nth-child(6) { width: 13%; }
+.rcap-table th[scope="col"]:nth-child(7) { width: 10%; }
+.rcap-table th[scope="col"]:nth-child(8) { width: 12%; }
+.rcap-table caption { padding: 12px 16px 0; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); text-align: left; }
+.rcap-table th[scope="col"] { height: 40px; padding: 0 14px; border-bottom: 1px solid var(--le-concept-border, #e4e7ec); background: #f9fafb; color: #5c6674; font-size: var(--le-type-label, 0.6875rem); font-weight: 800; letter-spacing: .07em; text-align: left; text-transform: uppercase; }
+.rcap-table td, .rcap-table th[scope="row"] { padding: 12px 14px; overflow-wrap: break-word; border-bottom: 1px solid #edf0f3; font-size: var(--le-type-meta, 0.75rem); font-weight: 400; text-align: left; vertical-align: top; }
+.rcap-table tr:last-child td, .rcap-table tr:last-child th[scope="row"] { border-bottom: 0; }
+.rcap-table tbody tr:hover { background: #fcfcfd; }
+.rcap-table .rcap-account-link { color: var(--le-concept-ink, #182230); font-size: var(--le-type-body, 0.8125rem); font-weight: 800; text-decoration: none; }
+.rcap-table .rcap-account-link:hover { text-decoration: underline; }
+/* A pill in a fixed-width cell has to be allowed to wrap, or it is simply cut off. */
+.rcap-table .rcap-pill { white-space: normal; }
+.rcap-table .rcap-cell-sub { display: block; margin-top: 2px; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
+.rcap-row-actions { display: flex; gap: 6px; }
+.rcap-row-actions button, .rcap-row-actions a { min-height: 30px; display: inline-flex; align-items: center; padding: 0 10px; border: 1px solid var(--le-concept-border, #e4e7ec); border-radius: 8px; background: var(--le-concept-card, #ffffff); color: #475467; font: inherit; font-size: var(--le-type-label, 0.6875rem); font-weight: 700; text-decoration: none; cursor: pointer; }
+.rcap-row-actions button:hover, .rcap-row-actions a:hover { border-color: #d3d8e0; background: #f9fafb; color: #344054; }
+
+/* Mobile cards replace the table entirely — the table is not squeezed. */
+.rcap-cards { display: none; gap: 10px; }
+.rcap-cards article { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--le-concept-border, #e4e7ec); border-radius: var(--le-radius-card, 16px); background: var(--le-concept-card, #ffffff); box-shadow: var(--le-concept-shadow, 0 1px 2px rgba(16,24,40,.04), 0 12px 28px rgba(16,24,40,.06)); }
+.rcap-cards h3 { margin: 0; font-size: .9375rem; font-weight: 800; }
+.rcap-cards h3 a { color: var(--le-concept-ink, #182230); text-decoration: none; }
+.rcap-cards dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
+.rcap-cards dt { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 700; }
+.rcap-cards dd { margin: 0; font-size: var(--le-type-meta, 0.75rem); }
+
+/* ============================================================================
+   Overview
+   ========================================================================== */
+
+.rcap-account-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin: 0 0 14px; }
+.rcap-identity { display: flex; align-items: flex-start; gap: 13px; min-width: 0; }
+.rcap-avatar { flex: 0 0 auto; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 12px; background: var(--le-concept-navy, #0b1424); color: #fff; font-size: 1rem; font-weight: 800; letter-spacing: .02em; }
+.rcap-identity h1 { margin: 0; font-size: 1.5rem; font-weight: 800; line-height: 1.15; letter-spacing: -.02em; }
+.rcap-identity-meta { margin: 5px 0 0; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-meta, 0.75rem); }
+.rcap-why { margin: 8px 0 0; max-width: 68ch; font-size: var(--le-type-body, 0.8125rem); }
+.rcap-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 9px 0 0; }
+
+.rcap-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 16px; padding: 4px; width: max-content; max-width: 100%; border-radius: var(--le-radius-control, 10px); background: #eceff3; }
+.rcap-tabs a, .rcap-tabs span { min-height: 32px; display: inline-flex; align-items: center; padding: 0 13px; border-radius: 8px; color: #5c6674; font-size: var(--le-type-meta, 0.75rem); font-weight: 700; text-decoration: none; }
+.rcap-tabs a.is-active { background: var(--le-concept-card, #ffffff); color: var(--le-concept-ink, #182230); box-shadow: 0 1px 3px rgba(16, 24, 40, .08); }
+.rcap-tabs span[aria-disabled="true"] { color: var(--le-concept-muted-text, #5a6474); cursor: not-allowed; }
+
+.rcap-layout { display: grid; grid-template-columns: minmax(0, 8fr) minmax(300px, 4fr); gap: 20px; align-items: start; }
+.rcap-main { display: grid; gap: 18px; min-width: 0; }
+.rcap-rail { display: grid; gap: 18px; min-width: 0; }
+
+/* The dominant card. Slightly stronger border and a warm ground so the eye lands here first. */
+.rcap-next { border: 1px solid #f0c4b4; border-radius: var(--le-radius-card, 16px); background: linear-gradient(180deg, var(--le-concept-orange-soft, #fff0eb), var(--le-concept-card, #ffffff) 62%); box-shadow: var(--le-concept-shadow, 0 1px 2px rgba(16,24,40,.04), 0 12px 28px rgba(16,24,40,.06)); }
+.rcap-next .rcap-card-body { padding-top: 4px; }
+.rcap-next h2 { margin: 0; font-size: 1.1875rem; font-weight: 800; letter-spacing: -.015em; }
+.rcap-next .rcap-rationale { margin: 6px 0 0; max-width: 66ch; color: #52453f; }
+.rcap-next .rcap-next-meta { display: flex; flex-wrap: wrap; gap: 14px; margin: 11px 0 0; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
+.rcap-next .rcap-next-meta strong { color: var(--le-concept-ink, #182230); font-weight: 700; }
+.rcap-next-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 13px 0 0; }
+
+/* The blocked variant. Same card, different register: no warm ground, a red rule, and the
+   blocker anatomy in a definition list so each part is labelled. */
+.rcap-next.is-blocked { border-color: #f0c9c4; background: var(--le-concept-card, #ffffff); }
+.rcap-next.is-blocked::before { content: ""; display: block; height: 3px; border-radius: var(--le-radius-card, 16px) var(--le-radius-card, 16px) 0 0; background: var(--le-concept-red, #b42318); }
+.rcap-blocker { display: grid; grid-template-columns: minmax(120px, auto) 1fr; gap: 6px 14px; margin: 12px 0 0; padding: 12px 14px; border-radius: var(--le-radius-control, 10px); background: var(--le-concept-red-soft, #fff0ee); }
+.rcap-blocker dt { color: var(--le-concept-red, #b42318); font-size: var(--le-type-label, 0.6875rem); font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.rcap-blocker dd { margin: 0; font-size: var(--le-type-meta, 0.75rem); }
+
+.rcap-snapshot { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.rcap-snapshot section { min-width: 0; }
+.rcap-snapshot h3 { margin: 0 0 5px; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.rcap-snapshot ul { margin: 0; padding-left: 17px; }
+.rcap-snapshot li { margin: 0 0 3px; font-size: var(--le-type-meta, 0.75rem); }
+.rcap-snapshot p { margin: 0; font-size: var(--le-type-meta, 0.75rem); }
+
+.rcap-contact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 0; }
+.rcap-contact-grid dt { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.rcap-contact-grid dd { margin: 1px 0 0; font-size: var(--le-type-meta, 0.75rem); overflow-wrap: anywhere; }
+.rcap-warnings { display: grid; gap: 5px; margin: 12px 0 0; padding: 10px 12px; border-radius: var(--le-radius-control, 10px); background: var(--le-concept-amber-soft, #fff6d8); }
+.rcap-warnings p { margin: 0; color: #7a5200; font-size: var(--le-type-meta, 0.75rem); font-weight: 600; }
+.rcap-ladder { margin: 12px 0 0; }
+.rcap-ladder summary { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-meta, 0.75rem); font-weight: 700; cursor: pointer; }
+.rcap-ladder ul { margin: 8px 0 0; padding-left: 17px; }
+
+.rcap-steps { display: grid; gap: 9px; }
+.rcap-step { display: grid; gap: 3px; padding: 11px 13px; border: 1px solid var(--le-concept-border, #e4e7ec); border-radius: var(--le-radius-control, 10px); background: #fcfcfd; }
+.rcap-step-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rcap-step-head strong { font-size: var(--le-type-body, 0.8125rem); font-weight: 800; }
+.rcap-step dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 4px 0 0; }
+.rcap-step dt { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 700; }
+.rcap-step dd { margin: 0; font-size: var(--le-type-label, 0.6875rem); }
+
+.rcap-timeline { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.rcap-timeline li { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid #edf0f3; }
+.rcap-timeline li:last-child { border-bottom: 0; }
+.rcap-timeline .rcap-timeline-when { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); white-space: nowrap; }
+.rcap-timeline .rcap-timeline-title { font-size: var(--le-type-meta, 0.75rem); font-weight: 700; }
+.rcap-timeline .rcap-timeline-sub { margin: 2px 0 0; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
+
+.rcap-standing { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; }
+.rcap-standing dt { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 700; }
+.rcap-standing dd { margin: 0; font-size: var(--le-type-meta, 0.75rem); text-align: right; overflow-wrap: anywhere; }
+
+.rcap-list-plain { margin: 0; padding: 0; list-style: none; display: grid; gap: 9px; }
+.rcap-list-plain li { display: grid; gap: 2px; padding-bottom: 9px; border-bottom: 1px solid #edf0f3; }
+.rcap-list-plain li:last-child { padding-bottom: 0; border-bottom: 0; }
+.rcap-list-plain .rcap-item-title { font-size: var(--le-type-meta, 0.75rem); font-weight: 700; }
+.rcap-list-plain .rcap-item-sub { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
+
+/* The coordination warning sits above the rail, before any outreach is prepared. */
+.rcap-coordination { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid #f0d8a8; border-radius: var(--le-radius-card, 16px); background: var(--le-concept-amber-soft, #fff6d8); }
+.rcap-coordination strong { color: #7a5200; font-size: var(--le-type-meta, 0.75rem); }
+.rcap-coordination p { margin: 0; color: #6b5314; font-size: var(--le-type-meta, 0.75rem); }
+
+.rcap-empty-note { margin: 0; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-meta, 0.75rem); }
+
+/* ============================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 1100px) {
+  /* Tablet: the rail moves below the main column rather than being squeezed. */
+  .rcap-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 860px) {
+  .rcap-page { padding: 20px 16px 28px; }
+  .rcap-header, .rcap-account-header { flex-direction: column; align-items: stretch; }
+  .rcap-header-actions { width: 100%; }
+  .rcap-header-actions .rcap-primary, .rcap-header-actions .rcap-secondary { flex: 1 1 auto; justify-content: center; }
+  .rcap-snapshot, .rcap-contact-grid { grid-template-columns: minmax(0, 1fr); }
+  /* A heading and its status word cannot share a 358px line: both wrap and neither reads. */
+  .rcap-card-head { flex-direction: column; align-items: flex-start; gap: 3px; }
+  /* A 24px account name beside a 46px avatar takes three lines of a 390px screen before the
+     page has said anything. Both come down a step. */
+  .rcap-avatar { width: 38px; height: 38px; border-radius: 10px; font-size: .875rem; }
+  .rcap-identity { gap: 10px; }
+  .rcap-identity h1 { font-size: 1.3125rem; }
+}
+
+@media (max-width: 720px) {
+  /* The table is replaced, not scrolled: a squeezed eight-column table is unreadable. */
+  .rcap-table-card { display: none; }
+  .rcap-cards { display: grid; }
+  .rcap-summary button { min-width: 0; flex: 1 1 44%; }
+  /* Two even filter columns, each control filling its cell, instead of six ragged widths. */
+  .rcap-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: end; }
+  .rcap-filters select { width: 100%; min-height: 44px; }
+  /* Ten saved views on a 390px screen. A horizontal scroller chopped the second chip
+     mid-word; a free-wrapping bar stacked them nine rows deep. A two-column grid shows every
+     view, aligned, in five rows. */
+  .rcap-views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; overflow-x: visible; }
+  .rcap-views a { justify-content: space-between; padding: 0 12px; }
+  .rcap-standing dd { text-align: left; }
+  /* Touch targets reach 44px on every control that stays reachable at this width -- including
+     the ones that are links, which is where the first pass fell short: the saved-view chips were
+     32px and the card titles 40px, because a rule written for buttons never reached them. */
+  .rcap-primary, .rcap-secondary, .rcap-row-actions button, .rcap-row-actions a, .rcap-summary button { min-height: 44px; }
+  .rcap-tabs a, .rcap-tabs span { min-height: 44px; }
+  .rcap-views a { min-height: 44px; padding: 0 14px; }
+  .rcap-cards h3 a, .rcap-cards dd a, .rcap-list-plain a, .rcap-table .rcap-account-link { display: inline-flex; align-items: center; min-height: 44px; }
+  .rcap-state button, .rcap-ladder summary { min-height: 44px; display: inline-flex; align-items: center; }
+  /* The shell sets links to nowrap. In a 143px grid cell that is a guaranteed overflow -- the
+     measured chips ran 168px wide and ran into their neighbour -- so saved-view labels wrap
+     here instead. Declared last so it wins over the touch-target rules above. */
+  .rcap-views a { white-space: normal; line-height: 1.2; padding: 0 10px; }
+  .rcap-views a span { flex: 0 0 auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rcap-page *, .rcap-page *::before, .rcap-page *::after { transition-duration: .001ms !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
+}
