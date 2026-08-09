@@ -126,8 +126,8 @@ function sendWindowPlain(caps) {
   return `weekdays ${caps.windowStartHourET}am–${caps.windowEndHourET - 12}pm Eastern, at most ${caps.perTickMax} emails per hour and ${caps.perWaveDayCap} per day`;
 }
 
-function thresholdFacts(state, config) {
-  const evaluated = evaluateThresholds(state, config);
+function thresholdFacts(state, config, now) {
+  const evaluated = evaluateThresholds(state, config, { now });
   const t = config.thresholds;
   const pct = (v, digits = 1) => `${(v * 100).toFixed(digits)}%`;
   return {
@@ -177,7 +177,7 @@ export function buildCampaignCommandView(state = {}, { env = process.env, now = 
   const config = reactivationCampaignOf(state);
   const gates = gateFacts(state, env);
   const { waves, unassigned } = waveBreakdown(state, config);
-  const thresholds = thresholdFacts(state, config);
+  const thresholds = thresholdFacts(state, config, now);
   const telemetry = telemetryFacts(state, env);
   const metrics = waveMetrics(state);
   const rates = campaignRates(state);
