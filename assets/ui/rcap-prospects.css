@@ -1,0 +1,234 @@
+/* RCAP Prospect CRM — Wave 1B presentation layer.
+
+   Loaded with the rcap-prospects lazy asset, not in the head: it is needed only on the
+   RCAP saved view and its account surface, and the critical stylesheet budget is shared by
+   every page. Every colour, radius, shadow and type size below comes from the tokens in
+   assets/ui/founder-os-concept.css — nothing here introduces a second palette, a second
+   accent, or a competing type scale.
+
+   One rule governs the whole file: exactly one warm-orange primary action per decision
+   surface. On the list that is "Add prospect"; on an account it is the Next Best Step
+   button. Everything else is a neutral control, so the eye has one place to land. */
+
+/* ============================================================================
+   Shared
+   ========================================================================== */
+
+.rcap-page { padding: 30px 34px 34px; color: var(--le-concept-ink); font-size: var(--le-type-body); }
+.rcap-page *:focus-visible { outline: 2px solid var(--le-concept-orange); outline-offset: 2px; border-radius: 6px; }
+
+/* Announcements are read by assistive technology; they are not a visual element. */
+.rcap-announcement { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+.rcap-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin: 0 0 18px; }
+.rcap-header .rcap-eyebrow { margin: 0 0 6px; color: var(--le-concept-orange-text); font-size: var(--le-type-label); font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.rcap-header h1 { margin: 0; font-size: var(--le-type-page-title); font-weight: 800; line-height: 1.12; letter-spacing: -.02em; }
+.rcap-header .rcap-subtitle { margin: 7px 0 0; max-width: 62ch; color: var(--le-concept-muted-text); }
+.rcap-header-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* The single dominant action. Used once per surface. */
+.rcap-primary { min-height: 40px; display: inline-flex; align-items: center; gap: 7px; padding: 0 16px; border: 1px solid var(--le-concept-orange-dark); border-radius: var(--le-radius-control); background: var(--le-concept-orange-dark); color: #fff; font: inherit; font-size: var(--le-type-meta); font-weight: 700; text-decoration: none; cursor: pointer; }
+.rcap-primary:hover { filter: brightness(1.06); }
+.rcap-secondary { min-height: 40px; display: inline-flex; align-items: center; gap: 7px; padding: 0 14px; border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-control); background: var(--le-concept-card); color: var(--le-concept-ink); font: inherit; font-size: var(--le-type-meta); font-weight: 700; text-decoration: none; cursor: pointer; }
+.rcap-secondary:hover { background: #f9fafb; }
+
+/* A control that genuinely cannot act yet. It is visibly inert AND explains itself, which is
+   the opposite of a dead control: the reason travels with it. */
+.rcap-primary[disabled], .rcap-secondary[disabled] { border-color: var(--le-concept-border); background: var(--le-concept-canvas); color: var(--le-concept-muted); cursor: not-allowed; filter: none; }
+.rcap-disabled-reason { margin: 6px 0 0; color: var(--le-concept-muted-text); font-size: var(--le-type-label); }
+
+.rcap-card { border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-card); background: var(--le-concept-card); box-shadow: var(--le-concept-shadow); }
+.rcap-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 15px 18px 0; }
+.rcap-card-head h2 { margin: 0; font-size: 1rem; font-weight: 800; letter-spacing: -.01em; }
+.rcap-card-head h3 { margin: 0; font-size: .9375rem; font-weight: 800; }
+.rcap-card-head small { color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.rcap-card-body { padding: 12px 18px 18px; }
+
+/* Status pills. Restrained: a tinted background and a text colour, never a saturated block.
+   Every pill carries its own word, so status is never communicated by colour alone. */
+.rcap-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; background: var(--le-status-unavailable-soft); color: var(--le-status-unavailable); font-size: var(--le-type-label); font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
+.rcap-pill.is-urgent { background: var(--le-concept-red-soft); color: var(--le-concept-red); }
+.rcap-pill.is-warn { background: var(--le-concept-amber-soft); color: var(--le-concept-amber); }
+.rcap-pill.is-action { background: var(--le-concept-orange-soft); color: var(--le-concept-orange-text); }
+.rcap-pill.is-info { background: var(--le-concept-blue-soft); color: var(--le-concept-blue); }
+.rcap-pill.is-good { background: var(--le-concept-green-soft); color: var(--le-concept-green); }
+
+/* A value that is not known. Visually distinct from a real value so an absence can never be
+   misread as data, and never rendered as a zero. */
+.rcap-unknown { color: var(--le-concept-muted); font-style: normal; }
+
+/* Fact provenance. A verified fact and a recommendation must not look the same (rule 23):
+   they carry different labels, different tints, and different words. */
+.rcap-factlabel { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 6px; font-size: var(--le-type-label); font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.rcap-factlabel.is-verified { background: var(--le-concept-green-soft); color: var(--le-concept-green); }
+.rcap-factlabel.is-inferred { background: var(--le-concept-blue-soft); color: var(--le-concept-blue); }
+.rcap-factlabel.is-recommendation { background: var(--le-concept-purple-soft); color: var(--le-concept-purple); }
+.rcap-factlabel.is-question { background: var(--le-concept-amber-soft); color: var(--le-concept-amber); }
+
+/* Truthful page states. Each explains itself; none is a blank card. */
+.rcap-state { display: grid; gap: 8px; justify-items: start; padding: 34px 18px; border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-card); background: var(--le-concept-card); }
+.rcap-state h2 { margin: 0; font-size: 1rem; font-weight: 800; }
+.rcap-state p { margin: 0; max-width: 60ch; color: var(--le-concept-muted-text); }
+
+/* ============================================================================
+   List
+   ========================================================================== */
+
+.rcap-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; padding: 0; }
+.rcap-summary button { min-width: 132px; min-height: 62px; display: grid; gap: 2px; padding: 10px 14px; border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-control); background: var(--le-concept-card); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.rcap-summary button:hover { border-color: #d3d8e0; background: #fcfcfd; }
+.rcap-summary button.is-active { border-color: var(--le-concept-orange); background: var(--le-concept-orange-soft); }
+.rcap-summary .rcap-summary-value { font-size: 1.25rem; font-weight: 800; line-height: 1.1; }
+.rcap-summary .rcap-summary-value.is-unknown { font-size: var(--le-type-meta); font-weight: 700; color: var(--le-concept-muted); }
+.rcap-summary .rcap-summary-label { color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+
+.rcap-views { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; width: max-content; max-width: 100%; margin: 0 0 12px; padding: 4px; border-radius: var(--le-radius-control); background: #eceff3; }
+.rcap-views a { min-height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 8px; color: #5c6674; font-size: var(--le-type-meta); font-weight: 700; text-decoration: none; }
+.rcap-views a.is-active { background: var(--le-concept-card); color: var(--le-concept-ink); box-shadow: 0 1px 3px rgba(16, 24, 40, .08); }
+.rcap-views a span { padding: 1px 6px; border-radius: 8px; background: rgba(16, 24, 40, .07); font-size: var(--le-type-label); }
+
+.rcap-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 9px; margin: 0 0 14px; }
+.rcap-filters label { display: grid; gap: 3px; color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; }
+.rcap-filters select { min-height: 36px; min-width: 128px; padding: 0 10px; border: 1px solid var(--le-concept-border); border-radius: 9px; background: var(--le-concept-card); color: var(--le-concept-ink); font: inherit; font-size: var(--le-type-meta); }
+
+.rcap-table-card { overflow: hidden; border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-card); background: var(--le-concept-card); box-shadow: var(--le-concept-shadow); }
+.rcap-table-scroll { overflow-x: auto; }
+.rcap-table { width: 100%; border-collapse: collapse; }
+.rcap-table caption { padding: 12px 16px 0; color: var(--le-concept-muted-text); font-size: var(--le-type-label); text-align: left; }
+.rcap-table th[scope="col"] { height: 40px; padding: 0 14px; border-bottom: 1px solid var(--le-concept-border); background: #f9fafb; color: #5c6674; font-size: var(--le-type-label); font-weight: 800; letter-spacing: .07em; text-align: left; text-transform: uppercase; white-space: nowrap; }
+.rcap-table td, .rcap-table th[scope="row"] { padding: 12px 14px; border-bottom: 1px solid #edf0f3; font-size: var(--le-type-meta); font-weight: 400; text-align: left; vertical-align: top; }
+.rcap-table tr:last-child td, .rcap-table tr:last-child th[scope="row"] { border-bottom: 0; }
+.rcap-table tbody tr:hover { background: #fcfcfd; }
+.rcap-table .rcap-account-link { color: var(--le-concept-ink); font-size: var(--le-type-body); font-weight: 800; text-decoration: none; }
+.rcap-table .rcap-account-link:hover { text-decoration: underline; }
+.rcap-table .rcap-cell-sub { display: block; margin-top: 2px; color: var(--le-concept-muted-text); font-size: var(--le-type-label); }
+.rcap-row-actions { display: flex; gap: 6px; }
+.rcap-row-actions button, .rcap-row-actions a { min-height: 30px; display: inline-flex; align-items: center; padding: 0 10px; border: 1px solid var(--le-concept-border); border-radius: 8px; background: var(--le-concept-card); color: #475467; font: inherit; font-size: var(--le-type-label); font-weight: 700; text-decoration: none; cursor: pointer; }
+
+/* Mobile cards replace the table entirely — the table is not squeezed. */
+.rcap-cards { display: none; gap: 10px; }
+.rcap-cards article { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-card); background: var(--le-concept-card); box-shadow: var(--le-concept-shadow); }
+.rcap-cards h3 { margin: 0; font-size: .9375rem; font-weight: 800; }
+.rcap-cards h3 a { color: var(--le-concept-ink); text-decoration: none; }
+.rcap-cards dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
+.rcap-cards dt { color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; }
+.rcap-cards dd { margin: 0; font-size: var(--le-type-meta); }
+
+/* ============================================================================
+   Overview
+   ========================================================================== */
+
+.rcap-account-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin: 0 0 14px; }
+.rcap-identity { display: flex; align-items: flex-start; gap: 13px; min-width: 0; }
+.rcap-avatar { flex: 0 0 auto; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 12px; background: var(--le-concept-navy); color: #fff; font-size: 1rem; font-weight: 800; letter-spacing: .02em; }
+.rcap-identity h1 { margin: 0; font-size: 1.5rem; font-weight: 800; line-height: 1.15; letter-spacing: -.02em; }
+.rcap-identity-meta { margin: 5px 0 0; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
+.rcap-why { margin: 8px 0 0; max-width: 68ch; font-size: var(--le-type-body); }
+.rcap-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 9px 0 0; }
+
+.rcap-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 16px; padding: 4px; width: max-content; max-width: 100%; border-radius: var(--le-radius-control); background: #eceff3; }
+.rcap-tabs a, .rcap-tabs span { min-height: 32px; display: inline-flex; align-items: center; padding: 0 13px; border-radius: 8px; color: #5c6674; font-size: var(--le-type-meta); font-weight: 700; text-decoration: none; }
+.rcap-tabs a.is-active { background: var(--le-concept-card); color: var(--le-concept-ink); box-shadow: 0 1px 3px rgba(16, 24, 40, .08); }
+.rcap-tabs span[aria-disabled="true"] { color: var(--le-concept-muted); cursor: not-allowed; }
+
+.rcap-layout { display: grid; grid-template-columns: minmax(0, 8fr) minmax(280px, 4fr); gap: 16px; align-items: start; }
+.rcap-main { display: grid; gap: 14px; min-width: 0; }
+.rcap-rail { display: grid; gap: 14px; min-width: 0; }
+
+/* The dominant card. Slightly stronger border and a warm ground so the eye lands here first. */
+.rcap-next { border: 1px solid #f0c4b4; border-radius: var(--le-radius-card); background: linear-gradient(180deg, var(--le-concept-orange-soft), var(--le-concept-card) 62%); box-shadow: var(--le-concept-shadow); }
+.rcap-next .rcap-card-body { padding-top: 4px; }
+.rcap-next h2 { margin: 0; font-size: 1.1875rem; font-weight: 800; letter-spacing: -.015em; }
+.rcap-next .rcap-rationale { margin: 6px 0 0; max-width: 66ch; color: #52453f; }
+.rcap-next .rcap-next-meta { display: flex; flex-wrap: wrap; gap: 14px; margin: 11px 0 0; color: var(--le-concept-muted-text); font-size: var(--le-type-label); }
+.rcap-next .rcap-next-meta strong { color: var(--le-concept-ink); font-weight: 700; }
+.rcap-next-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 13px 0 0; }
+
+/* The blocked variant. Same card, different register: no warm ground, a red rule, and the
+   blocker anatomy in a definition list so each part is labelled. */
+.rcap-next.is-blocked { border-color: #f0c9c4; background: var(--le-concept-card); }
+.rcap-next.is-blocked::before { content: ""; display: block; height: 3px; border-radius: var(--le-radius-card) var(--le-radius-card) 0 0; background: var(--le-concept-red); }
+.rcap-blocker { display: grid; grid-template-columns: minmax(120px, auto) 1fr; gap: 6px 14px; margin: 12px 0 0; padding: 12px 14px; border-radius: var(--le-radius-control); background: var(--le-concept-red-soft); }
+.rcap-blocker dt { color: var(--le-concept-red); font-size: var(--le-type-label); font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.rcap-blocker dd { margin: 0; font-size: var(--le-type-meta); }
+
+.rcap-snapshot { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.rcap-snapshot section { min-width: 0; }
+.rcap-snapshot h3 { margin: 0 0 5px; color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.rcap-snapshot ul { margin: 0; padding-left: 17px; }
+.rcap-snapshot li { margin: 0 0 3px; font-size: var(--le-type-meta); }
+.rcap-snapshot p { margin: 0; font-size: var(--le-type-meta); }
+
+.rcap-contact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 0; }
+.rcap-contact-grid dt { color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.rcap-contact-grid dd { margin: 1px 0 0; font-size: var(--le-type-meta); overflow-wrap: anywhere; }
+.rcap-warnings { display: grid; gap: 5px; margin: 12px 0 0; padding: 10px 12px; border-radius: var(--le-radius-control); background: var(--le-concept-amber-soft); }
+.rcap-warnings p { margin: 0; color: var(--le-concept-amber); font-size: var(--le-type-meta); font-weight: 600; }
+.rcap-ladder { margin: 12px 0 0; }
+.rcap-ladder summary { color: var(--le-concept-muted-text); font-size: var(--le-type-meta); font-weight: 700; cursor: pointer; }
+.rcap-ladder ul { margin: 8px 0 0; padding-left: 17px; }
+
+.rcap-steps { display: grid; gap: 9px; }
+.rcap-step { display: grid; gap: 3px; padding: 11px 13px; border: 1px solid var(--le-concept-border); border-radius: var(--le-radius-control); background: #fcfcfd; }
+.rcap-step-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rcap-step-head strong { font-size: var(--le-type-body); font-weight: 800; }
+.rcap-step dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 4px 0 0; }
+.rcap-step dt { color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; }
+.rcap-step dd { margin: 0; font-size: var(--le-type-label); }
+
+.rcap-timeline { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.rcap-timeline li { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid #edf0f3; }
+.rcap-timeline li:last-child { border-bottom: 0; }
+.rcap-timeline .rcap-timeline-when { color: var(--le-concept-muted-text); font-size: var(--le-type-label); white-space: nowrap; }
+.rcap-timeline .rcap-timeline-title { font-size: var(--le-type-meta); font-weight: 700; }
+.rcap-timeline .rcap-timeline-sub { margin: 2px 0 0; color: var(--le-concept-muted-text); font-size: var(--le-type-label); }
+
+.rcap-standing { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; }
+.rcap-standing dt { color: var(--le-concept-muted-text); font-size: var(--le-type-label); font-weight: 700; }
+.rcap-standing dd { margin: 0; font-size: var(--le-type-meta); text-align: right; overflow-wrap: anywhere; }
+
+.rcap-list-plain { margin: 0; padding: 0; list-style: none; display: grid; gap: 9px; }
+.rcap-list-plain li { display: grid; gap: 2px; padding-bottom: 9px; border-bottom: 1px solid #edf0f3; }
+.rcap-list-plain li:last-child { padding-bottom: 0; border-bottom: 0; }
+.rcap-list-plain .rcap-item-title { font-size: var(--le-type-meta); font-weight: 700; }
+.rcap-list-plain .rcap-item-sub { color: var(--le-concept-muted-text); font-size: var(--le-type-label); }
+
+/* The coordination warning sits above the rail, before any outreach is prepared. */
+.rcap-coordination { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid #f0d8a8; border-radius: var(--le-radius-card); background: var(--le-concept-amber-soft); }
+.rcap-coordination strong { color: var(--le-concept-amber); font-size: var(--le-type-meta); }
+.rcap-coordination p { margin: 0; color: #6b5314; font-size: var(--le-type-meta); }
+
+.rcap-empty-note { margin: 0; color: var(--le-concept-muted-text); font-size: var(--le-type-meta); }
+
+/* ============================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 1100px) {
+  /* Tablet: the rail moves below the main column rather than being squeezed. */
+  .rcap-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 860px) {
+  .rcap-page { padding: 20px 16px 28px; }
+  .rcap-header, .rcap-account-header { flex-direction: column; align-items: stretch; }
+  .rcap-header-actions { width: 100%; }
+  .rcap-header-actions .rcap-primary, .rcap-header-actions .rcap-secondary { flex: 1 1 auto; justify-content: center; }
+  .rcap-snapshot, .rcap-contact-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 720px) {
+  /* The table is replaced, not scrolled: a squeezed eight-column table is unreadable. */
+  .rcap-table-card { display: none; }
+  .rcap-cards { display: grid; }
+  .rcap-summary button { min-width: 0; flex: 1 1 44%; }
+  .rcap-views { width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+  .rcap-standing dd { text-align: left; }
+  /* Touch targets reach 44px on every control that remains reachable at this width. */
+  .rcap-primary, .rcap-secondary, .rcap-row-actions button, .rcap-row-actions a, .rcap-summary button { min-height: 44px; }
+  .rcap-tabs a, .rcap-tabs span { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rcap-page *, .rcap-page *::before, .rcap-page *::after { transition-duration: .001ms !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
+}
