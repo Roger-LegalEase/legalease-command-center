@@ -319,7 +319,12 @@ export function partnersHomeBrowserSource(options = {}) {
     let active=null;let sequence=0;let payload=null;let sessionEnded=false;
     function app(){return document.querySelector("main#app #partners.page-section.active");}
     function resolution(){return window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(location.hash||"#today");}
-    function onRoute(){const route=resolution();return route?.kind==="page"&&route.canonicalRoute==="partners";}
+    // The RCAP saved view OWNS #partners while it is active (Wave 1B). Without this guard both
+    // runtimes react to the same hash: this one sends its own account query to /api/ui/partners,
+    // which rejects it as a 400 on every row click. Standing down is the same ownership rule the
+    // Campaigns release established, applied to the network rather than the DOM.
+    function rcapViewActive(){return new URLSearchParams(String(location.hash||"").split("?")[1]||"").get("view")==="rcap-prospects";}
+    function onRoute(){const route=resolution();return route?.kind==="page"&&route.canonicalRoute==="partners"&&!rcapViewActive();}
     function routeQuery(){const query=new URLSearchParams(String(location.hash||"").split("?")[1]||"");query.set("view","list");query.set("limit","50");return query;}
     function routeHash(next={}){const current=routeQuery();current.delete("limit");for(const [key,value] of Object.entries(next)){if(value)current.set(key,value);else current.delete(key);}current.set("view","list");return "#partners?"+current.toString();}
     function navigate(next){const target=routeHash(next);if(location.hash===target)load({force:true});else location.hash=target.slice(1);}

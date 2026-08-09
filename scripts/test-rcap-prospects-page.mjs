@@ -295,6 +295,23 @@ check("facts and recommendations are visibly different, not colour alone", () =>
 // Overview — blocked
 // ---------------------------------------------------------------------------------------------
 
+check("no control appears twice on one surface", () => {
+  for (const [label, html] of [["complete", completeHtml], ["blocked", blockedHtml]]) {
+    for (const action of ["Add note", "Log activity", "Set next step"]) {
+      const count = (html.match(new RegExp(`>${action}<`, "g")) || []).length;
+      assert.ok(count <= 1, `${action} appears ${count} times on the ${label} overview; a duplicate control is ambiguous on screen and to a screen reader.`);
+    }
+  }
+});
+
+check("the recorded next action is completable from exactly one control", () => {
+  // The Next Best Step card and the Open tasks rail both know about the same recorded action.
+  // Only the card may offer to complete it.
+  const completers = (completeHtml.match(/data-rcap-action="complete_(next_action|task)"/g) || []);
+  assert.equal(completers.length, 1, `The complete surface offers ${completers.length} controls that complete the recorded next action; it must offer one.`);
+  assert.ok(completeHtml.includes("Completed from the next best step above."), "The rail must say where the one control lives.");
+});
+
 check("the blocked overview renders the full blocker anatomy", () => {
   assert.ok(blockedHtml.includes("Outreach blocked"), "The blocked register must be named.");
   for (const label of ["Blocked", "Why", "Still possible", "Owner", "Needed"]) {

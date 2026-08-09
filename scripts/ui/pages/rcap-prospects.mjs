@@ -341,6 +341,14 @@ function nextBestStepHtml(overview) {
   const blocker = step.blocker;
   if (!step.available) return "";
 
+  // The header already carries Add note / Log activity / Set next step. When the step's
+  // secondary is one of those, rendering it here would put two identical controls on one
+  // screen -- which is exactly the duplicate-action problem the visual contract forbids, and
+  // it makes the page ambiguous to a screen reader too. The secondary is dropped in that case;
+  // the header's copy is the one that stays.
+  const headerActionKeys = new Set((Array.isArray(overview.actions) ? overview.actions : []).map((action) => action.key));
+  const secondary = step.secondaryAction && !headerActionKeys.has(step.secondaryAction.key) ? step.secondaryAction : null;
+
   const blockerHtml = blocker
     ? `<dl class="rcap-blocker">
         <dt>Blocked</dt><dd>${escapeHtml(blocker.whatIsBlocked)}</dd>
@@ -366,7 +374,7 @@ function nextBestStepHtml(overview) {
         ${blocker
           ? `<button type="button" class="rcap-primary" data-rcap-action="review_contacts">${escapeHtml(step.primaryAction.label)}</button>`
           : `<button type="button" class="rcap-primary" data-rcap-action="${escapeHtml(step.primaryAction.key)}">${escapeHtml(step.primaryAction.label)}</button>`}
-        <button type="button" class="rcap-secondary" data-rcap-action="${escapeHtml(step.secondaryAction.key)}">${escapeHtml(step.secondaryAction.label)}</button>
+        ${secondary ? `<button type="button" class="rcap-secondary" data-rcap-action="${escapeHtml(secondary.key)}">${escapeHtml(secondary.label)}</button>` : ""}
         ${step.snoozeAvailable ? `<button type="button" class="rcap-secondary" data-rcap-action="snooze_task">Snooze</button>` : ""}
       </div>
     </div>
@@ -485,6 +493,15 @@ function railHtml(overview) {
   const rail = overview.contextRail || {};
   const standing = rail.whereThingsStand || {};
   const tasks = Array.isArray(rail.openTasks) ? rail.openTasks : [];
+  // The Next Best Step card already offers "Mark complete" for the recorded next action. When
+  // that same action is also an open task, the rail must not offer a second button that
+  // completes it -- two controls for one decision is the duplicate-action problem, and it makes
+  // the page ambiguous to anyone reading it linearly. The rail keeps the row and drops the
+  // button, pointing at the control that stays.
+  const step = overview.nextBestStep || {};
+  const stepTaskTitle = step.available && !step.blocked && step.primaryAction && step.primaryAction.key === "complete_next_action"
+    ? String(step.title || "").trim().toLowerCase()
+    : "";
   const files = Array.isArray(rail.files) ? rail.files : [];
   const related = Array.isArray(rail.relatedAccounts) ? rail.relatedAccounts : [];
   const warning = rail.coordinationWarning || {};
@@ -508,13 +525,15 @@ function railHtml(overview) {
     </div>
   </section>
   <section class="rcap-card" aria-labelledby="rcap-tasks-title">
-    <div class="rcap-card-head"><h2 id="rcap-tasks-title">Open tasks</h2><small>${rail.openTaskCount && rail.openTaskCount.known ? escapeHtml(String(rail.openTaskCount.value)) : "Unavailable"}</small></div>
+    <div class="rcap-card-head"><h2 id="rcap-tasks-title">Open tasks</h2><small>${rail.openTaskCount && rail.openTaskCount.known ? `${escapeHtml(String(rail.openTaskCount.value))} open` : "Unavailable"}</small></div>
     <div class="rcap-card-body">
       ${tasks.length
         ? `<ul class="rcap-list-plain">${tasks.map((task) => `<li>
             <span class="rcap-item-title">${escapeHtml(task.title)}</span>
             <span class="rcap-item-sub">${escapeHtml(task.owner || "Unassigned")}${task.dueAt ? ` · due ${escapeHtml(shortDate(task.dueAt))}` : ""}</span>
-            <span><button type="button" class="rcap-secondary" data-rcap-action="complete_task" data-rcap-task="${escapeHtml(task.id)}">Complete</button></span>
+            ${stepTaskTitle && String(task.title || "").trim().toLowerCase() === stepTaskTitle
+              ? `<span class="rcap-item-sub">Completed from the next best step above.</span>`
+              : `<span><button type="button" class="rcap-secondary" data-rcap-action="complete_task" data-rcap-task="${escapeHtml(task.id)}">Complete</button></span>`}
           </li>`).join("")}</ul>`
         : `<p class="rcap-empty-note">No open tasks for this organization.</p>`}
     </div>
@@ -623,7 +642,7 @@ export function rcapProspectsBrowserSource() {
     const endpoint=${JSON.stringify(RCAP_PROSPECTS_ENDPOINT)};
     const metrics={ requests:0, mutations:0, externalActions:0, sends:0, silentStageChanges:0, fullStateReads:0 };
     window.__LE_RCAP_PROSPECTS_METRICS=metrics;
-    let sequence=0; let inFlightAction=false; let sessionEnded=false; let lastPayload=null;
+    let sequence=0; let inFlightAction=false; let sessionEnded=false; let lastPayload=null; let loadingUrl="";
 
     function section(){ return document.querySelector("main#app #partners.page-section.active") || document.querySelector("main#app #partners"); }
 
@@ -692,10 +711,16 @@ export function rcapProspectsBrowserSource() {
       const slot=host(); if(!slot) return;
       setLegacyHidden(true);
       if(!slot.querySelector("[data-rcap-prospects],[data-rcap-overview]")) slot.innerHTML=loadingHtml;
+      const url=requestUrl();
+      // One navigation can wake mount(), hashchange and the observer at once. Without this the
+      // same URL is fetched three times and two of them are aborted by the third.
+      if(loadingUrl===url) return;
+      loadingUrl=url;
       const ticket=++sequence; metrics.requests+=1;
       let response;
-      try { response=await fetch(requestUrl(),{credentials:"same-origin",headers:{accept:"application/json"}}); }
-      catch { if(ticket===sequence) paint(rcapProspectsListHtml({available:false,availability:{state:"unavailable",reason:"The organizations behind this view could not be read. Nothing was changed."}})); return; }
+      try { response=await fetch(url,{credentials:"same-origin",headers:{accept:"application/json"}}); }
+      catch { loadingUrl=""; if(ticket===sequence) paint(rcapProspectsListHtml({available:false,availability:{state:"unavailable",reason:"The organizations behind this view could not be read. Nothing was changed."}})); return; }
+      loadingUrl="";
       if(ticket!==sequence) return;
       if(response.status===401){ sessionEnded=true; paint(rcapProspectsListHtml({available:false,availability:{state:"unavailable",reason:"Your session ended. Sign in again; nothing was changed."}})); document.dispatchEvent(new CustomEvent("vnext:session-expired")); return; }
       if(response.status===403){ paint(rcapProspectsListHtml({available:false,availability:{state:"unauthorized",reason:"You do not have access to RCAP prospect intelligence."}})); return; }
@@ -758,7 +783,15 @@ export function rcapProspectsBrowserSource() {
     window.addEventListener("hashchange",mount);
     document.addEventListener("click",onClick);
     document.addEventListener("change",onChange);
+    // The router renders the Partners section AFTER this runtime loads, so mounting once on load
+    // is a race this surface loses about half the time. The observer re-mounts when the section
+    // appears -- and it is GUARDED to fire only when we are on route AND the surface is missing,
+    // which is the guard the broken campaign-detail surface lacked: painting into our own slot is
+    // itself a mutation, so an unguarded observer would re-enter its own render forever.
+    const observed=document.querySelector("main#app");
+    if(observed) new MutationObserver(()=>{ if(onRoute()&&!host()?.querySelector("[data-rcap-prospects],[data-rcap-overview]")) mount(); })
+      .observe(observed,{childList:true,subtree:true,attributes:true,attributeFilter:["class"]});
     window.__LE_RCAP_PROSPECTS={ mount, activate:mount, render:(payload)=>payload?.kind==="overview"?rcapProspectOverviewHtml(payload.overview):rcapProspectsListHtml(payload?.list) };
-    queueMicrotask(mount);
+    mount();
   })();`;
 }
