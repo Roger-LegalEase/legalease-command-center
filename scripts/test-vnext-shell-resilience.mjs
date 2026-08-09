@@ -171,7 +171,7 @@ assert.match(cssSource, /@media \(prefers-reduced-motion: reduce\)/);
 assert.match(cssSource, /\.vnext-shell-state/);
 
 assert.equal(ROUTE_COMPATIBILITY_TOTALS.canonicalRoutes, 75);
-assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 53);
+assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 54);
 
 const legacyFixture = "<html><body>legacy flag-off shell byte fixture</body></html>";
 assert.equal(renderShellBoundary({

@@ -181,7 +181,7 @@ assert.equal(resolveRouteCompatibility("#search").destination, "Search");
 assert.equal(resolveRouteCompatibility("#operator-search").canonicalRoute, "operator-search");
 assert.equal(resolveRouteCompatibility("#operator-search").destination, "Search");
 assert.equal(ROUTE_COMPATIBILITY_TOTALS.canonicalRoutes, 75);
-assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 53);
+assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 54);
 
 const browserSource = globalSearchBrowserSource();
 for (const behavior of ["ArrowDown", "ArrowUp", "Home", "End", "Enter", "Escape", "aria-activedescendant", "AbortController", "ignoredStaleResponses", "duplicateRequests", "vnext:close-navigation", "vnext:request-close-global-create"]) {

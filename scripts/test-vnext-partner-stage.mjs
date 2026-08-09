@@ -377,7 +377,7 @@ function sha256(value) {
 }
 assert.equal(sha256(readFileSync("scripts/ui/view-models/partner-stage.mjs")), "95ed5aabfb2019bbc233a7497185a807cd87dddfdc4d58a38c3c6a6a522daf96");
 assert.doesNotMatch(serverSource, /from\s+["'][^"']*view-models\/partner-stage\.mjs["']/, "Shared integration must not couple the server directly to the stage adapter.");
-assert.deepEqual(ROUTE_COMPATIBILITY_TOTALS, { canonicalRoutes: 75, aliases: 53, objectFamilies: 4 });
+assert.deepEqual(ROUTE_COMPATIBILITY_TOTALS, { canonicalRoutes: 75, aliases: 54, objectFamilies: 4 });
 
 function performanceFixture(count = 100) {
   const partners = Array.from({ length: count }, (_, index) => ({

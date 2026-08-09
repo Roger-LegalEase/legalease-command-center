@@ -170,7 +170,7 @@ assert.equal(PRIMARY_SHELL_DESTINATIONS.length, 10);
 assert.equal(PRIMARY_SHELL_DESTINATIONS.some((item) => item.label === "Inbox"), true);
 assert.deepEqual(SECONDARY_SHELL_CONTROLS.map((item) => item.id), ["lee", "settings"]);
 assert.equal(ROUTE_COMPATIBILITY_TOTALS.canonicalRoutes, 75);
-assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 53);
+assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 54);
 
 assert.deepEqual(INBOX_PAGE_GROUPS.map((group) => group.label), ["Needs me", "Waiting", "Updates"]);
 assert.deepEqual(INBOX_PAGE_GROUPS.map((group) => group.key), ["needs_me", "waiting", "update"]);

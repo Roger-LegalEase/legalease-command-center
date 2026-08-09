@@ -16,6 +16,7 @@ planning destination from the master plan, not current runtime behavior.
 | `#le-e` | `#lee` | Global Le-E utility | Preserve assistant/thread context where present | Only after all callers use the canonical global control |
 | `#partner` | `#partners` | `#partners` | Preserve Partner ID when a future link provides one | Partner detail-route parity |
 | `#partner-hub` | `#partners` | `#partners` | Preserve Partner/program context | Partner home and program parity |
+| `#relationships` | `#partners` | `#partners` | Preserve the `view` query value, including `view=rcap-prospects`, and any account deep link | Never: the Founder OS shell labels this workspace Relationships, so the alias is the permanent compatibility entry point for that label |
 | `#metrics` | `#proof` | `#files?collection=investor-room` | Preserve metric/report source context | Files/Investor Room metrics parity |
 | `#kpis` | `#proof` | `#files?collection=investor-room` | Preserve metric/report source context | Files/Investor Room metrics parity |
 | `#marketing` | `#growth` | `#social` | Preserve active content record/filter where known | Social parity |

@@ -168,7 +168,7 @@ assert.match(founderFixture, /\[data-relationship-open\]/);
 
 const aliases = routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [alias, entry.canonicalRoute]));
 assert.equal(routeRegistry.length, 75);
-assert.equal(aliases.length, 53);
+assert.equal(aliases.length, 54);
 for (const entry of routeRegistry) {
   const destination = resolveShellDestination(entry.canonicalRoute);
   assert.ok(SHELL_DESTINATION_LABELS.includes(destination), `${entry.canonicalRoute} lacks a deterministic shell destination.`);
