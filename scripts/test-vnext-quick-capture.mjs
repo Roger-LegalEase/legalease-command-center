@@ -265,7 +265,7 @@ const legacyFixture = "<html><body>legacy Quick Capture fixture</body></html>";
 assert.equal(renderShellBoundary({ config:{ enabled:false }, renderLegacyApp:() => legacyFixture, renderVNextApp:() => "vNext" }), legacyFixture);
 assert.equal(renderShellBoundary({ config:{ enabled:true }, renderLegacyApp:() => legacyFixture, renderVNextApp:() => "vNext" }), "vNext");
 assert.equal(routeRegistry.length, 75);
-assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 53);
+assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 54);
 
 console.log("QUICK_CAPTURE_MATRIX", JSON.stringify(results.map((result) => ({ intent:result.intentLabel, destination:result.destination, href:result.canonicalHref }))));
 console.log("QUICK_CAPTURE_COUNTS", JSON.stringify({ task:1, decision:1, blocker:1, postIdea:1, partnerNote:1, campaignIdea:1, fileReportNote:1 }));

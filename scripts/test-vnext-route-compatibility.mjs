@@ -29,11 +29,11 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const aliases = routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [alias, entry.canonicalRoute]));
 const canonicalRoutes = new Set(routeRegistry.map((entry) => entry.canonicalRoute));
 assert.equal(ROUTE_COMPATIBILITY_TOTALS.canonicalRoutes, 75);
-assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 53);
+assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 54);
 assert.equal(routeRegistry.length, 75);
-assert.equal(aliases.length, 53);
+assert.equal(aliases.length, 54);
 assert.equal(new Set(routeRegistry.map((entry) => entry.canonicalRoute)).size, 75);
-assert.equal(new Set(aliases.map(([alias]) => alias)).size, 53);
+assert.equal(new Set(aliases.map(([alias]) => alias)).size, 54);
 
 for (const entry of routeRegistry) {
   const result = resolveRouteCompatibility(entry.canonicalHash);

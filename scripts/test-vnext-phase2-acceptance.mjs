@@ -66,7 +66,7 @@ assert.match(browserSpec, /liveGateChanges:0/);
 assert.match(browserSpec, /CCX206_FLAG_OFF/);
 
 assert.equal(ROUTE_COMPATIBILITY_TOTALS.canonicalRoutes, 75);
-assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 53);
+assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 54);
 const legacyShellStart = serverSource.indexOf("function htmlShell()");
 const legacyShellEnd = serverSource.indexOf("\nfunction renderLegacyApp()", legacyShellStart);
 const legacyTodayStart = serverSource.indexOf("    function commandCenterOverviewHtml(posts)");

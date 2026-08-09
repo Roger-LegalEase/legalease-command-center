@@ -722,7 +722,7 @@ assert.ok(!INBOX_INCLUDED_COLLECTIONS.includes("inbox"), "No Inbox collection ma
 assert.ok(!INBOX_INCLUDED_COLLECTIONS.includes("inboxItems"), "No Inbox item storage collection may be introduced.");
 
 assert.equal(ROUTE_COMPATIBILITY_TOTALS.canonicalRoutes, 75);
-assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 53);
+assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 54);
 const serverSource = readFileSync("scripts/preview-server.mjs", "utf8");
 const shellStart = serverSource.indexOf("function htmlShell()");
 const shellEnd = serverSource.indexOf("\nfunction renderLegacyApp()", shellStart);

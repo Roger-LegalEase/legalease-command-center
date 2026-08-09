@@ -552,7 +552,7 @@ assert.doesNotMatch(todaySource, /\bstate\.(?:today|todayItems|todayView)\s*=/, 
 assert.doesNotMatch(todaySource, /(?:^|[^\w])(?:send|publish|launch|release|approve|complete|snooze)\s*\(/im, "Today projection must not execute source actions.");
 
 assert.equal(ROUTE_COMPATIBILITY_TOTALS.canonicalRoutes, 75);
-assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 53);
+assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 54);
 const serverSource = readFileSync("scripts/preview-server.mjs", "utf8");
 assert.doesNotMatch(serverSource, /today-view\.mjs/, "CCX-203 must not wire the view model into the current Today runtime.");
 const shellStart = serverSource.indexOf("function htmlShell()");

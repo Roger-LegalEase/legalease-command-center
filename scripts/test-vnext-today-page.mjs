@@ -79,7 +79,7 @@ assert.equal(resolveRouteCompatibility("#today").canonicalRoute, "today");
 assert.equal(resolveRouteCompatibility("#overview").canonicalRoute, "today");
 assert.equal(resolveRouteCompatibility("#cockpit").canonicalRoute, "today");
 assert.equal(ROUTE_COMPATIBILITY_TOTALS.canonicalRoutes, 75);
-assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 53);
+assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 54);
 
 const state = fixtureState();
 const before = structuredClone(state);

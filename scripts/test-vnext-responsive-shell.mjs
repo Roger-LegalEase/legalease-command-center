@@ -89,7 +89,7 @@ assert.doesNotMatch(cssSource, /(?:linear|radial)-gradient|backdrop-filter|glass
 
 const aliases = routeRegistry.flatMap((entry) => entry.aliases.map((alias) => [alias, entry.canonicalRoute]));
 assert.equal(routeRegistry.length, 75);
-assert.equal(aliases.length, 53);
+assert.equal(aliases.length, 54);
 for (const entry of routeRegistry) assert.notEqual(resolveShellDestination(entry.canonicalRoute), "", `${entry.canonicalRoute} needs a destination.`);
 for (const [alias, target] of aliases) {
   const expectedTarget = target === "growth" ? "queue" : target;

@@ -208,7 +208,7 @@ assert.equal(canPerformEndpoint("owner", "POST", INBOX_ACTION_ENDPOINT).ok, true
 assert.equal(canPerformEndpoint("operator", "POST", INBOX_ACTION_ENDPOINT).ok, true);
 assert.equal(canPerformEndpoint("viewer", "POST", INBOX_ACTION_ENDPOINT).ok, false);
 assert.equal(ROUTE_COMPATIBILITY_TOTALS.canonicalRoutes, 75);
-assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 53);
+assert.equal(ROUTE_COMPATIBILITY_TOTALS.aliases, 54);
 
 const initial = fixtureState();
 const before = structuredClone(initial);

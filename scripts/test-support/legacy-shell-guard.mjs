@@ -34,7 +34,7 @@ export const LEGACY_SHELL_BYTE_BUDGET = 1_650_000;
 //   * one intake sentence reworded ("internal intake lane" -> "internal place to capture").
 // No flagged behaviour leaked: the diff of the hashed slice is those edits and nothing else, and
 // test-founder-os-base-layer.mjs still asserts flag-off emits no .le-os root. +357 bytes.
-export const LEGACY_SHELL_HASH = "051dec9df058457d226009ce8f37780b2d2a53048d513619d90fd466bd67c379";
+export const LEGACY_SHELL_HASH = "034bf41d97dd29e59d4c972ac8e1e680ae9eefa81738fdfb12267bb8bdb23d80";
 // ---------------------------------------------------------------------------------------------
 
 export function readLegacyShellSource(file = LEGACY_SHELL_SOURCE_FILE) {

@@ -37,6 +37,15 @@ export const capabilities = [
   ,"view_aggregate_reports"
   ,"view_private_assets"
   ,"view_diagnostics"
+  // RCAP Prospect CRM (Wave 1). Three capabilities rather than a fifth role, per the accepted
+  // Wave 0 decision: roles.mjs is load-bearing for the legacy permission map and four suites,
+  // so extending capabilities is additive where adding a role is not. A capability string that
+  // is not listed here denies every role including owner -- the bug the `prospects` route
+  // carried -- so scripts/rcap-prospect-registries.mjs names these and the foundation suite
+  // asserts they are registered.
+  ,"read_rcap_prospects"
+  ,"manage_rcap_prospects"
+  ,"approve_rcap_prospect_work"
 ];
 
 export const roleCapabilities = {
@@ -67,7 +76,10 @@ export const roleCapabilities = {
     "manage_autonomy",
     "read_sensitive",
     "view_private_assets",
-    "view_diagnostics"
+    "view_diagnostics",
+    "read_rcap_prospects",
+    "manage_rcap_prospects",
+    "approve_rcap_prospect_work"
   ],
   operator: [
     "read_internal",
@@ -78,7 +90,12 @@ export const roleCapabilities = {
     "save_daily_rituals",
     "save_operating_memory",
     "save_closeout",
-    "add_notes"
+    "add_notes",
+    // The authorized operator (Faith) may research, import, and prepare RCAP prospect work but
+    // may NOT approve it -- approval stays with owner/admin, matching the master plan's role
+    // model where an operator prepares and requests approval.
+    "read_rcap_prospects",
+    "manage_rcap_prospects"
   ],
   viewer: ["view_aggregate_reports"]
 };

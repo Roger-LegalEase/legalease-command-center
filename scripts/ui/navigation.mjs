@@ -241,8 +241,8 @@ export const routeRegistry = Object.freeze([
     notes: "Proposal artifacts also surface as Files while Partner remains the relationship context."
   }),
   route("milestones", "Milestones", "milestonesPageHtml", "More", "Move into Today", "Today"),
-  route("partners", "Partners", "partnersPageHtml", "More / Partners", "Keep as primary", "Partners", ["partner", "partner-hub"], {
-    notes: "Existing route identifier matches the final vNext primary destination."
+  route("partners", "Partners", "partnersPageHtml", "More / Partners", "Keep as primary", "Partners", ["partner", "partner-hub", "relationships"], {
+    notes: "Existing route identifier matches the final vNext primary destination. The `relationships` alias is the RCAP Prospect CRM compatibility entry point (#relationships?view=rcap-prospects): the Founder OS shell already labels this workspace Relationships, so the alias gives that label a resolvable hash instead of introducing a second workspace."
   }),
   route("campaigns", "Campaigns", "campaignsControlPageHtml", "Campaigns", "Move into Outreach", "Outreach", ["campaign", "campaign-control", "campaigns-control"], {
     currentPrimaryNavigation: { label: "Campaigns", section: "campaigns" },
