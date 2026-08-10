@@ -142,7 +142,7 @@ function entryFromTask(task) {
     direction: "internal",
     title: clean(task.title) || "Task",
     summary: clean(task.nextAction) && clean(task.nextAction) !== clean(task.title) ? clean(task.nextAction) : "",
-    occurredAt: clean(task.completedAt || task.dueDate || task.createdAt),
+    occurredAt: clean(task.completedAt || task.completedAtIso || task.dueAt || task.dueDate || task.createdAt),
     // A task's truth is whether it is done, and an open task is not an event that happened -- it
     // is one that has not. Saying so is the difference between a timeline and a wish list.
     outcome: Object.freeze({ key: done ? "completed" : "open", label: done ? "Completed" : "Still open" }),

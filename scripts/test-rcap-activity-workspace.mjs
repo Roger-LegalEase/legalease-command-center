@@ -112,6 +112,14 @@ check("a task that is a call is filed as a call", () => {
   assert.equal(byTitle(activity, "Send the assisted-use overview").kind, "task");
 });
 
+check("a projected task keeps the due date the projection renamed", () => {
+  // The relationship projection renames dueDate to dueAt. Reading only the source spelling made
+  // every open task report "no date recorded" while holding a perfectly good due date.
+  const open = byTitle(activity, "Call Dana about the clinic schedule");
+  assert.equal(open.dateKnown, true, "An open task with a due date has a date.");
+  assert.ok(open.dateLabel);
+});
+
 check("a missing date is reported as missing, never as today", () => {
   const undated = byTitle(activity, "Left a voicemail");
   assert.equal(undated.dateKnown, false);

@@ -168,10 +168,10 @@ test("the complete Overview shows one clear next move and cannot send", async ({
   await expect(draft).toBeDisabled();
   await expect(overviewRoot(page).getByText(/Outreach Review arrives in a later release/)).toBeVisible();
 
-  // Profile became a real destination in Wave 2, so it is a link. Activity is still unbuilt and
-  // must stay inert rather than pointing at a page that is not there.
+  // All three view-switcher destinations are real as of Wave 3: Overview, Profile and Activity.
+  // Each must be a link that leads somewhere, not an inert tab.
   await expect(overviewRoot(page).getByRole("link", { name: "Profile", exact: true })).toHaveCount(1);
-  await expect(overviewRoot(page).getByRole("link", { name: "Activity" })).toHaveCount(0);
+  await expect(overviewRoot(page).getByRole("link", { name: "Activity", exact: true })).toHaveCount(1);
 
   // Prepared is not sent.
   await expect(overviewRoot(page).getByText("Prepared", { exact: false }).first()).toBeVisible();
