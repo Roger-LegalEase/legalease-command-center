@@ -406,9 +406,12 @@ await (async () => {
   // one destination that does not exist, and it must keep saying so rather than linking nowhere.
   assert.equal(profileView.destinationBuilt, true, "Wave 2 built the profile workspace.");
   assert.equal(profileView.unavailableReason, null, "A built destination carries no unavailable reason.");
-  assert.equal(activityView.destinationBuilt, false, "The activity workspace is not built yet.");
-  assert.ok(activityView.unavailableReason, "An unbuilt destination must carry its reason.");
-  checks.push("the overview endpoint marks the one remaining unbuilt destination");
+  // Wave 3 built the Activity workspace, so all three view-switcher destinations are real. The
+  // flag is still projected, because it is what the renderer reads to choose between a link and
+  // an inert tab -- the next unbuilt destination will need it again.
+  assert.equal(activityView.destinationBuilt, true, "Wave 3 built the activity workspace.");
+  assert.equal(activityView.unavailableReason, null, "A built destination carries no unavailable reason.");
+  checks.push("the overview endpoint reports every view-switcher destination as built");
 
   const hostile = await handleRcapProspectsApiRequest({ enabled: true, method: "GET", pathname: "/api/ui/rcap-prospects", searchParams: new URLSearchParams("account=../../etc/passwd"), store, actor: OWNER, now: NOW });
   assert.equal(hostile.body.kind, "list", "A traversal-shaped id must not be treated as an account.");

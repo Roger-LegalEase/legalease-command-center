@@ -117,7 +117,8 @@ assert.equal(VNEXT_LAZY_RUNTIME_MAX_BYTES, 64 * 1024);
 // 19 since Wave 2: the RCAP Profile workspace. A second runtime rather than more of the list one,
 // because it is wanted on one pane only and the list runtime is already most of the 64KB budget.
 // Same flag, same rollback: with COMMAND_CENTER_RCAP_CRM_V1 off neither is served.
-assert.equal(VNEXT_LAZY_ASSET_CONTRACT.runtimeIds.length, 19, "The nineteen Founder-only browser runtimes must be route-loaded.");
+// 20 since Wave 3: the Activity workspace, on the same flag and the same rollback.
+assert.equal(VNEXT_LAZY_ASSET_CONTRACT.runtimeIds.length, 20, "The twenty Founder-only browser runtimes must be route-loaded.");
 for (const id of ["founder-campaigns", "founder-scoreboard-registry", "founder-lee-panel", "founder-relationships", "founder-os-base", "partner-record"]) {
   assert.ok(VNEXT_LAZY_ASSET_CONTRACT.runtimeIds.includes(id), `${id} must be a lazy runtime, never inline.`);
 }
@@ -137,7 +138,8 @@ assert.ok(
 // which also declares the list stylesheet -- the profile reuses the shared card, pill and
 // fact-label rules, and depending on a sibling runtime to have loaded first would make it render
 // correctly only by luck.
-assert.equal(VNEXT_LAZY_ASSET_CONTRACT.stylesheetPaths.length, 21, "The twenty-one Founder-only stylesheets must be route-loaded.");
+// 22 since Wave 3 added the Activity layer, which also travels with its runtime.
+assert.equal(VNEXT_LAZY_ASSET_CONTRACT.stylesheetPaths.length, 22, "The twenty-two Founder-only stylesheets must be route-loaded.");
 // Both conditional runtimes are enabled here: automation-control-center is gated on the Outreach
 // flag and founder-campaigns on FOUNDER_OS_CAMPAIGNS, so the manifest can only be asserted in
 // full with both on. That the manifest OMITS them when their flag is off is asserted separately

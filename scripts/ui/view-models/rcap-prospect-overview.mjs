@@ -385,7 +385,9 @@ export function buildRcapProspectOverview(state = {}, actor = {}, accountId = ""
     // more useful than a tab that refuses to open.
     views: rcapProspectViews(accountId, {
       profileAvailable: options.profileAvailable !== false,
-      activityAvailable: timeline.length > 0
+      // Wave 3 built the Activity workspace, and it reports an empty history as a state rather
+      // than refusing to open. A caller may still declare it unavailable, and it says why.
+      activityAvailable: options.activityAvailable !== false
     }),
 
     actions: Object.freeze(actions),
