@@ -674,7 +674,9 @@ export function rcapProspectsBrowserSource() {
     function onRoute(){
       const resolved=window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(location.hash||"#today");
       const route=resolved?.kind==="page"?resolved.canonicalRoute:"";
-      return route==="partners" && hashQuery().get("view")==="rcap-prospects";
+      // The Profile pane is owned by the rcap-profile runtime (Wave 2). Without this guard both
+      // runtimes render into the same Partners section and the founder reads two pages at once.
+      return route==="partners" && hashQuery().get("view")==="rcap-prospects" && hashQuery().get("pane")!=="profile";
     }
     function accountId(){ return hashQuery().get("account")||""; }
     function csrf(){ const prefix="leos_csrf="; return String(document.cookie||"").split(";").map(v=>v.trim()).find(v=>v.startsWith(prefix))?.slice(prefix.length)||""; }

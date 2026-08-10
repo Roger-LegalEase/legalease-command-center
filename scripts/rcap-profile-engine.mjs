@@ -617,10 +617,16 @@ export function runRcapProfilePass(input = {}) {
     }, { claimOwners });
   });
 
+  const revisionBySourceId = new Map(sources.map((source) => [source.id, source.revisionId]));
   for (const section of sectionRecords) {
     for (const sourceId of sectionSourceIds.get(section.sectionKey) || []) {
       dependencies.push(buildRcapProfileDependency({
-        accountId, sectionKey: section.sectionKey, dependsOnKind: "source", dependsOnId: sourceId, createdAt: now
+        accountId,
+        sectionKey: section.sectionKey,
+        dependsOnKind: "source",
+        dependsOnId: sourceId,
+        dependsOnRevision: revisionBySourceId.get(sourceId) || "",
+        createdAt: now
       }));
     }
   }

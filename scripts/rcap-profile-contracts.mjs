@@ -666,6 +666,10 @@ export function buildRcapProfileDependency(input = {}) {
     sectionKey,
     dependsOnKind,
     dependsOnId,
+    // The revision the section was actually built against. Without it, "has this source changed
+    // since?" is unanswerable from stored records: a source upserts in place, so its row already
+    // carries the NEW revision by the time anyone asks.
+    dependsOnRevision: clean(input.dependsOnRevision),
     createdAt: clean(input.createdAt)
   });
 }
@@ -677,6 +681,18 @@ export function buildRcapProfileDependency(input = {}) {
 // walk is bounded by the number of sections, so a dependency cycle terminates instead of hanging.
 export function rcapSectionsInvalidatedBy(changes = {}, dependencies = []) {
   const changedSources = new Set(list(changes.sourceIds).map(clean).filter(Boolean));
+  // Per-EDGE staleness. Two sections can cite the same document at different revisions -- one
+  // written before it changed and one after -- so "this source changed" is not a property of the
+  // source alone. When the caller supplies current revisions, each edge is compared against the
+  // revision that edge was built at, and only the sections genuinely behind go stale.
+  const currentRevisions = changes.sourceRevisions instanceof Map
+    ? changes.sourceRevisions
+    : new Map(Object.entries(changes.sourceRevisions || {}));
+  const edgeIsBehind = (edge) => {
+    const builtAt = clean(edge.dependsOnRevision);
+    const nowAt = clean(currentRevisions.get(clean(edge.dependsOnId)));
+    return Boolean(builtAt) && Boolean(nowAt) && builtAt !== nowAt;
+  };
   const changedClaims = new Set(list(changes.claimIds).map(clean).filter(Boolean));
   const changedFields = new Set(list(changes.accountFields).map(clean).filter(Boolean));
 
@@ -691,7 +707,7 @@ export function rcapSectionsInvalidatedBy(changes = {}, dependencies = []) {
 
   for (const edge of edges) {
     const dependsOnId = clean(edge.dependsOnId);
-    if (edge.dependsOnKind === "source" && changedSources.has(dependsOnId)) noteStale(edge.sectionKey, "A source it cites changed.");
+    if (edge.dependsOnKind === "source" && (edgeIsBehind(edge) || changedSources.has(dependsOnId))) noteStale(edge.sectionKey, "A source it cites changed.");
     else if (edge.dependsOnKind === "claim" && changedClaims.has(dependsOnId)) noteStale(edge.sectionKey, "A claim it rests on changed.");
     else if (edge.dependsOnKind === "account_field" && changedFields.has(dependsOnId)) noteStale(edge.sectionKey, `The account's ${dependsOnId} changed.`);
   }

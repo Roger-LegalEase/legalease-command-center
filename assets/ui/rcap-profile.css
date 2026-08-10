@@ -1,0 +1,160 @@
+/* RCAP Prospect Profile workspace — Wave 2, Packet 7.
+
+   Loaded with the rcap-profile lazy runtime, not in the head.
+
+   SELF-SUFFICIENT TOKENS. Every var() below carries its literal fallback, because the
+   --le-concept-* tokens live in assets/ui/founder-os-concept.css, which is linked only under
+   some flag combinations. Wave 1B shipped this surface's sibling without the fallbacks and axe
+   caught white text on a white canvas the moment the RCAP flag was on and the concept layer was
+   not. The fallbacks are copied from that file and must stay in step with it.
+
+   The page has one job: make every sentence traceable to the document it came from. So the
+   visual hierarchy is section -> claim -> source, and a claim's fact class is always a WORD in a
+   labelled chip, never a colour on its own. */
+
+.rcap-profile-page { padding: 30px 34px 34px; color: var(--le-concept-ink, #182230); font-size: var(--le-type-body, 0.8125rem); }
+.rcap-profile-page *:focus-visible { outline: 2px solid var(--le-concept-orange, #ff3b00); outline-offset: 2px; border-radius: 6px; }
+
+.rcap-status-line { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 16px; }
+.rcap-status-reason { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-meta, 0.75rem); }
+
+/* Run state. A blocked run and a failed one are different situations with different owners, so
+   they do not share a colour or a verb. */
+.rcap-run-banner { display: grid; gap: 4px; margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--le-concept-border, #e4e7ec); border-radius: var(--le-radius-card, 16px); background: var(--le-concept-card, #ffffff); }
+.rcap-run-banner strong { font-size: var(--le-type-body, 0.8125rem); }
+.rcap-run-banner p { margin: 0; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-meta, 0.75rem); }
+.rcap-run-banner.is-blocked { border-color: #f0d8a8; background: var(--le-concept-amber-soft, #fff6d8); }
+.rcap-run-banner.is-blocked strong { color: #7a5200; }
+.rcap-run-banner.is-blocked p { color: #6b5314; }
+.rcap-run-banner.is-failed { border-color: #f0c9c4; background: var(--le-concept-red-soft, #fff0ee); }
+.rcap-run-banner.is-failed strong { color: var(--le-concept-red, #b42318); }
+
+/* The conflict summary. Nothing was overwritten; that sentence is the whole point of the box. */
+.rcap-conflict-summary { display: grid; gap: 6px; margin: 0 0 18px; padding: 13px 15px; border: 1px solid #f0c9c4; border-radius: var(--le-radius-card, 16px); background: var(--le-concept-red-soft, #fff0ee); }
+.rcap-conflict-summary strong { color: var(--le-concept-red, #b42318); font-size: var(--le-type-body, 0.8125rem); }
+.rcap-conflict-summary p { margin: 0; color: #7a2b25; font-size: var(--le-type-meta, 0.75rem); }
+.rcap-conflict-summary ul { margin: 2px 0 0; padding-left: 18px; }
+.rcap-conflict-summary li { font-size: var(--le-type-meta, 0.75rem); }
+.rcap-conflict-summary a { color: var(--le-concept-red, #b42318); font-weight: 700; }
+
+/* Three columns: the index, the sections, the sources. The index and the source panel both stay
+   with the reader, because "which section am I in" and "where did this come from" are the two
+   questions this page exists to answer. */
+.rcap-profile-layout { display: grid; grid-template-columns: minmax(190px, 3fr) minmax(0, 9fr) minmax(280px, 4fr); gap: 20px; align-items: start; }
+.rcap-profile-main { display: grid; gap: 18px; min-width: 0; }
+.rcap-profile-rail { display: grid; gap: 18px; min-width: 0; position: sticky; top: 16px; }
+
+.rcap-section-index { position: sticky; top: 16px; display: grid; gap: 14px; min-width: 0; }
+.rcap-index-group h2 { margin: 0 0 6px; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.rcap-index-group ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.rcap-section-index a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 2px 8px; padding: 6px 8px; border-radius: 8px; color: var(--le-concept-ink, #182230); text-decoration: none; }
+.rcap-section-index a:hover { background: #f2f4f7; color: var(--le-concept-ink, #182230); }
+.rcap-index-number { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 800; }
+.rcap-index-label { font-size: var(--le-type-meta, 0.75rem); font-weight: 700; }
+.rcap-index-state { grid-column: 2; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
+.rcap-section-index a[data-rcap-index-state="conflict"] .rcap-index-state { color: var(--le-concept-red, #b42318); font-weight: 700; }
+.rcap-section-index a[data-rcap-index-state="approved"] .rcap-index-state { color: var(--le-concept-green, #117a65); }
+
+.rcap-group-title { margin: 6px 0 0; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.rcap-section-group { display: grid; gap: 14px; }
+
+.rcap-section { display: grid; gap: 10px; padding: 16px 18px; border: 1px solid var(--le-concept-border, #e4e7ec); border-radius: var(--le-radius-card, 16px); background: var(--le-concept-card, #ffffff); box-shadow: var(--le-concept-shadow, 0 1px 2px rgba(16,24,40,.04), 0 12px 28px rgba(16,24,40,.06)); scroll-margin-top: 16px; }
+.rcap-section[data-rcap-section-state="conflict"] { border-color: #f0c9c4; }
+.rcap-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.rcap-section-head h3 { display: flex; align-items: baseline; gap: 9px; margin: 0; font-size: 1rem; font-weight: 800; letter-spacing: -.01em; }
+.rcap-section-number { min-width: 20px; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 800; }
+.rcap-section-body p { margin: 0 0 8px; max-width: 74ch; white-space: pre-wrap; }
+.rcap-section-body p:last-child { margin-bottom: 0; }
+.rcap-section-note { margin: 0; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
+
+.rcap-conflict { display: grid; gap: 6px; padding: 11px 13px; border-radius: var(--le-radius-control, 10px); background: var(--le-concept-red-soft, #fff0ee); }
+.rcap-conflict strong { color: var(--le-concept-red, #b42318); font-size: var(--le-type-meta, 0.75rem); }
+.rcap-conflict p { margin: 0; color: #7a2b25; font-size: var(--le-type-meta, 0.75rem); }
+.rcap-conflict ul { margin: 0; padding-left: 18px; }
+.rcap-conflict li { color: #7a2b25; font-size: var(--le-type-label, 0.6875rem); }
+
+/* Evidence. Collapsed by default so the page reads as prose, open automatically on a conflict
+   because that is exactly when the reader needs to see what the sources actually say. */
+.rcap-evidence summary { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-meta, 0.75rem); font-weight: 700; cursor: pointer; }
+.rcap-claims { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.rcap-claim { display: grid; gap: 4px; padding-left: 11px; border-left: 2px solid #e4e7ec; }
+.rcap-claim-text { margin: 0; font-size: var(--le-type-meta, 0.75rem); }
+.rcap-claim-sources { margin: 0; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
+.rcap-claim-sources a { color: var(--le-concept-blue, #175cd3); }
+.rcap-claim-warning { margin: 0; color: var(--le-concept-red, #b42318); font-size: var(--le-type-label, 0.6875rem); font-weight: 600; }
+
+.rcap-unknowns h4 { margin: 0 0 5px; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.rcap-unknowns ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.rcap-unknowns li { display: grid; gap: 2px; padding: 9px 11px; border-radius: var(--le-radius-control, 10px); background: var(--le-concept-blue-soft, #eef4ff); }
+.rcap-unknown-question { font-size: var(--le-type-meta, 0.75rem); font-weight: 700; }
+.rcap-unknown-meta { color: #2f4a7a; font-size: var(--le-type-label, 0.6875rem); }
+
+.rcap-section-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.rcap-action-unavailable { display: grid; gap: 2px; }
+.rcap-action-unavailable small { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
+.rcap-secondary.is-destructive { border-color: #f0c9c4; color: var(--le-concept-red, #b42318); }
+
+/* Corrections. The sentence about NOT applying them is part of the card, not a footnote. */
+.rcap-correction-list { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.rcap-correction-list li { display: grid; gap: 4px; padding-bottom: 11px; border-bottom: 1px solid #edf0f3; }
+.rcap-correction-list li:last-child { padding-bottom: 0; border-bottom: 0; }
+.rcap-correction-field { font-size: var(--le-type-label, 0.6875rem); font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--le-concept-muted-text, #5a6474); }
+.rcap-correction-change { font-size: var(--le-type-meta, 0.75rem); overflow-wrap: anywhere; }
+.rcap-correction-change s { color: var(--le-concept-muted-text, #5a6474); }
+.rcap-correction-why { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
+
+/* Comparison. */
+.rcap-comparison summary { padding: 15px 18px; font-size: var(--le-type-meta, 0.75rem); font-weight: 700; cursor: pointer; }
+.rcap-diff { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.rcap-diff li { display: grid; gap: 4px; }
+.rcap-diff-section { font-size: var(--le-type-meta, 0.75rem); font-weight: 800; }
+.rcap-diff-before, .rcap-diff-after { margin: 0; padding: 7px 10px; border-radius: 8px; font-size: var(--le-type-label, 0.6875rem); white-space: pre-wrap; }
+.rcap-diff-before { background: var(--le-concept-red-soft, #fff0ee); color: #7a2b25; }
+.rcap-diff-after { background: var(--le-concept-green-soft, #e8f7f3); color: #10554a; }
+
+/* Sources. */
+.rcap-source-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.rcap-source-list li { display: grid; gap: 3px; padding-bottom: 11px; border-bottom: 1px solid #edf0f3; }
+.rcap-source-list li:last-child { padding-bottom: 0; border-bottom: 0; }
+.rcap-source-title { font-size: var(--le-type-meta, 0.75rem); font-weight: 700; overflow-wrap: anywhere; }
+.rcap-source-title a { color: var(--le-concept-blue, #175cd3); }
+.rcap-source-meta { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
+.rcap-source-reason { margin: 2px 0 0; color: #7a5200; font-size: var(--le-type-label, 0.6875rem); }
+.rcap-source-blocker { display: grid; gap: 6px; margin: 0 0 14px; padding: 11px 13px; border-radius: var(--le-radius-control, 10px); background: var(--le-concept-amber-soft, #fff6d8); }
+.rcap-source-blocker strong { color: #7a5200; font-size: var(--le-type-meta, 0.75rem); }
+.rcap-source-blocker dl { display: grid; grid-template-columns: minmax(70px, auto) 1fr; gap: 3px 10px; margin: 0; }
+.rcap-source-blocker dt { color: #7a5200; font-size: var(--le-type-label, 0.6875rem); font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.rcap-source-blocker dd { margin: 0; color: #6b5314; font-size: var(--le-type-label, 0.6875rem); }
+
+/* ============================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 1180px) {
+  /* The source panel drops below the sections rather than being squeezed; the index stays. */
+  .rcap-profile-layout { grid-template-columns: minmax(170px, 3fr) minmax(0, 9fr); }
+  .rcap-profile-rail { grid-column: 1 / -1; position: static; }
+}
+
+@media (max-width: 860px) {
+  .rcap-profile-page { padding: 20px 16px 28px; }
+  .rcap-header { flex-direction: column; align-items: stretch; }
+  .rcap-header-actions { width: 100%; justify-content: flex-start; }
+  /* The index becomes a scrollable strip of links above the sections; every section is still
+     reachable without a horizontal gesture because the list wraps. */
+  .rcap-profile-layout { grid-template-columns: minmax(0, 1fr); }
+  .rcap-section-index { position: static; }
+  .rcap-index-group ul { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); display: grid; }
+  .rcap-source-blocker dl { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 720px) {
+  .rcap-section-index a { min-height: 44px; align-content: center; }
+  .rcap-section-actions .rcap-secondary, .rcap-section-actions button { min-height: 44px; }
+  .rcap-evidence summary, .rcap-comparison summary { min-height: 44px; display: flex; align-items: center; }
+  .rcap-correction-list a, .rcap-source-title a, .rcap-conflict-summary a { display: inline-flex; align-items: center; min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rcap-profile-page *, .rcap-profile-page *::before, .rcap-profile-page *::after { transition-duration: .001ms !important; animation-duration: .001ms !important; }
+}

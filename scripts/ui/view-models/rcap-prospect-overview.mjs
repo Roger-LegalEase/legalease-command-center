@@ -380,8 +380,11 @@ export function buildRcapProspectOverview(state = {}, actor = {}, accountId = ""
       lastMeaningfulTouch: rcapValue(relationship.lastOutboundAt || relationship.lastInboundAt || null)
     }),
 
+    // Wave 2 builds the Profile workspace, so the tab leads somewhere real. It leads there even
+    // when no research exists yet: the workspace states the fifteen absences honestly, which is
+    // more useful than a tab that refuses to open.
     views: rcapProspectViews(accountId, {
-      profileAvailable: false,
+      profileAvailable: options.profileAvailable !== false,
       activityAvailable: timeline.length > 0
     }),
 

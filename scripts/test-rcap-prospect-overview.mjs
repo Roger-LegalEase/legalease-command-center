@@ -192,9 +192,11 @@ check("no tab leads nowhere", () => {
       assert.ok(view.unavailableReason, `View ${view.key} is unavailable and must say why.`);
     }
   }
-  // Wave 1 builds no profile workspace, so Profile is honestly unavailable rather than a
-  // decorative tab.
-  assert.equal(complete.views.find((view) => view.key === "profile").available, false);
+  // Wave 2 built the profile workspace, so the tab leads somewhere real -- and it does so even
+  // when no research exists, because the workspace states the fifteen absences honestly. Callers
+  // can still declare it unavailable, and it must say why when they do.
+  assert.equal(complete.views.find((view) => view.key === "profile").available, true);
+  assert.ok(rcapProspectViews("acct-x", { profileAvailable: false }).find((view) => view.key === "profile").unavailableReason);
   assert.equal(complete.views.find((view) => view.key === "activity").available, true, "This account has activity.");
   const noActivity = rcapProspectViews("acct-x", { activityAvailable: false });
   assert.ok(noActivity.find((view) => view.key === "activity").unavailableReason);
