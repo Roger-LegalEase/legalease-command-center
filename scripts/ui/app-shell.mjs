@@ -19,6 +19,7 @@ import { LEE_INBOX_PANEL_STYLESHEET_PATH, leeInboxPanelBrowserSource } from "./l
 import { TASK_WORKBENCH_STYLESHEET_PATH, taskWorkbenchBrowserSource } from "./task-workbench.mjs";
 import { prospectWorkbenchBrowserSource } from "./pages/prospect-workbench.mjs";
 import { RCAP_PROSPECTS_STYLESHEET_PATH, rcapProspectsBrowserSource } from "./pages/rcap-prospects.mjs";
+import { RCAP_PROFILE_STYLESHEET_PATH, rcapProfileBrowserSource } from "./pages/rcap-profile.mjs";
 import {
   COMMUNICATION_COMPOSER_LAYOUT_STYLESHEET_PATH,
   COMMUNICATION_COMPOSER_STYLESHEET_PATH,
@@ -224,6 +225,16 @@ const VNEXT_LAZY_ASSETS = Object.freeze({
     styles:Object.freeze([RCAP_PROSPECTS_STYLESHEET_PATH]),
     source:rcapProspectsBrowserSource,
     api:"__LE_RCAP_PROSPECTS",
+    rcapCrmOnly:true
+  }),
+  // Wave 2: the Profile workspace. A separate runtime from the list because it is wanted on one
+  // pane only and the list runtime is already most of the 64KB budget. It carries BOTH
+  // stylesheets: the profile reuses the shared card, pill and fact-label rules, and depending on
+  // a sibling asset to have been loaded first would make it render correctly only by luck.
+  "rcap-profile":Object.freeze({
+    styles:Object.freeze([RCAP_PROSPECTS_STYLESHEET_PATH, RCAP_PROFILE_STYLESHEET_PATH]),
+    source:rcapProfileBrowserSource,
+    api:"__LE_RCAP_PROFILE",
     rcapCrmOnly:true
   })
 });
@@ -484,7 +495,7 @@ function vnextLazyAssetLoaderScript(options = {}) {
       ${options.founderOsShell ? `add("founder-os-base");` : ""}
       ${options.founderOsLeePanel ? `add("founder-lee-panel");` : ""}
       ${options.founderOsRelationships ? `if (route === "partners" || objectType === "Partner") add("founder-relationships");` : ""}
-      ${options.rcapCrm ? `if (route === "partners" && query.get("view") === "rcap-prospects") add("rcap-prospects");` : ""}
+      ${options.rcapCrm ? `if (route === "partners" && query.get("view") === "rcap-prospects") { add("rcap-prospects"); if (query.get("pane") === "profile") add("rcap-profile"); }` : ""}
       return required;
     }
     function controlAssets() {

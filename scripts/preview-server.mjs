@@ -151,6 +151,7 @@ import {
 } from "./relationship-api-integration.mjs";
 import { readRcapCrmConfig } from "./ui/rcap-crm-config.mjs";
 import { handleRcapProspectsApiRequest, isRcapProspectsApiPath } from "./rcap-prospects-api.mjs";
+import { RCAP_PROFILE_BODY_LIMIT, handleRcapProfileApiRequest, isRcapProfileApiPath } from "./rcap-profile-api.mjs";
 import {
   COMMUNICATION_COMPOSER_BODY_LIMIT,
   handleCommunicationComposerApiRequest,
@@ -36333,6 +36334,26 @@ async function handleRequest(request, response) {
       now:new Date().toISOString()
     });
     sendJson(response, result.body || { ok:false, error:"RCAP prospects are unavailable." }, result.status || 404);
+    return;
+  }
+
+  // Wave 2: the Profile workspace. Reads the research records, and owns the guarded writes
+  // against them -- every one capability-checked, request-id'd and version-checked on the
+  // server. Nothing here sends, schedules or contacts anybody.
+  if (isRcapProfileApiPath(url.pathname)) {
+    const mutation = !["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+    const input = mutation ? await readBoundedJson(request, { limit:RCAP_PROFILE_BODY_LIMIT }) : {};
+    const result = await handleRcapProfileApiRequest({
+      enabled:rcapCrmConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      body:input,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    sendJson(response, result.body || { ok:false, error:"RCAP prospect research is unavailable." }, result.status || 404);
     return;
   }
 

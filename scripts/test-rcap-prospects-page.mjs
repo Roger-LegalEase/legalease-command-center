@@ -402,10 +402,13 @@ await (async () => {
   assert.ok(overview.body.version, "The version the write contract demands must travel with the payload.");
   const profileView = overview.body.overview.views.find((view) => view.key === "profile");
   const activityView = overview.body.overview.views.find((view) => view.key === "activity");
-  assert.equal(profileView.destinationBuilt, false, "The profile workspace is not built in Wave 1B.");
-  assert.equal(activityView.destinationBuilt, false, "The activity workspace is not built in Wave 1B.");
+  // Wave 2 built the Profile workspace, so the tab leads somewhere real. Activity is still the
+  // one destination that does not exist, and it must keep saying so rather than linking nowhere.
+  assert.equal(profileView.destinationBuilt, true, "Wave 2 built the profile workspace.");
+  assert.equal(profileView.unavailableReason, null, "A built destination carries no unavailable reason.");
+  assert.equal(activityView.destinationBuilt, false, "The activity workspace is not built yet.");
   assert.ok(activityView.unavailableReason, "An unbuilt destination must carry its reason.");
-  checks.push("the overview endpoint marks the two unbuilt destinations");
+  checks.push("the overview endpoint marks the one remaining unbuilt destination");
 
   const hostile = await handleRcapProspectsApiRequest({ enabled: true, method: "GET", pathname: "/api/ui/rcap-prospects", searchParams: new URLSearchParams("account=../../etc/passwd"), store, actor: OWNER, now: NOW });
   assert.equal(hostile.body.kind, "list", "A traversal-shaped id must not be treated as an account.");
