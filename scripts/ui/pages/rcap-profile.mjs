@@ -100,7 +100,7 @@ function claimHtml(claim) {
 
 function sectionActionsHtml(section) {
   return `<div class="rcap-section-actions">${section.actions.map((action) => action.available
-    ? `<button type="button" class="${action.destructive ? "rcap-secondary is-destructive" : "rcap-secondary"}" data-rcap-profile-action="${escapeHtml(action.key)}" data-rcap-section="${escapeHtml(section.key)}"${action.confirm ? ` data-rcap-confirm="${escapeHtml(action.confirm)}"` : ""}>${escapeHtml(action.label)}</button>`
+    ? `<button type="button" class="${action.destructive ? "rcap-secondary is-destructive" : "rcap-secondary"}" data-rcap-profile-action="${escapeHtml(action.key)}" data-rcap-target-section="${escapeHtml(section.key)}"${action.confirm ? ` data-rcap-confirm="${escapeHtml(action.confirm)}"` : ""}>${escapeHtml(action.label)}</button>`
     : `<span class="rcap-action-unavailable"><button type="button" class="rcap-secondary" disabled>${escapeHtml(action.label)}</button><small>${escapeHtml(action.reason)}</small></span>`).join("")}</div>`;
 }
 
@@ -117,7 +117,7 @@ function sectionHtml(section) {
           <p>${escapeHtml(section.conflict.reason)}</p>
           <ul>${section.conflict.choices.map((choice) => `<li><b>${escapeHtml(choice.label)}</b> — ${escapeHtml(choice.consequence)}</li>`).join("")}</ul>
           <div class="rcap-section-actions">
-            <button type="button" class="rcap-secondary" data-rcap-profile-action="keep_human_edit" data-rcap-section="${escapeHtml(section.key)}">Keep the edit</button>
+            <button type="button" class="rcap-secondary" data-rcap-profile-action="keep_human_edit" data-rcap-target-section="${escapeHtml(section.key)}">Keep the edit</button>
           </div>
         </div>`
       : ""}
@@ -133,7 +133,7 @@ function sectionHtml(section) {
 
     ${section.claims.length
       ? `<details class="rcap-evidence"${section.state === "conflict" ? " open" : ""}>
-          <summary>${escapeHtml(String(section.claims.length))} claim${section.claims.length === 1 ? "" : "s"} from ${escapeHtml(String(section.sourceCount))} source${section.sourceCount === 1 ? "" : "s"}</summary>
+          <summary>${escapeHtml(String(section.claims.length))} claim${section.claims.length === 1 ? "" : "s"}${section.sourceCount ? ` from ${escapeHtml(String(section.sourceCount))} source${section.sourceCount === 1 ? "" : "s"}` : ""}</summary>
           <ul class="rcap-claims">${section.claims.map(claimHtml).join("")}</ul>
         </details>`
       : ""}
@@ -272,7 +272,7 @@ export function rcapProfileWorkspaceHtml(profile) {
 
     ${conflicts.length
       ? `<div class="rcap-conflict-summary" role="note" data-rcap-conflict-summary>
-          <strong>${escapeHtml(String(conflicts.length))} section${conflicts.length === 1 ? "" : "s"} need a decision</strong>
+          <strong>${escapeHtml(String(conflicts.length))} section${conflicts.length === 1 ? " needs" : "s need"} a decision</strong>
           <p>Someone edited ${conflicts.length === 1 ? "it" : "them"} by hand and the sources have changed since. Nothing has been overwritten.</p>
           <ul>${conflicts.map((conflict) => `<li><a href="#rcap-section-${escapeHtml(conflict.sectionKey)}">${escapeHtml(conflict.sectionLabel)}</a> — ${escapeHtml(conflict.reason)}</li>`).join("")}</ul>
         </div>`
@@ -336,6 +336,16 @@ export function rcapProfileBrowserSource() {
       if(!slot){ slot=document.createElement("div"); slot.setAttribute("data-rcap-profile-slot",""); root.prepend(slot); }
       return slot;
     }
+    // OWNERSHIP. The list runtime stands down on this pane, so hiding the legacy Partners content
+    // becomes this runtime's job. Without it the old page renders underneath the profile and the
+    // founder reads two surfaces at once -- which axe notices first, as the old page's contrast.
+    function setLegacyHidden(hidden){
+      const root=section(); if(!root) return;
+      for(const child of [...root.children]){
+        if(child.hasAttribute&&(child.hasAttribute("data-rcap-profile-slot")||child.hasAttribute("data-rcap-slot"))) continue;
+        if(hidden) child.setAttribute("hidden",""); else child.removeAttribute("hidden");
+      }
+    }
     function hashQuery(){ return new URLSearchParams(String(location.hash||"").split("?")[1]||""); }
     function onRoute(){
       const resolved=window.__LE_VNEXT_ROUTE_COMPATIBILITY?.resolve(location.hash||"#today");
@@ -347,9 +357,9 @@ export function rcapProfileBrowserSource() {
     function csrf(){ const prefix="leos_csrf="; return String(document.cookie||"").split(";").map(v=>v.trim()).find(v=>v.startsWith(prefix))?.slice(prefix.length)||""; }
     function requestId(){ return "rcapprof_"+(globalThis.crypto?.randomUUID?.()||String(Date.now())+"_"+Math.random().toString(16).slice(2)).replaceAll("-","_"); }
     function announce(message){ const node=host()?.querySelector("[data-rcap-announce]"); if(node) node.textContent=message; }
-    function leaveRoute(){ const root=section(); if(!root) return; const slot=root.querySelector("[data-rcap-profile-slot]"); if(slot) slot.remove(); }
+    function leaveRoute(){ const root=section(); if(!root) return; const slot=root.querySelector("[data-rcap-profile-slot]"); if(slot) slot.remove(); if(hashQuery().get("view")!=="rcap-prospects") setLegacyHidden(false); }
 
-    function render(html){ const slot=host(); if(slot) slot.innerHTML=html; }
+    function render(html){ const slot=host(); if(slot){ slot.innerHTML=html; setLegacyHidden(true); } }
 
     async function load(){
       if(sessionEnded||!onRoute()) return;
@@ -378,7 +388,7 @@ export function rcapProfileBrowserSource() {
       const confirmText=button.getAttribute("data-rcap-confirm")||"";
       if(confirmText && !window.confirm(confirmText)) return;
       const payload={ action, accountId:accountId(), expectedVersion, requestId:requestId() };
-      const sectionKey=button.getAttribute("data-rcap-section"); if(sectionKey) payload.sectionKey=sectionKey;
+      const sectionKey=button.getAttribute("data-rcap-target-section"); if(sectionKey) payload.sectionKey=sectionKey;
       const correctionId=button.getAttribute("data-rcap-correction"); if(correctionId) payload.correctionId=correctionId;
       if(action==="reject_section"){
         const reason=window.prompt("What is wrong with this section?")||"";
@@ -416,8 +426,25 @@ export function rcapProfileBrowserSource() {
     function mount(){ if(onRoute()) load(); else leaveRoute(); }
 
     document.addEventListener("click",(event)=>{
+      if(!onRoute()) return;
+      // The section index is made of real links, because a list of destinations should be
+      // announced as links and reachable by keyboard. But this application routes on the hash,
+      // so letting the browser follow "#rcap-section-x" would replace the route and unmount the
+      // page the reader is trying to scroll. The link scrolls instead, and moves focus with it.
+      const jump=event.target.closest?.("[data-rcap-index]");
+      if(jump){
+        const key=jump.getAttribute("data-rcap-index");
+        const target=host()?.querySelector('article[data-rcap-section="'+key+'"]');
+        if(target){
+          event.preventDefault();
+          target.scrollIntoView({ block:"start", behavior:"auto" });
+          const heading=target.querySelector("h3");
+          if(heading){ heading.setAttribute("tabindex","-1"); heading.focus({ preventScroll:true }); }
+        }
+        return;
+      }
       const button=event.target.closest?.("[data-rcap-profile-action]");
-      if(!button||!onRoute()) return;
+      if(!button) return;
       event.preventDefault();
       act(button);
     });

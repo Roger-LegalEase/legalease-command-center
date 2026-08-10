@@ -151,15 +151,17 @@ function claimView(claim, sourcesById) {
 // ---------------------------------------------------------------------------------------------
 
 function sectionActions(section, { role, conflicted }) {
-  return Object.freeze(RCAP_PROFILE_SECTION_ACTIONS.map((action) => {
+  const empty = !clean(section.body);
+  return Object.freeze(RCAP_PROFILE_SECTION_ACTIONS.filter((action) =>
+    // Approve and Reject do not apply to a section with nothing in it. Rendering them disabled on
+    // all twelve empty sections put two dozen dead buttons and two dozen copies of the same
+    // sentence on one page; the section's own empty reason already explains the state.
+    !(empty && ["approve_section", "reject_section"].includes(action.key))
+  ).map((action) => {
     const permitted = roleHasCapability(role, action.capability);
     let available = permitted;
     let reason = permitted ? "" : "Your role cannot take this action.";
 
-    if (available && !clean(section.body) && ["approve_section", "reject_section"].includes(action.key)) {
-      available = false;
-      reason = "There is nothing here to approve yet.";
-    }
     if (available && action.key === "approve_section" && lower(section.state) === "approved") {
       available = false;
       reason = "Already approved.";

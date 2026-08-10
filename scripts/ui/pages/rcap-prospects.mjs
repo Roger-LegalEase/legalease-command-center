@@ -682,7 +682,9 @@ export function rcapProspectsBrowserSource() {
     function csrf(){ const prefix="leos_csrf="; return String(document.cookie||"").split(";").map(v=>v.trim()).find(v=>v.startsWith(prefix))?.slice(prefix.length)||""; }
     function requestId(){ return "rcap_"+(globalThis.crypto?.randomUUID?.()||String(Date.now())+"_"+Math.random().toString(16).slice(2)).replaceAll("-","_"); }
     function announce(message){ const node=host()?.querySelector("[data-rcap-announce]"); if(node) node.textContent=message; }
-    function leaveRoute(){ const root=section(); if(!root) return; const slot=root.querySelector("[data-rcap-slot]"); if(slot) slot.remove(); setLegacyHidden(false); }
+    // Standing down for the profile pane is not leaving the RCAP view: the legacy content must
+    // stay hidden, or it reappears underneath the profile the moment this runtime yields.
+    function leaveRoute(){ const root=section(); if(!root) return; const slot=root.querySelector("[data-rcap-slot]"); if(slot) slot.remove(); if(hashQuery().get("view")!=="rcap-prospects") setLegacyHidden(false); }
 
     function queryFromHash(){
       const query=hashQuery(); const out={};

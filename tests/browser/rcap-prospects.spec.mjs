@@ -168,8 +168,9 @@ test("the complete Overview shows one clear next move and cannot send", async ({
   await expect(draft).toBeDisabled();
   await expect(overviewRoot(page).getByText(/Outreach Review arrives in a later release/)).toBeVisible();
 
-  // The two unbuilt destinations are inert, not links to nothing.
-  await expect(overviewRoot(page).getByRole("link", { name: "Profile" })).toHaveCount(0);
+  // Profile became a real destination in Wave 2, so it is a link. Activity is still unbuilt and
+  // must stay inert rather than pointing at a page that is not there.
+  await expect(overviewRoot(page).getByRole("link", { name: "Profile", exact: true })).toHaveCount(1);
   await expect(overviewRoot(page).getByRole("link", { name: "Activity" })).toHaveCount(0);
 
   // Prepared is not sent.

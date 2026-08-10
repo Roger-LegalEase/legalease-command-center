@@ -9,6 +9,18 @@ import { fileURLToPath } from "node:url";
 
 import { buildPartnersTrainScenario } from "./fixtures/vnext-partners-train.mjs";
 import { applyPressCampaignProposal, buildPressCampaignProposal } from "./press-campaign.mjs";
+import { buildRelationshipsView } from "./relationship-service.mjs";
+import { RCAP_DRIVE_BLOCKER } from "./rcap-drive-adapter.mjs";
+import {
+  buildRcapClaim,
+  buildRcapProfileDependency,
+  buildRcapProfileRun,
+  buildRcapProfileSection,
+  buildRcapProfileUnknown,
+  buildRcapProfileVersion,
+  buildRcapProposedCorrection,
+  buildRcapSource
+} from "./rcap-profile-contracts.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const seedPath = path.join(projectRoot, "data", "seed", "social-command-center.seed.json");
@@ -949,6 +961,97 @@ const rcapState = {
     { id:"rcap-act-2", kind:"email_drafted", direction:"outbound", occurredAt:rcapDaysAgo(7), title:"Draft prepared", email:"dana.whitfield@riverside-justice.test", outcomeState:"drafted" }
   ]
 };
+
+// Wave 2 research records. They must be keyed on the PROJECTED relationship id, not on
+// account_id, so the ids are resolved by running the same projection the server will run. The
+// set is arranged to render every state the Profile workspace has to prove: a read source, a
+// source blocked by the missing Drive scope, a verified claim beside a recommendation, an open
+// question with a resolution path, a decidable correction, and -- on Riverside -- a section a
+// person edited whose source has since moved, which is the conflict.
+const rcapRelationshipIds = (() => {
+  const actor = { authenticated:true, id:"roger", role:"owner", label:"Roger" };
+  const view = buildRelationshipsView(rcapState, actor, "2026-08-09T15:00:00.000Z", { category:"partner_prospect", limit:100 }, {});
+  const find = (fragment) => {
+    const item = view.items.find((row) => String(row.organization || row.name || "").includes(fragment));
+    if (!item) throw new Error(`RCAP fixture: ${fragment} did not project into a relationship.`);
+    return item.id;
+  };
+  return { riverside:find("Riverside"), prairie:find("Prairie") };
+})();
+
+{
+  const at = "2026-08-09T15:00:00.000Z";
+  const riverside = rcapRelationshipIds.riverside;
+  const prairie = rcapRelationshipIds.prairie;
+
+  const readSource = buildRcapSource({
+    accountId:riverside, kind:"google_doc", ref:"https://docs.google.com/document/d/synthetic-riverside-profile",
+    title:"Riverside research profile", accessState:"available", retrievedAt:at, revisionId:"rev-2"
+  });
+  const blockedSource = buildRcapSource({
+    accountId:prairie, kind:"google_doc", ref:"https://docs.google.com/document/d/synthetic-prairie-profile",
+    title:"Prairie research profile", accessState:"not_authorized", unreadableReason:RCAP_DRIVE_BLOCKER.whyBlocked
+  });
+  const sourceOwners = new Map([[readSource.id, riverside], [blockedSource.id, prairie]]);
+
+  const verdictClaim = buildRcapClaim({
+    accountId:riverside, sectionKey:"strategic_verdict", factClass:"verified_fact",
+    text:"Synthetic Riverside Justice Center runs monthly record clearing clinics across three counties.",
+    sourceIds:[readSource.id], createdAt:at
+  }, { sourceOwners });
+  const angleClaim = buildRcapClaim({
+    accountId:riverside, sectionKey:"strongest_sales_angle", factClass:"recommendation",
+    text:"Lead with assisted use rather than volume.", createdAt:at
+  });
+  const claimOwners = new Map([[verdictClaim.id, riverside], [angleClaim.id, riverside]]);
+
+  const version = buildRcapProfileVersion({
+    accountId:riverside, versionNumber:1, status:"needs_review", createdAt:at, sectionHashes:["h1", "h2"]
+  });
+  const prairieVersion = buildRcapProfileVersion({
+    accountId:prairie, versionNumber:1, status:"needs_review", createdAt:at, sectionHashes:["p1"]
+  });
+
+  rcapState.rcapProspectSources = [readSource, blockedSource];
+  rcapState.rcapProspectClaims = [verdictClaim, angleClaim];
+  rcapState.rcapProfileVersions = [version, prairieVersion];
+  rcapState.rcapProfileSections = [
+    buildRcapProfileSection({
+      accountId:riverside, versionId:version.id, sectionKey:"strategic_verdict", state:"needs_review",
+      body:"Riverside runs monthly record clearing clinics across three counties. Attorney review time, not demand, caps how many people each clinic serves.",
+      claimIds:[verdictClaim.id]
+    }, { claimOwners }),
+    buildRcapProfileSection({
+      accountId:riverside, versionId:version.id, sectionKey:"strongest_sales_angle", state:"human_edited",
+      body:"Roger's own wording: open on assisted use, not on volume.",
+      humanEdited:true, editedBy:"Roger", editedAt:at, claimIds:[angleClaim.id]
+    }, { claimOwners }),
+    buildRcapProfileSection({
+      accountId:prairie, versionId:prairieVersion.id, sectionKey:"strategic_verdict", state:"needs_review",
+      body:"Prairie handles housing and benefits matters only and refers record clearing elsewhere."
+    })
+  ];
+  rcapState.rcapProfileUnknowns = [buildRcapProfileUnknown({
+    accountId:riverside, sectionKey:"best_contact_strategy", createdAt:at,
+    question:"Who coordinates the monthly clinics?",
+    whyItMatters:"The first message has to reach the person who schedules events.",
+    howToResolve:"Check the clinic page and the most recent event flyer."
+  })];
+  rcapState.rcapProfileCorrections = [buildRcapProposedCorrection({
+    accountId:riverside, field:"region", currentValue:"Unknown", proposedValue:"Riverside metro",
+    rationale:"Recorded in the research profile.", sourceIds:[readSource.id], createdAt:at
+  }, { sourceOwners })];
+  // Built against rev-1 while the source now reports rev-2: the human-edited section is behind.
+  rcapState.rcapProfileDependencies = [
+    buildRcapProfileDependency({ accountId:riverside, sectionKey:"strongest_sales_angle", dependsOnKind:"source", dependsOnId:readSource.id, dependsOnRevision:"rev-1", createdAt:at }),
+    buildRcapProfileDependency({ accountId:riverside, sectionKey:"strategic_verdict", dependsOnKind:"source", dependsOnId:readSource.id, dependsOnRevision:"rev-2", createdAt:at })
+  ];
+  rcapState.rcapProfileRuns = [buildRcapProfileRun({
+    accountId:riverside, trigger:"human_request", status:"succeeded", startedAt:at, finishedAt:at,
+    sourceIds:[readSource.id], versionId:version.id
+  })];
+  rcapState.rcapProfileSnapshots = [];
+}
 
 await Promise.all([
   writeFile(legacyDataPath, `${JSON.stringify(fixtureState, null, 2)}\n`, { mode:0o600 }),

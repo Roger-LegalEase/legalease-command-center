@@ -40,7 +40,7 @@
 /* Three columns: the index, the sections, the sources. The index and the source panel both stay
    with the reader, because "which section am I in" and "where did this come from" are the two
    questions this page exists to answer. */
-.rcap-profile-layout { display: grid; grid-template-columns: minmax(190px, 3fr) minmax(0, 9fr) minmax(280px, 4fr); gap: 20px; align-items: start; }
+.rcap-profile-layout { display: grid; grid-template-columns: minmax(190px, 3fr) minmax(0, 9fr) minmax(300px, 4fr); gap: 20px; align-items: start; }
 .rcap-profile-main { display: grid; gap: 18px; min-width: 0; }
 .rcap-profile-rail { display: grid; gap: 18px; min-width: 0; position: sticky; top: 16px; }
 
@@ -50,7 +50,8 @@
 .rcap-section-index a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 2px 8px; padding: 6px 8px; border-radius: 8px; color: var(--le-concept-ink, #182230); text-decoration: none; }
 .rcap-section-index a:hover { background: #f2f4f7; color: var(--le-concept-ink, #182230); }
 .rcap-index-number { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); font-weight: 800; }
-.rcap-index-label { font-size: var(--le-type-meta, 0.75rem); font-weight: 700; }
+.rcap-section-index a { white-space: normal; }
+.rcap-index-label { font-size: var(--le-type-meta, 0.75rem); font-weight: 700; line-height: 1.25; }
 .rcap-index-state { grid-column: 2; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
 .rcap-section-index a[data-rcap-index-state="conflict"] .rcap-index-state { color: var(--le-concept-red, #b42318); font-weight: 700; }
 .rcap-section-index a[data-rcap-index-state="approved"] .rcap-index-state { color: var(--le-concept-green, #117a65); }
@@ -122,7 +123,8 @@
 .rcap-source-reason { margin: 2px 0 0; color: #7a5200; font-size: var(--le-type-label, 0.6875rem); }
 .rcap-source-blocker { display: grid; gap: 6px; margin: 0 0 14px; padding: 11px 13px; border-radius: var(--le-radius-control, 10px); background: var(--le-concept-amber-soft, #fff6d8); }
 .rcap-source-blocker strong { color: #7a5200; font-size: var(--le-type-meta, 0.75rem); }
-.rcap-source-blocker dl { display: grid; grid-template-columns: minmax(70px, auto) 1fr; gap: 3px 10px; margin: 0; }
+.rcap-source-blocker dl { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin: 0; }
+.rcap-source-blocker dd + dt { margin-top: 6px; }
 .rcap-source-blocker dt { color: #7a5200; font-size: var(--le-type-label, 0.6875rem); font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .rcap-source-blocker dd { margin: 0; color: #6b5314; font-size: var(--le-type-label, 0.6875rem); }
 
@@ -149,10 +151,11 @@
 }
 
 @media (max-width: 720px) {
-  .rcap-section-index a { min-height: 44px; align-content: center; }
-  .rcap-section-actions .rcap-secondary, .rcap-section-actions button { min-height: 44px; }
+  /* Every reachable control, not a list of the ones that came to mind: naming four selectors
+     missed the claim-source links and the index links, and a 13px tap target is not a target. */
+  [data-rcap-profile] a, [data-rcap-profile] button { min-height: 44px; display: inline-flex; align-items: center; }
+  .rcap-section-index a { display: grid; align-content: center; }
   .rcap-evidence summary, .rcap-comparison summary { min-height: 44px; display: flex; align-items: center; }
-  .rcap-correction-list a, .rcap-source-title a, .rcap-conflict-summary a { display: inline-flex; align-items: center; min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
