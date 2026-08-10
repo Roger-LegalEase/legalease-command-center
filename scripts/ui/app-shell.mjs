@@ -20,6 +20,7 @@ import { TASK_WORKBENCH_STYLESHEET_PATH, taskWorkbenchBrowserSource } from "./ta
 import { prospectWorkbenchBrowserSource } from "./pages/prospect-workbench.mjs";
 import { RCAP_PROSPECTS_STYLESHEET_PATH, rcapProspectsBrowserSource } from "./pages/rcap-prospects.mjs";
 import { RCAP_PROFILE_STYLESHEET_PATH, rcapProfileBrowserSource } from "./pages/rcap-profile.mjs";
+import { RCAP_ACTIVITY_STYLESHEET_PATH, rcapActivityBrowserSource } from "./pages/rcap-activity.mjs";
 import {
   COMMUNICATION_COMPOSER_LAYOUT_STYLESHEET_PATH,
   COMMUNICATION_COMPOSER_STYLESHEET_PATH,
@@ -235,6 +236,15 @@ const VNEXT_LAZY_ASSETS = Object.freeze({
     styles:Object.freeze([RCAP_PROSPECTS_STYLESHEET_PATH, RCAP_PROFILE_STYLESHEET_PATH]),
     source:rcapProfileBrowserSource,
     api:"__LE_RCAP_PROFILE",
+    rcapCrmOnly:true
+  }),
+  // Wave 3: the Activity workspace. Its own runtime for the same reason as the profile -- one
+  // pane, and the list runtime is already most of the 64KB budget. It carries the list
+  // stylesheet too, because it reuses the shared card, pill and state rules.
+  "rcap-activity":Object.freeze({
+    styles:Object.freeze([RCAP_PROSPECTS_STYLESHEET_PATH, RCAP_ACTIVITY_STYLESHEET_PATH]),
+    source:rcapActivityBrowserSource,
+    api:"__LE_RCAP_ACTIVITY",
     rcapCrmOnly:true
   })
 });
@@ -495,7 +505,7 @@ function vnextLazyAssetLoaderScript(options = {}) {
       ${options.founderOsShell ? `add("founder-os-base");` : ""}
       ${options.founderOsLeePanel ? `add("founder-lee-panel");` : ""}
       ${options.founderOsRelationships ? `if (route === "partners" || objectType === "Partner") add("founder-relationships");` : ""}
-      ${options.rcapCrm ? `if (route === "partners" && query.get("view") === "rcap-prospects") { add("rcap-prospects"); if (query.get("pane") === "profile") add("rcap-profile"); }` : ""}
+      ${options.rcapCrm ? `if (route === "partners" && query.get("view") === "rcap-prospects") { add("rcap-prospects"); if (query.get("pane") === "profile") add("rcap-profile"); if (query.get("pane") === "activity") add("rcap-activity"); }` : ""}
       return required;
     }
     function controlAssets() {

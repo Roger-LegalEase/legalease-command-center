@@ -1,0 +1,52 @@
+/* RCAP Prospect Activity workspace — Wave 3, Packet 8.
+
+   Loaded with the rcap-activity lazy runtime. Every var() carries its literal fallback for the
+   same reason the other two RCAP layers do: the --le-concept-* tokens live in
+   founder-os-concept.css, which is not linked under every flag combination, and a surface that
+   renders white-on-white when a sibling flag is off is a surface that renders wrong.
+
+   One column, newest first. The date column is fixed so the eye can scan down it, and an entry
+   with no recorded date says so in that column rather than borrowing today's. */
+
+.rcap-activity-page { padding: 30px 34px 34px; color: var(--le-concept-ink, #182230); font-size: var(--le-type-body, 0.8125rem); }
+.rcap-activity-page *:focus-visible { outline: 2px solid var(--le-concept-orange, #ff3b00); outline-offset: 2px; border-radius: 6px; }
+
+.rcap-activity-filters { display: grid; gap: 6px; margin: 0 0 18px; }
+.rcap-filter-row { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; width: max-content; max-width: 100%; border-radius: var(--le-radius-control, 10px); background: #eceff3; }
+.rcap-filter-row a { min-height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 8px; color: #5c6674; font-size: var(--le-type-meta, 0.75rem); font-weight: 700; text-decoration: none; white-space: normal; }
+.rcap-filter-row a.is-active { background: var(--le-concept-card, #ffffff); color: var(--le-concept-ink, #182230); box-shadow: 0 1px 3px rgba(16, 24, 40, .08); }
+.rcap-filter-row a span { padding: 1px 6px; border-radius: 8px; background: rgba(16, 24, 40, .07); font-size: var(--le-type-label, 0.6875rem); }
+
+.rcap-activity-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 0; border: 1px solid var(--le-concept-border, #e4e7ec); border-radius: var(--le-radius-card, 16px); background: var(--le-concept-card, #ffffff); box-shadow: var(--le-concept-shadow, 0 1px 2px rgba(16,24,40,.04), 0 12px 28px rgba(16,24,40,.06)); overflow: hidden; }
+.rcap-activity-entry { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 14px; padding: 14px 18px; border-bottom: 1px solid #edf0f3; }
+.rcap-activity-entry:last-child { border-bottom: 0; }
+.rcap-entry-when { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
+.rcap-entry-body { display: grid; gap: 4px; min-width: 0; }
+.rcap-entry-title { margin: 0; font-size: var(--le-type-body, 0.8125rem); font-weight: 700; overflow-wrap: anywhere; }
+.rcap-entry-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 0; }
+.rcap-entry-direction, .rcap-entry-actor { color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-label, 0.6875rem); }
+.rcap-entry-summary { margin: 0; max-width: 78ch; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-meta, 0.75rem); overflow-wrap: anywhere; }
+.rcap-entry-link { margin: 0; font-size: var(--le-type-label, 0.6875rem); }
+.rcap-entry-link a { color: var(--le-concept-blue, #175cd3); }
+
+.rcap-activity-pages { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 16px 0 0; }
+.rcap-activity-pages p { margin: 0; color: var(--le-concept-muted-text, #5a6474); font-size: var(--le-type-meta, 0.75rem); }
+.rcap-activity-pages span { display: flex; gap: 8px; }
+
+@media (max-width: 860px) {
+  .rcap-activity-page { padding: 20px 16px 28px; }
+  .rcap-header { flex-direction: column; align-items: stretch; }
+  .rcap-header-actions { width: 100%; justify-content: flex-start; }
+  /* The date stops being a column and becomes the first line of the entry: 120px of fixed
+     gutter on a 390px screen is a quarter of the width spent on eight characters. */
+  .rcap-activity-entry { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
+
+@media (max-width: 720px) {
+  [data-rcap-activity] a, [data-rcap-activity] button { min-height: 44px; display: inline-flex; align-items: center; }
+  .rcap-filter-row { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rcap-activity-page *, .rcap-activity-page *::before, .rcap-activity-page *::after { transition-duration: .001ms !important; animation-duration: .001ms !important; }
+}

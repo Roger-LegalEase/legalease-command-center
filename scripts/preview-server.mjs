@@ -152,6 +152,7 @@ import {
 import { readRcapCrmConfig } from "./ui/rcap-crm-config.mjs";
 import { handleRcapProspectsApiRequest, isRcapProspectsApiPath } from "./rcap-prospects-api.mjs";
 import { RCAP_PROFILE_BODY_LIMIT, handleRcapProfileApiRequest, isRcapProfileApiPath } from "./rcap-profile-api.mjs";
+import { handleRcapActivityApiRequest, isRcapActivityApiPath } from "./rcap-activity-api.mjs";
 import {
   COMMUNICATION_COMPOSER_BODY_LIMIT,
   handleCommunicationComposerApiRequest,
@@ -36334,6 +36335,21 @@ async function handleRequest(request, response) {
       now:new Date().toISOString()
     });
     sendJson(response, result.body || { ok:false, error:"RCAP prospects are unavailable." }, result.status || 404);
+    return;
+  }
+
+  // Wave 3: the Activity workspace. Read-only -- it shows what has already happened.
+  if (isRcapActivityApiPath(url.pathname)) {
+    const result = await handleRcapActivityApiRequest({
+      enabled:rcapCrmConfig.enabled,
+      method:request.method,
+      pathname:url.pathname,
+      searchParams:url.searchParams,
+      store,
+      actor:publicActor(accessDecision.actor),
+      now:new Date().toISOString()
+    });
+    sendJson(response, result.body || { ok:false, error:"RCAP prospect activity is unavailable." }, result.status || 404);
     return;
   }
 
