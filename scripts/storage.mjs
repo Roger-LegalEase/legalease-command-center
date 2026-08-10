@@ -155,6 +155,21 @@ const coreStateCollections = [
   "rcapRevenueImportBatches",
   "rcapRevenueEvents",
   "rcapRevenueSignals",
+  // RCAP Prospect CRM research substrate (Wave 2, Packet 5). MUST stay in sync with
+  // RCAP_PROFILE_COLLECTIONS in rcap-profile-contracts.mjs, or sources, claims and profile
+  // versions silently fail to persist to Supabase -- the same trap as reactivationContacts.
+  // test-rcap-profile-contracts.mjs asserts membership. Every row is organization-scoped
+  // research about a potential partner; none of it is participant data (rule 25).
+  "rcapProspectSources",
+  "rcapProspectClaims",
+  "rcapProfileRuns",
+  "rcapProfileVersions",
+  "rcapProfileSections",
+  "rcapProfileUnknowns",
+  "rcapProfileCorrections",
+  "rcapProfileDependencies",
+  // Immutable comparison basis for profile versions; append-only below.
+  "rcapProfileSnapshots",
   // Expungement.ai lifecycle sync. MUST stay in sync with EXPUNGEMENT_LIFECYCLE_COLLECTIONS in
   // expungement-lifecycle-sync.mjs, or the lifecycle contacts/events silently fail to persist to
   // Supabase. test-expungement-lifecycle-sync.mjs asserts membership.
@@ -244,7 +259,7 @@ const singletonCollections = new Set(["runtime", "metrics", "runwayInputs", "sys
 // in-memory snapshot (the exact mechanism that shredded reactivationContacts on 2026-07-08) can
 // never erase a claim that another invocation inserted directly. Deleting a claim would re-open
 // the duplicate-send window it exists to close.
-const appendOnlyCollections = new Set(["reactivationSendClaims", "outreachSendClaims", "webhookReplayClaims", "oauthStateClaims", "publishClaims", "auditEvents", "discoveryAnalyticsEvents"]);
+const appendOnlyCollections = new Set(["reactivationSendClaims", "outreachSendClaims", "webhookReplayClaims", "oauthStateClaims", "publishClaims", "auditEvents", "discoveryAnalyticsEvents", "rcapProfileSnapshots"]);
 const protectedReconcileCollections = new Set(appendOnlyCollections);
 // Scoped snapshot reconciliation is intentionally opt-in. Most collections require explicit
 // versioned delete mutations (`writeChanges`) so a stale scoped patch cannot erase a concurrent row.
