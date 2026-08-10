@@ -170,6 +170,10 @@ const coreStateCollections = [
   "rcapProfileDependencies",
   // Immutable comparison basis for profile versions; append-only below.
   "rcapProfileSnapshots",
+  // RCAP outreach plans (Wave 3, Packet 9). MUST stay in sync with RCAP_PLAN_COLLECTIONS in
+  // rcap-outreach-plan.mjs. A plan is a proposal with no send authority; it is stored so an
+  // approval can be invalidated when the facts it was approved against move.
+  "rcapOutreachPlans",
   // Expungement.ai lifecycle sync. MUST stay in sync with EXPUNGEMENT_LIFECYCLE_COLLECTIONS in
   // expungement-lifecycle-sync.mjs, or the lifecycle contacts/events silently fail to persist to
   // Supabase. test-expungement-lifecycle-sync.mjs asserts membership.
