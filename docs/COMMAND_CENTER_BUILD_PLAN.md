@@ -45,7 +45,9 @@ A single-operator "run the whole company" console for LegalEase — an internal 
 - **`coreStateCollections`** (storage.mjs:13–121) is the allow-list of ~90 collections that persist. **The "B1 trap":** any new collection must be added here AND kept in sync with its owning module, or it silently fails to persist (no error). Tests assert membership.
 - **PostgREST 1000-row cap:** every response caps at 1000 rows; unpaginated reads silently truncate. Fixed via `supabaseFetchAllRows` paging under stable `(collection,item_id)` order.
 - **Write path:** upsert-first (`on_conflict=collection,item_id`, merge-duplicates), then reconcile/delete orphans only within collections present in the snapshot (a partial write can't mass-delete).
-- **ON CONFLICT dedup:** `coreRecordsFromState` dedupes rows by `(collection,item_id)` via a Map so duplicate ids collapse to one row. **(See §9 — this fix exists at HEAD but is not deployed to prod.)**
+- **ON CONFLICT dedup:** `coreRecordsFromState` dedupes rows by `(collection,item_id)` via a Map so duplicate ids collapse to one row. (Deployed to prod 2026-07-03.)
+- **The full-state-write trap (found live 2026-07-08, PR #30):** a full `writeState` carries a pre-read snapshot of EVERY collection, so any scoped write landing in its read→write window is silently reverted (it reverted the reactivation live-mode arm on campaign day). Rule: **every mutation must go through `serializeStateMutation` and write via scoped `store.writeCollections({...})`** — never `store.writeState`. PR #30 fixed the four hottest paths (denial audit logging, product events, autopilot toggle, heartbeat tick); ~60 lower-frequency owner-action routes still use the old pattern and should migrate incrementally.
+- **Read races:** `readState` assembles multi-page reads; a concurrent large write makes consecutive reads flap (mixed-version snapshots). Stable totals with flapping per-item values = a write in progress, not corruption — re-read after it settles.
 
 ### Auth model
 - **Roles:** `owner`, `admin`, `operator`, `viewer` (+ legacy aliases). Dual model: coarse legacy permissions (`read/write/admin/approve/publish_review/compliance_review/...`) **and** fine capabilities (`mutate_state`, `manage_roles` owner-only, `run_internal_activation`, `approve_final_artifact`, ...). A request must pass **both** checks.
@@ -100,7 +102,7 @@ Registered in `heartbeat-engines.mjs`; all `act()` paths default autopilot OFF.
 | `autonomy-cycle` | Internal task/priority automation (never sends/publishes) | 🟢 Live | autopilot (auto_safe only) | toggle on; no external risk |
 | `sources-daily` | Daily external source import | 🟢 Live | autopilot + server dep | wired |
 | `publishing-run` | Scheduled publishing worker | 🟢 Live | autopilot + inner posting gates | wired (posting gates still off) |
-| **B1** `reactivation-sequencer` | Consumer B2C reactivation (ex-Expungement.ai users) | 🟡 Inert | `REACTIVATION_LIVE_SEND` off, autopilot off, per-wave release, threshold auto-pause | flip both gates + release waves (see §6) |
+| **B1** `reactivation-sequencer` | Consumer B2C reactivation (ex-Expungement.ai users) | 🟢 **Operable from the UI** (PR #29; first live campaign day 2026-07-08) | Owner **live mode** (`POST /api/reactivation/live-mode` / Run–Stop buttons on the campaign page) is the send authority and flips autopilot with it; legacy `REACTIVATION_LIVE_SEND` still works but is no longer required; `REACTIVATION_SEND_DISABLED` = master kill; per-wave release; threshold auto-pause | press Run on the campaign page (waves already released per §6) |
 | **B2** `outreach-sequencer` | RCAP B2B cold outreach (nonprofits/legal-aid/PDs) | 🟡 Inert | `OUTREACH_LIVE_SEND` off, autopilot off, SendGrid key, human approval, fail-closed routing | DNS (SPF/DKIM/DMARC) + SendGrid + sequences + flip gates + approve queue |
 | **B3** `codebase-health` | Read-only source audit (registration drift, dead modules, CI gaps) | 🟢 Live (plan-only, no act) | none | runs on daily tick |
 | **B4** `engagement-growth` | Read-only growth/engagement trending (real signals only) | 🟢 Live (plan-only, no act) | injected GET fetcher only | runs on daily tick |
@@ -113,7 +115,7 @@ Registered in `heartbeat-engines.mjs`; all `act()` paths default autopilot OFF.
 **Only three engines have real `act()` side-effect paths** — B1 reactivation, B2 outreach, B5 promotion — and all three are inert behind stacked gates. B3/B4/B7 are structurally plan-only (autopilot toggle is a clean no-op). B5 can never self-approve (structural throw); promoted contacts are never auto-enrolled.
 
 ### 4.3 Send pipelines
-Both flow through one SendGrid v3 endpoint via gate-checking dispatchers; nothing hits the network unless a `"live"` decision returns (`*_LIVE_SEND` true + key present).
+Both flow through one SendGrid v3 endpoint via gate-checking dispatchers; nothing hits the network unless a `"live"` decision returns. For B2 outreach that means `OUTREACH_LIVE_SEND` + key; for reactivation the authority is the owner **live-mode record OR** the legacy `REACTIVATION_LIVE_SEND` flag, minus the `REACTIVATION_SEND_DISABLED` kill switch, with campaign-active / threshold / ET-window re-checked at send time (PR #29).
 
 - **Reactivation:** `planReactivation` (released waves → due touches by cadence `[1,4,9,16,30]`, weekday 8–17 ET window, provider-stratified, capped `min(perTickMax 150, perWaveDayCap 1400)`) → `actReactivation` (re-checks + auto-pauses on threshold trip) → `runReactivationSend` → SendGrid. Waves 300/700/1200/remainder; `releaseWave()` is the per-wave human gate. Webhook `applyReactivationEvent` records suppression + pauses contacts on bounce/unsub/complaint/click. Thresholds: hard_bounce 2% / spam 0.1% / unsub 2.5%.
 - **Outreach (B2):** `planOutreach` (8-reason suppression gate, fail-closed classification routing, caps: 25/day, 2/domain, 10/class) → queue `queued_for_approval` → human approve → `actOutreach` (re-checks at send) → `runOutreachSend` → SendGrid.
@@ -165,13 +167,14 @@ All live-posting gates OFF by invariant. `channel-connectors.mjs` (social OAuth)
 
 ---
 
-## 6. Reactivation campaign — current live state (2026-07-02)
+## 6. Reactivation campaign — current live state (2026-07-08, campaign day)
 
 _(Queried live from prod this session.)_
-- `campaignStatus`: **active** · `pausedReason`: empty · `releasedWaves`: **[1, 2]**
-- Contacts: 3,835 total; enrolled 1,008 (Wave 1 = 302, Wave 2 = 706); Wave 3 = 1,208, Wave 4 = 1,619
-- Wave 1 Touch 1 **sent 300**; all delivered/bounce/complaint metrics **0** (see §9 — telemetry gap)
-- Both send gates currently **OFF** (`REACTIVATION_LIVE_SEND=false`, autopilot=false) → the campaign is **released-but-gated-off**, not paused. Wave 2 is primed; flipping both gates during an in-window tick resumes it (and, by cadence, also fires Wave 1's Touch 2).
+- `campaignStatus`: **active** · `releasedWaves`: **[1, 2]** · waves 3/4 unreleased
+- Contacts: 3,835 total; enrolled 943 (Wave 1 = 254, Wave 2 = 689; counts shifted ~05:45 ET 2026-07-08 in an unexplained wave reassignment — accepted as baseline by Roger, root cause still open)
+- Pre-campaign baseline: **sent 300** (Wave 1 Touch 1, 2026-06-29), hard bounces 4 (1.33%), complaints 0, unsubs 0, threshold untripped. 213 of the 300 are **wave-0/unattributed** (legacy attribution gap — now surfaced on the campaign page as display-only diagnostic)
+- Telemetry: SendGrid Event Webhook live since 2026-07-03, signature verification **enforced**, unsigned POSTs fail closed 401
+- **2026-07-08 is the first owner-operated campaign day**: live mode armed via the Command Center at ~05:58 ET (first arm was clobbered by the §2 full-state-write bug — the retry stuck); Wave 1 follow-ups + Wave 2 Touch 1 (~838 due) send through the hourly heartbeat, weekdays 8am–5pm ET, ≤150/hr, ≤1,400/day
 
 ---
 
@@ -184,7 +187,8 @@ _(Queried live from prod this session.)_
 | `COMMAND_CENTER_OWNER_TOKEN` | Owner sessions; required by `/api/state` in prod |
 | `COMMAND_CENTER_CRON_TOKEN` | Least-privilege heartbeat-tick-only token |
 | `AUTOPILOT_<ENGINE_ID>` | Per-engine autopilot seed (default OFF) |
-| `REACTIVATION_LIVE_SEND` | Reactivation live-send gate (default OFF) |
+| `REACTIVATION_LIVE_SEND` | Legacy reactivation live-send env gate (default OFF). No longer required — the owner live-mode record is the normal authority (PR #29) |
+| `REACTIVATION_SEND_DISABLED` | Master kill switch over BOTH reactivation send authorities (default OFF/unset) |
 | `OUTREACH_LIVE_SEND` | B2 outreach live-send gate (default OFF) |
 | `PROSPECT_LIVE_DISCOVERY` | B5 discovery gate (default OFF → zero rows/no I/O) |
 | `ENABLE_LIVE_{LINKEDIN,FACEBOOK,INSTAGRAM,X,TIKTOK,THREADS}_POSTING` | Per-platform posting gates (all OFF, invariant-enforced) |
@@ -203,18 +207,25 @@ _(Queried live from prod this session.)_
 
 ---
 
-## 9. 🔴 Current blockers & remaining work
+## 9. 🔴 Current blockers & remaining work (refreshed 2026-07-08)
 
-### Immediate blocker — stale prod deploy (found 2026-07-02)
-- **Prod runs `c02db48`; the Supabase write-conflict fix `0a8a754` is committed at HEAD but never promoted** (`autoDeploy:false`).
-- Consequence: prod's old `coreRecordsFromState` lacks the Map dedup → **every full-state `writeState` fails** with `ON CONFLICT DO UPDATE command cannot affect row a second time`. This breaks the SendGrid webhook (→ the reactivation telemetry gap: 0 delivered/bounce/complaint despite 300 sends) **and** the autopilot toggle (blocks the reactivation resume path).
-- **Fix:** Render → Manual Deploy → promote `0a8a754` → verify `/api/version` shows it → re-probe the webhook + autopilot endpoints.
-- **Then harden:** scope the webhook write to touched collections only; add webhook observability (`lastWebhookAt`/counters) to `/api/reactivation/status`; add real SendGrid ECDSA signature verification (currently none despite the comment); verify SendGrid Event Webhook config points at the `-prod` URL with Delivered/Bounce/Spam/Unsub/Click enabled; backfill Wave 1's historical events.
+_Resolved since the 2026-07-02 revision: the stale-prod-deploy / write-conflict blocker (promoted 2026-07-03); SendGrid webhook config + signature enforcement + Wave 1 backfill (2026-07-03); webhook observability on `/api/reactivation/status`; B1 operability from the UI (PR #29, merged + deployed 2026-07-08); CI (PR #31)._
+
+### Pending deploy — scoped-write hardening (PR #30)
+- Fixes the §2 full-state-write clobber class found live on campaign day: denial-audit logging (bots on the public URL caused a full-state write per denied request — 857 of the 1,000 capped SOC 2 audit entries were denials), product events (also registers `automationEvents`/`automationSuggestions`/`connectorStatus`, which had NEVER persisted on Supabase), the autopilot toggle, and heartbeat-tick serialization.
+- **Deploy only after a campaign day's send window closes** (it changes write behavior on paths a running campaign touches).
+
+### Open engineering debt
+- **~60 remaining full-state `writeState` sites** (daily-run routes, tasks, approvals, content bank, growth, production-activation, …) — migrate incrementally to serialized + scoped writes (the PR #30 pattern). These fire only on operator actions, but each is clobber-capable.
+- **Wave reassignment root cause (2026-07-08 ~05:45 ET):** something re-ran wave assignment on prod unprompted (counts moved 265/675/1280/1615 → 254/689/1292/1600). Accepted as campaign-day baseline; still needs a root cause.
+- **Wave-0 unattributed sends (213 of 300):** attribution gap for pre-wave-display sends; surfaced as a display-only diagnostic on the campaign page; fix or formally accept.
+- **Durable campaign-day alerting:** activate the Phase 18I alerts engine (env `ALERTS_EMAIL_TO` + `ALERTS_LIVE_SEND` + in-app switch + alerts autopilot) so threshold trips email the owner instead of relying on an open operator session.
 
 ### Activation work (not building — flipping gates once prerequisites land)
 - **B2 outreach:** DNS (SPF/DKIM/DMARC on the outreach domain / Route 53) + SendGrid domain auth → `OUTREACH_LIVE_SEND=true` + autopilot + load sequences/campaigns + approve queue.
-- **B1 reactivation:** `REACTIVATION_LIVE_SEND=true` + autopilot + release remaining waves (pending Roger approval).
+- **B1 reactivation:** ✅ operable from the UI since PR #29 — remaining activation decisions are per-wave releases (waves 3/4) via the existing approval flow.
 - **B5 prospecting:** `PROSPECT_LIVE_DISCOVERY=true` + autopilot (approval stays human-gated).
+- **Meeting briefs / Google Workspace:** make the OAuth connection (connect-ready, read-only by design).
 - **Track A cleanup:** A3 visual/UX pass to the mockup; A5 rotate exposed keys.
 
 ### Not yet built
@@ -222,7 +233,8 @@ _(Queried live from prod this session.)_
 - **B8 technical support engine**, **B9 Wilma safety telemetry monitor** (🔵 planned).
 - From the Growth Automation v2 spec: durable **outbox/dead-letter** job model, **reply triage**, **attribution/metrics** pipeline, **Instagram audience import** phase.
 - `/api/rcap-revenue/preview` route (function exists, unwired); non-consumer **Upload-a-list** types.
+- **Expungement.ai lifecycle sync live source pull** (the receiver is built, ingest-only; no source pull exists).
 
 ---
 
-_This document is a point-in-time synthesis. The live send-gate posture and deploy state change over time — re-verify via `/api/version`, `/api/heartbeat/status`, and `/api/reactivation/status`._
+_This document is a point-in-time synthesis (last full refresh 2026-07-08). The live send-gate posture and deploy state change over time — re-verify via `/api/version`, `/api/safety/posture`, and `/api/reactivation/status`._
